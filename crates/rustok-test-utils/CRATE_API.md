@@ -1,41 +1,41 @@
 # rustok-test-utils / CRATE_API
 
-## Публичные модули
+## Public Modules
 `db`, `events`, `fixtures`, `helpers`.
 
-## Основные публичные типы и сигнатуры
+## Primary Public Types and Signatures
 - `pub async fn setup_test_db(...)`
 - `pub struct MockEventBus`, `pub struct MockEventTransport`
 - `pub fn mock_transactional_event_bus() -> TransactionalEventBus`
-- Фикстуры доменных сущностей в `fixtures::*`.
+- Domain entity fixtures in `fixtures::*`.
 
-## События
-- Публикует: тестовые `DomainEvent` через mock transport.
-- Потребляет: записанные event envelope для assertions.
+## Events
+- Publishes: test `DomainEvent` through mock transport.
+- Consumes: recorded event envelopes for assertions.
 
-## Зависимости от других rustok-крейтов
+## Dependencies on Other RusToK Crates
 - `rustok-core`
 - `rustok-outbox`
 - (optional) `rustok-content`, `rustok-commerce`
 
-## Частые ошибки ИИ
-- Подключает crate в production dependencies (должен быть только dev).
-- Ожидает реальную доставку брокером вместо behavior mock transport.
+## Common AI Mistakes
+- Adds the crate to production dependencies (should be dev-only).
+- Expects real broker delivery instead of behavior mock transport.
 
-## Минимальный набор контрактов
+## Minimum Contract Set
 
-### Входные DTO/команды
-- Входной контракт формируется публичными DTO/командами из crate (см. разделы с `Create*Input`/`Update*Input`/query/filter выше и соответствующие `pub`-экспорты в `src/lib.rs`).
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления transport-адаптеров `apps/server`.
+### Input DTOs/Commands
+- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
+- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters in `apps/server`.
 
-### Доменные инварианты
-- Инварианты модуля фиксируются в сервисах/стейт-машинах и валидации DTO; недопустимые переходы/параметры должны завершаться доменной ошибкой.
-- Инварианты multi-tenant boundary (tenant/resource isolation, auth context) считаются обязательной частью контракта.
+### Domain Invariants
+- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
+- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
 
-### События / outbox-побочные эффекты
-- Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
-- Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
+### Events / Outbox Side Effects
+- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Event payload and event-type format must remain backward-compatible for cross-module consumers.
 
-### Ошибки / коды отказов
-- Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.
-- Для validation/auth/conflict/not-found сценариев должен сохраняться устойчивый error-class, используемый тестами и адаптерами.
+### Errors / Failure Codes
+- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.

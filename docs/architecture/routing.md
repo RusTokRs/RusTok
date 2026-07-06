@@ -6,135 +6,135 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Маршрутизация и границы transport-слоя
+# Routing and Transport Layer Boundaries
 
-Этот документ фиксирует границы между GraphQL, REST, module-owned HTTP surfaces
-и internal Leptos `#[server]` functions.
+This document captures the boundaries between GraphQL, REST, module-owned HTTP surfaces
+and internal Leptos `#[server]` functions.
 
-## Основное правило
+## Main Rule
 
-В RusToK transport layer делится по назначению, а не по вкусу команды:
+In RusToK, the transport layer is divided by purpose, not by team preference:
 
-- GraphQL — основной UI-facing contract
-- REST — интеграции, webhooks, ops и совместимые transport flows
-- `#[server]` functions — internal data layer для Leptos hosts и module-owned UI
+- GraphQL — primary UI-facing contract
+- REST — integrations, webhooks, ops and compatible transport flows
+- `#[server]` functions — internal data layer for Leptos hosts and module-owned UI
 - health/metrics endpoints — operational surface
 
-Новый endpoint должен вписываться в один из этих каналов, а не создавать
-четвёртый локальный transport style.
+A new endpoint must fit into one of these channels, not create a
+fourth local transport style.
 
-## Матрица выбора
+## Selection Matrix
 
-| Сценарий | Канал |
+| Scenario | Channel |
 |---|---|
 | Admin/storefront UI query/mutation | GraphQL |
 | Leptos internal UI action | `#[server]` function |
-| Внешняя интеграция | REST |
+| External integration | REST |
 | Webhook ingress / callback | REST |
 | Health / readiness / metrics | Operational endpoints |
 | OpenAPI discovery | REST/OpenAPI |
 
 ## GraphQL
 
-GraphQL используется как единый UI-facing contract:
+GraphQL is used as the single UI-facing contract:
 
 - `apps/admin`
 - `apps/storefront`
 - `apps/next-admin`
 - `apps/next-frontend`
-- module-owned UI packages, если им нужен GraphQL transport
+- module-owned UI packages, if they need GraphQL transport
 
-GraphQL не должен размываться в integration-only flows, где нужен стабильный
-REST contract.
+GraphQL must not be diluted into integration-only flows where a stable
+REST contract is needed.
 
-## `#[server]`-функции
+## `#[server]` Functions
 
-Для Leptos hosts и module-owned Leptos UI `#[server]` functions являются
-предпочтительным internal data layer.
+For Leptos hosts and module-owned Leptos UI, `#[server]` functions are the
+preferred internal data layer.
 
-При этом:
+At the same time:
 
-- GraphQL не удаляется и остаётся параллельным contract
-- `#[server]` functions не должны становиться заменой внешнего API
-- ownership бизнес-логики остаётся у module/service layer, а не у UI crate
+- GraphQL is not removed and remains a parallel contract
+- `#[server]` functions must not become a replacement for the external API
+- ownership of business logic remains with the module/service layer, not with the UI crate
 
 ## REST
 
-REST используется для:
+REST is used for:
 
-- внешних интеграций
+- external integrations
 - webhook callback flows
-- служебных операций
-- совместимых transport surfaces, где GraphQL не подходит
-- module-owned HTTP endpoints, если модулю нужен именно HTTP contract
+- operational operations
+- compatible transport surfaces where GraphQL is not suitable
+- module-owned HTTP endpoints, if the module needs an HTTP contract
 
-REST не должен дублировать UI-facing GraphQL без явной причины.
+REST must not duplicate UI-facing GraphQL without a clear reason.
 
-## Module-owned маршрутизация
+## Module-owned Routing
 
-Если модуль публикует HTTP routes или UI surfaces:
+If a module publishes HTTP routes or UI surfaces:
 
-- routing объявляется через `rustok-module.toml`
-- host application только монтирует surface
-- source of truth для wiring живёт в manifest и local docs модуля
+- routing is declared through `rustok-module.toml`
+- the host application only mounts the surface
+- the source of truth for wiring lives in the manifest and local docs of the module
 
-Наличие controller или UI sub-crate без manifest wiring не считается полным
+The presence of a controller or UI sub-crate without manifest wiring is not considered a complete
 contract.
 
-## Route-selection contract для module-owned admin UI
+## Route-selection Contract for Module-owned Admin UI
 
-Для module-owned admin UI действует единый platform contract:
+For module-owned admin UI, a single platform contract applies:
 
-- selection state хранится в query string и считается URL-owned source of truth;
-- используются только typed `snake_case` query keys вроде `product_id`, `cart_id`, `order_id`, `thread_id`,
+- selection state is stored in query string and is considered a URL-owned source of truth;
+- only typed `snake_case` query keys are used: `product_id`, `cart_id`, `order_id`, `thread_id`,
   `media_id`, `channel_id`, `topic_id`, `provider_slug`, `tool_profile_slug`, `task_profile_slug`,
-  а для SEO route — `target_kind`, `target_id`, `locale`, `tab`;
-- generic `id`, camelCase keys и прочие legacy aliases не читаются и не canonicalize’ятся;
-- отсутствие валидного selection key означает empty state, а не auto-select-first;
-- invalid nested keys очищаются локально и не должны ломать соседние selection domains;
-- смена subpath/tab обязана prune’ить keys, невалидные для destination page.
+  and for SEO routes — `target_kind`, `target_id`, `locale`, `tab`;
+- generic `id`, camelCase keys and other legacy aliases are not read and are not canonicalized;
+- absence of a valid selection key means an empty state, not auto-select-first;
+- invalid nested keys are cleaned locally and must not break neighboring selection domains;
+- changing subpath/tab must prune keys that are invalid for the destination page.
 
-Разделение ownership:
+Ownership split:
 
-- `rustok-api` владеет typed query schema, invariant rules и sanitization contract;
-- `leptos-ui-routing` остаётся generic Leptos route/query helper без admin-specific key registry;
-- host-приложения (`apps/admin`, `apps/next-admin`) владеют route writers/adapters и обязаны
-  держать parity по одному и тому же query contract.
+- `rustok-api` owns the typed query schema, invariant rules and sanitization contract;
+- `leptos-ui-routing` remains a generic Leptos route/query helper without an admin-specific key registry;
+- host applications (`apps/admin`, `apps/next-admin`) own the route writers/adapters and must
+  maintain parity on the same query contract.
 
-## Query contract для module-owned storefront UI
+## Query Contract for Module-owned Storefront UI
 
-Для module-owned storefront UI действует тот же ownership split, но без admin-specific typed
+For module-owned storefront UI, the same ownership split applies, but without admin-specific typed
 selection schema:
 
-- host/runtime передаёт `UiRouteContext` с effective locale, route base и canonical query snapshot;
-- storefront packages читают свои domain query keys через общий helper layer, а не через
+- host/runtime passes `UiRouteContext` with effective locale, route base and canonical query snapshot;
+- storefront packages read their domain query keys through a common helper layer, not through
   package-local route parsing;
-- для Leptos storefront packages query reads идут через `leptos-ui-routing`, а не через
+- for Leptos storefront packages, query reads go through `leptos-ui-routing`, not through
   direct `UiRouteContext.query_value(...)`;
-- `leptos-ui-routing` остаётся generic helper и не владеет storefront key registry,
-  canonical slugs, locale policy или module-specific invariants;
-- `apps/storefront` и `apps/next-frontend` обязаны держать parity по query semantics,
-  locale propagation и canonical route behavior, не создавая второй query policy поверх
-  backend/host contract.
+- `leptos-ui-routing` remains a generic helper and does not own the storefront key registry,
+  canonical slugs, locale policy or module-specific invariants;
+- `apps/storefront` and `apps/next-frontend` must maintain parity on query semantics,
+  locale propagation and canonical route behavior, not creating a second query policy on top of
+  the backend/host contract.
 
-## Locale и маршрутизация
+## Locale and Routing
 
-Locale-routing определяется host/runtime layer:
+Locale routing is determined by the host/runtime layer:
 
-- Leptos и Next hosts используют host-provided effective locale
-- module-owned UI packages не вводят собственную query/header/cookie chain
-- locale contract должен совпадать с `docs/UI/*` и локальными docs приложений
+- Leptos and Next hosts use host-provided effective locale
+- module-owned UI packages do not introduce their own query/header/cookie chain
+- locale contract must match `docs/UI/*` and local application docs
 
-## Что не делать
+## What Not To Do
 
-- не использовать GraphQL как транспорт для внешнего webhook callback
-- не выносить integration-only REST contract в `#[server]` functions
-- не дублировать один и тот же UI flow в GraphQL и REST без причины
-- не прятать module-owned routing только в host application
+- do not use GraphQL as transport for an external webhook callback
+- do not move integration-only REST contract into `#[server]` functions
+- do not duplicate the same UI flow in GraphQL and REST without a reason
+- do not hide module-owned routing only in the host application
 
-## Связанные документы
+## Related Documents
 
-- [Архитектура API](./api.md)
-- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
-- [Быстрый старт для Admin ↔ Server](../UI/admin-server-connection-quickstart.md)
-- [Архитектура модулей](./modules.md)
+- [API Architecture](./api.md)
+- [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
+- [Quick Start for Admin ↔ Server](../UI/admin-server-connection-quickstart.md)
+- [Module Architecture](./modules.md)

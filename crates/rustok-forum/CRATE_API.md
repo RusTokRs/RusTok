@@ -1,97 +1,97 @@
 # rustok-forum / CRATE_API
 
-## Публичные модули
+## Public Modules
 `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`.
 
-## Основные публичные типы и сигнатуры
+## Primary Public Types and Signatures
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
-- Публичные DTO/константы из `dto::*` и `constants::*`
+- Public DTOs/constants from `dto::*` and `constants::*`
 - `pub enum ForumError`, `pub type ForumResult<T>`
-- `pub mod locale` — хелперы `resolve_translation`, `resolve_body`, `available_locales`
+- `pub mod locale` — helpers `resolve_translation`, `resolve_body`, `available_locales`
 
-## DTO изменения (актуально)
+## DTO changes (current)
 ### TopicResponse
-- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
 ### TopicListItem
-- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
 ### ReplyResponse / ReplyListItem
-- Добавлены: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (в ListItem), `vote_score: i32`, `current_user_vote: Option<i32>`, `is_solution: bool`
+- Added: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (in ListItem), `vote_score: i32`, `current_user_vote: Option<i32>`, `is_solution: bool`
 ### CategoryResponse
-- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CategoryListItem
-- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CreateTopicInput
-- Добавлено: `slug: Option<String>`
-### ListRepliesFilter (новый)
-- Пагинация ответов: `page`, `per_page`, `locale`
+- Added: `slug: Option<String>`
+### ListRepliesFilter (new)
+- Reply pagination: `page`, `per_page`, `locale`
 ### ModerationService
-- Сигнатуры `approve_reply`, `reject_reply`, `hide_reply`, `pin_topic`, `unpin_topic` теперь принимают `tenant_id: Uuid`
-- `close_topic`, `archive_topic` теперь принимают `tenant_id: Uuid`
-- Добавлены `mark_solution(tenant_id, topic_id, reply_id, security)` и `clear_solution(tenant_id, topic_id, security)`
+- Signatures `approve_reply`, `reject_reply`, `hide_reply`, `pin_topic`, `unpin_topic` now accept `tenant_id: Uuid`
+- `close_topic`, `archive_topic` now accept `tenant_id: Uuid`
+- Added `mark_solution(tenant_id, topic_id, reply_id, security)` and `clear_solution(tenant_id, topic_id, security)`
 ### VoteService
-- Добавлены `set_topic_vote(tenant_id, topic_id, security, value)` и `clear_topic_vote(tenant_id, topic_id, security)`
-- Добавлены `set_reply_vote(tenant_id, reply_id, security, value)` и `clear_reply_vote(tenant_id, reply_id, security)`
+- Added `set_topic_vote(tenant_id, topic_id, security, value)` and `clear_topic_vote(tenant_id, topic_id, security)`
+- Added `set_reply_vote(tenant_id, reply_id, security, value)` and `clear_reply_vote(tenant_id, reply_id, security)`
 ### SubscriptionService
-- Добавлены `set_category_subscription(tenant_id, category_id, security)` и `clear_category_subscription(tenant_id, category_id, security)`
-- Добавлены `set_topic_subscription(tenant_id, topic_id, security)` и `clear_topic_subscription(tenant_id, topic_id, security)`
+- Added `set_category_subscription(tenant_id, category_id, security)` and `clear_category_subscription(tenant_id, category_id, security)`
+- Added `set_topic_subscription(tenant_id, topic_id, security)` and `clear_topic_subscription(tenant_id, topic_id, security)`
 ### UserStatsService
-- Добавлен `get(tenant_id, security, user_id)` для tenant-scoped forum statistics read-path
-- Внутренние write-path helper-ы синхронизируют `topic_count`, `reply_count`, `solution_count`
+- Added `get(tenant_id, security, user_id)` for tenant-scoped forum statistics read-path
+- Internal write-path helpers synchronize `topic_count`, `reply_count`, `solution_count`
 
 ## Locale fallback chain
-Порядок поиска перевода: `requested → explicit fallback → "en" → первый доступный`.
-Поле `effective_locale` сообщает, какой locale реально вернули.
+Translation lookup order: `requested → explicit fallback → "en" → first available`.
+The `effective_locale` field indicates which locale was actually returned.
 
 ## Slug contract
-- `CategoryResponse` / `CategoryListItem` возвращают locale-aware slug на уровне
-  `forum_category_translation`; slug следует за тем же resolved translation, что
-  и `name` / `description`.
-- `TopicResponse` / `TopicListItem` возвращают стабильный topic slug. При
-  создании новой topic translation slug копируется из seed-translation, если
-  отдельный topic-level slug workflow не вводится явно.
-- Текущий public contract форума остаётся ID-based: forum API не обещает lookup
-  по slug. Если такой read-path будет добавлен позже, он обязан использовать тот
-  же locale fallback contract, что и остальной forum read-path.
+- `CategoryResponse` / `CategoryListItem` return locale-aware slug at the
+  `forum_category_translation` level; the slug follows the same resolved translation as
+  `name` / `description`.
+- `TopicResponse` / `TopicListItem` return a stable topic slug. When
+  creating a new topic translation, the slug is copied from the seed-translation, unless
+  a separate topic-level slug workflow is explicitly introduced.
+- The current forum public contract remains ID-based: the forum API does not promise lookup
+  by slug. If such a read-path is added later, it must use the
+  same locale fallback contract as the rest of the forum read-path.
 
-## События
-Публикует форумные доменные события через outbox pipeline:
-- `ForumTopicCreated` — при создании темы
-- `ForumTopicReplied` — при добавлении ответа
-- `ForumTopicStatusChanged` — при изменении статуса темы (close/archive)
-- `ForumTopicPinned` — при закреплении/откреплении темы
-- `ForumReplyStatusChanged` — при модерации ответа (approve/reject/hide)
+## Events
+Publishes forum domain events through the outbox pipeline:
+- `ForumTopicCreated` — when a topic is created
+- `ForumTopicReplied` — when a reply is added
+- `ForumTopicStatusChanged` — when topic status changes (close/archive)
+- `ForumTopicPinned` — when a topic is pinned/unpinned
+- `ForumReplyStatusChanged` — when a reply is moderated (approve/reject/hide)
 
-Все новые форумные события определены в `rustok-core::events::DomainEvent`.
+All new forum events are defined in `rustok-core::events::DomainEvent`.
 
-## Зависимости от других rustok-крейтов
+## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
 - `rustok-outbox`
 
-## Частые ошибки ИИ
-- Неправильно использует лимиты/константы модерации из `constants`.
-- Путает иерархию category/topic/reply в импортах сущностей.
-- Игнорирует tenant-boundary в сервисных фильтрах.
-- Путает `locale` (запрошенный) и `effective_locale` (фактически использованный).
-- Передаёт `ModerationService` методы без `tenant_id` — теперь он обязателен.
+## Common AI Mistakes
+- Incorrectly uses moderation limits/constants from `constants`.
+- Confuses the category/topic/reply hierarchy in entity imports.
+- Ignores tenant-boundary in service filters.
+- Confuses `locale` (requested) and `effective_locale` (actually used).
+- Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
-## Минимальный набор контрактов
+## Minimum Contract Set
 
-### Входные DTO/команды
-- Входной контракт формируется публичными DTO/командами из crate (см. разделы с `Create*Input`/`Update*Input`/query/filter выше и соответствующие `pub`-экспорты в `src/lib.rs`).
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления transport-адаптеров `apps/server`.
+### Input DTOs/Commands
+- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
+- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters in `apps/server`.
 
-### Доменные инварианты
-- Инварианты модуля фиксируются в сервисах/стейт-машинах и валидации DTO; недопустимые переходы/параметры должны завершаться доменной ошибкой.
-- Инварианты multi-tenant boundary (tenant/resource isolation, auth context) считаются обязательной частью контракта.
+### Domain Invariants
+- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
+- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
 
-### События / outbox-побочные эффекты
-- Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
-- Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
+### Events / Outbox Side Effects
+- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Event payload and event-type format must remain backward-compatible for cross-module consumers.
 
-### Ошибки / коды отказов
-- Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.
-- Для validation/auth/conflict/not-found сценариев должен сохраняться устойчивый error-class, используемый тестами и адаптерами.
+### Errors / Failure Codes
+- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.

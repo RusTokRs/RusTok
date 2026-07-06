@@ -1,14 +1,14 @@
-# План реализации `rustok-comments`
+# Implementation plan for `rustok-comments`
 
-Этот документ фиксирует локальный roadmap модуля `rustok-comments`.
+This document captures the local roadmap of the `rustok-comments` module.
 
 ## Execution checkpoint
 
 - Current phase: FBA provider baseline for generic comment threads
-- Last checkpoint: comments port применяет canonical `PortCallPolicy`, затем строит `SecurityContext` через строгий `try_from_port_context`; system authority доступен только `PortActorKind::System`, а user/service actors требуют валидные UUID, roles и permission claims.
-- Next step: Закрыть runtime contract execution/fallback smoke для `CommentsThreadPort` и подтвердить blog embedded/native compatibility snapshots; для FFA — не расширять native-only admin transport без нового legacy/headless contract, а поддерживать parity/evidence guardrails.
-- Open blockers: отсутствуют; native-only comments admin exception зафиксирован, потому что у модуля не было legacy GraphQL/REST admin surface.
-- Hand-off notes for next agent: После каждого FFA/FBA инкремента обновлять этот блок, локальный FFA/FBA status block и central readiness board в одном PR.
+- Last checkpoint: comments port applies canonical `PortCallPolicy`, then builds `SecurityContext` through strict `try_from_port_context`; system authority is accessible only to `PortActorKind::System`, while user/service actors require valid UUIDs, roles and permission claims.
+- Next step: Close runtime contract execution/fallback smoke for `CommentsThreadPort` and confirm blog embedded/native compatibility snapshots; for FFA — do not extend native-only admin transport without new legacy/headless contract, but maintain parity/evidence guardrails.
+- Open blockers: none; native-only comments admin exception is locked because the module had no legacy GraphQL/REST admin surface.
+- Hand-off notes for next agent: After each FFA/FBA increment, update this block, local FFA/FBA status block and central readiness board in the same PR.
 - Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## FFA/FBA status
@@ -17,43 +17,43 @@
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - пакетный no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`: read/write policy order, idempotency через canonical write policy, owner `CommentsService` invocation, typed error mapping и fallback/degraded parity; статус остаётся `in_progress` до live provider/consumer execution;
-  - `rustok-comments-admin` теперь имеет явные `admin/src/core.rs`, `admin/src/transport/mod.rs`, `admin/src/transport/native_server_adapter.rs` и `admin/src/ui/leptos.rs`; `admin/src/lib.rs` больше не содержит render/business logic, не wires pre-FFA `api.rs` и публикует только `CommentsAdmin`;
-  - covered admin UI больше не вызывает raw `api::*` напрямую из Leptos render layer, а идёт через module-owned transport facade;
-  - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping и transport request/command DTO construction вынесены в Leptos-free core и покрыты unit tests;
-  - selected-thread и locale route/query key ownership, normalization и host write intent теперь живут в Leptos-free core на shared `UiRouteQueryUpdate`, а Leptos adapter только применяет готовый `CommentsAdminRouteQueryWrite` через host writer;
-  - fast boundary guardrail `scripts/verify/verify-comments-admin-boundary.mjs` включён в aggregate `verify:ffa:ui:migration` и закрепляет native-only comments admin exception без package-local GraphQL fallback; fixture suite `scripts/verify/verify-comments-admin-boundary.test.mjs` включён в aggregate `test:verify:ffa:ui:migration` и проверяет canonical split, legacy `api.rs`, Leptos-free core, route/query ownership, transport facade isolation, GraphQL-fallback prohibition и server-function adapter placement;
-  - текущий admin transport остаётся native-only single-adapter server-function path, path зафиксирован typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, а отдельный GraphQL/REST fallback не добавляется как module-documented exception без legacy admin transport surface;
+  - batch no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` checks `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`: read/write policy order, idempotency through canonical write policy, owner `CommentsService` invocation, typed error mapping and fallback/degraded parity; status remains `in_progress` until live provider/consumer execution;
+  - `rustok-comments-admin` now has explicit `admin/src/core.rs`, `admin/src/transport/mod.rs`, `admin/src/transport/native_server_adapter.rs` and `admin/src/ui/leptos.rs`; `admin/src/lib.rs` no longer contains render/business logic, does not wire pre-FFA `api.rs` and only publishes `CommentsAdmin`;
+  - covered admin UI no longer calls raw `api::*` directly from Leptos render layer, but goes through module-owned transport facade;
+  - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping and transport request/command DTO construction are moved to Leptos-free core and covered by unit tests;
+  - selected-thread and locale route/query key ownership, normalization and host write intent now live in Leptos-free core on shared `UiRouteQueryUpdate`, while Leptos adapter only applies the prepared `CommentsAdminRouteQueryWrite` through host writer;
+  - fast boundary guardrail `scripts/verify/verify-comments-admin-boundary.mjs` is included in aggregate `verify:ffa:ui:migration` and locks the native-only comments admin exception without package-local GraphQL fallback; fixture suite `scripts/verify/verify-comments-admin-boundary.test.mjs` is included in aggregate `test:verify:ffa:ui:migration` and checks canonical split, legacy `api.rs`, Leptos-free core, route/query ownership, transport facade isolation, GraphQL-fallback prohibition and server-function adapter placement;
+  - current admin transport remains native-only single-adapter server-function path, path is locked with typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, and a separate GraphQL/REST fallback is not added as a module-documented exception without legacy admin transport surface;
   - FBA provider registry `crates/rustok-comments/contracts/comments-fba-registry.json`, neutral `CommentsThreadPort`/`comments.thread.v1` and static contract evidence `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json` are locked for blog and future commentable-surface consumers; write operations require shared `PortCallPolicy::write()`, read operations require shared `PortCallPolicy::read()`, and typed `PortError` mapping remains owned by `rustok-comments`;
   - fast FBA guardrail `scripts/verify/verify-comments-fba.mjs` / `npm run verify:comments:fba` checks manifest metadata, port source markers, static evidence drift and central readiness-board sync; status remains below `boundary_ready` until runtime contract execution and fallback smoke evidence land;
 - Owner: `rustok-comments` module team
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-comments` отдельной storage/domain границей для generic comments вне `rustok-forum`;
-- развивать moderation/status contract, module-owned admin UI и opt-in integrations без возврата комментариев в shared `content`-модель;
-- синхронизировать runtime contract, local docs и host wiring по мере появления новых commentable surfaces.
+- keep `rustok-comments` as a separate storage/domain boundary for generic comments outside `rustok-forum`;
+- evolve moderation/status contract, module-owned admin UI and opt-in integrations without returning comments to the shared `content` model;
+- synchronize runtime contract, local docs and host wiring as new commentable surfaces appear.
 
-## Текущее состояние
+## Current state
 
-- `rustok-comments` уже является live storage-owner для generic comments;
-- `rustok-blog` использует модуль в production read/write path;
-- `rustok-comments-admin` опубликован как module-owned moderation UI;
-- observability baseline и thread status contract уже зафиксированы в runtime.
+- `rustok-comments` is already a live storage-owner for generic comments;
+- `rustok-blog` uses the module in production read/write path;
+- `rustok-comments-admin` is published as module-owned moderation UI;
+- observability baseline and thread status contract are already locked in runtime.
 
-## Этапы
+## Stages
 
-### Этап 1. Module foundation
+### Stage 1. Module foundation
 
-- [x] добавить crate, `CommentsModule`, permissions и module manifest;
-- [x] подключить модуль в workspace, `modules.toml`, server feature wiring и central docs;
-- [x] зафиксировать локальную storage/API стратегию внутри module docs.
+- [x] add crate, `CommentsModule`, permissions and module manifest;
+- [x] connect module in workspace, `modules.toml`, server feature wiring and central docs;
+- [x] lock local storage/API strategy inside module docs.
 
-### Этап 2. Storage boundary
+### Stage 2. Storage boundary
 
-- [x] спроектировать таблицы `comment_threads`, `comments`, `comment_bodies`;
-- [x] добавить module-owned migrations;
-- [x] ввести entities/repositories и базовый `CommentService`.
+- [x] design tables `comment_threads`, `comments`, `comment_bodies`;
+- [x] add module-owned migrations;
+- [x] introduce entities/repositories and base `CommentService`.
 
 ### Target schema
 
@@ -73,59 +73,59 @@
 - unique `(comment_id, locale)` on `comment_bodies`
 - ordered list indexes on `(thread_id, position)` and `(thread_id, created_at)`
 
-### Этап 3. Domain contracts
+### Stage 3. Domain contracts
 
-- [x] определить target binding contract для blog и generic opt-in non-forum surfaces;
-- [x] определить moderation/status contract для comment-domain;
-- [x] свести comment body к shared rich-text contract.
+- [x] define target binding contract for blog and generic opt-in non-forum surfaces;
+- [x] define moderation/status contract for comment-domain;
+- [x] reduce comment body to shared rich-text contract.
 
-### Этап 4. Integrations
+### Stage 4. Integrations
 
-- [x] перевести `rustok-blog` на `rustok-comments`;
-- [x] определить интеграцию `rustok-pages` с `rustok-comments`: default integration не
-  вводится, future page-like discussion surfaces возможны только как explicit opt-in;
-- [x] добавить transport adapters в `apps/server`.
+- [x] move `rustok-blog` to `rustok-comments`;
+- [x] define integration of `rustok-pages` with `rustok-comments`: default integration is not
+  introduced, future page-like discussion surfaces are possible only as explicit opt-in;
+- [x] add transport adapters in `apps/server`.
 
-### Этап 5. Orchestration compatibility
+### Stage 5. Orchestration compatibility
 
-- [x] реализовать mapping между `blog comments` и `forum replies` через `rustok-content`;
-- [x] покрыть conversion flows end-to-end тестами после появления orchestration service.
+- [x] implement mapping between `blog comments` and `forum replies` through `rustok-content`;
+- [x] cover conversion flows with end-to-end tests after orchestration service appears.
 
-### Этап 6. Observability baseline
+### Stage 6. Observability baseline
 
-- [x] добавить module-level entrypoint/error metrics для service entry-points;
-- [x] добавить read-path budget/query metrics для `list_comments_for_target`;
-- [x] определить moderation/status alerts и operator playbook после фиксации
-  финального comment-moderation contract.
+- [x] add module-level entrypoint/error metrics for service entry-points;
+- [x] add read-path budget/query metrics for `list_comments_for_target`;
+- [x] define moderation/status alerts and operator playbook after final
+  comment-moderation contract is locked.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
-- targeted tests для moderation/status contract, blog integration и admin UI runtime wiring
+- targeted tests for moderation/status contract, blog integration and admin UI runtime wiring
 
-## Правила обновления
+## Update rules
 
-1. При изменении comment-domain contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata и UI wiring синхронизировать `rustok-module.toml`.
+1. When changing comment-domain contract, update this file first.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata and UI wiring, synchronize `rustok-module.toml`.
 
-## Детализация текущего состояния
+## Current state details
 
-- `rustok-comments` — больше не scaffold, а live storage-owner для generic comments;
-- `rustok-blog` уже использует модуль в production read/write path;
-- `rustok-pages` не получает default comments surface; pages-level integration сознательно
-  оставлена вне текущего product scope;
-- observability baseline для service-layer уже поднят: module entrypoint/error
-  counters, span duration/error и read-path budget/query metrics на list path;
-- thread status contract уже enforced в runtime: `closed` блокирует новый
-  create-path, а `spam|trash` требуют moderation scope;
-- дальнейший scope модуля теперь связан не со split, а с расширением moderation и
+- `rustok-comments` — no longer a scaffold, but a live storage-owner for generic comments;
+- `rustok-blog` already uses the module in production read/write path;
+- `rustok-pages` does not get a default comments surface; pages-level integration is consciously
+  left outside the current product scope;
+- observability baseline for service-layer is already in place: module entrypoint/error
+  counters, span duration/error and read-path budget/query metrics on list path;
+- thread status contract is already enforced in runtime: `closed` blocks new
+  create-path, while `spam|trash` require moderation scope;
+- further module scope is now related not to split, but to expanding moderation and
   product-level integrations.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

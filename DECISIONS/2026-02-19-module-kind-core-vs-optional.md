@@ -1,26 +1,26 @@
-# Разделение модулей на Core и Optional
+# Module split into Core and Optional
 
 - Date: 2026-02-19
 - Status: Accepted & Implemented
 
 ## Context
 
-В текущей архитектуре `RusToKModule` trait не различает инфраструктурные модули (которые всегда должны быть активны) и доменные/опциональные модули (которые tenant может включать/отключать через `ModuleLifecycleService`).
+In the current architecture, the `RusToKModule` trait does not distinguish between infrastructure modules (which must always be active) and domain/optional modules (which a tenant can enable/disable via `ModuleLifecycleService`).
 
-Это приводит к нескольким проблемам:
+This leads to several problems:
 
-1. `rustok-tenant`, `rustok-rbac`, `rustok-index` реализуют `RusToKModule`, но не зарегистрированы в `build_registry()` — их health-статус невидим, on_enable/on_disable хуки не вызываются.
-2. `ModuleLifecycleService::toggle_module()` теоретически позволяет отключить `content`, от которого зависят `blog` и `forum`, если не заполнены `dependencies()`.
-3. Нет machine-readable способа отличить что является ядром от того, что является опциональным расширением.
+1. `rustok-tenant`, `rustok-rbac`, `rustok-index` implement `RusToKModule` but are not registered in `build_registry()` — their health status is invisible, and on_enable/on_disable hooks are not called.
+2. `ModuleLifecycleService::toggle_module()` theoretically allows disabling `content`, on which `blog` and `forum` depend, if `dependencies()` are not filled.
+3. There is no machine-readable way to distinguish what is core from what is an optional extension.
 
 ## Decision
 
-Ввести поле `ModuleKind` в trait `RusToKModule`:
+Introduce a `ModuleKind` field in the `RusToKModule` trait:
 
 ```rust
 pub enum ModuleKind {
-    Core,     // всегда активен, toggle запрещён
-    Optional, // управляется per-tenant через ModuleLifecycleService
+    Core,     // always active, toggle forbidden
+    Optional, // managed per-tenant via ModuleLifecycleService
 }
 
 pub trait RusToKModule {
@@ -30,35 +30,35 @@ pub trait RusToKModule {
 }
 ```
 
-Модули с `ModuleKind::Core` регистрируются в `ModuleRegistry` в отдельный `core_modules` bucket. `ModuleLifecycleService::toggle_module()` возвращает `ToggleModuleError::CoreModuleCannotBeDisabled` при попытке их отключения.
+Modules with `ModuleKind::Core` are registered in `ModuleRegistry` in a separate `core_modules` bucket. `ModuleLifecycleService::toggle_module()` returns `ToggleModuleError::CoreModuleCannotBeDisabled` when attempting to disable them.
 
-Следующие модули помечаются как Core:
-- `IndexModule` (`rustok-index`) — CQRS read-path, критичен для storefront
-- `TenantModule` (`rustok-tenant`) — tenant lifecycle хуки и health
-- `RbacModule` (`rustok-rbac`) — RBAC lifecycle хуки и health
+The following modules are marked as Core:
+- `IndexModule` (`rustok-index`) — CQRS read-path, critical for storefront
+- `TenantModule` (`rustok-tenant`) — tenant lifecycle hooks and health
+- `RbacModule` (`rustok-rbac`) — RBAC lifecycle hooks and health
 
-Следующие компоненты **не получают `ModuleKind`** — они не являются `RusToKModule`:
-- `rustok-outbox` — инфраструктурный компонент, инициализируется через `build_event_runtime()`, а не через registry; является Compile-time Infrastructure
-- `rustok-test-utils` — исключительно `[dev-dependencies]`, в production binary не входит
-- `utoipa-swagger-ui-vendored` — vendored статика Swagger UI, не модуль платформы
+The following components **do not receive `ModuleKind`** — they are not `RusToKModule`:
+- `rustok-outbox` — infrastructure component, initialized via `build_event_runtime()`, not through the registry; is Compile-time Infrastructure
+- `rustok-test-utils` — exclusively `[dev-dependencies]`, does not enter the production binary
+- `utoipa-swagger-ui-vendored` — vendored Swagger UI static assets, not a platform module
 
-Следующие модули остаются Optional:
+The following modules remain Optional:
 - `ContentModule`, `CommerceModule`, `BlogModule`, `ForumModule`, `PagesModule`
 
-`BlogModule` и `ForumModule` дополнительно заполняют `fn dependencies() -> &["content"]`.
+`BlogModule` and `ForumModule` additionally fill in `fn dependencies() -> &["content"]`.
 
 ## Consequences
 
-**Положительные:**
-- Явная граница между инфраструктурой и доменом.
-- Health endpoint `/health/modules` начнёт отображать Tenant, RBAC, Index.
-- `toggle_module()` станет безопасным: невозможно случайно отключить ядро.
-- Документация и tooling могут автоматически строить граф зависимостей.
+**Positive:**
+- Explicit boundary between infrastructure and domain.
+- Health endpoint `/health/modules` will now display Tenant, RBAC, Index.
+- `toggle_module()` becomes safe: it is impossible to accidentally disable the core.
+- Documentation and tooling can automatically build dependency graphs.
 
-**Отрицательные:**
-- Небольшой Breaking Change в trait `RusToKModule` — все реализации должны получить `fn kind()` (с default-значением Optional это non-breaking для existing modules).
-- Требует обновления `ModuleRegistry` и `ModuleLifecycleService`.
+**Negative:**
+- Small Breaking Change in the `RusToKModule` trait — all implementations must get `fn kind()` (with Optional as the default, this is non-breaking for existing modules).
+- Requires updating `ModuleRegistry` and `ModuleLifecycleService`.
 
 **Follow-up:**
-- Обновить `modules.toml` schema, добавив `required = true` для Core модулей.
-- Обновить документацию в `docs/modules/overview.md`.
+- Update the `modules.toml` schema, adding `required = true` for Core modules.
+- Update documentation in `docs/modules/overview.md`.

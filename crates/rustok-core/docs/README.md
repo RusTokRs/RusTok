@@ -1,42 +1,42 @@
-# Документация `rustok-core`
+# Documentation `rustok-core`
 
-`rustok-core` — базовый foundation crate платформы. Он задаёт shared typed
-contracts, ошибки, security primitives, content helpers и прочие инварианты, на
-которые опираются остальные модули RusToK.
+`rustok-core` is the base foundation crate of the platform. It defines shared typed
+contracts, errors, security primitives, content helpers and other invariants that
+the remaining RusToK modules rely on.
 
-## Назначение
+## Purpose
 
-- публиковать канонический shared foundation contract для платформенных и доменных модулей;
-- держать typed primitives и базовые invariants вне host- и domain-specific кода;
-- снижать дублирование cross-module contracts без превращения `rustok-core` в runtime bucket для любой логики.
+- publish the canonical shared foundation contract for platform and domain modules;
+- keep typed primitives and basic invariants outside host- and domain-specific code;
+- reduce duplication of cross-module contracts without turning `rustok-core` into a runtime bucket for any logic.
 
-## Зона ответственности
+## Responsibilities
 
-- typed primitives и shared value objects (например, `UserRole`, `UserStatus` для RBAC);
-- базовые error/validation helpers и security contracts;
-- foundation-контракты событий: канонические re-export событий, in-memory transport, bus stats, observability для backpressure, retry-семантику dispatcher-а и hooks задержки dispatch-а;
-- content/rich-text вспомогательные контракты, которые используются несколькими модулями (`rt_json`, `grapesjs`, `content_format`);
+- typed primitives and shared value objects (e.g., `UserRole`, `UserStatus` for RBAC);
+- basic error/validation helpers and security contracts;
+- foundation event contracts: canonical event re-exports, in-memory transport, bus stats, observability for backpressure, dispatcher retry semantics and dispatch delay hooks;
+- content/rich-text helper contracts used by multiple modules (`rt_json`, `grapesjs`, `content_format`);
 - flex/custom-fields schema contracts (`field_schema`);
-- compatibility re-exports и shared API surface для foundation layer;
-- отсутствие domain-owned runtime orchestration и transport-specific logic.
-- отсутствие neutral module-port DTO/error contracts: `Port*` принадлежат `rustok-api` и не реэкспортируются из core/prelude.
+- compatibility re-exports and shared API surface for the foundation layer;
+- absence of domain-owned runtime orchestration and transport-specific logic.
+- absence of neutral module-port DTO/error contracts: `Port*` belong to `rustok-api` and are not re-exported from core/prelude.
 
-## Интеграция
+## Integration
 
-- используется практически всеми `rustok-*` crates как foundation dependency;
-- `apps/server` и runtime-модули зависят от typed contracts, но не должны тащить обратно shared logic в host слой;
-- `rustok-events`, `rustok-rbac`, `rustok-content` и другие foundation/domain crates должны оставаться поверх `rustok-core`, а не наоборот;
-- `rustok-auth` владеет canonical auth lifecycle; `rustok-core` не дублирует auth-specific сервисы, репозитории или миграции;
-- любые новые cross-module primitives должны попадать сюда только если они реально shared и не принадлежат одному bounded context.
+- used by virtually all `rustok-*` crates as a foundation dependency;
+- `apps/server` and runtime modules depend on typed contracts, but should not pull shared logic back into the host layer;
+- `rustok-events`, `rustok-rbac`, `rustok-content` and other foundation/domain crates must remain on top of `rustok-core`, not the other way around;
+- `rustok-auth` owns the canonical auth lifecycle; `rustok-core` does not duplicate auth-specific services, repositories or migrations;
+- any new cross-module primitives should go here only if they are truly shared and do not belong to a single bounded context.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
-- targeted tests для typed primitives, validation helpers, security contracts, observability-контрактов событий, dispatcher retry/latency contracts и compatibility exports
+- targeted tests for typed primitives, validation helpers, security contracts, event observability contracts, dispatcher retry/latency contracts and compatibility exports
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

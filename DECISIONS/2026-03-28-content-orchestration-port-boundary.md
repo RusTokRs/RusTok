@@ -1,60 +1,60 @@
-# ADR: Портовая граница для content orchestration
+# ADR: Port boundary for content orchestration
 
 - Status: Accepted
 - Date: 2026-03-28
 
-## Контекст
+## Context
 
-После storage split `rustok-blog`, `rustok-forum`, `rustok-pages` и `rustok-comments`
-владеют собственными таблицами, но продолжают зависеть от `rustok-content` как от shared helper
-слоя для locale, rich-text, slug policy и других общих правил.
+After the storage split, `rustok-blog`, `rustok-forum`, `rustok-pages` and `rustok-comments`
+own their own tables, but continue to depend on `rustok-content` as a shared helper
+layer for locale, rich-text, slug policy, and other common rules.
 
-Старый `ContentOrchestrationService` оставался завязан на `NodeService` и shared `nodes`,
-что ломало новую архитектурную границу:
+The old `ContentOrchestrationService` remained tied to `NodeService` and shared `nodes`,
+which broke the new architectural boundary:
 
-- orchestration зависел от legacy storage topology;
-- перенос `topic ↔ post` был реализован как rebinding shared children;
-- прямое переписывание `rustok-content` на зависимости `blog/forum/comments` создавало бы
-  циклический граф зависимостей.
+- orchestration depended on legacy storage topology;
+- `topic ↔ post` transfer was implemented as rebinding shared children;
+- directly rewriting `rustok-content` to depend on `blog/forum/comments` would create
+  a cyclic dependency graph.
 
-## Решение
+## Decision
 
-`ContentOrchestrationService` переводится на портовую границу:
+`ContentOrchestrationService` is moved to a port boundary:
 
-- `rustok-content` оставляет у себя orchestration state, idempotency, audit и event publication;
-- доменная конверсия выносится в `ContentOrchestrationBridge`;
-- runtime-адаптеры, которые знают о `blog/forum/comments` persistence, должны жить вне
-  shared helper слоя и реализовывать `ContentOrchestrationBridge`;
-- runtime-адаптер и conversion GraphQL mutation surface живут в
-  `rustok-content-orchestration`; canonical-route query остаётся в `rustok-content`;
-- content GraphQL entity dataloaders для `nodes`, `node_translations` и `bodies`
-  также живут в `rustok-content`; `apps/server` может регистрировать их, но не владеть ими;
-- `apps/server` только подключает эти GraphQL roots и не владеет resolver-ами, DTO или
-  concrete connection-типами модулей;
-- `rustok-content` больше не имеет права напрямую переносить shared `node` children между
-  родителями и не должен считать `nodes` каноническим источником истины для conversion flows.
+- `rustok-content` keeps orchestration state, idempotency, audit, and event publication;
+- domain conversion is moved to `ContentOrchestrationBridge`;
+- runtime adapters that know about `blog/forum/comments` persistence must live outside
+  the shared helper layer and implement `ContentOrchestrationBridge`;
+- the runtime adapter and conversion GraphQL mutation surface live in
+  `rustok-content-orchestration`; the canonical-route query remains in `rustok-content`;
+- content GraphQL entity dataloaders for `nodes`, `node_translations` and `bodies`
+  also live in `rustok-content`; `apps/server` may register them but does not own them;
+- `apps/server` only connects these GraphQL roots and does not own resolvers, DTOs, or
+  concrete connection types of modules;
+- `rustok-content` no longer has the right to directly transfer shared `node` children between
+  parents and must not treat `nodes` as the canonical source of truth for conversion flows.
 
-## Последствия
+## Consequences
 
-Плюсы:
+Positives:
 
-- убирается жёсткая зависимость orchestration от legacy `NodeService`;
-- сохраняется роль `rustok-content` как shared helper/orchestration слоя без циклов;
-- RBAC, idempotency, audit и event contract остаются централизованными.
+- removes the tight coupling of orchestration from legacy `NodeService`;
+- preserves the role of `rustok-content` as a shared helper/orchestration layer without cycles;
+- RBAC, idempotency, audit, and event contract remain centralized.
 
-Минусы:
+Negatives:
 
-- для реальных runtime conversion flows нужен отдельный adapter layer;
-- host schema composition зависит от feature-gated owner/support GraphQL entrypoints
-  и owner-owned dataloader types;
-- mapping rules `blog comments ↔ forum replies` теперь должны быть описаны явно и реализованы
-  в integration-адаптере, а не “магически” через shared topology.
+- a separate adapter layer is needed for real runtime conversion flows;
+- host schema composition depends on feature-gated owner/support GraphQL entrypoints
+  and owner-owned dataloader types;
+- mapping rules `blog comments ↔ forum replies` must now be explicitly described and implemented
+  in the integration adapter, rather than "magically" through shared topology.
 
-## Что считается недопустимым
+## What is considered unacceptable
 
-- возвращать `ContentOrchestrationService` на shared `NodeService`;
-- привязывать новую orchestration-логику к `nodes`/`node_translations` как к источнику истины;
-- добавлять прямые зависимости `rustok-content -> rustok-blog/rustok-forum/rustok-comments`,
-  если это замыкает цикл зависимостей.
-- возвращать conversion GraphQL resolver/DTO, content entity dataloaders или module-specific concrete connection-типы
-  в `apps/server`.
+- returning `ContentOrchestrationService` to shared `NodeService`;
+- tying new orchestration logic to `nodes`/`node_translations` as a source of truth;
+- adding direct dependencies `rustok-content -> rustok-blog/rustok-forum/rustok-comments`
+  if this closes a dependency cycle.
+- returning conversion GraphQL resolver/DTO, content entity dataloaders, or module-specific concrete connection types
+  to `apps/server`.

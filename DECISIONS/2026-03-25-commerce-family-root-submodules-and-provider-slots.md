@@ -1,65 +1,65 @@
-# `commerce` как root-модуль семейства ecommerce и матрёшечная модель подмодулей
+# `commerce` as the root module of the ecommerce family and the matryoshka model of submodules
 
 - Date: 2026-03-25
 - Status: Accepted
 
 ## Context
 
-После распила `rustok-commerce` на `product`, `pricing` и `inventory` возник второй архитектурный вопрос:
+After splitting `rustok-commerce` into `product`, `pricing`, and `inventory`, a second architectural question arose:
 
-- как сохранить старый `commerce` главным модулем направления;
-- как при этом не вернуть жирный монолит;
-- как в будущем позволить заменять дефолтные подмодули своими реализациями по аналогии с Medusa-подходом
-  и provider-подмодулями вроде `payment -> stripe`.
+- how to keep the old `commerce` as the main module of the domain;
+- how to avoid returning to a fat monolith;
+- how to allow replacing default submodules with custom implementations in the future, similar to the Medusa approach
+  and provider submodules like `payment -> stripe`.
 
-Нужно было развести три уровня:
+Three levels needed to be separated:
 
 - root family module;
 - domain submodules;
-- provider/submodule hierarchy внутри отдельных domain modules.
+- provider/submodule hierarchy within individual domain modules.
 
 ## Decision
 
-Зафиксировать модель `matryoshka` для ecommerce-направления:
+Establish the `matryoshka` model for the ecommerce domain:
 
-- `rustok-commerce` остается корневым platform module семейства `ecommerce`;
-- `rustok-product`, `rustok-pricing`, `rustok-inventory` являются дефолтными подмодулями этого семейства;
-- следующие domain modules (`cart`, `order`, `customer`, `payment`, `fulfillment`, ...) строятся по той же схеме;
-- provider-подмодули живут уровнем ниже, например `payment -> stripe`, `payment -> custom-psp`.
+- `rustok-commerce` remains the root platform module of the `ecommerce` family;
+- `rustok-product`, `rustok-pricing`, `rustok-inventory` are the default submodules of this family;
+- subsequent domain modules (`cart`, `order`, `customer`, `payment`, `fulfillment`, ...) follow the same pattern;
+- provider submodules live one level below, e.g. `payment -> stripe`, `payment -> custom-psp`.
 
-Роль `rustok-commerce`:
+Role of `rustok-commerce`:
 
-- umbrella/root module семейства;
-- orchestration и compatibility facade;
-- верхняя документационная и runtime entry point для ecommerce family.
+- umbrella/root module of the family;
+- orchestration and compatibility facade;
+- top documentation and runtime entry point for the ecommerce family.
 
-Роль дочерних модулей:
+Role of child modules:
 
-- владеть своим доменом и storage;
-- выступать дефолтной реализацией capability-слота внутри ecommerce family.
+- own their domain and storage;
+- act as the default implementation of a capability slot within the ecommerce family.
 
-Важное ограничение:
+Important constraint:
 
-- `rustok-commerce` является корнем семейства в архитектурном и runtime-смысле;
-- но он не должен быть нижней shared dependency для своих же дочерних модулей;
-- shared DTO/contracts/helpers остаются в отдельном support crate (`rustok-commerce-foundation`), чтобы
-  не создавать циклы зависимостей.
+- `rustok-commerce` is the root of the family in architectural and runtime terms;
+- but it must not be a lower shared dependency for its own child modules;
+- shared DTO/contracts/helpers remain in a separate support crate (`rustok-commerce-foundation`) to
+  avoid creating dependency cycles.
 
 ## Consequences
 
-Положительные:
+Positive:
 
-- появляется понятная иерархия `family -> submodules -> provider submodules`;
-- старый `commerce` сохраняет роль главного модуля направления;
-- сохраняется путь к заменяемым подмодулям и provider-модели.
+- a clear hierarchy `family -> submodules -> provider submodules` emerges;
+- the old `commerce` retains its role as the main module of the domain;
+- the path to replaceable submodules and provider model is preserved.
 
-Отрицательные:
+Negative:
 
-- root-модуль нельзя путать с нижним shared base crate;
-- для настоящей заменяемости в runtime позже придется ввести capability/provider selection в manifest/runtime.
+- the root module must not be confused with a lower shared base crate;
+- for true runtime replaceability, capability/provider selection in the manifest/runtime will need to be introduced later.
 
 Follow-up:
 
-- описать capability slots семейства `commerce`;
-- определить, как manifest будет выбирать дефолтный provider подмодуля;
-- не допускать прямого схлопывания `rustok-commerce-foundation` обратно в umbrella crate.
+- describe the capability slots of the `commerce` family;
+- define how the manifest will select the default provider submodule;
+- prevent direct collapsing of `rustok-commerce-foundation` back into the umbrella crate.

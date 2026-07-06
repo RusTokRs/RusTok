@@ -6,295 +6,294 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Как писать модуль в RusToK
+# How to Write a Module in RusToK
 
-Этот документ — каноническая входная точка для разработчика и AI-агента, который пишет новый модуль или делает крупный module refactor. Он не дублирует архитектурные документы построчно, а фиксирует практический contract: как собирать backend и UI модуля так, чтобы не ломать platform boundaries.
+This document is the canonical entry point for a developer or AI agent writing a new module or making a major module refactor. It does not duplicate architecture documents line by line, but fixes the practical contract: how to assemble the backend and UI of a module so as not to break platform boundaries.
 
-Если нужен короткий ответ на вопрос «с чего начать», то порядок такой:
+If you need a short answer to the question "where to start", the order is:
 
-1. Определить ownership и runtime-роль модуля.
-2. Собрать backend по platform contract.
-3. Только потом добавлять UI как module-owned package.
-4. Обновить local docs модуля и central docs.
+1. Define the module's ownership and runtime role.
+2. Assemble the backend according to the platform contract.
+3. Only then add UI as a module-owned package.
+4. Update local module docs and central docs.
 
-## Перед стартом
+## Before Starting
 
-Перед любыми изменениями по модулю обязательно сверяйтесь с:
+Before any module changes, be sure to check:
 
-- [Обзором модульной платформы](./overview.md)
-- [Архитектурой модулей](../architecture/modules.md)
-- [Контрактом `modules.toml` и `rustok-module.toml`](./manifest.md)
-- [Схемой данных платформы](../architecture/database.md)
-- [Архитектурой i18n](../architecture/i18n.md)
-- [Архитектурой API](../architecture/api.md)
-- [Документацией `apps/server`](../../apps/server/docs/README.md)
-- [Документацией `apps/admin`](../../apps/admin/docs/README.md)
+- [Module Platform Overview](./overview.md)
+- [Module Architecture](../architecture/modules.md)
+- [`modules.toml` and `rustok-module.toml` Contract](./manifest.md)
+- [Platform Database Schema](../architecture/database.md)
+- [i18n Architecture](../architecture/i18n.md)
+- [API Architecture](../architecture/api.md)
+- [`apps/server` Documentation](../../apps/server/docs/README.md)
+- [`apps/admin` Documentation](../../apps/admin/docs/README.md)
 - [Workspace CLI `xtask`](../../xtask/README.md)
-- [Реестром implementation plans](./implementation-plans-registry.md)
+- [Implementation Plans Registry](./implementation-plans-registry.md)
 
-## Что считать модулем
+## What Counts as a Module
 
-В RusToK модуль — это не «любой crate в `crates/`». Канонический platform module:
+In RusToK, a module is not "any crate in `crates/`". A canonical platform module:
 
-- объявлен в `modules.toml`;
-- имеет `slug`, ownership и runtime contract;
-- проходит scoped validation через `cargo xtask module validate <slug>`;
-- публикует backend и, при необходимости, module-owned UI surfaces через manifest.
+- is declared in `modules.toml`;
+- has a `slug`, ownership and runtime contract;
+- passes scoped validation via `cargo xtask module validate <slug>`;
+- publishes backend and, if necessary, module-owned UI surfaces through the manifest.
 
-Support/crate/capability слой может жить рядом с модулем, но это не делает его tenant-toggled модулем автоматически. Это особенно важно для `rustok-core`, `rustok-api`, `rustok-storage`, `rustok-mcp`, `rustok-ai`, `alloy`, `flex` и похожих foundation-слоёв.
+A support/crate/capability layer can live alongside a module, but that does not automatically make it a tenant-toggled module. This is especially important for `rustok-core`, `rustok-api`, `rustok-storage`, `rustok-mcp`, `rustok-ai`, `alloy`, `flex` and similar foundation layers.
 
-Если support/capability crate публикует runtime seam, канонический способ подключения теперь один:
+If a support/capability crate publishes a runtime seam, the canonical connection method is now one:
 
-- module-owned backend crate регистрирует capability через `RusToKModule::register_runtime_extensions(...)`;
-- host строит единый `ModuleRuntimeExtensions` и прокидывает его во все shared entrypoints;
-- consumer entrypoints, которые зависят от такой capability, должны падать явно при отсутствии shared registry, а не тихо fallback-иться к hardcoded built-ins; сообщение об ошибке должно быть actionable (какой capability не найден, какой consumer entrypoint затронут, какой module/owner ожидается и как исправить конфигурацию). Graceful degradation допустим только как явно задокументированный opt-in режим (например, feature-disabled/read-only), с warning в логах/метриках и без неявной подмены built-ins;
-- если capability introspect-ится общими operator/admin surface-ами, provider должен публиковать owner-aware metadata вместо того, чтобы заставлять host жёстко маппить slugs в labels;
-- capability crate не получает из-за этого собственный slug в `modules.toml` автоматически.
+- module-owned backend crate registers capability via `RusToKModule::register_runtime_extensions(...)`;
+- host builds a single `ModuleRuntimeExtensions` and passes it to all shared entrypoints;
+- consumer entrypoints that depend on such a capability must fail explicitly when the shared registry is absent, rather than silently falling back to hardcoded built-ins; the error message must be actionable (which capability was not found, which consumer entrypoint is affected, which module/owner is expected and how to fix the configuration). Graceful degradation is only allowed as an explicitly documented opt-in mode (e.g. feature-disabled/read-only), with a warning in logs/metrics and without implicit substitution of built-ins;
+- if a capability is introspected by shared operator/admin surfaces, the provider must publish owner-aware metadata instead of forcing the host to map slugs to labels rigidly;
+- a capability crate does not automatically get its own slug in `modules.toml` as a result.
 
-Для SEO-capable модулей действует дополнительное правило:
+For SEO-capable modules, an additional rule applies:
 
-- provider в `rustok-seo-targets` отдаёт только typed target records и безопасный `template_fields` map (`title`, `description`, `route`, `locale`, slug/handle/id поля);
-- шаблоны для `title`, `meta_description`, canonical, robots, Open Graph и Twitter рендерит только `rustok-seo`;
-- owner module не должен вводить собственный SEO-template runtime или передавать сырой HTML/JSON в template context.
+- provider in `rustok-seo-targets` only returns typed target records and a safe `template_fields` map (`title`, `description`, `route`, `locale`, slug/handle/id fields);
+- templates for `title`, `meta_description`, canonical, robots, Open Graph and Twitter are rendered only by `rustok-seo`;
+- the owner module must not introduce its own SEO-template runtime or pass raw HTML/JSON into the template context.
 
-Если target участвует в bulk SEO, provider должен давать стабильные summaries и fields, достаточные для safe remediation: `preview_only`, `apply_missing_only`, `overwrite_generated_only` и `force_overwrite_explicit` выполняются в `rustok-seo`, а не в owner module.
+If a target participates in bulk SEO, the provider must provide stable summaries and fields sufficient for safe remediation: `preview_only`, `apply_missing_only`, `overwrite_generated_only` and `force_overwrite_explicit` are executed in `rustok-seo`, not in the owner module.
 
-## FFA/FBA-first gate для новых модулей
+## FFA/FBA-First Gate for New Modules
 
-Новый модуль или крупный module split нельзя начинать с host-owned UI, ad-hoc transport
-handler-а или прямого добавления таблиц в umbrella-модуль. До первого transport/UI PR
-обязателен FFA/FBA gate:
+A new module or major module split must not start with a host-owned UI, ad-hoc transport
+handler or direct addition of tables to an umbrella module. Before the first transport/UI PR,
+an FFA/FBA gate is mandatory:
 
-1. Зафиксировать `slug`, ownership, runtime role и local `docs/implementation-plan.md` с
+1. Fix the `slug`, ownership, runtime role and local `docs/implementation-plan.md` with an
    FFA/FBA status block.
-2. Описать canonical domain/application service contract до REST, GraphQL, `#[server]` или
+2. Describe the canonical domain/application service contract before REST, GraphQL, `#[server]` or
    host wiring.
-3. Описать typed request context для tenant/auth/locale/channel/policy/trace data и stable
-   error mapping между domain errors и transport errors.
-4. Описать data ownership, consistency model, migrations и i18n storage contract.
-5. Выразить cross-module dependencies через explicit ports/events/provider seams, а не через
-   доступ к чужим repository internals или host-specific globals.
-6. Добавить строку в central FFA/FBA readiness board до появления module-owned UI, а при
-   отсутствии UI оставить surface как `no module-owned UI` / `no_ui_boundary` с FBA статусом.
-7. Только после этого добавлять transport adapters (`#[server]`, GraphQL, REST/RPC) и
-   module-owned UI как thin adapter через module-owned `transport/` facade.
+3. Describe typed request context for tenant/auth/locale/channel/policy/trace data and stable
+   error mapping between domain errors and transport errors.
+4. Describe data ownership, consistency model, migrations and i18n storage contract.
+5. Express cross-module dependencies through explicit ports/events/provider seams, not through
+   access to other repositories' internals or host-specific globals.
+6. Add a row to the central FFA/FBA readiness board before module-owned UI appears, and if
+   there is no UI, leave the surface as `no module-owned UI` / `no_ui_boundary` with FBA status.
+7. Only after this add transport adapters (`#[server]`, GraphQL, REST/RPC) and
+   module-owned UI as a thin adapter through the module-owned `transport/` facade.
 
-Если уже готовый функциональный slice не проходит этот gate, следующий change set сначала
-доводит его до FBA-ready boundary evidence и только потом расширяет функциональность.
+If an already completed functional slice does not pass this gate, the next change set first
+brings it to FBA-ready boundary evidence and only then extends functionality.
 
+### Structural Minimum for an FBA Increment
 
-### Структурный минимум FBA-инкремента
-
-Для FBA-перевода применяется тот же стандарт, что в едином плане
+For FBA translation, the same standard applies as in the unified plan
 `docs/research/fluid-backend-architecture-unified-plan.md`: local status block, central board,
-runtime metadata/registry, owner-owned contracts, anti-drift/fallback verification и evidence
-packet. Целевая crate-структура описана в разделе `2.3` единого плана: `*-grpc` crate и
-repository interfaces являются optional late-stage seams, а не обязательным scaffold первого PR.
-Рабочее название FBA не переносится в имена типов без необходимости: code-facing
-контракты используют нейтральные `*Port`, `PortContext`, `PortError`, `provider` и `consumer`.
+runtime metadata/registry, owner-owned contracts, anti-drift/fallback verification and evidence
+packet. The target crate structure is described in section `2.3` of the unified plan: `*-grpc` crate and
+repository interfaces are optional late-stage seams, not mandatory scaffolding for the first PR.
+The working name FBA is not carried over into type names without necessity: code-facing
+contracts use neutral `*Port`, `PortContext`, `PortError`, `provider` and `consumer`.
 
-### Новая реализация без legacy-слоя
+### New Implementation Without Legacy Layer
 
-RusToK находится на стадии начальной реализации. FFA/FBA-рефакторинг здесь не является
-миграцией старой production-системы и не должен сохранять прежнюю внутреннюю архитектуру.
+RusToK is at the stage of initial implementation. FFA/FBA refactoring here is not
+a migration of an old production system and should not preserve the former internal architecture.
 
-Обязательные правила:
+Mandatory rules:
 
-1. Сразу реализовывать целевой контракт и целевую структуру модуля.
-2. В одном change set переводить все внутренние call sites на новый порт, adapter или entry point.
-3. После перевода удалять заменённые порты, facade, adapter, alias, feature flag и wiring.
-4. Не добавлять compatibility wrapper, dual old/new path, fallback на legacy-реализацию,
-   deprecated alias или временный старый порт «на всякий случай».
-5. Не сохранять старую сигнатуру только ради внутренних callers: callers должны быть
-   переписаны под целевой контракт.
-6. Временный bridge допустим только по прямому требованию для поэтапной внешней миграции.
-   Для него в module plan обязательны владелец удаления и конкретный срок удаления.
+1. Immediately implement the target contract and target module structure.
+2. In one change set, migrate all internal call sites to the new port, adapter or entry point.
+3. After migration, delete replaced ports, facades, adapters, aliases, feature flags and wiring.
+4. Do not add compatibility wrappers, dual old/new paths, fallback to legacy implementation,
+   deprecated aliases or temporary old ports "just in case".
+5. Do not keep the old signature just for internal callers: callers must be
+   rewritten to the target contract.
+6. A temporary bridge is only allowed by direct requirement for staged external migration.
+   It requires a removal owner and a specific removal deadline in the module plan.
 
-Обязательные актуальные platform contracts не считаются legacy-совместимостью. Например,
-GraphQL остаётся параллельным контрактом согласно правилам платформы, но не должен служить
-fallback на устаревший внутренний port или дублировать старую business-логику.
+Mandatory current platform contracts are not considered legacy compatibility. For example,
+GraphQL remains a parallel contract according to platform rules, but must not serve as a
+fallback to an outdated internal port or duplicate old business logic.
 
 ## Backend
 
-### 1. Сначала зафиксируйте runtime contract
+### 1. First Fix the Runtime Contract
 
-Минимум для backend-модуля:
+Minimum for a backend module:
 
-- запись в `modules.toml`;
-- `rustok-module.toml` с корректными `module.slug`, `module.version`, `module.description`, `module.ui_classification`;
+- entry in `modules.toml`;
+- `rustok-module.toml` with correct `module.slug`, `module.version`, `module.description`, `module.ui_classification`;
 - root `README.md` in English;
 - local `docs/README.md` and `docs/implementation-plan.md` in English.
-- для нового module/support crate обязательно добавить строку в [реестр implementation plans](./implementation-plans-registry.md) (`Global board`) по формату реестра: минимум `Plan ID`, `Module/Crate`, `Plan doc` и `Status`.
+- for a new module/support crate, be sure to add a row to the [implementation plans registry](./implementation-plans-registry.md) (`Global board`) according to the registry format: minimum `Plan ID`, `Module/Crate`, `Plan doc` and `Status`.
 
-Канон:
+Canon:
 
-- composition и module taxonomy: [overview.md](./overview.md)
+- composition and module taxonomy: [overview.md](./overview.md)
 - manifest contract: [manifest.md](./manifest.md)
 - ownership map: [registry.md](./registry.md)
 
-### 2. Не придумывайте свой backend contract
+### 2. Do Not Invent Your Own Backend Contract
 
-Backend модуля должен встраиваться в общий platform flow:
+The module backend must fit into the general platform flow:
 
-- transport ownership идёт через `apps/server`, но business/domain contract остаётся у модуля;
-- Leptos `#[server]` — default internal data layer для Leptos surfaces, но GraphQL остаётся параллельно;
-- REST нужен только там, где действительно нужен явный HTTP contract: integrations, webhooks, ops, module-owned routes;
-- нельзя делать package-local auth, locale, tenant или RBAC shortcuts.
-- runtime registries и provider seams должны регистрироваться через общий `ModuleRuntimeExtensions`,
-  а не через host-specific глобалы или ad-hoc singleton wiring.
+- transport ownership goes through `apps/server`, but the business/domain contract remains with the module;
+- Leptos `#[server]` — default internal data layer for Leptos surfaces, but GraphQL remains in parallel;
+- REST is only needed where an explicit HTTP contract is really needed: integrations, webhooks, ops, module-owned routes;
+- you cannot make package-local auth, locale, tenant or RBAC shortcuts.
+- runtime registries and provider seams must be registered through the common `ModuleRuntimeExtensions`,
+  not through host-specific globals or ad-hoc singleton wiring.
 
-Канон:
+Canon:
 
 - API surfaces: [api.md](../architecture/api.md)
-- routing и transport boundaries: [routing.md](../architecture/routing.md)
+- routing and transport boundaries: [routing.md](../architecture/routing.md)
 - server host contract: [apps/server/docs/README.md](../../apps/server/docs/README.md)
 
-### 3. Данные и миграции пишутся по общему storage contract
+### 3. Data and Migrations Follow the Common Storage Contract
 
-Нельзя invent-ить свою схему хранения для текстов, locale и identity.
+You cannot invent your own storage schema for text, locale and identity.
 
-Базовые правила:
+Basic rules:
 
-- language-agnostic state живёт в base tables;
-- короткие локализуемые поля живут в `*_translations`;
-- тяжёлый локализуемый контент при необходимости живёт в `*_bodies`;
-- `locale` хранится нормализованно;
-- audit payload и technical metadata не должны превращаться в business copy;
-- module-owned migrations экспортируются через локальный `migrations()` и trait `MigrationSource`; если migration создаёт FK или другой строгий порядок к таблицам другого module crate, рядом должен быть `migration_dependencies()` с `MigrationDependencyDescriptor`, а module `MigrationSource::migration_dependencies()` обязан возвращать этот exporter; `apps/server/migration` агрегирует descriptors через `MigrationSource` для всех module crates, чьи migrations включены в server migrator;
-- descriptor должен ссылаться только на реальные migration names и проходить server migrator tests на missing dependency, duplicate descriptor и cycle.
+- language-agnostic state lives in base tables;
+- short localizable fields live in `*_translations`;
+- heavy localizable content lives in `*_bodies` if necessary;
+- `locale` is stored normalized;
+- audit payload and technical metadata must not turn into business copies;
+- module-owned migrations are exported through a local `migrations()` and the `MigrationSource` trait; if a migration creates FK or other strict ordering against another module crate's tables, there must be a `migration_dependencies()` with `MigrationDependencyDescriptor`, and the module `MigrationSource::migration_dependencies()` must return this exporter; `apps/server/migration` aggregates descriptors through `MigrationSource` for all module crates whose migrations are included in the server migrator;
+- a descriptor must only reference real migration names and pass server migrator tests for missing dependency, duplicate descriptor and cycle.
 
-Канон:
+Canon:
 
 - DB contract: [database.md](../architecture/database.md)
 - i18n contract: [i18n.md](../architecture/i18n.md)
 
-### 4. Не выносите platform rules в строки и ad-hoc JSON
+### 4. Do Not Put Platform Rules in Strings and Ad-hoc JSON
 
-Для backend-модуля запрещено:
+For a backend module it is forbidden:
 
-- авторизовывать действия по недоверенным строкам или header-based actor model;
-- строить live authority из display labels;
-- держать canonical read contract в произвольном `details` JSON, если уже есть typed schema;
-- смешивать public contract и internal audit storage.
-- прятать module-owned runtime capability registration внутри host app так, чтобы новый provider
-  требовал ручной правки central feature-модуля вместо `register_runtime_extensions(...)`.
+- to authorize actions by untrusted strings or header-based actor model;
+- to build live authority from display labels;
+- to keep the canonical read contract in arbitrary `details` JSON when a typed schema already exists;
+- to mix public contract and internal audit storage.
+- to hide module-owned runtime capability registration inside the host app such that a new provider
+  requires manual editing of a central feature module instead of `register_runtime_extensions(...)`.
 
-Если нужен actor/principal/read-model, делайте typed contract, а не строковые эвристики.
+If an actor/principal/read-model is needed, use a typed contract, not string heuristics.
 
-### 5. Проверка backend-части
+### 5. Backend Verification
 
-Минимальный check-list перед завершением работы:
+Minimum checklist before completing work:
 
 1. `cargo xtask module validate <slug>`
 2. `cargo check -p rustok-server --lib`
-3. targeted `cargo test` по модулю и затронутому host/runtime
-4. обновлены local docs модуля
-5. обновлены central docs, если поменялся architecture/runtime contract
-6. план модуля добавлен/синхронизирован в `docs/modules/implementation-plans-registry.md`
+3. targeted `cargo test` for the module and affected host/runtime
+4. updated local module docs
+5. updated central docs if architecture/runtime contract changed
+6. module plan added/synchronized in `docs/modules/implementation-plans-registry.md`
 
 ## UI
 
-### 1. UI в RusToK — module-owned, а не host-owned by default
+### 1. UI in RusToK is Module-Owned, Not Host-Owned by Default
 
-Если модуль публикует UI, этот UI должен жить рядом с модулем:
+If a module publishes UI, that UI must live next to the module:
 
-- Leptos admin/storefront — через `admin/` и `storefront/` sub-crates;
-- Next.js surfaces — через соответствующие host packages, но ownership UI contract всё равно остаётся у модуля;
-- host only mounts these surfaces and provides route/auth/locale/runtime context.
+- Leptos admin/storefront — through `admin/` and `storefront/` sub-crates;
+- Next.js surfaces — through corresponding host packages, but the ownership UI contract still remains with the module;
+- the host only mounts these surfaces and provides route/auth/locale/runtime context.
 
-Канон:
+Canon:
 
 - module composition: [modules.md](../architecture/modules.md)
 - UI package map: [UI_PACKAGES_INDEX.md](./UI_PACKAGES_INDEX.md)
-- quickstart по UI packages: [UI_PACKAGES_QUICKSTART.md](./UI_PACKAGES_QUICKSTART.md)
+- quickstart for UI packages: [UI_PACKAGES_QUICKSTART.md](./UI_PACKAGES_QUICKSTART.md)
 
-### 2. Для Leptos UI сначала `#[server]`, потом всё остальное
+### 2. For Leptos UI, `#[server]` First, Then Everything Else
 
-Для module-owned Leptos UI действует обязательное правило:
+For module-owned Leptos UI, the mandatory rule applies:
 
-- internal data layer по умолчанию строится через native `#[server]` functions;
-- GraphQL остаётся параллельным transport contract и не удаляется;
-- нельзя заменять уже существующий GraphQL только потому, что появился `#[server]` path.
+- the internal data layer is built by default through native `#[server]` functions;
+- GraphQL remains a parallel transport contract and is not removed;
+- you cannot replace existing GraphQL just because a `#[server]` path has appeared.
 
-Канон:
+Canon:
 
 - UI/GraphQL/server-functions: [graphql-architecture.md](../UI/graphql-architecture.md)
 - admin host contract: [apps/admin/docs/README.md](../../apps/admin/docs/README.md)
 
-### 3. UI не выбирает locale сам
+### 3. UI Does Not Choose Locale Itself
 
-Module-owned UI package не имеет права invent-ить свою locale chain.
+A module-owned UI package does not have the right to invent its own locale chain.
 
-Правило:
+Rule:
 
-- effective locale приходит от host/runtime;
-- Leptos packages читают host-provided `UiRouteContext.locale`;
-- Next packages используют host/runtime locale providers;
-- query/header/cookie fallback chain на уровне пакета запрещена.
+- effective locale comes from the host/runtime;
+- Leptos packages read host-provided `UiRouteContext.locale`;
+- Next packages use host/runtime locale providers;
+- query/header/cookie fallback chain at the package level is forbidden.
 
-Канон:
+Canon:
 
 - i18n contract: [i18n.md](../architecture/i18n.md)
 - UI host contract: [apps/admin/docs/README.md](../../apps/admin/docs/README.md)
 
-### 4. UI wiring идёт через manifest, а не через «магическое наличие crate»
+### 4. UI Wiring Goes Through Manifest, Not Through "Magical Crate Presence"
 
-Сам факт существования `admin/` или `storefront/` каталога ещё не означает, что surface интегрирован корректно. Канонический source of truth здесь — manifest.
+The mere existence of an `admin/` or `storefront/` directory does not mean the surface is integrated correctly. The canonical source of truth here is the manifest.
 
-Нужно:
+You need to:
 
-- объявить UI surface в `rustok-module.toml`;
-- держать `module.ui_classification` в соответствии с реальным wiring;
-- не оставлять orphaned host dependency или feature entry после рефакторинга.
+- declare the UI surface in `rustok-module.toml`;
+- keep `module.ui_classification` in line with actual wiring;
+- not leave orphaned host dependencies or feature entries after refactoring.
 
-Канон:
+Canon:
 
 - manifest/UI wiring: [manifest.md](./manifest.md)
 - module registry/index: [registry.md](./registry.md), [_index.md](./_index.md)
 
-### 5. Migration dependencies и descriptor evidence
+### 5. Migration Dependencies and Descriptor Evidence
 
-Если module migrations имеют cross-module FK/order assumptions, модуль обязан
-объявить эти зависимости рядом со своими migrations через `migration_dependencies()`
-в реализации module migration source. Это не заменяет `depends_on` из `modules.toml`:
+If module migrations have cross-module FK/order assumptions, the module must
+declare these dependencies alongside its migrations through `migration_dependencies()`
+in the module migration source implementation. This does not replace `depends_on` from `modules.toml`:
 
-- `depends_on` описывает runtime/module graph;
-- `migration_dependencies()` описывает ordering constraints между конкретными migrations.
+- `depends_on` describes the runtime/module graph;
+- `migration_dependencies()` describes ordering constraints between specific migrations.
 
-Правила для новых migrations:
+Rules for new migrations:
 
-1. Если migration ссылается на таблицу, index, enum/type или seed state другого модуля,
-   добавить descriptor dependency на конкретную upstream migration.
-2. Descriptor должен ссылаться только на реально существующую migration name/id.
-3. Server migrator должен агрегировать descriptors через module `MigrationSource`, а не
-   через package-local allowlist одного crate.
-4. Duplicate, missing descriptor и cycle failures считаются ошибкой migration contract, а
-   не flaky test.
-5. Для PostgreSQL smoke использовать apply-from-zero и, для критичных изменений,
+1. If a migration references a table, index, enum/type or seed state of another module,
+   add a descriptor dependency on the specific upstream migration.
+2. The descriptor must reference only a real existing migration name/id.
+3. The server migrator must aggregate descriptors through module `MigrationSource`, not
+   through a package-local allowlist of a single crate.
+4. Duplicate, missing descriptor and cycle failures are considered a migration contract error, not
+   a flaky test.
+5. For PostgreSQL smoke, use apply-from-zero and, for critical changes,
    incremental mode.
 
-Минимальные проверки:
+Minimum checks:
 
 ```bash
 ./scripts/verify/verify-migration-smoke.sh
 RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
 ```
 
-Для диагностики failures см. [runtime guardrails runbook](../guides/runtime-guardrails.md#wave-6-diagnostics-runbook).
+For failure diagnostics, see [runtime guardrails runbook](../guides/runtime-guardrails.md#wave-6-diagnostics-runbook).
 
-### 6. Проверка UI-части
+### 6. UI Verification
 
-Минимальный check-list:
+Minimum checklist:
 
 1. `cargo xtask module validate <slug>`
-2. targeted `cargo check` для UI crate и host app
-3. `npm run verify:i18n:ui`, если тронуты locale bundles или locale wiring
-4. UI package docs и host docs обновлены, если поменялся surface contract
+2. targeted `cargo check` for the UI crate and host app
+3. `npm run verify:i18n:ui`, if locale bundles or locale wiring are affected
+4. UI package docs and host docs updated if surface contract changed
 
-### 7. Обязательный FFA/FBA status block для модулей с UI
+### 7. Mandatory FFA/FBA Status Block for Modules with UI
 
-Для каждого module-owned UI пакета (admin/storefront/host-integrated surface) в локальном
-`docs/implementation-plan.md` обязателен status block:
+For each module-owned UI package (admin/storefront/host-integrated surface) in the local
+`docs/implementation-plan.md`, a status block is mandatory:
 
 ```md
 ## FFA/FBA status
@@ -304,99 +303,98 @@ RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
 - Evidence:
   - UI/core/transport decomposition status
   - native `#[server]` + GraphQL parity status
-  - backend boundary status (in-process/remote-ready), если применимо
+  - backend boundary status (in-process/remote-ready), if applicable
 - Last verified at (UTC):
 - Owner:
 ```
 
-Правила:
+Rules:
 
-1. Если правится UI contract, transport wiring или module boundary — status block обновляется в том же PR.
-2. Если меняется статус локального блока, синхронно обновляется central entry в `docs/modules/registry.md` (раздел FFA/FBA readiness board).
-3. Нельзя выставлять `parity_verified`/`transport_verified` без явного verification evidence в PR и в локальном плане.
+1. If the UI contract, transport wiring or module boundary is modified, the status block is updated in the same PR.
+2. If a local block status changes, the central entry in `docs/modules/registry.md` (FFA/FBA readiness board section) is synchronously updated.
+3. You cannot set `parity_verified`/`transport_verified` without explicit verification evidence in the PR and in the local plan.
 
-### 8. Правило для модулей, у которых UI запланирован, но ещё не реализован
+### 8. Rule for Modules Whose UI is Planned but Not Yet Implemented
 
-Чтобы не терять контроль над будущими UI-surface, для модулей с планируемым UI действует
-обязательное предварительное правило:
+To avoid losing control over future UI surfaces, for modules with planned UI, a
+mandatory preliminary rule applies:
 
-1. Если UI ещё не реализован, в локальном `docs/implementation-plan.md` всё равно должен
-   быть `## FFA/FBA status` block со статусами `not_started` и явной пометкой в `Evidence`,
-   что UI surface запланирован, но не опубликован.
-2. В central `docs/modules/registry.md` (FFA/FBA readiness board) для такого модуля должна
-   существовать строка со статусом `not_started` и корректным `Source plan`.
-3. В PR, где впервые появляется module-owned UI (admin/storefront/host-integrated),
-   исполнитель обязан в том же изменении:
-   - обновить локальный статус минимум до `in_progress`;
-   - синхронизировать соответствующую строку в central board;
-   - приложить первичное verification evidence (минимум validate/check + transport parity note).
+1. If the UI is not yet implemented, the local `docs/implementation-plan.md` must still
+   have an `## FFA/FBA status` block with `not_started` statuses and an explicit note in `Evidence`
+   that the UI surface is planned but not published.
+2. In the central `docs/modules/registry.md` (FFA/FBA readiness board), such a module must
+   have a row with `not_started` status and a correct `Source plan`.
+3. In the PR where module-owned UI (admin/storefront/host-integrated) first appears,
+   the implementer must in the same change:
+   - update the local status to at least `in_progress`;
+   - synchronize the corresponding row in the central board;
+   - attach initial verification evidence (minimum validate/check + transport parity note).
 
-## Что запрещено
+## What is Forbidden
 
-При написании модуля нельзя:
+When writing a module, you cannot:
 
-- считать любой crate модулем без `modules.toml`;
-- invent-ить package-local i18n contract;
-- переносить module-owned domain/UI ownership в host app без явной причины;
-- делать runtime authority из строковых акторов, display labels или недоверенных headers;
-- хранить локализуемый business text прямо в base rows, если модуль уже идёт по multilingual contract;
-- заменять typed public contract сырым `details` JSON;
-- сохранять старые внутренние ports, adapters, facade, aliases или execution paths после
-  внедрения целевого контракта;
-- добавлять compatibility/fallback-to-legacy слой без прямого требования, владельца удаления
-  и срока удаления в module plan;
-- обновлять только код без local/central docs, если изменился контракт.
+- consider any crate a module without `modules.toml`;
+- invent a package-local i18n contract;
+- transfer module-owned domain/UI ownership to the host app without an explicit reason;
+- make runtime authority from string actors, display labels or untrusted headers;
+- store localizable business text directly in base rows if the module already follows a multilingual contract;
+- replace a typed public contract with raw `details` JSON;
+- keep old internal ports, adapters, facades, aliases or execution paths after
+  introducing the target contract;
+- add a compatibility/fallback-to-legacy layer without a direct requirement, removal owner
+  and removal deadline in the module plan;
+- update only code without local/central docs if the contract has changed.
 
-## Быстрый шаблон решения
+## Quick Decision Template
 
-Если агенту или разработчику нужно быстро принять решение, используйте такой порядок:
+If an agent or developer needs to make a quick decision, use this order:
 
-1. Это platform module или support/capability crate? (см. [overview.md](./overview.md), [modules architecture](../architecture/modules.md))
-2. Какой у него backend contract: GraphQL, REST, `#[server]`, events, migrations? (см. [manifest contract](./manifest.md))
-3. Какие данные language-agnostic, а какие localized? (см. [database schema](../architecture/database.md))
-4. Есть ли у модуля module-owned UI surface? (см. [overview.md](./overview.md))
-5. Как host даёт ему auth, locale, routing и tenant context? (см. [modules architecture](../architecture/modules.md))
-6. Какие docs и verification gates должны измениться вместе с кодом? (см. [PR / Review Checklist](#pr--review-checklist))
+1. Is this a platform module or support/capability crate? (see [overview.md](./overview.md), [modules architecture](../architecture/modules.md))
+2. What is its backend contract: GraphQL, REST, `#[server]`, events, migrations? (see [manifest contract](./manifest.md))
+3. What data is language-agnostic and what is localized? (see [database schema](../architecture/database.md))
+4. Does the module have a module-owned UI surface? (see [overview.md](./overview.md))
+5. How does the host provide it with auth, locale, routing and tenant context? (see [modules architecture](../architecture/modules.md))
+6. Which docs and verification gates must change together with the code? (see [PR / Review Checklist](#pr--review-checklist))
 
 ## PR / Review Checklist
 
-Этот checklist нужен для любого нового модуля, крупного module refactor или изменения module contract. Его можно прогонять перед PR или во время review.
+This checklist is needed for any new module, major module refactor or module contract change. It can be run before a PR or during review.
 
 ### Backend checklist
 
-1. Модуль действительно объявлен в `modules.toml`, а не существует только как crate.
-2. `rustok-module.toml` синхронизирован с реальным runtime contract.
-3. `module.slug`, `module.version`, `module.description` и `module.ui_classification` не расходятся с кодом и wiring.
-4. Backend не invent-ит свой auth, tenant, locale или RBAC contract.
-5. Leptos `#[server]` добавлен как internal data layer там, где это нужно, но GraphQL не удалён и не подменён скрыто.
-6. REST добавлен только там, где действительно нужен явный HTTP contract.
-7. Language-agnostic state хранится в base tables, локализуемые поля вынесены в `*_translations` или `*_bodies`.
-8. Typed public contract не заменён строковыми эвристиками, `details` JSON или header-based authority.
-9. Миграции, read-model и transport обновлены согласованно, без half-migrated contract.
-10. Старые внутренние ports, adapters, facade, aliases и call sites удалены; dual old/new path отсутствует.
-11. Пройдены `cargo xtask module validate <slug>` и targeted `cargo check` / `cargo test`.
+1. The module is actually declared in `modules.toml`, not just exists as a crate.
+2. `rustok-module.toml` is synchronized with the actual runtime contract.
+3. `module.slug`, `module.version`, `module.description` and `module.ui_classification` do not diverge from code and wiring.
+4. The backend does not invent its own auth, tenant, locale or RBAC contract.
+5. Leptos `#[server]` is added as an internal data layer where needed, but GraphQL is not removed or secretly replaced.
+6. REST is added only where an explicit HTTP contract is truly needed.
+7. Language-agnostic state is stored in base tables, localizable fields are placed in `*_translations` or `*_bodies`.
+8. Typed public contract is not replaced by string heuristics, `details` JSON or header-based authority.
+9. Migrations, read-model and transport are updated consistently, without a half-migrated contract.
+10. Old internal ports, adapters, facades, aliases and call sites are removed; dual old/new path is absent.
+11. `cargo xtask module validate <slug>` and targeted `cargo check` / `cargo test` pass.
 
 ### UI checklist
 
-1. UI surface остаётся module-owned, а не расползается в host app без явной причины.
-2. UI wiring описан в manifest, а не держится на «магическом» наличии crate или route.
-3. `module.ui_classification` соответствует реальным admin/storefront surfaces.
-4. Leptos UI использует native `#[server]` path как default internal data layer.
-5. GraphQL transport остаётся параллельно, если модуль уже публикует GraphQL surface.
-6. UI package не invent-ит свой locale selection и потребляет host-provided effective locale.
-7. Host даёт модулю только context и mounting, а не становится владельцем domain UI contract.
-8. Нет orphaned host dependencies, feature flags или устаревшего wiring после рефакторинга.
-9. Обновлены local docs UI package и host docs, если поменялся surface contract.
-10. Пройдены targeted UI checks и `verify:i18n:ui`, если тронут locale bundles или locale wiring.
+1. UI surface remains module-owned, not spread into the host app without an explicit reason.
+2. UI wiring is described in the manifest, not based on "magical" crate or route presence.
+3. `module.ui_classification` matches actual admin/storefront surfaces.
+4. Leptos UI uses the native `#[server]` path as the default internal data layer.
+5. GraphQL transport remains in parallel if the module already publishes a GraphQL surface.
+6. The UI package does not invent its own locale selection and consumes the host-provided effective locale.
+7. The host gives the module only context and mounting, not ownership of the domain UI contract.
+8. No orphaned host dependencies, feature flags or outdated wiring after refactoring.
+9. Local UI package docs and host docs are updated if the surface contract changed.
+10. Targeted UI checks and `verify:i18n:ui` pass if locale bundles or locale wiring are affected.
 
 ### Docs checklist
 
-1. Обновлён root `README.md` компонента.
-2. Обновлён local `docs/README.md`.
-3. Обновлён local `docs/implementation-plan.md`, если менялся roadmap или target state.
-4. Обновлён `docs/index.md`, если поменялась карта документации.
-5. Нет дублирующего нового документа, если подходящий уже существовал.
-
+1. Component root `README.md` updated.
+2. Local `docs/README.md` updated.
+3. Local `docs/implementation-plan.md` updated if the roadmap or target state changed.
+4. `docs/index.md` updated if the documentation map changed.
+5. No duplicate new document if a suitable one already existed.
 
 ## Scripts placement policy
 

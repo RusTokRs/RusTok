@@ -1,36 +1,36 @@
-# Унификация UI модулей между Next.js и Leptos Admin
+# Unification of UI modules between Next.js and Leptos Admin
 
 - Date: 2026-03-07
-- Status: Accepted & Implemented (v2 — с библиотеками i18n)
+- Status: Accepted & Implemented (v2 — with i18n libraries)
 
 ## Context
 
-Модуль управления модулями (Modules page) был реализован в двух admin-панелях
-(Next.js и Leptos), но с расхождениями в i18n и структуре компонентов.
+The module management page (Modules page) was implemented in two admin panels
+(Next.js and Leptos), but with divergences in i18n and component structure.
 
-В итерации v1 были добавлены самописные i18n-решения. В v2 они заменены на
-**полноценные библиотеки**, которые уже были подобраны в зависимостях проекта:
+In iteration v1, custom i18n solutions were added. In v2, they were replaced with
+**full-featured libraries** that were already present in the project's dependencies:
 
-- `leptos_i18n` = 0.6.0 (уже был в workspace Cargo.toml)
-- `next-intl` = 4.0.0 (уже был в next-frontend)
+- `leptos_i18n` = 0.6.0 (already in workspace Cargo.toml)
+- `next-intl` = 4.0.0 (already in next-frontend)
 
 ## Decision
 
-### 1. Библиотеки i18n
+### 1. i18n Libraries
 
-| Admin | Библиотека | API | Хранение locale |
+| Admin | Library | API | Locale storage |
 |---|---|---|---|
-| Leptos | `leptos_i18n` 0.6 | `t!(i18n, key.sub)`, `t_string!()` | Cookie (библиотека) |
+| Leptos | `leptos_i18n` 0.6 | `t!(i18n, key.sub)`, `t_string!()` | Cookie (library) |
 | Next.js | `next-intl` 4.0 | `useTranslations('ns')`, `getTranslations()` | Cookie `rustok-admin-locale` |
 
 **Leptos admin**:
 ```
-build.rs                     — генерация i18n модуля (Config + TranslationsInfos)
+build.rs                     — i18n module generation (Config + TranslationsInfos)
 src/lib.rs                   — include!(concat!(env!("OUT_DIR"), "/i18n/mod.rs"))
 locales/en.json, ru.json     — nested JSON (source of truth)
 ```
 
-Компоненты используют:
+Components use:
 ```rust
 use crate::{t, t_string, use_i18n, Locale, I18nContextProvider};
 let i18n = use_i18n();
@@ -45,16 +45,16 @@ src/app/layout.tsx            — <NextIntlClientProvider>
 messages/en.json, ru.json    — nested JSON (copy of Leptos locales)
 ```
 
-Компоненты используют:
+Components use:
 ```tsx
 import { useTranslations } from 'next-intl';
 const t = useTranslations('modules');
 return <span>{t('title')}</span>;
 ```
 
-### 2. Единые locale-файлы (nested JSON)
+### 2. Unified locale files (nested JSON)
 
-Файлы конвертированы из плоского формата (`"modules.title": "..."`) в вложенный:
+Files are converted from flat format (`"modules.title": "..."`) to nested:
 ```json
 {
   "modules": {
@@ -67,9 +67,9 @@ return <span>{t('title')}</span>;
 }
 ```
 
-Оба стека: `apps/admin/locales/` и `apps/next-admin/messages/` — одинаковые файлы.
+Both stacks: `apps/admin/locales/` and `apps/next-admin/messages/` — identical files.
 
-### 3. FSD-структура компонентов (единая)
+### 3. FSD component structure (unified)
 
 ```
 # Leptos Admin                    # Next.js Admin
@@ -82,7 +82,7 @@ features/modules/                  features/modules/
     └── modules_list.rs
 ```
 
-### 4. Матрица соответствия
+### 4. Correspondence matrix
 
 | i18n Key | Leptos | Next.js |
 |---|---|---|
@@ -91,27 +91,27 @@ features/modules/                  features/modules/
 | `modules.toast.enabled` | `t_string!(i18n, modules.toast.enabled)` | `t('toast.enabled')` |
 | `modules.title` | `t_string!(i18n, modules.title)` | `t('title')` |
 
-> Leptos: абсолютные ключи через `t!()` / `t_string!()`.
-> Next.js: относительные ключи через `useTranslations('modules')`.
+> Leptos: absolute keys via `t!()` / `t_string!()`.
+> Next.js: relative keys via `useTranslations('modules')`.
 
 ## Consequences
 
-### Позитивные
+### Positive
 
-- **Compile-time safety** (Leptos): `t!()` проверяет ключи при компиляции.
-- **IDE autocompletion** (Next.js): `next-intl` TypeScript поддержка.
-- **Единый UX**: одинаковые тексты, одинаковые locale-файлы.
-- **Проверенные библиотеки**: не самописные решения, а ecosystem-стандарты.
+- **Compile-time safety** (Leptos): `t!()` checks keys at compile time.
+- **IDE autocompletion** (Next.js): `next-intl` TypeScript support.
+- **Unified UX**: same texts, same locale files.
+- **Proven libraries**: not custom solutions, but ecosystem standards.
 
-### Негативные
+### Negative
 
-- **Дублирование JSON**: всё ещё в двух местах.
-  Митигация: CI-проверка, или `@rustok/admin-locales` workspace package.
-- **Разный API**: `t!(i18n, key)` vs `t('key')` — неизбежно из-за разных языков.
+- **JSON duplication**: still in two places.
+  Mitigation: CI check, or `@rustok/admin-locales` workspace package.
+- **Different API**: `t!(i18n, key)` vs `t('key')` — unavoidable due to different languages.
 
 ### Follow-up
 
-1. Применить `useTranslations()` к остальным страницам Next.js admin.
-2. Все `t_string!()` в Leptos admin уже применены ко всем 16 файлам.
-3. CI: проверка совпадения ключей между locales.
-4. `leptos_i18n` автоматически сохраняет locale в cookie — синхронизация с `next-intl`.
+1. Apply `useTranslations()` to the remaining Next.js admin pages.
+2. All `t_string!()` in Leptos admin are already applied to all 16 files.
+3. CI: check key matching between locales.
+4. `leptos_i18n` automatically saves locale in cookie — synchronization with `next-intl`.

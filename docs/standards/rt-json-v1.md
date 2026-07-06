@@ -6,11 +6,12 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Спецификация `rt_json_v1`
 
-`rt_json_v1` — канонический JSON-формат rich-text для RusToK (blog/forum).
+# `rt_json_v1` Specification
 
-## Формат payload
+`rt_json_v1` is the canonical JSON rich-text format for RusToK (blog/forum).
+
+## Payload format
 
 ```json
 {
@@ -23,17 +24,17 @@ status: verified
 }
 ```
 
-- `version` обязателен и должен быть `rt_json_v1`.
-- `locale` обязателен, валиден в формате `ll` или `ll-RR` и должен совпадать с locale запроса.
-- `doc` обязателен и содержит дерево узлов.
+- `version` is required and must be `rt_json_v1`.
+- `locale` is required, valid in `ll` or `ll-RR` format and must match the request locale.
+- `doc` is required and contains the node tree.
 
 ## Allowed nodes
 
-Поддерживаемые типы узлов:
+Supported node types:
 
 - `doc`
 - `paragraph`
-- `heading` (`attrs.level` от 1 до 6)
+- `heading` (`attrs.level` from 1 to 6)
 - `bullet_list`
 - `ordered_list`
 - `list_item`
@@ -47,7 +48,7 @@ status: verified
 
 ## Allowed marks
 
-Поддерживаемые marks:
+Supported marks:
 
 - `bold`
 - `italic`
@@ -55,71 +56,70 @@ status: verified
 - `code`
 - `link` (`attrs.href`)
 
-Для одного `text`-узла допускается не более 8 marks.
+A single `text` node may have at most 8 marks.
 
-## Ограничения глубины и размера
+## Depth and size limits
 
-- Максимальная глубина дерева: `8`.
-- Максимальное число узлов: `2000`.
-- Максимальный суммарный размер текстового содержимого: `100000` символов.
+- Maximum tree depth: `8`.
+- Maximum node count: `2000`.
+- Maximum total text content size: `100000` characters.
 
 ## URL / embed policy
 
-- Для `link.attrs.href`: разрешены только `http`, `https`, `mailto`.
-- Для `image.attrs.src`: разрешены только `http`, `https`.
-- Для `embed` разрешены только провайдеры:
+- For `link.attrs.href`: only `http`, `https`, `mailto` are allowed.
+- For `image.attrs.src`: only `http`, `https` are allowed.
+- For `embed`, only the following providers are allowed:
   - `youtube` (`youtube.com`, `www.youtube.com`, `youtu.be`)
   - `vimeo` (`vimeo.com`, `player.vimeo.com`)
-- Для `embed.attrs.url` обязателен `https`.
+- For `embed.attrs.url`, `https` is required.
 
 ## Unknown node/mark handling
 
-- Unknown nodes и marks не сохраняются (drop во время sanitize).
-- Если после sanitize документ становится пустым/некорректным — запрос отклоняется как validation error.
+- Unknown nodes and marks are not persisted (dropped during sanitize).
+- If after sanitize the document becomes empty/invalid — the request is rejected as a validation error.
 
+## Format versions
 
-## Форматные версии
+- `rt_json_v1` — the currently supported version for writing and rendering in the backend.
+- `rt_json_v2` — reserved (known-but-unsupported): backend v1 recognizes it but rejects with an explicit incompatibility error.
+- Any other version is considered unknown and rejected.
 
-- `rt_json_v1` — текущая поддерживаемая версия для записи и рендера в backend.
-- `rt_json_v2` — зарезервирована (known-but-unsupported): backend v1 её распознаёт, но отклоняет с явной ошибкой несовместимости.
-- Любая другая версия считается неизвестной и отклоняется (`reject`).
+## Versioning and compatibility
 
-## Версионирование и совместимость
-
-- **Backward compatibility (legacy -> v1)**: если `version` отсутствует, backend пытается трансформировать payload в `rt_json_v1`:
-  - если payload уже выглядит как `doc`, он оборачивается в `{"version":"rt_json_v1","locale":"<request-locale>","doc":...}`;
-  - если payload — объект с `doc`, добавляются отсутствующие `version/locale`.
-- **Forward compatibility (v2+ -> v1 backend)**: неизвестные версии (`version != rt_json_v1`) отклоняются (`reject`).
+- **Backward compatibility (legacy -> v1)**: if `version` is absent, the backend attempts to transform the payload into `rt_json_v1`:
+  - if payload already looks like `doc`, it is wrapped in `{"version":"rt_json_v1","locale":"<request-locale>","doc":...}`;
+  - if payload is an object with `doc`, missing `version/locale` fields are added.
+- **Forward compatibility (v2+ -> v1 backend)**: unknown versions (`version != rt_json_v1`) are rejected.
 
 ## Backend enforcement
 
-В blog/forum клиентская валидация считается **advisory only**.
+In blog/forum, client-side validation is considered **advisory only**.
 
-Каждый входящий rich-text JSON на backend проходит:
+Every incoming rich-text JSON on the backend goes through:
 
 1. schema validation (`version/locale/doc`, allowed nodes/marks, limits, URL/embed policy),
 2. sanitize (drop unknown nodes/marks, normalize attrs),
-3. сохранение только sanitized JSON.
+3. storage of only sanitized JSON.
 
-## План миграции `markdown -> rt_json_v1` (без ломающего релиза)
+## Migration plan `markdown -> rt_json_v1` (without breaking release)
 
-Миграция выполняется поэтапно, с сохранением обратной совместимости:
+The migration is performed in stages, preserving backward compatibility:
 
-1. **Dual-write-ready API (текущий этап)**
-   - DTO create/update принимают `body_format`/`content_format` и `content_json`.
-   - Backend принимает оба формата: `markdown` и `rt_json_v1`.
-   - Для rich-контента хранится sanitизированный `rt_json_v1`.
+1. **Dual-write-ready API (current stage)**
+   - DTO create/update accept `body_format`/`content_format` and `content_json`.
+   - Backend accepts both formats: `markdown` and `rt_json_v1`.
+   - For rich-content, sanitized `rt_json_v1` is stored.
 2. **Dual-read + legacy fallback**
-   - При чтении старых записей без формата или с историческим markdown применяется fallback `markdown`.
-   - Миграция БД на этом шаге не требуется.
-3. **Фоновая конверсия исторических данных**
-   - Batch-job конвертирует markdown-записи в `rt_json_v1` в фоне (tenant-by-tenant / module-by-module).
-   - Для каждой записи сохраняется both audit trail и возможность безопасного retry.
-4. **Gradual rollout по каналам записи**
-   - UI/API клиенты постепенно переключаются на отправку `rt_json_v1`.
-   - Метрики: доля `rt_json_v1` записей, ошибки валидации, sanitize-drop rate.
-5. **Ограничение legacy writes (после saturation)**
-   - После достижения целевого порога (>95% rich writes) вводится soft-warning для новых markdown-записей.
-   - Жёсткое отключение markdown допускается только отдельным ADR и релиз-нотом.
+   - When reading old records without a format or with historical markdown, a `markdown` fallback is applied.
+   - No database migration is required at this step.
+3. **Background conversion of historical data**
+   - A batch-job converts markdown records to `rt_json_v1` in the background (tenant-by-tenant / module-by-module).
+   - For each record, both audit trail and safe retry capability are preserved.
+4. **Gradual rollout by write channels**
+   - UI/API clients gradually switch to sending `rt_json_v1`.
+   - Metrics: share of `rt_json_v1` writes, validation errors, sanitize-drop rate.
+5. **Legacy write restriction (after saturation)**
+   - After reaching the target threshold (>95% rich writes), a soft-warning is introduced for new markdown writes.
+   - Hard markdown disable is only permitted by a separate ADR and release note.
 
-Ключевой принцип: **read compatibility сохраняется на всех этапах**, поэтому нет необходимости в «big bang» миграции.
+Key principle: **read compatibility is preserved at all stages**, so no "big bang" migration is necessary.

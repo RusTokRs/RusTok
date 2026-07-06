@@ -1,19 +1,19 @@
 # apps/next-frontend / CRATE_API
 
-## Публичные модули
-- Next.js storefront (App Router): публичные страницы каталога/контента/поиска.
+## Public Modules
+- Next.js storefront (App Router): public catalog/content/search pages.
 
-## Основные структуры/контракты
-- Публичные маршруты storefront.
-- Контракты чтения данных из backend API/GraphQL.
+## Key Structures/Contracts
+- Public storefront routes.
+- Data read contracts from backend API/GraphQL.
 
-## События
-- Публикует: клиентские query-запросы и пользовательские действия в backend.
-- Потребляет: ответы API и кешированные состояния клиента.
+## Events
+- Publishes: client query requests and user actions to backend.
+- Consumes: API responses and cached client state.
 
-## Зависимости от других крейтов/пакетов
-- `packages/leptos-graphql` и смежные frontend packages, backend `apps/server`.
+## Dependencies on Other Crates/Packages
+- `packages/leptos-graphql` and related frontend packages, backend `apps/server`.
 
-## Частые ошибки ИИ
-- Переносит admin-specific контракты/компоненты в frontend storefront.
-- Ошибки импорта между server/client компонентами Next.js.
+## Common AI Mistakes
+- Moving admin-specific contracts/components into the frontend storefront.
+- Import errors between server/client components in Next.js.

@@ -1,23 +1,23 @@
-# План реализации `rustok-ai-alloy`
+# `rustok-ai-alloy` — Implementation Plan
 
-## Цель
+## Goal
 
-Сделать `rustok-ai-alloy` domain-owned adapter crate для Alloy scripting AI verticals, начиная с `alloy_code` task/tool identity и runtime payload validation.
+Make `rustok-ai-alloy` the domain-owned adapter crate for Alloy scripting AI verticals, starting with `alloy_code` task/tool identity and runtime payload validation.
 
-## Этапы
+## Stages
 
 1. Scaffold crate + docs.
-2. Перенести `alloy_code` task/tool identity из `rustok-ai` в alloy-owned descriptor API.
-3. Перенести validation helpers для runtime payload JSON.
-4. Добавить targeted verification и синхронизировать central registry evidence.
+2. Move `alloy_code` task/tool identity from `rustok-ai` to alloy-owned descriptor API.
+3. Move validation helpers for runtime payload JSON.
+4. Add targeted verification and synchronize central registry evidence.
 
 ## Execution checkpoint
 
-- Создан support crate `rustok-ai-alloy` с local docs.
-- Перенесены `ALLOY_CODE_TASK_SLUG`, `ALLOY_CODE_TOOL_NAME`, descriptor registry и `register_alloy_ai_vertical_handlers` adapter API.
-- Перенесена canonical runtime payload validation (`runtime_payload_json` must be absent/blank or a JSON object) в alloy-owned pure helper, consumed by `rustok-ai` direct alloy runtime.
-- Добавлены Alloy-owned script execution policy metadata (`alloy_script_execution_policy`) с `allowed_operations`, descriptor-level `runtime_operation`/`transport_owner`, registry `contracts/ai-alloy-policy-registry.json`, static evidence `contracts/evidence/ai-alloy-policy-static-matrix.json` и быстрый verifier `scripts/verify/verify-ai-alloy-policy.mjs` без компиляции.
-- Следующий шаг: при разрешённых компиляциях прогнать targeted Rust tests для `validate_runtime_payload`, descriptor policy и `allowed_operations`; до этого source/static evidence lock остаётся основным gate.
+- Support crate `rustok-ai-alloy` created with local docs.
+- `ALLOY_CODE_TASK_SLUG`, `ALLOY_CODE_TOOL_NAME`, descriptor registry and `register_alloy_ai_vertical_handlers` adapter API moved.
+- Canonical runtime payload validation (`runtime_payload_json` must be absent/blank or a JSON object) moved to alloy-owned pure helper, consumed by `rustok-ai` direct alloy runtime.
+- Alloy-owned script execution policy metadata (`alloy_script_execution_policy`) with `allowed_operations`, descriptor-level `runtime_operation`/`transport_owner`, registry `contracts/ai-alloy-policy-registry.json`, static evidence `contracts/evidence/ai-alloy-policy-static-matrix.json` and fast verifier `scripts/verify/verify-ai-alloy-policy.mjs` added without compilation.
+- Next step: when compilations are allowed, run targeted Rust tests for `validate_runtime_payload`, descriptor policy and `allowed_operations`; until then, source/static evidence lock remains the primary gate.
 - Added compile-free static evidence coverage in the unified `scripts/verify/verify-ai-domain-verticals.mjs` gate for descriptor ownership, runtime binding seams, and validation/policy tests without compilation.
 - Last updated at (UTC): 2026-06-24T00:00:00Z
 

@@ -8,44 +8,44 @@ status: verified
 ---
 # Runtime Guardrails
 
-Этот документ описывает operator-facing contract runtime guardrails в `apps/server`.
+This document describes the operator-facing contract for runtime guardrails in `apps/server`.
 
-## Зачем это нужно
+## Why This Exists
 
-Runtime guardrails агрегируют живые сигналы рантайма в один snapshot, чтобы оператор быстро видел:
+Runtime guardrails aggregate live runtime signals into a single snapshot, so an operator can quickly see:
 
-1. можно ли продолжать обслуживать трафик;
-2. какой subsystem сейчас деградирует runtime.
+1. whether traffic can continue to be served;
+2. which subsystem is currently degrading the runtime.
 
-Сейчас в snapshot входят:
+The current snapshot includes:
 
-- состояние rate-limit backends и memory saturation;
-- состояние event transport fallback;
-- состояние event bus backpressure.
-- состояние `rustok.registry.remote_executor` для lease-based validation runner path.
+- rate-limit backend status and memory saturation;
+- event transport fallback status;
+- event bus backpressure status.
+- `rustok.registry.remote_executor` status for the lease-based validation runner path.
 
 ## Endpoints
 
-- `GET /health/runtime` — структурированный snapshot runtime guardrails;
-- `GET /health/ready` — readiness с агрегированным статусом;
-- `GET /metrics` — Prometheus-метрики guardrails.
+- `GET /health/runtime` — structured runtime guardrail snapshot;
+- `GET /health/ready` — readiness with aggregated status;
+- `GET /metrics` — Prometheus guardrail metrics.
 
 ## Snapshot Shape
 
-`GET /health/runtime` возвращает:
+`GET /health/runtime` returns:
 
-- `status` — effective runtime status после rollout policy;
-- `observed_status` — raw severity до softening в режиме `observe`;
-- `rollout` — `observe` или `enforce`;
-- `reasons` — человекочитаемые причины деградации;
-- `rate_limits` — per-namespace состояние limiter'ов (`api`, `auth`, `oauth`);
-- `event_bus` — snapshot backpressure budget;
+- `status` — effective runtime status after rollout policy;
+- `observed_status` — raw severity before softening in `observe` mode;
+- `rollout` — `observe` or `enforce`;
+- `reasons` — human-readable reasons for degradation;
+- `rate_limits` — per-namespace limiter state (`api`, `auth`, `oauth`);
+- `event_bus` — backpressure budget snapshot;
 - `event_transport` — relay fallback state.
-- `remote_executor` — состояние internal validation runner contract (`enabled`, token/config, active/expired claims, lease policy).
+- `remote_executor` — internal validation runner contract state (`enabled`, token/config, active/expired claims, lease policy).
 
-## Как читать snapshot
+## How to Read the Snapshot
 
-Если `status != ok`, проверять поля в таком порядке:
+If `status != ok`, check fields in this order:
 
 1. `reasons`
 2. `rate_limits[*].healthy`
@@ -55,40 +55,40 @@ Runtime guardrails агрегируют живые сигналы рантайм
 6. `event_bus.state`
 7. `remote_executor.state`
 
-## Основные сценарии
+## Common Scenarios
 
 Rate-limit backend unavailable:
 
 - `rate_limits[*].healthy = false`;
-- обычно означает недоступность Redis или другого distributed backend;
-- `/health/ready` должен содержать matching `runtime_guardrails` reason.
+- usually means Redis or another distributed backend is unavailable;
+- `/health/ready` should contain a matching `runtime_guardrails` reason.
 
 Memory limiter saturation:
 
 - `rate_limits[*].distributed = false`;
-- `total_entries` пересёк warning/critical thresholds;
-- обычно лечится снижением cardinality, сокращением retention или переходом на distributed backend.
+- `total_entries` crossed warning/critical thresholds;
+- typically resolved by reducing cardinality, shortening retention, or switching to a distributed backend.
 
 Event relay fallback active:
 
 - `event_transport.relay_fallback_active = true`;
-- для production это реальная деградация, а не harmless warning.
+- for production this is real degradation, not a harmless warning.
 
 Event bus backpressure:
 
-- `event_bus.state = degraded` или `critical`;
-- `current_depth` подходит к `max_depth` или уже упирается в него;
-- `events_rejected` показывает, начал ли runtime терять работу.
+- `event_bus.state = degraded` or `critical`;
+- `current_depth` is approaching `max_depth` or already hitting it;
+- `events_rejected` indicates whether the runtime has started losing work.
 
 Remote executor degradation:
 
-- `remote_executor.enabled = true`, но `token_configured = false` — critical misconfiguration;
-- `remote_executor.expired_claims > 0` — reaper уже должен вернуть stage в `queued`, но оператору всё равно нужно смотреть на runner availability и lease policy;
-- `remote_executor.active_claims` помогает отличать idle host от host, на котором реально работают thin runners.
+- `remote_executor.enabled = true`, but `token_configured = false` — critical misconfiguration;
+- `remote_executor.expired_claims > 0` — the reaper should already return stage to `queued`, but the operator still needs to look at runner availability and lease policy;
+- `remote_executor.active_claims` helps distinguish an idle host from a host where thin runners are actually working.
 
-## Метрики
+## Metrics
 
-Через `/metrics` публикуются:
+Published via `/metrics`:
 
 - `rustok_runtime_guardrail_rollout_mode`
 - `rustok_runtime_guardrail_observed_status`
@@ -107,149 +107,149 @@ Remote executor degradation:
 - `rustok_runtime_guardrail_remote_executor_config`
 
 
-## Runtime diagnostics runbook
+## Runtime Diagnostics Runbook
 
-Этот раздел фиксирует короткий runbook для быстрых P0/P1 diagnostics
-runtime-инвариантов. Он предназначен для ситуаций, когда оператору или ревьюеру
-нужно проверить module graph, request context, locale cache и migration safety без
-полной компиляции workspace.
+This section captures a short runbook for fast P0/P1 diagnostics
+of runtime invariants. It is intended for situations where an operator or reviewer
+needs to check the module graph, request context, locale cache, and migration safety without
+a full workspace compilation.
 
-### Module graph drift
+### Module Graph Drift
 
-Симптомы:
+Symptoms:
 
-- `cargo xtask validate-manifest` падает на несовпадении `modules.toml`,
-  generated runtime registry или central registry evidence;
-- `scripts/verify/verify-runtime-context-invariants.mjs` сообщает, что
-  `pages -> [content, page_builder]` больше не подтверждается source-level
+- `cargo xtask validate-manifest` fails on mismatch of `modules.toml`,
+  generated runtime registry, or central registry evidence;
+- `scripts/verify/verify-runtime-context-invariants.mjs` reports that
+  `pages -> [content, page_builder]` is no longer confirmed by source-level
   evidence.
 
-Быстрая диагностика:
+Quick diagnostics:
 
 ```bash
 cargo xtask validate-manifest
 node scripts/verify/verify-runtime-context-invariants.mjs
 ```
 
-Что проверить:
+What to check:
 
 1. `modules.toml` — canonical dependency graph.
 2. `apps/server/src/modules/mod.rs` — runtime registry/test evidence.
 3. `docs/modules/registry.md` — central documentation evidence.
 
-Исправление считается корректным только если manifest, runtime registry и docs
-снова описывают один и тот же graph; ручной special-case для одного модуля не
-считается достаточным.
+A fix is considered correct only if the manifest, runtime registry, and docs
+again describe the same graph; a manual special-case for one module is not
+considered sufficient.
 
-### Channel resolution без locale или OAuth/client dimension
+### Channel Resolution Without Locale or OAuth/Client Dimension
 
-Симптомы:
+Symptoms:
 
-- channel resolver получает пустой `RequestFacts.locale` при наличии resolved
-  locale в request extensions;
-- разные OAuth/client contexts шарят один channel cache key;
-- negative cache entry повторно используется для другого locale/client context.
+- channel resolver receives an empty `RequestFacts.locale` despite having a resolved
+  locale in request extensions;
+- different OAuth/client contexts share a single channel cache key;
+- a negative cache entry is reused for a different locale/client context.
 
-Быстрая диагностика:
+Quick diagnostics:
 
 ```bash
 node scripts/verify/verify-runtime-context-invariants.mjs
 ./scripts/verify/verify-all.sh runtime-context-invariants
 ```
 
-Что проверить:
+What to check:
 
-1. `apps/server/src/middleware/channel.rs` — `build_request_facts` читает
-   `AuthContextExtension` и `ResolvedRequestLocale`.
-2. `ChannelCacheKey` содержит `oauth_app_id` и `locale`.
-3. `apps/server/src/services/app_router.rs` сохраняет фактический порядок
-   execution: locale -> auth_context -> channel.
+1. `apps/server/src/middleware/channel.rs` — `build_request_facts` reads
+   `AuthContextExtension` and `ResolvedRequestLocale`.
+2. `ChannelCacheKey` contains `oauth_app_id` and `locale`.
+3. `apps/server/src/services/app_router.rs` preserves the actual execution
+   order: locale -> auth_context -> channel.
 
-### Locale DB amplification
+### Locale DB Amplification
 
-Симптомы:
+Symptoms:
 
-- repeated tenant-bound requests стабильно увеличивают
-  `rustok_tenant_locale_db_queries_total` без cache hits;
-- `rustok_tenant_locale_cache_misses_total` растёт на каждый запрос одного
-  tenant внутри TTL;
-- `rustok_tenant_locale_cache_entries` не отражает ожидаемые tenant snapshots.
+- repeated tenant-bound requests consistently increase
+  `rustok_tenant_locale_db_queries_total` without cache hits;
+- `rustok_tenant_locale_cache_misses_total` grows on every request for the same
+  tenant within TTL;
+- `rustok_tenant_locale_cache_entries` does not reflect expected tenant snapshots.
 
-Быстрая диагностика:
+Quick diagnostics:
 
 ```bash
 node scripts/verify/verify-runtime-context-invariants.mjs
 curl -s http://localhost:5150/metrics | rg 'rustok_tenant_locale_(cache|db)'
 ```
 
-Что проверить:
+What to check:
 
-1. `apps/server/src/middleware/locale.rs` — tenant locale policy cache включён
-   перед DB lookup.
+1. `apps/server/src/middleware/locale.rs` — tenant locale policy cache is enabled
+   before DB lookup.
 2. `apps/server/src/controllers/metrics.rs` — cache hit/miss/db query/
-   invalidation counters и entries gauge экспортируются.
-3. Если policy менялась вручную, проверить invalidation path или дождаться TTL
-   snapshot refresh перед сравнением метрик.
+   invalidation counters and entries gauge are exported.
+3. If the policy was changed manually, check the invalidation path or wait for TTL
+   snapshot refresh before comparing metrics.
 
-### Migration dependency failure
+### Migration Dependency Failure
 
-Симптомы:
+Symptoms:
 
-- `migration-smoke` падает на пустой PostgreSQL DB;
-- dependency descriptor ссылается на отсутствующую migration;
-- order/cycle validation падает после добавления module migration.
+- `migration-smoke` fails on an empty PostgreSQL DB;
+- a dependency descriptor references a missing migration;
+- order/cycle validation fails after adding a module migration.
 
-Быстрая диагностика:
+Quick diagnostics:
 
 ```bash
 ./scripts/verify/verify-migration-smoke.sh
 RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
 ```
 
-Что проверить:
+What to check:
 
-1. Module crate с cross-module FK/order assumption объявляет
-   `migration_dependencies()` рядом с `migrations()`.
-2. Server migrator агрегирует descriptors через module `MigrationSource`, а не
-   через package-local allowlist для одного crate.
-3. Descriptor names ссылаются на существующие migrations, без duplicate/cycle.
-4. Если failure воспроизводится только в GitHub Actions, фиксировать именно
-   environment-specific причину, не отключая smoke job.
+1. A module crate with cross-module FK/order assumptions declares
+   `migration_dependencies()` alongside `migrations()`.
+2. The server migrator aggregates descriptors via module `MigrationSource`, not
+   via a package-local allowlist for a single crate.
+3. Descriptor names reference existing migrations, with no duplicate/cycle.
+4. If the failure reproduces only in GitHub Actions, document exactly the
+   environment-specific reason rather than disabling the smoke job.
 
-### Inventory admin boundary drift
+### Inventory Admin Boundary Drift
 
-Симптомы:
+Symptoms:
 
-- inventory admin write facade начинает использовать transitional GraphQL
+- the inventory admin write facade starts using a transitional GraphQL
   fallback;
-- `set_variant_quantity` / `adjust_variant_quantity` снова выводят `inStock`
-  только из числовой quantity;
-- transitional adapter содержит inventory mutation markers.
+- `set_variant_quantity` / `adjust_variant_quantity` again derive `inStock`
+  only from numeric quantity;
+- the transitional adapter contains inventory mutation markers.
 
-Быстрая диагностика:
+Quick diagnostics:
 
 ```bash
 node scripts/verify/verify-inventory-admin-boundary.mjs
 ./scripts/verify/verify-all.sh inventory-admin-boundary
 ```
 
-Что проверить:
+What to check:
 
 1. `crates/rustok-inventory/src/services/inventory.rs` — typed write result
-   строится из committed quantity + inventory policy.
-2. `crates/rustok-inventory/admin/src/api.rs` — write facades идут через
-   `crate::native::*` без `fallback_*`.
+   is built from committed quantity + inventory policy.
+2. `crates/rustok-inventory/admin/src/api.rs` — write facades go through
+   `crate::native::*` without `fallback_*`.
 3. `crates/rustok-inventory/admin/src/transport.rs` — transitional GraphQL
-   adapter остаётся read-only до удаления adapter-а.
+   adapter remains read-only until the adapter is removed.
 
-## Stop-the-line условия
+## Stop-the-Line Conditions
 
-- любой limiter backend стал unhealthy;
-- event relay fallback активирован;
-- event bus дошёл до critical backpressure;
-- readiness деградировал из-за runtime guardrails, а причина не объяснена оператором.
+- any limiter backend becomes unhealthy;
+- event relay fallback is activated;
+- event bus reaches critical backpressure;
+- readiness is degraded due to runtime guardrails, and the cause is not explained by the operator.
 
-## Связанные файлы
+## Related Files
 
 - [health.rs](/C:/проекты/RusTok/apps/server/src/controllers/health.rs)
 - [metrics.rs](/C:/проекты/RusTok/apps/server/src/controllers/metrics.rs)

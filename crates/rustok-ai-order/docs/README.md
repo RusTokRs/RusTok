@@ -1,22 +1,22 @@
-# Документация `rustok-ai-order`
+# `rustok-ai-order` Documentation
 
-`rustok-ai-order` — domain-owned support crate для order AI verticals.
+`rustok-ai-order` is a domain-owned support crate for order AI verticals.
 
-## Назначение
+## Purpose
 
-- вынести order AI ownership из `rustok-ai` core runtime;
-- держать order-scoped contracts (`order_analytics`, `order_ops_assistant`) в отдельном bounded контексте.
+- move order AI ownership out of the `rustok-ai` core runtime;
+- keep order-scoped contracts (`order_analytics`, `order_ops_assistant`) in a separate bounded context.
 
-## Зона ответственности
+## Area of Responsibility
 
-- registration seam для order AI verticals;
-- typed contracts/policies для recommendation и operator-assist flows.
+- registration seam for order AI verticals;
+- typed contracts/policies for recommendation and operator-assist flows.
 
-## Проверка
+## Verification
 
 - `cargo check -p rustok-ai-order`
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation Plan](./implementation-plan.md)

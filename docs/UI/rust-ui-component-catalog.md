@@ -6,31 +6,31 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Каталог Rust UI-компонентов
+# Rust UI Component Catalog
 
-Этот документ фиксирует текущий shared UI surface в RusToK и разделение ответственности между `UI/*`, `crates/leptos-ui` и app-local компонентами.
+This document captures the current shared UI surface in RusToK and the division of responsibility between `UI/*`, `crates/leptos-ui`, and app-local components.
 
-## Источники shared UI
+## Sources of Shared UI
 
-В репозитории сейчас есть три уровня UI-переиспользования:
+The repository currently has three levels of UI reuse:
 
-- `UI/tokens` — общие design tokens и базовые CSS-переменные;
-- `UI/leptos` и `UI/next/components` — параллельные shared primitives для Leptos и Next.js;
-- `crates/leptos-ui` — RusToK-специфичный Leptos package boundary с реэкспортами и локальными helper-компонентами.
+- `UI/tokens` — common design tokens and basic CSS variables;
+- `UI/leptos` and `UI/next/components` — parallel shared primitives for Leptos and Next.js;
+- `crates/leptos-ui` — RusToK-specific Leptos package boundary with re-exports and local helper components.
 
-App-local сложные компоненты остаются внутри конкретных host-приложений и не считаются частью shared catalog, пока не появился повторно используемый contract.
+App-local complex components remain inside specific host applications and are not considered part of the shared catalog until a reusable contract emerges.
 
-## Shared design contract
+## Shared Design Contract
 
-- Все host-приложения используют единый theming contract на базе shared tokens и shadcn-compatible CSS variables.
-- Leptos и Next.js компоненты должны сохранять parity на уровне назначения, визуального результата и базового API, но не обязаны иметь буквальное one-to-one устройство.
-- Shared UI packages остаются presentational слоем и не владеют transport, auth, routing или domain behavior.
+- All host applications use a unified theming contract based on shared tokens and shadcn-compatible CSS variables.
+- Leptos and Next.js components must maintain parity in purpose, visual result, and basic API, but are not required to have a literal one-to-one implementation.
+- Shared UI packages remain a presentational layer and do not own transport, auth, routing, or domain behavior.
 
-## Shared primitives: `UI/leptos` ↔ `UI/next/components`
+## Shared Primitives: `UI/leptos` ↔ `UI/next/components`
 
-Текущий набор компонентов, для которых уже существует явный shared surface:
+Current set of components with an explicit shared surface:
 
-| Primitive | Leptos | Next.js | Статус |
+| Primitive | Leptos | Next.js | Status |
 |-----------|--------|---------|--------|
 | Alert | `UI/leptos/src/alert.rs` | app-local / shadcn path | Leptos canonical |
 | Badge | `UI/leptos/src/badge.rs` | `UI/next/components/Badge.tsx` | parity |
@@ -41,14 +41,14 @@ App-local сложные компоненты остаются внутри ко
 | Spinner | `UI/leptos/src/spinner.rs` | `UI/next/components/Spinner.tsx` | parity |
 | Switch | `UI/leptos/src/switch.rs` | `UI/next/components/Switch.tsx` | parity |
 | Textarea | `UI/leptos/src/textarea.rs` | `UI/next/components/Textarea.tsx` | parity |
-| Avatar | отсутствует в shared Leptos surface | `UI/next/components/Avatar.tsx` | Next-only |
-| Skeleton | отсутствует в shared Leptos surface | `UI/next/components/Skeleton.tsx` | Next-only |
+| Avatar | missing from shared Leptos surface | `UI/next/components/Avatar.tsx` | Next-only |
+| Skeleton | missing from shared Leptos surface | `UI/next/components/Skeleton.tsx` | Next-only |
 
-`UI/leptos/src/lib.rs` и `UI/next/components/index.ts` являются входными точками этого shared primitive layer.
+`UI/leptos/src/lib.rs` and `UI/next/components/index.ts` are the entry points for this shared primitive layer.
 
-## Leptos-specific package boundary: `crates/leptos-ui`
+## Leptos-Specific Package Boundary: `crates/leptos-ui`
 
-`crates/leptos-ui` держит RusToK-специфичный Leptos surface для приложений и module-owned UI packages. Текущие entry points:
+`crates/leptos-ui` holds the RusToK-specific Leptos surface for applications and module-owned UI packages. Current entry points:
 
 - `Button`
 - `Input`
@@ -65,27 +65,27 @@ App-local сложные компоненты остаются внутри ко
 - `Separator`
 - `LanguageToggle`
 
-Этот crate нужен там, где простой shared primitive layer недостаточен и требуется стабильная package boundary внутри Rust workspace.
+This crate is needed where a simple shared primitive layer is insufficient and a stable package boundary within the Rust workspace is required.
 
-## App-local UI, который не входит в shared catalog
+## App-Local UI Not in the Shared Catalog
 
-Следующие поверхности пока остаются app-local и не должны автоматически считаться частью общего каталога:
+The following surfaces currently remain app-local and should not automatically be considered part of the shared catalog:
 
 - `apps/next-admin/src/shared/ui/*`
-- `apps/next-admin` data-table и related admin-only widgets
+- `apps/next-admin` data-table and related admin-only widgets
 - `apps/admin` host-local layout/navigation components
-- module-owned admin/storefront UI inside `crates/rustok-*/admin` и `crates/rustok-*/storefront`
+- module-owned admin/storefront UI inside `crates/rustok-*/admin` and `crates/rustok-*/storefront`
 
-Если такой компонент начинает повторно использоваться в нескольких host-ах или модулях, его нужно либо поднять в `UI/*`, либо оформить через `crates/leptos-ui` для Leptos-пути.
+If such a component starts being reused across multiple hosts or modules, it should either be promoted to `UI/*` or formalized through `crates/leptos-ui` for the Leptos path.
 
-## Проверка при изменении shared UI
+## Verification When Changing Shared UI
 
-- сверять `UI/leptos` и `UI/next/components` на предмет API drift;
-- проверять, что shared компоненты не затягивают domain-specific зависимости;
-- обновлять app-local docs, если меняется host integration contract;
-- обновлять [UI index](./README.md) и связанные app docs, если меняется граница shared vs app-local UI.
+- compare `UI/leptos` and `UI/next/components` for API drift;
+- verify that shared components do not pull in domain-specific dependencies;
+- update app-local docs if the host integration contract changes;
+- update [UI index](./README.md) and related app docs if the boundary between shared and app-local UI changes.
 
-## Связанные документы
+## Related Documents
 
 - [UI index](./README.md)
 - [GraphQL architecture](./graphql-architecture.md)

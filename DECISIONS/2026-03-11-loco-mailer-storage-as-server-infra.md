@@ -1,44 +1,44 @@
-# Loco Mailer и Storage как server-infra слой (без выделения в отдельный модуль)
+# Loco Mailer and Storage as server-infra layer (without extracting into a separate module)
 
 - Date: 2026-03-11
 - Status: Accepted
 
 ## Context
 
-В сервере RusToK уже есть anti-duplication матрица Loco vs самопис (`apps/server/docs/LOCO_FEATURE_SUPPORT.md`).
-Для двух зон остаётся высокий риск дублирования инфраструктуры:
+The RusToK server already has an anti-duplication matrix for Loco vs custom implementation (`apps/server/docs/LOCO_FEATURE_SUPPORT.md`).
+For two areas, there remains a high risk of infrastructure duplication:
 
 - Mailer subsystem;
 - Storage abstraction.
 
-Параллельно в проекте действует модульная архитектура (`ModuleRegistry`, `ModuleKind::Core/Optional`), где доменные модули `crates/rustok-*` решают предметные задачи и не должны превращаться в слой инфраструктурных обёрток вокруг framework-возможностей.
+In parallel, the project follows a modular architecture (`ModuleRegistry`, `ModuleKind::Core/Optional`), where domain modules `crates/rustok-*` solve domain-specific problems and should not become a layer of infrastructure wrappers around framework capabilities.
 
-Нужно зафиксировать границу: должны ли Mailer/Storage становиться отдельными модулями платформы или это часть server infrastructure.
+The boundary needs to be fixed: should Mailer/Storage become separate platform modules or remain part of server infrastructure.
 
 ## Decision
 
-1. **Mailer и Storage закрепляются как инфраструктурный слой `apps/server`, построенный на Loco API**:
-   - Mailer: Loco Mailer API как основной integration contract;
-   - Storage: Loco Storage abstraction как единый upload/assets contract.
-2. **Не создавать отдельные платформенные модули `crates/rustok-*` для Mailer/Storage**.
-3. Доменные модули используют Mailer/Storage через server-level adapters/policies (единые точки интеграции), без собственной дублирующей infra-реализации.
-4. Для отклонений от этого правила требуется отдельный ADR с обоснованием trade-off и migration plan.
+1. **Mailer and Storage are established as an infrastructure layer of `apps/server`, built on the Loco API**:
+   - Mailer: Loco Mailer API as the primary integration contract;
+   - Storage: Loco Storage abstraction as the unified upload/assets contract.
+2. **Do not create separate platform modules `crates/rustok-*` for Mailer/Storage**.
+3. Domain modules use Mailer/Storage through server-level adapters/policies (unified integration points), without their own duplicating infra implementation.
+4. Deviations from this rule require a separate ADR with a trade-off justification and migration plan.
 
 ## Consequences
 
-### Плюсы
+### Positives
 
-- Убираем риск параллельных реализаций одного infra-слоя.
-- Сохраняем чистые границы: доменные модули = domain logic, `apps/server` = runtime/infrastructure.
-- Проще сопровождать совместимость с upstream Loco.
+- Removes the risk of parallel implementations of the same infra layer.
+- Maintains clean boundaries: domain modules = domain logic, `apps/server` = runtime/infrastructure.
+- Easier to maintain compatibility with upstream Loco.
 
-### Компромиссы
+### Trade-offs
 
-- Центр тяжести infra-изменений остаётся в `apps/server`.
-- Нужна дисциплина API-границ (adapters/policies), чтобы не допустить ad-hoc вызовов из домена.
+- The center of gravity for infra changes remains in `apps/server`.
+- Discipline in API boundaries (adapters/policies) is needed to prevent ad-hoc calls from the domain.
 
 ### Follow-up
 
-1. Мигрировать текущий password-reset delivery на Loco Mailer API.
-2. Ввести единый storage adapter/policy для модульных upload/use-cases.
-3. Обновлять anti-duplication матрицу и server docs при изменениях Mailer/Storage.
+1. Migrate the current password-reset delivery to the Loco Mailer API.
+2. Introduce a unified storage adapter/policy for modular upload/use-cases.
+3. Update the anti-duplication matrix and server docs when Mailer/Storage changes occur.

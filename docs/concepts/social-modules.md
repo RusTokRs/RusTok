@@ -6,79 +6,70 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
+
 # Social Modules Concept
 
-Ниже — единый, вычищенный “Master Concept” модульной архитектуры соцсети (Gemini + Opus), без внутренних противоречий и с чётким ответом на главный вопрос: сколько crate’ов, какие слои, какие границы, как общаются, кто чем владеет.
+Below is a single, polished "Master Concept" of the modular social network architecture (Gemini + Opus), without internal contradictions and with a clear answer to the main question: how many crates, what layers, what boundaries, how they communicate, who owns what.
 
-Цель платформы: гибрид ВКонтакте-социальности + phpFox-модульных групп + Discourse-форумного ядра.
+Platform goal: a hybrid of VKontakte-sociality + phpFox-modular groups + Discourse-forum core.
 
-1) Архитектурная доктрина
-1.1. Формат: Modular Monolith (Rust Workspace)
+1) Architectural Doctrine
+1.1. Format: Modular Monolith (Rust Workspace)
 
-Каждый модуль = отдельный crate (crates/mod_*) с явными публичными портами (traits) и приватным хранилищем.
+Each module = a separate crate (crates/mod_*) with explicit public ports (traits) and private storage.
 
-Никаких “жёстких” зависимостей домена на домен: модуль не импортирует чужие модели/таблицы.
+No "hard" domain-to-domain dependencies: a module does not import other modules' models/tables.
 
-Общение модулей:
+Module communication:
 
-Sync Ports (Traits) — чтение/проверки/доступ: “можно ли?”, “дай summary”, “проверь связь”.
+- Sync Ports (Traits) — reading/checks/access: "is it allowed?", "give summary", "check relation".
+- Async Events (Event Bus) — business consequences: "post created" → "add to feed" + "accrue karma" + "notify".
 
-Async Events (Event Bus) — бизнес-последствия: “создан пост” → “добавить в feed” + “начислить карму” + “уведомить”.
+1.2. Two Module Count Modes
 
-1.2. Два режима “счётчика модулей”
+The disagreement in your two concepts is not about "correctness," but about granularity. I fix the recommended variant and provide a safe "switch":
 
-В ваших двух концептах спор не про “правильность”, а про гранулярность. Я фиксирую рекомендуемый вариант и даю безопасный “переключатель”:
+- Recommended (clean): 13 crates (better for maintenance: Trust/Karma separate, Moderation separate, Media Social separate).
+- Strict "12 modules": can merge mod_reputation + mod_moderation into a single mod_engagement or embed mod_events into mod_groups as a feature submodule.
+But from here on, I describe the normal final 13-crate scheme — it better aligns Gemini and Opus without losses.
 
-Рекомендуемый (чистый): 13 crate’ов (лучше для сопровождения: Trust/Karma отдельно, Moderation отдельно, Media Social отдельно).
-
-Строгий “12 модулей”: можно слить mod_reputation + mod_moderation в единый mod_engagement или встроить mod_events в mod_groups как feature-подмодуль.
-Но дальше я описываю нормальную финальную схему на 13 — она лучше стыкует Gemini и Opus без потерь.
-
-2) Финальная карта модулей (13 crates) и слои
-LAYER 0: CMS CORE (уже есть / инфраструктура)
+2) Final Module Map (13 crates) and Layers
+LAYER 0: CMS CORE (existing / infrastructure)
 
 Users/Auth, Media Storage, Search, Pages/Blog, Notifications, Feature Flags, Settings
 
-LAYER 1: FOUNDATION (базовые сервисы)
+LAYER 1: FOUNDATION (base services)
 
-mod_profiles — расширенные профили + privacy matrix + online/verification
+- mod_profiles — extended profiles + privacy matrix + online/verification
+- mod_social_graph — friendships/subscriptions/blocks/lists/requests
+- mod_reputation — Trust Levels + Karma + accrual rules
 
-mod_social_graph — дружбы/подписки/блокировки/списки/запросы
+LAYER 2: CROSS-CUTTING (polymorphic "cross-cutting")
 
-mod_reputation — Trust Levels + Karma + правила начисления
+- mod_reactions — universal reactions for any entities
+- mod_moderation — reports/strikes/bans/automod (report weight accounts for Trust)
 
-LAYER 2: CROSS-CUTTING (полиморфные “сквозные”)
+LAYER 3: CONTENT (content generators)
 
-mod_reactions — универсальные реакции для любых сущностей
+- mod_wall — posts + comments + pins + attachments (activity stream)
+- mod_forum — categories/topics/posts/wiki/solutions (discourse core)
+- mod_media_social — albums, people tagging in photos, playlists (VK/PHPfox must-have)
 
-mod_moderation — репорты/страйки/баны/automod (вес жалоб учитывает Trust)
+LAYER 4: CONTAINERS (spaces/contexts)
 
-LAYER 3: CONTENT (генераторы контента)
+- mod_groups — groups, members, roles, invites, bans, BitMask features
+- mod_events — events, RSVP, invitations, reminders
+- mod_market — listings/stores/reviews/categories
 
-mod_wall — посты + комментарии + закрепы + вложения (activity stream)
+LAYER 5: AGGREGATION (entry points / UX glue)
 
-mod_forum — категории/темы/посты/вики/решения (discourse-ядро)
+- mod_feed — feed (fan-out on write + ranking) + mute sources
+- mod_im — messenger (dialogs/chats/statuses/search)
 
-mod_media_social — альбомы, теги людей на фото, плейлисты (VK/PHPfox must-have)
+3) Module Communication Contracts
+3.1. Universal Entity Identifiers (Common Language)
 
-LAYER 4: CONTAINERS (пространства/контексты)
-
-mod_groups — группы, участники, роли, invites, bans, BitMask фич
-
-mod_events — события, RSVP, приглашения, напоминания
-
-mod_market — объявления/листинги/магазины/отзывы
-
-LAYER 5: AGGREGATION (точки входа / UX-склейка)
-
-mod_feed — лента (fan-out on write + ранжирование) + mute-источники
-
-mod_im — мессенджер (диалоги/чаты/статусы/поиск)
-
-3) Контракты общения модулей
-3.1. Универсальные идентификаторы сущностей (единый язык)
-
-Минимальный общий тип, который понимают сквозные модули:
+Minimum common type understood by cross-cutting modules:
 
 #[derive(Clone, Copy)]
 pub struct EntityRef {
@@ -86,151 +77,115 @@ pub struct EntityRef {
     pub entity_id: u64,
 }
 
-3.2. Порты (traits) — только то, что нужно “снаружи”
+3.2. Ports (traits) — only what's needed "from the outside"
 
-Примеры обязательных портов (ядро всей связности):
+Examples of mandatory ports (core of all connectivity):
 
-ProfilesReader: аватар/имя/приватность поля/верификация
+- ProfilesReader: avatar/name/field privacy/verification
+- SocialGraphReader: is_friend/is_blocked/get_followers/get_friends
+- ReputationReader: trust_level(user), can(action), karma(user)
+- GroupsAccess: is_member/can_post/can_view + enabled_features(group_id)
+- ModerationReader: is_banned(scope), can_report(weight), automod_check(text)
 
-SocialGraphReader: is_friend/is_blocked/get_followers/get_friends
+Important: Content modules (wall/forum/media) must not know groups' tables; they only know the GroupsAccess port.
 
-ReputationReader: trust_level(user), can(action), karma(user)
+3.3. Event Bus — "glue" without circular dependencies
 
-GroupsAccess: is_member/can_post/can_view + enabled_features(group_id)
+Events are generated by modules, and aggregators/controls react.
 
-ModerationReader: is_banned(scope), can_report(weight), automod_check(text)
+Key domain events (minimal set):
 
-Важно: Content-модули (wall/forum/media) не должны знать таблицы groups, они знают только порт GroupsAccess.
+- PostCreated, CommentCreated
+- TopicCreated, TopicReplied, SolutionMarked, WikiEdited
+- AlbumCreated, MediaAddedToAlbum, PersonTagged
+- RelationChanged
+- ReactionAdded/Removed
+- ReportCreated/Resolved, UserBanned/Warned
+- GroupFeatureToggled, MemberJoined/Left
+- EventCreated, AttendanceChanged
+- ListingCreated/Sold, ReviewCreated
+- MessageSent/Read
 
-3.3. Event Bus — “клей” без циклических зависимостей
+Subscription matrix (most practical):
 
-События генерируют модули, а реагируют агрегаторы/контроль.
+- mod_feed listens: everything "created" (post/topic/album/listing/event) → adds to feeds
+- mod_reputation listens: posts/comments/topics/reactions/solutions/confirmed reports → accrues/deducts
+- CMS Notifications listens: almost everything → pushes/inbox/digest
+- mod_moderation listens: incoming content + messages (optional) → automod
 
-Ключевые доменные события (минимальный набор):
+4) Data Ownership Boundaries (to prevent turning into a "ball of mud")
 
-PostCreated, CommentCreated
+Hard rule: each module owns its tables (preferably a separate PostgreSQL schema):
 
-TopicCreated, TopicReplied, SolutionMarked, WikiEdited
+- profiles.* — extended profile/privacy/online/verification
+- social_graph.* — relations/lists/requests/blocks
+- reputation.* — karma, trust levels, rules, history
+- reactions.* — reactions, reaction types
+- moderation.* — reports/bans/strikes/rules/audit
+- wall.* — posts/comments/attachments/pins
+- forum.* — categories/topics/posts/wiki-revisions/solutions
+- media_social.* — albums/items/people-tags/playlists
+- groups.* — groups/members/roles/invites/bans/feature mask
+- events.* — events/participants/invites/reminders
+- market.* — listings/stores/reviews/categories
+- feed.* — feed_items/cache/muted/settings
+- im.* — dialogs/participants/messages/statuses
 
-AlbumCreated, MediaAddedToAlbum, PersonTagged
+Forbidden: mod_feed accesses wall.posts directly.
+Allowed: mod_feed stores only (EntityRef, score, context) and on render calls port WallReader/ForumReader/MediaReader.
 
-RelationChanged
+5) Special "Features" from Gemini Fixed as Standard
+5.1. Group BitMask Feature (fast and extensible)
 
-ReactionAdded/Removed
-
-ReportCreated/Resolved, UserBanned/Warned
-
-GroupFeatureToggled, MemberJoined/Left
-
-EventCreated, AttendanceChanged
-
-ListingCreated/Sold, ReviewCreated
-
-MessageSent/Read
-
-Матрица подписок (самая практичная):
-
-mod_feed слушает: всё “создано” (пост/тема/альбом/листинг/ивент) → добавляет в ленты
-
-mod_reputation слушает: посты/комменты/темы/реакции/решения/подтверждённые репорты → начисляет/списывает
-
-CMS Notifications слушает: почти всё → пуши/инбокс/дайджест
-
-mod_moderation слушает: входящий контент + сообщения (опционально) → automod
-
-4) Границы владения данными (чтобы не превратилось в “комок”)
-
-Жёсткое правило: каждый модуль владеет своими таблицами (лучше — отдельной схемой в PostgreSQL):
-
-profiles.* — расширенный профиль/приватность/онлайн/верификация
-
-social_graph.* — связи/списки/заявки/блоки
-
-reputation.* — karma, trust levels, правила, история
-
-reactions.* — реакции, типы реакций
-
-moderation.* — репорты/баны/страйки/правила/аудит
-
-wall.* — посты/комменты/вложения/закрепы
-
-forum.* — категории/темы/посты/вики-ревизии/решения
-
-media_social.* — альбомы/элементы/теги людей/плейлисты
-
-groups.* — группы/участники/роли/инвайты/баны/feature mask
-
-events.* — события/участники/инвайты/ремайндеры
-
-market.* — листинги/магазины/отзывы/категории
-
-feed.* — feed_items/cache/muted/settings
-
-im.* — диалоги/участники/сообщения/статусы
-
-Запрещено: mod_feed лезет в wall.posts напрямую.
-Разрешено: mod_feed хранит только (EntityRef, score, context) и при рендере дёргает порт WallReader/ForumReader/MediaReader.
-
-5) Особые “фишки” из Gemini, которые фиксируем как стандарт
-5.1. BitMask фич группы (быстро и расширяемо)
-
-mod_groups хранит enabled_features: u32, где биты — включённые модули:
+mod_groups stores enabled_features: u32, where bits are enabled modules:
 
 WALL, FORUM, MEDIA, EVENTS, MARKET, WIKI, CHAT …
 
-Плюсы:
+Benefits:
+- instant runtime check
+- simple serialization and migrations
+- frontend gets has_forum/has_market without complex queries
 
-мгновенная проверка в рантайме
+5.2. Trait-based Polymorphism (Reactable/Reportable)
 
-простая сериализация и миграции
+Cross-cutting modules operate only on EntityRef, and it doesn't matter "is this a post or a product."
 
-фронтенд получает has_forum/has_market без сложных запросов
+6) Layer Dependencies (what can import what)
 
-5.2. Trait-based полиморфизм (Reactable/Reportable)
+Rule: layers depend "downward," but communicate "upward" via events.
 
-Сквозные модули оперируют только EntityRef, и им не важно “это пост или товар”.
+- Content can depend on Foundation ports (GroupsAccess, ProfilesReader, ReputationReader).
+- Cross-cutting does not depend on Content (it is universal).
+- Aggregation can depend on all (as "orchestrator"), but must not own their models.
 
-6) Зависимости слоёв (что кому можно импортировать)
+7) Implementation Order (Painless, by Phases)
 
-Правило: слои зависят “вниз”, но общаются “вверх” через события.
+Phase 1 — Foundation (so everything else doesn't fall apart):
+1) mod_profiles (privacy + identity surface)
+2) mod_social_graph (access/blocks)
+3) mod_reputation (trust gating)
 
-Content может зависеть на Foundation порты (GroupsAccess, ProfilesReader, ReputationReader).
-
-Cross-cutting не зависит от Content (он универсален).
-
-Aggregation может зависеть на всех (как “оркестратор”), но не должен владеть их моделями.
-
-7) Порядок реализации без боли (по фазам)
-
-Фаза 1 — фундамент (чтобы всё остальное не развалилось):
-
-mod_profiles (privacy + identity surface)
-
-mod_social_graph (доступ/блокировки)
-
-mod_reputation (trust gating)
-
-Фаза 2 — сквозные контуры безопасности/UX:
+Phase 2 — Cross-cutting security/UX contours:
 4) mod_reactions
 5) mod_moderation
 
-Фаза 3 — контентное ядро:
+Phase 3 — Content core:
 6) mod_wall
 7) mod_forum
 8) mod_media_social
 
-Фаза 4 — контейнеры:
-9) mod_groups (с BitMask фич)
+Phase 4 — Containers:
+9) mod_groups (with BitMask features)
 10) mod_events
 11) mod_market
 
-Фаза 5 — пользовательская “магия”:
-12) mod_feed (fan-out + ранжирование)
+Phase 5 — User "magic":
+12) mod_feed (fan-out + ranking)
 13) mod_im
 
-8) Если всё-таки хотите ровно “12 модулей” (без вопросов, просто вариант)
+8) If You Still Want Exactly "12 Modules"
 
-Самый безопасный компромисс (минимум потерь чистоты):
+The safest compromise (minimal loss of purity):
 
-Слить mod_reputation + mod_moderation → mod_engagement (как у Gemini: “наблюдатель/каратель”)
-И получите 12 crate’ов, сохранив отдельный mod_media_social.
+Merge mod_reputation + mod_moderation → mod_engagement (as in Gemini: "observer/punisher")
+And you get 12 crates, preserving a separate mod_media_social.

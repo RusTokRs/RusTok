@@ -1,197 +1,197 @@
 # Flex — Implementation Plan
 
-> Каноническая документация модуля: [`README.md`](./README.md)
-> Центральный индекс модулей: [`docs/modules/_index.md`](/docs/modules/_index.md)
+> Canonical module documentation: [`README.md`](./README.md)
+> Central module index: [`docs/modules/_index.md`](/docs/modules/_index.md)
 
 ---
 
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_no_compile_verification_handoff
-- Last checkpoint: Attached field-definition и standalone GraphQL query/mutation roots, runtime handle, permission/error/event mapping и DTO перенесены в `flex::graphql`; attached field-definition row-to-core mapping, view-source, command-to-adapter-input mapping, persisted JSON shape helpers, create guardrails, persisted type-name normalization, lifecycle event construction и cache invalidation event taxonomy перенесены в `flex::registry`; standalone REST request/response DTO, request-to-command mapping и view mapping перенесены в `flex::rest`; standalone fields_config parsing/schema building/serialization, localized field-key derivation, row-to-view source mapping, entry normalize/defaults/strip/validate, shared/localized split, read resolution и PATCH merge helpers перенесены в `flex::standalone`; aggregate roots `FlexQuery` / `FlexMutation` объявлены через `[provides.graphql]` и входят в generated host composition, server регистрирует только `FlexGraphqlRuntime` с concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter, а source-level boundary guards запрещают возврат `apps/server/src/graphql/flex`, server-owned Flex REST DTO/command mapping, server-owned attached field-definition row/view constructors/command mapping/persisted JSON/lifecycle/cache invalidation policy, server-local standalone validation service, server-owned standalone fields_config/key interpretation, server-owned standalone row-to-view constructors и server-owned standalone entry split/merge helpers.
-- Next step: Убрать оставшиеся Flex transport artifacts из server за пределами Loco/Axum REST handler, SeaORM/bootstrap adapter layer; после разрешения компиляций выполнить узкие Flex tests и зафиксировать evidence.
+- Last checkpoint: Attached field-definition and standalone GraphQL query/mutation roots, runtime handle, permission/error/event mapping and DTO moved to `flex::graphql`; attached field-definition row-to-core mapping, view-source, command-to-adapter-input mapping, persisted JSON shape helpers, create guardrails, persisted type-name normalization, lifecycle event construction and cache invalidation event taxonomy moved to `flex::registry`; standalone REST request/response DTO, request-to-command mapping and view mapping moved to `flex::rest`; standalone fields_config parsing/schema building/serialization, localized field-key derivation, row-to-view source mapping, entry normalize/defaults/strip/validate, shared/localized split, read resolution and PATCH merge helpers moved to `flex::standalone`; aggregate roots `FlexQuery` / `FlexMutation` declared through `[provides.graphql]` and are part of generated host composition, server registers only `FlexGraphqlRuntime` with concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle and cache adapter, and source-level boundary guards prohibit return of `apps/server/src/graphql/flex`, server-owned Flex REST DTO/command mapping, server-owned attached field-definition row/view constructors/command mapping/persisted JSON/lifecycle/cache invalidation policy, server-local standalone validation service, server-owned standalone fields_config/key interpretation, server-owned standalone row-to-view constructors and server-owned standalone entry split/merge helpers.
+- Next step: Remove remaining Flex transport artifacts from server beyond Loco/Axum REST handler, SeaORM/bootstrap adapter layer; after compilations are allowed, run targeted Flex tests and record evidence.
 - Open blockers: User explicitly requested no compilations for this iteration.
 - Hand-off notes for next agent: No compilation was run by explicit request. Flex GraphQL is owner-owned and consumes shared `rustok_api::AuthContext` / `TenantContext`, `rustok_core::EventBus`, and host-provided `FlexGraphqlRuntime`. Flex REST DTO/command mapping ownership is now in `flex::rest`, attached field-definition row/view/command/persisted-JSON/lifecycle policy ownership is in `flex::registry`, and standalone fields_config/schema/key-derivation/row-view/entry normalization/validation/split/merge ownership is now in `flex::standalone`; server Flex responsibilities are now Loco/Axum REST handler extraction/routing, SeaORM persistence adapters, registry/cache/bootstrap wiring and schema composition data registration. Verify owner root composition and runtime injection with targeted Rust tests once compilation/test execution is allowed.
 - Last updated at (UTC): 2026-07-02T00:00:00Z
 
-## Область работ
+## Scope of work
 
-Этот план фиксирует доведение `flex` до целевого capability-only состояния в трёх плоскостях:
+This plan locks the delivery of `flex` to the target capability-only state in three planes:
 
-- attached-mode contracts и donor integrations;
-- standalone schema/entry runtime и transport surfaces;
-- manifest/module-system/governance contract без превращения `flex` в owner donor persistence.
+- attached-mode contracts and donor integrations;
+- standalone schema/entry runtime and transport surfaces;
+- manifest/module-system/governance contract without turning `flex` into owner donor persistence.
 
-## Текущее состояние
+## Current state
 
-`flex` уже имеет live attached-mode contract, live standalone GraphQL/REST surfaces в `apps/server` и формализованный Phase 4.6 module-system wiring как capability-only ghost module.
+`flex` already has a live attached-mode contract, live standalone GraphQL/REST surfaces in `apps/server` and a formalized Phase 4.6 module-system wiring as a capability-only ghost module.
 
 ## FFA/FBA status
 
 - UI surfaces: none.
-- FFA: `not_started` — module-owned UI для capability не заявлен.
-- FBA: `in_progress` — attached field-definition и standalone GraphQL roots/runtime/DTO принадлежат `flex::graphql`, attached field-definition row/view/command mapping, persisted JSON shape, lifecycle policy helpers и cache invalidation event taxonomy принадлежат `flex::registry`, standalone REST DTO/command mapping принадлежат `flex::rest`, standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge принадлежит `flex::standalone`, roots подключаются manifest codegen и зависят от host-composed `FlexGraphqlRuntime`; server остаётся adapter/composition layer для Loco/Axum REST handler, SeaORM persistence, registry/cache/bootstrap wiring и DB/runtime injection.
+- FFA: `not_started` — module-owned UI for capability not declared.
+- FBA: `in_progress` — attached field-definition and standalone GraphQL roots/runtime/DTO belong to `flex::graphql`, attached field-definition row/view/command mapping, persisted JSON shape, lifecycle policy helpers and cache invalidation event taxonomy belong to `flex::registry`, standalone REST DTO/command mapping belong to `flex::rest`, standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge belongs to `flex::standalone`, roots are connected via manifest codegen and depend on host-composed `FlexGraphqlRuntime`; server remains the adapter/composition layer for Loco/Axum REST handler, SeaORM persistence, registry/cache/bootstrap wiring and DB/runtime injection.
 - Structural shape: `no_ui_boundary`.
 
-## Текущий статус
+## Current status
 
-> **Важная пометка для следующих change set'ов:** старые планы, где multilingual copy живёт inline в base rows или в canonical JSON blobs, больше не актуальны.
-> Текущий live contract для `flex`: `FieldDefinition.is_localized` уже проведён через core/runtime/DB, registered attached consumers сейчас `user`/`product`/`order`/`topic`, standalone schema copy вынесен в `flex_schema_translations`, standalone entry values теперь разделены на `flex_entries.data` + `flex_entry_localized_values`, attached-mode generic localized-value storage вынесен в shared `crates/flex` и пишет в `flex_attached_localized_values`, а standalone GraphQL и REST surfaces для schemas/entries уже live в `apps/server`. Cleanup migration убирает residual inline locale-aware Flex payload-ы из donor metadata и standalone base rows. Rollout/governance contract для standalone уже зафиксирован через capability-only manifest, server-owned transport и repo-side verification; следующий обязательный шаг — полный integration verification и Phase 5 follow-up backlog.
+> **Important note for following change sets:** old plans where multilingual copy lives inline in base rows or in canonical JSON blobs are no longer relevant.
+> Current live contract for `flex`: `FieldDefinition.is_localized` already propagated through core/runtime/DB, registered attached consumers are now `user`/`product`/`order`/`topic`, standalone schema copy moved to `flex_schema_translations`, standalone entry values now split into `flex_entries.data` + `flex_entry_localized_values`, attached-mode generic localized-value storage moved to shared `crates/flex` and writes to `flex_attached_localized_values`, and standalone GraphQL and REST surfaces for schemas/entries are already live in `apps/server`. Cleanup migration removes residual inline locale-aware Flex payloads from donor metadata and standalone base rows. Rollout/governance contract for standalone is already locked via capability-only manifest, server-owned transport and repo-side verification; the next mandatory step is full integration verification and Phase 5 follow-up backlog.
 
-| Фаза | Описание | Статус |
-|------|----------|--------|
-| Phase 0 | Core types & validation в `rustok-core` | ✅ Done |
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 0 | Core types & validation in `rustok-core` | ✅ Done |
 | Phase 1 | Migration helper, FlexError, FieldDefRegistry, events | ✅ Done |
-| Phase 2 | Users (первый потребитель) | ✅ Done |
-| Phase 3 | Admin API (GraphQL CRUD, RBAC, кеш, пагинация) | ✅ Done |
-| Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | ✅ Закрыто: docs/migrator/is_localized выровнены, generic localized-value storage есть, live donor read/write path закрыт для `user`, `product`, `order` и `topic` |
-| Phase 4.5 | Вынос в `crates/flex` | 🔄 Почти завершён, остаются verification/docs долги |
+| Phase 2 | Users (first consumer) | ✅ Done |
+| Phase 3 | Admin API (GraphQL CRUD, RBAC, cache, pagination) | ✅ Done |
+| Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | ✅ Closed: docs/migrator/is_localized aligned, generic localized-value storage exists, live donor read/write path closed for `user`, `product`, `order` and `topic` |
+| Phase 4.5 | Extraction to `crates/flex` | 🔄 Nearly complete, verification/docs debts remain |
 | Phase 4.6 | Ghost-module manifest integration | ✅ Done: `modules.toml` + `rustok-module.toml` + `FlexModule` + xtask/server/docs alignment |
-| Phase 5 | Standalone mode | 🔄 В активной реализации: schema-level copy, standalone entry-value split, GraphQL и REST surfaces уже live; rollout/governance contract зафиксирован, integration verification и follow-up backlog ещё не закрыты |
-| Phase 6 | Advanced features | ⬜ Не начат |
+| Phase 5 | Standalone mode | 🔄 In active implementation: schema-level copy, standalone entry-value split, GraphQL and REST surfaces already live; rollout/governance contract locked, integration verification and follow-up backlog not yet closed |
+| Phase 6 | Advanced features | ⬜ Not started |
 
 ---
 
-## Этапы
+## Stages
 
-Ниже фазы остаются каноническим breakdown implementation scope. Phase 4.x закрывает attached/runtime/module-system debts, Phase 5 отвечает за standalone surface, Phase 6 остаётся future backlog.
+Below, phases remain the canonical breakdown of implementation scope. Phase 4.x closes attached/runtime/module-system debts, Phase 5 covers the standalone surface, Phase 6 remains future backlog.
 
-## Проверка
+## Verification
 
 - `cargo xtask validate-manifest`
 - `cargo xtask module validate flex`
 - `node scripts/verify/verify-flex-multilingual-contract.mjs`
 - targeted `cargo check -p flex`
 
-## Правила обновления
+## Update rules
 
-- менять статус фаз только после того, как код, docs и verification path реально синхронизированы;
-- не возвращать в план старые допущения про inline localized payload как canonical path;
-- staged rollout и внешние blockers фиксировать явно, а не прятать под формулировку "почти готово".
+- change phase status only after code, docs and verification path are actually synchronized;
+- do not return old assumptions about inline localized payload as canonical path to the plan;
+- record staged rollout and external blockers explicitly, rather than hiding them under "almost ready" wording.
 
 ---
 
-## Phase 4 — Долги attached mode
+## Phase 4 — Attached mode debts
 
-Flex в attached-mode уже умеет хранить field definitions и маршрутизировать CRUD по
-`entity_type`, но текущее состояние неравномерное:
+Flex in attached-mode can already store field definitions and route CRUD by
+`entity_type`, but the current state is uneven:
 
-- `user` — полный путь schema CRUD + donor write-path validation живой.
-- `product` — schema CRUD зарегистрирован в registry, donor write/read path теперь живой через shared attached localized storage.
-- `order` / `topic` — schema CRUD зарегистрирован в registry, donor write/read parity уже проведён через shared attached localized storage
-  нужно отдельно подтвердить или явно задокументировать как pending.
-- `node` — фигурирует в модульной документации Flex как attached consumer, но в текущем registry/API
-  route для `node` не смонтирован.
+- `user` — full schema CRUD path + donor write-path validation alive.
+- `product` — schema CRUD registered in registry, donor write/read path now alive through shared attached localized storage.
+- `order` / `topic` — schema CRUD registered in registry, donor write/read parity already done through shared attached localized storage,
+  needs separate confirmation or explicit documentation as pending.
+- `node` — appears in Flex module documentation as attached consumer, but in the current registry/API
+  route for `node` is not mounted.
 
 ### Canonical scope / wiring
 
-- [x] Зафиксировать канонический список live attached consumers
-  - Live attached contract сейчас ограничен `user`, `product`, `order`, `topic`.
-  - `node` не считается live attached consumer до появления отдельного service/route и donor write-path.
-- [x] Выправить migrator ownership для attached migrations
-  - `product_field_definitions` и `order_field_definitions` продолжают приезжать из owning crate migrations.
-  - `topic_field_definitions` подключён в canonical server `Migrator`.
-- [x] Зафиксировать multilingual semantics field definitions
-  - `FieldDefinition.is_localized` теперь является обязательной частью core/runtime/DB контракта.
-  - GraphQL, registry DTO и attached persistence больше не должны трактовать localized/non-localized поля как неявную договорённость.
+- [x] Lock the canonical list of live attached consumers
+  - Live attached contract is currently limited to `user`, `product`, `order`, `topic`.
+  - `node` is not considered a live attached consumer until a separate service/route and donor write-path appear.
+- [x] Fix migrator ownership for attached migrations
+  - `product_field_definitions` and `order_field_definitions` continue to come from owning crate migrations.
+  - `topic_field_definitions` is connected in the canonical server `Migrator`.
+- [x] Lock multilingual semantics field definitions
+  - `FieldDefinition.is_localized` is now a mandatory part of the core/runtime/DB contract.
+  - GraphQL, registry DTO and attached persistence must no longer treat localized/non-localized fields as an implicit agreement.
 
 ### Donor write-path parity
 
-- [x] Подтвердить и зафиксировать donor write-path integration для `order`, `topic`
+- [x] Confirm and lock donor write-path integration for `order`, `topic`
   - Override 2026-04-05: `topic` is no longer schema-only. Forum topics now use `forum_topics.metadata` plus `flex_attached_localized_values` under the same attached multilingual contract as `user`/`product`/`order`.
-  - Для `user` validation/defaults/strip_unknown уже подключены в GraphQL mutation flow.
-  - Для `product` live read/write path уже подключён через shared attached localized storage в `crates/flex`.
-  - Для оставшихся attached consumers нужно либо добавить аналогичный write-path, либо явно отметить current state как schema-only admin surface.
-- [ ] Вынести localized attached values из canonical JSON path
-  - `is_localized = true` не должен в финальном состоянии означать хранение multilingual business value внутри donor `metadata`.
-  - Generic table `flex_attached_localized_values` уже введена, а shared entity/helpers теперь живут в `crates/flex`.
-  - `user` и `product` уже используют этот path в live read/write flow.
-  - Cleanup/backfill legacy inline payload-ов вынесен в отдельные миграции, runtime больше не должен читать donor/base-row inline localized copy как canonical fallback.
+  - For `user`, validation/defaults/strip_unknown are already connected in the GraphQL mutation flow.
+  - For `product`, live read/write path is already connected through shared attached localized storage in `crates/flex`.
+  - For remaining attached consumers, either add a similar write-path, or explicitly mark current state as schema-only admin surface.
+- [ ] Move localized attached values out of canonical JSON path
+  - `is_localized = true` should not in the final state mean storing multilingual business value inside donor `metadata`.
+  - Generic table `flex_attached_localized_values` is already introduced, and shared entity/helpers now live in `crates/flex`.
+  - `user` and `product` already use this path in live read/write flow.
+  - Cleanup/backfill of legacy inline payloads moved to separate migrations, runtime must no longer read donor/base-row inline localized copy as canonical fallback.
 
-### Тесты (integration pending)
+### Tests (integration pending)
 
-- [x] Flex GraphQL CRUD: интеграционные сценарии list/find/create/update/delete/reorder
-  - `apps/server` теперь держит `schema.execute(...)` roundtrip для `createFieldDefinition` / `fieldDefinitions` / `fieldDefinition` / `updateFieldDefinition` / `reorderFieldDefinitions` / `deleteFieldDefinition` через live `FieldDefRegistry` routing.
-- [x] Cache invalidation: integration/e2e сценарии на `FieldDefinition*` events
-  - `field_definition_cache_from_context()` покрыт тестами, которые прогоняют invalidation через live `EventBus` subscriber на `FieldDefinitionCreated`, `FieldDefinitionUpdated` и `FieldDefinitionDeleted`.
-- [x] RBAC integration: explicit typed permission gates для Flex surfaces
-  - Standalone GraphQL/REST surfaces используют отдельные `flex_schemas:*` / `flex_entries:*` gates через `require_permission(...)` и `RequireFlex*` extractors.
-  - Attached GraphQL read roots `fieldDefinitions` / `fieldDefinition` теперь тоже требуют явные `flex_schemas:list/read` права, а targeted tests фиксируют denial path.
-- [x] Attached validation flows: end-to-end проверка donor write-path там, где Flex уже заявлен live
-  - `rustok-order` теперь покрыт точечными create-path сценариями: shared default values, localized attached split/persist и required-field rejection.
-  - `rustok-forum` теперь тоже покрыт точечными topic create/read сценариями: shared defaults, localized attached split/persist, required-field rejection и read-side resolution из `flex_attached_localized_values`.
-  - `rustok-commerce` теперь покрыт точечными product create/read/update сценариями: shared defaults, localized attached split/persist, required-field rejection и locale-fallback resolution из `flex_attached_localized_values`.
+- [x] Flex GraphQL CRUD: integration scenarios list/find/create/update/delete/reorder
+  - `apps/server` now holds `schema.execute(...)` roundtrip for `createFieldDefinition` / `fieldDefinitions` / `fieldDefinition` / `updateFieldDefinition` / `reorderFieldDefinitions` / `deleteFieldDefinition` through live `FieldDefRegistry` routing.
+- [x] Cache invalidation: integration/e2e scenarios on `FieldDefinition*` events
+  - `field_definition_cache_from_context()` is covered by tests that run invalidation through live `EventBus` subscriber on `FieldDefinitionCreated`, `FieldDefinitionUpdated` and `FieldDefinitionDeleted`.
+- [x] RBAC integration: explicit typed permission gates for Flex surfaces
+  - Standalone GraphQL/REST surfaces use separate `flex_schemas:*` / `flex_entries:*` gates through `require_permission(...)` and `RequireFlex*` extractors.
+  - Attached GraphQL read roots `fieldDefinitions` / `fieldDefinition` now also require explicit `flex_schemas:list/read` permissions, and targeted tests lock the denial path.
+- [x] Attached validation flows: end-to-end verification of donor write-path where Flex is already declared live
+  - `rustok-order` is now covered by targeted create-path scenarios: shared default values, localized attached split/persist and required-field rejection.
+  - `rustok-forum` is now also covered by targeted topic create/read scenarios: shared defaults, localized attached split/persist, required-field rejection and read-side resolution from `flex_attached_localized_values`.
+  - `rustok-commerce` is now covered by targeted product create/read/update scenarios: shared defaults, localized attached split/persist, required-field rejection and locale-fallback resolution from `flex_attached_localized_values`.
 
 ---
 
-## Phase 4.5 — Вынос в `crates/flex`
+## Phase 4.5 — Extraction to `crates/flex`
 
-Цель: переместить generic attached-mode контракты из `apps/server` в `crates/flex`,
-оставив в `apps/server` только transport/adapters (GraphQL, RBAC gate, bootstrap wiring).
+Goal: move generic attached-mode contracts from `apps/server` to `crates/flex`,
+leaving in `apps/server` only transport/adapters (GraphQL, RBAC gate, bootstrap wiring).
 
-**Go/No-Go критерии для старта:**
-1. Закрыты attached-mode wiring долги по live consumers
-2. Есть полный интеграционный прогон Flex GraphQL CRUD + cache invalidation
-3. Нет незакрытых P1-багов по текущей registry маршрутизации
+**Go/No-Go criteria for start:**
+1. Attached-mode wiring debts for live consumers closed
+2. Full integration run of Flex GraphQL CRUD + cache invalidation exists
+3. No unclosed P1 bugs in current registry routing
 
-### Что уже перенесено
+### What is already moved
 
-- [x] `crates/flex` создан
+- [x] `crates/flex` created
 - [x] Registry contracts (`FieldDefinitionService`, `FieldDefRegistry` adapter layer)
 - [x] Generic CRUD orchestration helpers (registry lookup + CRUD/reorder routing)
-- [x] `apps/server` использует прямые импорты из `flex` (без compatibility re-export)
+- [x] `apps/server` uses direct imports from `flex` (without compatibility re-export)
 
-### Что осталось перенести
+### What remains to be moved
 
 - [x] Cache invalidation hooks
-  - В `crates/flex` добавлены orchestration helpers `list_field_definitions_with_cache()` и `invalidate_field_definition_cache()`
-  - `apps/server` реализует `FieldDefinitionCachePort` как adapter над текущим cache implementation
+  - Orchestration helpers `list_field_definitions_with_cache()` and `invalidate_field_definition_cache()` added in `crates/flex`
+  - `apps/server` implements `FieldDefinitionCachePort` as adapter over the current cache implementation
 - [x] Transport-agnostic error mapping
-  - `map_flex_error()` перенесён в `crates/flex/src/errors.rs`
-  - `apps/server` использует mapping из agnostic-модуля
-- [x] Перевести `user/product/order/topic` сервисы на новый crate API
-  - Bootstrap/GraphQL используют прямой API `flex` без изменения GraphQL-контрактов
-- [x] Удалён legacy-дубликат `crates/rustok-flex`
-  - В workspace остаётся единый agnostic модуль `crates/flex`
-- [x] Убрать дублирование между `apps/server` и `crates/flex`
-- [x] Написать migration guide: `apps/server/docs/` + cross-link в `docs/index.md`
+  - `map_flex_error()` moved to `crates/flex/src/errors.rs`
+  - `apps/server` uses mapping from agnostic module
+- [x] Migrate `user/product/order/topic` services to the new crate API
+  - Bootstrap/GraphQL use direct `flex` API without changing GraphQL contracts
+- [x] Removed legacy duplicate `crates/rustok-flex`
+  - A single agnostic module `crates/flex` remains in the workspace
+- [x] Remove duplication between `apps/server` and `crates/flex`
+- [x] Write migration guide: `apps/server/docs/` + cross-link in `docs/index.md`
 
-### Что осталось закрыть перед финализацией phase
+### What remains to be closed before phase finalization
 
-- [ ] Полный integration прогон GraphQL CRUD + cache invalidation
-  - Repo-side contract verification проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs` = `OK`.
-  - Targeted Flex GraphQL tests должны проверять owner-owned `flex::graphql` roots через host-provided runtime без возврата resolver/DTO в `apps/server/src/graphql/flex`; прежний server-local SQLite harness больше не является целевой точкой ownership.
-  - Duplicate registration для `m20260316_000004_create_topic_field_definitions` убран из server migrator; canonical migration продолжает приезжать из `rustok_forum::migrations()`.
+- [ ] Full integration run of GraphQL CRUD + cache invalidation
+  - Repo-side contract verification passes: `node scripts/verify/verify-flex-multilingual-contract.mjs` = `OK`.
+  - Targeted Flex GraphQL tests should verify owner-owned `flex::graphql` roots through host-provided runtime without returning resolver/DTO to `apps/server/src/graphql/flex`; the previous server-local SQLite harness is no longer the target ownership point.
+  - Duplicate registration for `m20260316_000004_create_topic_field_definitions` removed from server migrator; canonical migration continues to come from `rustok_forum::migrations()`.
   - 2026-06-13 no-compile iteration: product-side metadata update path patched in `crates/rustok-product/src/services/catalog.rs` so existing reserved product metadata survives Flex custom-field PATCH-style updates; targeted helper tests were added, but not executed by request.
-- [x] Синхронизировать docs с реальным registry routing и migrator ownership
-  - `crates/flex/docs/README.md` выровнен по live attached consumers (`user`, `product`, `order`, `topic`) без legacy `node`.
-  - GraphQL contract и RBAC section в README теперь отражают фактические `pagination`, `DeleteFieldDefinitionPayload` и typed `flex_schemas:*` / `flex_entries:*` gates.
-- [x] Оставшееся server-side дублирование выделять в `crates/flex` только если это действительно transport-agnostic контракт, а не adapter concern
-  - Дублировавшийся `fields_config` parser для standalone GraphQL/REST вынесен в `crates/flex::parse_field_definitions_config()`.
-  - Standalone GraphQL-specific `publish_event`, error mapping, response DTO mapping и RBAC checks перенесены в `crates/flex`; server-specific REST extractors и attached field-definition adapters остаются в `apps/server`.
+- [x] Synchronize docs with actual registry routing and migrator ownership
+  - `crates/flex/docs/README.md` aligned with live attached consumers (`user`, `product`, `order`, `topic`) without legacy `node`.
+  - GraphQL contract and RBAC section in README now reflect actual `pagination`, `DeleteFieldDefinitionPayload` and typed `flex_schemas:*` / `flex_entries:*` gates.
+- [x] Extract remaining server-side duplication to `crates/flex` only if it is truly a transport-agnostic contract, not an adapter concern
+  - Duplicated `fields_config` parser for standalone GraphQL/REST moved to `crates/flex::parse_field_definitions_config()`.
+  - Standalone GraphQL-specific `publish_event`, error mapping, response DTO mapping and RBAC checks moved to `crates/flex`; server-specific REST extractors and attached field-definition adapters remain in `apps/server`.
 
 ---
 
 ## Phase 4.6 — Ghost-module manifest integration
 
-Цель: формализовать `flex` как capability / ghost module в manifest-driven module system,
-а не как «обычный» доменный модуль.
+Goal: formalize `flex` as a capability / ghost module in the manifest-driven module system,
+rather than as a "regular" domain module.
 
 ### Checklist
 
-- [x] Добавить `crates/flex/rustok-module.toml`
-  - Manifest выровнен с capability-модулями наподобие `alloy`, но без претензии на donor persistence ownership.
-- [x] Зафиксировать в manifest и docs семантику ghost module
-  - `flex` расширяет donor modules custom contracts.
-  - Данные attached-mode остаются в donor tables и donor write-path.
-  - `FlexModule` публикует capability/runtime metadata и RBAC surface; attached field-definition и standalone GraphQL являются owner-owned, REST DTO contract тоже owner-owned в `flex::rest`, а server REST остаётся handler adapter-слоем.
-- [x] Определить policy для runtime surfaces
-  - Attached field-definition и standalone GraphQL owner-owned в `crates/flex` и объявлены через `[provides.graphql]`; REST request/response DTO owner-owned в `flex::rest`, live server adapter только монтирует Loco/Axum routes, а manifest не приписывает capability ownership donor persistence.
-  - Capability-only server feature `mod-flex` нужен для registry/codegen wiring; сам crate при этом может оставаться always-linked support dependency сервера.
-- [~] Прогнать manifest validation flow
-  - `cargo xtask validate-manifest` / `cargo xtask module validate flex` стали частью acceptance path для `flex` и проходят на текущем workspace state
-  - `cargo xtask module test flex` остаётся зависимым от общего server test graph
-- [x] Обновить central module docs после появления manifest
+- [x] Add `crates/flex/rustok-module.toml`
+  - Manifest aligned with capability modules like `alloy`, but without claim to donor persistence ownership.
+- [x] Lock ghost module semantics in manifest and docs
+  - `flex` extends donor modules custom contracts.
+  - Attached-mode data remains in donor tables and donor write-path.
+  - `FlexModule` publishes capability/runtime metadata and RBAC surface; attached field-definition and standalone GraphQL are owner-owned, REST DTO contract is also owner-owned in `flex::rest`, and server REST remains the handler adapter layer.
+- [x] Define policy for runtime surfaces
+  - Attached field-definition and standalone GraphQL owner-owned in `crates/flex` and declared through `[provides.graphql]`; REST request/response DTO owner-owned in `flex::rest`, live server adapter only mounts Loco/Axum routes, and the manifest does not attribute capability ownership to donor persistence.
+  - Capability-only server feature `mod-flex` needed for registry/codegen wiring; the crate itself can remain an always-linked support dependency of the server.
+- [~] Run manifest validation flow
+  - `cargo xtask validate-manifest` / `cargo xtask module validate flex` are part of the acceptance path for `flex` and pass on the current workspace state
+  - `cargo xtask module test flex` remains dependent on the general server test graph
+- [x] Update central module docs after manifest appears
   - `docs/modules/_index.md`
   - `docs/modules/registry.md`
   - `docs/modules/manifest.md`
@@ -201,17 +201,17 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 
 ## Phase 5 — Standalone mode
 
-Произвольные схемы и записи без привязки к существующим сущностям.
+Arbitrary schemas and records without binding to existing entities.
 
-### Что уже начато
+### What is already started
 
-- [x] Добавлены transport-agnostic standalone контракты в `crates/flex/src/standalone.rs`
-  - DTO для схем/записей (`FlexSchemaView`, `FlexEntryView`)
-  - Commands и trait-контракт `FlexStandaloneService` для будущих adapter-реализаций
-  - Базовые guardrail validators для create/update-команд (`validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command`)
-  - Orchestration helpers (`list/find/create/update/delete` для schemas и entries), чтобы adapters не дублировали routing/pre-validation
+- [x] Transport-agnostic standalone contracts added in `crates/flex/src/standalone.rs`
+  - DTO for schemas/entries (`FlexSchemaView`, `FlexEntryView`)
+  - Commands and trait contract `FlexStandaloneService` for future adapter implementations
+  - Basic guardrail validators for create/update commands (`validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command`)
+  - Orchestration helpers (`list/find/create/update/delete` for schemas and entries), so adapters do not duplicate routing/pre-validation
 
-### Таблицы
+### Tables
 
 ```sql
 CREATE TABLE flex_schemas (
@@ -267,44 +267,44 @@ CREATE INDEX idx_flex_entry_localized_values_owner
 
 ### Checklist
 
-- [~] Миграции для `flex_schemas`, `flex_entries`
-  - Файл migration добавлен: `m20260317_000001_create_flex_standalone_tables`
-  - Миграция подключена в canonical server migrator
-  - Отдельным follow-up migration slice schema-level localized copy вынесен из `flex_schemas` в `flex_schema_translations`
-  - Отдельным follow-up migration slice standalone localized entry payload вынесен из inline `flex_entries.data` в `flex_entry_localized_values`
-- [x] SeaORM entities *(добавлены `flex_schemas`, `flex_entries`, `flex_schema_translations` и `flex_entry_localized_values` в `apps/server/src/models/_entities` + re-export в `models/`)*
-- [x] Validation service (использует `CustomFieldsSchema` из core) *(`parse_standalone_fields_config`, `build_standalone_custom_fields_schema`, `serialize_standalone_fields_config`, `standalone_localized_field_keys`, standalone row-to-view source helpers, `normalize_and_validate_standalone_entry`, standalone shared/localized split, read resolution и PATCH merge helpers живут в `crates/flex/src/standalone.rs`; server-local `flex_standalone_validation_service.rs` удалён, SeaORM adapter делегирует owner helpers)*
-- [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
-- [x] Multilingual storage contract для standalone mode
-  - schema-level localized copy (`name`, `description`) больше не считается base-row данными
-  - `flex_schema_translations` уже является live storage path для schema-level copy
-  - entry payload теперь split на `flex_entries.data` (shared) и `flex_entry_localized_values` (locale-aware values)
-  - read/write service path уже мерджит parallel localized rows обратно в effective entry payload
-  - cleanup/backfill вынесен в follow-up migrations; runtime читает shared payload плюс parallel localized rows
-- [x] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; `crates/flex` даёт transport-agnostic envelope/orchestration helpers и owner GraphQL публикует envelopes через shared `EventBus`, REST adapter публикует их из server)*
-- [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live в `apps/server` как Loco/Axum handler adapter, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates; request/response DTO, command mapping и view mapping owner-owned в `flex::rest`)*
-- [x] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations *(owner-owned в `crates/flex/src/graphql`, подключаются через manifest-generated host schema, tenant-scoped и используют отдельные `flex_schemas:*` / `flex_entries:*` permission gates)*
+- [~] Migrations for `flex_schemas`, `flex_entries`
+  - Migration file added: `m20260317_000001_create_flex_standalone_tables`
+  - Migration connected in canonical server migrator
+  - Separate follow-up migration slice schema-level localized copy moved from `flex_schemas` to `flex_schema_translations`
+  - Separate follow-up migration slice standalone localized entry payload moved from inline `flex_entries.data` to `flex_entry_localized_values`
+- [x] SeaORM entities *(added `flex_schemas`, `flex_entries`, `flex_schema_translations` and `flex_entry_localized_values` in `apps/server/src/models/_entities` + re-export in `models/`)*
+- [x] Validation service (uses `CustomFieldsSchema` from core) *(`parse_standalone_fields_config`, `build_standalone_custom_fields_schema`, `serialize_standalone_fields_config`, `standalone_localized_field_keys`, standalone row-to-view source helpers, `normalize_and_validate_standalone_entry`, standalone shared/localized split, read resolution and PATCH merge helpers live in `crates/flex/src/standalone.rs`; server-local `flex_standalone_validation_service.rs` removed, SeaORM adapter delegates to owner helpers)*
+- [x] CRUD services *(added SeaORM adapter `FlexStandaloneSeaOrmService` in `apps/server/src/services/flex_standalone_service.rs`, implementing `flex::FlexStandaloneService` with tenant-scoped CRUD for schemas/entries)*
+- [x] Multilingual storage contract for standalone mode
+  - schema-level localized copy (`name`, `description`) is no longer considered base-row data
+  - `flex_schema_translations` is already the live storage path for schema-level copy
+  - entry payload now split to `flex_entries.data` (shared) and `flex_entry_localized_values` (locale-aware values)
+  - read/write service path already merges parallel localized rows back into effective entry payload
+  - cleanup/backfill moved to follow-up migrations; runtime reads shared payload plus parallel localized rows
+- [x] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry added in `rustok-events`; `crates/flex` provides transport-agnostic envelope/orchestration helpers and owner GraphQL publishes envelopes through shared `EventBus`, REST adapter publishes them from server)*
+- [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live in `apps/server` as Loco/Axum handler adapter, tenant-scoped and with separate `flex_schemas:*` / `flex_entries:*` permission gates; request/response DTO, command mapping and view mapping owner-owned in `flex::rest`)*
+- [x] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations *(owner-owned in `crates/flex/src/graphql`, connected through manifest-generated host schema, tenant-scoped and use separate `flex_schemas:*` / `flex_entries:*` permission gates)*
 - [x] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
-  - Typed permissions есть в `rustok-core`
-  - GraphQL standalone surface использует отдельные `flex_schemas:*` и `flex_entries:*` gates
+  - Typed permissions present in `rustok-core`
+  - GraphQL standalone surface uses separate `flex_schemas:*` and `flex_entries:*` gates
 - [x] Indexer handler: `index_flex_entries` + `FlexIndexer` event handler
-  - `rustok-index` теперь владеет migration slice `index_flex_entries` и module-owned `flex_indexer`, который слушает `FlexEntry*`, `FlexSchemaUpdated/Deleted` и `ReindexRequested { target_type = "flex" }`.
-  - `IndexModule` публикует `flex_indexer` через `register_event_listeners(...)`, а server dispatcher включает его в runtime wiring наравне с `content_indexer` и `product_indexer`.
-- [x] Cascade delete: при удалении entity удалять attached flex entries
-  - Shared helper `delete_attached_localized_values()` живёт в `crates/flex` и подключён в live hard-delete paths для `user`, `product` и `topic`.
-  - Helper допускает capability-optional test graphs без смонтированной таблицы `flex_attached_localized_values`, чтобы isolated donor tests не падали на cleanup-пути.
-  - Для `order` отдельный hard-delete surface в текущем live contract не реализован; cleanup будет нужен сразу при появлении такого delete-path.
+  - `rustok-index` now owns migration slice `index_flex_entries` and module-owned `flex_indexer`, which listens to `FlexEntry*`, `FlexSchemaUpdated/Deleted` and `ReindexRequested { target_type = "flex" }`.
+  - `IndexModule` publishes `flex_indexer` through `register_event_listeners(...)`, and the server dispatcher includes it in runtime wiring alongside `content_indexer` and `product_indexer`.
+- [x] Cascade delete: when deleting an entity, delete attached flex entries
+  - Shared helper `delete_attached_localized_values()` lives in `crates/flex` and is connected in live hard-delete paths for `user`, `product` and `topic`.
+  - Helper allows capability-optional test graphs without the `flex_attached_localized_values` table mounted, so isolated donor tests do not fail on cleanup paths.
+  - For `order`, a separate hard-delete surface is not implemented in the current live contract; cleanup will be needed immediately when such a delete-path appears.
 - [x] Guardrail: max relation depth = 1 (no recursive populate)
-  - `crates/flex::validate_create_entry_command()` теперь явно запрещает `entity_type = "flex_entry"`, так что standalone `FlexEntry -> FlexEntry` цепочки режутся до adapter/service layer и одинаково работают для GraphQL и REST.
-- [x] Решить publish policy для standalone surface через ghost-module manifest
-  - Standalone REST handler остаётся server-owned adapter layer, но REST DTO contract, command mapping и view mapping живут в `flex::rest`.
-  - `flex` публикует capability/runtime metadata через `rustok-module.toml`, `modules.toml` и `FlexModule`, не забирая ownership transport surface.
+  - `crates/flex::validate_create_entry_command()` now explicitly forbids `entity_type = "flex_entry"`, so standalone `FlexEntry -> FlexEntry` chains are cut at the adapter/service layer and work identically for GraphQL and REST.
+- [x] Resolve publish policy for standalone surface through ghost-module manifest
+  - Standalone REST handler remains server-owned adapter layer, but REST DTO contract, command mapping and view mapping live in `flex::rest`.
+  - `flex` publishes capability/runtime metadata through `rustok-module.toml`, `modules.toml` and `FlexModule`, without taking ownership of the transport surface.
   - Acceptance path: `cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`.
-- [ ] Тесты: unit + integration
-  - `apps/server` уже держит targeted REST roundtrip для standalone schema/entry CRUD и invalid payload rejection.
-  - `apps/server` теперь также держит standalone GraphQL roundtrip для schema/entry CRUD и explicit denial-path для `flex_entries:create`.
-  - Flex GraphQL verification должна идти через owner-owned `flex::graphql` roots и host-composed runtime; тяжелый workspace migrator не нужен для узкого Flex path.
-  - Repo-side multilingual drift gate проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs`.
+- [ ] Tests: unit + integration
+  - `apps/server` already holds targeted REST roundtrip for standalone schema/entry CRUD and invalid payload rejection.
+  - `apps/server` now also holds standalone GraphQL roundtrip for schema/entry CRUD and explicit denial-path for `flex_entries:create`.
+  - Flex GraphQL verification should go through owner-owned `flex::graphql` roots and host-composed runtime; a heavy workspace migrator is not needed for a narrow Flex path.
+  - Repo-side multilingual drift gate passes: `node scripts/verify/verify-flex-multilingual-contract.mjs`.
   - 2026-06-14 no-compile iteration: standalone contract guardrail tests added for untrimmed schema slugs, field keys and `entity_type`; localized entry row loading now includes tenant filtering to keep the parallel storage lookup tenant-scoped.
   - 2026-06-15 no-compile iteration: standalone contract validators now reject non-object schema settings, non-object entry data, untrimmed statuses and schemas with more than 50 fields; localized entry upsert lookup also filters by tenant.
   - 2026-06-16 no-compile iteration: standalone contract validators now enforce persistence-bound limits before adapter writes: schema slug <= 64, schema name <= 255, entry `entity_type` <= 64, entry `status` <= 32, schema names must not carry surrounding whitespace, and status values must be normalized machine identifiers.
@@ -318,12 +318,12 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - 2026-06-21 no-compile handoff cleanup: standalone schema create/update validation now rejects empty or untrimmed schema descriptions before adapter writes, with targeted contract tests added without execution by request; the execution checkpoint also makes the deferred formatting/compile/test gates explicit for the next allowed verification pass.
   - 2026-06-24 no-compile iteration: standalone orchestration duplicate `update_schema` delegation was removed, and a source-level no-compile verifier `scripts/verify/verify-flex-standalone-contract.mjs` now locks the Phase 5 guardrails for nil UUIDs, schema-definition shape, localized-map normalization, tenant-scoped localized entry lookup and PATCH-style entry merge.
   - 2026-06-26 no-compile iteration: standalone schema-definition validation now rejects duplicate `position` values so schema field ordering is deterministic before adapter writes; the source-level verifier was extended to lock the unique-position guardrail.
-  - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone PATCH/guardrail/schema-definition fixes и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
-- [x] Документация
-  - Контракты, data model и live GraphQL/REST surfaces описаны
-  - Rollout / governance contract для standalone surface задокументирован как completed
+  - Full closure of the item still requires a stable `rustok-server` test run; the current increment prepared standalone PATCH/guardrail/schema-definition fixes and tests, but compile/test evidence is deferred because this iteration was performed without compilations.
+- [x] Documentation
+  - Contracts, data model and live GraphQL/REST surfaces described
+  - Rollout / governance contract for standalone surface documented as completed
 
-### События standalone mode
+### Standalone mode events
 
 ```rust
 DomainEvent::FlexSchemaCreated { tenant_id, schema_id, slug }
@@ -353,38 +353,38 @@ CREATE INDEX idx_index_flex_search ON index_flex_entries USING GIN (search_vecto
 
 ### Open questions
 
-1. **Schema versioning:** нужна ли история изменений схем?
-2. **Migration on schema change:** как мигрировать данные при изменении полей?
-3. **Rich text fields:** поддерживать ли Markdown/HTML в text полях?
-4. **Computed fields:** нужны ли поля, вычисляемые на лету?
+1. **Schema versioning:** is schema change history needed?
+2. **Migration on schema change:** how to migrate data when fields change?
+3. **Rich text fields:** support Markdown/HTML in text fields?
+4. **Computed fields:** are computed-on-the-fly fields needed?
 
 ---
 
 ## Phase 6 — Advanced (future)
 
-- [ ] Conditional fields (показывать поле B если поле A = X)
-- [ ] Computed fields (вычисляемые из других полей)
-- [ ] Field groups (секции в UI)
-- [ ] Import/export схем между тенантами
-- [ ] Full-text search по custom fields через rustok-index
-- [ ] Schema versioning (история изменений определений)
-- [ ] Data migration tool (ретро-валидация существующих metadata)
+- [ ] Conditional fields (show field B if field A = X)
+- [ ] Computed fields (calculated from other fields)
+- [ ] Field groups (sections in UI)
+- [ ] Import/export of schemas between tenants
+- [ ] Full-text search over custom fields via rustok-index
+- [ ] Schema versioning (change history of definitions)
+- [ ] Data migration tool (retro-validation of existing metadata)
 
 ---
 
 ## Tracking
 
-При изменении плана:
-1. Обновить этот файл
-2. Обновить ссылки и статус в [`docs/modules/_index.md`](/docs/modules/_index.md) или [`docs/modules/registry.md`](/docs/modules/registry.md), если меняется состав/статус модуля
-3. Запустить `cargo test -p rustok-core` — тесты field_schema должны проходить
-> **Live status override (2026-04-05):** attached multilingual donor path уже реально закрыт для `user`, `product`, `order` и `topic` через shared `flex_attached_localized_values`.
-> `topic` больше не является schema-level consumer: forum topic donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values резолвятся по тому же effective locale contract, что и у остальных live donors.
-> Если нижележащие разделы старого плана говорят, что `order` ещё не переведён или что для `topic` уже существует donor metadata path, считать это устаревшим.
+When changing the plan:
+1. Update this file
+2. Update links and status in [`docs/modules/_index.md`](/docs/modules/_index.md) or [`docs/modules/registry.md`](/docs/modules/registry.md), if module composition/status changes
+3. Run `cargo test -p rustok-core` — field_schema tests must pass
+> **Live status override (2026-04-05):** attached multilingual donor path is already actually closed for `user`, `product`, `order` and `topic` through shared `flex_attached_localized_values`.
+> `topic` is no longer a schema-level consumer: forum topic donor payload now lives in `forum_topics.metadata`, and locale-aware Flex values are resolved using the same effective locale contract as the other live donors.
+> If underlying sections of the old plan say that `order` has not yet been migrated or that `topic` already has a donor metadata path, consider that outdated.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and relevance of `README.md` and local docs.
+- [ ] Lock/update verification gates for the current module state.

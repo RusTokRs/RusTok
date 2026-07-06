@@ -6,204 +6,205 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# RusToK — Запрещённые действия (NEVER DO)
 
-Этот документ содержит **жёсткие запреты** — вещи, которые нельзя делать ни при каких обстоятельствах при работе с платформой RusToK. Нарушение любого из этих пунктов приводит к критическим последствиям: утечкам данных, потере консистентности, краху сервера или уязвимостям безопасности.
+# RusToK — Forbidden Actions (NEVER DO)
 
-> **Правило:** Если сомневаешься — не делай. Спроси. Этот документ — абсолютный приоритет над любыми другими рекомендациями.
+This document contains **hard prohibitions** — things that must never be done under any circumstances when working with the RusToK platform. Violation of any of these points leads to critical consequences: data leaks, consistency loss, server crashes, or security vulnerabilities.
 
----
-
-## Условные обозначения
-
-- **SEVERITY: CRITICAL** — Может привести к утечке данных, краху production, или неустранимой потере
-- **SEVERITY: HIGH** — Серьёзная деградация функциональности, сложное восстановление
-- **SEVERITY: MEDIUM** — Технический долг, потенциальные баги, деградация DX
+> **Rule:** When in doubt — don't do it. Ask. This document takes absolute priority over any other recommendations.
 
 ---
 
-## 1. Данные и Multi-Tenancy
+## Notation
 
-### 1.1 ЗАПРЕЩЕНО: SQL-запросы без `WHERE tenant_id = ?`
+- **SEVERITY: CRITICAL** — May lead to data leaks, production crashes, or irreversible loss
+- **SEVERITY: HIGH** — Serious functional degradation, complex recovery
+- **SEVERITY: MEDIUM** — Technical debt, potential bugs, DX degradation
+
+---
+
+## 1. Data and Multi-Tenancy
+
+### 1.1 FORBIDDEN: SQL queries without `WHERE tenant_id = ?`
 
 **SEVERITY: CRITICAL**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — утечка данных между tenants
+// ❌ FORBIDDEN — data leak between tenants
 let products = Product::find().all(&db).await?;
 
-// ✅ ОБЯЗАТЕЛЬНО
+// ✅ REQUIRED
 let products = Product::find()
     .filter(product::Column::TenantId.eq(tenant_id))
     .all(&db)
     .await?;
 ```
 
-**Последствия:** Один tenant видит данные другого. Нарушение GDPR, потеря клиентов, юридические последствия.
+**Consequences:** One tenant sees another tenant's data. GDPR violation, customer loss, legal consequences.
 
-**Как проверить:** `grep -r "find().all" --include="*.rs"` — каждый такой вызов должен иметь `.filter(...tenant_id...)` выше.
+**How to check:** `grep -r "find().all" --include="*.rs"` — every such call must have `.filter(...tenant_id...)` above.
 
 ---
 
-### 1.2 ЗАПРЕЩЕНО: Таблицы без поля `tenant_id`
+### 1.2 FORBIDDEN: Tables without `tenant_id` column
 
 **SEVERITY: CRITICAL**
 
-Каждая domain-таблица **обязана** иметь `tenant_id UUID NOT NULL`. Единственные исключения — системные таблицы (`tenants` сама, `sys_events`, `seaql_migrations`).
+Every domain table **must** have `tenant_id UUID NOT NULL`. The only exceptions are system tables (`tenants` itself, `sys_events`, `seaql_migrations`).
 
-**Последствия:** Невозможно изолировать данные, невозможно удалить tenant.
+**Consequences:** Impossible to isolate data, impossible to delete a tenant.
 
 ---
 
-### 1.3 ЗАПРЕЩЕНО: Hard DELETE для бизнес-сущностей
+### 1.3 FORBIDDEN: Hard DELETE for business entities
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО
+// ❌ FORBIDDEN
 Product::delete_by_id(product_id).exec(&db).await?;
 
-// ✅ Soft delete через state machine
+// ✅ Soft delete via state machine
 product.status = Status::Archived;
 product.update(&db).await?;
 ```
 
-**Последствия:** Потеря аудитной истории, broken references из заказов/событий.
+**Consequences:** Loss of audit history, broken references from orders/events.
 
 ---
 
-## 2. Событийная система
+## 2. Event System
 
-### 2.1 ЗАПРЕЩЕНО: `publish()` вместо `publish_in_tx()` для бизнес-событий
+### 2.1 FORBIDDEN: `publish()` instead of `publish_in_tx()` for business events
 
 **SEVERITY: CRITICAL**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — событие уходит даже если транзакция откатится
+// ❌ FORBIDDEN — event goes out even if the transaction rolls back
 service.create_product(&input).await?;
 event_bus.publish(ProductCreated { id }).await?;
 
-// ✅ ОБЯЗАТЕЛЬНО — атомарно в одной транзакции
+// ✅ REQUIRED — atomic in one transaction
 let tx = db.begin().await?;
 let product = service.create_product_in_tx(&tx, &input).await?;
 event_bus.publish_in_tx(&tx, ProductCreated { id: product.id }).await?;
 tx.commit().await?;
 ```
 
-**Последствия:** Phantom events (событие ушло, а данных нет) или lost events (данные есть, а событие не ушло). Index рассинхронизирован с write DB.
+**Consequences:** Phantom events (event sent but no data) or lost events (data exists but event not sent). Index out of sync with write DB.
 
 ---
 
-### 2.2 ЗАПРЕЩЕНО: Production без Outbox relay worker
+### 2.2 FORBIDDEN: Production without Outbox relay worker
 
 **SEVERITY: CRITICAL**
 
-Если `transport = "outbox"`, но relay worker не запущен — события **навсегда** застрянут в таблице `sys_events` со статусом `pending`.
+If `transport = "outbox"` but the relay worker is not running — events will be **permanently** stuck in the `sys_events` table with `pending` status.
 
-**Последствия:** Index не обновляется, storefront показывает устаревшие данные, DLQ растёт бесконечно.
+**Consequences:** Index not updated, storefront shows stale data, DLQ grows indefinitely.
 
 ---
 
-### 2.3 ЗАПРЕЩЕНО: `transport = "memory"` в production
+### 2.3 FORBIDDEN: `transport = "memory"` in production
 
 **SEVERITY: HIGH**
 
-Memory transport (`tokio::broadcast`) теряет все события при перезапуске сервера.
+Memory transport (`tokio::broadcast`) loses all events on server restart.
 
-**Последствия:** Потеря событий при deploy, рестарте, OOM kill.
+**Consequences:** Event loss on deploy, restart, or OOM kill.
 
 ---
 
-### 2.4 ЗАПРЕЩЕНО: События без `tenant_id` в payload
+### 2.4 FORBIDDEN: Events without `tenant_id` in payload
 
 **SEVERITY: HIGH**
 
-Каждый `DomainEvent` **обязан** содержать `tenant_id`. Index и listeners фильтруют по tenant.
+Every `DomainEvent` **must** contain `tenant_id`. Index and listeners filter by tenant.
 
-**Последствия:** Index не может определить, к какому tenant относится событие. Cross-tenant data pollution.
+**Consequences:** Index cannot determine which tenant the event belongs to. Cross-tenant data pollution.
 
 ---
 
-## 3. Auth и RBAC
+## 3. Auth and RBAC
 
-### 3.1 ЗАПРЕЩЕНО: Endpoints без RBAC-проверки
+### 3.1 FORBIDDEN: Endpoints without RBAC check
 
 **SEVERITY: CRITICAL**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — любой authenticated user может удалить product
+// ❌ FORBIDDEN — any authenticated user can delete a product
 pub async fn delete_product(
-    user: CurrentUser,  // только auth, без RBAC
+    user: CurrentUser,  // auth only, no RBAC
     Path(id): Path<Uuid>,
 ) -> Result<()> { ... }
 
-// ✅ ОБЯЗАТЕЛЬНО
+// ✅ REQUIRED
 pub async fn delete_product(
     RequireProductsDelete(user): RequireProductsDelete,  // auth + RBAC
     Path(id): Path<Uuid>,
 ) -> Result<()> { ... }
 ```
 
-**Исключения (endpoints без RBAC):** `GET /api/health`, `POST /api/auth/login`, `POST /api/auth/register`, public storefront read queries.
+**Exceptions (endpoints without RBAC):** `GET /api/health`, `POST /api/auth/login`, `POST /api/auth/register`, public storefront read queries.
 
-**Последствия:** Privilege escalation — Customer может удалять products, менять settings, управлять users.
+**Consequences:** Privilege escalation — Customer can delete products, change settings, manage users.
 
 ---
 
-### 3.2 ЗАПРЕЩЕНО: Hardcoded secrets в коде
+### 3.2 FORBIDDEN: Hardcoded secrets in code
 
 **SEVERITY: CRITICAL**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО
+// ❌ FORBIDDEN
 const JWT_SECRET: &str = "my-super-secret-key-123";
 const DB_PASSWORD: &str = "postgres";
 
-// ✅ ОБЯЗАТЕЛЬНО — через env vars
+// ✅ REQUIRED — via env vars
 let jwt_secret = std::env::var("JWT_SECRET")
     .expect("JWT_SECRET must be set");
 ```
 
-**Последствия:** Компрометация всех токенов/паролей при утечке репозитория.
+**Consequences:** Compromise of all tokens/passwords if repository is leaked.
 
 ---
 
-### 3.3 ЗАПРЕЩЕНО: Дублирование auth логики между REST и GraphQL
+### 3.3 FORBIDDEN: Duplicating auth logic between REST and GraphQL
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — разная логика в REST и GraphQL
+// ❌ FORBIDDEN — different logic in REST and GraphQL
 // controllers/auth.rs
-fn login(input) { /* своя логика */ }
+fn login(input) { /* own logic */ }
 // graphql/auth.rs
-fn login_mutation(input) { /* другая логика */ }
+fn login_mutation(input) { /* different logic */ }
 
-// ✅ ОБЯЗАТЕЛЬНО — единый AuthLifecycleService
-// services/auth_lifecycle.rs содержит всю логику
-// REST и GraphQL — тонкие adapters
+// ✅ REQUIRED — single AuthLifecycleService
+// services/auth_lifecycle.rs contains all logic
+// REST and GraphQL are thin adapters
 ```
 
-**Последствия:** Рассинхрон — один transport разрешает, другой запрещает. Дыры в безопасности.
+**Consequences:** Desync — one transport allows, another blocks. Security holes.
 
 ---
 
-### 3.4 ЗАПРЕЩЕНО: Бизнес-логика в controllers/resolvers
+### 3.4 FORBIDDEN: Business logic in controllers/resolvers
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — бизнес-логика в controller
+// ❌ FORBIDDEN — business logic in controller
 pub async fn create_product(input: CreateProductInput) -> Result<Json<Product>> {
     input.validate()?;
     let product = Product::new(input.name, input.price);
-    // 50 строк бизнес-логики прямо здесь...
+    // 50 lines of business logic right here...
     product.save(&db).await?;
     event_bus.publish(ProductCreated { id: product.id }).await?;
     Ok(Json(product))
 }
 
-// ✅ ОБЯЗАТЕЛЬНО — controller вызывает service
+// ✅ REQUIRED — controller calls service
 pub async fn create_product(
     RequireProductsCreate(user): RequireProductsCreate,
     State(ctx): State<AppContext>,
@@ -214,25 +215,25 @@ pub async fn create_product(
 }
 ```
 
-**Последствия:** Дублирование между REST и GraphQL. Невозможно тестировать бизнес-логику без HTTP.
+**Consequences:** Duplication between REST and GraphQL. Impossible to test business logic without HTTP.
 
 ---
 
-### 3.5 ЗАПРЕЩЕНО: GraphQL resolvers без DataLoader для связанных данных
+### 3.5 FORBIDDEN: GraphQL resolvers without DataLoader for related data
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — N+1 запросов
+// ❌ FORBIDDEN — N+1 queries
 #[Object]
 impl ProductQuery {
     async fn variants(&self, ctx: &Context<'_>) -> Result<Vec<Variant>> {
-        // Каждый product делает свой SQL запрос!
+        // Each product makes its own SQL query!
         db.find_variants_by_product(self.id).await
     }
 }
 
-// ✅ ОБЯЗАТЕЛЬНО — DataLoader
+// ✅ REQUIRED — DataLoader
 #[Object]
 impl ProductQuery {
     async fn variants(&self, ctx: &Context<'_>) -> Result<Vec<Variant>> {
@@ -242,22 +243,22 @@ impl ProductQuery {
 }
 ```
 
-**Последствия:** 100 products × 1 query каждый = 101 SQL запрос вместо 2. Latency ×50, нагрузка на DB.
+**Consequences:** 100 products × 1 query each = 101 SQL queries instead of 2. Latency ×50, DB load.
 
 ---
 
-### 3.6 ЗАПРЕЩЕНО: List endpoints без пагинации
+### 3.6 FORBIDDEN: List endpoints without pagination
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — загрузит всю таблицу
+// ❌ FORBIDDEN — loads the entire table
 async fn list_products() -> Result<Json<Vec<Product>>> {
     let all = Product::find().all(&db).await?;
     Ok(Json(all))
 }
 
-// ✅ ОБЯЗАТЕЛЬНО — пагинация
+// ✅ REQUIRED — pagination
 async fn list_products(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<ProductResponse>>> {
@@ -266,19 +267,19 @@ async fn list_products(
 }
 ```
 
-**Последствия:** 100 000 записей в памяти. OOM, timeout, DoS.
+**Consequences:** 100,000 records in memory. OOM, timeout, DoS.
 
 ---
 
-### 3.7 ЗАПРЕЩЕНО: REST endpoints без OpenAPI annotations
+### 3.7 FORBIDDEN: REST endpoints without OpenAPI annotations
 
 **SEVERITY: MEDIUM**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — endpoint не виден в Swagger
+// ❌ FORBIDDEN — endpoint not visible in Swagger
 pub async fn create_product(...) -> Result<Json<Product>> { }
 
-// ✅ ОБЯЗАТЕЛЬНО
+// ✅ REQUIRED
 #[utoipa::path(
     post, path = "/api/products",
     request_body = CreateProductInput,
@@ -288,67 +289,67 @@ pub async fn create_product(...) -> Result<Json<Product>> { }
 pub async fn create_product(...) -> Result<Json<ProductResponse>> { }
 ```
 
-**Последствия:** Swagger UI не показывает endpoint. Фронтенд-разработчики не знают о существовании API.
+**Consequences:** Swagger UI doesn't show the endpoint. Frontend developers don't know the API exists.
 
 ---
 
-## 4. Код и Runtime
+## 4. Code and Runtime
 
-### 4.1 ЗАПРЕЩЕНО: `unwrap()` / `expect()` в production коде
+### 4.1 FORBIDDEN: `unwrap()` / `expect()` in production code
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО
+// ❌ FORBIDDEN
 let user = db.find_user(id).await.unwrap();
 let config = serde_json::from_str(data).expect("valid json");
 
-// ✅ ОБЯЗАТЕЛЬНО
+// ✅ REQUIRED
 let user = db.find_user(id).await
     .map_err(|e| Error::Database(e))?;
 let config: Config = serde_json::from_str(data)
     .map_err(|e| Error::Validation(e.to_string()))?;
 ```
 
-**Исключения:** `expect()` допустим ТОЛЬКО для программных инвариантов, которые гарантированы на уровне типов (и задокументированы).
+**Exceptions:** `expect()` is allowed ONLY for program invariants guaranteed at the type level (and documented).
 
-**Последствия:** Паника крашит весь tokio runtime = все подключённые клиенты теряют соединение.
+**Consequences:** Panic crashes the entire tokio runtime = all connected clients lose connection.
 
 ---
 
-### 4.2 ЗАПРЕЩЕНО: Blocking операции в async контексте
+### 4.2 FORBIDDEN: Blocking operations in async context
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — блокирует tokio worker thread
+// ❌ FORBIDDEN — blocks tokio worker thread
 async fn process() {
     std::thread::sleep(Duration::from_secs(1));  // blocking!
     let data = std::fs::read_to_string("file.txt")?;  // blocking!
 }
 
-// ✅ ОБЯЗАТЕЛЬНО
+// ✅ REQUIRED
 async fn process() {
     tokio::time::sleep(Duration::from_secs(1)).await;
     let data = tokio::fs::read_to_string("file.txt").await?;
 }
 ```
 
-**Последствия:** Блокировка всех async tasks на этом worker thread. Latency spikes, timeouts.
+**Consequences:** Blocks all async tasks on this worker thread. Latency spikes, timeouts.
 
 ---
 
-### 4.3 ЗАПРЕЩЕНО: Неограниченный `tokio::spawn` в цикле
+### 4.3 FORBIDDEN: Unlimited `tokio::spawn` in a loop
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — может создать миллион tasks
+// ❌ FORBIDDEN — may create a million tasks
 for item in huge_list {
     tokio::spawn(async move { process(item).await });
 }
 
-// ✅ ОБЯЗАТЕЛЬНО — Semaphore или JoinSet
+// ✅ REQUIRED — Semaphore or JoinSet
 let semaphore = Arc::new(Semaphore::new(100));
 for item in huge_list {
     let permit = semaphore.clone().acquire_owned().await?;
@@ -359,250 +360,250 @@ for item in huge_list {
 }
 ```
 
-**Последствия:** OOM, CPU starvation, resource exhaustion.
+**Consequences:** OOM, CPU starvation, resource exhaustion.
 
 ---
 
-### 4.4 ЗАПРЕЩЕНО: Логирование PII и secrets
+### 4.4 FORBIDDEN: Logging PII and secrets
 
 **SEVERITY: CRITICAL**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО
+// ❌ FORBIDDEN
 tracing::info!("User login: email={}, password={}", email, password);
 tracing::debug!("JWT token: {}", token);
 tracing::info!("DB connection: {}", connection_string_with_password);
 
-// ✅ ОБЯЗАТЕЛЬНО
+// ✅ REQUIRED
 tracing::info!(user_id = %user.id, "User logged in");
 ```
 
-**Последствия:** GDPR violation, утечка credentials через лог-агрегаторы.
+**Consequences:** GDPR violation, credential leak through log aggregators.
 
 ---
 
-## 5. Модульная система
+## 5. Module System
 
-### 5.1 ЗАПРЕЩЕНО: Отключать Core-модули
+### 5.1 FORBIDDEN: Disabling Core modules
 
 **SEVERITY: CRITICAL**
 
-`rustok-index`, `rustok-tenant`, `rustok-rbac` имеют `ModuleKind::Core`. Попытка toggle через `ModuleLifecycleService` **обязана** возвращать ошибку.
+`rustok-index`, `rustok-tenant`, `rustok-rbac` have `ModuleKind::Core`. Any attempt to toggle via `ModuleLifecycleService` **must** return an error.
 
-**Последствия:** RBAC выключен = нет авторизации. Tenant выключен = нет multi-tenancy. Index выключен = storefront не работает.
+**Consequences:** RBAC disabled = no authorization. Tenant disabled = no multi-tenancy. Index disabled = storefront doesn't work.
 
 ---
 
-### 5.2 ЗАПРЕЩЕНО: Обходить ModuleRegistry для lifecycle
+### 5.2 FORBIDDEN: Bypassing ModuleRegistry for lifecycle
 
 **SEVERITY: HIGH**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — модуль подключается мимо registry
+// ❌ FORBIDDEN — module connects bypassing registry
 fn routes() -> AppRoutes {
     AppRoutes::new()
-        .add_route(my_custom_module::routes())  // Мимо registry!
+        .add_route(my_custom_module::routes())  // Bypassing registry!
 }
 
-// ✅ ОБЯЗАТЕЛЬНО — через RusToKModule + build_registry()
+// ✅ REQUIRED — via RusToKModule + build_registry()
 ```
 
-**Последствия:** Module health не видно, toggle не работает, миграции не подхватываются.
+**Consequences:** Module health not visible, toggle doesn't work, migrations aren't picked up.
 
 ---
 
-### 5.3 ЗАПРЕЩЕНО: Включать зависимый модуль без его dependency
+### 5.3 FORBIDDEN: Enabling a dependent module without its dependency
 
 **SEVERITY: HIGH**
 
-Blog зависит от Content. Forum зависит от Content.
+Blog depends on Content. Forum depends on Content.
 
 ```rust
-// ❌ ЗАПРЕЩЕНО
-toggle_module("blog", true);   // Content отключён!
+// ❌ FORBIDDEN
+toggle_module("blog", true);   // Content is disabled!
 
-// ✅ toggle_module проверяет dependencies автоматически
+// ✅ toggle_module checks dependencies automatically
 ```
 
-**Последствия:** Runtime ошибки, отсутствующие таблицы, паники.
+**Consequences:** Runtime errors, missing tables, panics.
 
 ---
 
 ## 6. Loco / Framework
 
-### 6.1 ЗАПРЕЩЕНО: Обходить Loco hooks lifecycle
+### 6.1 FORBIDDEN: Bypassing Loco hooks lifecycle
 
 **SEVERITY: HIGH**
 
-Нельзя создавать параллельный lifecycle «чистого Axum» — `Hooks::routes`, `Hooks::after_routes`, `Hooks::connect_workers` существуют для инициализации.
+Must not create a parallel "pure Axum" lifecycle — `Hooks::routes`, `Hooks::after_routes`, `Hooks::connect_workers` exist for initialization.
 
-**Последствия:** Middleware не применяется, dependency injection не работает, auth/tenant/RBAC не инициализированы.
+**Consequences:** Middleware not applied, dependency injection doesn't work, auth/tenant/RBAC not initialized.
 
 ---
 
-### 6.2 ЗАПРЕЩЕНО: Смешивать error контракты в controllers
+### 6.2 FORBIDDEN: Mixing error contracts in controllers
 
 **SEVERITY: MEDIUM**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО — свои типы ошибок в контроллерах
+// ❌ FORBIDDEN — custom error types in controllers
 pub async fn handler() -> Result<Json<Data>, MyCustomError> { }
 
-// ✅ ОБЯЗАТЕЛЬНО — loco_rs::Result
+// ✅ REQUIRED — loco_rs::Result
 pub async fn handler() -> loco_rs::Result<Json<Data>> { }
 ```
 
-**Последствия:** Несовместимые error responses, middleware не может обработать ошибку.
+**Consequences:** Incompatible error responses, middleware cannot handle the error.
 
 ---
 
-### 6.3 Framework deviation criteria (обязательные критерии отклонения)
+### 6.3 Framework deviation criteria (mandatory rejection criteria)
 
 **SEVERITY: HIGH**
 
-Любое осознанное отклонение от framework/runtime baseline (например, отказ от стандартного механизма Loco в пользу custom реализации) допустимо только при явном прохождении минимальных критериев:
+Any intentional deviation from the framework/runtime baseline (e.g., replacing the standard Loco mechanism with a custom implementation) is only permissible with explicit fulfillment of the minimum criteria:
 
-1. **Reliability semantics** — зафиксирована модель delivery/consistency (at-most-once / at-least-once / exactly-once where applicable), границы идемпотентности и допущения.
-2. **Backpressure** — описан контроль нагрузки (ограничение очередей, concurrency limits, fail-fast/timeout policy), чтобы исключить неограниченный рост latency и memory.
-3. **Replay** — определена стратегия безопасного повторного проигрывания (replay window, deduplication/idempotency contract, порядок восстановления).
-4. **Multi-tenant guarantees** — показано, что tenant isolation, routing и authz-проверки не деградируют при новом пути исполнения.
-5. **Operational runbook impact** — обновлён incident/runbook контур: сигналы, метрики, алерты, triage-процедуры и on-call шаги.
+1. **Reliability semantics** — delivery/consistency model is fixed (at-most-once / at-least-once / exactly-once where applicable), idempotency boundaries and assumptions defined.
+2. **Backpressure** — load control is described (queue limits, concurrency limits, fail-fast/timeout policy) to prevent unbounded growth of latency and memory.
+3. **Replay** — a safe replay strategy is defined (replay window, deduplication/idempotency contract, recovery order).
+4. **Multi-tenant guarantees** — shown that tenant isolation, routing and authz checks do not degrade under the new execution path.
+5. **Operational runbook impact** — incident/runbook contour is updated: signals, metrics, alerts, triage procedures and on-call steps.
 
-Отклонение без покрытия всех пяти пунктов считается архитектурно неподтверждённым и не принимается.
+Deviation without covering all five points is considered architecturally unsubstantiated and is not accepted.
 
 ---
 
-### 6.4 Framework deviation checklist (обязателен для каждого нового отклонения)
+### 6.4 Framework deviation checklist (mandatory for each new deviation)
 
-Перед merge обязан быть заполнен следующий checklist:
+Before merge, the following checklist must be completed:
 
-- [ ] **Benchmark evidence**: приложены воспроизводимые benchmark-результаты (baseline vs proposed), входные данные и методика.
-- [ ] **Failure-mode table**: есть таблица failure modes (симптом, blast radius, detection signal, mitigation, owner).
-- [ ] **Rollback strategy**: зафиксирован rollback path (триггеры отката, шаги, expected recovery time, residual risk).
-- [ ] **Owner sign-off**: есть явное подтверждение владельца домена/платформы на выбранное отклонение.
+- [ ] **Benchmark evidence**: reproducible benchmark results (baseline vs proposed), input data and methodology attached.
+- [ ] **Failure-mode table**: a table of failure modes (symptom, blast radius, detection signal, mitigation, owner).
+- [ ] **Rollback strategy**: rollback path is fixed (rollback triggers, steps, expected recovery time, residual risk).
+- [ ] **Owner sign-off**: explicit confirmation from the domain/platform owner for the chosen deviation.
 
-Checklist является обязательным gate и должен быть отражён:
+The checklist is a mandatory gate and must be reflected:
 
-- в PR checklist процесса контрибуции: [`CONTRIBUTING.md`](../../CONTRIBUTING.md#pr-checklist);
-- в server governance-документации: [`apps/server/docs/README.md`](../../apps/server/docs/README.md).
+- in the PR checklist of the contribution process: [`CONTRIBUTING.md`](../../CONTRIBUTING.md#pr-checklist);
+- in the server governance documentation: [`apps/server/docs/README.md`](../../apps/server/docs/README.md).
 
 ---
 
 ## 7. MCP
 
-### 7.1 ЗАПРЕЩЕНО: Бизнес-логика в MCP адаптере
+### 7.1 FORBIDDEN: Business logic in MCP adapter
 
 **SEVERITY: MEDIUM**
 
-MCP слой — тонкий adapter над service/registry. Вся логика — в domain services.
+MCP layer is a thin adapter over service/registry. All logic belongs in domain services.
 
-**Последствия:** Дублирование логики, невозможно использовать те же правила без MCP.
+**Consequences:** Logic duplication, impossible to use the same rules without MCP.
 
 ---
 
-### 7.2 ЗАПРЕЩЕНО: Обходить typed tools (`McpToolResponse`)
+### 7.2 FORBIDDEN: Bypassing typed tools (`McpToolResponse`)
 
 **SEVERITY: MEDIUM**
 
 ```rust
-// ❌ ЗАПРЕЩЕНО
+// ❌ FORBIDDEN
 return serde_json::json!({"result": "ok"});
 
-// ✅ ОБЯЗАТЕЛЬНО
+// ✅ REQUIRED
 return McpToolResponse::success(data);
 ```
 
-**Последствия:** Клиент не может парсить ответ, нет error handling.
+**Consequences:** Client cannot parse the response, no error handling.
 
 ---
 
 ## 8. Telemetry
 
-### 8.1 ЗАПРЕЩЕНО: Множественная инициализация telemetry
+### 8.1 FORBIDDEN: Multiple telemetry initialization
 
 **SEVERITY: HIGH**
 
-Telemetry runtime (tracing subscriber, OTLP exporter) инициализируется **ровно один раз** при старте сервера.
+Telemetry runtime (tracing subscriber, OTLP exporter) is initialized **exactly once** at server startup.
 
-**Последствия:** Паника, дублирование spans, утечка памяти, некорректные метрики.
+**Consequences:** Panic, span duplication, memory leak, incorrect metrics.
 
 ---
 
-### 8.2 ЗАПРЕЩЕНО: Фрагментация metrics registry
+### 8.2 FORBIDDEN: Fragmented metrics registry
 
 **SEVERITY: MEDIUM**
 
-Все Prometheus метрики — через единый registry. Не создавать отдельные registry в модулях.
+All Prometheus metrics go through a single registry. Do not create separate registries in modules.
 
-**Последствия:** `/metrics` не показывает часть метрик, Grafana dashboards пустые.
+**Consequences:** `/metrics` doesn't show some metrics, Grafana dashboards are empty.
 
 ---
 
 ## 9. DevOps
 
-### 9.1 ЗАПРЕЩЕНО: Коммит без `cargo fmt` и `cargo clippy`
+### 9.1 FORBIDDEN: Committing without `cargo fmt` and `cargo clippy`
 
 **SEVERITY: MEDIUM**
 
 ```bash
-# ❌ ЗАПРЕЩЕНО — коммитить без проверки
+# ❌ FORBIDDEN — commit without checking
 git add . && git commit -m "changes"
 
-# ✅ ОБЯЗАТЕЛЬНО
+# ✅ REQUIRED
 cargo fmt --all -- --check
 cargo clippy --workspace -- -D warnings
-# Только потом коммит
+# Only then commit
 ```
 
-**Последствия:** Шумные diff'ы, скрытые баги, failed CI.
+**Consequences:** Noisy diffs, hidden bugs, failed CI.
 
 ---
 
-### 9.2 ЗАПРЕЩЕНО: Редактировать CI/CD workflow без явного запроса
+### 9.2 FORBIDDEN: Editing CI/CD workflow without explicit request
 
 **SEVERITY: HIGH**
 
-`.github/workflows/*.yml` — только по явному запросу и с ревью.
+`.github/workflows/*.yml` — only on explicit request and with review.
 
-**Последствия:** Сломанный CI для всей команды.
+**Consequences:** Broken CI for the entire team.
 
 ---
 
-### 9.3 ЗАПРЕЩЕНО: Коммитить `.env` файлы с реальными credentials
+### 9.3 FORBIDDEN: Committing `.env` files with real credentials
 
 **SEVERITY: CRITICAL**
 
-`.gitignore` исключает `.env`. Только `.env.dev.example` с placeholder values.
+`.gitignore` excludes `.env`. Only `.env.dev.example` with placeholder values.
 
-**Последствия:** Утечка production credentials через git history.
-
----
-
-## Чеклист перед коммитом
-
-Перед каждым коммитом убедись, что **ни один** запрет из этого документа не нарушен:
-
-- [ ] Нет SQL без `tenant_id` filter
-- [ ] Нет `unwrap()`/`expect()` в новом production коде
-- [ ] Нет `publish()` вместо `publish_in_tx()` для бизнес-событий
-- [ ] Нет hardcoded secrets
-- [ ] Нет endpoints без RBAC (кроме public)
-- [ ] Нет blocking ops в async
-- [ ] Нет логирования PII
-- [ ] Нет бизнес-логики в controllers/resolvers (только вызов services)
-- [ ] Нет N+1 queries в GraphQL (DataLoader для связанных данных)
-- [ ] Нет list endpoints без пагинации
-- [ ] REST endpoints имеют `#[utoipa::path]` annotations
-- [ ] REST и GraphQL auth logic идентичны (через AuthLifecycleService)
-- [ ] `cargo fmt` и `cargo clippy` пройдены
-- [ ] Документация обновлена при изменении кода
+**Consequences:** Production credential leak through git history.
 
 ---
 
-## Связанные документы
+## Pre-commit Checklist
 
-- [Паттерны vs Антипаттерны](./patterns-vs-antipatterns.md) — сводная таблица правильного и неправильного
-- [Стандарты кода](./coding.md) — детальный гайд
-- [Known Pitfalls](../ai/KNOWN_PITFALLS.md) — ловушки для AI-агентов
+Before each commit, ensure **none** of the prohibitions in this document are violated:
+
+- [ ] No SQL without `tenant_id` filter
+- [ ] No `unwrap()`/`expect()` in new production code
+- [ ] No `publish()` instead of `publish_in_tx()` for business events
+- [ ] No hardcoded secrets
+- [ ] No endpoints without RBAC (except public)
+- [ ] No blocking ops in async
+- [ ] No logging of PII
+- [ ] No business logic in controllers/resolvers (only service calls)
+- [ ] No N+1 queries in GraphQL (DataLoader for related data)
+- [ ] No list endpoints without pagination
+- [ ] REST endpoints have `#[utoipa::path]` annotations
+- [ ] REST and GraphQL auth logic are identical (via AuthLifecycleService)
+- [ ] `cargo fmt` and `cargo clippy` passed
+- [ ] Documentation updated when code changes
+
+---
+
+## Related Documents
+
+- [Patterns vs Antipatterns](./patterns-vs-antipatterns.md) — summary table of correct and incorrect approaches
+- [Code Standards](./coding.md) — detailed guide
+- [Known Pitfalls](../ai/KNOWN_PITFALLS.md) — traps for AI agents
 - [Security Standards](./security.md) — OWASP coverage
-- [Plan верификации](../verification/PLATFORM_VERIFICATION_PLAN.md) — главный orchestration-план периодической проверки платформы
+- [Verification Plan](../verification/PLATFORM_VERIFICATION_PLAN.md) — main orchestration plan for periodic platform verification

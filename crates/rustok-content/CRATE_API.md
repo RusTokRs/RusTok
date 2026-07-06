@@ -39,19 +39,19 @@
 - `ContentError::Forbidden(String)` covers RBAC failures.
 - `ContentError::Database(DbErr)` covers persistence failures, including orchestration audit/idempotency tables.
 
-## Минимальный набор контрактов
+## Minimum Contract Set
 
-### Входные DTO/команды
+### Input DTOs/Commands
 - Public orchestration commands are defined by the `*Input` structs exported from `services`.
 - Changes to the public fields of these command types are breaking changes for orchestration consumers.
 
-### Доменные инварианты
+### Domain Invariants
 - Multi-tenant isolation and state-machine validation remain mandatory invariants.
 - Invalid transitions, unsafe payloads, and cross-tenant access must fail with domain errors.
 
-### События / outbox-побочные эффекты
+### Events / Outbox Side Effects
 - Orchestration events must be published through `TransactionalEventBus`.
 - Event payloads and event types must remain stable for cross-module consumers.
 
-### Ошибки / коды отказов
+### Errors / Failure Codes
 - `ContentError` and `ContentResult<T>` define the stable failure contract of the crate.

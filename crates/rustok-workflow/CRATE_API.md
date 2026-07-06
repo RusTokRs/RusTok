@@ -1,83 +1,83 @@
 # rustok-workflow — API overview
 
-> Этот документ — **curated overview**, а не ручной слепок сигнатур.
-> Канонический reference берётся из кода и сгенерированных артефактов.
+> This document is a **curated overview**, not a manual snapshot of signatures.
+> The canonical reference comes from code and generated artifacts.
 
 ## Source of truth
 
-- Код crate: `crates/rustok-workflow/src/**`
-- Rustdoc (локально):
+- Crate source: `crates/rustok-workflow/src/**`
+- Rustdoc (locally):
   - `cargo doc -p rustok-workflow --no-deps`
 - Server runtime wiring:
   - `apps/server/src/modules/workflow.rs`
 
 ## Module registration contract
 
-`WorkflowModule` регистрируется как optional module в module registry и публикует:
+`WorkflowModule` registers as an optional module in the module registry and publishes:
 
-- slug/name/kind модуля;
-- миграции workflow bounded context;
-- permissions для workflow authoring/execution read paths.
+- module slug/name/kind;
+- workflow bounded context migrations;
+- permissions for workflow authoring/execution read paths.
 
-Для точных значений (slug, permissions, migration list) используйте код,
-а не дублирование в markdown.
+For exact values (slug, permissions, migration list), use the code,
+not duplication in markdown.
 
 ## Public surface map
 
-Публичный API crate разбит на следующие области:
+The crate's public API is divided into the following areas:
 
-- `controllers` — REST endpoints и route wiring;
-- `graphql` — query/mutation surface для workflow authoring и reads;
-- `services` — доменный orchestration слой (`WorkflowService`, execution/use-case logic);
-- `steps` — runtime step contracts и registries;
-- `templates` — builtin workflow templates и metadata;
-- `dto`/`entities`/`error` — transport contracts, storage model и domain errors.
+- `controllers` — REST endpoints and route wiring;
+- `graphql` — query/mutation surface for workflow authoring and reads;
+- `services` — domain orchestration layer (`WorkflowService`, execution/use-case logic);
+- `steps` — runtime step contracts and registries;
+- `templates` — builtin workflow templates and metadata;
+- `dto`/`entities`/`error` — transport contracts, storage model and domain errors.
 
 ## Domain invariants (must-hold)
 
-- Все write/read операции tenant-scoped.
-- Workflow execution path отделён от authoring path.
-- Step execution идёт через типизированный step runtime (`WorkflowStep` contract).
-- Trigger paths (manual/webhook/event/cron) сходятся в единый execution orchestration.
-- Ошибки исполнения и конфигурации должны возвращаться как typed domain errors,
-  без silent fallback.
+- All write/read operations are tenant-scoped.
+- Workflow execution path is separated from the authoring path.
+- Step execution goes through a typed step runtime (`WorkflowStep` contract).
+- Trigger paths (manual/webhook/event/cron) converge into a single execution orchestration.
+- Execution and configuration errors must be returned as typed domain errors,
+  without silent fallback.
 
 ## Execution model
 
-- `WorkflowService` отвечает за CRUD и orchestration use-cases.
-- `WorkflowEngine` выполняет шаги и управляет step registry/runtime dispatch.
-- `WorkflowTriggerHandler` интегрирует event-driven trigger path.
-- `WorkflowCronScheduler` закрывает schedule-driven trigger path.
+- `WorkflowService` is responsible for CRUD and orchestration use-cases.
+- `WorkflowEngine` executes steps and manages step registry/runtime dispatch.
+- `WorkflowTriggerHandler` integrates the event-driven trigger path.
+- `WorkflowCronScheduler` covers the schedule-driven trigger path.
 
-Важно: актуальные методы/сигнатуры смотрим в исходниках и rustdoc.
-Этот документ фиксирует роли и boundaries, а не API-by-hand.
+Important: for actual methods/signatures, refer to the source code and rustdoc.
+This document captures roles and boundaries, not hand-written API.
 
 ## Extensibility contract
 
-Кастомные шаги подключаются через `WorkflowStep` trait и регистрацию
-в engine runtime (`with_step(...)`).
+Custom steps are connected via the `WorkflowStep` trait and registration
+in the engine runtime (`with_step(...)`).
 
-Требования к шагам:
+Requirements for steps:
 
-- deterministic behavior при одинаковом входном контексте;
-- корректная обработка ошибок через `WorkflowResult`;
-- отсутствие tenant-boundary bypass;
-- отсутствие скрытых side effects вне контракта шага.
+- deterministic behavior given the same input context;
+- correct error handling via `WorkflowResult`;
+- no tenant-boundary bypass;
+- no hidden side effects outside the step contract.
 
 ## Transport entry points
 
 - GraphQL: workflow query/mutation roots.
-- REST: workflow controllers/routes, включая webhook trigger path.
+- REST: workflow controllers/routes, including webhook trigger path.
 
-Точные route/query имена и payload contracts смотреть в source + generated schema.
+For exact route/query names and payload contracts, see source + generated schema.
 
 ## Documentation maintenance rule
 
-При изменении workflow transport contract, execution semantics или error model:
+When changing workflow transport contract, execution semantics, or error model:
 
-1. Обновить этот overview (роли, инварианты, boundaries).
-2. Не дублировать ручные сигнатуры в markdown.
-3. Добавить/обновить ссылки на generated reference в релевантных docs.
+1. Update this overview (roles, invariants, boundaries).
+2. Do not duplicate hand-written signatures in markdown.
+3. Add/update links to generated reference in relevant docs.
 
 ## Hotspot contract (DOC-12 / H4)
 
@@ -85,7 +85,7 @@
 - Doc contracts updated: `crates/rustok-workflow/CRATE_API.md`.
 - Owner scope: workflow module owner.
 - Residual drift risk:
-  - до закрытия DOC-09 (B12 CI artifacts) возможен разрыв между curated overview
-    и фактическими exported reference-артефактами в PR;
-  - при изменении transport payload-форм без обновления generated references
-    risk остаётся высоким.
+  - until DOC-09 (B12 CI artifacts) is closed, there may be a gap between curated overview
+    and actual exported reference artifacts in a PR;
+  - when changing transport payload shapes without updating generated references,
+    risk remains high.

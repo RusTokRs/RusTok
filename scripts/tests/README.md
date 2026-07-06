@@ -1,8 +1,8 @@
 # Scripts tests
 
-Локальные smoke/contract тесты для operational scripts.
+Local smoke/contract tests for operational scripts.
 
-## Запуск
+## Running
 
 ```bash
 scripts/tests/check_dependabot_directories_test.sh
@@ -11,7 +11,7 @@ scripts/tests/auth_release_gate_test.sh
 scripts/tests/page_builder_fba_verify_test.sh
 ```
 
-## Правила
+## Rules
 
-- Тесты обязаны использовать изолированные fixture-каталоги (`mktemp`/`tempfile`) и не зависеть от текущего состояния репозитория.
-- Для новых verify-скриптов сначала добавляйте smoke-тест с позитивным и негативным сценарием.
+- Tests must use isolated fixture directories (`mktemp`/`tempfile`) and must not depend on the current repository state.
+- For new verify scripts, first add a smoke test with a positive and negative scenario.

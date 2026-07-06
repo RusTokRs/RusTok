@@ -1,69 +1,69 @@
-# План реализации `rustok-events`
+# Implementation plan for `rustok-events`
 
-Статус: canonical ownership event contracts уже вынесена в отдельный модуль;
-текущая работа — удерживать compatibility path и schema discipline без дрейфа.
+Status: canonical ownership event contracts have already been moved to a separate module;
+current work is to maintain the compatibility path and schema discipline without drift.
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: Update this block after each increment.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-events` как единственный canonical source для event contracts;
-- синхронизировать schema registry, envelope shape и local docs;
-- не возвращать ownership event contracts обратно в `rustok-core`.
+- keep `rustok-events` as the only canonical source for event contracts;
+- synchronize schema registry, envelope shape and local docs;
+- do not return ownership event contracts back to `rustok-core`.
 
-## Текущее состояние
+## Current state
 
-- `DomainEvent` и `EventEnvelope` уже живут в `rustok-events`;
-- `rustok-core::events` уже работает как compatibility re-export layer;
-- внутренние `rustok-*` crates уже должны импортировать event contracts напрямую из `rustok-events`;
-- schema coverage, versioning guidance и contract tests уже составляют базовый release gate.
+- `DomainEvent` and `EventEnvelope` already live in `rustok-events`;
+- `rustok-core::events` already works as a compatibility re-export layer;
+- internal `rustok-*` crates should already import event contracts directly from `rustok-events`;
+- schema coverage, versioning guidance and contract tests already form the base release gate.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] вынести canonical ownership event contracts в отдельный crate;
-- [x] сохранить compatibility path через `rustok-core::events`;
-- [x] покрыть schema registry, validation и roundtrip contract tests;
-- [ ] удерживать sync между event types, registry и consumer imports (tenant lifecycle family обновлена: добавлен `tenant.module.toggled`).
+- [x] move canonical ownership event contracts to a separate crate;
+- [x] preserve compatibility path through `rustok-core::events`;
+- [x] cover schema registry, validation and roundtrip contract tests;
+- [ ] maintain sync between event types, registry and consumer imports (tenant lifecycle family updated: added `tenant.module.toggled`).
 
 ### 2. Release discipline
 
-- [ ] довести documented release gate до устойчивого процесса вокруг schema changes;
-- [ ] продолжать вычищать остаточные прямые импорты из compatibility path;
-- [ ] документировать breaking/deprecating changes вместе с versioning plan.
+- [ ] bring documented release gate to a sustainable process around schema changes;
+- [ ] continue cleaning residual direct imports from compatibility path;
+- [ ] document breaking/deprecating changes together with versioning plan.
 
 ### 3. Operability
 
-- [ ] удерживать outbox/replay/reindex guidance синхронизированной с event contracts;
-- [ ] синхронизировать local docs и `README.md` при изменении schema surface;
-- [ ] расширять compatibility checks при появлении новых event families.
+- [ ] keep outbox/replay/reindex guidance synchronized with event contracts;
+- [ ] synchronize local docs and `README.md` when schema surface changes;
+- [ ] expand compatibility checks as new event families appear.
 
-## Проверка
+## Verification
 
-<!-- compatibility anchor: РєРѕРЅС‚СЂР°РєС‚РЅС‹Рµ С‚РµСЃС‚С‹ РїРѕРєСЂС‹РІР°СЋС‚ РІСЃРµ РїСѓР±Р»РёС‡РЅС‹Рµ use-case -->
+<!-- compatibility anchor: contract tests cover all public use-cases -->
 - [ ] Contract tests cover public event-contract use cases.
 - `cargo xtask module validate events`
 - `cargo xtask module test events`
-- targeted tests для schema coverage, validation, compatibility aliases и JSON roundtrip
+- targeted tests for schema coverage, validation, compatibility aliases and JSON roundtrip
 
-## Правила обновления
+## Update rules
 
-1. При изменении event contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
-4. При изменении event versioning policy обновлять связанные architecture/outbox docs.
+1. When changing event contract, update this file first.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
+4. When changing event versioning policy, update related architecture/outbox docs.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

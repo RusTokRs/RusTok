@@ -1,41 +1,41 @@
-# Документация `rustok-iggy-connector`
+# Documentation `rustok-iggy-connector`
 
-`rustok-iggy-connector` — connection abstraction layer для Iggy transport
-стека. Он владеет embedded/remote mode switching, connection lifecycle и
-low-level message I/O, не забирая у `rustok-iggy` transport-level semantics.
+`rustok-iggy-connector` is the connection abstraction layer for the Iggy transport
+stack. It owns embedded/remote mode switching, connection lifecycle and
+low-level message I/O, without taking away transport-level semantics from `rustok-iggy`.
 
-## Назначение
+## Purpose
 
-- публиковать канонический connector contract для Iggy-based transport stack;
-- держать embedded/remote mode switching и lifecycle management в отдельном crate;
-- давать `rustok-iggy` и другим возможным consumers единый low-level connector surface.
+- publish the canonical connector contract for the Iggy-based transport stack;
+- keep embedded/remote mode switching and lifecycle management in a separate crate;
+- provide `rustok-iggy` and other potential consumers with a unified low-level connector surface.
 
-## Зона ответственности
+## Responsibilities
 
 - `IggyConnector`, `RemoteConnector`, `EmbeddedConnector`;
 - `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorAckToken`, `ConnectorError`;
-- connection lifecycle, mode abstraction и low-level publish/subscribe contracts;
-- optional Iggy SDK integration через feature flag;
-- отсутствие ownership над transport-level serialization, DLQ, replay и topology policy;
-- connector metadata включает только low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) и не задаёт retry/DLQ/replay правила;
-- `ConnectorAckToken` централизует simulated token и real Iggy SDK cursor token seam, а remote/embedded subscribers проверяют scope token перед ack без добавления transport policy.
+- connection lifecycle, mode abstraction and low-level publish/subscribe contracts;
+- optional Iggy SDK integration via feature flag;
+- no ownership over transport-level serialization, DLQ, replay and topology policy;
+- connector metadata includes only low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) and does not define retry/DLQ/replay rules;
+- `ConnectorAckToken` centralizes the simulated token and real Iggy SDK cursor token seam, and remote/embedded subscribers check scope token before ack without adding transport policy.
 
-## Интеграция
+## Integration
 
-- используется `rustok-iggy` как low-level connection layer;
-- должен оставаться отдельным connector crate без transport/business semantics;
-- любые изменения connector contracts должны синхронизироваться с `rustok-iggy` docs и runtime expectations;
-- simulation mode без feature flag должен оставаться явно задокументированной compatibility surface.
+- used by `rustok-iggy` as a low-level connection layer;
+- must remain a separate connector crate without transport/business semantics;
+- any changes to connector contracts must be synchronized with `rustok-iggy` docs and runtime expectations;
+- simulation mode without a feature flag must remain an explicitly documented compatibility surface.
 
-## Проверка
+## Verification
 
-- targeted compile/tests для connector configuration, mode switching, request building и error handling;
-- integration tests нужны при изменении реального SDK/lifecycle path;
-- structural verification для boundary между connector и transport crate;
-- no-compile guardrail для текущего lifecycle seam: `node scripts/verify/verify-iggy-connector-source.mjs`.
+- targeted compile/tests for connector configuration, mode switching, request building and error handling;
+- integration tests are needed when changing the real SDK/lifecycle path;
+- structural verification for the boundary between connector and transport crate;
+- no-compile guardrail for the current lifecycle seam: `node scripts/verify/verify-iggy-connector-source.mjs`.
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [Документация `rustok-iggy`](../../rustok-iggy/docs/README.md)
+- [Implementation plan](./implementation-plan.md)
+- [Documentation of `rustok-iggy`](../../rustok-iggy/docs/README.md)

@@ -5,31 +5,31 @@
 
 ## Context
 
-Сейчас каноническое определение `DomainEvent` остаётся в `rustok-core`, а `rustok-events` работает как совместимый re-export слой. Это оставляет жёсткую связанность: добавление или изменение payload доменного события требует правки core crate, что нарушает Open/Closed и увеличивает blast radius для платформенных релизов.
+Currently, the canonical `DomainEvent` definition remains in `rustok-core`, while `rustok-events` works as a compatible re-export layer. This leaves tight coupling: adding or changing a domain event payload requires modifying the core crate, which violates Open/Closed and increases the blast radius for platform releases.
 
-Одновременно есть уже принятый шаг Phase 1: точка импорта событийных контрактов выровнена на `rustok-events`, поэтому можно закрыть миграцию до конца без одномоментного big-bang.
+At the same time, there is an already accepted Phase 1 step: the import point for event contracts has been aligned to `rustok-events`, so the migration can be completed without a one-time big-bang.
 
 ## Decision
 
-1. Сделать `rustok-events` каноническим источником `DomainEvent` и схем payload (Phase 2).
-2. Оставить в `rustok-core` временный compatibility-layer (re-export + deprecation note) до следующего release train.
-3. В следующей breaking-фазе удалить legacy re-export в `rustok-core` и перевести все импорты на `rustok-events` (Phase 3).
-4. Зафиксировать migration checklist:
-   - обновление импортов во всех `rustok-*` модулях;
-   - обновление event schema snapshots/кодогенерации;
-   - проверка обратной совместимости сериализации (`event_type`, `schema_version`).
+1. Make `rustok-events` the canonical source of `DomainEvent` and payload schemas (Phase 2).
+2. Keep a temporary compatibility-layer in `rustok-core` (re-export + deprecation note) until the next release train.
+3. In the next breaking phase, remove the legacy re-export in `rustok-core` and migrate all imports to `rustok-events` (Phase 3).
+4. Finalize the migration checklist:
+   - update imports in all `rustok-*` modules;
+   - update event schema snapshots/code generation;
+   - verify serialization backward compatibility (`event_type`, `schema_version`).
 
 ## Consequences
 
-**Плюсы**
-- Новые доменные события можно эволюционировать без изменения `rustok-core`.
-- Снижается связность между platform foundation и доменными crate'ами.
-- Появляется явная граница ответственности для event contracts.
+**Positives**
+- New domain events can evolve without changing `rustok-core`.
+- Reduced coupling between the platform foundation and domain crates.
+- A clear responsibility boundary for event contracts emerges.
 
-**Риски и минусы**
-- Требуется координированная миграция импортов и тестов по всем модулям.
-- Возможен breaking impact для внешних интеграций, импортирующих события из `rustok-core`.
+**Risks and negatives**
+- Requires coordinated migration of imports and tests across all modules.
+- Potential breaking impact for external integrations importing events from `rustok-core`.
 
 **Follow-up**
-- Подготовить отдельный PR на Phase 2 (canonical move + совместимость).
-- Подготовить отдельный PR на Phase 3 (удаление legacy слоя) после коммуникации breaking change.
+- Prepare a separate PR for Phase 2 (canonical move + compatibility).
+- Prepare a separate PR for Phase 3 (remove legacy layer) after communicating the breaking change.

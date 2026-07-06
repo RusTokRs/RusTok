@@ -1,38 +1,38 @@
-# Документация `rustok-commerce-foundation`
+# Documentation `rustok-commerce-foundation`
 
-`rustok-commerce-foundation` — shared support crate для split commerce family.
-Он держит общие DTO, entities, ошибки и search/query helpers, не становясь
-самостоятельным доменным модулем.
+`rustok-commerce-foundation` is a shared support crate for the split commerce family.
+It holds common DTOs, entities, errors and search/query helpers, without becoming
+an independent domain module.
 
-## Назначение
+## Purpose
 
-- публиковать общий foundation surface для split commerce crates;
-- держать shared DTO, entities и error contracts вне umbrella-модуля;
-- уменьшать дублирование между `product`, `pricing`, `inventory` и другими commerce crates.
+- publish a common foundation surface for split commerce crates;
+- keep shared DTOs, entities and error contracts outside the umbrella module;
+- reduce duplication between `product`, `pricing`, `inventory` and other commerce crates.
 
-## Зона ответственности
+## Responsibilities
 
 - shared commerce DTOs;
 - shared SeaORM entities;
-- единый `CommerceError` / `CommerceResult`;
-- shared query/search helpers для commerce family;
-- отсутствие самостоятельного transport/runtime orchestration слоя.
+- unified `CommerceError` / `CommerceResult`;
+- shared query/search helpers for the commerce family;
+- no independent transport/runtime orchestration layer.
 
-## Интеграция
+## Integration
 
-- используется `rustok-product`, `rustok-pricing`, `rustok-inventory` и `rustok-commerce`;
-- должен оставаться dependency-only support crate без собственной domain/business boundary;
-- изменения shared DTO/entities должны синхронизироваться с consumer crates и umbrella docs;
-- не должен поглощать логику, которая уже принадлежит устойчивому bounded context.
+- used by `rustok-product`, `rustok-pricing`, `rustok-inventory` and `rustok-commerce`;
+- must remain a dependency-only support crate without its own domain/business boundary;
+- changes to shared DTOs/entities must be synchronized with consumer crates and umbrella docs;
+- must not absorb logic that already belongs to a stable bounded context.
 
-## Проверка
+## Verification
 
-- structural verification: shared docs и consumer expectations должны оставаться синхронизированными;
-- targeted compile/tests выполняются при изменении shared DTO/entities/error surface;
-- любые incompatible changes требуют синхронизации consumer crates.
+- structural verification: shared docs and consumer expectations must remain synchronized;
+- targeted compile/tests are executed when changing shared DTOs/entities/error surface;
+- any incompatible changes require synchronization of consumer crates.
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [План umbrella `commerce`](../../rustok-commerce/docs/implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
+- [Umbrella `commerce` plan](../../rustok-commerce/docs/implementation-plan.md)

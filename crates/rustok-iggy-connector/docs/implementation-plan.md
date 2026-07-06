@@ -1,74 +1,74 @@
-# План реализации `rustok-iggy-connector`
+# Implementation plan for `rustok-iggy-connector`
 
-Статус: connector abstraction уже отделена от transport crate; дальнейшая
-работа связана с hardening реального SDK/lifecycle path и удержанием чистой
-границы ответственности.
+Status: connector abstraction is already separated from the transport crate; further
+work is related to hardening the real SDK/lifecycle path and maintaining a clean
+boundary of responsibility.
 
 ## Execution checkpoint
 
 - Current phase: lifecycle_hardening
-- Last checkpoint: no-compile инкремент: добавлен `ConnectorAckToken` как единый simulated/real Iggy SDK ack seam; remote/embedded subscribers теперь source-level валидируют stream/topic/partition scope перед ack, а `verify-iggy-connector-source.mjs` фиксирует guardrail без компиляции.
-- Next step: подключить `ConnectorAckToken::iggy_sdk` к фактическому SDK subscriber receive/commit path и заменить source-level evidence targeted cargo tests при разрешённых компиляциях.
-- Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Сохранить opaque-token contract для transport consumers; при wiring real SDK извлекать offset/consumer cursor в `ConnectorAckToken::iggy_sdk`, не протаскивая retry/DLQ/replay policy в connector crate.
+- Last checkpoint: no-compile increment: added `ConnectorAckToken` as a unified simulated/real Iggy SDK ack seam; remote/embedded subscribers now source-level validate stream/topic/partition scope before ack, and `verify-iggy-connector-source.mjs` locks the guardrail without compilation.
+- Next step: connect `ConnectorAckToken::iggy_sdk` to the actual SDK subscriber receive/commit path and replace source-level evidence with targeted cargo tests when compilation is allowed.
+- Open blockers: compile/test evidence deferred due to explicit iteration constraint: no compilations.
+- Hand-off notes for next agent: Preserve opaque-token contract for transport consumers; when wiring real SDK, extract offset/consumer cursor into `ConnectorAckToken::iggy_sdk`, without pulling retry/DLQ/replay policy into the connector crate.
 - Last updated at (UTC): 2026-06-20T14:30:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-iggy-connector` как low-level connector layer;
-- синхронизировать mode switching, lifecycle contracts и local docs;
-- не допускать втягивания transport-level semantics в connector crate.
+- keep `rustok-iggy-connector` as a low-level connector layer;
+- synchronize mode switching, lifecycle contracts and local docs;
+- prevent pulling transport-level semantics into the connector crate.
 
-## Текущее состояние
+## Current state
 
-- `IggyConnector`, remote/embedded implementations и config model уже существуют;
-- optional `iggy` feature уже служит seam для реальной SDK integration;
-- request building, mode serialization и error handling уже выделены в отдельный crate;
-- `rustok-iggy` использует этот crate как низкоуровневый dependency.
+- `IggyConnector`, remote/embedded implementations and config model already exist;
+- optional `iggy` feature already serves as a seam for real SDK integration;
+- request building, mode serialization and error handling are already separated into their own crate;
+- `rustok-iggy` uses this crate as a low-level dependency.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрепить connector boundary отдельно от transport crate;
-- [x] удерживать embedded/remote mode abstraction внутри connector crate;
-- [x] удерживать sync между connector contracts, `rustok-iggy` expectations и local docs.
+- [x] lock connector boundary separate from the transport crate;
+- [x] keep embedded/remote mode abstraction inside the connector crate;
+- [x] maintain sync between connector contracts, `rustok-iggy` expectations and local docs.
 
 ### 2. Lifecycle hardening
 
-- [ ] довести full SDK integration path, reconnection и pooling semantics;
-  - [x] исправить lifecycle read surface `is_connected()` для remote/embedded connectors;
-  - [x] добавить subscriber metadata для offset/ack/retry без transport policy;
-  - [x] добавить explicit ack override seam для remote/embedded subscriber adapters;
-  - [x] централизовать simulated ack token builder для remote/embedded metadata;
-  - [x] добавить `ConnectorAckToken` seam для simulated и real Iggy SDK ack cursor с source-level scope validation;
-- [ ] покрывать batching, TLS и real connection failure cases targeted tests;
-- [ ] удерживать simulation mode как явный documented compatibility path.
+- [ ] bring full SDK integration path, reconnection and pooling semantics;
+  - [x] fix lifecycle read surface `is_connected()` for remote/embedded connectors;
+  - [x] add subscriber metadata for offset/ack/retry without transport policy;
+  - [x] add explicit ack override seam for remote/embedded subscriber adapters;
+  - [x] centralize simulated ack token builder for remote/embedded metadata;
+  - [x] add `ConnectorAckToken` seam for simulated and real Iggy SDK ack cursor with source-level scope validation;
+- [ ] cover batching, TLS and real connection failure cases with targeted tests;
+- [ ] keep simulation mode as an explicit documented compatibility path.
 
 ### 3. Operability
 
-- [ ] развивать health/metrics/runbook guidance для connector layer;
-- [ ] удерживать local docs синхронизированными с transport docs;
-- [ ] документировать lifecycle guarantees одновременно с изменением connector surface.
+- [ ] evolve health/metrics/runbook guidance for the connector layer;
+- [ ] keep local docs synchronized with transport docs;
+- [ ] document lifecycle guarantees simultaneously with changing connector surface.
 
-## Проверка
+## Verification
 
-- targeted compile/tests для configuration, mode switching, request building и connector errors;
-- integration tests для real embedded/remote paths;
-- docs sync между connector и transport crates.
-- контрактные тесты покрывают все публичные use-case connector surface.
+- targeted compile/tests for configuration, mode switching, request building and connector errors;
+- integration tests for real embedded/remote paths;
+- docs sync between connector and transport crates.
+- contract tests cover all public use-case connector surface.
 
-## Правила обновления
+## Update rules
 
-1. При изменении connector contract сначала обновлять этот файл.
-2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении transport boundary обновлять связанные docs в `rustok-iggy`.
+1. When changing connector contract, update this file first.
+2. When changing public surface, synchronize `README.md` and `docs/README.md`.
+3. When changing transport boundary, update related docs in `rustok-iggy`.
 
 
 ## Quality backlog
 
-- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены unit assertions для subscriber metadata/message builders (запуск отложен без компиляций).
-- [x] Проверить полноту и актуальность `README.md` и локальных docs: README/docs/CRATE_API описывают metadata surface.
-- [x] Зафиксировать source-level assertions для canonical simulated ack tokens (запуск отложен без компиляций).
-- [x] Зафиксировать/обновить verification gates для текущего состояния модуля: `node scripts/verify/verify-iggy-connector-source.mjs` (no-compile) и `cargo test -p rustok-iggy-connector --lib` при разрешённых компиляциях.
-- [ ] Подключить real SDK subscriber receive/ack path к `ConnectorAckToken::iggy_sdk` и заменить source-level guardrail фактическими targeted tests.
+- [x] Update test coverage for key module scenarios: added unit assertions for subscriber metadata/message builders (execution deferred without compilations).
+- [x] Verify completeness and currency of `README.md` and local docs: README/docs/CRATE_API describe the metadata surface.
+- [x] Lock source-level assertions for canonical simulated ack tokens (execution deferred without compilations).
+- [x] Lock/update verification gates for current module state: `node scripts/verify/verify-iggy-connector-source.mjs` (no-compile) and `cargo test -p rustok-iggy-connector --lib` when compilation is allowed.
+- [ ] Connect real SDK subscriber receive/ack path to `ConnectorAckToken::iggy_sdk` and replace source-level guardrail with actual targeted tests.

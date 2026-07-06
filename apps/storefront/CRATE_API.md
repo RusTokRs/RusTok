@@ -1,19 +1,19 @@
 # apps/storefront / CRATE_API
 
-## Публичные модули
-- Leptos storefront UI (SSR): каталог, карточки, страницы контента.
+## Public Modules
+- Leptos storefront UI (SSR): catalog, product cards, content pages.
 
-## Основные структуры/контракты
-- Публичные маршруты витрины.
-- GraphQL/HTTP контракты чтения контента и каталога.
+## Key Structures/Contracts
+- Public storefront routes.
+- GraphQL/HTTP contracts for content and catalog reads.
 
-## События
-- Публикует: пользовательские действия чтения/поиска (через API-запросы).
-- Потребляет: ответы `apps/server`, данные контента/коммерции.
+## Events
+- Publishes: user read/search actions (via API requests).
+- Consumes: `apps/server` responses, content/commerce data.
 
-## Зависимости от других крейтов
+## Dependencies on Other Crates
 - `leptos-ui`, `leptos-graphql`.
 
-## Частые ошибки ИИ
-- Использует admin-ориентированные GraphQL операции в storefront.
-- Путает SSR и CSR точки инициализации.
+## Common AI Mistakes
+- Using admin-oriented GraphQL operations in the storefront.
+- Confusing SSR and CSR initialization points.

@@ -1,20 +1,20 @@
 # leptos-shadcn-pagination — implementation plan
 
-_Нет запланированных задач._
+_No planned tasks._
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: Update this block after each increment.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and relevance of `README.md` and local docs.
+- [ ] Lock/update verification gates for the current module state.

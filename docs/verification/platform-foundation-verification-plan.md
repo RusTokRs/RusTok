@@ -6,31 +6,31 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План верификации платформы: foundation
+# Platform Verification Plan: Foundation
 
-- **Статус:** актуальный детальный чеклист
-- **Контур:** workspace baseline, foundation crates, module composition, auth/RBAC/tenant foundation
-- **Companion-план:** [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md)
+- **Status:** current detailed checklist
+- **Scope:** workspace baseline, foundation crates, module composition, auth/RBAC/tenant foundation
+- **Companion plan:** [Main Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md)
 
 ---
 
-## Актуальный scoped contract
+## Current Scoped Contract
 
-План foundation-верификации подтверждает, что platform baseline остаётся
-согласованным на трёх уровнях:
+The foundation verification plan confirms that the platform baseline remains
+consistent at three levels:
 
-- workspace и host/runtime foundation
+- workspace and host/runtime foundation
 - module composition contract
-- minimum по docs/manifests/verification для scoped-модулей
+- minimum docs/manifests/verification for scoped modules
 
-Для path-modules current-state minimum:
+For path-modules, the current-state minimum:
 
 - root `README.md`
 - `docs/README.md`
 - `docs/implementation-plan.md`
 - `rustok-module.toml`
 
-Канонические локальные команды:
+Canonical local commands:
 
 - `cargo xtask module validate <slug>`
 - `cargo xtask module test <slug>`
@@ -38,91 +38,91 @@ status: verified
 
 ## Windows-hybrid path
 
-На Windows обязательный локальный verification-path не зависит от Bash как hard
+On Windows, the mandatory local verification path does not depend on Bash as a hard
 prerequisite.
 
-Минимальный baseline:
+Minimum baseline:
 
-- Cargo/xtask для module/runtime contract
-- Node/npm для UI/i18n/routes gates
-- Python для architecture guard
-- Git Bash только для legacy perimeter checks, если они нужны отдельно
+- Cargo/xtask for module/runtime contract
+- Node/npm for UI/i18n/routes gates
+- Python for architecture guard
+- Git Bash only for legacy perimeter checks, if needed separately
 
-## Фаза 1. Workspace baseline
+## Phase 1. Workspace Baseline
 
-### 1.1 Сборка и базовая согласованность
+### 1.1 Build and basic consistency
 
 - [ ] `cargo check --workspace --all-targets --all-features`
 - [ ] `cargo fmt --all -- --check`
-- [ ] targeted `cargo test`, если менялся foundation/runtime contract
+- [ ] targeted `cargo test`, if foundation/runtime contract changed
 
-### 1.2 Tooling и prerequisites
+### 1.2 Tooling and prerequisites
 
-- [ ] Локальная среда поддерживает минимальный Windows-hybrid verification-path.
-- [ ] Environment blockers фиксируются отдельно и не подменяют сам contract.
+- [ ] Local environment supports the minimum Windows-hybrid verification path.
+- [ ] Environment blockers are recorded separately and do not replace the contract itself.
 
-## Фаза 2. Module composition contract
+## Phase 2. Module Composition Contract
 
-### 2.1 `modules.toml` и runtime registry
+### 2.1 `modules.toml` and runtime registry
 
-- [ ] `modules.toml` отражает реальный platform scope.
-- [ ] `ModuleRegistry` и manifest/runtime wiring совпадают с composition contract.
-- [ ] `Core` и `Optional` semantics не размыты.
-- [ ] Support/capability crate-ы не выдаются за платформенные модули.
+- [ ] `modules.toml` reflects the actual platform scope.
+- [ ] `ModuleRegistry` and manifest/runtime wiring match the composition contract.
+- [ ] `Core` and `Optional` semantics are not blurred.
+- [ ] Support/capability crates are not passed off as platform modules.
 
 ### 2.2 Scoped module contract
 
-- [ ] Path-modules имеют `rustok-module.toml`.
-- [ ] Root `README.md`, `docs/README.md`, `docs/implementation-plan.md` присутствуют и соответствуют current docs-standard.
-- [ ] Module dependencies и wiring согласованы между кодом, manifest и local docs.
+- [ ] Path-modules have `rustok-module.toml`.
+- [ ] Root `README.md`, `docs/README.md`, `docs/implementation-plan.md` are present and match the current docs-standard.
+- [ ] Module dependencies and wiring are consistent between code, manifest and local docs.
 
-## Фаза 3. Foundation crates
+## Phase 3. Foundation Crates
 
 ### 3.1 Shared contracts
 
-- [ ] `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-test-utils` образуют согласованный foundation layer.
-- [ ] Shared contracts не дублируются локально в host/module code.
-- [ ] Central docs совпадают с текущими foundation boundaries.
+- [ ] `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-test-utils` form a consistent foundation layer.
+- [ ] Shared contracts are not duplicated locally in host/module code.
+- [ ] Central docs match the current foundation boundaries.
 
-### 3.2 Core платформенные модули
+### 3.2 Core platform modules
 
-- [ ] `auth`, `cache`, `channel`, `email`, `index`, `search`, `outbox`, `tenant`, `rbac` остаются согласованными с runtime baseline.
-- [ ] `rustok-outbox` остаётся `Core` module, а не optional/support add-on.
+- [ ] `auth`, `cache`, `channel`, `email`, `index`, `search`, `outbox`, `tenant`, `rbac` remain consistent with the runtime baseline.
+- [ ] `rustok-outbox` remains a `Core` module, not an optional/support add-on.
 
-## Фаза 4. Auth / tenant / RBAC foundation
+## Phase 4. Auth / Tenant / RBAC Foundation
 
 ### 4.1 Auth
 
-- [ ] Auth/session/token contract остаётся централизованным.
-- [ ] Host-local обходы не подменяют foundation auth flow.
+- [ ] Auth/session/token contract remains centralized.
+- [ ] Host-local workarounds do not replace the foundation auth flow.
 
 ### 4.2 Tenant
 
-- [ ] Tenant resolution и tenant lifecycle соответствуют current runtime contract.
-- [ ] `tenant_modules` используется только для `Optional` flows и не подменяет platform composition.
+- [ ] Tenant resolution and tenant lifecycle match the current runtime contract.
+- [ ] `tenant_modules` is used only for `Optional` flows and does not replace platform composition.
 
 ### 4.3 RBAC
 
-- [ ] Typed permission/runtime contract остаётся единым.
-- [ ] Нет возврата к ad-hoc role checks в host/module code.
+- [ ] Typed permission/runtime contract remains unified.
+- [ ] No reversion to ad-hoc role checks in host/module code.
 
-## Фаза 5. Точечные локальные проверки
+## Phase 5. Targeted Local Checks
 
-### 5.1 Минимум
+### 5.1 Minimum
 
 - [ ] `cargo xtask validate-manifest`
-- [ ] targeted `cargo xtask module validate <slug>` для затронутых модулей
-- [ ] targeted `cargo xtask module test <slug>` для затронутых модулей
-- [ ] `powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1`, если менялся architecture/runtime contract
+- [ ] targeted `cargo xtask module validate <slug>` for affected modules
+- [ ] targeted `cargo xtask module test <slug>` for affected modules
+- [ ] `powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1`, if architecture/runtime contract changed
 
-## Open blockers
+## Open Blockers
 
-- [ ] Не превращать этот документ в исторический журнал инцидентов.
-- [ ] Runtime/environment blockers фиксировать кратко и отдельно.
+- [ ] Do not turn this document into a historical incident log.
+- [ ] Record runtime/environment blockers briefly and separately.
 
-## Связанные документы
+## Related Documents
 
-- [Контракт `rustok-module.toml`](../modules/manifest.md)
-- [Обзор модульной платформы](../modules/overview.md)
-- [Архитектура модулей](../architecture/modules.md)
-- [Главный README по верификации](./README.md)
+- [`rustok-module.toml` Contract](../modules/manifest.md)
+- [Modular Platform Overview](../modules/overview.md)
+- [Module Architecture](../architecture/modules.md)
+- [Main Verification README](./README.md)

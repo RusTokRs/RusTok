@@ -1,77 +1,77 @@
-# План реализации `rustok-iggy`
+# Implementation plan for `rustok-iggy`
 
-Статус: transport baseline уже существует; основная работа дальше — не в
-создании абстракции с нуля, а в доведении реального Iggy integration path до
-production-grade уровня.
+Status: transport baseline already exists; the main work going forward is not
+about creating abstractions from scratch, but about bringing the real Iggy integration path to
+production-grade level.
 
 ## Execution checkpoint
 
 - Current phase: real_integration_hardening
-- Last checkpoint: no-compile инкремент: `ack_consumed` теперь валидирует stream/topic/partition metadata перед ack, чтобы не коммитить opaque token от другого курсора; добавлены source-level unit assertions для mismatch guardrail.
-- Next step: заменить simulated connector ack на real SDK subscriber ack/offset commit path и добавить фактическое targeted test evidence.
-- Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Следующий инкремент должен связать real SDK metadata extraction с `validate_connector_metadata`/`ack_consumed`, затем прогнать targeted tests при снятии ограничения на компиляции.
+- Last checkpoint: no-compile increment: `ack_consumed` now validates stream/topic/partition metadata before ack, to avoid committing an opaque token from a different cursor; source-level unit assertions added for the mismatch guardrail.
+- Next step: replace simulated connector ack with real SDK subscriber ack/offset commit path and add actual targeted test evidence.
+- Open blockers: compile/test evidence deferred due to explicit iteration constraint: no compilations.
+- Hand-off notes for next agent: The next increment should connect real SDK metadata extraction with `validate_connector_metadata`/`ack_consumed`, then run targeted tests when the compilation restriction is lifted.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-iggy` как transport crate поверх `rustok-iggy-connector`;
-- синхронизировать serialization/topology/DLQ/replay contracts и local docs;
-- не допускать смешивания transport logic с connector lifecycle.
+- keep `rustok-iggy` as a transport crate over `rustok-iggy-connector`;
+- synchronize serialization/topology/DLQ/replay contracts and local docs;
+- prevent mixing transport logic with connector lifecycle.
 
-## Текущее состояние
+## Current state
 
-- `IggyTransport` уже реализует `EventTransport`;
-- JSON/Postcard serialization, topology helpers, consumer groups, DLQ и replay abstractions уже выделены;
-- connection mode switching и low-level I/O уже вынесены в `rustok-iggy-connector`;
-- часть production-grade integration semantics по-прежнему требует углубления реального SDK path.
+- `IggyTransport` already implements `EventTransport`;
+- JSON/Postcard serialization, topology helpers, consumer groups, DLQ and replay abstractions are already separated;
+- connection mode switching and low-level I/O are already moved to `rustok-iggy-connector`;
+- part of the production-grade integration semantics still requires deepening the real SDK path.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрепить transport boundary поверх connector crate;
-- [x] удерживать transport-facing abstractions внутри `rustok-iggy`;
-- [x] удерживать sync между transport contracts, connector expectations и local docs.
+- [x] lock transport boundary over the connector crate;
+- [x] keep transport-facing abstractions inside `rustok-iggy`;
+- [x] maintain sync between transport contracts, connector expectations and local docs.
 
 ### 2. Real integration hardening
 
-- [ ] довести full Iggy SDK integration path;
-- [ ] закрыть реальные consumption, offset management, DLQ movement и replay flows;
-  - [x] добавить первый transport-owned consume path поверх connector `subscribe` и serializer deserialize;
-  - [x] добавить offset/ack metadata и wire-up для DLQ/replay movement;
-    - [x] consume path переносит connector offset/opaque ack metadata в `ConsumedEvent`;
+- [ ] bring full Iggy SDK integration path;
+- [ ] close real consumption, offset management, DLQ movement and replay flows;
+  - [x] add first transport-owned consume path over connector `subscribe` and serializer deserialize;
+  - [x] add offset/ack metadata and wire-up for DLQ/replay movement;
+    - [x] consume path carries connector offset/opaque ack metadata into `ConsumedEvent`;
     - [x] transport exposes `ack_consumed`; DLQ entries retain connector metadata and retry republishes with retry-limit validation;
     - [x] replay config validates offset windows and records planned offsets for bounded replay runs;
     - [x] `ack_consumed` rejects connector metadata from another stream/topic/partition before invoking connector ack;
-- [ ] покрывать performance/recovery/security edge-cases targeted tests и drills.
+- [ ] cover performance/recovery/security edge-cases with targeted tests and drills.
 
 ### 3. Operability
 
-- [ ] развивать metrics, health checks и runbooks для production transport usage;
-- [ ] удерживать local docs синхронизированными с connector docs и event-system guidance;
-- [ ] документировать transport guarantees одновременно с изменением runtime surface.
+- [ ] evolve metrics, health checks and runbooks for production transport usage;
+- [ ] keep local docs synchronized with connector docs and event-system guidance;
+- [ ] document transport guarantees simultaneously with changing runtime surface.
 
-## Проверка
+## Verification
 
-контрактные тесты покрывают все публичные use-case
+contract tests cover all public use-cases
 
-- [ ] контрактные тесты покрывают все публичные use-case orchestration и surface contracts.
-- targeted compile/tests для configuration, serialization, topology, consumer groups и replay/DLQ contracts (текущий no-compile инкремент добавил fake-connector unit coverage, запуск отложен);
-- integration tests для реального Iggy backend path;
-- docs sync между transport и connector layers.
+- [ ] contract tests cover all public use-case orchestration and surface contracts.
+- targeted compile/tests for configuration, serialization, topology, consumer groups and replay/DLQ contracts (current no-compile increment added fake-connector unit coverage, execution deferred);
+- integration tests for real Iggy backend path;
+- docs sync between transport and connector layers.
 
-## Правила обновления
+## Update rules
 
-1. При изменении transport contract сначала обновлять этот файл.
-2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении connector boundary обновлять связанные docs в `rustok-iggy-connector`.
+1. When changing transport contract, update this file first.
+2. When changing public surface, synchronize `README.md` and `docs/README.md`.
+3. When changing connector boundary, update related docs in `rustok-iggy-connector`.
 
 
 ## Quality backlog
 
-- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены roundtrip deserialize и consume_next fake-connector tests.
-- [x] Добавить DLQ/replay tests поверх offset/ack metadata для transport-owned metadata plumbing (real SDK ack evidence remains open).
-- [x] Добавить source-level ack metadata mismatch guardrail для `ConsumedEvent`/`ack_consumed` (запуск тестов отложен без компиляций).
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Update test coverage for key module scenarios: added roundtrip deserialize and consume_next fake-connector tests.
+- [x] Add DLQ/replay tests over offset/ack metadata for transport-owned metadata plumbing (real SDK ack evidence remains open).
+- [x] Add source-level ack metadata mismatch guardrail for `ConsumedEvent`/`ack_consumed` (test execution deferred without compilations).
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

@@ -1,4 +1,4 @@
 # rustok-ai-media
 
-Адаптер для медийных AI-вертикалей.
-Владеет дескрипторами и валидацией для генерации изображений (`image_asset`).
+Adapter for media AI verticals.
+Owns descriptors and validation for image generation (`image_asset`).

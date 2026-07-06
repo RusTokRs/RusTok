@@ -1,55 +1,55 @@
-# ModuleRuntimeExtensions для runtime-capabilities
+# ModuleRuntimeExtensions for runtime capabilities
 
 - Date: 2026-04-20
 - Status: Accepted
 
 ## Context
 
-Платформа уже использует support/capability crates рядом с tenant-aware модулями, но до этого не было
-одного канонического runtime-паттерна, через который owner-модули могли бы регистрировать backend
-capabilities без правки central core-модуля под каждый новый target/provider.
+The platform already uses support/capability crates alongside tenant-aware modules, but until now there was no
+single canonical runtime pattern through which owner modules could register backend
+capabilities without modifying the central core module for each new target/provider.
 
-SEO показал этот разрыв особенно явно:
+SEO demonstrated this gap especially clearly:
 
-- `rustok-seo` оставался единственным tenant-aware SEO module;
-- persisted storage уже использовал string `target_kind`, но Rust/runtime contract держался на закрытом enum;
-- добавление нового SEO-capable backend-модуля требовало hardcoded dispatch внутри `rustok-seo`;
-- host runtime уже имел общий `ModuleRegistry`, но не имел общего typed extension-registry, который
-  могли бы наполнять модули во время bootstrap.
+- `rustok-seo` remained the only tenant-aware SEO module;
+- persisted storage already used string `target_kind`, but the Rust/runtime contract was tied to a closed enum;
+- adding a new SEO-capable backend module required hardcoded dispatch inside `rustok-seo`;
+- the host runtime already had a common `ModuleRegistry`, but did not have a common typed extension-registry that
+  modules could populate during bootstrap.
 
-Нужен был общий platform pattern, а не ad-hoc исключение только для SEO.
+A common platform pattern was needed, not an ad-hoc exception only for SEO.
 
 ## Decision
 
-Платформа вводит module-owned runtime capability registration через `rustok-core::ModuleRuntimeExtensions`.
+The platform introduces module-owned runtime capability registration via `rustok-core::ModuleRuntimeExtensions`.
 
-Приняты следующие правила:
+The following rules are adopted:
 
-- `RusToKModule` получает hook `register_runtime_extensions(&mut ModuleRuntimeExtensions)`;
-- host (`apps/server`) строит один общий `ModuleRuntimeExtensions` после `build_registry()` и вызывает
-  этот hook у всех зарегистрированных модулей;
-- итоговый `ModuleRuntimeExtensions` кладётся в shared runtime store и в GraphQL schema data;
-- support/capability crates публикуют typed registries поверх этого механизма, но не становятся от
-  этого tenant-aware модулями сами по себе.
+- `RusToKModule` gets a hook `register_runtime_extensions(&mut ModuleRuntimeExtensions)`;
+- the host (`apps/server`) builds a single shared `ModuleRuntimeExtensions` after `build_registry()` and calls
+  this hook on all registered modules;
+- the resulting `ModuleRuntimeExtensions` is placed in the shared runtime store and into the GraphQL schema data;
+- support/capability crates publish typed registries on top of this mechanism, but do not become
+  tenant-aware modules themselves as a result.
 
-Для SEO это зафиксировано так:
+For SEO this is fixed as follows:
 
-- `rustok-seo-targets` становится support/capability crate;
-- канонический public contract target kind = validated string `SeoTargetSlug`;
-- owner backend-модули (`pages`, `product`, `blog`, `forum`) сами регистрируют свои
-  `SeoTargetProvider` в runtime registry;
-- `rustok-seo` получает один shared `Arc<SeoTargetRegistry>` из runtime context и использует его во
-  всех entrypoints: GraphQL, HTTP, Leptos `#[server]`, storefront SSR helpers и background workers.
+- `rustok-seo-targets` becomes a support/capability crate;
+- canonical public contract target kind = validated string `SeoTargetSlug`;
+- owner backend modules (`pages`, `product`, `blog`, `forum`) themselves register their
+  `SeoTargetProvider` in the runtime registry;
+- `rustok-seo` receives a single shared `Arc<SeoTargetRegistry>` from the runtime context and uses it in all
+  entrypoints: GraphQL, HTTP, Leptos `#[server]`, storefront SSR helpers, and background workers.
 
-Manifest schema при этом не расширяется отдельной секцией runtime-capabilities. Source of truth для
-таких registration seams остаётся Rust-side hook.
+The manifest schema is not extended with a separate runtime-capabilities section. The source of truth for
+such registration seams remains the Rust-side hook.
 
 ## Consequences
 
-- Добавление нового SEO-capable backend-модуля больше не требует правки `rustok-seo` core.
-- Появляется повторно используемый platform pattern для других runtime-capabilities, а не только для SEO.
-- Host runtime обязан инициализировать `ModuleRuntimeExtensions` один раз и прокидывать его во все
+- Adding a new SEO-capable backend module no longer requires modifying `rustok-seo` core.
+- A reusable platform pattern emerges for other runtime capabilities, not only for SEO.
+- The host runtime must initialize `ModuleRuntimeExtensions` once and propagate it to all
   shared entrypoints.
-- Support/capability crate по-прежнему не считается platform module только из-за участия в runtime wiring.
-- Module authors теперь должны документировать не только manifest wiring, но и runtime capability
-  registration, если модуль публикует provider seam через `ModuleRuntimeExtensions`.
+- A support/capability crate is still not considered a platform module solely due to participation in runtime wiring.
+- Module authors must now document not only manifest wiring, but also runtime capability
+  registration if the module publishes a provider seam through `ModuleRuntimeExtensions`.

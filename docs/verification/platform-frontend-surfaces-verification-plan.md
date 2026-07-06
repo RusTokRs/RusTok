@@ -6,115 +6,115 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План верификации платформы: frontend-поверхности
+# Platform Verification Plan: Frontend Surfaces
 
-- **Статус:** актуальный детальный чеклист
-- **Контур:** Leptos hosts, Next.js hosts, module-owned UI packages, shared UI libraries
-- **Companion-план:** [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md)
+- **Status:** current detailed checklist
+- **Scope:** Leptos hosts, Next.js hosts, module-owned UI packages, shared UI libraries
+- **Companion plan:** [Leptos Libraries Verification Plan](./leptos-libraries-verification-plan.md)
 
 ---
 
-## Актуальный scoped contract
+## Current Scoped Contract
 
-План верификации frontend-поверхностей опирается на current-state UI model:
+The frontend surfaces verification plan relies on the current-state UI model:
 
-- UI остаётся module-owned
-- hosts только монтируют surfaces
-- frontend hosts имеют статус `FFA-compatible composition host`, а не module FFA status
-- internal Leptos data layer использует `#[server]`
-- GraphQL остаётся параллельным transport contract
-- effective locale приходит из host/runtime layer
+- UI remains module-owned
+- hosts only mount surfaces
+- frontend hosts have the status of `FFA-compatible composition host`, not module FFA status
+- internal Leptos data layer uses `#[server]`
+- GraphQL remains a parallel transport contract
+- effective locale comes from the host/runtime layer
 
-## Фаза 1. Leptos hosts
+## Phase 1. Leptos Hosts
 
 ### 1.1 `apps/admin`
 
-**Файлы:**
+**Files:**
 - `apps/admin/src/`
 - `apps/admin/docs/README.md`
 
-- [ ] `apps/admin` остаётся host application, а не owner module UI.
-- [ ] `apps/admin` документирован как `FFA-compatible composition host`.
-- [ ] Module routing и registry отражают текущий manifest-driven contract.
-- [ ] `#[server]` path и GraphQL path сосуществуют без дрейфа контрактов.
-- [ ] Effective locale прокидывается через host/runtime context.
+- [ ] `apps/admin` remains a host application, not an owner of module UI.
+- [ ] `apps/admin` is documented as an `FFA-compatible composition host`.
+- [ ] Module routing and registry reflect the current manifest-driven contract.
+- [ ] `#[server]` path and GraphQL path coexist without contract drift.
+- [ ] Effective locale is passed through host/runtime context.
 
 ### 1.2 `apps/storefront`
 
-**Файлы:**
+**Files:**
 - `apps/storefront/src/`
 - `apps/storefront/docs/README.md`
 
-- [ ] `apps/storefront` остаётся host application для module-owned storefront surfaces.
-- [ ] `apps/storefront` документирован как `FFA-compatible composition host`.
-- [ ] Routing, locale path и host wiring совпадают с `docs/UI/storefront.md`.
-- [ ] Нет app-local business logic, подменяющей ownership module packages.
+- [ ] `apps/storefront` remains a host application for module-owned storefront surfaces.
+- [ ] `apps/storefront` is documented as an `FFA-compatible composition host`.
+- [ ] Routing, locale path and host wiring match `docs/UI/storefront.md`.
+- [ ] No app-local business logic that replaces module package ownership.
 
-## Фаза 2. Next.js hosts
+## Phase 2. Next.js Hosts
 
 ### 2.1 `apps/next-admin`
 
-- [ ] Next admin host монтирует module-owned или capability-owned surfaces без дрейфа ownership.
-- [ ] `apps/next-admin` документирован как `FFA-compatible composition host`.
-- [ ] Locale/runtime contract совпадает с общим i18n policy.
-- [ ] Frontend build/type/lint path остаётся воспроизводимым.
+- [ ] Next admin host mounts module-owned or capability-owned surfaces without ownership drift.
+- [ ] `apps/next-admin` is documented as an `FFA-compatible composition host`.
+- [ ] Locale/runtime contract matches the common i18n policy.
+- [ ] Frontend build/type/lint path remains reproducible.
 
 ### 2.2 `apps/next-frontend`
 
-- [ ] Next storefront host использует host/runtime locale contract.
-- [ ] `apps/next-frontend` документирован как `FFA-compatible composition host`.
-- [ ] Storefront routing согласован с общим route contract.
-- [ ] Host-only код не дублирует module-owned domain logic.
+- [ ] Next storefront host uses host/runtime locale contract.
+- [ ] `apps/next-frontend` is documented as an `FFA-compatible composition host`.
+- [ ] Storefront routing is consistent with the common route contract.
+- [ ] Host-only code does not duplicate module-owned domain logic.
 
-## Фаза 3. Module-owned UI packages
+## Phase 3. Module-Owned UI Packages
 
 ### 3.1 Leptos UI packages
 
-- [ ] `admin/` и `storefront/` sub-crates согласованы с `rustok-module.toml`.
-- [ ] UI package docs согласованы с local docs owning module.
-- [ ] Package не вводит собственный locale/auth contract.
-- [ ] Package не переносит в себя ownership доменной логики.
+- [ ] `admin/` and `storefront/` sub-crates are consistent with `rustok-module.toml`.
+- [ ] UI package docs are consistent with the owning module's local docs.
+- [ ] Package does not introduce its own locale/auth contract.
+- [ ] Package does not take ownership of domain logic.
 
 ### 3.2 Capability-owned UI
 
-- [ ] Capability-owned UI packages не выдаются за UI-поверхности платформенных модулей.
-- [ ] Их runtime/docs contract остаётся согласованным с host layer.
+- [ ] Capability-owned UI packages are not passed off as UI surfaces of platform modules.
+- [ ] Their runtime/docs contract remains consistent with the host layer.
 
-## Фаза 4. Shared UI libraries
+## Phase 4. Shared UI Libraries
 
 ### 4.1 Reusable UI/tooling layer
 
-- [ ] Shared Leptos/UI libraries используются как reusable building blocks, а не как скрытый host/business layer.
-- [ ] Library contracts не конфликтуют с host locale/runtime policy.
+- [ ] Shared Leptos/UI libraries are used as reusable building blocks, not as a hidden host/business layer.
+- [ ] Library contracts do not conflict with host locale/runtime policy.
 
-## Фаза 5. i18n и route checks
+## Phase 5. i18n and Route Checks
 
-### 5.1 Обязательные targeted gates
+### 5.1 Mandatory targeted gates
 
 - [ ] `npm run verify:i18n:ui`
 - [ ] `npm run verify:i18n:contract`
 - [ ] `npm.cmd run verify:storefront:routes`
 - [ ] `npm run verify:frontend:host-ffa-contract`
 
-Если менялся host wiring или UI contract, эти проверки считаются обязательными.
+If host wiring or UI contract changed, these checks are considered mandatory.
 
-## Фаза 6. Точечные локальные проверки
+## Phase 6. Targeted Local Checks
 
-### 6.1 Минимум
+### 6.1 Minimum
 
-- [ ] targeted `cargo check` / `cargo test` для затронутых Leptos packages
-- [ ] targeted `npm run lint` / `npm run typecheck` для затронутого Next host
-- [ ] targeted build/smoke, если менялся runtime wiring
+- [ ] targeted `cargo check` / `cargo test` for affected Leptos packages
+- [ ] targeted `npm run lint` / `npm run typecheck` for affected Next host
+- [ ] targeted build/smoke, if runtime wiring changed
 
-## Open blockers
+## Open Blockers
 
-- [ ] Runtime-only blockers фиксировать отдельно и кратко, не превращая этот документ в endless backlog.
-- [ ] При drift между host docs и module docs сначала чинить local docs owning component.
+- [ ] Record runtime-only blockers separately and briefly, do not turn this document into an endless backlog.
+- [ ] When drift occurs between host docs and module docs, first fix the local docs of the owning component.
 
-## Связанные документы
+## Related Documents
 
 - [UI README](../UI/README.md)
-- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [GraphQL and Leptos server functions](../UI/graphql-architecture.md)
 - [Storefront](../UI/storefront.md)
-- [Архитектура i18n](../architecture/i18n.md)
-- [Главный README по верификации](./README.md)
+- [i18n Architecture](../architecture/i18n.md)
+- [Main Verification README](./README.md)

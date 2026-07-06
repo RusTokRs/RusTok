@@ -1,21 +1,21 @@
-# Документация `rustok-seo-render`
+# `rustok-seo-render` Documentation
 
-`rustok-seo-render` — support crate для Rust-host адаптеров SEO. Он не владеет SEO runtime, а отвечает только за последнюю милю: превращает canonical `SeoPageContext` в SSR head HTML.
+`rustok-seo-render` — support crate for Rust-host SEO adapters. It does not own the SEO runtime, but handles only the last mile: converting canonical `SeoPageContext` into SSR head HTML.
 
-## Назначение
+## Purpose
 
-- убрать дублирование Rust-side SEO head rendering между host-приложениями;
-- держать один renderer для canonical, robots, hreflang, Open Graph, Twitter, verification tags, pagination links, generic meta/link tags и typed JSON-LD schema blocks;
-- не создавать второй source of truth поверх `rustok-seo`.
+- eliminate duplication of Rust-side SEO head rendering between host applications;
+- maintain a single renderer for canonical, robots, hreflang, Open Graph, Twitter, verification tags, pagination links, generic meta/link tags and typed JSON-LD schema blocks;
+- not create a second source of truth over `rustok-seo`.
 
-## Зона ответственности
+## Scope
 
-- pure rendering helpers без доступа к storage, redirect runtime и tenant policy;
-- сериализация typed `SeoRobots` в строку directives для `<meta name="robots">`;
-- сериализация `SeoStructuredDataBlock.payload` в `<script type="application/ld+json">` без повторной классификации schema.org типа;
-- HTML escaping и сборка SSR head string для Rust-host приложений.
+- pure rendering helpers without access to storage, redirect runtime and tenant policy;
+- serialization of typed `SeoRobots` into a directives string for `<meta name="robots">`;
+- serialization of `SeoStructuredDataBlock.payload` into `<script type="application/ld+json">` without re-classifying the schema.org type;
+- HTML escaping and assembly of an SSR head string for Rust-host applications.
 
-## Что не входит
+## Out of scope
 
 - canonical/redirect resolution;
 - locale fallback;
@@ -23,27 +23,27 @@
 - sitemap/robots runtime orchestration;
 - frontend-specific Next.js mapping.
 
-## Интеграция
+## Integration
 
-- `apps/storefront` использует crate как shared Rust-side renderer вместо локальной сборки head tags;
-- `apps/next-frontend` остаётся на TypeScript adapter слое поверх built-in Next Metadata API;
-- canonical SEO contract и дальше живёт в `rustok-seo`.
+- `apps/storefront` uses the crate as a shared Rust-side renderer instead of locally assembling head tags;
+- `apps/next-frontend` remains on a TypeScript adapter layer over the built-in Next Metadata API;
+- the canonical SEO contract continues to live in `rustok-seo`.
 
 ## Phase D alignment
 
-`rustok-seo-render` участвует в SEO Phase D как parity/hardening слой:
+`rustok-seo-render` participates in SEO Phase D as a parity/hardening layer:
 
-- snapshot coverage для сложных комбинаций head tags;
-- contract fixtures для Rust renderer vs Next metadata adapter parity;
-- drift guardrails, чтобы бизнес-логика оставалась внутри `rustok-seo`.
+- snapshot coverage for complex head tag combinations;
+- contract fixtures for Rust renderer vs Next metadata adapter parity;
+- drift guardrails to keep business logic inside `rustok-seo`.
 
-## Проверка
+## Verification
 
 - `cargo check -p rustok-seo-render`
 - `cargo check -p rustok-storefront`
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [Документация `rustok-seo`](../../docs/README.md)
+- [Implementation plan](./implementation-plan.md)
+- [`rustok-seo` documentation](../../docs/README.md)

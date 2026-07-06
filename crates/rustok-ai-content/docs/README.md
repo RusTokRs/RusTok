@@ -1,25 +1,25 @@
-# Документация `rustok-ai-content`
+# `rustok-ai-content` Documentation
 
-`rustok-ai-content` — domain-owned support crate для content AI verticals: moderation и blog draft generation contracts.
+`rustok-ai-content` is a domain-owned support crate for content AI verticals: moderation and blog draft generation contracts.
 
-## Назначение
+## Purpose
 
-- изолировать content moderation vertical от core-runtime `rustok-ai`;
-- владеть generated payload contract и validation для `blog_draft`;
-- подготовить единый policy seam для blog/forum/comment moderation сценариев.
+- isolate the content moderation vertical from the core `rustok-ai` runtime;
+- own the generated payload contract and validation for `blog_draft`;
+- prepare a unified policy seam for blog/forum/comment moderation scenarios.
 
-## Зона ответственности
+## Area of Responsibility
 
-- registration seam для `content_moderation` и `blog_draft`;
-- typed moderation contracts и approval integration hooks;
-- typed blog draft contract (`GeneratedBlogDraft`) и validation для all optional text fields: `title`, `slug`, `body`, `excerpt`, `seo_title`, `seo_description`.
+- registration seam for `content_moderation` and `blog_draft`;
+- typed moderation contracts and approval integration hooks;
+- typed blog draft contract (`GeneratedBlogDraft`) and validation for all optional text fields: `title`, `slug`, `body`, `excerpt`, `seo_title`, `seo_description`.
 
-## Проверка
+## Verification
 
-- `node scripts/verify/verify-ai-content-contract.mjs` — compile-free static gate для domain-owned descriptors, policy matrix и blog draft contract tests.
+- `node scripts/verify/verify-ai-content-contract.mjs` — compile-free static gate for domain-owned descriptors, policy matrix and blog draft contract tests.
 - `cargo check -p rustok-ai-content`
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation Plan](./implementation-plan.md)

@@ -1,99 +1,99 @@
-# Документация `alloy`
+# `alloy` Documentation
 
-`alloy` — capability-модуль платформенного script/runtime слоя на базе Rhai.
-Он входит в `ModuleRegistry` и устанавливается/удаляется как остальные optional
-модули, но при этом остаётся capability-only слоем, а не tenant-бизнес-доменом.
+`alloy` is a capability module of the platform script/runtime layer based on Rhai.
+It is part of `ModuleRegistry` and is installed/removed like other optional
+modules, but remains a capability-only layer, not a tenant business domain.
 
-## Назначение
+## Purpose
 
-- публиковать канонический runtime entry point для script execution;
-- держать storage, execution log, scheduler и bridge/helper слой внутри capability crate;
-- предоставлять единый contract для host integration без размазывания script runtime по `apps/server`.
+- publish the canonical runtime entry point for script execution;
+- keep storage, execution log, scheduler and bridge/helper layer inside the capability crate;
+- provide a unified contract for host integration without spreading script runtime across `apps/server`.
 
-## Зона ответственности
+## Area of Responsibility
 
-- `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` и execution lifecycle;
-- storage/migrations для scripts и execution log;
-- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`), включая tenant-scoped execution history;
-- интеграционные контракты `ScriptableEntity` и `HookExecutor` для host-модулей;
-- отсутствие превращения script runtime в отдельный tenant-бизнес-домен.
+- `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` and execution lifecycle;
+- storage/migrations for scripts and execution log;
+- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`), including tenant-scoped execution history;
+- integration contracts `ScriptableEntity` and `HookExecutor` for host modules;
+- no transformation of the script runtime into a separate tenant business domain.
 
-## Интеграция
+## Integration
 
-- подключается `apps/server` через generated module wiring из `modules.toml` и `rustok-module.toml`;
-- регистрируется в `ModuleRegistry` как обычный optional модуль и публикует script permission surface;
-- использует Rhai как embedded engine и должен удерживать sandbox/resource-limit semantics;
-- может вызываться доменными модулями через hook/integration contracts, не размывая их собственные runtime boundaries.
+- connected by `apps/server` via generated module wiring from `modules.toml` and `rustok-module.toml`;
+- registered in `ModuleRegistry` as a regular optional module and publishes script permission surface;
+- uses Rhai as embedded engine and must maintain sandbox/resource-limit semantics;
+- can be called by domain modules through hook/integration contracts without blurring their own runtime boundaries.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate alloy`
 - `cargo xtask module test alloy`
-- targeted runtime tests для script execution, scheduler и bridge semantics при изменении capability surface
+- targeted runtime tests for script execution, scheduler and bridge semantics when changing capability surface
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation Plan](./implementation-plan.md)
 - [Alloy Concept](../../../docs/alloy-concept.md)
-- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+- [Manifest Layer Contract](../../../docs/modules/manifest.md)
 
-## Контракт runtime hardening
+## Runtime Hardening Contract
 
-Alloy применяет resource controls во встроенном Rhai engine до компиляции и
-выполнения каждого скрипта. Профиль по умолчанию намеренно консервативен для
+Alloy applies resource controls in the embedded Rhai engine before compiling and
+executing each script. The default profile is intentionally conservative for
 host-triggered hooks:
 
-- `max_operations = 50_000` enforced by Rhai и возвращает `ScriptError::OperationLimit`;
-- `timeout = 100ms` измеряется вокруг evaluated AST и возвращает `ScriptError::Timeout`, если запуск превысил configured budget;
+- `max_operations = 50_000` enforced by Rhai and returns `ScriptError::OperationLimit`;
+- `timeout = 100ms` measured around evaluated AST and returns `ScriptError::Timeout` if execution exceeds the configured budget;
 - `max_call_depth = 16` enforced by Rhai function-call limits;
-- `max_string_size = 64 KiB`, `max_array_size = 10_000` и `max_map_depth = 16` enforced as data-size limits и мапятся в `ScriptError::ResourceLimit`.
+- `max_string_size = 64 KiB`, `max_array_size = 10_000` and `max_map_depth = 16` enforced as data-size limits and mapped to `ScriptError::ResourceLimit`.
 
-Используйте `EngineConfig::strict()` для latency-sensitive pre-commit hooks и
-`EngineConfig::relaxed()` только для operator-controlled maintenance scripts.
-Public callers могут получить снимок effective limits через `EngineConfig::limits()`
-без зависимости от Rhai internals. `PhaseCapabilities` фиксирует helper families,
-разрешённые для каждой execution phase, чтобы integrations не выводили bridge
-availability из побочных эффектов регистрации.
+Use `EngineConfig::strict()` for latency-sensitive pre-commit hooks and
+`EngineConfig::relaxed()` only for operator-controlled maintenance scripts.
+Public callers can obtain a snapshot of effective limits via `EngineConfig::limits()`
+without depending on Rhai internals. `PhaseCapabilities` fixes the helper families
+allowed for each execution phase, so integrations do not infer bridge
+availability from side effects of registration.
 
-## Runbook для scheduler и hook debugging
+## Runbook for Scheduler and Hook Debugging
 
-1. Проверьте `execution_id`, `script.id`, `script.name` и `execution.phase` в
+1. Check `execution_id`, `script.id`, `script.name` and `execution.phase` in
    tracing span `alloy.script.execute`.
-2. Для scheduler failures вызовите scheduler status surface и убедитесь, что job
-   не завис с `running = true`; scheduler сбрасывает flag после successful,
-   aborted или failed execution и обновляет `next_run` из cron expression.
-3. Для hook failures разделяйте `Before` rejection и runtime failure:
-   `ScriptError::Aborted` означает intentional business rejection, а
-   `OperationLimit`, `Timeout` и `ResourceLimit` указывают на sandbox pressure.
-4. Используйте execution log как canonical operator history перед replay script.
-   `ScriptExecutor` пишет execution-history запись для каждого runtime path,
-   подключённого через `AlloyRuntime`: GraphQL/HTTP manual runs, hooks,
-   on-commit scripts и scheduler jobs. Replay должен сохранять тот же phase и
-   tenant context, чтобы bridge/helper availability оставалась phase-aware.
-   Для чтения истории используйте поддержанные transport surfaces:
+2. For scheduler failures, call the scheduler status surface and verify the job
+   is not stuck with `running = true`; the scheduler resets the flag after successful,
+   aborted or failed execution and updates `next_run` from cron expression.
+3. For hook failures, separate `Before` rejection and runtime failure:
+   `ScriptError::Aborted` means intentional business rejection, while
+   `OperationLimit`, `Timeout` and `ResourceLimit` indicate sandbox pressure.
+4. Use the execution log as canonical operator history before replaying a script.
+   `ScriptExecutor` writes an execution-history record for every runtime path
+   connected through `AlloyRuntime`: GraphQL/HTTP manual runs, hooks,
+   on-commit scripts and scheduler jobs. Replay must preserve the same phase and
+   tenant context so that bridge/helper availability remains phase-aware.
+   To read history, use the supported transport surfaces:
    GraphQL `scriptExecutionHistory(scriptId, pagination)` /
-   `recentScriptExecutions(pagination)` и legacy compact list
+   `recentScriptExecutions(pagination)` and legacy compact list
    `scriptExecutions(scriptId, limit)`, HTTP/Loco
-   `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` или
+   `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` or
    generic Axum router `GET /executions`, `GET /scripts/{id}/executions`.
-   Все ответы основаны на `SeaOrmExecutionLog`, нормализуют `page >= 1` и `per_page` в диапазон 1..100 перед DB-level offset/limit
-   pagination, применяют tenant filter до offset, возвращают exact scoped total
-   metadata из базы данных и сортируются newest-first.
-   Ответы возвращают canonical fields: execution id, script id/name, phase,
-   outcome, duration, error, user/tenant context и creation time.
-5. Для списка scripts используйте только известные `status` значения; unknown
-   status должен возвращать validation error и не должен расширять выборку до
-   all scripts. In-memory registry paths должны сохранять тот же порядок, что
-   SeaORM (`name`, затем `id`), и применять offset/limit после фильтрации.
-   Машиночитаемый static contract хранится в
-   `crates/alloy/contracts/alloy-runtime-contract.json`, evidence matrix — в
-   `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`; быстрый
-   no-compile gate запускается командой `npm run verify:alloy:runtime-contract`.
-   Тот же contract теперь фиксирует default/strict/relaxed sandbox profiles,
+   All responses are based on `SeaOrmExecutionLog`, normalize `page >= 1` and `per_page` into the range 1..100 before DB-level offset/limit
+   pagination, apply tenant filter before offset, return exact scoped total
+   metadata from the database and are sorted newest-first.
+   Responses return canonical fields: execution id, script id/name, phase,
+   outcome, duration, error, user/tenant context and creation time.
+5. For listing scripts, use only known `status` values; an unknown
+   status must return a validation error and must not expand the fetch to
+   all scripts. In-memory registry paths must preserve the same ordering as
+   SeaORM (`name`, then `id`), and apply offset/limit after filtering.
+   The machine-readable static contract is stored in
+   `crates/alloy/contracts/alloy-runtime-contract.json`, the evidence matrix in
+   `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`; the fast
+   no-compile gate is run via `npm run verify:alloy:runtime-contract`.
+   The same contract now captures default/strict/relaxed sandbox profiles,
    timeout/native Rhai error mapping, scheduler `Scheduled` phase + tenant
-   propagation, reset `running` flag после load/completion paths и typed hook
-   outcomes (`Continue`, `Rejected`, `Error`) без запуска компиляции.
-6. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
-   surfaces входят в supported capability contract и удерживают audit и
-   permission checks в едином path.
+   propagation, reset `running` flag after load/completion paths and typed hook
+   outcomes (`Continue`, `Rejected`, `Error`) without running compilation.
+6. Do not bypass GraphQL/HTTP/module wiring when debugging production scripts; these
+   surfaces are part of the supported capability contract and keep audit and
+   permission checks in a single path.

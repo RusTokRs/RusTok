@@ -1,35 +1,35 @@
-# Документация `rustok-rbac`
+# `rustok-rbac` Documentation
 
-`rustok-rbac` — канонический модуль RBAC runtime в RusToK. Локальная
-документация этого модуля должна жить внутри crate, а не расползаться по
-`docs/architecture/*` или server-only заметкам.
+`rustok-rbac` — canonical RBAC runtime module in RusToK. Local
+documentation for this module must live inside the crate, not spread across
+`docs/architecture/*` or server-only notes.
 
-## Назначение
+## Purpose
 
-- публиковать единый RBAC runtime contract для разрешения и проверки прав;
-- держать permission policy/evaluator и интеграционные event contracts внутри модуля;
-- удерживать `apps/server` в роли adapter/wiring слоя, а не второго RBAC runtime.
+- publish a unified RBAC runtime contract for permission resolution and checking;
+- keep permission policy/evaluator and integration event contracts inside the module;
+- keep `apps/server` in the adapter/wiring layer role, not as a second RBAC runtime.
 
-## Зона ответственности
+## Scope
 
 - relation-based source of truth: `roles`, `permissions`, `user_roles`, `role_permissions`;
-- `PermissionResolver`, `RuntimePermissionResolver`, policy/evaluator и tenant policy authorization flow;
-- кросс-модульные event contracts для изменений role assignments;
-- permission-aware runtime contracts и typed RBAC primitives в связке с `rustok-core`;
-- отсутствие rollout-mode и shadow-runtime логики в live surface.
+- `PermissionResolver`, `RuntimePermissionResolver`, policy/evaluator and tenant policy authorization flow;
+- cross-module event contracts for role assignment changes;
+- permission-aware runtime contracts and typed RBAC primitives in conjunction with `rustok-core`;
+- absence of rollout-mode and shadow-runtime logic in the live surface.
 
-## Интеграция
+## Integration
 
-- `apps/server` владеет только adapter/wiring слоем: store adapters, cache integration, transport extractors и observability;
-- GraphQL role query/mutation/types живут в `rustok-rbac`; `apps/server` только композирует roots и передаёт adapter записи ролей в runtime persistence;
-- `rustok-core` остаётся владельцем typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
-- live authorization идёт только через tenant policy evaluation, без relation-only/shadow parity path;
-- operator-facing admin overview живёт в `rustok-rbac-admin` и оформлен как FFA `core` + native-only `transport` + `ui/leptos` adapter;
-- новые public RBAC surfaces и event contracts требуют синхронизации module docs, server docs и verification plan.
+- `apps/server` owns only the adapter/wiring layer: store adapters, cache integration, transport extractors and observability;
+- GraphQL role query/mutation/types live in `rustok-rbac`; `apps/server` only composes roots and passes adapter role records to runtime persistence;
+- `rustok-core` remains the owner of typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
+- live authorization goes only through tenant policy evaluation, without a relation-only/shadow parity path;
+- the operator-facing admin overview lives in `rustok-rbac-admin` and is structured as FFA `core` + native-only `transport` + `ui/leptos` adapter;
+- new public RBAC surfaces and event contracts require synchronization of module docs, server docs and verification plan.
 
-## Наблюдаемость и release gates
+## Observability and release gates
 
-Канонические runtime signals:
+Canonical runtime signals:
 
 - `rustok_rbac_permission_cache_hits`
 - `rustok_rbac_permission_cache_misses`
@@ -40,22 +40,22 @@
 - `rustok_rbac_engine_eval_duration_ms_total`
 - `rustok_rbac_engine_eval_duration_samples`
 
-Release gates для изменений в модуле:
+Release gates for changes in the module:
 
-- обновить unit tests для изменённой доменной логики;
-- проверить совместимость server adapters;
-- синхронизировать `README.md`, local docs и verification docs;
-- не возвращать rollout-mode или вторую live authorization path.
+- update unit tests for changed domain logic;
+- verify compatibility with server adapters;
+- synchronize `README.md`, local docs and verification docs;
+- do not reintroduce rollout-mode or a second live authorization path.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate rbac`
 - `cargo xtask module test rbac`
-- targeted tests для permission resolution, tenant policy decisions и integration events
+- targeted tests for permission resolution, tenant policy decisions and integration events
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Verification plan](../../../docs/verification/rbac-server-modules-verification-plan.md)

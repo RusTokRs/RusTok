@@ -1,43 +1,43 @@
-# Документация `rustok-api`
+# `rustok-api` Documentation
 
-`rustok-api` — shared web/API adapter layer платформы. Он держит общие
-request/auth/tenant/channel/GraphQL контракты, которые нужны host-слою и
-модульным transport adapters, но не должны жить в `rustok-core`.
+`rustok-api` is the shared web/API adapter layer of the platform. It holds common
+request/auth/tenant/channel/GraphQL contracts needed by the host layer and
+module transport adapters, but which should not live in `rustok-core`.
 
-## Назначение
+## Purpose
 
-- публиковать канонический shared host/API contract;
-- держать reusable request, auth, tenant, channel и GraphQL-facing primitives вне `apps/server`;
-- давать модульным crates общий transport-adapter foundation без дублирования web-layer contracts;
-- публиковать нейтральные port primitives (`PortContext`, `PortError`, `PortCallPolicy`) для новых и постепенно мигрируемых transport-agnostic ports.
+- publish the canonical shared host/API contract;
+- keep reusable request, auth, tenant, channel and GraphQL-facing primitives outside `apps/server`;
+- give module crates a common transport-adapter foundation without duplicating web-layer contracts;
+- publish neutral port primitives (`PortContext`, `PortError`, `PortCallPolicy`) for new and gradually migrated transport-agnostic ports.
 
-## Зона ответственности
+## Area of Responsibility
 
-- request context types, transport-agnostic port context/error/policy primitives и auth/tenant/channel host contracts;
-- `UiRouteContext`, `UiRouteQueryUpdate`, `normalize_ui_text`, `parse_ui_csv` и прочие module-agnostic UI host contracts;
-- GraphQL helper types и error helpers shared across modules;
-- reusable read/write/event-replay/best-effort port enforcement без module-specific business logic; consumer migration закреплена в `rustok-region` и продолжена для tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay и page-builder publish paths;
-- request-level locale/tenant/channel resolution primitives, не принадлежащие domain crates;
-- отсутствие module-specific resolvers, controllers и business logic.
+- request context types, transport-agnostic port context/error/policy primitives and auth/tenant/channel host contracts;
+- `UiRouteContext`, `UiRouteQueryUpdate`, `normalize_ui_text`, `parse_ui_csv` and other module-agnostic UI host contracts;
+- GraphQL helper types and error helpers shared across modules;
+- reusable read/write/event-replay/best-effort port enforcement without module-specific business logic; consumer migration is anchored in `rustok-region` and continued for tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay and page-builder publish paths;
+- request-level locale/tenant/channel resolution primitives not belonging to domain crates;
+- absence of module-specific resolvers, controllers and business logic.
 
-## Интеграция
+## Integration
 
-- используется `apps/server` как shared composition/root API layer;
-- модульные crates могут зависеть от `rustok-api`, когда их GraphQL/REST adapters живут внутри самих модулей;
-- default surface не зависит от `rustok-core` и публикует neutral contracts напрямую;
-- feature `server` подключает `rustok-core` только для server-side security/permission/auth/request/GraphQL integration;
-- outbox-specific Loco wiring принадлежит `rustok-outbox::loco`, поэтому `rustok-api` не зависит от outbox runtime;
-- не должен дублироваться ни в `apps/server`, ни в per-module helper crates.
+- used by `apps/server` as the shared composition/root API layer;
+- module crates may depend on `rustok-api` when their GraphQL/REST adapters live inside the modules themselves;
+- default surface does not depend on `rustok-core` and publishes neutral contracts directly;
+- `server` feature enables `rustok-core` only for server-side security/permission/auth/request/GraphQL integration;
+- outbox-specific Loco wiring belongs to `rustok-outbox::loco`, so `rustok-api` does not depend on outbox runtime;
+- must not be duplicated in `apps/server` or in per-module helper crates.
 
-## Проверка
+## Verification
 
-- structural verification: local docs и root `README.md` должны оставаться синхронизированными;
-- targeted compile/tests выполняются при изменении shared request/auth/channel/GraphQL/UI contracts;
-- `cargo tree -p rustok-api --no-default-features` не должен содержать `rustok-core` или `rustok-outbox`;
-- изменения host/API layer должны сопровождаться синхронизацией consumer docs.
+- structural verification: local docs and root `README.md` must remain synchronized;
+- targeted compile/tests run when shared request/auth/channel/GraphQL/UI contracts change;
+- `cargo tree -p rustok-api --no-default-features` must not contain `rustok-core` or `rustok-outbox`;
+- changes to the host/API layer must be accompanied by synchronization of consumer docs.
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation Plan](./implementation-plan.md)
 - [Platform documentation map](../../../docs/index.md)

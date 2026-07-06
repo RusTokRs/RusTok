@@ -2,60 +2,60 @@
 
 ## Host composition update (2026-07-02)
 
-- [x] Generated search renderer использует `SearchStorefrontComposition`, соединяющий публичные product catalog option DTO/helper и search-owned props.
-- [x] Host проверяет tenant enablement модуля `product` и передаёт только effective locale из `UiRouteContext`; локальный locale fallback отсутствует.
-- [x] Product storefront metadata использует native `#[server]` first и параллельный public GraphQL `storefrontCatalogSearchOptions(locale: String!)`; fast boundary guardrails фиксируют wiring без долгой Rust-компиляции.
+- [x] Generated search renderer uses `SearchStorefrontComposition`, connecting public product catalog option DTO/helper and search-owned props.
+- [x] Host checks tenant enablement of the `product` module and passes only effective locale from `UiRouteContext`; no local locale fallback.
+- [x] Product storefront metadata uses native `#[server]` first and parallel public GraphQL `storefrontCatalogSearchOptions(locale: String!)`; fast boundary guardrails fix wiring without long Rust compilation.
 
-## Фокус
+## Focus
 
-Развивать `apps/storefront` как стабильную SSR-витрину с предсказуемой производительностью, безопасной обработкой пользовательского ввода и едиными контрактами с backend.
+Develop `apps/storefront` as a stable SSR storefront with predictable performance, safe user input handling, and unified contracts with the backend.
 
-## Улучшения
+## Improvements
 
-### Архитектурные долги
+### Architecture debt
 
-- Формализовать границы между SSR orchestration, shared integrations и feature-модулями.
-- Снизить дублирование UI/business сценариев с `apps/next-frontend` через общие контракты.
-- Оптимизировать стратегию data fetching и кеширования для SSR страниц.
+- Formalize boundaries between SSR orchestration, shared integrations, and feature modules.
+- Reduce UI/business scenario duplication with `apps/next-frontend` through shared contracts.
+- Optimize data fetching and caching strategy for SSR pages.
 
-### API/UI контракты
+### API/UI contracts
 
-- Зафиксировать витринные API-контракты (каталог, контентные блоки, фильтры, пагинация).
-- Стандартизировать UI-состояния для ошибок/пустых данных/частичных ответов.
-- Синхронизировать i18n и маршрутизацию локалей с backend ожиданиями.
+- Stabilize storefront API contracts (catalog, content blocks, filters, pagination).
+- Standardize UI states for errors/empty data/partial responses.
+- Synchronize i18n and locale routing with backend expectations.
 
 ### Observability
 
-- Добавить web-vitals и SSR latency метрики для ключевых страниц.
-- Ввести трассировку запросов storefront -> server по correlation id.
-- Определить алерты на рост TTFB/ошибок рендеринга.
+- Add web-vitals and SSR latency metrics for key pages.
+- Introduce request tracing from storefront -> server via correlation id.
+- Define alerts for TTFB increase / rendering errors.
 
 ### Security
 
-- Усилить sanitization пользовательского/контентного HTML перед SSR.
-- Добавить защиту от злоупотребления публичными фильтрами и поисковыми параметрами.
-- Зафиксировать policy для cookie/session взаимодействия с backend auth.
+- Improve sanitization of user/content HTML before SSR.
+- Add abuse protection for public filters and search parameters.
+- Define policy for cookie/session interaction with backend auth.
 
 ### Test coverage
 
-- Добавить integration/e2e сценарии для каталога, карточки товара и поиска.
-- Расширить тесты SSR hydration consistency и i18n fallback.
-- Ввести регрессионные тесты для critical storefront маршрутов.
+- Add integration/e2e scenarios for catalog, product card, and search.
+- Expand SSR hydration consistency and i18n fallback tests.
+- Introduce regression tests for critical storefront routes.
 
-## Паритет стеков (Leptos/Next.js)
+## Stack parity (Leptos/Next.js)
 
-- Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
+- Any feature for admin/storefront is planned, decomposed, and tracked for both implementations (Leptos and Next.js) in the same delivery cycle.
 
-### Checklist готовности фичи
+### Feature readiness checklist
 
-- [ ] Реализовано в Leptos-варианте.
-- [ ] Реализовано в Next.js-варианте.
-- [ ] Контракты API/UI совпадают.
-- [ ] Навигация и RBAC-поведение эквивалентны.
+- [ ] Implemented in Leptos variant.
+- [ ] Implemented in Next.js variant.
+- [ ] API/UI contracts match.
+- [ ] Navigation and RBAC behavior are equivalent.
 
-### Текущий статус rich-text (blog/forum/pages)
+### Current rich-text status (blog/forum/pages)
 
-- **Админка (Leptos, `apps/admin`)**: [ ] Не начато / в процессе синхронизации с Next.js-реализацией.
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (подключены Tiptap/Page Builder маршруты, требуется завершить работу с реальными entity ID и parity-check с Leptos).
-- **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-- **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
+- **Admin (Leptos, `apps/admin`)**: [ ] Not started / in sync process with Next.js implementation.
+- **Admin (Next.js, `apps/next-admin`)**: [~] Partially implemented (Tiptap/Page Builder routes connected, needs real entity ID work and parity-check with Leptos).
+- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).
+- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).

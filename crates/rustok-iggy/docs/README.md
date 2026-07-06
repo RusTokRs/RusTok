@@ -1,38 +1,38 @@
-# Документация `rustok-iggy`
+# Documentation `rustok-iggy`
 
-`rustok-iggy` — transport crate для streaming event delivery на базе Iggy. Он
-реализует `EventTransport` и держит transport-level abstractions поверх
-`rustok-iggy-connector`, не владея самим connection/mode lifecycle.
+`rustok-iggy` is a transport crate for streaming event delivery based on Iggy. It
+implements `EventTransport` and holds transport-level abstractions over
+`rustok-iggy-connector`, without owning the connection/mode lifecycle itself.
 
-## Назначение
+## Purpose
 
-- публиковать канонический Iggy-based `EventTransport` surface для платформы;
-- держать serialization, topology, DLQ, replay и consumer-group abstractions внутри transport crate;
-- отделять transport behavior от connector-level connection management.
+- publish the canonical Iggy-based `EventTransport` surface for the platform;
+- hold serialization, topology, DLQ, replay and consumer-group abstractions inside the transport crate;
+- separate transport behavior from connector-level connection management.
 
-## Зона ответственности
+## Responsibilities
 
-- `IggyTransport` и transport-facing configuration;
-- JSON/Postcard-сериализация и десериализация для путей публикации и чтения;
-- управление topology, consumer groups, wrapper `consume_next_as_group` с connector metadata (`offset`/opaque `ack_token`), DLQ, replay и health abstractions;
-- observability hooks для transport layer;
-- отсутствие ownership над embedded/remote connection lifecycle.
+- `IggyTransport` and transport-facing configuration;
+- JSON/Postcard serialization and deserialization for publish and read paths;
+- management of topology, consumer groups, wrapper `consume_next_as_group` with connector metadata (`offset`/opaque `ack_token`), DLQ, replay and health abstractions;
+- observability hooks for the transport layer;
+- no ownership over embedded/remote connection lifecycle.
 
-## Интеграция
+## Integration
 
-- зависит от `rustok-iggy-connector` для embedded/remote mode abstraction и low-level message I/O;
-- реализует `EventTransport` для platform event system;
-- должен оставаться transport crate, а не connector/runtime configuration bucket;
-- любые изменения transport contracts должны синхронизироваться с outbox/event docs и connector docs.
+- depends on `rustok-iggy-connector` for embedded/remote mode abstraction and low-level message I/O;
+- implements `EventTransport` for the platform event system;
+- must remain a transport crate, not a connector/runtime configuration bucket;
+- any changes to transport contracts must be synchronized with outbox/event docs and connector docs.
 
-## Проверка
+## Verification
 
-- targeted compile/tests для transport configuration, serialization/deserialization, consumer consume path, topology и replay/DLQ abstractions;
-- integration tests нужны при изменении реального Iggy SDK path;
-- structural verification для local docs и connector/transport boundary.
+- targeted compile/tests for transport configuration, serialization/deserialization, consumer consume path, topology and replay/DLQ abstractions;
+- integration tests are needed when changing the real Iggy SDK path;
+- structural verification for local docs and connector/transport boundary.
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [Документация `rustok-iggy-connector`](../../rustok-iggy-connector/docs/README.md)
+- [Implementation plan](./implementation-plan.md)
+- [Documentation of `rustok-iggy-connector`](../../rustok-iggy-connector/docs/README.md)

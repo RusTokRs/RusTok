@@ -1,77 +1,77 @@
-# План реализации `rustok-test-utils`
+# Implementation plan for `rustok-test-utils`
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: After each increment, update this block.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
-## Текущий статус
+## Current status
 
-- Статус: **active baseline**.
-- Кратко: crate уже покрывает базовые сценарии (db setup, mock event bus, fixtures, helpers),
-  но отсутствует формализация coverage-матрицы по модулям и единые quality-gates для тестового инструментария.
+- Status: **active baseline**.
+- Summary: crate already covers basic scenarios (db setup, mock event bus, fixtures, helpers),
+  but formalization of a coverage matrix by module and unified quality gates for the test tooling are missing.
 
-## Gap-анализ
+## Gap analysis
 
-### Что уже сделано
+### What is already done
 
-- Есть рабочие модули `db`, `events`, `fixtures`, `helpers`.
-- Есть публичные re-export entry points для быстрого подключения в тестах.
-- crate используется как общий слой повторного использования в тестах платформы.
+- Working modules `db`, `events`, `fixtures`, `helpers` exist.
+- Public re-export entry points are available for quick inclusion in tests.
+- Crate is used as a common reuse layer in platform tests.
 
-### Что отсутствует
+### What is missing
 
-- Формальная карта соответствия: какие модульные тестовые сценарии покрываются какими утилитами.
-- Набор golden/contract tests для самих test utilities (особенно для mock event behavior).
-- Стандартизованные примеры для multi-tenant/RBAC/integration edge-cases.
-- Политика versioning для тестовых API (изменения builders/fixtures без лишних поломок).
+- A formal conformance map: which module test scenarios are covered by which utilities.
+- A set of golden/contract tests for the test utilities themselves (especially for mock event behavior).
+- Standardized examples for multi-tenant/RBAC/integration edge-cases.
+- Versioning policy for test APIs (changes to builders/fixtures without unnecessary breakage).
 
-## Этапы работ
+## Work stages
 
-### Этап 1 — Инвентаризация и стандартизация
+### Stage 1 — Inventory and standardization
 
-- Зафиксировать каталог утилит по типам тестов (unit/integration/contract).
-- Уточнить рекомендованные entry points и anti-patterns использования.
-- Синхронизировать документацию с центральным testing-гайдом.
+- Lock the utility catalog by test type (unit/integration/contract).
+- Clarify recommended entry points and usage anti-patterns.
+- Synchronize documentation with the central testing guide.
 
-### Этап 2 — Расширение покрытия
+### Stage 2 — Coverage expansion
 
-- Добавить недостающие fixtures для key-domain сценариев.
-- Укрепить mock event utilities проверками порядка/идемпотентности публикаций.
-- Ввести готовые helper-паттерны для tenancy/RBAC тестовых контекстов.
+- Add missing fixtures for key-domain scenarios.
+- Strengthen mock event utilities with publication order/idempotency checks.
+- Introduce ready helper patterns for tenancy/RBAC test contexts.
 
-### Этап 3 — Устойчивость и release-gates
+### Stage 3 — Stability and release gates
 
-- Добавить self-tests для публичных test-utils API.
-- Ввести quality gates: smoke-набор тестов для проверки критичных helpers.
-- Зафиксировать deprecation policy для изменения test-fixtures API.
+- Add self-tests for public test-utils API.
+- Introduce quality gates: a smoke test set to verify critical helpers.
+- Lock deprecation policy for changes to test-fixtures API.
 
-## Критерии готовности
+## Readiness criteria
 
-- Есть документированная матрица «сценарий теста → рекомендованный helper/fixture».
-- Публичные API `rustok-test-utils` покрыты собственными regression tests.
-- Для tenancy/RBAC/event-потоков есть стандартизованные reusable fixtures.
-- Изменения test-utils API сопровождаются migration notes для потребителей.
+- A documented matrix of "test scenario → recommended helper/fixture" exists.
+- Public APIs of `rustok-test-utils` are covered by their own regression tests.
+- Standardized reusable fixtures exist for tenancy/RBAC/event flows.
+- Changes to test-utils API are accompanied by migration notes for consumers.
 
-## Метрики верификации
+## Verification metrics
 
-- **Scenario coverage:** доля приоритетных тестовых сценариев, имеющих рекомендованный helper (целевое значение: ≥ 90%).
-- **Utility stability:** процент зелёных self-tests `rustok-test-utils` в CI (целевое значение: 100%).
-- **Adoption consistency:** доля новых тестов, использующих общие helpers вместо локального дублирования (целевое значение: рост MoM).
-- **Migration safety:** число регрессий у потребителей после изменения test-utils API (целевое значение: 0 критичных регрессий).
+- **Scenario coverage:** share of priority test scenarios that have a recommended helper (target: ≥ 90%).
+- **Utility stability:** percentage of green self-tests for `rustok-test-utils` in CI (target: 100%).
+- **Adoption consistency:** share of new tests using shared helpers instead of local duplication (target: MoM growth).
+- **Migration safety:** number of regressions in consumers after test-utils API changes (target: 0 critical regressions).
 
 ## Checklist
 
-- [x] контрактные тесты покрывают все публичные use-case.
+- [x] contract tests cover all public use-cases.
 
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and accuracy of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

@@ -1,48 +1,48 @@
-# Документация `rustok-tenant`
+# `rustok-tenant` Documentation
 
-`rustok-tenant` — канонический tenancy-модуль платформы. Он задаёт tenant
-domain contract и не должен растворяться в middleware- или host-specific логике.
+`rustok-tenant` — canonical tenancy module of the platform. It defines the tenant
+domain contract and must not dissolve into middleware or host-specific logic.
 
-## Назначение
+## Purpose
 
-- публиковать канонический tenant domain contract и CRUD/module-toggle surfaces;
-- держать tenant-aware domain logic внутри модуля;
-- удерживать `apps/server` в роли middleware/cache adapter слоя, а не владельца tenancy domain.
+- publish the canonical tenant domain contract and CRUD/module-toggle surfaces;
+- keep tenant-aware domain logic inside the module;
+- keep `apps/server` in the middleware/cache adapter layer role, not as owner of the tenancy domain.
 
-## Зона ответственности
+## Scope
 
-- tenant и tenant-module entities/DTOs/services;
-- public CRUD, legacy low-level module override и tenant settings contract;
-- schema guard для tenant settings (object JSON + depth/key/payload limits);
-- transactional outbox-публикация tenant lifecycle events (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) при wiring `TenantService` с `TransactionalEventBus`;
-- tenant-scoped business rules, которые потребляют остальные модули платформы;
-- инварианты multi-tenant модели: `tenant_id`, tenant filtering и tenant-scoped module enablement.
+- tenant and tenant-module entities/DTOs/services;
+- public CRUD, legacy low-level module override and tenant settings contract;
+- schema guard for tenant settings (object JSON + depth/key/payload limits);
+- transactional outbox publication of tenant lifecycle events (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) when wiring `TenantService` with `TransactionalEventBus`;
+- tenant-scoped business rules consumed by other platform modules;
+- invariants of the multi-tenant model: `tenant_id`, tenant filtering and tenant-scoped module enablement.
 
-## Интеграция
+## Integration
 
-- `apps/server` владеет только middleware resolution entry point, cache infrastructure и runtime bootstrap вокруг tenant resolver path;
-- tenant context разрешается по `uuid`, `slug` или `host` до входа в бизнес-логику; module-owned `TenantReadPort` покрывает read projection lookup по id/slug/domain для host resolver/provisioning consumers; `apps/server` resolver использует этот порт на cache-miss пути вместо raw entity lookup, а installer provisioning/verification использует slug projection перед create-candidate decisions и verify step;
-- outbox relay/dispatch инфраструктура остаётся host/runtime concern, но `rustok-tenant` должен публиковать tenant lifecycle events через `TransactionalEventBus` без локальных bypass;
-- tenant admin read paths должны проходить через tenant-scoped RBAC checks (`tenants:(read|list|manage)` + `modules:(read|list|manage)`) и оставаться синхронизированными с server adapters;
-- Redis/in-memory cache semantics и cross-instance invalidation принадлежат host cache layer, но должны оставаться синхронизированными с module contract;
-- host provisioning/deprovisioning flows обязаны дергать tenant cache invalidation hooks (`invalidate_tenant_cache_by_uuid/slug/host`) после create/update/deactivate/domain-change; без этого stale positive cache может жить до `TENANT_CACHE_TTL=300s`, а negative cache miss — до `TENANT_NEGATIVE_CACHE_TTL=60s`;
-- runtime enable/disable модулей должен идти через host `ModuleLifecycleService::toggle_module_with_actor()`: он выполняет policy/dependency checks, lifecycle hooks и journaling; deprecated `TenantService::toggle_module` остаётся только low-level legacy/backfill API и не является production entrypoint;
-- resolver invariants в host middleware integration path зафиксированы тестами `apps/server/tests/tenant_resolver_invariants_test.rs` (header/host/subdomain + disabled/not-found semantics);
-- observability для tenant runtime публикуется host-слоем через `/metrics`, включая cache hit/miss, coalesced requests и active/inactive tenant signals;
-- любые tenant-scoped runtime guarantees требуют синхронизации module docs и server docs.
+- `apps/server` owns only the middleware resolution entry point, cache infrastructure and runtime bootstrap around the tenant resolver path;
+- tenant context is resolved by `uuid`, `slug` or `host` before entering business logic; the module-owned `TenantReadPort` covers read projection lookup by id/slug/domain for host resolver/provisioning consumers; `apps/server` resolver uses this port on the cache-miss path instead of raw entity lookup, and installer provisioning/verification uses slug projection before create-candidate decisions and verify step;
+- outbox relay/dispatch infrastructure remains a host/runtime concern, but `rustok-tenant` must publish tenant lifecycle events through `TransactionalEventBus` without local bypasses;
+- tenant admin read paths must go through tenant-scoped RBAC checks (`tenants:(read|list|manage)` + `modules:(read|list|manage)`) and remain synchronized with server adapters;
+- Redis/in-memory cache semantics and cross-instance invalidation belong to the host cache layer, but must remain synchronized with the module contract;
+- host provisioning/deprovisioning flows must call tenant cache invalidation hooks (`invalidate_tenant_cache_by_uuid/slug/host`) after create/update/deactivate/domain-change; without this, stale positive cache may live up to `TENANT_CACHE_TTL=300s`, and negative cache miss up to `TENANT_NEGATIVE_CACHE_TTL=60s`;
+- runtime enable/disable of modules must go through the host `ModuleLifecycleService::toggle_module_with_actor()`: it performs policy/dependency checks, lifecycle hooks and journaling; the deprecated `TenantService::toggle_module` remains only a low-level legacy/backfill API and is not a production entrypoint;
+- resolver invariants in the host middleware integration path are captured by tests in `apps/server/tests/tenant_resolver_invariants_test.rs` (header/host/subdomain + disabled/not-found semantics);
+- observability for tenant runtime is published by the host layer via `/metrics`, including cache hit/miss, coalesced requests and active/inactive tenant signals;
+- any tenant-scoped runtime guarantees require synchronization of module docs and server docs.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate tenant`
 - `cargo xtask module test tenant`
 - `npm run verify:tenant:fba`
 - `node --check scripts/verify/verify-tenant-fba.mjs`
-- `cargo test -p rustok-tenant tenant_read_port --test integration` для FBA read-port runtime smoke (deadline, typed error mapping, slug/domain lookup, inactive degraded mode)
-- targeted tests для tenant CRUD, module toggles, resolver invariants и cache-aware integration path
+- `cargo test -p rustok-tenant tenant_read_port --test integration` for FBA read-port runtime smoke (deadline, typed error mapping, slug/domain lookup, inactive degraded mode)
+- targeted tests for tenant CRUD, module toggles, resolver invariants and cache-aware integration path
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Server docs](../../../apps/server/docs/README.md)
 - [Cache stampede protection](../../../apps/server/docs/CACHE_STAMPEDE_PROTECTION.md)

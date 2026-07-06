@@ -1,16 +1,16 @@
-# План реализации `rustok-workflow`
+# Implementation plan for `rustok-workflow`
 
-Статус: workflow module уже имеет рабочий execution/runtime baseline; ключевая
-задача сейчас — удерживать границу между orchestration layer, event contracts и
-capability integrations без дрейфа и битой документации.
+Status: workflow module already has a working execution/runtime baseline; the key
+task now is to maintain the boundary between orchestration layer, event contracts and
+capability integrations without drift and broken documentation.
 
 ## Execution checkpoint
 
 - Current phase: phase_b_ready + fba_provider_static_evidence + compile_free_runtime_smoke
-- Last checkpoint: REST workflow/step/execution handlers и webhook ingress теперь принимают узкий `WorkflowHttpRuntime` с явным DB handle; текущий Loco `AppContext` изолирован в route-state adapter до полного Axum cutover. Workflow admin FFA Phase B считается закрытой; FBA slice #1 добавил `WorkflowReadPort` / `workflow.read_projection.v1`, provider registry `crates/rustok-workflow/contracts/workflow-fba-registry.json`, static matrix `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`, compile-free runtime/fallback smoke packet `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json` и fast gate `npm run verify:workflow:fba` без long compilation.
-- Next step: Заменить compile-free runtime/fallback smoke живым backend evidence: native server-function list_workflows, принудительный GraphQL fallback и typed PortError mapping; не повышать FBA выше `in_progress` до live evidence.
+- Last checkpoint: REST workflow/step/execution handlers and webhook ingress now accept a narrow `WorkflowHttpRuntime` with explicit DB handle; the current Loco `AppContext` is isolated in the route-state adapter until the full Axum cutover. Workflow admin FFA Phase B is considered closed; FBA slice #1 added `WorkflowReadPort` / `workflow.read_projection.v1`, provider registry `crates/rustok-workflow/contracts/workflow-fba-registry.json`, static matrix `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`, compile-free runtime/fallback smoke packet `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json` and fast gate `npm run verify:workflow:fba` without long compilation.
+- Next step: Replace compile-free runtime/fallback smoke with live backend evidence: native server-function list_workflows, forced GraphQL fallback and typed PortError mapping; do not promote FBA above `in_progress` until live evidence.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок; избегать долгих full-workspace компиляций, использовать targeted checks/timeouts.
+- Hand-off notes for next agent: After each increment, update this block; avoid long full-workspace compilations, use targeted checks/timeouts.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 
 
@@ -20,72 +20,72 @@ capability integrations без дрейфа и битой документаци
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - пакетный no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-workflow/contracts/evidence/workflow-provider-runtime-order-smoke.json`: shared read policy → tenant scope → owner `WorkflowService` invocation → typed error mapping и fallback/degraded registry parity; статус остаётся `in_progress` до live native/GraphQL execution;
-  - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
-  - FFA admin slice: status badge presentation, workflow table row mapping, template category styling, template-name normalization, module route toggle/legacy href policy, transport request context, transport error presentation и template create command/name policy теперь живут в framework-agnostic `admin/src/core/` с unit tests;
-  - transport slice: текущий GraphQL adapter живёт в `admin/src/transport/graphql_adapter.rs`, native server-function adapter добавлен в `admin/src/transport/native_server_adapter.rs`, а `admin/src/transport/mod.rs` стал native-first facade с GraphQL fallback; Leptos UI больше не зависит от raw adapter modules напрямую;
-  - UI adapter slice: Leptos-only render code перенесён в `admin/src/ui/leptos.rs`, а crate root оставлен composition/re-export layer для дальнейшего добавления других host adapters;
-  - fast boundary guardrail: `scripts/verify/verify-workflow-admin-boundary.mjs` и fixture tests закрепляют отсутствие legacy `api.rs`/flat `transport.rs`, Leptos-free `core/`, raw-adapter-free UI и split native/GraphQL transport adapters;
-  - Phase B closure decision: workflow admin FFA больше не расширяется без нового workflow-owned UI/transport surface; дальнейшее повышение до `parity_verified` требует runtime parity evidence для native/server-function + GraphQL fallback и обновления local+central docs в том же change.
+  - batch no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` checks `crates/rustok-workflow/contracts/evidence/workflow-provider-runtime-order-smoke.json`: shared read policy → tenant scope → owner `WorkflowService` invocation → typed error mapping and fallback/degraded registry parity; status remains `in_progress` until live native/GraphQL execution;
+  - module plan synchronized with central FFA/FBA readiness board; UI surface already published and managed in migration/backlog rhythm;
+  - FFA admin slice: status badge presentation, workflow table row mapping, template category styling, template-name normalization, module route toggle/legacy href policy, transport request context, transport error presentation and template create command/name policy now live in framework-agnostic `admin/src/core/` with unit tests;
+  - transport slice: current GraphQL adapter lives in `admin/src/transport/graphql_adapter.rs`, native server-function adapter added in `admin/src/transport/native_server_adapter.rs`, and `admin/src/transport/mod.rs` became a native-first facade with GraphQL fallback; Leptos UI no longer depends on raw adapter modules directly;
+  - UI adapter slice: Leptos-only render code moved to `admin/src/ui/leptos.rs`, and crate root left as composition/re-export layer for future addition of other host adapters;
+  - fast boundary guardrail: `scripts/verify/verify-workflow-admin-boundary.mjs` and fixture tests lock absence of legacy `api.rs`/flat `transport.rs`, Leptos-free `core/`, raw-adapter-free UI and split native/GraphQL transport adapters;
+  - Phase B closure decision: workflow admin FFA will not be expanded further without a new workflow-owned UI/transport surface; further promotion to `parity_verified` requires runtime parity evidence for native/server-function + GraphQL fallback and local+central docs update in the same change.
   - FBA provider slice: `crates/rustok-workflow/src/ports.rs` declares `WorkflowReadPort` / `workflow.read_projection.v1` for workflow admin read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation and read deadline semantics; `crates/rustok-workflow/contracts/workflow-fba-registry.json` plus `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:workflow:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`.
   - Compile-free runtime/fallback smoke slice: `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json` pins native server-function entrypoints, GraphQL fallback entrypoints, native-first facade assertions and live-evidence closeout criteria without promoting FBA beyond `in_progress`.
 - Last verified at (UTC): 2026-06-19T00:00:00Z
 - Owner: `rustok-workflow` module team
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-workflow` как owner workflow execution domain;
-- синхронизировать triggers, steps, transport/UI surfaces и local docs;
-- не допускать превращения workflow в отдельный event transport или generic scripting bucket.
+- maintain `rustok-workflow` as owner of the workflow execution domain;
+- synchronize triggers, steps, transport/UI surfaces and local docs;
+- do not let workflow turn into a separate event transport or generic scripting bucket.
 
-## Текущее состояние
+## Current state
 
-- workflow storage и execution journal уже определены внутри модуля;
-- engine, trigger handlers, cron/manual/webhook/event triggers и базовые step types уже составляют рабочий baseline;
-- GraphQL, REST/webhook ingress и module-owned admin UI уже живут внутри модуля;
-- webhook ingress уже закреплён как module-owned transport surface, а cron path удерживается отдельно от `event_listener` и от server webhook shim;
-- интеграция с `alloy` уже является capability-level step integration, а не registry-level hard dependency.
+- workflow storage and execution journal are already defined inside the module;
+- engine, trigger handlers, cron/manual/webhook/event triggers and base step types already form a working baseline;
+- GraphQL, REST/webhook ingress and module-owned admin UI already live inside the module;
+- webhook ingress is already locked as a module-owned transport surface, and the cron path is kept separate from `event_listener` and from server webhook shim;
+- integration with `alloy` is already a capability-level step integration, not a registry-level hard dependency.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрепить workflow engine и execution journal как module-owned runtime;
-- [x] зафиксировать transport adapters и admin UI внутри модуля;
-- [x] нормализовать local docs и убрать битую кодировку из module docs;
-- [~] удерживать sync между workflow runtime contract, UI surfaces и module metadata; текущий FFA slice вынес presentation/view-model helpers, module route policy, transport request context, error presentation и template create command policy из Leptos render path в `admin/src/core/`, добавил native-first transport facade с GraphQL fallback и выделил `ui/leptos` adapter без изменения внешнего GraphQL contract.
+- [x] lock workflow engine and execution journal as module-owned runtime;
+- [x] lock transport adapters and admin UI inside the module;
+- [x] normalize local docs and remove broken encoding from module docs;
+- [~] maintain sync between workflow runtime contract, UI surfaces and module metadata; current FFA slice extracted presentation/view-model helpers, module route policy, transport request context, error presentation and template create command policy from Leptos render path into `admin/src/core/`, added native-first transport facade with GraphQL fallback and extracted `ui/leptos` adapter without changing the external GraphQL contract.
 
 ### 2. Execution hardening
 
-- [~] довести integration tests для реальной БД и execution history flows; добавлен
-  SQLite integration-сценарий duplicate delivery после пересоздания event handler-а,
-  а `(workflow_id, trigger_event_id)` закреплён unique index; live PostgreSQL history
-  matrix остаётся отдельным verification gate;
-- [ ] завершить production-grade реализацию `alloy_script` и `notify` шагов;
-- [ ] оценить DAG/branching expansion только при реальном product pressure, не ломая текущий linear-step contract.
+- [~] deliver integration tests for real DB and execution history flows; added
+  SQLite integration scenario for duplicate delivery after event handler recreation,
+  and `(workflow_id, trigger_event_id)` locked as unique index; live PostgreSQL history
+  matrix remains a separate verification gate;
+- [ ] complete production-grade implementation of `alloy_script` and `notify` steps;
+- [ ] evaluate DAG/branching expansion only under real product pressure, without breaking the current linear-step contract.
 
 ### 3. Operability
 
-- [ ] развивать системные события `workflow.execution.*` и execution observability;
-- [ ] документировать новые runtime guarantees одновременно с изменением trigger/step semantics;
-- [ ] удерживать local docs и `README.md` синхронизированными с live code.
+- [ ] develop system events `workflow.execution.*` and execution observability;
+- [ ] document new runtime guarantees concurrently with trigger/step semantics changes;
+- [ ] keep local docs and `README.md` synchronized with live code.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate workflow`
 - `cargo xtask module test workflow`
-- targeted tests для triggers, steps, execution journal, tenant isolation и admin/runtime contracts
+- targeted tests for triggers, steps, execution journal, tenant isolation and admin/runtime contracts
 
-## Правила обновления
+## Update rules
 
-1. При изменении workflow runtime contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
-4. При изменении event/alloy integration expectations обновлять связанные docs у foundation и capability modules.
+1. When changing workflow runtime contract, first update this file.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
+4. When changing event/alloy integration expectations, update related docs of foundation and capability modules.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and accuracy of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

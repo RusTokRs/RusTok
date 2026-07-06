@@ -1,21 +1,21 @@
-# План реализации `rustok-ai-product`
+# `rustok-ai-product` — Implementation Plan
 
-## Цель
+## Goal
 
-Сделать `rustok-ai-product` канонической domain-owned точкой для product AI verticals.
+Make `rustok-ai-product` the canonical domain-owned point for product AI verticals.
 
-## Этапы
+## Stages
 
-1. Создать crate + docs contracts.
-2. Перенести `product_attributes` direct wiring из `rustok-ai` в registration API этого crate.
-3. Перенести `product_copy` direct wiring.
-4. Добавить targeted tests и валидацию contracts.
+1. Create crate + docs contracts.
+2. Move `product_attributes` direct wiring from `rustok-ai` to this crate's registration API.
+3. Move `product_copy` direct wiring.
+4. Add targeted tests and validation contracts.
 
 ## Execution checkpoint
 
-- Создан начальный scaffold crate и документация.
-- Перенесены generated payload contracts и базовая валидация `product_copy` / `product_attributes` в `rustok-ai-product`; `rustok-ai` consume-ит эти validators в direct generation path.
-- Добавлен domain-owned registration metadata API (`product_ai_verticals`) для `product_copy` / `product_attributes`; runtime handler registration в `rustok-ai` использует эти task/tool constants.
+- Initial scaffold crate and documentation created.
+- Generated payload contracts and basic validation for `product_copy` / `product_attributes` moved to `rustok-ai-product`; `rustok-ai` consumes these validators in the direct generation path.
+- Domain-owned registration metadata API (`product_ai_verticals`) added for `product_copy` / `product_attributes`; runtime handler registration in `rustok-ai` uses these task/tool constants.
 - Added compile-free static verification gate `scripts/verify/verify-ai-domain-verticals.mjs` for product descriptors, runtime binding seam, and generated payload validators.
 - Last updated at (UTC): 2026-06-23T00:00:00Z
 

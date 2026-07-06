@@ -6,68 +6,68 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Витрина: host и contract
+# Storefront: Host and Contract
 
-RusToK поддерживает два web storefront host-приложения и отдельный mobile storefront host:
+RusToK supports two web storefront host applications and a separate mobile storefront host:
 
-- `apps/storefront` — основной Leptos SSR-first host;
-- `apps/next-frontend` — параллельный Next.js host;
+- `apps/storefront` — primary Leptos SSR-first host;
+- `apps/next-frontend` — parallel Next.js host;
 - `rustok_mobile/apps/rustok_frontend_mobile` — Flutter customer storefront mobile host.
 
-Все реализации должны сохранять единый backend, routing, locale и module contract. Leptos storefront остаётся основным Rust SSR/hydrate host путём, Next.js storefront — headless-параллелью, Flutter storefront mobile — mobile/headless host без Flutter-only backend API.
+All implementations must maintain a unified backend, routing, locale, and module contract. Leptos storefront remains the primary Rust SSR/hydrate host path, Next.js storefront is the headless parallel, and Flutter storefront mobile is the mobile/headless host without Flutter-only backend API.
 
-## Host contract
+## Host Contract
 
-- Host рендерит shell и generic module pages.
-- Module-owned storefront packages подключаются через manifest-driven wiring.
-- Checkout module surfaces монтируются через platform-known slots `checkout_shipping_handoff`, `checkout_payment_handoff` и `checkout_result_handoff`; slot не передаёт ownership бизнес-логики host-приложению.
-- Generic storefront routes живут в семействе `/modules/{route_segment}` с locale-aware вариантом там, где это требуется host runtime.
-- Module-owned packages обязаны строить внутренние ссылки через host route context, а не через hardcoded route strings.
-- Для Leptos storefront packages query/state reads тоже должны идти через общий helper layer
-  `leptos-ui-routing`; storefront не заводит второй package-local route helper поверх `UiRouteContext`.
+- Host renders the shell and generic module pages.
+- Module-owned storefront packages are connected via manifest-driven wiring.
+- Checkout module surfaces are mounted via platform-known slots `checkout_shipping_handoff`, `checkout_payment_handoff` and `checkout_result_handoff`; slots do not transfer ownership of business logic to the host application.
+- Generic storefront routes live in the `/modules/{route_segment}` family with a locale-aware variant where required by the host runtime.
+- Module-owned packages must build internal links via the host route context, not via hardcoded route strings.
+- For Leptos storefront packages, query/state reads must also go through the shared helper layer
+  `leptos-ui-routing`; the storefront does not create a second package-local route helper on top of `UiRouteContext`.
 
-## Data-layer contract
+## Data-Layer Contract
 
-- Для Leptos storefront путь по умолчанию в product runtime: `UI -> local API -> #[server] -> service layer`.
-- Внешний GraphQL contract `/api/graphql` остаётся обязательным и поддерживаемым параллельным путём.
-- Host сначала использует native `#[server]` surface там, где он уже есть, и только затем откатывается к GraphQL, если это предусмотрено runtime contract.
-- Новый module-owned storefront UI не должен проектироваться как GraphQL-only, если может жить через `#[server]`.
-- Standalone CSR для Leptos storefront package считается debug/compatibility профилем: такой package должен иметь GraphQL/REST fallback и не должен требовать `/api/fn/*`.
-- Module-owned storefront packages не должны схлопывать typed business snapshots до summary-only UI state:
-  если backend уже отдаёт typed adjustments, delivery ownership или другие language-agnostic business keys,
-  package API и UI обязаны сохранять эти поля, а не отбрасывать `scope`/metadata на последней миле.
+- For Leptos storefront, the default path in production runtime is: `UI -> local API -> #[server] -> service layer`.
+- The external GraphQL contract `/api/graphql` remains mandatory and is a supported parallel path.
+- The host first uses the native `#[server]` surface where it already exists, and only falls back to GraphQL if the runtime contract requires it.
+- New module-owned storefront UI should not be designed as GraphQL-only if it can work via `#[server]`.
+- Standalone CSR for a Leptos storefront package is considered a debug/compatibility profile: such a package must have a GraphQL/REST fallback and must not require `/api/fn/*`.
+- Module-owned storefront packages must not collapse typed business snapshots into summary-only UI state:
+  if the backend already returns typed adjustments, delivery ownership, or other language-agnostic business keys,
+  the package API and UI must preserve these fields, not discard `scope`/metadata at the last mile.
 
-## Canonical routing и locale
+## Canonical Routing and Locale
 
-- Canonical URL policy и alias storage живут в backend/domain слое, а не в storefront host.
-- Storefront использует backend preflight для canonical route resolution до рендера страницы.
-- Effective locale выбирается runtime/host слоем один раз и затем прокидывается в UI surface.
-- Manifest-entry adapters используют `UiRouteContext.locale` и module-owned locale bundles из `[provides.storefront_ui.i18n]`; hardcoded copy допустим только как последний fallback для отсутствующего ключа.
-- Query-based locale fallback допустим только как backward-compatible path; module-owned UI не должен вводить свою fallback-цепочку.
-- Route/query parity между `apps/storefront`, `apps/next-frontend` и `rustok_frontend_mobile` должна соблюдаться на уровне
-  key semantics и host contract, даже если конкретные helper implementations различаются.
+- Canonical URL policy and alias storage live in the backend/domain layer, not in the storefront host.
+- The storefront uses a backend preflight for canonical route resolution before rendering a page.
+- Effective locale is selected by the runtime/host layer once and then passed through to the UI surface.
+- Manifest-entry adapters use `UiRouteContext.locale` and module-owned locale bundles from `[provides.storefront_ui.i18n]`; hardcoded copy is acceptable only as the last fallback for a missing key.
+- Query-based locale fallback is allowed only as a backward-compatible path; module-owned UI must not introduce its own fallback chain.
+- Route/query parity between `apps/storefront`, `apps/next-frontend` and `rustok_frontend_mobile` must be maintained at the level of
+  key semantics and host contract, even if specific helper implementations differ.
 
-## Parity с Next.js и Flutter storefront
+## Parity with Next.js and Flutter Storefront
 
-- `apps/next-frontend` обязан сохранять parity с `apps/storefront` по route, auth, i18n и backend contracts.
-- `rustok_frontend_mobile` обязан использовать тот же customer-facing storefront contract и не смешиваться с admin/operator mobile UX.
-- Поверхности Flutter catalog/cart живут в `rustok_mobile/packages/rustok_catalog_mobile` и монтируются host-ом через repository boundary; read/write cart actions идут через canonical storefront GraphQL surface в host-owned repository, cart id хранится только в host-owned cart id store, а package не создаёт собственный GraphQL client, tenant resolver, locale fallback chain или cart storage contract.
-- Next.js и Flutter storefront не должны дублировать storage или canonical-routing логику во frontend слое.
-- Source of truth для transport и canonical routing остаётся на backend стороне.
+- `apps/next-frontend` must maintain parity with `apps/storefront` in route, auth, i18n, and backend contracts.
+- `rustok_frontend_mobile` must use the same customer-facing storefront contract and not mix with admin/operator mobile UX.
+- Flutter catalog/cart surfaces live in `rustok_mobile/packages/rustok_catalog_mobile` and are mounted by the host via the repository boundary; read/write cart actions go through the canonical storefront GraphQL surface in the host-owned repository, the cart id is stored only in the host-owned cart id store, and the package does not create its own GraphQL client, tenant resolver, locale fallback chain, or cart storage contract.
+- Next.js and Flutter storefront must not duplicate storage or canonical-routing logic in the frontend layer.
+- The source of truth for transport and canonical routing remains on the backend side.
 
-## Проверка
+## Verification
 
 - `npm.cmd run verify:storefront:routes`
-- точечные storefront contract и smoke checks для затронутых module-owned surfaces
-- сверка с [контрактом manifest-слоя](../modules/manifest.md) при изменении UI wiring
+- targeted storefront contract and smoke checks for affected module-owned surfaces
+- cross-reference with the [manifest-layer contract](../modules/manifest.md) when UI wiring changes
 
-## Связанные документы
+## Related Documents
 
 - [Leptos storefront docs](../../apps/storefront/docs/README.md)
 - [Next.js storefront docs](../../apps/next-frontend/docs/README.md)
 - [Flutter storefront mobile docs](../../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 - [Flutter package catalog/cart](../../rustok_mobile/packages/rustok_catalog_mobile/README.md)
-- [Контракты manifest-слоя](../modules/manifest.md)
+- [Manifest-Layer Contracts](../modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [UI index](./README.md)
-- [Карта документации](../index.md)
+- [Documentation Map](../index.md)

@@ -8,107 +8,107 @@ status: verified
 ---
 # Admin ↔ Server: quickstart
 
-Этот документ фиксирует минимальный runtime contract между UI host-приложениями и `apps/server`. Он не заменяет полноценные deployment runbook и не дублирует инструкции по конкретным окружениям.
+This document captures the minimum runtime contract between UI host applications and `apps/server`. It does not replace full deployment runbooks or duplicate instructions for specific environments.
 
-## Базовая схема
+## Basic Scheme
 
-Рекомендуемый базовый путь для UI hosts:
+Recommended base path for UI hosts:
 
-- browser открывает host-приложение;
-- UI обращается к `apps/server`;
-- backend публикует `/api/graphql`, `/api/fn/*`, `/api/auth/*` и связанные runtime surfaces;
-- reverse proxy или host runtime скрывает лишнюю cross-origin сложность там, где это возможно.
+- browser opens the host application;
+- UI communicates with `apps/server`;
+- backend publishes `/api/graphql`, `/api/fn/*`, `/api/auth/*` and related runtime surfaces;
+- reverse proxy or host runtime hides unnecessary cross-origin complexity where possible.
 
-## Профили Leptos admin
+## Leptos Admin Profiles
 
-`apps/admin` разделяет transport по runtime profile. Продуктовый target для Leptos admin — SSR-first monolith/hydrate, а standalone CSR нужен для local debug и compatibility проверки module-owned UI packages:
+`apps/admin` separates transport by runtime profile. The production target for Leptos admin is SSR-first monolith/hydrate, while standalone CSR is needed for local debug and compatibility checking of module-owned UI packages:
 
-- `csr`: standalone Trunk/WASM host. Critical paths идут в `apps/server` напрямую через `/api/graphql`,
-  `/api/auth/*` и REST. `/api/fn/*` не обязателен для базового shell/debug и не должен быть единственным transport.
-- `hydrate`: browser half для SSR/monolith. UI может вызывать `#[server]`, потому что backend origin
-  должен обслуживать `/api/fn/*`.
-- `ssr`: server half или monolith. `#[server]` доступен как native transport и может быть preferred path
-  для server-side surfaces.
+- `csr`: standalone Trunk/WASM host. Critical paths go directly to `apps/server` via `/api/graphql`,
+  `/api/auth/*` and REST. `/api/fn/*` is not required for basic shell/debug and must not be the sole transport.
+- `hydrate`: browser half for SSR/monolith. UI may call `#[server]` because the backend origin
+  must serve `/api/fn/*`.
+- `ssr`: server half or monolith. `#[server]` is available as a native transport and may be the preferred path
+  for server-side surfaces.
 
-Правило: `#[server]` не заменяет GraphQL/REST. Если surface нужна в standalone `csr`, у неё должен быть
-рабочий GraphQL/REST path или явно документированный fallback.
+Rule: `#[server]` does not replace GraphQL/REST. If a surface is needed in standalone `csr`, it must have a
+working GraphQL/REST path or an explicitly documented fallback.
 
-## Предпочтительный local/dev path
+## Preferred Local/Dev Path
 
-Для локальной отладки предпочтителен same-origin или proxy-aware режим, где UI и backend выглядят как один origin для браузера. Это уменьшает CORS-ошибки, упрощает auth/session flows и делает transport contract предсказуемым.
+For local debugging, a same-origin or proxy-aware mode is preferred, where the UI and backend appear as a single origin to the browser. This reduces CORS errors, simplifies auth/session flows, and makes the transport contract predictable.
 
-Минимум, который должен быть доступен:
+Minimum that must be available:
 
 - UI host;
 - `apps/server`;
-- рабочий auth path;
-- рабочий GraphQL path;
-- если host Leptos в `ssr`/`hydrate` profile — рабочий `#[server]` path;
-- если host Leptos в standalone `csr` debug profile — рабочий GraphQL/REST fallback без обязательного `/api/fn/*`.
+- a working auth path;
+- a working GraphQL path;
+- if the host is Leptos in `ssr`/`hydrate` profile — a working `#[server]` path;
+- if the host is Leptos in standalone `csr` debug profile — a working GraphQL/REST fallback without mandatory `/api/fn/*`.
 
-## Минимальный runtime contract
+## Minimum Runtime Contract
 
-UI host должен уметь достучаться до:
+The UI host must be able to reach:
 
 - `/api/graphql`
 - `/api/auth/*`
-- `/api/fn/*` для Leptos `ssr`/`hydrate` hosts
-- health/runtime surfaces при operator-level диагностике
+- `/api/fn/*` for Leptos `ssr`/`hydrate` hosts
+- health/runtime surfaces for operator-level diagnostics
 
-Если UI и backend находятся на разных origins, backend обязан явно поддерживать требуемый CORS и auth contract. Если это не нужно, same-origin схема остаётся предпочтительной.
+If the UI and backend are on different origins, the backend must explicitly support the required CORS and auth contract. If this is not needed, a same-origin scheme remains preferred.
 
-## Что проверить после подключения
+## What to Verify After Connection
 
-Минимальный smoke:
+Minimum smoke:
 
-1. Открывается login surface host-приложения.
-2. Работает вход и загрузка текущего пользователя/сессии.
-3. Успешны запросы к `/api/auth/*`.
-4. Успешен запрос к `/api/graphql`.
-5. Для Leptos `ssr`/`hydrate` hosts, если затронут native path, успешны вызовы `/api/fn/*`.
-6. Для Leptos standalone `csr`, если затронут module-owned UI package, тот же экран работает через GraphQL/REST fallback.
+1. The login surface of the host application opens.
+2. Login and loading of the current user/session work.
+3. Requests to `/api/auth/*` succeed.
+4. A request to `/api/graphql` succeeds.
+5. For Leptos `ssr`/`hydrate` hosts, if a native path is involved, calls to `/api/fn/*` succeed.
+6. For Leptos standalone `csr`, if a module-owned UI package is involved, the same screen works via GraphQL/REST fallback.
 
-Если эти шаги проходят, host ↔ server contract собран корректно.
+If these steps pass, the host ↔ server contract is correctly set up.
 
-## Route-selection contract для admin hosts
+## Route-Selection Contract for Admin Hosts
 
-Для module-owned admin surfaces runtime contract включает не только transport, но и routing:
+For module-owned admin surfaces, the runtime contract includes not only transport but also routing:
 
-1. selection state хранится в URL;
-2. module-owned admin UI читает его через host route context;
-3. valid user-driven select/open пишет canonical typed `snake_case` key обратно в query;
-4. reset/delete/archive/close очищают соответствующий key;
-5. invalid или удалённый entity id даёт empty state и не оставляет stale detail/form state.
+1. selection state is stored in the URL;
+2. module-owned admin UI reads it via the host route context;
+3. a valid user-driven select/open writes a canonical typed `snake_case` key back to the query;
+4. reset/delete/archive/close clears the corresponding key;
+5. an invalid or deleted entity id produces an empty state and does not leave stale detail/form state.
 
-Для Leptos host этот contract проходит через `UiRouteContext` + host-provided policy для
-`leptos-ui-routing`. Для `apps/next-admin` действует тот же schema-level contract через локальные
-Next helpers. Legacy keys вроде `id`, `pageId`, `topicId` не поддерживаются.
+For the Leptos host, this contract goes through `UiRouteContext` + host-provided policy for
+`leptos-ui-routing`. For `apps/next-admin`, the same schema-level contract applies via local
+Next helpers. Legacy keys like `id`, `pageId`, `topicId` are not supported.
 
-## Диагностика
+## Diagnostics
 
 ### `401 Unauthorized`
 
-Проверить:
+Check:
 
-- auth token или session transport;
-- tenant/channel headers, если они обязательны для конкретного сценария;
-- не сломан ли backend-side auth/runtime contract.
+- auth token or session transport;
+- tenant/channel headers, if required for the specific scenario;
+- whether the backend-side auth/runtime contract is broken.
 
-### CORS ошибки
+### CORS Errors
 
-Обычно это означает, что UI и backend работают cross-origin без нужной backend-конфигурации. Предпочтительный фикс — same-origin/proxy path, а не рост ad hoc исключений.
+This usually means the UI and backend are working cross-origin without the required backend configuration. The preferred fix is a same-origin/proxy path, not growing ad hoc exceptions.
 
-### `404` на `/api/graphql` или `/api/fn/*`
+### `404` on `/api/graphql` or `/api/fn/*`
 
-Проверить:
+Check:
 
-- что reverse proxy действительно пробрасывает `/api/*`;
-- что `apps/server` поднят на ожидаемом порту;
-- что выбранный UI host использует корректный transport contract для текущего runtime mode.
+- that the reverse proxy actually forwards `/api/*`;
+- that `apps/server` is running on the expected port;
+- that the selected UI host uses the correct transport contract for the current runtime mode.
 
-## Локальный debug-stack без Docker
+## Local Debug Stack Without Docker
 
-Для локальной отладки без `docker compose` минимальный стек поднимается как отдельные процессы:
+For local debugging without `docker compose`, the minimum stack is brought up as separate processes:
 
 ```powershell
 # 1. apps/server
@@ -125,59 +125,59 @@ cd ..\admin
 trunk serve --address ::1 --port 3001
 ```
 
-Для локального debug без Docker сервер должен читать `modules.local.toml`, где embedded admin/storefront выключены.
-Корневой `modules.toml` описывает monolith/release composition и требует `embed-admin`/`embed-storefront`.
-В текущем Windows debug-окружении сборка `apps/admin` как SSR embedded artifact падает по памяти (`rustc-LLVM ERROR: out of memory`),
-поэтому внешний стек `apps/server -> apps/next-admin -> apps/admin` запускается через `modules.local.toml`.
-В `apps/server/config/development.yaml` для этого debug-профиля отключены только maintenance workers
-`runtime.background_workers.workflow_cron_enabled=false` и `runtime.background_workers.seo_bulk_enabled=false`.
-Это сохраняет full HTTP/GraphQL/module surface для админок, но не даёт cron/bulk loops забирать DB pool во время
-интерактивной отладки. Production/default runtime остаётся с включёнными workers.
+For local debug without Docker, the server must read `modules.local.toml`, where embedded admin/storefront are disabled.
+The root `modules.toml` describes the monolith/release composition and requires `embed-admin`/`embed-storefront`.
+In the current Windows debug environment, building `apps/admin` as an SSR embedded artifact runs out of memory (`rustc-LLVM ERROR: out of memory`),
+so the external stack `apps/server -> apps/next-admin -> apps/admin` is launched via `modules.local.toml`.
+In `apps/server/config/development.yaml`, for this debug profile only maintenance workers are disabled:
+`runtime.background_workers.workflow_cron_enabled=false` and `runtime.background_workers.seo_bulk_enabled=false`.
+This preserves the full HTTP/GraphQL/module surface for admin panels but prevents cron/bulk loops from consuming the DB pool during
+interactive debugging. The production/default runtime keeps workers enabled.
 
-Tenant contract для standalone admin hosts slug-based: UI отправляет `X-Tenant-Slug`, backend в header-mode обязан принимать этот
-header как публичный admin contract. `X-Tenant-ID` остаётся допустимым внутренним/legacy header, но не должен требоваться от UI host.
+Tenant contract for standalone admin hosts is slug-based: the UI sends `X-Tenant-Slug`, and the backend in header-mode must accept this
+header as a public admin contract. `X-Tenant-ID` remains a valid internal/legacy header but must not be required from the UI host.
 
-Решение по binding: canonical URL остаётся `http://localhost:5150`. На этой Windows-машине `127.0.0.1`
-даёт зависание HTTP-ответов даже для простого Node server, а `localhost` уходит в `::1` и работает стабильно.
-Поэтому локальный debug-stack должен использовать `localhost`/`::1`, а не `127.0.0.1`.
+Binding resolution: the canonical URL remains `http://localhost:5150`. On this Windows machine, `127.0.0.1`
+causes HTTP response hangs even for a simple Node server, while `localhost` resolves to `::1` and works stably.
+Therefore the local debug stack must use `localhost`/`::1`, not `127.0.0.1`.
 
-Решение по Next admin: для Next.js 16 локальный `next dev` на Turbopack зависал на компиляции
-`/auth/sign-in`, поэтому debug-команда использует `--webpack`. Это startup/debug choice, не изменение
-публичного API.
+Next admin resolution: with Next.js 16, local `next dev` on Turbopack hung during compilation of
+`/auth/sign-in`, so the debug command uses `--webpack`. This is a startup/debug choice, not a change to the
+public API.
 
-Решение по Leptos admin: standalone `csr` профиль нужен для debug и headless parity, но продуктовый target
-остаётся SSR-first/hydrate. `#[server]` остаётся preferred internal path в SSR/monolith, GraphQL/REST остаётся
-обязательным fallback для headless/CSR. `trunk serve` должен собирать binary artifact `rustok-admin`, потому что
-library artifact `rustok_admin` не запускает `main()` и не монтирует shell.
+Leptos admin resolution: standalone `csr` profile is needed for debug and headless parity, but the production target
+remains SSR-first/hydrate. `#[server]` remains the preferred internal path in SSR/monolith, GraphQL/REST remains
+a mandatory fallback for headless/CSR. `trunk serve` must build a binary artifact `rustok-admin`, because a
+library artifact `rustok_admin` does not run `main()` and does not mount the shell.
 
-Визуальный контракт: Leptos admin и Next admin не должны расходиться как независимые продукты. Host-level auth shell,
-navigation, route-selection UX и module-owned surface containers должны идти через общий admin UI contract/tokens.
-Next admin может оставаться React/Next host для Next-пакетов, но Leptos admin является canonical operator surface для
-монолитного/SSR пути; расхождения фиксируются как parity debt, а не как допустимый fork дизайна.
+Visual contract: Leptos admin and Next admin should not diverge as independent products. Host-level auth shell,
+navigation, route-selection UX, and module-owned surface containers must follow a common admin UI contract/tokens.
+Next admin may remain a React/Next host for Next packages, but Leptos admin is the canonical operator surface for
+the monolithic/SSR path; divergences are recorded as parity debt, not as an acceptable design fork.
 
-Для standalone `trunk serve` CSS является частью startup contract. `apps/admin/input.css` использует Tailwind v4
-`@import "tailwindcss"` + `@source`, а `tailwind.config.js` обязан сканировать не только `apps/admin/src`, но и
-module-owned admin UI packages в `crates/**/admin/src/**/*.rs`, а также shared Leptos UI crates. Иначе host shell может
-загрузиться, но module-owned страницы останутся без spacing/layout utilities и визуально разойдутся с Next admin.
-Trunk post-build hook `scripts\tailwind-build.cmd` кладёт `output.css` в staging/dist; отсутствие `dist/output.css`
-считается startup blocker для Leptos admin debug.
+For standalone `trunk serve`, CSS is part of the startup contract. `apps/admin/input.css` uses Tailwind v4
+`@import "tailwindcss"` + `@source`, and `tailwind.config.js` must scan not only `apps/admin/src`, but also
+module-owned admin UI packages in `crates/**/admin/src/**/*.rs`, as well as shared Leptos UI crates. Otherwise, the host shell may
+load, but module-owned pages will lack spacing/layout utilities and visually diverge from Next admin.
+The Trunk post-build hook `scripts\tailwind-build.cmd` places `output.css` in staging/dist; missing `dist/output.css`
+is considered a startup blocker for Leptos admin debug.
 
-## Scope этого quickstart
+## Scope of This Quickstart
 
-Этот документ намеренно не хранит:
+This document intentionally does not contain:
 
-- длинные инструкции по Docker Compose, VPS, Kubernetes или PaaS;
-- install-скрипты и bootstrap-runbook;
-- подробные production rollout steps.
+- lengthy instructions for Docker Compose, VPS, Kubernetes, or PaaS;
+- install scripts and bootstrap runbooks;
+- detailed production rollout steps.
 
-Такие инструкции должны жить в отдельных deployment/runbook документах, а здесь остаётся только живой UI ↔ server contract.
+Such instructions should live in separate deployment/runbook documents, while this document keeps only the live UI ↔ server contract.
 
-## Связанные документы
+## Related Documents
 
 - [UI index](./README.md)
-- [GraphQL и Leptos server functions](./graphql-architecture.md)
-- [Документация `apps/admin`](../../apps/admin/docs/README.md)
-- [Документация `apps/server`](../../apps/server/docs/README.md)
+- [GraphQL and Leptos server functions](./graphql-architecture.md)
+- [`apps/admin` Documentation](../../apps/admin/docs/README.md)
+- [`apps/server` Documentation](../../apps/server/docs/README.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
-- [Health и runtime guardrails](../../apps/server/docs/health.md)
-- [Карта документации](../index.md)
+- [Health and Runtime Guardrails](../../apps/server/docs/health.md)
+- [Documentation Map](../index.md)

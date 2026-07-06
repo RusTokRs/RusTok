@@ -8,31 +8,31 @@ status: verified
 ---
 # Error Handling Guide
 
-Полное руководство по обработке ошибок в RusToK находится в [`docs/standards/errors.md`](../standards/errors.md).
+The complete error handling guide for RusToK is in [`docs/standards/errors.md`](../standards/errors.md).
 
-## Краткое резюме
+## Quick Summary
 
-RusToK использует унифицированный тип `RichError` (RFC 7807 compatible) с категориями:
+RusToK uses a unified `RichError` type (RFC 7807 compatible) with categories:
 
-| HTTP | Категория | Когда использовать |
-|------|-----------|-------------------|
-| 400 | `Validation` | Ошибки валидации входных данных |
-| 401 | `Unauthenticated` | Требуется аутентификация |
-| 403 | `Forbidden` | Нет прав доступа |
-| 404 | `NotFound` | Ресурс не найден |
-| 409 | `Conflict` | Дублирование или race condition |
-| 429 | `RateLimited` | Превышен лимит запросов |
-| 500 | `Internal` | Неожиданная ошибка |
-| 502/503 | `ExternalService` | Ошибка внешнего сервиса |
-| 504 | `Timeout` | Таймаут запроса |
+| HTTP | Category | When to use |
+|------|----------|-------------|
+| 400 | `Validation` | Input validation errors |
+| 401 | `Unauthenticated` | Authentication required |
+| 403 | `Forbidden` | No access rights |
+| 404 | `NotFound` | Resource not found |
+| 409 | `Conflict` | Duplication or race condition |
+| 429 | `RateLimited` | Rate limit exceeded |
+| 500 | `Internal` | Unexpected error |
+| 502/503 | `ExternalService` | External service error |
+| 504 | `Timeout` | Request timeout |
 
-## Правила
+## Rules
 
-1. Все функции, которые могут упасть, возвращают `Result<T, RusToKError>`.
-2. Использование `.unwrap()` / `.expect()` запрещено (кроме тестов).
-3. Внутренние ошибки не раскрываются клиенту — только `user_message`.
-4. Для трассировки используется `request_id` из контекста запроса.
+1. All functions that can fail return `Result<T, RusToKError>`.
+2. Use of `.unwrap()` / `.expect()` is forbidden (except in tests).
+3. Internal errors are not disclosed to the client — only `user_message`.
+4. Tracing uses `request_id` from the request context.
 
-## Полная документация
+## Full Documentation
 
 → [`docs/standards/errors.md`](../standards/errors.md)

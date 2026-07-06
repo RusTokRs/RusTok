@@ -1,62 +1,62 @@
-# `rustok-pages` не получает default-интеграцию с `rustok-comments`
+# `rustok-pages` does not get default integration with `rustok-comments`
 
 - Date: 2026-03-29
 - Status: Accepted
 
 ## Context
 
-После storage split `rustok-blog`, `rustok-pages` и `rustok-comments` границы хранения уже
-разведены, но продуктовая граница между `pages` и `comments` оставалась незафиксированной.
+After the storage split of `rustok-blog`, `rustok-pages` and `rustok-comments`, the storage boundaries were already
+separated, but the product boundary between `pages` and `comments` remained unfixed.
 
-Фактическое состояние кода и runtime на текущий момент такое:
+The actual state of the code and runtime at this point is as follows:
 
-- `rustok-blog` уже использует `rustok-comments` как live comment backend;
-- `rustok-pages` развивает page-builder, blocks, menus и channel-aware publication surface;
-- у `pages` нет встроенного comment transport/UI/runtime path;
-- локальные описания `rustok-comments` всё ещё звучали так, будто интеграция с `pages`
-  является обязательной или уже активной.
+- `rustok-blog` already uses `rustok-comments` as a live comment backend;
+- `rustok-pages` is developing page-builder, blocks, menus, and channel-aware publication surface;
+- `pages` has no built-in comment transport/UI/runtime path;
+- local descriptions of `rustok-comments` still sounded as if integration with `pages`
+  was mandatory or already active.
 
-Если считать каждую страницу commentable по умолчанию, это создаёт неявный product contract:
+If every page is considered commentable by default, this creates an implicit product contract:
 
-- любой page read-path начинает подразумевать discussion lifecycle и moderation policy;
-- статические/landing/help-center страницы получают лишнюю доменную обязанность;
-- future integration становится труднее сделать адресной и opt-in.
+- any page read-path begins to imply discussion lifecycle and moderation policy;
+- static/landing/help-center pages receive an unnecessary domain responsibility;
+- future integration becomes more difficult to make targeted and opt-in.
 
-Нужно явно закрыть этот хвост плана, чтобы `pages` и `comments` не оставались в состоянии
-архитектурной двусмысленности.
+This tail of the plan needs to be explicitly closed so that `pages` and `comments` do not remain in a state
+of architectural ambiguity.
 
 ## Decision
 
-### 1. У `pages` нет default comments surface
+### 1. `pages` has no default comments surface
 
-В текущем продукте `rustok-pages` не интегрируется с `rustok-comments` по умолчанию.
+In the current product, `rustok-pages` does not integrate with `rustok-comments` by default.
 
-Это означает:
+This means:
 
-- нет автоматического создания `comment_threads` для каждой страницы;
-- нет обязательного comments UI в `pages` admin/storefront surface;
-- нет implicit зависимости `rustok-pages -> rustok-comments`.
+- no automatic creation of `comment_threads` for each page;
+- no mandatory comments UI in the `pages` admin/storefront surface;
+- no implicit dependency `rustok-pages -> rustok-comments`.
 
-### 2. `rustok-comments` остаётся generic backend для opt-in non-forum discussions
+### 2. `rustok-comments` remains a generic backend for opt-in non-forum discussions
 
-`rustok-comments` остаётся каноническим storage-owner для blog comments и для будущих
-opt-in non-forum discussion surfaces, но `pages` не считается таким surface автоматически.
+`rustok-comments` remains the canonical storage-owner for blog comments and for future
+opt-in non-forum discussion surfaces, but `pages` is not automatically considered such a surface.
 
-### 3. Будущая page-level comments интеграция возможна только как explicit opt-in
+### 3. Future page-level comments integration is only possible as explicit opt-in
 
-Если продукт позже потребует comments на page-like surface, это должно оформляться как
-отдельная opt-in интеграция:
+If the product later requires comments on a page-like surface, this must be structured as a
+separate opt-in integration:
 
-- для конкретных page templates / page kinds / dedicated surfaces;
-- с отдельной спецификацией по moderation, publication, SEO и storefront rendering;
-- без превращения всех `pages` в default discussion targets.
+- for specific page templates / page kinds / dedicated surfaces;
+- with a separate specification for moderation, publication, SEO, and storefront rendering;
+- without turning all `pages` into default discussion targets.
 
 ## Consequences
 
-- План `rustok-comments` закрывает пункт про `pages <-> comments` решением "not by default".
-- Локальные docs и metadata `rustok-comments` больше не должны утверждать, что `pages`
-  уже является live integration target.
-- `rustok-pages` продолжает развиваться как page/content presentation module без встроенного
+- The `rustok-comments` plan closes the `pages <-> comments` item with a "not by default" decision.
+- Local docs and metadata of `rustok-comments` must no longer assert that `pages`
+  is already a live integration target.
+- `rustok-pages` continues to develop as a page/content presentation module without a built-in
   discussion lifecycle.
-- Если later появится commentable knowledge-base/article surface поверх `pages`, это потребует
-  отдельного ADR/spec вместо неявного расширения текущего контракта.
+- If a commentable knowledge-base/article surface appears later on top of `pages`, it will require
+  a separate ADR/spec instead of an implicit extension of the current contract.

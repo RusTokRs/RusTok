@@ -6,119 +6,114 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# SEO Suite для RusToK: анализ текущей архитектуры и детальный план реализации
 
-## Executive summary
+# SEO Suite for RusToK: Current Architecture Analysis and Detailed Implementation Plan
 
-RusToK — событийная модульная платформа на Rust с multitenant-рантаймом, manifest-driven composition (`modules.toml`), гибридным API (GraphQL для UI + REST для интеграций/ops) и Postgres как основной БД. fileciteturn7file0L1-L1 fileciteturn26file0L1-L1 fileciteturn28file0L1-L1  
-В репозитории уже присутствуют отдельные элементы SEO-слоя: polymorphic SEO-метаданные (`meta`, `meta_translations`) с `noindex/nofollow`, `canonical_url` и `structured_data` (JSONB), а также URL-mapping для контента (`content_canonical_urls`, `content_url_aliases`) с locale-aware резолвингом и fallback. fileciteturn9file0L1-L1 fileciteturn22file0L1-L1 fileciteturn20file0L1-L1  
+## Executive Summary
 
-Ключевое ограничение/риски сейчас: мультиязычный DB-контракт RusTok целится в BCP47-like locale теги и ширину `VARCHAR(32)` для locale-колонок (и runtime locale-chain уже стандартизирован), но часть SEO-связанных таблиц всё ещё использует узкие колонки (`VARCHAR(5)`/`VARCHAR(16)`). Это нужно выровнять до `VARCHAR(32)` при проектировании SEO Suite, иначе hreflang/локали/фоллбеки будут ломаться на «длинных» тегах (`en-US`, `pt-BR`, `zh-Hant`, и т.д.) и на tenant-level locale policy. fileciteturn13file0L1-L1 fileciteturn11file0L1-L1 fileciteturn14file0L1-L1 fileciteturn9file0L1-L1 fileciteturn22file0L1-L1  
+RusToK is an event-driven modular platform in Rust with a multitenant runtime, manifest-driven composition (`modules.toml`), hybrid API (GraphQL for UI + REST for integrations/ops) and Postgres as the primary database. The repository already contains individual SEO layer elements: polymorphic SEO metadata (`meta`, `meta_translations`) with `noindex/nofollow`, `canonical_url` and `structured_data` (JSONB), as well as URL mapping for content (`content_canonical_urls`, `content_url_aliases`) with locale-aware resolution and fallback.
 
-Рекомендуемый целевой дизайн: **модульный SEO Suite** как набор optional-модулей (в терминах RusTok: optional modules с tenant enablement через `tenant_modules`) с ядром, которое стандартизирует хранение SEO-параметров и API, и подключаемыми подмодулями (redirects / sitemaps / hreflang / rich snippets / bulk editor / AI). Tenant-уровневое включение/настройки уже поддержаны платформой таблицей `tenant_modules (enabled, settings jsonb)` и guard’ом `RequireModule`. fileciteturn48file0L1-L1 fileciteturn49file0L1-L1  
+The key constraint/risk currently: RusToK's multilingual DB contract targets BCP47-like locale tags and `VARCHAR(32)` width for locale columns (and the runtime locale chain is already standardized), but some SEO-related tables still use narrow columns (`VARCHAR(5)`/`VARCHAR(16)`). This needs to be aligned to `VARCHAR(32)` when designing the SEO Suite, otherwise hreflang/locales/fallbacks will break on "long" tags (`en-US`, `pt-BR`, `zh-Hant`, etc.) and on tenant-level locale policy.
 
-По best practices SEO Suite (Amasty / аналоги) критичны: шаблоны мета-тегов, управление каноникалами, редиректы (с производительной реализацией и кэшированием для больших наборов), XML/HTML sitemap, hreflang (в HTML head и/или sitemap), rich snippets/JSON-LD, page SEO analysis/toolbar и AI-генерация/«исправление» метаданных. citeturn0search0turn0search1turn2search0turn3search0turn3search1turn3search5  
-В RusTok уже есть мощный AI control-plane (`rustok-ai`) с multi-provider поддержкой (OpenAI-compatible/Anthropic/Gemini), RBAC-first доступом, task profiles и UI пакетами (Leptos + Next.js). Это позволяет сделать AI-часть SEO Suite «нативной» для платформы, а не отдельным самописным контуром. fileciteturn36file0L1-L1 fileciteturn38file0L1-L1  
+Recommended target design: **modular SEO Suite** as a set of optional modules (in RusToK terms: optional modules with tenant enablement via `tenant_modules`) with a core that standardizes SEO parameter storage and API, plus pluggable submodules (redirects / sitemaps / hreflang / rich snippets / bulk editor / AI). Tenant-level enablement/settings are already supported by the platform via the `tenant_modules (enabled, settings jsonb)` table and the `RequireModule` guard.
 
-## Контекст RusTok: архитектура, БД и мультиязычность, важные для SEO Suite
+Per SEO Suite best practices (Amasty / analogs), the following are critical: meta tag templates, canonical management, redirects (with performant implementation and caching for large sets), XML/HTML sitemap, hreflang (in HTML head and/or sitemap), rich snippets/JSON-LD, page SEO analysis/toolbar and AI generation/"fixing" of metadata. RusToK already has a powerful AI control-plane (`rustok-ai`) with multi-provider support (OpenAI-compatible/Anthropic/Gemini), RBAC-first access, task profiles and UI packages (Leptos + Next.js). This allows the AI part of the SEO Suite to be "native" to the platform rather than a separate custom circuit.
 
-### Архитектура и модульность
+## RusToK Context: Architecture, DB and Multilingual Aspects Important for SEO Suite
 
-RusTok позиционируется как **modular monolith** с composition root в `apps/server`, сборкой через `modules.toml`, per-tenant enablement optional modules и событийным разделением write/read путей (outbox + индекс/поиск). fileciteturn7file0L1-L1  
-`modules.toml` описывает core и optional модули, их crate’ы и зависимости. Сейчас SEO-модуля как отдельного optional module нет. fileciteturn26file0L1-L1  
+### Architecture and Modularity
 
-Tenant enablement реализован через таблицу `tenant_modules` (уникальность по `tenant_id + module_slug`, настройки в JSONB), а доступ к certain endpoints может проверяться guard’ом `RequireModule<M>`. fileciteturn48file0L1-L1 fileciteturn49file0L1-L1  
+RusToK positions itself as a **modular monolith** with a composition root in `apps/server`, assembly via `modules.toml`, per-tenant enablement of optional modules and event-driven separation of write/read paths (outbox + index/search). `modules.toml` describes core and optional modules, their crates and dependencies. Currently, there is no separate SEO module as an optional module.
 
-### API surfaces, которые нужны SEO Suite
+Tenant enablement is implemented via the `tenant_modules` table (unique by `tenant_id + module_slug`, settings in JSONB), and access to certain endpoints can be checked by the `RequireModule<M>` guard.
 
-Платформа использует гибридный transport layer: `/api/graphql` (+ subscriptions через `/api/graphql/ws`) как UI-facing контракт и `/api/v1/...` как REST для интеграций/ops; также есть OpenAPI endpoints. fileciteturn28file0L1-L1  
-Для Leptos UI действует «dual-path»: native `#[server]` functions как preferred internal data layer и параллельно GraphQL как обязательный контракт для Next.js/headless/fallback. Это важно для UX SEO Suite: админские экраны могут быть Leptos-native-first, но API должно жить в GraphQL/REST параллельно. fileciteturn29file0L1-L1  
+### API Surfaces Needed by SEO Suite
 
-### База данных и существующие SEO-артефакты
+The platform uses a hybrid transport layer: `/api/graphql` (+ subscriptions via `/api/graphql/ws`) as the UI-facing contract and `/api/v1/...` as REST for integrations/ops; there are also OpenAPI endpoints. For Leptos UI, a "dual-path" approach is used: native `#[server]` functions as the preferred internal data layer and parallel GraphQL as a mandatory contract for Next.js/headless/fallback. This is important for SEO Suite UX: admin screens may be Leptos-native-first, but the API must live in GraphQL/REST in parallel.
 
-Платформа ведёт «summary» карту таблиц и подчёркивает инварианты: `tenant_id` — главный изоляционный boundary; write-side — source of truth; JSONB допустим для settings/config, но не как каноничная форма локализованного бизнес-текста. fileciteturn16file0L1-L1  
+### Database and Existing SEO Artifacts
 
-Уже есть **polymorphic мета-хранилище**:  
-- `meta`: `tenant_id`, `(target_type, target_id)`, `noindex`, `nofollow`, `canonical_url`, `structured_data` (jsonb) и уникальный индекс по `(target_type, target_id)`.  
-- `meta_translations`: связь с `meta`, `locale`, `title/description/keywords`, OpenGraph поля, уникальный индекс `(meta_id, locale)`. fileciteturn9file0L1-L1  
+The platform maintains a "summary" table map and emphasizes invariants: `tenant_id` is the primary isolation boundary; write-side is the source of truth; JSONB is acceptable for settings/config but not as a canonical form of localized business text.
 
-Есть **URL mapping для content-family**:  
-- `content_canonical_urls` (canonical URL на `(target_kind, target_id, locale)`) + уникальные индексы на target+locale и на canonical URL.  
-- `content_url_aliases` (alias → canonical) + индексы. fileciteturn22file0L1-L1  
-Сервис `CanonicalUrlService` сначала ищет alias по `alias_url`, и если найден — требует редирект; иначе резолвит canonical, используя locale normalization и locale fallback. fileciteturn20file0L1-L1  
+A **polymorphic meta store** already exists:
+- `meta`: `tenant_id`, `(target_type, target_id)`, `noindex`, `nofollow`, `canonical_url`, `structured_data` (jsonb) and a unique index on `(target_type, target_id)`.
+- `meta_translations`: relation to `meta`, `locale`, `title/description/keywords`, OpenGraph fields, unique index `(meta_id, locale)`.
 
-В доменных translation-таблицах уже есть частичные SEO-поля:  
-- `product_translations`: `meta_title`, `meta_description` + `handle`. fileciteturn43file0L1-L1  
-- `page_translations`: `meta_title`, `meta_description` + `slug`. fileciteturn45file0L1-L1  
+**URL mapping for content-family** exists:
+- `content_canonical_urls` (canonical URL on `(target_kind, target_id, locale)`) + unique indices on target+locale and on canonical URL.
+- `content_url_aliases` (alias → canonical) + indices.
+The `CanonicalUrlService` first searches for an alias by `alias_url`, and if found, requires a redirect; otherwise resolves the canonical using locale normalization and locale fallback.
 
-### Мультиязычный контракт: что SEO Suite обязан соблюдать
+Domain translation tables already have partial SEO fields:
+- `product_translations`: `meta_title`, `meta_description` + `handle`.
+- `page_translations`: `meta_title`, `meta_description` + `slug`.
 
-RusTok стандартизировал runtime locale selection chain и делает `RequestContext` источником истины по effective locale (query → `x-medusa-locale` → cookie → `Accept-Language` → `tenant.default_locale` → `en`), плюс ограничение effective locale через `tenant_locales`, и `Content-Language` на locale-aware HTTP responses. fileciteturn11file0L1-L1  
+### Multilingual Contract: What SEO Suite Must Adhere To
 
-По DB storage контракту цель — **parallel localized records**: базовые строки хранят language-agnostic состояние, короткие локализованные тексты — в `*_translations`, «тяжёлый» контент — в `*_bodies`; locale-колонки должны поддерживать normalized BCP47-like теги и ширину `VARCHAR(32)`. fileciteturn13file0L1-L1 fileciteturn16file0L1-L1  
-Часть foundation-таблиц уже мигрирована с `VARCHAR(5)` на `VARCHAR(32)` (например `tenants.default_locale`, `tenant_locales.locale/fallback_locale`). fileciteturn14file0L1-L1  
+RusToK has standardized the runtime locale selection chain and makes `RequestContext` the source of truth for effective locale (query → `x-medusa-locale` → cookie → `Accept-Language` → `tenant.default_locale` → `en`), plus effective locale restriction via `tenant_locales`, and `Content-Language` on locale-aware HTTP responses.
 
-Следствие для SEO Suite: **locale в SEO-таблицах должен быть `VARCHAR(32)`**, а fallback должен быть согласован с tenant locale policy и тем, как `CanonicalUrlService`/resolve_by_locale работают сегодня. fileciteturn20file0L1-L1 fileciteturn13file0L1-L1  
+For DB storage contract, the goal is **parallel localized records**: base rows store language-agnostic state, short localized texts in `*_translations`, "heavy" content in `*_bodies`; locale columns must support normalized BCP47-like tags and `VARCHAR(32)` width. Some foundation tables have already been migrated from `VARCHAR(5)` to `VARCHAR(32)` (e.g., `tenants.default_locale`, `tenant_locales.locale/fallback_locale`).
 
-## Best practices SEO Suite: Amasty и аналоги + официальные требования поисковиков
+Implication for SEO Suite: **locale in SEO tables must be `VARCHAR(32)`**, and fallback must be consistent with tenant locale policy and how `CanonicalUrlService`/`resolve_by_locale` work today.
 
-### Что реально входит в «SEO Suite» по рынку
+## Best Practices SEO Suite: Amasty and Analogs + Official Search Engine Requirements
 
-По публичным материалам Amasty SEO Toolkit (Magento 2) и близких решений основные блоки повторяются:
+### What Actually Constitutes an "SEO Suite" in the Market
 
-- **Meta templates / автоматизация метаданных** (массовая генерация title/description/keywords, шаблоны с переменными, применение к новым товарам/страницам). citeturn0search1turn3search0turn3search1  
-- **URL rewrites** (генерация SEO-friendly URL, регенерация/перестроение). citeturn0search0turn3search1  
-- **Redirects** (ручные/авто, wildcards, 301/302/307; критична производительность на большом числе редиректов; у Amasty отдельно упоминается кэширование редиректов, чтобы не деградировала производительность на большом объёме записей). citeturn0search0turn3search1turn3search5  
-- **Canonical management** (в т.ч. пер-page overrides; cross-domain canonical; исключения для некоторых страниц, пагинация). citeturn1search1turn3search5turn3search0turn0search0  
-- **XML/HTML Sitemaps** (генерация, разделение по типам сущностей, исключения, ускорение генерации). citeturn0search0turn1search3turn3search0turn3search1  
-- **Hreflang** (вставка в `<head>` и/или в sitemap; управление store-views/локалями). citeturn0search0turn0search5turn0search2turn1search8turn3search0turn3search5  
-- **Rich snippets / structured data** (JSON-LD схемы для продукта/категорий/организации, breadcrumbs, sitelinks search box, и т.д.). citeturn0search3turn2search2turn2search6turn3search0turn3search1  
-- **SEO toolbar / page audit** (анализ текущей страницы: canonical, robots meta, H1, длины мета, alt, internal links; у ряда решений есть AI-fix). citeturn0search0turn2search0turn3search1  
-- **AI генерация и «исправление» мета-контента** (например, Amasty описывает flow «Fix issues with AI» для category/product/CMS через SEO Toolbar). citeturn2search0turn0search0  
+Based on public materials from Amasty SEO Toolkit (Magento 2) and similar solutions, the main blocks repeat:
 
-### Базовые правила поисковиков, которые нужно встроить в дизайн
+- **Meta templates / metadata automation** (bulk generation of title/description/keywords, templates with variables, application to new products/pages).
+- **URL rewrites** (generation of SEO-friendly URLs, regeneration/rebuilding).
+- **Redirects** (manual/auto, wildcards, 301/302/307; performance is critical on a large number of redirects; Amasty specifically mentions redirect caching to avoid performance degradation on a large volume of records).
+- **Canonical management** (including per-page overrides; cross-domain canonical; exclusions for certain pages, pagination).
+- **XML/HTML Sitemaps** (generation, splitting by entity type, exclusions, generation acceleration).
+- **Hreflang** (insertion in `<head>` and/or in sitemap; management of store-views/locales).
+- **Rich snippets / structured data** (JSON-LD schemas for product/categories/organization, breadcrumbs, sitelinks search box, etc.).
+- **SEO toolbar / page audit** (analysis of current page: canonical, robots meta, H1, meta lengths, alt, internal links; some solutions have AI-fix).
+- **AI generation and "fixing" of meta content** (e.g., Amasty describes the flow "Fix issues with AI" for category/product/CMS via SEO Toolbar).
 
-- **Canonicalization**: Google считает редиректы и `rel="canonical"` сильными сигналами; sitemap — слабее. Важно не давать противоречивых canonical сигналов разными методами и держать canonical консистентным, особенно внутри hreflang-кластеров. citeturn1search1  
-- **Hreflang**: Google принимает три равнозначных способа (HTML / HTTP headers / sitemap) и рекомендует выбрать наиболее удобный; каждая версия страницы должна ссылаться на себя и все альтернативы. citeturn0search2  
-  Похожая рекомендация есть и в материалах entity["company","Yandex","search engine company"] для разметки локализованных страниц (link rel="alternate" hreflang, включая `x-default` в соответствующих сценариях). citeturn1search8  
-- **Sitemaps**: лимит 50 000 URL или 50MB (uncompressed) на один sitemap; при большем объёме нужен разбиение на несколько файлов и sitemap index; URL должны быть абсолютными и файл — UTF‑8. citeturn1search3  
-- **robots.txt**: файл должен лежать в корне, быть UTF‑8, поддерживается `user-agent/allow/disallow/sitemap`; Google кэширует robots.txt и есть лимит размера. citeturn1search0turn1search2turn1search4  
-- **Structured Data**: entity["company","Google","search company"] рекомендует JSON‑LD как наиболее удобный для масштабной поддержки; важнее «меньше, но корректно» (required поля), чем «всё и с ошибками». Есть общие политики/quality guidelines, нарушения которых могут лишить eligibility для rich results, даже если синтаксис валиден. citeturn2search2turn2search6  
+### Basic Search Engine Rules to Incorporate into the Design
 
-## Целевая архитектура SEO Suite для RusTok
+- **Canonicalization**: Google considers redirects and `rel="canonical"` as strong signals; sitemap is weaker. It is important not to give conflicting canonical signals through different methods and keep the canonical consistent, especially within hreflang clusters.
+- **Hreflang**: Google accepts three equivalent methods (HTML / HTTP headers / sitemap) and recommends choosing the most convenient one; each page version must reference itself and all alternatives. A similar recommendation exists from Yandex for marking localized pages (link rel="alternate" hreflang, including `x-default` in relevant scenarios).
+- **Sitemaps**: limit of 50,000 URLs or 50MB (uncompressed) per sitemap; larger volumes require splitting into multiple files and a sitemap index; URLs must be absolute and the file must be UTF-8.
+- **robots.txt**: the file must be in the root, UTF-8, supports `user-agent/allow/disallow/sitemap`; Google caches robots.txt and has a size limit.
+- **Structured Data**: Google recommends JSON-LD as the most convenient for scalable support; "less but correct" (required fields) is more important than "everything with errors". There are general policies/quality guidelines whose violations can disqualify eligibility for rich results, even if the syntax is valid.
 
-### Основной принцип интеграции в RusTok
+## Target Architecture for SEO Suite on RusToK
 
-С учётом того, что:
-- модули включаются per-tenant через `tenant_modules`; fileciteturn48file0L1-L1  
-- безопасность и tenant/locale/RBAC контракт должны быть едиными для всех API-path; fileciteturn28file0L1-L1  
-- Leptos UI требует native-first, но GraphQL обязателен параллельно; fileciteturn29file0L1-L1  
+### Core Integration Principle with RusToK
 
-SEO Suite рациональнее строить как:
-- **Один «SEO Core» optional module** (storage + сервисы + базовый API + audit/versioning),  
-- плюс **набор optional submodules** (redirects/canonical+rewrites/hreflang/sitemaps/rich snippets/bulk editor/AI/robots/analytics), которые:
-  - читают/пишут в свои таблицы;
-  - publish’ят доменные события через outbox для асинхронных задач (перегенерация sitemap, прогрев кэшей, reindex hints), не превращая `sys_events` в «общий аудит» (это прямо запрещено философией платформы). fileciteturn16file0L1-L1 fileciteturn32file0L1-L1  
+Given that:
+- modules are enabled per-tenant via `tenant_modules`;
+- security and tenant/locale/RBAC contract must be unified across all API paths;
+- Leptos UI requires native-first, but GraphQL is mandatory in parallel;
 
-### Предлагаемый состав модулей и зависимости
+the SEO Suite is more rationally built as:
+- **One "SEO Core" optional module** (storage + services + basic API + audit/versioning),
+- plus **a set of optional submodules** (redirects/canonical+rewrites/hreflang/sitemaps/rich snippets/bulk editor/AI/robots/analytics), which:
+  - read/write to their own tables;
+  - publish domain events via outbox for async tasks (sitemap regeneration, cache warming, reindex hints), without turning `sys_events` into a "shared audit log" (this is explicitly forbidden by platform philosophy).
 
-Таблица ниже — целевой список модулей (ровно из требуемого списка пользователя), с самым важным функционалом и зависимостями:
+### Proposed Module Composition and Dependencies
 
-| Модуль | Основной функционал | Зависимости (минимум) | Замечания по производительности/безопасности |
+The table below is the target list of modules (exactly from the required user list), with the most important functionality and dependencies:
+
+| Module | Primary Functionality | Minimum Dependencies | Performance/Security Notes |
 |---|---|---|---|
-| `seo-core` | единая модель SEO-данных; meta overrides; SEO templates; versioning/rollback; валидаторы | `tenant`, `rbac` (+ желательно `content` для locale normalization/helpers) fileciteturn46file0L1-L1 | locale=VARCHAR(32); строгий RBAC; индексация на `(tenant, target_kind, target_id)` |
-| `seo-url-rewrites` | canonical URL per entity+locale; alias/rewrites; API для резолвинга | `seo-core` (+ интеграции с routing/storefront) | нужен быстрый lookup по `incoming_path` и кэш для hot paths |
-| `seo-redirects` | правила 301/302/307; wildcards; 404-handling стратегия; импорт/экспорт | `seo-core` | обязательно предусмотреть кэширование редиректов на больших наборах (рынок явно упирается в это). citeturn0search0 |
-| `seo-canonical` | политика canonical (включая исключения, пагинацию, cross-domain) | `seo-url-rewrites` | canonical должен быть консистентен с hreflang. citeturn1search1 |
-| `seo-hreflang` | генерация hreflang-кластеров и вставка в HTML head и/или sitemap | `seo-url-rewrites`, `tenant` | требование «каждая версия ссылается на все версии + на себя». citeturn0search2turn1search8 |
-| `seo-sitemaps` | XML sitemap + sitemapindex; HTML sitemap; exclude rules; фоновые задания | `seo-url-rewrites` (+ доменные адаптеры) | лимиты 50k/50MB, UTF‑8, абсолютные URL. citeturn1search3 |
-| `seo-rich-snippets` | JSON‑LD генерация и overrides (Product, Organization, Breadcrumb, SearchBox, ItemList, …) | `seo-core` (+ доменные адаптеры) | JSON‑LD рекомендуется как основной формат. citeturn2search2turn2search6 |
-| `seo-bulk-editor` | grid/bulk edit по сущностям; шаблоны/применение; CSV/JSON import/export | `seo-core` | осторожно с массовыми апдейтами: батчи + фоновые job’ы |
-| `seo-ai-content-generator` | генерация title/meta/description/JSON‑LD; keyword hints; AI-fix по issues | `seo-core` + `rustok-ai` capability fileciteturn36file0L1-L1 | RBAC-first; approvals; логирование/редакция данных |
-| `seo-analytics-connector` | интеграции с внешними системами (Search Console / Webmaster / rank tracking); импорт отчётов | `seo-core` | хранить токены/секреты в encrypted secret storage (не в plain JSONB) |
-| `seo-robots-txt-manager` | robots.txt, sitemap references, host-specific rules; (опционально `llms.txt`) | `seo-sitemaps` | файл в корне, UTF‑8, поддерживаемые директивы. citeturn1search2turn1search4 |
+| `seo-core` | unified SEO data model; meta overrides; SEO templates; versioning/rollback; validators | `tenant`, `rbac` (+ optionally `content` for locale normalization/helpers) | locale=VARCHAR(32); strict RBAC; indexing on `(tenant, target_kind, target_id)` |
+| `seo-url-rewrites` | canonical URL per entity+locale; alias/rewrites; resolution API | `seo-core` (+ integrations with routing/storefront) | needs fast lookup by `incoming_path` and cache for hot paths |
+| `seo-redirects` | 301/302/307 rules; wildcards; 404-handling strategy; import/export | `seo-core` | must include redirect caching for large sets (market explicitly emphasizes this) |
+| `seo-canonical` | canonical policy (including exceptions, pagination, cross-domain) | `seo-url-rewrites` | canonical must be consistent with hreflang |
+| `seo-hreflang` | hreflang cluster generation and insertion in HTML head and/or sitemap | `seo-url-rewrites`, `tenant` | requirement "each version references all versions + itself" |
+| `seo-sitemaps` | XML sitemap + sitemapindex; HTML sitemap; exclude rules; background jobs | `seo-url-rewrites` (+ domain adapters) | limits 50k/50MB, UTF-8, absolute URLs |
+| `seo-rich-snippets` | JSON-LD generation and overrides (Product, Organization, Breadcrumb, SearchBox, ItemList, ...) | `seo-core` (+ domain adapters) | JSON-LD recommended as primary format |
+| `seo-bulk-editor` | grid/bulk edit by entity; templates/application; CSV/JSON import/export | `seo-core` | be careful with mass updates: batches + background jobs |
+| `seo-ai-content-generator` | generation of title/meta/description/JSON-LD; keyword hints; AI-fix for issues | `seo-core` + `rustok-ai` capability | RBAC-first; approvals; logging/data editing |
+| `seo-analytics-connector` | integrations with external systems (Search Console / Webmaster / rank tracking); report import | `seo-core` | store tokens/secrets in encrypted secret storage (not in plain JSONB) |
+| `seo-robots-txt-manager` | robots.txt, sitemap references, host-specific rules; (optionally `llms.txt`) | `seo-sitemaps` | file in root, UTF-8, supported directives |
 
-### Архитектурная диаграмма модулей
+### Architectural Module Diagram
 
 ```mermaid
 flowchart TB
@@ -159,31 +154,31 @@ flowchart TB
   SEOCORE --> SEOANALYTICS
 ```
 
-## Хранение SEO-параметров: варианты и рекомендуемая схема БД
+## SEO Parameter Storage: Options and Recommended DB Schema
 
-### Сравнение стратегий хранения SEO-параметров
+### Storage Strategy Comparison
 
-| Вариант | Как выглядит | Плюсы | Минусы | Где уместно в RusTok |
+| Option | How It Looks | Pros | Cons | Where Appropriate in RusToK |
 |---|---|---|---|---|
-| Единая SEO-таблица с polymorphic связями | `seo_meta(tenant_id, target_kind, target_id, …)` + `seo_meta_translations(locale, …)` | единая модель; единые индексы; удобно делать bulk operations и audit/versioning; не раздувает доменные таблицы | требует адаптеров для доменных сущностей; нужно продумать целевой target_kind taxonomy | Лучший кандидат, т.к. похожий паттерн уже есть (`meta`/`meta_translations`). fileciteturn9file0L1-L1 |
-| SEO-таблицы per-entity | `product_seo`, `category_seo`, `page_seo`… | простая маппинг-логика; меньше polymorphic условностей | взрыв числа таблиц и API; сложнее общий bulk editor; сложнее единый audit | Не рекомендую для RusTok при цели «SEO Suite» (слишком много модулей/таблиц). |
-| SEO поля внутри доменных translation таблиц | `product_translations.meta_title`… | минимум новых таблиц | разнобой полей между сущностями; трудно добавлять новые атрибуты (og/twitter/robots/schema); сложно версионировать и откатывать централизованно | Сейчас частично так и сделано для продуктов/страниц. fileciteturn43file0L1-L1 fileciteturn45file0L1-L1 Следует рассматривать как legacy/fallback слой. |
-| Переводы в отдельных таблицах | `*_translations(locale VARCHAR(32), …)` | соответствует целевому контракту RusTok (parallel localized records) | требует миграций legacy вариантов | Это целевой стандарт платформы. fileciteturn13file0L1-L1 |
-| JSONB для локализованных переводов | `seo_meta.localized_jsonb` | гибко на раннем этапе | противоречит целевому i18n storage контракту; хуже индексация/поиск; сложнее валидировать полноту | RusTok явно стремится уйти от «inline localized JSON» и закрепляет migration-based cleanup. fileciteturn10file0L1-L1 |
+| Single SEO table with polymorphic relations | `seo_meta(tenant_id, target_kind, target_id, ...)` + `seo_meta_translations(locale, ...)` | unified model; unified indices; convenient for bulk operations and audit/versioning; does not inflate domain tables | requires adapters for domain entities; needs target_kind taxonomy thought through | Best candidate, as a similar pattern already exists (`meta`/`meta_translations`) |
+| SEO tables per entity | `product_seo`, `category_seo`, `page_seo`... | simple mapping logic; fewer polymorphic conditions | explosion of tables and API; harder common bulk editor; harder unified audit | Not recommended for RusToK given the "SEO Suite" goal (too many modules/tables) |
+| SEO fields inside domain translation tables | `product_translations.meta_title`... | minimum new tables | field inconsistency across entities; hard to add new attributes (og/twitter/robots/schema); hard to version and roll back centrally | Currently partially done for products/pages. Should be considered as legacy/fallback layer. |
+| Translations in separate tables | `*_translations(locale VARCHAR(32), ...)` | matches RusToK's target contract (parallel localized records) | requires migration of legacy variants | This is the platform's target standard |
+| JSONB for localized translations | `seo_meta.localized_jsonb` | flexible in early stages | contradicts the target i18n storage contract; worse indexing/search; harder to validate completeness | RusToK explicitly aims to move away from "inline localized JSON" and establishes migration-based cleanup |
 
-### Рекомендация: «расширить и стандартизировать существующий polymorphic слой» как SEO Core
+### Recommendation: "Extend and Standardize the Existing Polymorphic Layer" as SEO Core
 
-Рациональнее всего **не вводить новый параллельный механизм**, а превратить уже существующие `meta`/`meta_translations` в «SEO Core storage», добавив:
-- выравнивание `locale` до `VARCHAR(32)` (в соответствии с ADR по multilingual DB storage); fileciteturn13file0L1-L1  
-- дополнительные поля для robots directives (как расширяемая структура, а не только `noindex/nofollow`), соц.мета (twitter cards), а также versioning/rollback;  
-- понятное `target_kind` (заменить/расширить `target_type` до `VARCHAR(64)`), чтобы вместить все сущности: `product`, `category`, `page`, `filter_page`, `cms`, `blog_post`, и т.д.  
-Сейчас `meta_translations.locale` создаётся как `string_len(5)`, что конфликтует с целевым контрактом. fileciteturn9file0L1-L1  
+The most rational approach is **not to introduce a new parallel mechanism**, but to transform the already existing `meta`/`meta_translations` into "SEO Core storage", adding:
+- alignment of `locale` to `VARCHAR(32)` (in accordance with the ADR on multilingual DB storage);
+- additional fields for robots directives (as an extensible structure, not just `noindex/nofollow`), social meta (twitter cards), as well as versioning/rollback;
+- a clear `target_kind` (replace/extend `target_type` to `VARCHAR(64)`) to accommodate all entities: `product`, `category`, `page`, `filter_page`, `cms`, `blog_post`, etc.
+Currently, `meta_translations.locale` is created as `string_len(5)`, which conflicts with the target contract.
 
-То же относится к URL mapping: `content_canonical_urls.locale` и `content_url_aliases.locale` сейчас `string_len(16)`; в целевом варианте следует поднять до `VARCHAR(32)` и обобщить таблицы на все SEO targets (не только content). fileciteturn22file0L1-L1 fileciteturn13file0L1-L1  
+The same applies to URL mapping: `content_canonical_urls.locale` and `content_url_aliases.locale` are currently `string_len(16)`; in the target variant, they should be raised to `VARCHAR(32)` and the tables should be generalized to all SEO targets (not just content).
 
-### Рекомендуемая схема таблиц (DDL примеры)
+### Recommended Table Schema (DDL Examples)
 
-Ниже — **целевой DDL**. Если вы хотите минимизировать риск миграций, можно начать с «новых таблиц с префиксом `seo_`», затем сделать phase‑2 миграцию/консолидацию; но архитектурно лучше иметь один каноничный слой.
+Below is the **target DDL**. To minimize migration risk, one could start with "new tables with `seo_` prefix" and then do a phase-2 migration/consolidation; but architecturally it is better to have a single canonical layer.
 
 ```sql
 -- SEO Core: polymorphic meta storage (write-side)
@@ -322,9 +317,9 @@ CREATE UNIQUE INDEX ux_seo_meta_revisions
   ON seo_meta_revisions (seo_meta_id, revision);
 ```
 
-Почему snapshot в `seo_meta_revisions.payload` — приемлемый компромисс: он не нарушает правило «не хранить локализованный бизнес‑текст канонично в JSONB», потому что это **не source-of-truth**, а **аудит/версионирование** (append-only), тогда как canonical write-side остаётся в `seo_meta_translations`. Сам RusTok уже использует JSONB интенсивно для control-plane/профилей (например, в `tenant_modules.settings` и AI control-plane таблицах). fileciteturn48file0L1-L1 fileciteturn38file0L1-L1 fileciteturn16file0L1-L1  
+Why snapshot in `seo_meta_revisions.payload` is an acceptable compromise: it does not violate the rule "do not store localized business text canonically in JSONB" because this is **not source-of-truth**, but **audit/versioning** (append-only), while the canonical write-side remains in `seo_meta_translations`. RusToK itself already uses JSONB extensively for control-plane/profiles (e.g., in `tenant_modules.settings` and AI control-plane tables).
 
-### ER-диаграмма (упрощённо)
+### ER Diagram (simplified)
 
 ```mermaid
 erDiagram
@@ -389,153 +384,153 @@ erDiagram
   }
 ```
 
-## Управление, UX и API: централизованный, распределённый и гибридный варианты
+## Management, UX and API: Centralized, Distributed and Hybrid Options
 
-### Варианты UI-архитектуры
+### UI Architecture Options
 
-**Централизованный модуль/панель SEO**  
-Подходит для: bulk editor, redirects, sitemap generation, sitewide rules, audits, AI content generation. Аналогичный pattern есть у рынка — отдельные SEO панели с audit/toolbar и централизованными настройками. citeturn0search0turn3search1turn3search0  
+**Centralized SEO Module/Panel**
+Suitable for: bulk editor, redirects, sitemap generation, sitewide rules, audits, AI content generation. A similar pattern exists in the market — separate SEO panels with audit/toolbar and centralized settings.
 
-**Распределённый интерфейс per-entity/per-module**  
-Подходит для: «SEO вкладка» в редакторе товара/категории/страницы (быстро поправить title/description/canonical/hreflang-политику). Это снижает трение контент-менеджера: он правит SEO там же, где правит контент.
+**Distributed Interface per-entity/per-module**
+Suitable for: "SEO tab" in product/category/page editor (quickly fix title/description/canonical/hreflang policy). This reduces friction for content managers: they edit SEO in the same place where they edit content.
 
-**Гибрид (рекомендовано)**  
-Центральный SEO Hub + встроенные SEO tabs в доменных редакторах. Технически в RusTok это ложится на manifest-wired admin UI и module-owned UI packages: `/modules` уже показывает сложные lifecycle flows, значит центральный SEO Hub также можно сделать как module-owned UI, но при этом оставить легковесные entrypoints в доменных модулях (линк в Hub с context). fileciteturn27file0L1-L1  
+**Hybrid (recommended)**
+Central SEO Hub + embedded SEO tabs in domain editors. Technically, this fits into manifest-wired admin UI and module-owned UI packages: `/modules` already shows complex lifecycle flows, so a central SEO Hub can also be created as module-owned UI, while keeping lightweight entry points in domain modules (link to Hub with context).
 
-### UX поток для контент-менеджера (гибрид)
+### UX Flow for Content Manager (Hybrid)
 
-Сценарий «товар/страница»:
+Scenario "product/page":
 
-1) Контент-менеджер открывает сущность (товар/страницу) и видит **SEO статус** (OK/Warn/Fail) и ключевые поля (title/description/canonical/robots).  
-2) В «SEO вкладке» он может:
-- отредактировать override мета-полей на конкретной локали;
-- увидеть превью SERP сниппета и подсветку лимитов/качества;
-- включить/отключить `noindex/nofollow`;
-- создать canonical override или alias (когда меняется slug/handle);
-- увидеть hreflang cluster preview и какие локали реально активны по tenant locale policy. fileciteturn11file0L1-L1  
+1. Content manager opens an entity (product/page) and sees the **SEO status** (OK/Warn/Fail) and key fields (title/description/canonical/robots).
+2. In the "SEO tab", they can:
+- edit meta-field overrides for a specific locale;
+- see SERP snippet preview and length/quality highlighting;
+- enable/disable `noindex/nofollow`;
+- create a canonical override or alias (when slug/handle changes);
+- see hreflang cluster preview and which locales are actually active per tenant locale policy.
 
-Сценарий «всё сразу» (SEO Hub):
+Scenario "all at once" (SEO Hub):
 
-1) SEO Hub → Dashboard: ошибки (дубликаты title, missing description, 404 redirect candidates, sitemap coverage).  
-2) Bulk editor: фильтр по сущностям/категориям/локалям; массовое применение template rule; CSV export/import.  
-3) Redirects: список правил, hit counters, конфликт/loop detection, кэш-прогрев.  
-4) Sitemaps: последняя генерация, очереди, разбиение на файлы, исключения, hreflang-in-sitemap switch. citeturn1search3turn0search5turn3search5  
+1. SEO Hub → Dashboard: errors (duplicate titles, missing description, 404 redirect candidates, sitemap coverage).
+2. Bulk editor: filter by entities/categories/locales; mass application of template rules; CSV export/import.
+3. Redirects: rule list, hit counters, conflict/loop detection, cache warming.
+4. Sitemaps: last generation, queues, file splitting, exclusions, hreflang-in-sitemap switch.
 
-### API: GraphQL + REST, минимальный контракт
+### API: GraphQL + REST, Minimal Contract
 
-С учётом API policy RusTok (GraphQL для UI, REST для интеграций/ops). fileciteturn28file0L1-L1  
+Given RusToK's API policy (GraphQL for UI, REST for integrations/ops):
 
 **GraphQL (UI-facing):**
-- `seoMeta(targetKind, targetId, locale)` → computed meta (template+override+fallback).  
-- `updateSeoMeta(input)` → draft update.  
-- `publishSeoMeta(targetKind,targetId)` / `rollbackSeoMeta(targetKind,targetId, revision)` → versioning.  
-- `seoRedirects(filter)` / `upsertSeoRedirect` / `deleteSeoRedirect`  
-- `seoSitemapStatus` / `generateSeoSitemaps` (returns job_id)  
-- `seoHreflangCluster(targetKind,targetId, locale)`  
+- `seoMeta(targetKind, targetId, locale)` → computed meta (template+override+fallback).
+- `updateSeoMeta(input)` → draft update.
+- `publishSeoMeta(targetKind,targetId)` / `rollbackSeoMeta(targetKind,targetId, revision)` → versioning.
+- `seoRedirects(filter)` / `upsertSeoRedirect` / `deleteSeoRedirect`
+- `seoSitemapStatus` / `generateSeoSitemaps` (returns job_id)
+- `seoHreflangCluster(targetKind,targetId, locale)`
 
 **REST (ops/integrations):**
-- `GET /api/v1/seo/sitemap.xml` и `GET /api/v1/seo/sitemapindex.xml` (или per-tenant base path), плюс entity-split файлы.  
-- `GET /api/v1/seo/robots.txt` (tenant/channel aware).  
-- `POST /api/v1/seo/bulk/import` (CSV/JSON) и `GET /api/v1/seo/bulk/export`.  
-- `POST /api/v1/seo/redirects/import` (массовый импорт).  
+- `GET /api/v1/seo/sitemap.xml` and `GET /api/v1/seo/sitemapindex.xml` (or per-tenant base path), plus entity-split files.
+- `GET /api/v1/seo/robots.txt` (tenant/channel aware).
+- `POST /api/v1/seo/bulk/import` (CSV/JSON) and `GET /api/v1/seo/bulk/export`.
+- `POST /api/v1/seo/redirects/import` (bulk import).
 
-## AI в SEO Suite: варианты интеграции, workflow, промпты, качество и приватность
+## AI in SEO Suite: Integration Options, Workflow, Prompts, Quality and Privacy
 
-### Почему AI лучше строить поверх существующего `rustok-ai`
+### Why It Is Better to Build AI on Top of Existing `rustok-ai`
 
-В RusTok уже есть `rustok-ai` как capability crate с:
-- multi-provider абстракцией (`OpenAI-compatible`, `Anthropic`, `Gemini`),
+RusToK already has `rustok-ai` as a capability crate with:
+- multi-provider abstraction (`OpenAI-compatible`, `Anthropic`, `Gemini`),
 - persisted control plane (provider profiles, task profiles, approvals, traces),
-- RBAC-first модель доступа,
-- админские UI пакеты (Leptos + Next.js),
-- direct verticals, включая `product_copy` и `blog_draft`, которые умеют писать локализованные данные в доменные сервисы и учитывают tenant locale policy. fileciteturn36file0L1-L1  
+- RBAC-first access model,
+- admin UI packages (Leptos + Next.js),
+- direct verticals including `product_copy` and `blog_draft`, which write localized data to domain services and respect tenant locale policy.
 
-Следовательно, SEO AI модуль должен быть **ещё одним vertical/task profile**, а не отдельной «самодельной интеграцией».
+Therefore, the SEO AI module should be **another vertical/task profile**, not a separate "custom integration".
 
-### On-premise vs cloud LLMs (на уровне платформы)
+### On-premise vs Cloud LLMs (at Platform Level)
 
-Так как `rustok-ai` уже поддерживает `OpenAI-compatible` provider, можно поддержать оба варианта:
-- **Cloud LLMs** (через provider profiles): быстрый старт, выше качество моделей, но выше требования к комплаенсу и логам. fileciteturn36file0L1-L1  
-- **On-prem/self-host**: тот же `OpenAI-compatible` интерфейс, но endpoint внутри вашей инфраструктуры (меньше рисков утечки каталога/контента), ценой поддержки и иногда качества.
+Since `rustok-ai` already supports `OpenAI-compatible` provider, both options can be supported:
+- **Cloud LLMs** (via provider profiles): quick start, higher model quality, but higher compliance and logging requirements.
+- **On-prem/self-host**: the same `OpenAI-compatible` interface, but endpoint inside your infrastructure (less risk of catalog/content leakage), at the cost of maintenance and sometimes quality.
 
-### Workflow генерации и валидации (рекомендовано)
+### Recommended Generation and Validation Workflow
 
-1) **Detection**: SEO Toolbar/validator фиксирует issue (missing meta, слишком длинный title, дубликаты, плохой canonical/hreflang). По рынку такой flow существует и прямо описан у Amasty: «Fix issues with AI» на product/category/CMS. citeturn2search0  
-2) **Generate Draft**: AI создаёт предложения для конкретной локали (title/description/keywords/JSON-LD фрагмент), учитывая entity data.  
-3) **Rule-based QC** (до человека):
-- лимиты длины,
-- наличие brand/основной сущности/модификаторов,
-- запрет невалидных символов,
-- отсутствие «keyword stuffing»,
-- проверка на duplicates в пределах tenant+locale (через индекс/поиск или отдельный uniqueness check).  
-4) **Human approval**: публикация по кнопке «Apply», с RBAC permission (подобно approval flow в `rustok-ai`). fileciteturn38file0L1-L1  
-5) **Publish + Revision**: запись в `seo_meta_translations`, создание `seo_meta_revisions` snapshot, событие в outbox для downstream tasks (invalidate caches, enqueue sitemap regenerate). fileciteturn32file0L1-L1  
+1) **Detection**: SEO Toolbar/validator captures issues (missing meta, title too long, duplicates, poor canonical/hreflang). Per market studies, such a flow exists and is directly described in Amasty: "Fix issues with AI" on product/category/CMS.
+2) **Generate Draft**: AI creates suggestions for a specific locale (title/description/keywords/JSON-LD fragment), considering entity data.
+3) **Rule-based QC** (before human):
+- length limits,
+- presence of brand/primary entity/modifiers,
+- prohibition of invalid characters,
+- absence of keyword stuffing,
+- duplicate check within tenant+locale (via index/search or separate uniqueness check).
+4) **Human approval**: publication via "Apply" button, with RBAC permission (similar to approval flow in `rustok-ai`).
+5) **Publish + Revision**: write to `seo_meta_translations`, create `seo_meta_revisions` snapshot, outbox event for downstream tasks (invalidate caches, enqueue sitemap regenerate).
 
-### Хранение версий AI-контента и логов
+### Version Storage for AI Content and Logs
 
-- AI output **не должен сразу перетирать published**: сначала draft/suggestion.  
-- В `seo_meta_revisions.payload` хранить «что было применено» (snapshot) + comment типа `ai_generated` + ссылки на `ai_chat_run_id`/`task_profile_id` (если вы хотите трассировать источник).  
-- Sensitive content: возможность **не логировать полный prompt**, либо хранить redacted prompt (хеш + шаблон + ссылки на entity_id без сырого описания), зависит от комплаенса; в `rustok-ai` уже существует persisted trace/approvals model, которую можно переиспользовать как источник «кто/когда/какой провайдер». fileciteturn36file0L1-L1  
+- AI output **must not immediately overwrite published**: first draft/suggestion.
+- In `seo_meta_revisions.payload`, store "what was applied" (snapshot) + comment like `ai_generated` + links to `ai_chat_run_id`/`task_profile_id` (if you want to trace the source).
+- Sensitive content: ability to **not log the full prompt**, or store a redacted prompt (hash + template + entity_id references without raw description), depending on compliance; `rustok-ai` already has a persisted trace/approvals model that can be reused as a source of "who/when/which provider".
 
-### Шаблоны промптов: минимальные «каркасы»
+### Prompt Templates: Minimal "Skeletons"
 
-Шаблон `seo_meta_generate` (title/description):
-- System: стиль бренда, запреты (не врать, не добавлять несуществующие скидки), язык = locale, ограничения длины.  
-- Input: JSON со структурой `{entity_kind, locale, title, description, category_path, price_range, availability, brand, target_keywords[], constraints{title_max,desc_max}}`  
-- Output: строго JSON `{title, description, keywords?, og_title?, og_description?}`
+Template `seo_meta_generate` (title/description):
+- System: brand style, prohibitions (do not lie, do not add non-existent discounts), language = locale, length constraints.
+- Input: JSON with structure `{entity_kind, locale, title, description, category_path, price_range, availability, brand, target_keywords[], constraints{title_max,desc_max}}`
+- Output: strictly JSON `{title, description, keywords?, og_title?, og_description?}`
 
-Шаблон `seo_structured_data_generate` (JSON‑LD):
-- System: «валидный JSON‑LD, соответствует schema.org типу, не противоречит видимому контенту» (в духе Google SD policies). citeturn2search6turn2search2  
-- Output: JSON‑LD object/graph или patch.
+Template `seo_structured_data_generate` (JSON-LD):
+- System: "valid JSON-LD, matches schema.org type, does not contradict visible content" (in the spirit of Google SD policies).
+- Output: JSON-LD object/graph or patch.
 
-## План внедрения: миграции данных, этапы релизов, тестирование и откат
+## Implementation Plan: Data Migrations, Release Stages, Testing and Rollback
 
-### Что мигрируем и почему это реально
+### What We Migrate and Why It Is Feasible
 
-Текущая база уже содержит:
-- polymorphic `meta`/`meta_translations` — хороший «скелет» SEO Core, но требует расширения и выравнивания locale. fileciteturn9file0L1-L1  
-- `content_canonical_urls` + `content_url_aliases` и сервис резолвинга — готовая логика для URL rewrites, но её нужно распространить на остальные сущности (products/categories/filters) и тоже привести locale к `VARCHAR(32)`. fileciteturn22file0L1-L1 fileciteturn20file0L1-L1 fileciteturn13file0L1-L1  
-- доменные meta поля (`product_translations.meta_*`, `page_translations.meta_*`) — их можно:
-  - либо оставить как fallback источники (если SEO Core не включён),
-  - либо сделать controlled migration (бэкфилл в `seo_meta_translations`, а затем постепенно депрекейтить поля в доменных таблицах). fileciteturn43file0L1-L1 fileciteturn45file0L1-L1  
+The current database already contains:
+- polymorphic `meta`/`meta_translations` — a good "skeleton" for SEO Core, but requires extension and locale alignment.
+- `content_canonical_urls` + `content_url_aliases` and resolution service — ready logic for URL rewrites, but needs to be extended to other entities (products/categories/filters) and locale aligned to `VARCHAR(32)`.
+- domain meta fields (`product_translations.meta_*`, `page_translations.meta_*`) — these can be:
+  - either kept as fallback sources (if SEO Core is not enabled),
+  - or undergo controlled migration (backfill to `seo_meta_translations`, then gradually deprecate fields in domain tables).
 
-### План релизов/миграций (с приоритетами и оценками)
+### Release/Migration Plan (with Priorities and Estimates)
 
-| Этап | Что делаем | Данные/миграции | Трудозатраты | Риск | Откат |
+| Stage | What We Do | Data/Migrations | Effort | Risk | Rollback |
 |---|---|---|---|---|---|
-| SEO Core baseline | стабилизировать `seo_meta`/`seo_meta_translations`: locale→`VARCHAR(32)`, добавить robots_directives, revisions; API чтения | миграция `meta_translations.locale VARCHAR(32)` + индексы; добавить revision tables | High | Medium | feature flag: чтение старого слоя, запись в новый как shadow |
-| URL rewrites + canonical | обобщить canonical/alias на все сущности; единый resolver; интеграция в routing/storefront | миграция locale в URL tables до `VARCHAR(32)`; добавить `target_kind` taxonomy | High | High | оставить старые endpoints и делать dual-write; rollback через переключение resolver |
-| Redirects | `seo_redirects` + быстрый lookup + кэширование (как в best practice) | новая таблица + background warmup | Medium | Medium | выключаем модуль per-tenant (`tenant_modules.enabled=false`) |
-| Hreflang | генерация cluster из canonical mapping + tenant_locales; HTML head insertion + (опционально) sitemap | минимальные новые таблицы (только overrides); без heavy миграций | Medium | Medium | отключить модуль; fallback: без hreflang |
-| Sitemaps | sitemapindex + split по типам сущностей + exclude; фоновые jobs; robots.txt интеграция | новые таблицы `seo_sitemap_jobs`, `seo_sitemap_files` (если нужно); либо хранить в storage backend | High | Medium | fallback: ручной sitemap или выключение module |
-| Rich snippets | JSON‑LD генерация + overrides; минимум required fields | таблицы поддерживаются через `seo_meta.structured_data` или отдельный слой | Medium | Medium | выключение модуля, удаление injection |
-| Bulk editor | grid + массовое применение templates; CSV import/export | без обязательных schema migrations, кроме job tracking | Medium | Low | отключение UI; API остаётся |
-| AI генерация | task profile `seo_meta_fix`, `seo_meta_generate`, approvals + хранение ревизий | без новых DB в `rustok-ai`, только SEO revision linking | Medium | Medium | выключить AI профили, оставить ручной режим |
+| SEO Core baseline | stabilize `seo_meta`/`seo_meta_translations`: locale→`VARCHAR(32)`, add robots_directives, revisions; read API | migration `meta_translations.locale VARCHAR(32)` + indices; add revision tables | High | Medium | feature flag: read old layer, write to new as shadow |
+| URL rewrites + canonical | generalize canonical/alias to all entities; unified resolver; integrate into routing/storefront | migrate locale in URL tables to `VARCHAR(32)`; add `target_kind` taxonomy | High | High | keep old endpoints and dual-write; rollback by switching resolver |
+| Redirects | `seo_redirects` + fast lookup + caching (per best practice) | new table + background warmup | Medium | Medium | disable module per-tenant (`tenant_modules.enabled=false`) |
+| Hreflang | cluster generation from canonical mapping + tenant_locales; HTML head insertion + (optionally) sitemap | minimal new tables (only overrides); no heavy migrations | Medium | Medium | disable module; fallback: without hreflang |
+| Sitemaps | sitemapindex + split by entity type + exclude; background jobs; robots.txt integration | new tables `seo_sitemap_jobs`, `seo_sitemap_files` (if needed); or store in storage backend | High | Medium | fallback: manual sitemap or module disable |
+| Rich snippets | JSON-LD generation + overrides; minimum required fields | tables supported via `seo_meta.structured_data` or separate layer | Medium | Medium | module disable, remove injection |
+| Bulk editor | grid + mass template application; CSV import/export | no mandatory schema migrations, except job tracking | Medium | Low | disable UI; API remains |
+| AI generation | task profile `seo_meta_fix`, `seo_meta_generate`, approvals + revision storage | no new DB in `rustok-ai`, only SEO revision linking | Medium | Medium | disable AI profiles, keep manual mode |
 
-### Тестирование и производительность
+### Testing and Performance
 
-Минимальный “definition of done” для SEO Suite на RusTok должен включать:
+Minimum "definition of done" for SEO Suite on RusToK must include:
 
 - **Correctness**:  
-  - canonical consistency (не противоречить методам; 1 canonical на страницу); citeturn1search1  
-  - hreflang completeness (self + all alternates); citeturn0search2turn1search8  
-  - sitemap limits + absolute URLs + UTF‑8; citeturn1search3  
-  - robots.txt semantics и размещение. citeturn1search2turn1search4  
+  - canonical consistency (do not contradict methods; 1 canonical per page);  
+  - hreflang completeness (self + all alternatives);  
+  - sitemap limits + absolute URLs + UTF-8;  
+  - robots.txt semantics and placement.
 
 - **Load/perf**:  
-  - redirects lookup O(1)/O(logN) + кэш результатов, чтобы «не деградировать на большом объёме редиректов» — это рынок явно отмечает. citeturn0search0  
-  - sitemap generation в фоне, постраничное чтение из БД, чанки по 50k URL, writes в storage без удержания всей карты в памяти. citeturn1search3  
+  - redirects lookup O(1)/O(logN) + result caching, so "no degradation on large volume of redirects" — the market explicitly emphasizes this.  
+  - sitemap generation in background, paginated DB reads, chunks of 50k URLs, writes to storage without holding the entire map in memory.
 
 - **Security**:  
-  - все write API под RBAC, без bypass через UI-only calls; fileciteturn28file0L1-L1  
-  - защита от open redirect (в redirects: whitelist relative/tenant-owned domains), защита от redirect loops, валидация `target_url`;  
-  - audit trail через `seo_meta_revisions` + actor id; при AI — approvals. fileciteturn38file0L1-L1  
+  - all write APIs under RBAC, no bypass via UI-only calls;  
+  - protection against open redirects (in redirects: whitelist relative/tenant-owned domains), protection against redirect loops, validation of `target_url`;  
+  - audit trail via `seo_meta_revisions` + actor id; with AI — approvals.
 
-### План отката
+### Rollback Plan
 
-В RusTok ключевой «мягкий откат» — это:
-- отключение модуля per-tenant через `tenant_modules.enabled` (для SEO suite подмодулей это нужно поддержать последовательно); fileciteturn48file0L1-L1  
-- feature flags на чтение/запись: dual-write (старый слой + новый слой) на период миграций;  
-- `seo_meta_revisions` как быстрый «rollback to revision N» без необходимости ручных SQL откатов.
+In RusToK, the key "soft rollback" mechanisms are:
+- disabling the module per-tenant via `tenant_modules.enabled` (for SEO suite submodules, this must be supported consistently);
+- feature flags for read/write: dual-write (old layer + new layer) during migrations;
+- `seo_meta_revisions` as a fast "rollback to revision N" without manual SQL rollbacks.
 
-На уровне DB migrations: для locale widening (`VARCHAR(5)`→`VARCHAR(32)`) откат в узкую колонку возможен формально, но практический rollback должен быть через forward-migration (не пытаться срезать данные). Это соответствует общей практике безопасных миграций, а также тому, как в RusTok делались расширения locale колонок в foundation. fileciteturn14file0L1-L1
+At the DB migrations level: for locale widening (`VARCHAR(5)`→`VARCHAR(32)`), rollback to a narrow column is formally possible, but practical rollback should be via forward-migration (not attempting to truncate data). This follows general safe migration practices and how RusToK performed locale column expansions in the foundation.

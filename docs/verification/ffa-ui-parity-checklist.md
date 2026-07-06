@@ -8,75 +8,75 @@ status: verified
 ---
 # FFA UI Migration: parity checklist (Phase A baseline)
 
-Этот документ фиксирует обязательный baseline checklist для задач миграции по
-плану `docs/research/dioxus-ffa-ui-migration-plan.md`.
+This document captures the mandatory baseline checklist for migration tasks under
+the `docs/research/dioxus-ffa-ui-migration-plan.md` plan.
 
-## Назначение
+## Purpose
 
-Checklist используется как evidence для phase-gates `A -> B`, `B -> C`, `D -> E`
-и для контроля того, что dual-path контракт (`native #[server]` + GraphQL fallback)
-не деградирует во время FFA-декомпозиции.
+The checklist is used as evidence for phase-gates `A -> B`, `B -> C`, `D -> E`
+and to ensure that the dual-path contract (`native #[server]` + GraphQL fallback)
+does not degrade during FFA decomposition.
 
 ## Scope
 
-- module-owned UI пакеты `crates/rustok-*/admin` и `crates/rustok-*/storefront`;
-- host wiring в `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`;
-- verify scripts в `scripts/verify/*` при изменении contract-правил.
+- module-owned UI packages `crates/rustok-*/admin` and `crates/rustok-*/storefront`;
+- host wiring in `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`;
+- verify scripts in `scripts/verify/*` when contract rules change.
 
-## Обязательные проверки на каждую migration-задачу
+## Mandatory Checks for Each Migration Task
 
 ### 1) Contract parity
 
-- [ ] Native path (Leptos SSR/hydrate) работает для целевого сценария.
-- [ ] GraphQL fallback работает для того же сценария.
-- [ ] Headless host path (Next/mobile/external) не сломан.
-- [ ] GraphQL/REST surface не удалён и не ослаблен.
+- [ ] Native path (Leptos SSR/hydrate) works for the target scenario.
+- [ ] GraphQL fallback works for the same scenario.
+- [ ] Headless host path (Next/mobile/external) is not broken.
+- [ ] GraphQL/REST surface is not removed or weakened.
 
 ### 2) FFA layering
 
-Целевой структурный shape фиксируется одним из значений:
+The target structural shape is set to one of:
 
-- `none` — кодовый FFA split ещё не начат;
-- `docs_boundary` — синхронизирован boundary/docs track, но UI split ещё не начат;
-- `core_only` — framework-agnostic `core.rs` или `core/` уже владеет view-model/request/policy фрагментом;
-- `core_transport` — добавлен module-owned `transport/` facade/adapters;
-- `core_transport_ui` — есть `core`, `transport` и явный `ui/leptos.rs` или `ui/leptos/` adapter.
+- `none` — code FFA split not yet started;
+- `docs_boundary` — boundary/docs track synchronized but UI split not yet started;
+- `core_only` — framework-agnostic `core.rs` or `core/` already owns the view-model/request/policy fragment;
+- `core_transport` — module-owned `transport/` facade/adapters added;
+- `core_transport_ui` — has `core`, `transport` and explicit `ui/leptos.rs` or `ui/leptos/` adapter.
 
-`core.rs` разрешён для небольшого среза; при появлении нескольких поддоменов (`view_model`, `policy`, `error`, `ports`, `identifiers`) модуль должен переходить на `core/`. Аналогично `ui/leptos.rs` разрешён для одного render adapter file, а `ui/leptos/` используется при разрастании adapter слоя.
+`core.rs` is allowed for a small slice; when multiple subdomains appear (`view_model`, `policy`, `error`, `ports`, `identifiers`), the module should transition to `core/`. Similarly `ui/leptos.rs` is allowed for a single render adapter file, and `ui/leptos/` is used when the adapter layer grows.
 
-- [ ] UI слой не владеет transport/business логикой.
-- [ ] UI adapter обращается к transport только через module-owned facade; request/command/state construction и business/policy остаются в core ports/helpers.
-- [ ] Core слой не зависит от `leptos*`.
-- [ ] Transport adapters разделены по ролям: native и GraphQL fallback либо явно зафиксирован temporary single-adapter state с next-step parity plan.
-- [ ] Host-visible UI status/error contracts имеют stable machine-readable codes и documented locale keys.
+- [ ] UI layer does not own transport/business logic.
+- [ ] UI adapter accesses transport only through module-owned facade; request/command/state construction and business/policy remain in core ports/helpers.
+- [ ] Core layer does not depend on `leptos*`.
+- [ ] Transport adapters are separated by role: native and GraphQL fallback, or a temporary single-adapter state with a next-step parity plan is explicitly documented.
+- [ ] Host-visible UI status/error contracts have stable machine-readable codes and documented locale keys.
 
 ### 3) i18n/tenant/request context
 
-- [ ] Используется host-provided effective locale, без package-local fallback chains.
-- [ ] `RequestMeta`/tenant scope не теряется между native и GraphQL path.
-- [ ] Route/query contract не расходится между Leptos и headless hosts.
+- [ ] Uses host-provided effective locale, without package-local fallback chains.
+- [ ] `RequestMeta`/tenant scope is not lost between native and GraphQL paths.
+- [ ] Route/query contract does not diverge between Leptos and headless hosts.
 
 ### 4) Tests & verification evidence
 
-- [ ] Выполнен `cargo xtask module validate <slug>`.
-- [ ] Выполнен `cargo xtask module test <slug>`.
-- [ ] При изменении host/UI wiring выполнены:
+- [ ] `cargo xtask module validate <slug>` executed.
+- [ ] `cargo xtask module test <slug>` executed.
+- [ ] When host/UI wiring changed:
   - [ ] `npm run verify:i18n:ui`
   - [ ] `npm run verify:i18n:contract`
   - [ ] `npm.cmd run verify:storefront:routes`
-- [ ] Выполнен `npm run verify:ffa:ui:migration`.
-- [ ] Для изменённых error/status контрактов приложен список stable codes и locale keys.
-- [ ] В PR приложен фактический вывод проверок.
+- [ ] `npm run verify:ffa:ui:migration` executed.
+- [ ] For changed error/status contracts, a list of stable codes and locale keys is attached.
+- [ ] Actual verification output is included in the PR.
 
 ### 5) Documentation double-check
 
-- [ ] Обновлены локальные docs затронутых модулей.
-- [ ] Обновлены central docs в `docs/`.
-- [ ] Обновлён `docs/index.md`, если добавлен/изменён doc-узел.
-- [ ] Выполнен проход №1: код и формулировки совпадают.
-- [ ] Выполнен проход №2: удалены/исправлены устаревшие transport-формулировки.
+- [ ] Local docs of affected modules updated.
+- [ ] Central docs in `docs/` updated.
+- [ ] `docs/index.md` updated if a doc node was added/changed.
+- [ ] Pass 1 completed: code and wording match.
+- [ ] Pass 2 completed: outdated transport wording removed/fixed.
 
-## Evidence template (вставка в PR)
+## Evidence template (insert into PR)
 
 ```md
 ### FFA parity evidence
@@ -99,7 +99,7 @@ Commands:
 - npm run verify:ffa:ui:migration
 ```
 
-## Текущие evidence notes
+## Current Evidence Notes
 
 - 2026-06-26, `blog`, slice #104: admin shell/list/form scaffold CSS class selection moved into Leptos-free `BlogPostAdminShellClassesViewModel` / `blog_post_admin_shell_classes_view`; page shell, module header, posts card, locale filter, loading/error states, sidebar and form-card classes are prepared by core while the Leptos adapter keeps markup, signals and callbacks only. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; `node --test scripts/verify/verify-blog-admin-boundary.test.mjs`; `cargo fmt --package rustok-blog-admin`; Cargo compilation was intentionally skipped by request; native/GraphQL transport surfaces were not changed.
 - 2026-06-24, `blog`, slice #103: admin posts-table CSS class selection moved into Leptos-free `BlogPostAdminTableClassesViewModel` / `blog_post_admin_table_classes_view`; table shell, header cells, row/cell typography and primary/destructive action button classes are prepared by core while the Leptos adapter keeps markup and callbacks only. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; `node --test scripts/verify/verify-blog-admin-boundary.test.mjs`; `cargo fmt --package rustok-blog-admin`; Cargo compilation was intentionally skipped by request; native/GraphQL transport surfaces were not changed.
@@ -117,7 +117,7 @@ Commands:
 - 2026-06-15, `blog`, slices #89-#90: admin raw-body warning visibility/message moved into Leptos-free `BlogPostAdminRawBodyWarningViewModel`, and posts-list load-result/contract-unavailable/error presentation moved into Leptos-free `BlogPostAdminPostsLoadViewModel`; the Leptos adapter keeps only transport-facade classification plus render branching, while `node scripts/verify/verify-blog-admin-boundary.mjs` passed after extending the guardrail for both helpers; Cargo compilation was intentionally avoided by request; native/GraphQL transport surfaces were not changed.
 - 2026-06-13, `blog`, slices #81-#82: admin write-path issue banner presentation moved into Leptos-free `BlogPostAdminIssueBannerViewModel`, then publish/unpublish, archive and delete action command preparation moved into Leptos-free `BlogPostStatusCommand`, `BlogPostArchiveCommand` and `BlogPostDeleteCommand`; `node scripts/verify/verify-blog-admin-boundary.mjs` passed after extending the guardrail for the new command helpers; Cargo compilation was intentionally not run by request; native/GraphQL transport surfaces were not changed.
 
-## Связанные документы
+## Related Documents
 
 - `docs/research/dioxus-ffa-ui-migration-plan.md`
 - `docs/UI/graphql-architecture.md`

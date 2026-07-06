@@ -1,22 +1,22 @@
-# План реализации `rustok-ai-media`
+# `rustok-ai-media` — Implementation Plan
 
-## Цель
+## Goal
 
-Сделать `rustok-ai-media` domain-owned adapter crate для media AI verticals, начиная с `image_asset` task/tool identity и pure validation contracts.
+Make `rustok-ai-media` the domain-owned adapter crate for media AI verticals, starting with `image_asset` task/tool identity and pure validation contracts.
 
-## Этапы
+## Stages
 
 1. Scaffold crate + docs.
-2. Перенести `image_asset` task/tool identity из `rustok-ai` в media-owned descriptor API.
-3. Перенести validation helpers для generated/runtime payload contracts.
-4. Добавить targeted verification и синхронизировать central registry evidence.
+2. Move `image_asset` task/tool identity from `rustok-ai` to media-owned descriptor API.
+3. Move validation helpers for generated/runtime payload contracts.
+4. Add targeted verification and synchronize central registry evidence.
 
 ## Execution checkpoint
 
-- Создан support crate `rustok-ai-media` с local docs.
-- Перенесены `IMAGE_ASSET_TASK_SLUG`, `IMAGE_ASSET_TOOL_NAME`, descriptor registry и `register_media_ai_vertical_handlers` adapter API.
-- Перенесена canonical image-size normalization/validation (`WIDTHxHEIGHT`, numeric bounds `1..=4096`) в media-owned pure helper, consumed by `rustok-ai` direct media runtime.
-- Runtime fallback smoke evidence для `MediaAssetReadPort` source-level профиля закрыт в `contracts/evidence/ai-media-runtime-fallback-smoke.json`; следующий шаг: расширить media-owned generated artifact contract при разрешённых проверках.
+- Support crate `rustok-ai-media` created with local docs.
+- `IMAGE_ASSET_TASK_SLUG`, `IMAGE_ASSET_TOOL_NAME`, descriptor registry and `register_media_ai_vertical_handlers` adapter API moved.
+- Canonical image-size normalization/validation (`WIDTHxHEIGHT`, numeric bounds `1..=4096`) moved to media-owned pure helper, consumed by `rustok-ai` direct media runtime.
+- Runtime fallback smoke evidence for `MediaAssetReadPort` source-level profile closed in `contracts/evidence/ai-media-runtime-fallback-smoke.json`; next step: expand media-owned generated artifact contract when compilations are allowed.
 - Added compile-free static evidence coverage in the unified `scripts/verify/verify-ai-domain-verticals.mjs` gate for descriptor ownership, runtime binding seams, and validation/policy tests without compilation.
 - Last updated at (UTC): 2026-06-24T00:00:00Z
 

@@ -1,9 +1,9 @@
 # rustok-blog / CRATE_API
 
-## Публичные модули
+## Public Modules
 `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`, `state_machine`.
 
-## Основные публичные типы и сигнатуры
+## Primary Public Types and Signatures
 
 ### BlogModule
 ```rust
@@ -189,7 +189,7 @@ pub struct PostResponse {
 }
 ```
 
-#### PostSummary (для листингов)
+#### PostSummary (for listings)
 ```rust
 pub struct PostSummary {
     pub id: Uuid,
@@ -247,40 +247,40 @@ pub fn available_locales(translations: &[NodeTranslationResponse]) -> Vec<String
   resolves/creates module-scoped tags transactionally while reusing matching
   global taxonomy terms.
 
-## События
-- Публикует: `BlogPostCreated`, `BlogPostPublished`, `BlogPostUnpublished`, `BlogPostUpdated`, `BlogPostArchived`, `BlogPostDeleted`
-- Потребляет: нет
+## Events
+- Publishes: `BlogPostCreated`, `BlogPostPublished`, `BlogPostUnpublished`, `BlogPostUpdated`, `BlogPostArchived`, `BlogPostDeleted`
+- Consumes: none
 
-## Зависимости от других rustok-крейтов
+## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-comments`
 - `rustok-core`
 - `rustok-outbox`
 - `rustok-taxonomy`
 
-## Частые ошибки ИИ
-- Пытается добавлять отдельные миграции для blog (модуль использует таблицы content).
-- Путает blog state-machine и content state-machine.
-- Пропускает проверку permissions (`Resource::Posts`, `Resource::Comments`).
-- Возвращает первый перевод без locale fallback вместо использования `locale.rs`.
-- Передаёт `UpdateNodeInput` напрямую вместо `UpdatePostInput` из rustok-blog.
-- Не передаёт `author_id` из `SecurityContext` при создании поста.
-- Использует `Uuid::nil()` как `tenant_id` в event_bus.publish() — нужно брать из узла.
+## Common AI Mistakes
+- Tries to add separate migrations for blog (the module uses content tables).
+- Confuses blog state-machine and content state-machine.
+- Skips permission checks (`Resource::Posts`, `Resource::Comments`).
+- Returns the first translation without locale fallback instead of using `locale.rs`.
+- Passes `UpdateNodeInput` directly instead of `UpdatePostInput` from rustok-blog.
+- Does not pass `author_id` from `SecurityContext` when creating a post.
+- Uses `Uuid::nil()` as `tenant_id` in event_bus.publish() — should take it from the node.
 
-## Минимальный набор контрактов
+## Minimum Contract Set
 
-### Входные DTO/команды
-- Входной контракт формируется публичными DTO/командами из crate (см. разделы с `Create*Input`/`Update*Input`/query/filter выше и соответствующие `pub`-экспорты в `src/lib.rs`).
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления transport-адаптеров `apps/server`.
+### Input DTOs/Commands
+- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
+- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters in `apps/server`.
 
-### Доменные инварианты
-- Инварианты модуля фиксируются в сервисах/стейт-машинах и валидации DTO; недопустимые переходы/параметры должны завершаться доменной ошибкой.
-- Инварианты multi-tenant boundary (tenant/resource isolation, auth context) считаются обязательной частью контракта.
+### Domain Invariants
+- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
+- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
 
-### События / outbox-побочные эффекты
-- Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
-- Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
+### Events / Outbox Side Effects
+- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Event payload and event-type format must remain backward-compatible for cross-module consumers.
 
-### Ошибки / коды отказов
-- Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.
-- Для validation/auth/conflict/not-found сценариев должен сохраняться устойчивый error-class, используемый тестами и адаптерами.
+### Errors / Failure Codes
+- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.

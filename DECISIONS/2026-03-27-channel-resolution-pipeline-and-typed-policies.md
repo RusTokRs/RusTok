@@ -1,23 +1,23 @@
-# Channel resolution pipeline и typed policy trajectory
+# Channel resolution pipeline and typed policy trajectory
 
 - Date: 2026-03-27
 - Status: Accepted
 
 ## Context
 
-`rustok-channel` стартовал как v0 baseline с простым runtime order `header -> query -> host -> default`.
+`rustok-channel` started as a v0 baseline with a simple runtime order `header -> query -> host -> default`.
 
-Этого достаточно для pilot-стадии, но недостаточно как финальная архитектура платформы:
+This is sufficient for the pilot stage, but not enough as the final platform architecture:
 
-- resolution logic жила в server middleware, а не в domain-модуле;
-- explicit default channel уже появился, но следующий шаг не должен превращаться в ad-hoc `tenant-level default rules`;
-- при дальнейшем росте платформы понадобятся richer resolution predicates (`host`, `oauth_app`, `surface`, `locale`), но ввод scripting/generic rule engine заранее создаст долг и размоет инварианты.
+- resolution logic lived in server middleware, not in a domain module;
+- the explicit default channel already appeared, but the next step should not turn into ad-hoc `tenant-level default rules`;
+- as the platform grows further, richer resolution predicates (`host`, `oauth_app`, `surface`, `locale`) will be needed, but introducing a scripting/generic rule engine prematurely will create debt and blur invariants.
 
-Нужно зафиксировать конечную траекторию сейчас, пока кодовая база ещё допускает архитектурный сдвиг без дорогого перелома.
+The final trajectory needs to be fixed now, while the codebase still allows an architectural shift without an expensive break.
 
 ## Decision
 
-Принимается следующая финальная модель channel resolution:
+The following final channel resolution model is adopted:
 
 1. explicit selectors;
 2. built-in typed target-resolution slices;
@@ -25,33 +25,33 @@
 4. explicit default channel;
 5. unresolved request.
 
-Ключевые решения:
+Key decisions:
 
-- `tenant-level default rules` как отдельная архитектурная концепция не вводятся;
-- terminal fallback остаётся только один: explicit default channel tenant'а;
-- runtime resolution выносится из server middleware в domain-layer `rustok-channel`;
-- shared runtime contract оформляется как typed pipeline:
+- `tenant-level default rules` are not introduced as a separate architectural concept;
+- there is only one terminal fallback: the tenant's explicit default channel;
+- runtime resolution is moved from server middleware to the `rustok-channel` domain layer;
+- the shared runtime contract is defined as a typed pipeline:
   - `RequestFacts`
   - `ResolutionDecision`
   - `ResolutionTraceStep`
-- текущий host-based lookup по `web_domain` трактуется как built-in typed resolution slice, а не как основа для generic rule engine;
-- будущая конфигурация richer matching будет называться `tenant-scoped typed resolution policies` и встраиваться перед explicit default channel;
-- policy layer не должен быть Turing-complete:
-  только typed predicates/action model, без scripting и без произвольного eval.
+- the current host-based lookup by `web_domain` is treated as a built-in typed resolution slice, not as the foundation for a generic rule engine;
+- future configuration for richer matching will be called `tenant-scoped typed resolution policies` and will be placed before the explicit default channel;
+- the policy layer must not be Turing-complete:
+  only typed predicates/action model, without scripting and without arbitrary eval.
 
-`rustok-api` остаётся владельцем host-facing `ChannelResolutionSource`, а domain resolver в `rustok-channel` держит собственный resolution contract и маппится в shared host contract на server boundary.
+`rustok-api` remains the owner of the host-facing `ChannelResolutionSource`, while the domain resolver in `rustok-channel` holds its own resolution contract and maps to the shared host contract at the server boundary.
 
 ## Consequences
 
-Плюсы:
+Positives:
 
-- precedence order теперь становится domain invariant, а не middleware detail;
-- появляется typed seam для будущих policy sets без немедленного ввода rule engine;
-- debug/observability можно строить на `ResolutionTraceStep`, а не на неявных ветках middleware;
-- explicit default channel остаётся детерминированным terminal fallback.
+- precedence order now becomes a domain invariant, not a middleware detail;
+- a typed seam appears for future policy sets without immediately introducing a rule engine;
+- debug/observability can be built on `ResolutionTraceStep` rather than on implicit middleware branches;
+- the explicit default channel remains a deterministic terminal fallback.
 
-Минусы и follow-up:
+Negatives and follow-up:
 
-- в коде появляется дополнительный resolver layer и временный mapping между domain origin и host-facing source contract;
-- следующий этап уже не про “ещё один fallback”, а про storage/model/admin/runtime rollout для typed policies;
-- текущий built-in host slice позже нужно будет либо встроить в общий policy engine, либо явно оставить как fast-path policy family, не дублируя semantics.
+- an additional resolver layer and temporary mapping between domain origin and host-facing source contract appears in the code;
+- the next stage is no longer about "yet another fallback", but about storage/model/admin/runtime rollout for typed policies;
+- the current built-in host slice will later need to either be integrated into the common policy engine, or explicitly kept as a fast-path policy family without duplicating semantics.

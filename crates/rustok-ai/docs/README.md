@@ -1,40 +1,40 @@
 # Capability `rustok-ai`
 
-`rustok-ai` — capability-crate RusToK для AI host/orchestrator слоя поверх `rustok-mcp`.
+`rustok-ai` is the RusToK capability crate for the AI host/orchestrator layer on top of `rustok-mcp`.
 
-Этот crate не является tenant-toggled модулем и не входит в taxonomy `Core` / `Optional`.
-Его задача — держать слой между model provider и MCP tool surface, не расширяя `rustok-mcp`
-до роли model host.
+This crate is not a tenant-toggled module and is not part of the `Core` / `Optional` taxonomy.
+Its task is to hold the layer between model provider and MCP tool surface, without extending `rustok-mcp`
+to the role of model host.
 
-## Назначение
+## Purpose
 
-- держать provider-agnostic runtime contract для AI orchestration;
-- поставлять multiprovider runtime для `OpenAI-compatible`, `Anthropic` и `Gemini`, сохраняя
-  `OpenAI-compatible` как удобный путь для cloud и local endpoint'ов через `base_url`;
-- вызывать MCP tools через отдельный `McpClientAdapter`, а не смешивать provider logic с MCP server;
-- хранить chat/runtime model: sessions, messages, runs, tool traces, approval requests;
-- отдавать `apps/server` канонический service layer для persisted control plane.
+- hold a provider-agnostic runtime contract for AI orchestration;
+- provide a multiprovider runtime for `OpenAI-compatible`, `Anthropic` and `Gemini`, keeping
+  `OpenAI-compatible` as a convenient path for cloud and local endpoints via `base_url`;
+- call MCP tools through a separate `McpClientAdapter`, rather than mixing provider logic with MCP server;
+- store the chat/runtime model: sessions, messages, runs, tool traces, approval requests;
+- provide `apps/server` with a canonical service layer for the persisted control plane.
 
-## Что уже реализовано
+## What is already implemented
 
-### Provider/runtime слой
+### Provider/Runtime Layer
 
 - `ModelProvider` trait;
 - `OpenAiCompatibleProvider`;
-- typed request/response model для chat runs;
-- `AiRuntime` с request/response loop, tool-call orchestration и error normalization;
-- `ToolExecutionPolicy` с выделением sensitive tool calls и approval boundary.
-- `AiRouter` и direct-dispatch слой для first-party verticals без обязательного MCP hop.
+- typed request/response model for chat runs;
+- `AiRuntime` with request/response loop, tool-call orchestration and error normalization;
+- `ToolExecutionPolicy` with sensitive tool calls and approval boundary.
+- `AiRouter` and direct-dispatch layer for first-party verticals without mandatory MCP hop.
 
 ### MCP integration
 
-- `McpClientAdapter` как отдельный слой поверх RusToK MCP tool surface;
-- текущий MVP wiring использует `rustok-mcp` и не расширяет `rustok-mcp` provider-specific обязанностями;
-- Alloy/MCP tool traces и approval-gated execution уже входят в persisted chat flow.
+- `McpClientAdapter` as a separate layer on top of the RusToK MCP tool surface;
+- current MVP wiring uses `rustok-mcp` and does not extend `rustok-mcp` with provider-specific responsibilities;
+- Alloy/MCP tool traces and approval-gated execution are already part of the persisted chat flow.
 
-### Persisted control plane в `apps/server`
+### Persisted Control Plane in `apps/server`
 
-- таблицы:
+- tables:
   - `ai_provider_profiles`
   - `ai_tool_profiles`
   - `ai_chat_sessions`
@@ -42,90 +42,90 @@
   - `ai_chat_runs`
   - `ai_tool_traces`
   - `ai_approval_requests`
-- owner-owned GraphQL query/mutation/subscription surface в `crates/rustok-ai/src/graphql` для providers,
-  tool profiles, sessions, traces и approvals;
+- owner-owned GraphQL query/mutation/subscription surface in `crates/rustok-ai/src/graphql` for providers,
+  tool profiles, sessions, traces and approvals;
 - server-side orchestration service `AiManagementService`;
-- `AiHostRuntime` как host-neutral runtime contract: `apps/server` и Leptos SSR adapter собирают его на своей
-  границе, а `rustok-ai` не принимает Loco `AppContext` и не зависит от Loco crate;
-- `apps/server` хранит секреты, runtime settings и audit trail, а не UI.
-- Runtime observability теперь идёт в двух слоях:
-  - persisted `decision_trace` и run/session metadata в control plane;
-  - in-process `AiManagementService::metrics_snapshot()` и Prometheus module/span telemetry для router resolution и run outcomes.
-- diagnostics snapshot теперь включает breakdown не только по provider/execution target, но и по
-  task profile / resolved locale, чтобы оператор видел routing и multilingual срезы без похода в raw traces.
-- bounded streaming layer включает `AiRunStreamHub` в `rustok-ai`, GraphQL subscription
-  `aiSessionEvents(sessionId)` в `rustok-ai` и live incremental output для operator chat /
-  provider-backed text runs в обоих admin host'ах для `OpenAI-compatible`, `Anthropic` и `Gemini`.
-- direct verticals используют тот же streaming contract, поэтому direct Alloy / content jobs не
-  теряют live delta/update surface по сравнению с runtime/MCP path.
-- помимо live subscription серверный слой теперь держит bounded recent-event cache; он доступен
-  через `AiManagementService::recent_stream_events(...)` и GraphQL query
-  `aiRecentRunStreamEvents(sessionId?, limit?)` для diagnostics и session detail.
-- diagnostics surface теперь также использует bounded recent run history из persisted control
-  plane через `AiManagementService::list_recent_runs(...)` и GraphQL query
-  `aiRecentRuns(limit?)`, чтобы показывать статус/latency/provider/locale history без разбора raw traces.
+- `AiHostRuntime` as host-neutral runtime contract: `apps/server` and Leptos SSR adapter compose it at their
+  boundary, and `rustok-ai` does not accept Loco `AppContext` and does not depend on the Loco crate;
+- `apps/server` stores secrets, runtime settings and audit trail, not UI.
+- Runtime observability now operates in two layers:
+  - persisted `decision_trace` and run/session metadata in the control plane;
+  - in-process `AiManagementService::metrics_snapshot()` and Prometheus module/span telemetry for router resolution and run outcomes.
+- diagnostics snapshot now includes breakdown not only by provider/execution target, but also by
+  task profile / resolved locale, so the operator can see routing and multilingual slices without going into raw traces.
+- bounded streaming layer includes `AiRunStreamHub` in `rustok-ai`, GraphQL subscription
+  `aiSessionEvents(sessionId)` in `rustok-ai` and live incremental output for operator chat /
+  provider-backed text runs in both admin hosts for `OpenAI-compatible`, `Anthropic` and `Gemini`.
+- direct verticals use the same streaming contract, so direct Alloy / content jobs do
+  not lose the live delta/update surface compared to the runtime/MCP path.
+- in addition to live subscription, the server layer now holds a bounded recent-event cache; it is accessible
+  via `AiManagementService::recent_stream_events(...)` and GraphQL query
+  `aiRecentRunStreamEvents(sessionId?, limit?)` for diagnostics and session detail.
+- diagnostics surface now also uses bounded recent run history from persisted control
+  plane via `AiManagementService::list_recent_runs(...)` and GraphQL query
+  `aiRecentRuns(limit?)` to show status/latency/provider/locale history without parsing raw traces.
 
-### UI-пакеты
+### UI Packages
 
-- крупный Leptos operator/admin UI package: `crates/rustok-ai/admin`;
-- крупный Next.js operator/admin UI package: `apps/next-admin/packages/rustok-ai`;
-- оба UI уже поддерживают provider registry с редактируемыми `capabilities` и `usage_policy`;
-- оба UI показывают execution metadata (`execution_mode`, `execution_path`) для session/run inspection;
-- оба UI поддерживают direct job surfaces для `alloy_code`, `image_asset`, `product_copy` и `blog_draft`;
-- поля `locale` в admin UI являются optional override: пустое значение оставляет AI runtime
-  использовать request locale chain (`request -> tenant default -> en`), а не форсирует `en`;
-- оба UI теперь имеют focused diagnostics sub-surface для router/run observability:
+- major Leptos operator/admin UI package: `crates/rustok-ai/admin`;
+- major Next.js operator/admin UI package: `apps/next-admin/packages/rustok-ai`;
+- both UIs already support provider registry with editable `capabilities` and `usage_policy`;
+- both UIs show execution metadata (`execution_mode`, `execution_path`) for session/run inspection;
+- both UIs support direct job surfaces for `alloy_code`, `image_asset`, `product_copy` and `blog_draft`;
+- `locale` field in admin UI is an optional override: empty value leaves the AI runtime
+  to use the request locale chain (`request -> tenant default -> en`), rather than forcing `en`;
+- both UIs now have focused diagnostics sub-surface for router/run observability:
   - Leptos host: `/ai/diagnostics`
   - Next host: `/dashboard/ai/diagnostics`
-- оба UI теперь поддерживают live session stream card через `graphql-transport-ws` subscription
-  `aiSessionEvents`, не заменяя persisted session detail и trace view.
-- оба UI теперь показывают и bounded recent stream history, даже если пользователь открыл
-  diagnostics/session detail уже после завершения live stream.
-- оба UI теперь показывают recent run history как отдельный diagnostics slice поверх persisted
-  `ai_chat_runs`, а не только aggregate metrics snapshot.
-- оба host'а выступают только composition root:
-  - `apps/admin` монтирует Leptos package;
-  - `apps/next-admin` монтирует npm package `@rustok/ai-admin`.
-- browser-target verification для Leptos package теперь включает отдельный `hydrate` check, чтобы
-  WebSocket streaming path проверялся не только на SSR.
+- both UIs now support live session stream card via `graphql-transport-ws` subscription
+  `aiSessionEvents`, without replacing persisted session detail and trace view.
+- both UIs now also show bounded recent stream history, even if the user opened
+  diagnostics/session detail after the live stream has already ended.
+- both UIs now show recent run history as a separate diagnostics slice on top of persisted
+  `ai_chat_runs`, not just aggregate metrics snapshot.
+- both hosts act only as composition root:
+  - `apps/admin` mounts the Leptos package;
+  - `apps/next-admin` mounts the npm package `@rustok/ai-admin`.
+- browser-target verification for the Leptos package now includes a separate `hydrate` check, so that
+  the WebSocket streaming path is tested not only on SSR.
 
-## Границы ответственности
+## Responsibility Boundaries
 
-### Что остаётся в `rustok-ai`
+### What stays in `rustok-ai`
 
 - orchestration runtime;
 - provider abstraction;
 - direct first-party execution registry;
 - chat/session/approval contracts;
 - server-side management service;
-- GraphQL query/mutation/subscription roots, DTO и permission checks;
+- GraphQL query/mutation/subscription roots, DTO and permission checks;
 - capability-owned large operator/admin UI packages.
 
-### Что остаётся в `rustok-mcp`
+### What stays in `rustok-mcp`
 
 - MCP server transport/protocol boundary;
-- tool surface и identity/policy/runtime binding;
-- отсутствие provider-specific orchestration и model-host responsibilities.
+- tool surface and identity/policy/runtime binding;
+- absence of provider-specific orchestration and model-host responsibilities.
 
-### Что остаётся в `apps/server`
+### What stays in `apps/server`
 
 - persisted control plane;
-- общий GraphQL schema/transport composition root;
-- адаптер `AiGraphqlRoleSlugProvider` поверх server-owned RBAC persistence;
+- common GraphQL schema/transport composition root;
+- `AiGraphqlRoleSlugProvider` adapter on top of server-owned RBAC persistence;
 - Leptos `#[server]` integration path;
-- composition root для runtime wiring.
+- composition root for runtime wiring.
 
-## Что ещё не реализовано
+## What is not yet implemented
 
-- time-windowed diagnostics/trends поверх текущего snapshot/history surface;
-- persisted provider fallback/error analytics beyond текущего in-process snapshot;
-- дополнительные provider families сверх уже реализованных (`Anthropic`, `Gemini`, richer native adapters);
-- удалённый MCP bootstrap beyond текущего Rustok server wiring;
-- отдельный marketplace/publish flow для AI artifacts.
+- time-windowed diagnostics/trends on top of the current snapshot/history surface;
+- persisted provider fallback/error analytics beyond the current in-process snapshot;
+- additional provider families beyond those already implemented (`Anthropic`, `Gemini`, richer native adapters);
+- remote MCP bootstrap beyond the current Rustok server wiring;
+- separate marketplace/publish flow for AI artifacts.
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation Plan](./implementation-plan.md)
 - [README crate `rustok-mcp`](../../rustok-mcp/README.md)
-- [Карта документации платформы](../../../docs/index.md)
+- [Platform documentation map](../../../docs/index.md)

@@ -1,27 +1,27 @@
 # Error Handling Module
 
-> **Статус:** ✅ Production-ready (Sprint 2)  
-> **Версия:** 1.0.0  
-> **Тесты:** 12 unit tests
+> **Status:** ✅ Production-ready (Sprint 2)  
+> **Version:** 1.0.0  
+> **Tests:** 12 unit tests
 
-Модуль error предоставляет стандартизированную обработку ошибок с rich context и user-friendly messages.
+The error module provides standardized error handling with rich context and user-friendly messages.
 
-## Концепция
+## Concept
 
 **Rich Error Context:**
 - Structured metadata (fields, tenant_id, trace_id)
-- Error chaining с context
+- Error chaining with context
 - User-friendly messages
 - RFC 7807 compatible API responses
 - Automatic HTTP status mapping
 
-## Компоненты
+## Components
 
 ### 1. RichError - Core Error Type
 
-**Файл:** `mod.rs` (219 строк)
+**File:** `mod.rs` (219 lines)
 
-**Структура:**
+**Structure:**
 ```rust
 pub struct RichError {
     pub kind: ErrorKind,
@@ -35,7 +35,7 @@ pub struct RichError {
 }
 ```
 
-**ErrorKind - 11 категорий:**
+**ErrorKind - 11 categories:**
 ```rust
 pub enum ErrorKind {
     Validation,      // 400 Bad Request
@@ -52,7 +52,7 @@ pub enum ErrorKind {
 }
 ```
 
-**Пример:**
+**Example:**
 ```rust
 use rustok_core::error::{RichError, ErrorKind};
 
@@ -66,9 +66,9 @@ let error = RichError {
 };
 ```
 
-### 2. ErrorContext - Trait для chaining
+### 2. ErrorContext - Trait for chaining
 
-**Файл:** `context.rs` (283 строки)
+**File:** `context.rs` (283 lines)
 
 **Trait:**
 ```rust
@@ -84,7 +84,7 @@ pub trait ErrorContext<T> {
 }
 ```
 
-**Пример:**
+**Example:**
 ```rust
 use rustok_core::error::ErrorContext;
 
@@ -103,19 +103,19 @@ fn fetch_user(user_id: Uuid) -> Result<User, RichError> {
 
 **Automatic conversion:**
 ```rust
-// Из любого std::error::Error
+// From any std::error::Error
 impl<T, E: std::error::Error + Send + Sync + 'static> ErrorContext<T> for Result<T, E>
 
-// Из Box<dyn Error>
+// From Box<dyn Error>
 impl<T> ErrorContext<T> for Result<T, Box<dyn std::error::Error + Send + Sync>>
 
-// Из String
+// From String
 impl<T> ErrorContext<T> for Result<T, String>
 ```
 
 ### 3. ErrorResponse - API Responses
 
-**Файл:** `response.rs` (292 строки)
+**File:** `response.rs` (292 lines)
 
 **RFC 7807 format:**
 ```rust
@@ -177,7 +177,7 @@ ErrorResponse::service_unavailable()
 
 ### 4. ValidationErrorBuilder
 
-**Файл:** `response.rs` (часть)
+**File:** `response.rs` (part)
 
 **Builder pattern:**
 ```rust
@@ -194,7 +194,7 @@ let error = ValidationErrorBuilder::new()
 
 **Supports multiple errors per field:**
 ```rust
-// Email имеет 2 ошибки
+// Email has 2 errors
 .field("email", "invalid email format")
 .field("email", "email already exists")
 
@@ -209,11 +209,11 @@ let error = ValidationErrorBuilder::new()
 }
 ```
 
-## Интеграция в модули
+## Module integration
 
 ### Content Module
 
-**Файл:** `crates/rustok-content/src/error.rs` (130 строк)
+**File:** `crates/rustok-content/src/error.rs` (130 lines)
 
 ```rust
 use rustok_core::error::{ErrorContext, ErrorKind, RichError};
@@ -265,11 +265,11 @@ impl From<ContentError> for RichError {
 
 // ErrorContext implementation
 impl<T> ErrorContext<T> for Result<T, ContentError> {
-    // Делегируем к RichError
+    // Delegate to RichError
 }
 ```
 
-**Использование:**
+**Usage:**
 ```rust
 use rustok_content::error::{ContentError, ContentResult};
 use rustok_core::error::ErrorContext;
@@ -289,7 +289,7 @@ pub async fn get_node(id: Uuid, tenant_id: Uuid) -> ContentResult<Node> {
 
 ### Commerce Module
 
-**Файл:** `crates/rustok-commerce/src/error.rs` (190 строк)
+**File:** `crates/rustok-commerce/src/error.rs` (190 lines)
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -316,13 +316,13 @@ pub enum CommerceError {
     #[error("Invalid order state: {0}")]
     InvalidOrderState(String),
     
-    // ... + 5 других категорий
+    // ... + 5 other categories
 }
 ```
 
 **Structured errors:**
 ```rust
-// С metadata в самой ошибке
+// With metadata in the error itself
 CommerceError::InsufficientStock {
     product_id: product.id,
     available: product.stock,
@@ -366,7 +366,7 @@ impl IntoResponse for RichError {
 }
 ```
 
-**В handler:**
+**In handler:**
 ```rust
 async fn get_user(
     Path(user_id): Path<Uuid>,
@@ -382,12 +382,12 @@ async fn get_user(
     Ok(Json(user))
 }
 
-// Автоматически возвращает JSON error response с правильным status code
+// Automatically returns JSON error response with the correct status code
 ```
 
-## Тесты
+## Tests
 
-**Всего:** 12 unit tests
+**Total:** 12 unit tests
 
 ```rust
 #[cfg(test)]
@@ -432,7 +432,7 @@ mod tests {
 
 ## Best Practices
 
-### 1. Используйте ErrorContext для добавления контекста
+### 1. Use ErrorContext to add context
 
 ```rust
 // ✅ Good
@@ -442,11 +442,11 @@ database.query(&sql)
     .with_field("table", "users")?
     .with_tenant(tenant_id)?
 
-// ❌ Bad - теряем контекст
+// ❌ Bad - losing context
 database.query(&sql).await?
 ```
 
-### 2. Добавляйте relevant fields
+### 2. Add relevant fields
 
 ```rust
 // ✅ Good - specific fields
@@ -458,7 +458,7 @@ database.query(&sql).await?
 .with_field("data", format!("{:?}", data))
 ```
 
-### 3. Используйте ValidationErrorBuilder для множественных ошибок
+### 3. Use ValidationErrorBuilder for multiple errors
 
 ```rust
 // ✅ Good
@@ -478,13 +478,13 @@ if errors.has_errors() {
     return Err(errors.build());
 }
 
-// ❌ Bad - останавливаемся на первой ошибке
+// ❌ Bad - stopping at the first error
 if email.is_empty() {
     return Err(RichError::validation("Email required"));
 }
 ```
 
-### 4. Категоризируйте ошибки правильно
+### 4. Categorize errors correctly
 
 ```rust
 // ✅ Good
@@ -495,7 +495,7 @@ match error {
     _ => ContentError::Database(error.to_string()),
 }
 
-// ❌ Bad - все в Internal
+// ❌ Bad - all in Internal
 sqlx::Error => ContentError::Internal(error.to_string())
 ```
 
@@ -515,15 +515,15 @@ sqlx::Error => ContentError::Internal(error.to_string())
 | Network | 502 | Bad Gateway |
 | External | 502 | Bad Gateway |
 
-## Документация
+## Documentation
 
-Полное руководство: [docs/ERROR_HANDLING_GUIDE.md](../../../../docs/ERROR_HANDLING_GUIDE.md)
+Full guide: [docs/ERROR_HANDLING_GUIDE.md](../../../../docs/ERROR_HANDLING_GUIDE.md)
 
-**Разделы:**
-1. Концепции и архитектура
+**Sections:**
+1. Concepts and architecture
 2. RichError API
 3. ErrorContext trait
-4. ErrorResponse и RFC 7807
+4. ErrorResponse and RFC 7807
 5. ValidationErrorBuilder
 6. Module integration
 7. Axum integration
@@ -552,7 +552,7 @@ sqlx::Error => ContentError::Internal(error.to_string())
 - [ ] Custom error codes
 - [ ] GraphQL error integration
 
-## Ссылки
+## References
 
 - [RFC 7807: Problem Details](https://tools.ietf.org/html/rfc7807)
 - [Rust Error Handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html)

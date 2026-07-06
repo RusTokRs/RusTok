@@ -1,15 +1,15 @@
-# План реализации `rustok-email`
+# Implementation plan for `rustok-email`
 
-Статус: core delivery baseline зафиксирован; модуль возвращён в обязательный
+Status: core delivery baseline is locked; the module has returned to the mandatory
 manifest/doc contract path.
 
 ## Execution checkpoint
 
 - Current phase: fba_transport_verified
-- Last checkpoint: Добавлены targeted Rust contract tests для shared write-policy mapping, disabled-provider noop receipt и typed request validation; static FBA evidence теперь указывает на test names, без запуска компиляции по ограничению итерации.
-- Next step: Когда компиляции снова разрешены, запустить targeted `cargo test -p rustok-email ports::tests`; текущий no-compile fallback smoke закреплён через `npm run verify:foundation:fba-runtime-smoke`.
+- Last checkpoint: Added targeted Rust contract tests for shared write-policy mapping, disabled-provider noop receipt and typed request validation; static FBA evidence now points to test names, without running compilation due to iteration constraint.
+- Next step: When compilation is allowed again, run targeted `cargo test -p rustok-email ports::tests`; current no-compile fallback smoke is locked through `npm run verify:foundation:fba-runtime-smoke`.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: Update this block after each increment.
 - Last updated at (UTC): 2026-06-30T20:14:10Z
 
 
@@ -23,52 +23,52 @@ manifest/doc contract path.
   - compiled runtime evidence `cargo test -p rustok-email --lib` passed 8/8 on 2026-06-30, covering delivery-port write-policy mapping, typed request validation and disabled-provider noop receipt; FBA status is `transport_verified`;
   - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation, runtime-verified evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` and no-compile fallback smoke `crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json` verified by `npm run verify:email:fba` / `npm run verify:foundation:fba-runtime-smoke`.
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-email` как capability-only core module без собственного UI;
-- синхронизировать SMTP/rendering contract, local docs и manifest metadata;
-- не размывать границу между email delivery и host-level authorization logic.
+- keep `rustok-email` as a capability-only core module without its own UI;
+- synchronize SMTP/rendering contract, local docs and manifest metadata;
+- do not blur the boundary between email delivery and host-level authorization logic.
 
-## Текущее состояние
+## Current state
 
-- `EmailModule` зарегистрирован как обязательный core-модуль;
-- SMTP transport, template rendering, typed email helpers и email-owned delivery DTOs живут внутри модуля;
-- root `README.md`, local docs и `rustok-module.toml` входят в scoped audit path;
-- RBAC остаётся в вызывающем модуле или host runtime, а shared write-policy context/error baseline приходит из `rustok-api`, не перенося delivery business logic в shared слой.
+- `EmailModule` registered as a mandatory core module;
+- SMTP transport, template rendering, typed email helpers and email-owned delivery DTOs live inside the module;
+- root `README.md`, local docs and `rustok-module.toml` are part of the scoped audit path;
+- RBAC stays in the calling module or host runtime, while the shared write-policy context/error baseline comes from `rustok-api`, not moving delivery business logic into the shared layer.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] вернуть `rustok-module.toml` и local docs в module standard path;
-- [x] зафиксировать capability-only статус и отсутствие собственного UI;
-- [x] добавить targeted contract tests для delivery port write-policy mapping и disabled noop fallback;
-- [ ] выполнить targeted contract tests и удерживать sync между delivery contract и host integration tests.
+- [x] return `rustok-module.toml` and local docs to the module standard path;
+- [x] lock capability-only status and absence of its own UI;
+- [x] add targeted contract tests for delivery port write-policy mapping and disabled noop fallback;
+- [ ] run targeted contract tests and maintain sync between delivery contract and host integration tests.
 
 ### 2. Integration hardening
 
-- [ ] расширять typed email payloads только вместе с local docs и host tests;
-- [ ] не переносить SMTP/rendering logic обратно в `apps/server`;
-- [ ] документировать новые delivery flows до их публикации в host runtime.
+- [ ] extend typed email payloads only together with local docs and host tests;
+- [ ] do not move SMTP/rendering logic back to `apps/server`;
+- [ ] document new delivery flows before publishing them in host runtime.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate email`
 - `cargo xtask module test email`
-- `cargo test -p rustok-email ports::tests` для targeted delivery-port contract tests
+- `cargo test -p rustok-email ports::tests` for targeted delivery-port contract tests
 - `npm run verify:foundation:fba-runtime-smoke`
-- targeted host tests для auth/email delivery flows при изменении runtime wiring
+- targeted host tests for auth/email delivery flows when runtime wiring changes
 
-## Правила обновления
+## Update rules
 
-1. При изменении SMTP/rendering contract сначала обновлять этот файл.
-2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
+1. When changing SMTP/rendering contract, update this file first.
+2. When changing public/runtime contract, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
 
 
 ## Quality backlog
 
-- [x] Актуализировать targeted coverage для delivery port policy/validation/noop receipt сценариев.
-- [ ] Выполнить targeted coverage после снятия ограничения на компиляции.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Update targeted coverage for delivery port policy/validation/noop receipt scenarios.
+- [ ] Run targeted coverage after compilation restriction is lifted.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

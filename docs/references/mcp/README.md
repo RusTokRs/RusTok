@@ -6,19 +6,20 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Справочный пакет MCP
 
-Дата последней актуализации: **2026-03-20**.
+# MCP Reference Package
 
-Этот пакет не дублирует спецификацию MCP и не пересказывает документацию `rmcp`. Его задача:
+Last updated: **2026-03-20**.
 
-- дать команде короткий индекс официальных источников истины;
-- зафиксировать, что именно RusToK использует из MCP сегодня;
-- защитить локальные документы от деградации в устаревший пересказ активно развивающейся экосистемы.
+This package does not duplicate the MCP specification and does not retell the `rmcp` documentation. Its goal:
 
-## Источники истины
+- to give the team a short index of official sources of truth;
+- to capture exactly what RusToK uses from MCP today;
+- to protect local documents from degrading into an outdated retelling of a rapidly developing ecosystem.
 
-### Официальная документация и спецификация
+## Sources of truth
+
+### Official documentation and specification
 
 - MCP docs: [modelcontextprotocol.io/docs](https://modelcontextprotocol.io/docs)
 - MCP spec: [modelcontextprotocol.io/specification](https://modelcontextprotocol.io/specification/2025-03-26)
@@ -26,7 +27,7 @@ status: verified
 - Server resources: [Resources](https://modelcontextprotocol.io/specification/2025-03-26/server/resources)
 - Server prompts: [Prompts](https://modelcontextprotocol.io/specification/2025-03-26/server/prompts)
 
-### Security и authorization
+### Security and authorization
 
 - Authorization guide: [Understanding Authorization in MCP](https://modelcontextprotocol.io/docs/tutorials/security/authorization)
 - Security guide: [Security Best Practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)
@@ -36,59 +37,59 @@ status: verified
 - `rmcp` docs: [docs.rs/rmcp](https://docs.rs/rmcp/latest/rmcp/)
 - Official Rust SDK repo: [modelcontextprotocol/rust-sdk](https://github.com/modelcontextprotocol/rust-sdk)
 
-## Как использовать этот пакет
+## How to use this package
 
-Если вопрос касается:
+If the question concerns:
 
-- структуры протокола;
-- capability surface MCP;
+- protocol structure;
+- MCP capability surface;
 - server/client semantics;
 - authorization flow;
 - security requirements;
-- конкретного поведения `rmcp`;
+- specific `rmcp` behavior;
 
-нужно идти в официальные ссылки выше. Локальные документы RusToK должны ссылаться на них, а не
-копировать фрагменты спецификации к себе.
+you should go to the official links above. Local RusToK documents should reference them, not
+copy specification fragments into themselves.
 
-## Что фиксируем локально в RusToK
+## What we document locally in RusToK
 
-Локально мы документируем только интеграционный слой:
+Locally we document only the integration layer:
 
-- `rustok-mcp` как thin adapter над `rmcp`;
-- какой tool surface уже реализован;
-- какие RusToK-specific ограничения и gaps остаются;
-- как MCP связан с Alloy и platform RBAC/tenant model.
+- `rustok-mcp` as a thin adapter over `rmcp`;
+- which tool surface is already implemented;
+- which RusToK-specific constraints and gaps remain;
+- how MCP relates to Alloy and platform RBAC/tenant model.
 
-## Текущее состояние RusToK
+## Current state of RusToK
 
-На сегодня `rustok-mcp` покрывает:
+As of today `rustok-mcp` covers:
 
-- MCP server/tool surface через `rmcp`;
+- MCP server/tool surface via `rmcp`;
 - module discovery tools;
-- Alloy-related tools при наличии `AlloyMcpState`;
-- identity/policy foundation через `McpIdentity`, `McpAccessContext`, `McpAccessPolicy`;
+- Alloy-related tools when `AlloyMcpState` is present;
+- identity/policy foundation via `McpIdentity`, `McpAccessContext`, `McpAccessPolicy`;
 - introspection tool `mcp_whoami`;
-- compatibility shim через legacy `enabled_tools`;
+- compatibility shim via legacy `enabled_tools`;
 - session-start runtime binding hooks (`McpSessionContext`, `McpAccessResolver`, `McpRuntimeBinding`);
-- runtime allow/deny audit hook через `McpAuditSink`;
-- первый реальный Alloy product-slice: `alloy_scaffold_module`, который stage-ит draft `crates/rustok-<slug>` module scaffold, а `alloy_review_module_scaffold` / `alloy_apply_module_scaffold` дают review/apply boundary.
-- persisted server-side control plane для Alloy scaffold drafts в `apps/server` через REST `/api/mcp/scaffold-drafts*` и GraphQL `mcpModuleScaffoldDraft*`.
-- live runtime hook `McpScaffoldDraftStore`, через который `DbBackedMcpRuntimeBridge` может уводить Alloy scaffold flow из process-local памяти в persisted drafts `apps/server`.
+- runtime allow/deny audit hook via `McpAuditSink`;
+- the first real Alloy product-slice: `alloy_scaffold_module`, which stages a draft `crates/rustok-<slug>` module scaffold, while `alloy_review_module_scaffold` / `alloy_apply_module_scaffold` provide the review/apply boundary.
+- persisted server-side control plane for Alloy scaffold drafts in `apps/server` via REST `/api/mcp/scaffold-drafts*` and GraphQL `mcpModuleScaffoldDraft*`.
+- live runtime hook `McpScaffoldDraftStore`, through which `DbBackedMcpRuntimeBridge` can move the Alloy scaffold flow from process-local memory into persisted drafts in `apps/server`.
 
-На сегодня `rustok-mcp` не покрывает как production-ready слой:
+As of today `rustok-mcp` does not cover as a production-ready layer:
 
-- server-owned remote MCP transport/session bootstrap beyond текущего stdio adapter path;
-- admin UI для MCP clients, tokens, policies и audit;
-- полную upstream capability surface (`resources`, `prompts`, `roots`, `sampling` и т.д.);
-- product UI и server-owned remote MCP bootstrap поверх уже существующего persisted scaffold draft control plane;
-- более богатый review/apply/codegen pipeline, который превращает draft Alloy scaffold в production-ready модуль.
+- server-owned remote MCP transport/session bootstrap beyond the current stdio adapter path;
+- admin UI for MCP clients, tokens, policies and audit;
+- full upstream capability surface (`resources`, `prompts`, `roots`, `sampling`, etc.);
+- product UI and server-owned remote MCP bootstrap on top of the already existing persisted scaffold draft control plane;
+- a richer review/apply/codegen pipeline that turns a draft Alloy scaffold into a production-ready module.
 
-Persisted management layer уже есть на стороне `apps/server`: таблицы `mcp_clients`, `mcp_tokens`,
-`mcp_policies`, `mcp_audit_logs`, `mcp_scaffold_drafts`, REST `/api/mcp/*`, GraphQL `mcp*` и
-`DbBackedMcpRuntimeBridge` для связывания plaintext MCP token с runtime access context и runtime
+The persisted management layer already exists on the `apps/server` side: tables `mcp_clients`, `mcp_tokens`,
+`mcp_policies`, `mcp_audit_logs`, `mcp_scaffold_drafts`, REST `/api/mcp/*`, GraphQL `mcp*` and
+`DbBackedMcpRuntimeBridge` for binding a plaintext MCP token to runtime access context and runtime
 allow/deny audit.
 
-## Связанные локальные документы
+## Related local documents
 
 - [`crates/rustok-mcp/README.md`](../../../crates/rustok-mcp/README.md)
 - [`crates/rustok-mcp/docs/README.md`](../../../crates/rustok-mcp/docs/README.md)
@@ -96,10 +97,10 @@ allow/deny audit.
 - [`docs/modules/registry.md`](../../modules/registry.md)
 - [`docs/modules/crates-registry.md`](../../modules/crates-registry.md)
 
-## Правило сопровождения
+## Maintenance rule
 
-Перед любым обновлением локальных MCP-доков:
+Before any update of local MCP docs:
 
-1. Проверить актуальные официальные MCP/rmcp документы.
-2. Не переносить в RusToK длинные пересказы spec/SDK.
-3. Документировать только локальную интеграцию, ограничения и решения RusToK.
+1. Check the current official MCP/rmcp documents.
+2. Do not move long retellings of spec/SDK into RusToK.
+3. Document only local integration, constraints and RusToK decisions.

@@ -6,33 +6,33 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# GraphQL и Leptos server functions
+# GraphQL and Leptos Server Functions
 
-Этот документ фиксирует текущий transport contract для UI-контуров RusToK.
+This document captures the current transport contract for RusToK UI circuits.
 
-## Основное правило
+## Main Rule
 
-Для Leptos UI в платформе действует dual-path модель поверх SSR-first runtime:
+For Leptos UI, the platform uses a dual-path model on top of the SSR-first runtime:
 
-- native `#[server]` functions — preferred internal data-layer для `apps/admin`, `apps/storefront` и module-owned Leptos UI packages в `ssr`/`hydrate`/monolith профилях;
-- GraphQL `/api/graphql` — обязательный параллельный transport contract для Next.js hosts, Flutter hosts, headless clients и fallback-веток в Leptos.
+- native `#[server]` functions — preferred internal data layer for `apps/admin`, `apps/storefront` and module-owned Leptos UI packages in `ssr`/`hydrate`/monolith profiles;
+- GraphQL `/api/graphql` — mandatory parallel transport contract for Next.js hosts, Flutter hosts, headless clients, and fallback branches in Leptos.
 
-`#[server]` не заменяет GraphQL на уровне платформы. Он добавляет более короткий внутренний путь для Leptos hosts, когда host реально работает через SSR/hydrate runtime.
+`#[server]` does not replace GraphQL at the platform level. It adds a shorter internal path for Leptos hosts when the host actually runs via SSR/hydrate runtime.
 
-CSR остаётся обязательным compatibility/debug профилем для standalone Trunk/WASM и проверки module-owned UI packages, но не считается продуктовым runtime default.
+CSR remains a mandatory compatibility/debug profile for standalone Trunk/WASM and checking module-owned UI packages, but is not considered a production runtime default.
 
-## Почему так
+## Why This Approach
 
-- SSR/hydrate лучше соответствует monolith deployment: `apps/admin` и `apps/storefront` работают same-origin с `apps/server`, используют server-side auth/session/policy и не требуют лишней CORS/proxy схемы.
-- `#[server]` даёт самый короткий внутренний Rust-путь от Leptos UI к service layer и не заставляет превращать каждое внутреннее действие host-а в публичную GraphQL mutation.
-- GraphQL/REST остаются обязательными, потому что headless — отдельный продуктовый режим для Next.js hosts, внешних клиентов, интеграций и мобильных приложений.
-- CSR/Trunk оставлен как debug/compatibility профиль: он нужен для локальной проверки module-owned UI packages и ловит случайные server-only зависимости в WASM-сборке.
-- Решение применяется не только к `apps/admin` и `apps/storefront`, а ко всем module-owned UI packages в `crates/*/admin` и `crates/*/storefront`, потому что host только монтирует эти поверхности.
+- SSR/hydrate is better suited for monolith deployment: `apps/admin` and `apps/storefront` work same-origin with `apps/server`, use server-side auth/session/policy, and do not require an extra CORS/proxy scheme.
+- `#[server]` provides the shortest internal Rust path from Leptos UI to the service layer and does not force every internal host action to become a public GraphQL mutation.
+- GraphQL/REST remain mandatory because headless is a separate production mode for Next.js hosts, external clients, integrations, and mobile applications.
+- CSR/Trunk is retained as a debug/compatibility profile: it is needed for local verification of module-owned UI packages and catches accidental server-only dependencies in WASM builds.
+- The decision applies not only to `apps/admin` and `apps/storefront`, but to all module-owned UI packages in `crates/*/admin` and `crates/*/storefront`, because the host only mounts these surfaces.
 
-## Матрица по UI hosts
+## Matrix by UI Hosts
 
-| Host / profile | Runtime default | Preferred transport | Обязательный параллельный transport |
-|------|-----------------|--------------------|--------------------------------------|
+| Host / profile | Runtime default | Preferred transport | Mandatory parallel transport |
+|------|-----------------|--------------------|------------------------------|
 | `apps/admin` `ssr`/`hydrate` | SSR-first monolith | `#[server]` | GraphQL/REST |
 | `apps/storefront` `ssr`/`hydrate` | SSR-first monolith | `#[server]` | GraphQL/REST |
 | module-owned Leptos UI in SSR hosts | SSR/hydrate | `#[server]` | GraphQL/REST |
@@ -42,15 +42,15 @@ CSR остаётся обязательным compatibility/debug профиле
 | `rustok_mobile/apps/rustok_admin_mobile` | headless/mobile host | GraphQL/REST (+ `/api/graphql/ws`) | — |
 | external/mobile clients | headless | GraphQL/REST | — |
 
-## Contract для Leptos UI
+## Contract for Leptos UI
 
-- Leptos host или module-owned package должен сначала проектировать локальный API-слой под SSR/hydrate `#[server]` path, если surface является внутренним Leptos runtime surface.
-- Если native path ещё не покрывает нужный сценарий или surface должна работать в standalone `csr`, требуется fallback к GraphQL/REST.
-- Новый Leptos UI не должен проектироваться как GraphQL-only для monolith runtime, если `#[server]` path реалистичен.
-- Новый Leptos UI не должен проектироваться как `#[server]`-only, если surface нужна для standalone CSR debug или headless parity.
-- GraphQL queries и mutations нельзя убирать только потому, что появился native путь.
+- A Leptos host or module-owned package should first design a local API layer for the SSR/hydrate `#[server]` path if the surface is an internal Leptos runtime surface.
+- If a native path does not yet cover the required scenario or the surface must work in standalone `csr`, a fallback to GraphQL/REST is required.
+- New Leptos UI should not be designed as GraphQL-only for monolith runtime if a `#[server]` path is realistic.
+- New Leptos UI should not be designed as `#[server]`-only if the surface is needed for standalone CSR debug or headless parity.
+- GraphQL queries and mutations must not be removed just because a native path has been introduced.
 
-Базовый паттерн:
+Basic pattern:
 
 ```text
 UI component
@@ -60,59 +60,59 @@ UI component
   -> service layer
 ```
 
-## Contract для GraphQL
+## Contract for GraphQL
 
-Storefront payment reads соблюдают тот же dual-path contract: module-owned `rustok-payment-storefront` публикует native endpoint-ы `payment/payment-collection` / `payment/refund-summary` и параллельные GraphQL reads `storefrontPaymentCollection(cartId)` / `storefrontRefunds(orderId, filter)`. Collection read проверяет tenant/cart customer access, refund read — tenant/order customer ownership; DTO и decimal-safe refund aggregation принадлежат payment package. Aggregate commerce UI только композирует owner transport result и не владеет отдельным payment read contract.
+Storefront payment reads follow the same dual-path contract: module-owned `rustok-payment-storefront` publishes native endpoints `payment/payment-collection` / `payment/refund-summary` and parallel GraphQL reads `storefrontPaymentCollection(cartId)` / `storefrontRefunds(orderId, filter)`. Collection read checks tenant/cart customer access, refund read checks tenant/order customer ownership; DTO and decimal-safe refund aggregation belong to the payment package. Aggregate commerce UI only composes owner transport results and does not own a separate payment read contract.
 
-Product/search picker metadata соблюдает тот же контракт: `rustok-product-storefront` публикует native endpoint `product/storefront/catalog-search-options` и параллельный GraphQL read `storefrontCatalogSearchOptions(locale: String!)`. Public payload ограничен category ids/labels и filterable/sortable attribute codes/labels, использует tenant/channel guards и host effective locale без admin permission или package-local locale fallback; `apps/storefront` только маппит owner DTO в search-owned UI props.
-Next storefront повторяет этот boundary через host composition: `apps/next-frontend/src/features/search` передаёт route locale, tenant slug и enabled modules в product-owned `packages/rustok-product::fetchCatalogSearchOptions`, а `packages/search` получает только безопасные category/attribute option props.
+Product/search picker metadata follows the same contract: `rustok-product-storefront` publishes a native endpoint `product/storefront/catalog-search-options` and a parallel GraphQL read `storefrontCatalogSearchOptions(locale: String!)`. Public payload is limited to category ids/labels and filterable/sortable attribute codes/labels, uses tenant/channel guards and host effective locale without admin permission or package-local locale fallback; `apps/storefront` only maps owner DTO into search-owned UI props.
+Next storefront repeats this boundary via host composition: `apps/next-frontend/src/features/search` passes route locale, tenant slug, and enabled modules to product-owned `packages/rustok-product::fetchCatalogSearchOptions`, while `packages/search` receives only safe category/attribute option props.
 
-GraphQL остаётся:
+GraphQL remains:
 
-- публичным backend contract;
-- основным transport-слоем для Next.js и Flutter hosts;
-- fallback-путём для Leptos hosts;
-- transport surface для websocket subscriptions и совместимости с headless clients.
+- the public backend contract;
+- the primary transport layer for Next.js and Flutter hosts;
+- a fallback path for Leptos hosts;
+- a transport surface for websocket subscriptions and headless client compatibility.
 
-Security и allow/deny policy для чувствительных admin-операций должны определяться server-side runtime-слоем, а не client-supplied `operationName` или app-local эвристиками.
+Security and allow/deny policies for sensitive admin operations must be determined by the server-side runtime layer, not by client-supplied `operationName` or app-local heuristics.
 
-## Обязанности host-приложений
+## Host Application Responsibilities
 
 ### `apps/admin`
 
-- считать SSR/hydrate preferred production runtime для monolith;
-- использовать native-first pattern для Leptos data access в SSR/hydrate;
-- сохранять GraphQL path как живой parallel contract;
-- поддерживать CSR compatibility для standalone debug через GraphQL/REST, без обязательного `/api/fn/*`;
-- не переносить transport policy в app-local ad hoc код.
+- consider SSR/hydrate the preferred production runtime for monolith;
+- use the native-first pattern for Leptos data access in SSR/hydrate;
+- maintain GraphQL path as a live parallel contract;
+- support CSR compatibility for standalone debug via GraphQL/REST, without mandatory `/api/fn/*`;
+- do not push transport policy into app-local ad hoc code.
 
 ### `apps/storefront`
 
-- считать SSR/hydrate preferred production runtime для monolith;
-- использовать native-first pattern для host shell и module-owned storefront packages в SSR/hydrate;
-- сохранять GraphQL path для fallback и parity с headless storefront clients.
+- consider SSR/hydrate the preferred production runtime for monolith;
+- use the native-first pattern for host shell and module-owned storefront packages in SSR/hydrate;
+- maintain GraphQL path for fallback and parity with headless storefront clients.
 
 ### `apps/server`
 
-- держать `/api/fn/*` и `/api/graphql` как параллельные runtime surfaces;
-- не трактовать внедрение server functions как повод убирать GraphQL schema или resolvers;
-- применять shared policy к HTTP GraphQL и websocket execution path одинаково.
+- keep `/api/fn/*` and `/api/graphql` as parallel runtime surfaces;
+- do not treat the introduction of server functions as a reason to remove GraphQL schema or resolvers;
+- apply shared policy equally to HTTP GraphQL and websocket execution paths.
 
-## Что запрещено
+## What Is Forbidden
 
-- описывать Leptos UI как GraphQL-only, если в коде уже существует `#[server]` path;
-- описывать Leptos migration как отказ от GraphQL вообще;
-- описывать CSR/Trunk как production default для Leptos hosts;
-- удалять GraphQL route или resolver только из-за появления native Leptos transport;
-- вводить разные transport contracts для app host и module-owned UI без явного platform-level решения.
+- describing Leptos UI as GraphQL-only if a `#[server]` path already exists in the code;
+- describing Leptos migration as abandoning GraphQL entirely;
+- describing CSR/Trunk as the production default for Leptos hosts;
+- removing a GraphQL route or resolver solely because a native Leptos transport appeared;
+- introducing different transport contracts for an app host and module-owned UI without an explicit platform-level decision.
 
-## Связанные документы
+## Related Documents
 
 - [UI index](./README.md)
 - [Storefront contract](./storefront.md)
-- [Документация `apps/admin`](../../apps/admin/docs/README.md)
-- [Документация `apps/storefront`](../../apps/storefront/docs/README.md)
-- [Документация `apps/server`](../../apps/server/docs/README.md)
-- [Документация Flutter Admin Mobile](../../rustok_mobile/apps/rustok_admin_mobile/README.md)
+- [`apps/admin` Documentation](../../apps/admin/docs/README.md)
+- [`apps/storefront` Documentation](../../apps/storefront/docs/README.md)
+- [`apps/server` Documentation](../../apps/server/docs/README.md)
+- [Flutter Admin Mobile Documentation](../../rustok_mobile/apps/rustok_admin_mobile/README.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
-- [Карта документации](../index.md)
+- [Documentation Map](../index.md)

@@ -1,6 +1,6 @@
-# План реализации `rustok-auth`
+# `rustok-auth` — Implementation Plan
 
-Статус: core baseline зафиксирован; UI модулирован по FFA в `crates/rustok-auth/admin`.
+Status: core baseline locked; UI modularized via FFA in `crates/rustok-auth/admin`.
 
 ## Execution checkpoint
 
@@ -8,36 +8,36 @@
 - Last checkpoint: Production runtime extensions register `ServerAuthLifecycleProvider` behind `AuthLifecycleRuntime` and one `ServerAuthAdminMutationProvider` behind `OAuthAdminRuntime` and `UserAdminMutationRuntime`. Auth lifecycle and OAuth GraphQL query/mutation/types live in `rustok-auth`; `apps/server` only implements the persisted lifecycle/OAuth/email adapters and schema composition. OAuth and user native `#[server]` adapters consume the same typed ports. User custom-field validation, tenant scoping, RBAC, role replacement, atomic create metadata/localized-value lifecycle, host-resolved locale propagation and case-insensitive role/status normalization execute inside the shared provider instead of transport resolvers.
 - Next step: Record browser/runtime parity evidence for the auth admin user and OAuth mutation flows before promoting to `parity_verified`.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: Update this block after each increment.
 - Last updated at (UTC): 2026-06-30T14:19:18Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-auth-admin` как изолированный UI-пакет, инкапсулирующий все страницы авторизации и пользователей;
-- синхронизировать runtime permission surface, local docs и manifest metadata;
-- не возвращать auth business logic обратно в `apps/server`.
+- maintain `rustok-auth-admin` as an isolated UI package encapsulating all auth and user pages;
+- synchronize runtime permission surface, local docs and manifest metadata;
+- do not move auth business logic back into `apps/server`.
 
-## Текущее состояние
+## Current state
 
-- `AuthModule` зарегистрирован как обязательный core-модуль;
-- JWT, claims, AuthConfig assembly/validation и credential helpers живут внутри модуля;
-- root `README.md`, local docs и `rustok-module.toml` входят в обязательный acceptance contract;
-- permission surface `users:*` публикуется через `RusToKModule::permissions()`.
+- `AuthModule` is registered as a mandatory core module;
+- JWT, claims, AuthConfig assembly/validation and credential helpers live inside the module;
+- root `README.md`, local docs and `rustok-module.toml` are part of the mandatory acceptance contract;
+- permission surface `users:*` is published through `RusToKModule::permissions()`.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] вернуть `rustok-module.toml` и локальные module docs в scoped audit path;
-- [x] выровнять root README с обязательными разделами и ссылкой на local docs;
-- [x] удерживать sync между runtime permission surface и server integration tests (`AUTH_USER_PERMISSIONS` + server registry/GraphQL contract checks).
+- [x] return `rustok-module.toml` and local module docs to the scoped audit path;
+- [x] align root README with mandatory sections and link to local docs;
+- [x] maintain sync between runtime permission surface and server integration tests (`AUTH_USER_PERMISSIONS` + server registry/GraphQL contract checks).
 
 ### 2. Integration hardening
 
-- [x] не выносить auth lifecycle logic в host-слой без обновления module contract;
-- [x] расширять token/config surface только вместе с local docs и runtime tests;
-- [x] явно документировать новые auth-owned flows до их публикации в host runtime.
-- [x] выделить админ-поверхности UI авторизации в отдельный crate `crates/rustok-auth/admin`.
+- [x] do not move auth lifecycle logic to the host layer without updating the module contract;
+- [x] expand token/config surface only together with local docs and runtime tests;
+- [x] explicitly document new auth-owned flows before publishing them in the host runtime.
+- [x] extract auth UI admin surfaces into a separate crate `crates/rustok-auth/admin`.
 
 ## FFA/FBA status
 
@@ -47,26 +47,26 @@
 - FBA registry/evidence: `crates/rustok-auth/contracts/auth-fba-registry.json`, `crates/rustok-auth/contracts/evidence/auth-capability-static-matrix.json`, `crates/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json`.
 - Evidence: auth admin UI pages are fully relocated to `crates/rustok-auth/admin` with Leptos-free core, module-owned transport facade and explicit `admin/src/ui/leptos.rs`. Focused admin unit tests and `scripts/verify/verify-auth-admin-boundary.mjs` lock request normalization, pagination/error policy, user/OAuth presentation mapping, host-locale landing-page copy, profile preference host-locale defaulting, absence of package-local locale storage fallback, shared provider registration, native-first mutation routing, host-resolved locale propagation into native user mutations, atomic user create custom-field persistence, shared provider role/status enum normalization and the absence of direct GraphQL lifecycle bypasses. Direct `leptos-auth` hook use remains only in UI adapters where it updates auth context signals/storage after sign-in, sign-up and sign-out; core stays framework-free. `rustok-auth/src/lifecycle.rs` defines `AuthLifecyclePort`; `rustok-auth/src/admin_mutations.rs` defines `UserAdminMutationPort` and the complete read/write/consent `OAuthAdminPort`. Production bootstrap registers `ServerAuthLifecycleProvider` and `ServerAuthAdminMutationProvider`; owner-owned auth lifecycle/OAuth GraphQL and native adapters consume typed runtimes with canonical error mapping, tenant scope and RBAC. FBA metadata/evidence remains locked by `npm run verify:ai:fba-baseline`; executable boundary evidence is `cargo test -p rustok-auth --lib`, `cargo test -p rustok-auth-admin --lib` and `npm run verify:auth:admin-boundary`.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate auth`
 - `cargo xtask module test auth`
-- targeted auth/RBAC server tests при изменении runtime wiring
+- targeted auth/RBAC server tests when changing runtime wiring
 - `cargo check -p rustok-auth-admin`
 - `cargo check -p rustok-admin`
 - `npm run verify:i18n:ui`
 - `npm run verify:auth:admin-boundary`
 
-## Правила обновления
+## Update rules
 
-1. При изменении token lifecycle или permission surface сначала обновлять этот файл.
-2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
+1. When changing token lifecycle or permission surface, first update this file.
+2. When changing public/runtime contract, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
 
 
 ## Quality backlog
 
-- [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [x] Проверить полноту и актуальность `README.md` и локальных docs для permission surface sync.
-- [x] Зафиксировать/обновить verification gates для текущего состояния модуля.
-- [x] Полностью разбить и вынести UI-слой авторизации в `rustok-auth-admin`.
+- [x] Update test coverage for key module scenarios.
+- [x] Verify completeness and relevance of `README.md` and local docs for permission surface sync.
+- [x] Lock/update verification gates for the current module state.
+- [x] Fully split and extract the auth UI layer into `rustok-auth-admin`.

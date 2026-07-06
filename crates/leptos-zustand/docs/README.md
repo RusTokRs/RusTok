@@ -1,3 +1,3 @@
 # leptos-zustand docs
 
-В этой папке хранится документация модуля `crates/leptos-zustand`.
+This folder contains documentation for the `crates/leptos-zustand` module.

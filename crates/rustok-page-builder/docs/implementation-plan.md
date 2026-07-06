@@ -1,90 +1,90 @@
-# План реализации `rustok-page-builder` (FBA reference module)
+# Implementation plan for `rustok-page-builder` (FBA reference module)
 
-## Контекст
+## Context
 
-`rustok-page-builder` создаётся как самостоятельный FBA reference-module.
-Первый этап — стабилизировать capability contracts и runtime seams,
-после чего модуль подключается как consumer-dependency в `rustok-pages`.
+`rustok-page-builder` is created as an independent FBA reference module.
+The first stage is to stabilize capability contracts and runtime seams,
+after which the module is connected as a consumer-dependency in `rustok-pages`.
 
-## Этапы
+## Stages
 
-- [x] Фаза 0 — bootstrap module contract (`Cargo.toml`, `rustok-module.toml`, `RusToKModule`).
-- [x] Фаза 1 — capability API baseline (`preview/tree/properties/publish`) без vendor lock-in.
-- [x] Фаза 2 — observability и module health contract baseline.
-- [ ] Фаза 3 — integration contract для `pages` как consumer.
-- [ ] Фаза 4 — rollout controls (feature flags / tenant gates / pilot).
+- [x] Phase 0 — bootstrap module contract (`Cargo.toml`, `rustok-module.toml`, `RusToKModule`).
+- [x] Phase 1 — capability API baseline (`preview/tree/properties/publish`) without vendor lock-in.
+- [x] Phase 2 — observability and module health contract baseline.
+- [ ] Phase 3 — integration contract for `pages` as consumer.
+- [ ] Phase 4 — rollout controls (feature flags / tenant gates / pilot).
 
-## Текущее состояние
+## Current state
 
-- runtime module scaffold завершён;
-- module manifest и docs contracts заведены;
-- machine-readable FBA registry (`contracts/page-builder-fba-registry.json`) фиксирует provider version, `consumer_min_version`, consumer contract versions, fallback profile set, provider health states, degradation reasons и pilot SLO thresholds для anti-drift gate, синхронизированного с owner source markers в `rollout.rs` и `health.rs`;
-- server feature wiring (`mod-page-builder`) подключён;
-- typed provider health/SLO evaluator добавлен в runtime baseline для Wave evidence;
-- transport-neutral DTO metadata (`PageBuilderContractMetadata::BASELINE`), typed provider error catalog (`PageBuilderErrorKind`, `PAGE_BUILDER_ERROR_CATALOG`, `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE`) и typed Wave health evidence (`ProviderHealthEvidence`) заведены как publish-ready contract markers;
-- transport-neutral tagged request/response envelope и `AuthorizedPageBuilderHandlers::handle` добавлены как entrypoint seam для будущих GraphQL/server-function adapters;
-- transport bridge slice добавил `src/transport.rs` с `dispatch_graphql_envelope` / `dispatch_leptos_server_function_envelope` и canonical success/error envelope поверх `AuthorizedPageBuilderHandlers::handle`;
-- endpoint adapter seam добавил `src/adapters.rs` с GraphQL/Leptos payload wrappers и host-facing handler-функциями поверх canonical dispatch helpers;
-- machine-readable correlation contract `contracts/page-builder-correlation-contract.json` фиксирует evidence chain `builder write -> pages publish -> storefront read` и source markers для no-compile gate;
-- capability handlers имеют reference-provider baseline (`ReferencePageBuilderService`) для `preview/tree/properties/publish` с contract validation, sanitize guard и deterministic typed responses;
-- persistence/rendering extension slice заведён через `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter` и `AdapterBackedPageBuilderService`, поэтому host adapters могут подключать storage/rendering без изменения DTO, `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle` или GraphQL/Leptos endpoint wrappers;
-- adapter lifecycle evidence slice добавил `PageBuilderAdapterOperation`, `PageBuilderAdapterCallEvidence`, `PageBuilderAdapterTelemetry` и default `NoopPageBuilderAdapterTelemetry` для typed audit/observability маркеров `load_project`, `save_project` и `render_preview` поверх `PortContext` без изменения capability DTO или transport envelopes; evidence теперь пишет `started/succeeded/failed` outcome и переносит `PageBuilderErrorKind` + stable code для failed adapter calls;
-- permission descriptor slice закрепил serializable `PAGE_BUILDER_CAPABILITY_PERMISSIONS`, чтобы capability -> permission map из registry/manifest был доступен host/codegen surfaces из owner crate;
-- read capability policy slice закрепил `PageBuilderCapabilityPortPolicies`, serializable `PAGE_BUILDER_CAPABILITY_PORT_POLICIES`, `PortCallPolicy::read()` для `preview`, `tree` и `properties`, поэтому все capability handlers теперь требуют deadline semantics, а `publish` сохраняет write deadline + idempotency enforcement;
-- Control-plane dry run evidence закреплён в `contracts/page-builder-control-plane-dry-run.json`: атомарный change-set для `builder.enabled` и дочерних flags, обязательные профили `all_on/publish_off/preview_off/builder_off`, before/after snapshots, waiver policy и read-surface guarantees.
+- runtime module scaffold is complete;
+- module manifest and docs contracts are created;
+- machine-readable FBA registry (`contracts/page-builder-fba-registry.json`) locks provider version, `consumer_min_version`, consumer contract versions, fallback profile set, provider health states, degradation reasons and pilot SLO thresholds for anti-drift gate, synchronized with owner source markers in `rollout.rs` and `health.rs`;
+- server feature wiring (`mod-page-builder`) is connected;
+- typed provider health/SLO evaluator added to runtime baseline for Wave evidence;
+- transport-neutral DTO metadata (`PageBuilderContractMetadata::BASELINE`), typed provider error catalog (`PageBuilderErrorKind`, `PAGE_BUILDER_ERROR_CATALOG`, `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE`) and typed Wave health evidence (`ProviderHealthEvidence`) are created as publish-ready contract markers;
+- transport-neutral tagged request/response envelope and `AuthorizedPageBuilderHandlers::handle` added as entrypoint seam for future GraphQL/server-function adapters;
+- transport bridge slice added `src/transport.rs` with `dispatch_graphql_envelope` / `dispatch_leptos_server_function_envelope` and canonical success/error envelope over `AuthorizedPageBuilderHandlers::handle`;
+- endpoint adapter seam added `src/adapters.rs` with GraphQL/Leptos payload wrappers and host-facing handler functions over canonical dispatch helpers;
+- machine-readable correlation contract `contracts/page-builder-correlation-contract.json` locks evidence chain `builder write -> pages publish -> storefront read` and source markers for no-compile gate;
+- capability handlers have reference-provider baseline (`ReferencePageBuilderService`) for `preview/tree/properties/publish` with contract validation, sanitize guard and deterministic typed responses;
+- persistence/rendering extension slice added through `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter` and `AdapterBackedPageBuilderService`, so host adapters can connect storage/rendering without changing DTO, `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle` or GraphQL/Leptos endpoint wrappers;
+- adapter lifecycle evidence slice added `PageBuilderAdapterOperation`, `PageBuilderAdapterCallEvidence`, `PageBuilderAdapterTelemetry` and default `NoopPageBuilderAdapterTelemetry` for typed audit/observability markers `load_project`, `save_project` and `render_preview` over `PortContext` without changing capability DTO or transport envelopes; evidence now writes `started/succeeded/failed` outcome and carries `PageBuilderErrorKind` + stable code for failed adapter calls;
+- permission descriptor slice locked serializable `PAGE_BUILDER_CAPABILITY_PERMISSIONS`, so the capability -> permission map from registry/manifest is accessible to host/codegen surfaces from the owner crate;
+- read capability policy slice locked `PageBuilderCapabilityPortPolicies`, serializable `PAGE_BUILDER_CAPABILITY_PORT_POLICIES`, `PortCallPolicy::read()` for `preview`, `tree` and `properties`, so all capability handlers now require deadline semantics, while `publish` preserves write deadline + idempotency enforcement;
+- Control-plane dry run evidence locked in `contracts/page-builder-control-plane-dry-run.json`: atomic change-set for `builder.enabled` and child flags, mandatory profiles `all_on/publish_off/preview_off/builder_off`, before/after snapshots, waiver policy and read-surface guarantees.
 
 
 ## FFA/FBA status
 
-- FFA status: `not_started` (у reference provider пока нет module-owned UI)
+- FFA status: `not_started` (the reference provider does not yet have a module-owned UI)
 - FBA status: `in_progress`
 - Structural shape: `no_ui_boundary`
 - Evidence:
-  - модуль существует как самостоятельный reference provider для `preview/tree/properties/publish`;
-  - machine-readable registry фиксирует provider/consumer versions, fallback profiles, health states, degradation reasons и SLO thresholds, а contract-registry guardrail source-locks эти значения в `BuilderToggleProfile` / `fallback_matrix` и `ProviderHealthState` / `ProviderDegradationReason` / `ProviderSloThresholds::PILOT`;
-  - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template, synthetic Wave 0 packet, Wave 1 readiness draft и correlation evidence `builder write -> pages publish -> storefront read`;
-  - runtime health contract фиксирует `ready/degraded/unavailable`, degradation reasons, pilot SLO thresholds и typed SLO evaluation evidence в коде;
-  - migration slice перевёл `PageBuilderCapabilityService` на явный `PortContext`, shared `PageBuilderCapabilityPortPolicies` / `PAGE_BUILDER_CAPABILITY_PORT_POLICIES`, `PortCallPolicy::read()` для `preview/tree/properties` и `PortCallPolicy::write()` для `publish` без изменения DTO contract.
-  - server-side handler seam добавил permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` с `pages:manage` override, serializable `PAGE_BUILDER_CAPABILITY_PERMISSIONS` и registry/manifest anti-drift проверкой.
-  - provider runtime теперь exposes typed error catalog `validation/sanitize/runtime/feature-disabled`, source-locked через `PageBuilderErrorKind` / `PAGE_BUILDER_ERROR_CATALOG`, и стабильный degraded-mode code `FEATURE_DISABLED` для transport adapters.
-  - transport bridge slice фиксирует canonical dispatch helpers для GraphQL и Leptos server-function adapters; no-compile guardrail `verify-page-builder-transport-bridge.mjs` проверяет, что adapters не обходят `AuthorizedPageBuilderHandlers::handle` и typed error mapping.
-  - endpoint adapter seam фиксирует framework-neutral GraphQL/Leptos endpoint payloads и `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`; no-compile guardrail `verify-page-builder-endpoint-adapters.mjs` удерживает endpoint wrappers на canonical request/response envelopes.
-  - capability API baseline закрыт reference provider-ом без persistence side effects: `preview` рендерит deterministic wrapper, `properties` возвращает canonical node properties, `publish` возвращает typed publish result после `grapesjs_v1` validation, а forbidden preview HTML маппится в typed `sanitize` error.
-  - Control-plane dry run evidence contract и runtime `BuilderControlPlaneChangeSet::dry_run` фиксируют атомарный toggle change-set, обязательные profile snapshots, rollback decision marker и waiver policy; aggregate no-compile baseline включает `verify-page-builder-control-plane-dry-run.mjs`.
-  - adapter seam contract `contracts/page-builder-adapter-seams.json` и runtime traits `PageBuilderProjectStore` / `PageBuilderRenderingAdapter` фиксируют extension-point для persistence/rendering без transport-local capability aliases, transport-local error kind aliases, pages-local visual builder ownership или vendor-specific required project payloads.
-  - adapter operation evidence (`PageBuilderAdapterCallEvidence` + `PageBuilderAdapterTelemetry`) фиксирует `module_slug`, `grapesjs_v1` contract, operation, `started/succeeded/failed` status, tenant/page/revision ids, correlation id и typed failure markers вокруг host persistence/rendering adapters, чтобы audit/observability слой оставался owner-side FBA contract, а не transport-local convention.
-  - runtime-order smoke `contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json` и общий no-compile gate `scripts/verify/verify-orchestrator-fba-runtime-order.mjs` фиксируют порядок capability flag -> `PortCallPolicy` -> owner service call, authorization -> service call, fallback profiles и GraphQL/Leptos endpoint dispatch seams без запуска Cargo.
+  - module exists as an independent reference provider for `preview/tree/properties/publish`;
+  - machine-readable registry locks provider/consumer versions, fallback profiles, health states, degradation reasons and SLO thresholds, and the contract-registry guardrail source-locks these values in `BuilderToggleProfile` / `fallback_matrix` and `ProviderHealthState` / `ProviderDegradationReason` / `ProviderSloThresholds::PILOT`;
+  - baseline verification gates cover provider/consumer anti-drift, Wave evidence template, synthetic Wave 0 packet, Wave 1 readiness draft and correlation evidence `builder write -> pages publish -> storefront read`;
+  - runtime health contract locks `ready/degraded/unavailable`, degradation reasons, pilot SLO thresholds and typed SLO evaluation evidence in code;
+  - migration slice moved `PageBuilderCapabilityService` to explicit `PortContext`, shared `PageBuilderCapabilityPortPolicies` / `PAGE_BUILDER_CAPABILITY_PORT_POLICIES`, `PortCallPolicy::read()` for `preview/tree/properties` and `PortCallPolicy::write()` for `publish` without changing DTO contract.
+  - server-side handler seam added permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` with `pages:manage` override, serializable `PAGE_BUILDER_CAPABILITY_PERMISSIONS` and registry/manifest anti-drift check.
+  - provider runtime now exposes typed error catalog `validation/sanitize/runtime/feature-disabled`, source-locked through `PageBuilderErrorKind` / `PAGE_BUILDER_ERROR_CATALOG`, and stable degraded-mode code `FEATURE_DISABLED` for transport adapters.
+  - transport bridge slice locks canonical dispatch helpers for GraphQL and Leptos server-function adapters; no-compile guardrail `verify-page-builder-transport-bridge.mjs` checks that adapters do not bypass `AuthorizedPageBuilderHandlers::handle` and typed error mapping.
+  - endpoint adapter seam locks framework-neutral GraphQL/Leptos endpoint payloads and `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`; no-compile guardrail `verify-page-builder-endpoint-adapters.mjs` keeps endpoint wrappers on canonical request/response envelopes.
+  - capability API baseline is closed with a reference provider without persistence side effects: `preview` renders a deterministic wrapper, `properties` returns canonical node properties, `publish` returns typed publish result after `grapesjs_v1` validation, and forbidden preview HTML is mapped to typed `sanitize` error.
+  - Control-plane dry run evidence contract and runtime `BuilderControlPlaneChangeSet::dry_run` lock atomic toggle change-set, mandatory profile snapshots, rollback decision marker and waiver policy; aggregate no-compile baseline includes `verify-page-builder-control-plane-dry-run.mjs`.
+  - adapter seam contract `contracts/page-builder-adapter-seams.json` and runtime traits `PageBuilderProjectStore` / `PageBuilderRenderingAdapter` lock extension-point for persistence/rendering without transport-local capability aliases, transport-local error kind aliases, pages-local visual builder ownership or vendor-specific required project payloads.
+  - adapter operation evidence (`PageBuilderAdapterCallEvidence` + `PageBuilderAdapterTelemetry`) locks `module_slug`, `grapesjs_v1` contract, operation, `started/succeeded/failed` status, tenant/page/revision ids, correlation id and typed failure markers around host persistence/rendering adapters, so the audit/observability layer remains on the owner-side FBA contract, not a transport-local convention.
+  - runtime-order smoke `contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json` and the common no-compile gate `scripts/verify/verify-orchestrator-fba-runtime-order.mjs` lock the order of capability flag -> `PortCallPolicy` -> owner service call, authorization -> service call, fallback profiles and GraphQL/Leptos endpoint dispatch seams without running Cargo.
 - Last verified at (UTC): 2026-06-30T00:00:00Z
 - Owner: `rustok-page-builder` module team
 
-## Ближайшие шаги
+## Immediate next steps
 
-1. Подключить host GraphQL resolver-ы и Leptos `#[server]` wrappers к `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`, сохраняя `PageBuilderCapabilityRequest/Response`, `PageBuilderServiceError::kind()` и `stable_code()` как canonical transport bridge без transport-local capability/error aliases.
-2. Заменить draft dry-run snapshots фактическим tenant evidence packet без waivers перед Wave 1 promotion.
-3. Удерживать `verify-page-builder-transport-bridge.mjs`, `verify-page-builder-endpoint-adapters.mjs`, `verify-page-builder-control-plane-dry-run.mjs`, `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs`, `verify-page-builder-correlation-evidence.mjs`, `verify-page-builder-adapter-seams.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO/fallback source sync, permission-map/port-policy/error-catalog sync, Wave evidence формы и correlation chain `builder write -> pages publish -> storefront read`.
-4. Подключить конкретный host persistence/rendering adapter к `AdapterBackedPageBuilderService` в server/consumer wiring, сохраняя `CapabilityGuardedService` для rollout flags и `PortCallPolicy::write()` enforcement.
-5. Описать sunset path для legacy block-driven compatibility.
+1. Connect host GraphQL resolvers and Leptos `#[server]` wrappers to `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`, preserving `PageBuilderCapabilityRequest/Response`, `PageBuilderServiceError::kind()` and `stable_code()` as the canonical transport bridge without transport-local capability/error aliases.
+2. Replace draft dry-run snapshots with actual tenant evidence packet without waivers before Wave 1 promotion.
+3. Keep `verify-page-builder-transport-bridge.mjs`, `verify-page-builder-endpoint-adapters.mjs`, `verify-page-builder-control-plane-dry-run.mjs`, `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs`, `verify-page-builder-correlation-evidence.mjs`, `verify-page-builder-adapter-seams.mjs` and aggregate `verify-page-builder-fba-baseline.mjs` in the baseline gate for provider/consumer anti-drift, health/SLO/fallback source sync, permission-map/port-policy/error-catalog sync, Wave evidence form and correlation chain `builder write -> pages publish -> storefront read`.
+4. Connect specific host persistence/rendering adapter to `AdapterBackedPageBuilderService` in server/consumer wiring, preserving `CapabilityGuardedService` for rollout flags and `PortCallPolicy::write()` enforcement.
+5. Describe sunset path for legacy block-driven compatibility.
 
-## Область работ
+## Scope of work
 
 - runtime capability contract (`preview/tree/properties/publish`);
-- permission/RBAC enforcement для builder lifecycle действий;
-- observability и health контракты для control-plane rollout;
-- consumer-integration protocol для `rustok-pages` и других модулей.
+- permission/RBAC enforcement for builder lifecycle actions;
+- observability and health contracts for control-plane rollout;
+- consumer-integration protocol for `rustok-pages` and other modules.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate page_builder`
 - `cargo test -p rustok-page-builder --lib`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs pages` (no-compile baseline gate for contract/evidence/fallback source markers; does not replace Cargo checks when compilations are allowed)
 
-## Правила обновления
+## Update rules
 
-- при изменении capability contracts обновлять одновременно `docs/README.md` и этот план;
-- при изменении rollout/ownership синхронизировать `docs/modules/tiptap-page-builder-implementation-plan.md`;
-- не фиксировать исторический changelog: поддерживать только актуальное состояние этапов и ближайших работ.
+- when changing capability contracts, update `docs/README.md` and this plan simultaneously;
+- when changing rollout/ownership, synchronize `docs/modules/tiptap-page-builder-implementation-plan.md`;
+- do not keep historical changelog: maintain only the current state of stages and upcoming work.
 
-## Связанные документы
+## Related documents
 
 - `docs/modules/tiptap-page-builder-implementation-plan.md`
 - `docs/modules/manifest.md`

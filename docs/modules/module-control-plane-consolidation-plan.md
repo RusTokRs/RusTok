@@ -6,128 +6,128 @@ last_verified_snapshot: snap_jsonl_00000040
 source_language: markdown
 status: verified
 ---
-# План консолидации управления модулями
+# Module Control Plane Consolidation Plan
 
 ## Execution checkpoint
 
 - Current phase: `not_started`
-- Last checkpoint: зафиксирована текущая фрагментация module control plane между foundation-контрактами, server services, GraphQL и admin SSR.
-- Next step: подготовить ADR с целевой ownership boundary и инвентаризацией production entrypoints.
-- Open blockers: целевая граница shared contracts/server orchestration должна быть утверждена до переноса кода.
-- Hand-off notes for next agent: не смешивать эту работу с временным production-remediation планом; не начинать с создания нового crate без ADR.
+- Last checkpoint: current fragmentation of module control plane between foundation contracts, server services, GraphQL and admin SSR has been recorded.
+- Next step: prepare ADR with target ownership boundary and inventory of production entrypoints.
+- Open blockers: target boundary of shared contracts/server orchestration must be approved before code migration.
+- Hand-off notes for next agent: do not mix this work with a temporary production remediation plan; do not start by creating a new crate without ADR.
 - Last updated at (UTC): 2026-06-27T00:00:00Z
 
-## Проблема
+## Problem
 
-Управление модулями имеет несколько законных уровней, но их orchestration и
-transport-реализация распределены шире необходимого:
+Module management has several legitimate levels, but their orchestration and
+transport implementation are distributed more widely than necessary:
 
-- `rustok-core` владеет базовыми module contracts и `ModuleRegistry`;
-- `apps/server/src/modules` собирает runtime registry и валидирует manifest;
-- `ModuleLifecycleService` управляет tenant enable/disable и recovery;
-- `PlatformCompositionService` управляет platform snapshot и build enqueue;
-- `RegistryGovernanceService` управляет публикацией, releases и ownership;
-- GraphQL публикует server API;
-- `apps/admin/src/features/modules/api` дополнительно содержит собственные manifest
-  DTO, hashing, SQL, build/release и marketplace orchestration.
+- `rustok-core` owns basic module contracts and `ModuleRegistry`;
+- `apps/server/src/modules` assembles the runtime registry and validates the manifest;
+- `ModuleLifecycleService` manages tenant enable/disable and recovery;
+- `PlatformCompositionService` manages platform snapshot and build enqueue;
+- `RegistryGovernanceService` manages publishing, releases and ownership;
+- GraphQL publishes the server API;
+- `apps/admin/src/features/modules/api` additionally contains its own manifest
+  DTOs, hashing, SQL, build/release and marketplace orchestration.
 
-Главный дефект границы: admin host частично выполняет backend/control-plane
-обязанности вместо потребления единого server-owned API. Это создаёт несколько
-источников taxonomy, validation и state mapping.
+Main boundary defect: the admin host partially performs backend/control-plane
+duties instead of consuming a unified server-owned API. This creates multiple
+sources of taxonomy, validation and state mapping.
 
-## Цель
+## Goal
 
-Сформировать единый server-owned module control plane с явными поддоменами и
-одним набором transport-neutral contracts. Admin и другие hosts должны только
-вызывать API и отображать canonical payload без SQL, manifest parsing, hashing
-или lifecycle taxonomy.
+Form a single server-owned module control plane with explicit subdomains and
+one set of transport-neutral contracts. Admin and other hosts should only
+call APIs and display canonical payloads without SQL, manifest parsing, hashing
+or lifecycle taxonomy.
 
-## Не входит в план
+## Out of Scope
 
-- перенос module-owned business logic или UI в platform host;
-- объединение platform composition и tenant enablement в один state;
-- удаление GraphQL при добавлении native `#[server]` функций;
-- превращение capability crate-ов в tenant-toggled modules;
-- создание нового foundation crate до архитектурного решения.
+- migration of module-owned business logic or UI into the platform host;
+- merging platform composition and tenant enablement into one state;
+- removing GraphQL when adding native `#[server]` functions;
+- turning capability crates into tenant-toggled modules;
+- creating a new foundation crate before an architectural decision.
 
-## Целевая модель
+## Target Model
 
-Control plane сохраняет четыре отдельные области состояния:
+The control plane maintains four separate areas of state:
 
-1. build/runtime composition — какие модули входят в platform snapshot;
+1. build/runtime composition — which modules are included in the platform snapshot;
 2. registry governance — package/release/owner/publish lifecycle;
-3. tenant lifecycle — enable/disable/settings/recovery для `Optional` modules;
-4. effective policy — итоговая доступность с учётом platform, tenant и channel.
+3. tenant lifecycle — enable/disable/settings/recovery for `Optional` modules;
+4. effective policy — final availability considering platform, tenant and channel.
 
-Один server facade координирует эти области, но не смешивает их таблицы и
-инварианты. Shared слой содержит только DTO, pure validation и error taxonomy;
-БД, транзакции, build jobs и hooks остаются в server-owned implementation.
+One server facade coordinates these areas, but does not mix their tables and
+invariants. The shared layer contains only DTOs, pure validation and error taxonomy;
+DB, transactions, build jobs and hooks remain in the server-owned implementation.
 
-## Этапы
+## Stages
 
-### 0. Архитектурная фиксация
+### 0. Architectural Fixation
 
-- [ ] Составить inventory всех read/write entrypoints, SQL и manifest DTO.
-- [ ] Зафиксировать ADR: ownership, dependency direction и transaction boundaries.
-- [ ] Определить canonical error taxonomy и revision/CAS semantics.
-- [ ] Зафиксировать compatibility policy для GraphQL и native server functions.
+- [ ] Compile an inventory of all read/write entrypoints, SQL and manifest DTOs.
+- [ ] Fix an ADR: ownership, dependency direction and transaction boundaries.
+- [ ] Define canonical error taxonomy and revision/CAS semantics.
+- [ ] Fix compatibility policy for GraphQL and native server functions.
 
-### 1. Общие контракты
+### 1. Shared Contracts
 
-- [ ] Выделить transport-neutral snapshots для catalog, platform composition,
-  tenant lifecycle, recovery и governance.
-- [ ] Оставить pure manifest/registry validation в shared contract layer.
-- [ ] Удалить дублирующиеся DTO и локальные taxonomy mappings после перевода consumers.
-- [ ] Добавить contract tests на serialization, error codes и revision conflicts.
+- [ ] Extract transport-neutral snapshots for catalog, platform composition,
+  tenant lifecycle, recovery and governance.
+- [ ] Keep pure manifest/registry validation in the shared contract layer.
+- [ ] Remove duplicate DTOs and local taxonomy mappings after migrating consumers.
+- [ ] Add contract tests for serialization, error codes and revision conflicts.
 
-### 2. Server-owned orchestration
+### 2. Server-Owned Orchestration
 
-- [ ] Ввести единый facade над существующими lifecycle/composition/governance services.
-- [ ] Зафиксировать один write entrypoint на каждую операцию.
-- [ ] Сохранить atomic boundaries для platform CAS + build enqueue и tenant journal + state.
-- [ ] Запретить прямые записи в control-plane таблицы вне owner services статическим guardrail.
+- [ ] Introduce a single facade over existing lifecycle/composition/governance services.
+- [ ] Fix one write entrypoint per operation.
+- [ ] Maintain atomic boundaries for platform CAS + build enqueue and tenant journal + state.
+- [ ] Prohibit direct writes to control-plane tables outside owner services via static guardrail.
 
-### 3. Transport surfaces
+### 3. Transport Surfaces
 
-- [ ] Перевести GraphQL queries/mutations на canonical facade.
-- [ ] Добавить native `#[server]` adapters для Leptos без удаления GraphQL.
-- [ ] Обеспечить одинаковые payload/error/recovery semantics на обоих transports.
-- [ ] Добавить parity tests GraphQL ↔ native adapters.
+- [ ] Migrate GraphQL queries/mutations to the canonical facade.
+- [ ] Add native `#[server]` adapters for Leptos without removing GraphQL.
+- [ ] Ensure identical payload/error/recovery semantics on both transports.
+- [ ] Add parity tests GraphQL ↔ native adapters.
 
-### 4. Упрощение admin host
+### 4. Admin Host Simplification
 
-- [ ] Удалить из admin SSR прямой SQL к platform/build/registry tables.
-- [ ] Удалить admin-owned manifest loading, canonical hashing и build planning.
-- [ ] Оставить в admin transport facade, view models и UI effects.
-- [ ] Запретить local remap lifecycle taxonomy и recovery metadata.
+- [ ] Remove direct SQL to platform/build/registry tables from admin SSR.
+- [ ] Remove admin-owned manifest loading, canonical hashing and build planning.
+- [ ] Keep in admin the transport facade, view models and UI effects.
+- [ ] Prohibit local remapping of lifecycle taxonomy and recovery metadata.
 
-### 5. Effective policy и consumers
+### 5. Effective Policy and Consumers
 
-- [ ] Свести module availability checks к одному typed effective-policy contract.
-- [ ] Разделить platform installed, tenant enabled и channel bound в API и UI.
-- [ ] Проверить Core/Optional invariants и dependency graph на всех write paths.
-- [ ] Добавить tenant/channel isolation и stale revision tests.
+- [ ] Reduce module availability checks to a single typed effective-policy contract.
+- [ ] Separate platform installed, tenant enabled and channel bound in API and UI.
+- [ ] Verify Core/Optional invariants and dependency graph on all write paths.
+- [ ] Add tenant/channel isolation and stale revision tests.
 
-### 6. Миграция и удаление legacy paths
+### 6. Migration and Removal of Legacy Paths
 
-- [ ] Перевести consumers поэтапно с dual-read comparison без dual-write.
-- [ ] Добавить telemetry на использование legacy entrypoints.
-- [ ] Удалить legacy paths после нулевого usage window.
-- [ ] Обновить central/local docs и operational runbook.
+- [ ] Migrate consumers incrementally with dual-read comparison without dual-write.
+- [ ] Add telemetry on legacy entrypoint usage.
+- [ ] Remove legacy paths after zero-usage window.
+- [ ] Update central/local docs and operational runbook.
 
-## Verification gates
+## Verification Gates
 
-- [ ] Один production write path для каждой control-plane операции.
-- [ ] В `apps/admin` отсутствуют прямые SQL и canonical manifest/build algorithms.
-- [ ] GraphQL/native parity подтверждена contract tests.
-- [ ] Platform CAS/build enqueue и tenant lifecycle journal/state остаются атомарными.
-- [ ] Core нельзя отключить; Optional dependencies нельзя нарушить.
-- [ ] Recovery/retry/compensation сохраняют canonical taxonomy.
-- [ ] `cargo check -p rustok-server --lib` и targeted module/admin tests проходят.
+- [ ] One production write path for each control-plane operation.
+- [ ] `apps/admin` has no direct SQL and canonical manifest/build algorithms.
+- [ ] GraphQL/native parity confirmed by contract tests.
+- [ ] Platform CAS/build enqueue and tenant lifecycle journal/state remain atomic.
+- [ ] Core cannot be disabled; Optional dependencies cannot be violated.
+- [ ] Recovery/retry/compensation preserve canonical taxonomy.
+- [ ] `cargo check -p rustok-server --lib` and targeted module/admin tests pass.
 
-## Definition of done
+## Definition of Done
 
-План завершён, когда server является единственным владельцем module-management
-orchestration, shared layer содержит только переиспользуемые contracts/pure
-validation, admin не имеет backend bypass paths, а все transports подтверждают
-одинаковые lifecycle, revision и recovery semantics.
+The plan is complete when the server is the sole owner of module-management
+orchestration, the shared layer contains only reusable contracts/pure
+validation, admin has no backend bypass paths, and all transports confirm
+identical lifecycle, revision and recovery semantics.

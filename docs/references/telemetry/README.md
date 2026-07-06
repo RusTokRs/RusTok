@@ -6,13 +6,14 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Telemetry Reference-пакет (RusToK)
 
-Дата последней актуализации: **2026-02-19**.
+# Telemetry Reference Package (RusToK)
 
-> Пакет фиксирует базовые рабочие паттерны `rustok-telemetry` (инициализация tracing/metrics) и предотвращает ложные переносы из ad-hoc логгирования.
+Last updated: **2026-02-19**.
 
-## 1) Минимальный рабочий пример: инициализация telemetry
+> This package captures the basic working patterns of `rustok-telemetry` (tracing/metrics initialization) and prevents incorrect migrations from ad-hoc logging.
+
+## 1) Minimal working example: telemetry initialization
 
 ```rust
 use rustok_telemetry::{init, TelemetryConfig};
@@ -21,16 +22,16 @@ let handles = init(TelemetryConfig::default())?;
 let _guard = handles.guard;
 ```
 
-## 2) Минимальный рабочий пример: рендер metrics
+## 2) Minimal working example: metrics rendering
 
 ```rust
 if let Some(handle) = rustok_telemetry::metrics_handle() {
     let body = handle.render();
-    // вернуть body в /metrics
+    // return body in /metrics
 }
 ```
 
-## 3) Актуальные сигнатуры API (в репозитории)
+## 3) Current API signatures (in repository)
 
 - `pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>`
 - `pub fn metrics_handle() -> Option<Arc<MetricsHandle>>`
@@ -41,16 +42,16 @@ if let Some(handle) = rustok_telemetry::metrics_handle() {
 - `pub fn record_event_dispatched(event_type: &str, handler: &str)`
 - `pub fn update_queue_depth(transport: &str, depth: i64)`
 
-## 4) Чего делать нельзя (типичные ложные паттерны)
+## 4) What not to do (typical incorrect patterns)
 
-1. **Нельзя инициализировать telemetry многократно в runtime.** Инициализация должна быть централизована.
-2. **Нельзя смешивать ad-hoc метрики и platform metrics без единого registry.**
-3. **Нельзя подменять trace-контекст ручными строками там, где доступен `current_trace_id()`.**
-4. **Нельзя silently игнорировать ошибку инициализации telemetry в окружениях, где observability обязательна.**
+1. **Do not initialize telemetry multiple times at runtime.** Initialization must be centralized.
+2. **Do not mix ad-hoc metrics and platform metrics without a single registry.**
+3. **Do not replace trace context with manual strings where `current_trace_id()` is available.**
+4. **Do not silently ignore telemetry initialization errors in environments where observability is mandatory.**
 
-## 5) Синхронизация с кодом (регламент)
+## 5) Synchronization with code (procedure)
 
-- При изменениях в `crates/rustok-telemetry/**` и `apps/server/src/controllers/metrics.rs`:
-  1) обновить примеры и сигнатуры;
-  2) обновить дату в шапке;
-  3) проверить, что anti-patterns остаются релевантными.
+- When changes are made to `crates/rustok-telemetry/**` and `apps/server/src/controllers/metrics.rs`:
+  1) update examples and signatures;
+  2) update the date in the header;
+  3) verify that the anti-patterns remain relevant.

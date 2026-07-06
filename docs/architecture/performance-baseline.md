@@ -6,71 +6,71 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Базовая производительность
+# Performance Baseline
 
-Этот документ фиксирует repeatable evidence workflow для performance changes в
+This document captures the repeatable evidence workflow for performance changes in
 RusToK.
 
-## Назначение
+## Purpose
 
-Перед query rewrite, новым индексом, read-model изменением или partitioning
-нужно собрать повторяемый baseline, чтобы сравнивать эффект изменений.
+Before a query rewrite, new index, read-model change or partitioning,
+a repeatable baseline must be collected to compare the effect of changes.
 
-Базовый performance baseline не заменяет оптимизацию, а даёт evidence bundle для
-архитектурного решения.
+A basic performance baseline does not replace optimization, but provides an evidence bundle for
+architectural decisions.
 
-## Что собирать
+## What to Collect
 
-Минимальный baseline включает:
+The minimum baseline includes:
 
-- top SQL statements из `pg_stat_statements`
-- `EXPLAIN` для hot paths
-- tenant-scoped snapshot, который можно сравнить во времени
+- top SQL statements from `pg_stat_statements`
+- `EXPLAIN` for hot paths
+- tenant-scoped snapshot that can be compared over time
 
-## Где живёт реализация
+## Where the Implementation Lives
 
-Текущий task implementation:
+Current task implementation:
 
 - [db_baseline.rs](/C:/проекты/RusTok/apps/server/src/tasks/db_baseline.rs)
 
-Для search hot path дополнительно используется live PostgreSQL gate
-`crates/rustok-search/tests/postgres_query_plan.rs`. Он создаёт 100 000
-временных tenant-scoped документов, снимает `EXPLAIN (ANALYZE, BUFFERS)` и
-проверяет GIN FTS/trigram indexes. Baseline от 2026-06-27: FTS `6.627 ms`,
-typo fallback `327.516 ms` на локальном PostgreSQL 16.
+For the search hot path, a live PostgreSQL gate is additionally used:
+`crates/rustok-search/tests/postgres_query_plan.rs`. It creates 100,000
+temporary tenant-scoped documents, captures `EXPLAIN (ANALYZE, BUFFERS)` and
+checks GIN FTS/trigram indexes. Baseline from 2026-06-27: FTS `6.627 ms`,
+typo fallback `327.516 ms` on local PostgreSQL 16.
 
-## Когда использовать
+## When to Use
 
-Этот workflow нужен, если меняется:
+This workflow is needed if any of the following changes:
 
-- тяжёлый query path
-- индексная стратегия
-- read-side projection
-- caching decision
-- storage layout, влияющий на latency
+- a heavy query path
+- an index strategy
+- a read-side projection
+- a caching decision
+- storage layout affecting latency
 
-## Рекомендуемая последовательность
+## Recommended Sequence
 
-1. Прогреть целевой path репрезентативным трафиком.
-2. Запустить baseline task для нужного tenant-а.
-3. Сохранить JSON artifact для текущей даты.
-4. Внести query/index/read-model change.
-5. Повторить baseline и сравнить планы и top statements.
+1. Warm up the target path with representative traffic.
+2. Run the baseline task for the desired tenant.
+3. Save a JSON artifact for the current date.
+4. Apply the query/index/read-model change.
+5. Repeat the baseline and compare plans and top statements.
 
-## Ограничения
+## Limitations
 
-- evidence полезен только если на PostgreSQL включён `pg_stat_statements`
-- baseline task сам не принимает архитектурное решение
-- read-only evidence workflow не должен менять доменное состояние
+- evidence is only useful if `pg_stat_statements` is enabled on PostgreSQL
+- the baseline task itself does not make architectural decisions
+- a read-only evidence workflow must not change domain state
 
-## Что не делать
+## What Not To Do
 
-- не оптимизировать query path без baseline, если это затрагивает общий hot path
-- не сравнивать несопоставимые tenant snapshots
-- не считать read-model rewrite успешным без повторного baseline
+- do not optimize a query path without a baseline if it affects a common hot path
+- do not compare incompatible tenant snapshots
+- do not consider a read-model rewrite successful without a repeated baseline
 
-## Связанные документы
+## Related Documents
 
-- [Схема данных платформы](./database.md)
-- [Контракт потока доменных событий](./event-flow-contract.md)
-- [Обзор архитектуры платформы](./overview.md)
+- [Platform Data Schema](./database.md)
+- [Domain Event Flow Contract](./event-flow-contract.md)
+- [Platform Architecture Overview](./overview.md)

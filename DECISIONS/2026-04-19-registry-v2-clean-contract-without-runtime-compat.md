@@ -1,51 +1,51 @@
-# Registry V2 clean contract без runtime-compat слоя
+# Registry V2 clean contract without runtime-compat layer
 
 - Date: 2026-04-19
 - Status: Accepted
 
 ## Context
 
-Registry/governance surface до clean-cutover содержал несколько классов проблем:
+The registry/governance surface before clean-cutover contained several classes of problems:
 
-- header-based actor model для live authority;
+- header-based actor model for live authority;
 - string-based error classification;
-- смешивание public contract и internal audit payload;
+- mixing of public contract and internal audit payload;
 - filesystem-oriented artifact contract;
-- legacy naming и runtime fallback, которые размывали канонический principal-based read/write contract.
+- legacy naming and runtime fallback that blurred the canonical principal-based read/write contract.
 
-Параллельно платформа всё ещё находится на ранней стадии, поэтому сохранение runtime backward compatibility для старого registry payload shape не даёт ценности, но увеличивает сложность live code, UI и agent context.
+At the same time, the platform is still at an early stage, so maintaining runtime backward compatibility for the old registry payload shape provides no value, but increases the complexity of live code, UI, and agent context.
 
 ## Decision
 
-1. Для `Registry V2` принимается **big-bang cleanup**:
-   - live authority строится только от session-backed user bearer auth;
-   - legacy actor/publisher headers не поддерживаются;
-   - controller маппит public ошибки только через typed `RegistryGovernanceError`;
-   - runtime/admin не держат fallback на legacy `*_actor` и `stage/gate` keys.
-2. Исторические registry audit rows нормализуются **миграцией**, а не runtime compatibility-слоем.
-3. Principal-based naming (`owner`, `owner_principal`, `publisher`) считается каноническим для live code, read-side и docs.
-4. Registry artifacts живут на storage-backed contract (`artifact_storage_key`, `artifact_download_url`) без выдачи local filesystem path клиентам.
-5. Оставшиеся `artifact_url` / `artifact_path` вне registry governance допускаются только как часть build/release subsystem и не считаются registry compatibility obligations.
+1. For `Registry V2`, a **big-bang cleanup** is adopted:
+   - live authority is built only from session-backed user bearer auth;
+   - legacy actor/publisher headers are not supported;
+   - the controller maps public errors only through typed `RegistryGovernanceError`;
+   - runtime/admin do not maintain fallback for legacy `*_actor` and `stage/gate` keys.
+2. Historical registry audit rows are normalized by **migration**, not by a runtime compatibility layer.
+3. Principal-based naming (`owner`, `owner_principal`, `publisher`) is considered canonical for live code, read-side, and docs.
+4. Registry artifacts live on a storage-backed contract (`artifact_storage_key`, `artifact_download_url`) without exposing the local filesystem path to clients.
+5. Remaining `artifact_url` / `artifact_path` outside registry governance are allowed only as part of the build/release subsystem and are not considered registry compatibility obligations.
 
 ## Consequences
 
-### Плюсы
+### Positives
 
-- Уменьшается объём live code и agent context: нет второго старого registry contract.
-- Public/admin/runtime читают один и тот же typed payload shape.
-- Ошибки и права предсказуемо маппятся по типу, а не по строковым эвристикам.
-- Registry reset можно считать закрытым по факту кода, миграций и docs, а не как perpetual transition.
+- Reduces the volume of live code and agent context: there is no second old registry contract.
+- Public/admin/runtime read the same typed payload shape.
+- Errors and permissions are predictably mapped by type, not by string heuristics.
+- Registry reset can be considered closed in terms of code, migrations, and docs, rather than as a perpetual transition.
 
-### Компромиссы
+### Trade-offs
 
-- Pre-migration registry audit payload shape больше не поддерживается runtime.
-- Любые старые данные должны быть приведены миграцией до запуска нового runtime.
-- Если в будущем понадобится historical replay старого payload shape, это должен быть отдельный offline/import path, а не возврат legacy fallback в live code.
+- Pre-migration registry audit payload shape is no longer supported at runtime.
+- Any old data must be brought in line by migration before the new runtime starts.
+- If historical replay of the old payload shape is needed in the future, it must be a separate offline/import path, not a return of legacy fallback in live code.
 
 ## Closeout
 
-Registry reset считается закрытым для registry surface в следующем объёме:
+Registry reset is considered closed for the registry surface in the following scope:
 
-- RTK-001..RTK-010 закрыты кодом, миграциями и updated docs;
-- runtime compatibility для legacy registry payload сознательно не сохраняется;
-- канонические правила для дальнейшей разработки живут в `docs/modules/module-authoring.md`, `docs/modules/manifest.md` и связанных ADR.
+- RTK-001..RTK-010 are closed by code, migrations, and updated docs;
+- runtime compatibility for legacy registry payload is intentionally not preserved;
+- canonical rules for further development live in `docs/modules/module-authoring.md`, `docs/modules/manifest.md`, and related ADRs.

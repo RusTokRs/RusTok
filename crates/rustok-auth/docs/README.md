@@ -1,7 +1,7 @@
-# Документация `rustok-auth`
+# `rustok-auth` Documentation
 
-`rustok-auth` — core-модуль аутентификации платформы. Он держит JWT lifecycle,
-credential hashing, refresh/reset/invite/email-verification token flows и
+`rustok-auth` is the core authentication module of the platform. It holds JWT lifecycle,
+credential hashing, refresh/reset/invite/email-verification token flows and
 runtime RBAC surface `users:*`.
 
 Auth lifecycle GraphQL (`AuthQuery`, `AuthMutation`) and OAuth GraphQL (`OAuthQuery`,
@@ -9,42 +9,42 @@ Auth lifecycle GraphQL (`AuthQuery`, `AuthMutation`) and OAuth GraphQL (`OAuthQu
 only implements `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` providers over
 the persisted lifecycle/OAuth/email services and registers the corresponding runtimes.
 
-## Назначение
+## Purpose
 
-- держать auth domain logic вне `apps/server`;
-- публиковать канонический runtime entry type `AuthModule`;
-- давать платформе единый контракт для токенов, claims и credential helpers.
+- keep auth domain logic outside `apps/server`;
+- publish the canonical runtime entry type `AuthModule`;
+- provide the platform with a unified contract for tokens, claims and credential helpers.
 
-## Зона ответственности
+## Area of Responsibility
 
-- конфигурация auth, JWT-алгоритмов и host-provided override assembly/validation;
-- encode/decode helpers для access/reset/invite/email-verification token flows;
-- password hashing, verify и refresh-token helpers;
+- auth configuration, JWT algorithms and host-provided override assembly/validation;
+- encode/decode helpers for access/reset/invite/email-verification token flows;
+- password hashing, verify and refresh-token helpers;
 - auth-owned migrations;
-- публикация permission surface `users:*` через `AUTH_USER_PERMISSIONS` и `RusToKModule::permissions()`.
-- typed application boundaries `UserAdminMutationPort` и `OAuthAdminPort` для admin-команд, OAuth reads и consent lifecycle без зависимости module crate от host transport;
-- owner-owned OAuth GraphQL query/mutation/types за feature `graphql`; `apps/server` только реализует runtime port поверх БД и подключает roots в общую schema.
+- publication of permission surface `users:*` via `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
+- typed application boundaries `UserAdminMutationPort` and `OAuthAdminPort` for admin commands, OAuth reads and consent lifecycle without module crate dependency on host transport;
+- owner-owned OAuth GraphQL query/mutation/types behind `graphql` feature; `apps/server` only implements the runtime port over the DB and connects roots into the common schema.
 
-## Интеграция
+## Integration
 
-- зависит только от `rustok-core` и общих библиотек, без зависимости на `rustok-rbac`;
-- используется `apps/server` для REST, GraphQL, session lifecycle и user-management flow;
-- `apps/server` сверяет registry wiring и GraphQL security hints с `AUTH_USER_PERMISSIONS`, чтобы host-слой не расходился с auth-owned permission surface;
-- `apps/server` реализует ports поверх существующих auth lifecycle/OAuth services и регистрирует providers в shared runtime extensions; GraphQL и native `#[server]` adapters должны потреблять один provider для каждого boundary;
-- публикует собственный UI через подпакет `crates/rustok-auth/admin` с `ui_classification = "admin_only"`;
-- email delivery и transport wiring остаются responsibility host-слоя и соседних модулей.
+- depends only on `rustok-core` and common libraries, without dependency on `rustok-rbac`;
+- used by `apps/server` for REST, GraphQL, session lifecycle and user-management flow;
+- `apps/server` checks registry wiring and GraphQL security hints against `AUTH_USER_PERMISSIONS`, so the host layer does not diverge from the auth-owned permission surface;
+- `apps/server` implements ports on top of existing auth lifecycle/OAuth services and registers providers in shared runtime extensions; GraphQL and native `#[server]` adapters must consume one provider per boundary;
+- publishes its own UI via the sub-package `crates/rustok-auth/admin` with `ui_classification = "admin_only"`;
+- email delivery and transport wiring remain the responsibility of the host layer and adjacent modules.
 
-## Поверхность config lifecycle
+## Config Lifecycle Surface
 
-Каноническая сборка `AuthConfig` выполняется через `build_auth_config` /
-`build_auth_config_with_env`: host передаёт Loco/другой framework config, а
-`rustok-auth` применяет defaults, `AuthSettingsOverrides`, RS256 env key
-resolution и validation. `apps/server` не должен дублировать эти правила, а
-только маппить `AuthError` в transport-specific error type.
+The canonical `AuthConfig` assembly is performed via `build_auth_config` /
+`build_auth_config_with_env`: the host passes Loco/other framework config, and
+`rustok-auth` applies defaults, `AuthSettingsOverrides`, RS256 env key
+resolution and validation. `apps/server` must not duplicate these rules, but
+only map `AuthError` to a transport-specific error type.
 
-## Поверхность token lifecycle
+## Token Lifecycle Surface
 
-Канонический набор auth-owned token helpers:
+The canonical set of auth-owned token helpers:
 
 - access tokens: `encode_access_token`, `decode_access_token`;
 - OAuth access tokens: `encode_oauth_access_token`;
@@ -52,14 +52,14 @@ resolution и validation. `apps/server` не должен дублировать
 - email verification tokens: `encode_email_verification_token`, `decode_email_verification_token`;
 - invite tokens: `encode_invite_token`, `decode_invite_token`.
 
-Special-purpose tokens содержат строгий claim `purpose`, используют общую JWT-валидацию
-`issuer`/`audience` и нормализуют email-subject в lowercase перед выпуском.
-Host-слой (`apps/server`) должен публиковать transport endpoints только через эти
-helpers, чтобы invite/reset/verification flows оставались auth-owned.
+Special-purpose tokens contain a strict `purpose` claim, use common JWT validation
+`issuer`/`audience` and normalize email-subject to lowercase before issuance.
+The host layer (`apps/server`) must publish transport endpoints only through these
+helpers, so that invite/reset/verification flows remain auth-owned.
 
-## Runtime-набор permissions
+## Runtime Permission Set
 
-Канонический набор permissions, принадлежащих auth-модулю:
+The canonical set of permissions owned by the auth module:
 
 - `users:create`
 - `users:read`
@@ -68,28 +68,28 @@ helpers, чтобы invite/reset/verification flows оставались auth-ow
 - `users:list`
 - `users:manage`
 
-При добавлении, удалении или переименовании permissions нужно менять `AUTH_USER_PERMISSIONS`, `AuthModule::permissions()`, server registry/security-тесты и этот документ в одном инкременте.
+When adding, removing or renaming permissions, update `AUTH_USER_PERMISSIONS`, `AuthModule::permissions()`, server registry/security tests and this document in a single increment.
 
-## Incident response
+## Incident Response
 
-Primary owner для auth/JWT/RBAC инцидентов — Platform security/auth on-call. Escalation path: владелец `crates/rustok-auth`, затем владелец server API surface.
+Primary owner for auth/JWT/RBAC incidents — Platform security/auth on-call. Escalation path: owner of `crates/rustok-auth`, then owner of the server API surface.
 
-При деградации auth:
+On auth degradation:
 
-1. Проверить `/health/ready`, `email_backend` и последние auth/API ошибки без логирования секретов, reset/invite tokens или refresh tokens.
-2. Сверить effective `AuthConfig`: algorithm/key pairing, issuer, audience, TTL bounds и production policy.
-3. Если проблема связана с email reset/verification delivery, эскалировать также владельцу host email transport.
-4. Если проблема связана с RBAC, сверить `AUTH_USER_PERMISSIONS`, server registry/security hints и фактические transport guards.
-5. После rollback сохранить evidence: artifact id, config snapshot без секретов, affected flows, health snapshot и список revoked/rotated credentials, если rotation выполнялась.
+1. Check `/health/ready`, `email_backend` and recent auth/API errors without logging secrets, reset/invite tokens or refresh tokens.
+2. Verify effective `AuthConfig`: algorithm/key pairing, issuer, audience, TTL bounds and production policy.
+3. If the issue relates to email reset/verification delivery, escalate also to the owner of host email transport.
+4. If the issue relates to RBAC, verify `AUTH_USER_PERMISSIONS`, server registry/security hints and actual transport guards.
+5. After rollback preserve evidence: artifact id, config snapshot without secrets, affected flows, health snapshot and list of revoked/rotated credentials if rotation was performed.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate auth`
 - `cargo xtask module test auth`
-- targeted server tests для auth/RBAC contracts при изменении runtime wiring
+- targeted server tests for auth/RBAC contracts when changing runtime wiring
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+- [Implementation Plan](./implementation-plan.md)
+- [Manifest Layer Contract](../../../docs/modules/manifest.md)

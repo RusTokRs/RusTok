@@ -6,49 +6,50 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Стандарт: Transactional Outbox
 
-## Цель
+# Standard: Transactional Outbox
 
-Зафиксировать единое обязательное правило публикации событий:
-**изменение доменных данных и запись события в outbox выполняются только в рамках одной и той же транзакции БД**.
+## Purpose
 
-Это гарантирует, что для критических доменных событий не возникает состояний:
-- данные изменились, но событие потеряно;
-- событие записано, но данные откатились.
+Define a single mandatory rule for event publishing:
+**domain data changes and writing the event to the outbox must be performed within the same database transaction**.
 
-## Обязательное правило
+This guarantees that for critical domain events, the following states do not occur:
+- data changed but event lost;
+- event written but data rolled back.
 
-Для всех критических доменных событий:
+## Mandatory Rule
 
-1. Открыть транзакцию.
-2. Выполнить изменения доменных данных.
-3. Записать событие в outbox через транзакционный API (`publish_in_tx` или эквивалент).
-4. Выполнить `commit`.
+For all critical domain events:
 
-Если любой шаг до `commit` завершился ошибкой, транзакция должна быть откатана целиком.
+1. Open a transaction.
+2. Perform domain data changes.
+3. Write the event to the outbox via a transactional API (`publish_in_tx` or equivalent).
+4. Execute `commit`.
 
-## Допустимые и запрещённые API-пути
+If any step before `commit` fails, the transaction must be rolled back entirely.
 
-### Допустимо
+## Allowed and Forbidden API Paths
+
+### Allowed
 
 - `publish_in_tx(...)`
-- Эквиваленты, явно принимающие транзакционный контекст (`&txn`, `impl ConnectionTrait` внутри active transaction, unit-of-work с bound transaction).
+- Equivalents that explicitly accept a transactional context (`&txn`, `impl ConnectionTrait` inside an active transaction, unit-of-work with bound transaction).
 
-Критерий допустимости: запись события в outbox выполняется тем же транзакционным соединением, что и изменение доменной модели.
+The admissibility criterion: writing the event to the outbox uses the same transactional connection as the domain model changes.
 
-### Запрещено для критических событий
+### Forbidden for Critical Events
 
-- `publish(...)` после `commit`.
-- Любой вызов публикации вне транзакции, если доменные данные уже изменены и зафиксированы.
+- `publish(...)` after `commit`.
+- Any publish call outside a transaction, if domain data has already been changed and committed.
 
-Исключение возможно только для некритических/информационных событий, где допустима eventual consistency без строгой атомарности (должно быть явно задокументировано в модуле).
+An exception is only possible for non-critical/informational events where eventual consistency without strict atomicity is acceptable (must be explicitly documented in the module).
 
-## Минимальные шаблоны SeaORM
+## Minimal SeaORM Templates
 
-Ниже — минимальные шаблоны с правильным порядком операций.
+Below are minimal templates with the correct operation order.
 
-### Шаблон A: явная транзакция через `TransactionTrait`
+### Template A: Explicit transaction via `TransactionTrait`
 
 ```rust
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
@@ -60,21 +61,21 @@ pub async fn handle_command(
 ) -> Result<(), DomainError> {
     let txn = db.begin().await?;
 
-    // 1) Изменяем доменные данные в той же транзакции
+    // 1) Modify domain data in the same transaction
     let aggregate = DomainRepo::update_in_tx(&txn, input).await?;
 
-    // 2) Пишем событие в outbox в той же транзакции
+    // 2) Write event to outbox in the same transaction
     outbox
         .publish_in_tx(&txn, DomainEvent::aggregate_changed(&aggregate))
         .await?;
 
-    // 3) Коммитим транзакцию только после успешной записи outbox
+    // 3) Commit the transaction only after successful outbox write
     txn.commit().await?;
     Ok(())
 }
 ```
 
-### Шаблон B: generic-функция от `ConnectionTrait` (выполняется внутри текущего txn)
+### Template B: Generic function from `ConnectionTrait` (executed within current txn)
 
 ```rust
 use sea_orm::ConnectionTrait;
@@ -91,22 +92,22 @@ pub async fn persist_and_enqueue<C: ConnectionTrait>(
 }
 ```
 
-Примечание: `persist_and_enqueue` не открывает и не коммитит транзакцию сама — она должна вызываться из кода, где уже обеспечен transaction boundary.
+Note: `persist_and_enqueue` does not open or commit a transaction itself — it must be called from code that already provides a transaction boundary.
 
-## Антипаттерн (нельзя для критических событий)
+## Antipattern (Not Allowed for Critical Events)
 
 ```rust
-// ❌ Неправильно: событие публикуется после commit
+// ❌ Incorrect: event is published after commit
 let txn = db.begin().await?;
 DomainRepo::update_in_tx(&txn, input).await?;
 txn.commit().await?;
 outbox.publish(DomainEvent::critical(...)).await?;
 ```
 
-Даже при ретраях это оставляет окно потери события между `commit` и `publish`.
+Even with retries, this leaves a window for event loss between `commit` and `publish`.
 
-## Что проверять в PR
+## What to Check in PR
 
-- Для критических событий в коде присутствует единый transaction boundary для domain write + outbox write.
-- Используется `publish_in_tx` (или эквивалент с транзакционным контекстом), а не `publish` после `commit`.
-- Порядок операций: `domain write -> outbox write -> commit`.
+- For critical events, the code has a single transaction boundary for domain write + outbox write.
+- Uses `publish_in_tx` (or equivalent with transactional context), not `publish` after `commit`.
+- Operation order: `domain write -> outbox write -> commit`.

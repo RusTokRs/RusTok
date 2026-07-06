@@ -6,20 +6,20 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План верификации платформы: целостность ядра
+# Platform Verification Plan: Core Integrity
 
-- **Статус:** актуальный детальный чеклист
-- **Контур:** core crate-ы, foundation-контракты, реестр модулей, ядро auth/RBAC/tenant
-- **Companion-план:** [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md)
+- **Status:** current detailed checklist
+- **Scope:** core crates, foundation contracts, module registry, auth/RBAC/tenant core
+- **Companion plan:** [Main Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md)
 
 ---
 
-## Актуальный scoped contract
+## Current Scoped Contract
 
-План верификации целостности ядра проверяет, что server host и foundation crate-ы
-по-прежнему образуют согласованное ядро для всех платформенных модулей.
+The core integrity verification plan checks that the server host and foundation crates
+still form a consistent core for all platform modules.
 
-Сюда входят:
+This includes:
 
 - `apps/server`
 - `rustok-core`
@@ -32,64 +32,64 @@ status: verified
 - `rustok-cache`
 - `rustok-email`
 
-## Фаза 1. Foundation contracts
+## Phase 1. Foundation Contracts
 
-### 1.1 Core crate-ы
+### 1.1 Core crates
 
-- [ ] Foundation crates собираются и не расходятся по публичным контрактам.
-- [ ] Shared contracts для module/runtime layer не дублируются локально в host-коде.
-- [ ] Event, auth, tenant и RBAC contracts совпадают с central docs и local docs owning crates.
+- [ ] Foundation crates compile and do not diverge in public contracts.
+- [ ] Shared contracts for the module/runtime layer are not duplicated locally in host code.
+- [ ] Event, auth, tenant and RBAC contracts match central docs and local docs of owning crates.
 
 ### 1.2 Module registry
 
-- [ ] `ModuleRegistry` и manifest/runtime wiring отражают текущую platform composition.
-- [ ] `Core` и `Optional` semantics не размыты.
-- [ ] Support/capability crate-ы не выдаются за платформенные модули.
+- [ ] `ModuleRegistry` and manifest/runtime wiring reflect the current platform composition.
+- [ ] `Core` and `Optional` semantics are not blurred.
+- [ ] Support/capability crates are not passed off as platform modules.
 
-## Фаза 2. Auth / tenant / RBAC ядро
+## Phase 2. Auth / Tenant / RBAC Core
 
 ### 2.1 Auth baseline
 
-- [ ] Auth/session contract централизован и не размазан по host-local обходам.
-- [ ] Password/session/token flow соответствует текущему auth contract.
-- [ ] Email/auth integration не расходится с foundation/runtime layer.
+- [ ] Auth/session contract is centralized and not scattered across host-local workarounds.
+- [ ] Password/session/token flow matches the current auth contract.
+- [ ] Email/auth integration does not diverge from the foundation/runtime layer.
 
 ### 2.2 Tenant baseline
 
-- [ ] Tenant resolution остаётся единым host/runtime path.
-- [ ] Tenant lifecycle не ломает core module semantics.
-- [ ] `tenant_modules` используется только для `Optional` flows и не подменяет platform composition.
+- [ ] Tenant resolution remains a single host/runtime path.
+- [ ] Tenant lifecycle does not break core module semantics.
+- [ ] `tenant_modules` is used only for `Optional` flows and does not replace platform composition.
 
 ### 2.3 RBAC baseline
 
-- [ ] RBAC enforcement path проходит через текущий typed/runtime contract.
-- [ ] Host/module code не возвращается к ad-hoc role checks.
-- [ ] Permission ownership совпадает с owning modules и local docs.
+- [ ] RBAC enforcement path goes through the current typed/runtime contract.
+- [ ] Host/module code does not revert to ad-hoc role checks.
+- [ ] Permission ownership matches owning modules and local docs.
 
-## Фаза 3. Runtime services
+## Phase 3. Runtime Services
 
 ### 3.1 Cache / email / outbox
 
-- [ ] Cache runtime остаётся единым shared path.
-- [ ] Email runtime не дублируется в обход platform contract.
-- [ ] Outbox/runtime delivery остаётся частью core baseline, а не optional add-on.
+- [ ] Cache runtime remains a single shared path.
+- [ ] Email runtime is not duplicated bypassing the platform contract.
+- [ ] Outbox/runtime delivery remains part of the core baseline, not an optional add-on.
 
-## Фаза 4. Точечные локальные проверки
+## Phase 4. Targeted Local Checks
 
-### 4.1 Минимум
+### 4.1 Minimum
 
 - [ ] `cargo check --workspace --all-targets --all-features`
-- [ ] targeted `cargo test` для foundation/core crates, если менялся contract
-- [ ] `cargo xtask validate-manifest`, если менялся central composition contract
+- [ ] targeted `cargo test` for foundation/core crates, if the contract changed
+- [ ] `cargo xtask validate-manifest`, if the central composition contract changed
 
-## Open blockers
+## Open Blockers
 
-- [ ] Отдельно фиксировать environment/runtime blockers, не засоряя сам checklist историей.
-- [ ] При drift сначала обновлять local docs owning component, затем central verification docs.
+- [ ] Record environment/runtime blockers separately, do not clutter the checklist itself with history.
+- [ ] When drift occurs, first update local docs of the owning component, then central verification docs.
 
-## Связанные документы
+## Related Documents
 
-- [Обзор архитектуры платформы](../architecture/overview.md)
-- [Архитектура модулей](../architecture/modules.md)
-- [Контракт `rustok-module.toml`](../modules/manifest.md)
-- [Главный README по верификации](./README.md)
+- [Platform Architecture Overview](../architecture/overview.md)
+- [Module Architecture](../architecture/modules.md)
+- [`rustok-module.toml` Contract](../modules/manifest.md)
+- [Main Verification README](./README.md)

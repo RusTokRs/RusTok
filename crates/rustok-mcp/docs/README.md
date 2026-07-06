@@ -1,45 +1,45 @@
-# Документация `rustok-mcp`
+# Documentation `rustok-mcp`
 
-`rustok-mcp` — thin adapter crate для MCP integration в RusToK поверх `rmcp`.
-Он держит RusToK-специфичный tool/runtime слой, не подменяя официальный MCP
-spec и не превращаясь в provider/model host.
+`rustok-mcp` is a thin adapter crate for MCP integration in RusToK over `rmcp`.
+It holds the RusToK-specific tool/runtime layer, without replacing the official MCP
+spec or turning into a provider/model host.
 
-## Назначение
+## Purpose
 
-- публиковать канонический MCP adapter contract для RusToK;
-- держать tool surface, runtime binding, access policy и audit hooks поверх `rmcp`;
-- связывать Alloy-related MCP capabilities и persisted server-side control plane с runtime session flow.
+- publish the canonical MCP adapter contract for RusToK;
+- keep tool surface, runtime binding, access policy and audit hooks over `rmcp`;
+- connect Alloy-related MCP capabilities and the persisted server-side control plane with runtime session flow.
 
-## Зона ответственности
+## Responsibilities
 
-- MCP server adapter поверх `rmcp`;
-- typed tools, `McpToolResponse`, runtime binding и access policy contracts;
-- session-start access resolution, allow/deny audit и introspection surface;
-- Alloy-related MCP tools и scaffold draft review/apply boundary;
-- принадлежащий MCP-модулю admin UI для ревью Alloy drafts, чтения MCP audit и read-side
+- MCP server adapter over `rmcp`;
+- typed tools, `McpToolResponse`, runtime binding and access policy contracts;
+- session-start access resolution, allow/deny audit and introspection surface;
+- Alloy-related MCP tools and scaffold draft review/apply boundary;
+- MCP-module-owned admin UI for reviewing Alloy drafts, reading MCP audit and read-side
   clients/policies/token previews: Next package
-  `apps/next-admin/packages/rustok-mcp` и Leptos FFA crate `crates/rustok-mcp/admin`;
-- typed `McpManagementPort` в owner crate и DB-provider в `apps/server`, который
-  делегирует management reads/writes каноническому транзакционному `McpManagementService`;
-- owner-owned GraphQL query/mutation/types за feature `graphql`; server только подключает roots и реализует DB-provider;
-- отсутствие ownership над provider-specific AI orchestration и над самим MCP spec.
+  `apps/next-admin/packages/rustok-mcp` and Leptos FFA crate `crates/rustok-mcp/admin`;
+- typed `McpManagementPort` in the owner crate and DB-provider in `apps/server`, which
+  delegates management reads/writes to the canonical transactional `McpManagementService`;
+- owner-owned GraphQL query/mutation/types behind feature `graphql`; server only connects roots and implements the DB-provider;
+- no ownership over provider-specific AI orchestration and over the MCP spec itself.
 
-## Интеграция
+## Integration
 
-- протокол, security и authorization semantics берутся из официальных MCP/rmcp документов, а не из локальной docs-папки;
-- `rustok-ai` использует `rustok-mcp` как MCP tool boundary, не расширяя его до model host;
-- `apps/server` держит persisted MCP management/control plane и runtime bridges для токенов, policy и scaffold drafts;
-- Alloy подключается как capability через runtime state, а не как отдельный MCP transport stack.
-- `rustok-ai` не владеет UI ревью MCP/Alloy drafts; межмодульный admin workflow отдельно
-  монтирует принадлежащий MCP-модулю пакет.
+- protocol, security and authorization semantics come from official MCP/rmcp documents, not from the local docs folder;
+- `rustok-ai` uses `rustok-mcp` as the MCP tool boundary, without extending it to a model host;
+- `apps/server` holds the persisted MCP management/control plane and runtime bridges for tokens, policy and scaffold drafts;
+- Alloy connects as a capability via runtime state, not as a separate MCP transport stack.
+- `rustok-ai` does not own the UI review of MCP/Alloy drafts; the cross-module admin workflow separately
+  mounts the MCP-module-owned package.
 
-## Проверка
+## Verification
 
-- structural verification для local docs и RusToK-specific MCP boundary;
-- targeted compile/tests при изменении tool surface, access policy, runtime binding или audit path;
-- при изменении protocol/security assumptions обязательна сверка с официальными MCP/rmcp источниками.
+- structural verification for local docs and the RusToK-specific MCP boundary;
+- targeted compile/tests when changing tool surface, access policy, runtime binding or audit path;
+- when changing protocol/security assumptions, verification against official MCP/rmcp sources is mandatory.
 
-## Внешние источники истины
+## External sources of truth
 
 - [MCP docs](https://modelcontextprotocol.io/docs)
 - [MCP specification](https://modelcontextprotocol.io/specification/2025-03-26)
@@ -48,8 +48,8 @@ spec и не превращаясь в provider/model host.
 - [Authorization guide](https://modelcontextprotocol.io/docs/tutorials/security/authorization)
 - [Security Best Practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)
 
-## Связанные документы
+## Related documents
 
-- [План реализации](./implementation-plan.md)
-- [Центральный reference-индекс MCP](../../../docs/references/mcp/README.md)
+- [Implementation plan](./implementation-plan.md)
+- [Central MCP reference index](../../../docs/references/mcp/README.md)
 - [README crate](../README.md)

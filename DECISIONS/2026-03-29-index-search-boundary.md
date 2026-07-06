@@ -1,49 +1,49 @@
-# ADR: Граница между `rustok-index` и `rustok-search`
+# ADR: Boundary between `rustok-index` and `rustok-search`
 
-## Статус
+## Status
 
 Accepted
 
-## Контекст
+## Context
 
-После выделения `rustok-search` в отдельный core-модуль в репозитории всё ещё
-оставался архитектурный риск: `rustok-index` и `rustok-search` решают близкие,
-но не одинаковые задачи, и без явной фиксации границы продуктовые search-flow
-легко снова начинают стекаться в index/read-model слой.
+After extracting `rustok-search` into a separate core module, the repository still
+had an architectural risk: `rustok-index` and `rustok-search` solve similar,
+but not identical tasks, and without an explicit boundary, product search flows
+can easily start stacking back into the index/read-model layer.
 
-Это особенно опасно для следующих зон:
+This is especially dangerous for the following areas:
 
-- ownership над `search_documents` и search-facing query contract;
-- ranking/relevance, dictionaries и merchandising rules;
-- admin/storefront search UI и analytics;
-- optional connector crates для внешних движков;
-- runtime dependency direction между indexing и search capabilities.
+- ownership of `search_documents` and search-facing query contract;
+- ranking/relevance, dictionaries, and merchandising rules;
+- admin/storefront search UI and analytics;
+- optional connector crates for external engines;
+- runtime dependency direction between indexing and search capabilities.
 
-## Решение
+## Decision
 
-Принимаем следующую архитектурную границу:
+The following architectural boundary is adopted:
 
-- `rustok-index` остаётся модулем платформенного indexing/read-model substrate.
-- `rustok-search` остаётся модулем продуктового поиска и единственным owner'ом
+- `rustok-index` remains the platform indexing/read-model substrate module.
+- `rustok-search` remains the product search module and the sole owner of
   search-facing API/UX/runtime contract.
-- Каноническое search storage (`search_documents`, query analytics, dictionaries,
-  query rules) живёт в `rustok-search`, а не в `rustok-index`.
-- `rustok-search` может читать domain tables напрямую и при необходимости может
-  использовать нейтральные read-model данные из `rustok-index`, но не зависит от
-  него как от source-of-truth для продуктового поиска.
-- Направление зависимости допускается только как `search -> index`, если это
-  реально помогает ingestion/read-model reuse; обратная зависимость
-  `index -> search` запрещена.
-- Внешние search engines подключаются только через dedicated connector crates,
-  зарегистрированные за `rustok-search`; доменные модули не интегрируются с
-  provider SDK напрямую.
+- Canonical search storage (`search_documents`, query analytics, dictionaries,
+  query rules) lives in `rustok-search`, not in `rustok-index`.
+- `rustok-search` may read domain tables directly and may optionally use
+  neutral read-model data from `rustok-index`, but does not depend on
+  it as a source-of-truth for product search.
+- Dependency direction is only allowed as `search -> index`, if this
+  really helps ingestion/read-model reuse; the reverse dependency
+  `index -> search` is prohibited.
+- External search engines are connected only through dedicated connector crates
+  registered under `rustok-search`; domain modules do not integrate with
+  provider SDKs directly.
 
-## Последствия
+## Consequences
 
 - Product search contracts, ranking, synonyms/stop words, query rules,
-  autocomplete, analytics и search UI не возвращаются в `rustok-index`.
-- `rustok-index` может развиваться как общий substrate для denormalized reads,
-  sync/rebuild/consistency tooling и cross-module joins без давления со стороны
+  autocomplete, analytics, and search UI do not return to `rustok-index`.
+- `rustok-index` can evolve as a common substrate for denormalized reads,
+  sync/rebuild/consistency tooling, and cross-module joins without pressure from
   storefront/admin UX.
-- Любая попытка перенести search-facing API или engine-specific behavior в
-  `rustok-index` теперь требует нового ADR.
+- Any attempt to move search-facing API or engine-specific behavior into
+  `rustok-index` now requires a new ADR.

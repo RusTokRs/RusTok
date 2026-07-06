@@ -1,66 +1,66 @@
-# План реализации `rustok-commerce-foundation`
+# Implementation plan for `rustok-commerce-foundation`
 
-Статус: support crate уже служит shared substrate для split commerce family;
-ключевая задача — удерживать его минимальным и не допускать повторной сборки
-монолита в foundation-слое.
+Status: support crate already serves as shared substrate for the split commerce family;
+the key task is to keep it minimal and prevent rebuilding
+the monolith in the foundation layer.
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: Update this block after each increment.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-commerce-foundation` как dependency-only support crate;
-- синхронизировать shared DTO/entities/error contracts и local docs;
-- не допускать переноса domain/runtime logic из split commerce modules в foundation layer.
+- keep `rustok-commerce-foundation` as a dependency-only support crate;
+- synchronize shared DTO/entities/error contracts and local docs;
+- prevent moving domain/runtime logic from split commerce modules into the foundation layer.
 
-## Текущее состояние
+## Current state
 
-- crate уже содержит shared DTOs, entities, errors и search/query helpers;
-- consumer modules уже используют его как общий слой переиспользования;
-- umbrella `rustok-commerce` опирается на этот crate для общих контрактов split family;
-- самостоятельного transport/runtime surface у crate нет и не должно появляться.
+- crate already contains shared DTOs, entities, errors and search/query helpers;
+- consumer modules already use it as a common reuse layer;
+- umbrella `rustok-commerce` relies on this crate for common contracts of the split family;
+- the crate has no standalone transport/runtime surface and should not acquire one.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрепить foundation crate как общий dependency layer для commerce family;
-- [x] удерживать shared error/entity/DTO surface единым для consumer crates;
-- [ ] удерживать sync между foundation contracts, consumer crates и local docs.
+- [x] lock foundation crate as a common dependency layer for commerce family;
+- [x] keep shared error/entity/DTO surface unified for consumer crates;
+- [ ] maintain sync between foundation contracts, consumer crates and local docs.
 
 ### 2. Boundary hardening
 
-- [ ] переносить сюда только действительно shared contracts;
-- [ ] не втягивать сюда domain-owned services и orchestration logic;
-- [ ] покрывать incompatible changes targeted compile/tests в consumer crates.
+- [ ] move only truly shared contracts here;
+- [ ] do not pull domain-owned services and orchestration logic here;
+- [ ] cover incompatible changes with targeted compile/tests in consumer crates.
 
 ### 3. Operability
 
-- [ ] документировать изменения foundation surface одновременно с изменением consumer expectations;
-- [ ] удерживать local docs и `README.md` синхронизированными;
-- [ ] обновлять umbrella commerce docs при изменении split-family contracts.
+- [ ] document foundation surface changes simultaneously with changing consumer expectations;
+- [ ] keep local docs and `README.md` synchronized;
+- [ ] update umbrella commerce docs when split-family contracts change.
 
-## Проверка
+## Verification
 
-- structural verification для docs и shared boundary;
-- targeted compile/tests при изменении DTO/entity/error surface;
+- structural verification for docs and shared boundary;
+- targeted compile/tests when DTO/entity/error surface changes;
 - consumer sync across split commerce crates.
 
-## Правила обновления
+## Update rules
 
-1. При изменении shared commerce foundation contract сначала обновлять этот файл.
-2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении consumer expectations обновлять связанные docs в split commerce crates.
+1. When changing shared commerce foundation contract, update this file first.
+2. When changing public surface, synchronize `README.md` and `docs/README.md`.
+3. When changing consumer expectations, update related docs in split commerce crates.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

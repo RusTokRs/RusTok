@@ -1,49 +1,49 @@
-# Ownership SEO UI по content-модулям
+# SEO UI ownership by content modules
 
 - Date: 2026-04-19
 - Status: Accepted
 
 ## Context
 
-`rustok-seo` уже собран как единый tenant-aware runtime для metadata precedence, canonical routing,
-redirects, sitemap/robots и storefront `SeoPageContext`. При этом в текущем состоянии
-`rustok-seo-admin` содержит central metadata editor для `page`, `product` и `blog_post`.
+`rustok-seo` has already been assembled as a single tenant-aware runtime for metadata precedence, canonical routing,
+redirects, sitemap/robots, and storefront `SeoPageContext`. At the same time, in the current state,
+`rustok-seo-admin` contains a central metadata editor for `page`, `product` and `blog_post`.
 
-Такой central editor конфликтует с базовым module-owned UI contract платформы:
+Such a central editor conflicts with the basic module-owned UI contract of the platform:
 
-- экраном сущности должен владеть её owner-модуль;
-- host только монтирует surface;
-- cross-cutting capability не должна становиться владельцем чужого domain UI;
-- новые модули должны иметь возможность интегрировать SEO в свой собственный UI, а не идти
-  через отдельный universal hub.
+- the entity screen must be owned by its owner module;
+- the host only mounts the surface;
+- a cross-cutting capability must not become the owner of another domain's UI;
+- new modules must be able to integrate SEO into their own UI, rather than going
+  through a separate universal hub.
 
-Это особенно важно для `pages`, `product`, `blog`, `forum` и любых будущих content-domain модулей,
-где SEO controls, diagnostics и completion scoring должны жить рядом с основным editor UI сущности.
+This is especially important for `pages`, `product`, `blog`, `forum`, and any future content-domain modules,
+where SEO controls, diagnostics, and completion scoring should live alongside the main entity editor UI.
 
 ## Decision
 
-Фиксируем следующий ownership contract:
+The following ownership contract is fixed:
 
-1. `rustok-seo` остаётся единственным backend/runtime owner для SEO capability:
+1. `rustok-seo` remains the sole backend/runtime owner for SEO capability:
    metadata storage, precedence, canonical routing, redirects, sitemap/robots, diagnostics,
    storefront/headless read contracts.
-2. Entity-specific SEO authoring UI принадлежит owner-модулям:
+2. Entity-specific SEO authoring UI belongs to the owner modules:
    `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin`
-   и любым будущим content-модулям.
-3. `rustok-seo-admin` сохраняет только SEO-owned infrastructure UI:
-   redirects, robots policy, sitemap generation/status, global defaults, shared diagnostics overview
-   и похожие cross-cutting controls.
-4. `rustok-seo` или support-слой рядом с ним может поставлять shared SEO widgets/helpers для
-   owner-модулей, но эти widgets не делают `rustok-seo-admin` владельцем domain screen.
-5. Текущий central metadata editor в `rustok-seo-admin` считается transitional surface и должен
-   быть удалён после cutover entity SEO authoring в owner-модули.
+   and any future content modules.
+3. `rustok-seo-admin` retains only SEO-owned infrastructure UI:
+   redirects, robots policy, sitemap generation/status, global defaults, shared diagnostics overview,
+   and similar cross-cutting controls.
+4. `rustok-seo` or a support layer next to it may ship shared SEO widgets/helpers for
+   owner modules, but these widgets do not make `rustok-seo-admin` the owner of a domain screen.
+5. The current central metadata editor in `rustok-seo-admin` is considered a transitional surface and must
+   be removed after cutover of entity SEO authoring to owner modules.
 
 ## Consequences
 
-- Module-owned UI contract становится согласованным с SEO capability model:
-  где доменная сущность, там и её SEO editor.
-- `rustok-seo-admin` сужается до настоящего cross-cutting control plane вместо universal editor.
-- Для `pages`, `product`, `blog`, `forum` потребуется owner-side integration поверх shared SEO
-  contracts и reusable widgets.
-- План `rustok-seo` должен фиксировать migration path: shared widgets/support layer, cutover
-  metadata editor в owner-модули, затем cleanup transitional central editor.
+- The module-owned UI contract becomes consistent with the SEO capability model:
+  where the domain entity is, there its SEO editor is.
+- `rustok-seo-admin` narrows down to a real cross-cutting control plane instead of a universal editor.
+- For `pages`, `product`, `blog`, `forum`, owner-side integration is required on top of shared SEO
+  contracts and reusable widgets.
+- The `rustok-seo` plan must record the migration path: shared widgets/support layer, cutover
+  of metadata editor to owner modules, then cleanup of the transitional central editor.

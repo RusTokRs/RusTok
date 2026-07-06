@@ -6,92 +6,92 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Документация UI
+# UI Documentation
 
-Этот раздел описывает frontend-приложения RusToK и общие правила интеграции UI-поверхностей.
+This section describes the RusToK frontend applications and general rules for integrating UI surfaces.
 
-## Ландшафт UI
+## UI Landscape
 
-В платформе поддерживаются host-приложения для web/headless и mobile-срезов:
+The platform supports host applications for web/headless and mobile slices:
 
-- `apps/admin` — основной Leptos admin host;
-- `apps/storefront` — основной Leptos storefront host;
-- `apps/next-admin` — параллельный Next.js admin host;
-- `apps/next-frontend` — параллельный Next.js storefront host;
-- `rustok_mobile/apps/rustok_admin_mobile` — Flutter admin mobile host (в стадии поэтапного внедрения).
+- `apps/admin` — primary Leptos admin host;
+- `apps/storefront` — primary Leptos storefront host;
+- `apps/next-admin` — parallel Next.js admin host;
+- `apps/next-frontend` — parallel Next.js storefront host;
+- `rustok_mobile/apps/rustok_admin_mobile` — Flutter admin mobile host (in phased rollout).
 
-Leptos hosts являются основным runtime-путём для platform-owned UI внутри Rust workspace. Next.js hosts идут параллельным headless-путём и должны сохранять parity по transport, auth, i18n и module contracts.
+Leptos hosts are the primary runtime path for platform-owned UI within the Rust workspace. Next.js hosts run as a parallel headless path and must maintain parity in transport, auth, i18n, and module contracts.
 
-## FFA status для frontend-hosts
+## FFA Status for Frontend Hosts
 
-FFA migration status ведётся для module-owned UI packages в
+FFA migration status is maintained for module-owned UI packages in
 [`docs/modules/registry.md`](../modules/registry.md#ffafba-readiness-board-module-owned-ui).
-Сами frontend-приложения не получают module FFA status, потому что они не являются владельцами
-domain UI. Их целевой статус — **FFA-compatible composition host**:
+The frontend applications themselves do not receive a module FFA status because they are not domain UI
+owners. Their target status is **FFA-compatible composition host**:
 
-- `apps/admin` и `apps/storefront` остаются Leptos SSR/hydrate hosts, которые монтируют
-  module-owned surfaces и передают host context;
-- `apps/next-admin` и `apps/next-frontend` остаются параллельными Next.js/headless hosts,
-  которые сохраняют route/auth/i18n/transport parity;
-- host-код может содержать shell, navigation, routing, install/governance и другие host-owned
-  capabilities, но не module-specific CRUD/business workflows;
-- FFA coverage фронтендов проверяется по host contract и parity gates, а не через перенос
-  самих `apps/*` в `core/transport/ui` форму.
+- `apps/admin` and `apps/storefront` remain Leptos SSR/hydrate hosts that mount
+  module-owned surfaces and pass host context;
+- `apps/next-admin` and `apps/next-frontend` remain parallel Next.js/headless hosts
+  that maintain route/auth/i18n/transport parity;
+- host code may contain shell, navigation, routing, install/governance, and other host-owned
+  capabilities, but not module-specific CRUD/business workflows;
+- FFA coverage of frontends is verified by host contract and parity gates, not by moving
+  the `apps/*` themselves into `core/transport/ui` form.
 
-Текущие host-level FFA slices закреплены быстрым gate
-`npm run verify:frontend:host-ffa-contract`: `apps/admin` держит sidebar navigation policy в
-`src/widgets/app_shell/core.rs`, а `apps/storefront` держит header route/link policy в
-`src/widgets/header/core.rs`; соответствующие Leptos-файлы остаются render adapters.
+Current host-level FFA slices are enforced by the fast gate
+`npm run verify:frontend:host-ffa-contract`: `apps/admin` holds sidebar navigation policy in
+`src/widgets/app_shell/core.rs`, and `apps/storefront` holds header route/link policy in
+`src/widgets/header/core.rs`; the corresponding Leptos files remain render adapters.
 
-## Базовый UI contract
+## Basic UI Contract
 
-- Host-приложения композируют UI-поверхности, но не забирают модульный business UI в свой код.
-- Если модуль поставляет UI, эта поверхность остаётся module-owned независимо от статуса `Core` или `Optional`.
-- Manifest-driven wiring для publishable UI идёт через `modules.toml` и `rustok-module.toml`.
-- Leptos hosts обязаны использовать host-provided `UiRouteContext`, включая effective locale и module route base.
-- Module-owned UI пакеты не должны вводить собственную locale negotiation цепочку поверх host/runtime contract.
-- Для module-owned admin UI selection state тоже host-owned: typed `snake_case` query keys живут в URL,
-  локальный editor/detail state только гидратится из них, а отсутствие валидного key ведёт к empty state.
-- SEO admin route теперь следует ownership baseline ещё жёстче: `seo` использует только `tab`
-  и не держит package-local entity selection contract поверх host schema.
-- Для cross-cutting capability modules действует тот же ownership rule: capability runtime может давать
-  shared widgets/contracts, но entity-specific editor UI остаётся у owner-модуля. Для SEO это означает,
-  что page/product/blog/forum SEO panels живут в соответствующих module-owned admin packages, а
-  `rustok-seo-admin` остаётся только infrastructure/control-plane surface.
-- Практически этот pattern уже реализован через `rustok-seo-admin-support`: `pages`, `product`, `blog`
-  и `forum` используют общий SEO panel/tooling слой, а сам SEO runtime уже держит target kinds
-  `forum_category` и `forum_topic` для owner-side forum integration.
-- `rustok-seo-admin-support` при этом не inventит свою locale negotiation chain и не держит editable
-  locale field внутри panel UI: owner-side SEO widgets обязаны брать host-provided effective locale
-  и только canonicalize-ить его под platform i18n contract.
-- Сам `rustok-seo-admin` после cutover больше не держит metadata editor и использует только `tab`
-  как route-owned query state для bulk/redirects/sitemaps/robots/defaults/diagnostics control-plane.
-- Для module-owned Leptos storefront UI query/state plumbing тоже должно идти через общий слой:
-  `leptos-ui-routing` переиспользуется и в admin, и в storefront, а прямой package-local доступ
-  к `UiRouteContext.query_value(...)` не считается каноническим паттерном.
+- Host applications compose UI surfaces but do not pull module business UI into their own code.
+- If a module provides UI, that surface remains module-owned regardless of `Core` or `Optional` status.
+- Manifest-driven wiring for publishable UI goes through `modules.toml` and `rustok-module.toml`.
+- Leptos hosts must use host-provided `UiRouteContext`, including the effective locale and module route base.
+- Module-owned UI packages must not introduce their own locale negotiation chain on top of the host/runtime contract.
+- For module-owned admin UI, selection state is also host-owned: typed `snake_case` query keys live in the URL,
+  local editor/detail state is only hydrated from them, and the absence of a valid key leads to empty state.
+- SEO admin route now follows the ownership baseline even more strictly: `seo` uses only `tab`
+  and does not maintain a package-local entity selection contract on top of the host schema.
+- For cross-cutting capability modules, the same ownership rule applies: capability runtime may provide
+  shared widgets/contracts, but entity-specific editor UI stays with the owner module. For SEO, this means
+  page/product/blog/forum SEO panels live in the corresponding module-owned admin packages, while
+  `rustok-seo-admin` remains only the infrastructure/control-plane surface.
+- In practice, this pattern is already implemented via `rustok-seo-admin-support`: `pages`, `product`, `blog`
+  and `forum` use a shared SEO panel/tooling layer, and the SEO runtime already holds target kinds
+  `forum_category` and `forum_topic` for owner-side forum integration.
+- `rustok-seo-admin-support` does not invent its own locale negotiation chain and does not hold an editable
+  locale field inside the panel UI: owner-side SEO widgets must take the host-provided effective locale
+  and only canonicalize it under the platform i18n contract.
+- After cutover, `rustok-seo-admin` itself no longer holds a metadata editor and uses only `tab`
+  as the route-owned query state for bulk/redirects/sitemaps/robots/defaults/diagnostics control-plane.
+- For module-owned Leptos storefront UI, query/state plumbing must also go through the shared layer:
+  `leptos-ui-routing` is reused in both admin and storefront, and direct package-local access
+  to `UiRouteContext.query_value(...)` is not considered a canonical pattern.
 
-## Transport и runtime contract
+## Transport and Runtime Contract
 
-- Для Leptos hosts GraphQL и native `#[server]` functions сосуществуют параллельно; добавление `#[server]` не заменяет `/api/graphql`.
-- Backend source of truth для UI hosts — `apps/server`.
-- Для headless/admin host-ов registry-backed capability descriptors тоже должны читаться из backend contract:
-  для SEO это GraphQL `seoTargets` или REST `/api/seo/targets`, а не host-local mappings target slug-ов.
-- Read-only remediation hints для SEO linking также идут из backend contract:
-  GraphQL `seoCrossLinkSuggestions` и REST `/api/seo/cross-link-suggestions` должны использоваться как source of truth,
-  без host-local link suggestion heuristics в обход server runtime.
-- Для storefront SEO structured data backend contract также является source of truth: hosts потребляют
-  `SeoStructuredDataBlock.schema_kind/schema_type/source/payload` и не вводят собственный schema.org classifier.
-- Contract parity между Leptos, Next.js и Flutter оценивается на уровне маршрутов, auth, locale, module wiring и transport surface, а не на уровне буквального совпадения внутренней реализации.
+- For Leptos hosts, GraphQL and native `#[server]` functions coexist in parallel; adding `#[server]` does not replace `/api/graphql`.
+- Backend source of truth for UI hosts is `apps/server`.
+- For headless/admin hosts, registry-backed capability descriptors must also be read from the backend contract:
+  for SEO, that means GraphQL `seoTargets` or REST `/api/seo/targets`, not host-local mappings of target slugs.
+- Read-only remediation hints for SEO linking also come from the backend contract:
+  GraphQL `seoCrossLinkSuggestions` and REST `/api/seo/cross-link-suggestions` must be used as the source of truth,
+  without host-local link suggestion heuristics bypassing the server runtime.
+- For storefront SEO structured data, the backend contract is also the source of truth: hosts consume
+  `SeoStructuredDataBlock.schema_kind/schema_type/source/payload` and do not introduce their own schema.org classifier.
+- Contract parity between Leptos, Next.js and Flutter is assessed at the level of routes, auth, locale, module wiring, and transport surface, not at the level of literal internal implementation matching.
 
-## Разделы документации
+## Documentation Sections
 
-- [Контракт storefront](./storefront.md)
-- [Архитектура GraphQL](./graphql-architecture.md)
-- [Быстрый старт Admin ↔ Server](./admin-server-connection-quickstart.md)
-- [Каталог Rust UI-компонентов](./rust-ui-component-catalog.md)
-- [Трек rich-text и визуального page builder](../modules/tiptap-page-builder-implementation-plan.md)
+- [Storefront Contract](./storefront.md)
+- [GraphQL Architecture](./graphql-architecture.md)
+- [Admin ↔ Server Quickstart](./admin-server-connection-quickstart.md)
+- [Rust UI Component Catalog](./rust-ui-component-catalog.md)
+- [Rich-text and Visual Page Builder Track](../modules/tiptap-page-builder-implementation-plan.md)
 
-## Документация приложений
+## Application Documentation
 
 - [Leptos Admin](../../apps/admin/docs/README.md)
 - [Leptos Storefront](../../apps/storefront/docs/README.md)
@@ -99,24 +99,24 @@ domain UI. Их целевой статус — **FFA-compatible composition hos
 - [Next.js Storefront](../../apps/next-frontend/docs/README.md)
 - [Flutter Admin Mobile](../../rustok_mobile/apps/rustok_admin_mobile/README.md)
 
-## Поддержка актуальности
+## Keeping Documentation Up to Date
 
-При изменении frontend-архитектуры, маршрутизации, UI contracts или backend integration:
+When changing frontend architecture, routing, UI contracts, or backend integration:
 
-1. Обновляйте локальные docs в `apps/*`.
-2. Обновляйте соответствующий документ в `docs/UI/`.
-3. Сверяйте ссылки в [карте документации](../index.md).
-4. Для module-owned admin UI дополнительно обновляйте route-selection contract и parity notes в
-   host docs, если меняется query schema, selection behavior или helper layer.
-5. Для module-owned storefront UI так же обновляйте routing/query parity notes, если меняется
-   reuse слоя `leptos-ui-routing`, host query semantics или storefront route/query contract.
+1. Update local docs in `apps/*`.
+2. Update the corresponding document in `docs/UI/`.
+3. Verify links in the [documentation map](../index.md).
+4. For module-owned admin UI, additionally update the route-selection contract and parity notes in
+   host docs if the query schema, selection behavior, or helper layer changes.
+5. For module-owned storefront UI, also update routing/query parity notes if the
+   `leptos-ui-routing` reuse layer, host query semantics, or storefront route/query contract changes.
 
-## Hotspot contract (DOC-12 / H3)
+## Hotspot Contract (DOC-12 / H3)
 
 - Hotspot: `H3` (Admin/storefront host topology).
 - Doc contracts updated: `docs/UI/README.md`.
 - Owner scope: frontend owners.
 - Residual drift risk:
-  - при изменении host wiring и transport parity в `apps/*` без синхронного
-    обновления `docs/UI/*` остаётся риск расхождения host contract notes;
-  - route/query parity для Leptos/Next может дрейфовать при быстрых UI cutover-й.
+  - when host wiring and transport parity in `apps/*` change without a synchronous
+    update to `docs/UI/*`, there is a risk of host contract notes diverging;
+  - route/query parity for Leptos/Next may drift during fast UI cutovers.

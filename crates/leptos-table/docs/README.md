@@ -1,3 +1,3 @@
-# Документация табличного модуля
+# Table Module Documentation
 
-Раздел документации в разработке.
+Documentation section under development.

@@ -1,7 +1,6 @@
-# План реализации `alloy`
+# `alloy` — Implementation Plan
 
-Статус: capability runtime зафиксирован; локальная документация и module
-contract приведены к единому формату.
+Status: capability runtime locked; local documentation and module contract unified.
 
 ## Execution checkpoint
 
@@ -12,59 +11,59 @@ contract приведены к единому формату.
 - Hand-off notes for next agent: Alloy compile/test gates are no longer blocked. Keep `rustok-api/server` enabled for `alloy` while HTTP/GraphQL controllers use server-gated API context types. Rhai sandbox limits are applied natively in `ScriptEngine::new`; do not remove them or the runtime hardening contract will drift from executable behavior. Static contract paths remain `crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`, and `scripts/verify/verify-alloy-runtime-contract.mjs`.
 - Last updated at (UTC): 2026-06-30T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `alloy` как capability-oriented модуль платформенного script/runtime слоя для скриптов, scheduler и hook execution;
-- синхронизировать runtime contract, `ModuleRegistry` wiring и local docs;
-- развивать script platform без превращения `alloy` в tenant-scoped бизнес-модуль.
+- maintain `alloy` as a capability-oriented module of the platform script/runtime layer for scripts, scheduler and hook execution;
+- synchronize runtime contract, `ModuleRegistry` wiring and local docs;
+- evolve the script platform without turning `alloy` into a tenant-scoped business module.
 
-## Текущее состояние
+## Current state
 
-- storage, migrations и execution log уже встроены в capability crate;
-- `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` и bridge/helper слой уже составляют базовый runtime;
-- GraphQL/HTTP transport surfaces живут внутри `alloy`, а host подключает их через generated module wiring;
-- `AlloyModule` зарегистрирован как обычный optional модуль и публикует script permission surface;
-- локальные docs и root `README.md` теперь входят в scoped module audit path.
+- storage, migrations and execution log already built into the capability crate;
+- `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` and bridge/helper layer already form the base runtime;
+- GraphQL/HTTP transport surfaces live inside `alloy`, and the host connects them through generated module wiring;
+- `AlloyModule` is registered as a regular optional module and publishes the script permission surface;
+- local docs and root `README.md` are now part of the scoped module audit path.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] нормализовать local docs и убрать битую кодировку из module docs;
-- [x] удерживать `alloy` в module-standard verification path;
-- [x] удерживать sync между host wiring, transport surfaces и capability metadata.
+- [x] normalize local docs and remove broken encoding from module docs;
+- [x] maintain `alloy` in the module-standard verification path;
+- [x] maintain sync between host wiring, transport surfaces and capability metadata.
 
 ### 2. Runtime hardening
 
-- [x] довести resource limits, timeout semantics и sandbox guarantees до стабильного production contract;
-- [x] удерживать audit log и execution history как каноническую операторскую поверхность с DB-level pagination и exact scoped total metadata;
-- [x] выровнять in-memory registry pagination с DB ordering contract для deterministic non-DB runtime/test paths;
-- [x] зафиксировать runtime route/schema/pagination/sandbox/scheduler/hook/script CRUD validation contract в machine-readable static gate без компиляции;
-- [x] расширять integration helpers только через явные phase-aware contracts.
+- [x] bring resource limits, timeout semantics and sandbox guarantees to a stable production contract;
+- [x] maintain audit log and execution history as the canonical operator surface with DB-level pagination and exact scoped total metadata;
+- [x] align in-memory registry pagination with DB ordering contract for deterministic non-DB runtime/test paths;
+- [x] lock the runtime route/schema/pagination/sandbox/scheduler/hook/script CRUD validation contract in a machine-readable static gate without compilation;
+- [x] extend integration helpers only through explicit phase-aware contracts.
 
 ### 3. Operability
 
-- [x] развить runbook для scheduler/runtime failures и hook debugging;
-- [x] покрыть execution, scheduler, bridge invariants и canonical transport field mapping точечными tests;
-- [x] документировать новые runtime guarantees одновременно с изменением capability surface.
+- [x] develop a runbook for scheduler/runtime failures and hook debugging;
+- [x] cover execution, scheduler, bridge invariants and canonical transport field mapping with targeted tests;
+- [x] document new runtime guarantees simultaneously with capability surface changes.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate alloy`
 - `cargo xtask module test alloy`
 - `npm run verify:alloy:runtime-contract`
-- targeted runtime tests для script execution, scheduling, tenant isolation и bridge semantics
+- targeted runtime tests for script execution, scheduling, tenant isolation and bridge semantics
 
-## Правила обновления
+## Update rules
 
-1. При изменении runtime contract сначала обновлять этот файл.
-2. При изменении public/capability surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata или host wiring синхронизировать `rustok-module.toml`.
+1. When changing the runtime contract, first update this file.
+2. When changing the public/capability surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata or host wiring, synchronize `rustok-module.toml`.
 
 
 ## Quality backlog
 
-- [x] Актуализировать no-compile static coverage по ключевым route/schema/pagination сценариям модуля.
-- [ ] Повысить static coverage до executable Rust integration tests после снятия запрета на компиляцию.
-- [x] Проверить полноту и актуальность `README.md` и локальных docs.
-- [x] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Update no-compile static coverage for key route/schema/pagination scenarios of the module.
+- [ ] Raise static coverage to executable Rust integration tests after the compilation ban is lifted.
+- [x] Verify completeness and relevance of `README.md` and local docs.
+- [x] Lock/update verification gates for the current module state.

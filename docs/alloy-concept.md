@@ -6,128 +6,129 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
+
 # ⚗️ ALLOY — Self-Evolving Integration Runtime
 
-> **Придумал → собрал → обкатал → выкатил в прод.**
-> Без боли, без ручного кода, без остановки системы.
+> **Ideate → Build → Refine → Ship to production.**
+> Without pain, without manual code, without system downtime.
 
-**Лицензия:** Business Source License 1.1 with RusTok Additional Use Grant
-**Репозиторий:** github.com/RustokCMS/RusTok
-**Версия концепта:** 1.0 / Февраль 2026
-
----
-
-## Содержание
-
-1. [Что такое Alloy](#1-что-такое-alloy)
-2. [Проблема которую решает Alloy](#2-проблема-которую-решает-alloy)
-3. [Три уровня свободы](#3-три-уровня-свободы)
-4. [Как это работает](#4-как-это-работает)
-5. [Три слоя архитектуры](#5-три-слоя-архитектуры)
-6. [Жизненный цикл кода](#6-жизненный-цикл-кода)
-7. [Alloy и платформа](#7-alloy-и-платформа)
-8. [Сферы применения](#8-сферы-применения)
-9. [Почему только Rust](#9-почему-только-rust)
-10. [Маховик экосистемы](#10-маховик-экосистемы)
-11. [Дорожная карта](#11-дорожная-карта)
-12. [Архитектурные решения](#12-архитектурные-решения)
+**License:** Business Source License 1.1 with RusTok Additional Use Grant
+**Repository:** github.com/RustokCMS/RusTok
+**Concept version:** 1.0 / February 2026
 
 ---
 
-## 1. Что такое Alloy
+## Table of Contents
 
-Alloy — это самостоятельный AI-native capability/runtime слой.
-Он получает задачу на человеческом языке, пишет исполняемый код, запускает его в изолированной безопасной среде, итерирует при ошибках, а затем переводит стабильные сценарии в нативные Rust-модули. RusToK может хостить Alloy как platform surface, но Alloy не должен мыслиться как внутренний tenant-модуль RusToK.
-
-**Alloy — это одновременно:**
-
-- **Самообучающийся интегратор** — подключается к любому сервису у которого есть документация по API
-- **Универсальный мигратор** — переваривает любые грязные, битые, legacy данные
-- **Инструмент быстрого прототипирования** — от идеи до работающего модуля без программистов
-- **Автоматизатор бизнес-процессов** — заменяет N8N, Zapier, Make, но умнее и быстрее
-- **Строитель собственных сервисов** — не хочешь интегрироваться с чужим? Создай своё
-
-> **Универсальный закон Alloy:**
-> Там где есть данные — там работает Alloy. А данные есть везде.
-
----
-
-## 2. Проблема которую решает Alloy
-
-### Мир интеграций сломан
-
-Существуют тысячи сервисов. Каждый со своим API. Каждый меняет этот API без предупреждения. Интеграции пишут программисты — дорого и долго. Интеграции ломаются — снова нужны программисты. Безопасность у каждого своя, у большинства никакая.
-
-**Итог:** бизнес тратит огромные ресурсы просто чтобы его сервисы разговаривали друг с другом.
-
-### Данные — токсичный актив
-
-У компаний накоплены терабайты данных в legacy-системах:
-- Логика размазана по хранимым процедурам
-- Форматы менялись десятилетиями
-- Документация утеряна
-- Люди которые это писали уволились
-
-Эти данные держат бизнес в заложниках. Уйти с SAP или Oracle невозможно не потому что там хорошо — а потому что данные там.
-
-### Vendor lock-in везде
-
-Данные в Salesforce, логика в HubSpot, платежи в Stripe. Каждый сервис создаёт зависимость. Бизнес платит за функции которые использует на 10%. И не может уйти.
+1. [What is Alloy](#1-what-is-alloy)
+2. [The Problem Alloy Solves](#2-the-problem-alloy-solves)
+3. [Three Levels of Freedom](#3-three-levels-of-freedom)
+4. [How It Works](#4-how-it-works)
+5. [Three Architecture Layers](#5-three-architecture-layers)
+6. [Code Lifecycle](#6-code-lifecycle)
+7. [Alloy and the Platform](#7-alloy-and-the-platform)
+8. [Application Areas](#8-application-areas)
+9. [Why Rust Only](#9-why-rust-only)
+10. [Ecosystem Flywheel](#10-ecosystem-flywheel)
+11. [Roadmap](#11-roadmap)
+12. [Architectural Decisions](#12-architectural-decisions)
 
 ---
 
-## 3. РўСЂРё СѓСЂРѕРІРЅСЏ СЃРІРѕР±РѕРґС‹
+## 1. What is Alloy
 
-Alloy даёт бизнесу три уровня работы с любым сервисом:
+Alloy is an independent AI-native capability/runtime layer.
+It receives a task in natural language, writes executable code, runs it in an isolated secure environment, iterates on errors, and then translates stable scenarios into native Rust modules. RusToK can host Alloy as a platform surface, but Alloy should not be thought of as an internal tenant module of RusToK.
 
-### Уровень 1 — Интегрируйся
+**Alloy is simultaneously:**
 
-Есть документация по API — Alloy интегрирует. Stripe, Salesforce, 1С, Google Analytics, любая ERP, любая CRM. Описал что хочешь — получил интеграцию. API изменился — Alloy заметил и починил сам. Без программистов.
+- **A self-learning integrator** — connects to any service that has API documentation
+- **A universal migrator** — processes any dirty, broken, legacy data
+- **A rapid prototyping tool** — from idea to working module without programmers
+- **A business process automator** — replaces N8N, Zapier, Make, but smarter and faster
+- **A custom service builder** — don't want to integrate with someone else's? Create your own
 
-### Уровень 2 — Возьми нужное
-
-Не нужен весь Salesforce — нужен только модуль контактов? Alloy вытащит именно эту функциональность и обернёт в свой модуль. Платишь только за то что используешь. Зависишь только от того что выбрал.
-
-### Уровень 3 — Создай своё
-
-Не хочешь зависеть ни от кого? Alloy строит модуль с нуля по твоему описанию. Своя CRM, своя аналитика, своя платёжная логика. На платформе вроде RusToK, которая выдержит любые данные и любой масштаб — от личного блога до серверов NASA.
-
-> **Alloy освобождает от зависимости от чужих сервисов.**
-> **Интегрируйся, бери нужное, или строй своё. Выбор всегда твой.**
+> **Alloy's universal law:**
+> Where there is data — there Alloy works. And data is everywhere.
 
 ---
 
-## 4. Как это работает
+## 2. The Problem Alloy Solves
+
+### The World of Integrations is Broken
+
+Thousands of services exist. Each with its own API. Each changes that API without warning. Integrations are written by programmers — expensive and slow. Integrations break — programmers are needed again. Security is different for everyone, and for most it's non-existent.
+
+**Result:** businesses spend enormous resources just to make their services talk to each other.
+
+### Data is a Toxic Asset
+
+Companies have terabytes of data accumulated in legacy systems:
+- Logic is scattered across stored procedures
+- Formats have changed over decades
+- Documentation is lost
+- The people who wrote it have left
+
+This data holds businesses hostage. Leaving SAP or Oracle is impossible not because it's good there — but because the data is there.
+
+### Vendor Lock-in Everywhere
+
+Data in Salesforce, logic in HubSpot, payments in Stripe. Every service creates a dependency. Businesses pay for features they use 10% of. And they cannot leave.
+
+---
+
+## 3. Three Levels of Freedom
+
+Alloy gives businesses three levels of working with any service:
+
+### Level 1 — Integrate
+
+Have API documentation? Alloy integrates. Stripe, Salesforce, 1C, Google Analytics, any ERP, any CRM. Describe what you want — get the integration. API changed? Alloy notices and fixes it automatically. Without programmers.
+
+### Level 2 — Take What You Need
+
+Don't need the entire Salesforce — just the contacts module? Alloy extracts exactly that functionality and wraps it in its own module. You pay only for what you use. You depend only on what you choose.
+
+### Level 3 — Create Your Own
+
+Don't want to depend on anyone? Alloy builds a module from scratch based on your description. Your own CRM, your own analytics, your own payment logic. On a platform like RusToK, which can handle any data and any scale — from a personal blog to NASA servers.
+
+> **Alloy frees you from dependence on third-party services.**
+> **Integrate, take what you need, or build your own. The choice is always yours.**
+
+---
+
+## 4. How It Works
 
 ```
-Пользователь: "Подключи магазин к Stripe и уведоми в Telegram при оплате"
+User: "Connect the store to Stripe and notify in Telegram on payment"
        ↓
-Alloy анализирует платформу: какие модули есть, какие данные доступны
+Alloy analyzes the platform: what modules exist, what data is available
        ↓
-AI пишет Rhai-скрипт интеграции
+AI writes a Rhai integration script
        ↓
-Скрипт запускается в изолированной sandbox-среде
+Script runs in an isolated sandbox environment
        ↓
-Ошибка в логике → показывает diff человеку
-Мелкая ошибка (тип, формат) → AI патчит автоматически
+Logic error → shows diff to human
+Minor error (type, format) → AI patches automatically
        ↓
-Скрипт стабилен, используется часто → AI решает компилировать
+Script is stable, used frequently → AI decides to compile
        ↓
-AI генерирует Rust-код → cargo build → нативный модуль
+AI generates Rust code → cargo build → native module
        ↓
-Модуль доступен в маркетплейсе для пользователей host-платформы
+Module available in the marketplace for host platform users
 ```
 
-### Три режима взаимодействия
+### Three Interaction Modes
 
-**Натуральный язык (чат)**
+**Natural language (chat)**
 ```
-"Каждую ночь собирай статистику из GA4,
- сравни с прошлой неделей,
- если падение > 20% — пиши в Slack"
+"Every night collect stats from GA4,
+ compare with last week,
+ if drop > 20% — post to Slack"
 ```
 
-**YAML конфиг** (для повторяемых задач)
+**YAML config** (for repeatable tasks)
 ```yaml
 name: ga4-weekly-alert
 trigger:
@@ -140,7 +141,7 @@ output:
   - notify: slack.send(channel='alerts', template='weekly_drop')
 ```
 
-**Программный API** (для встраивания)
+**Programmatic API** (for embedding)
 ```rust
 let integration = engine
     .create_from_prompt("Connect orders to Stripe")
@@ -150,305 +151,305 @@ engine.run(integration, source).await?;
 
 ---
 
-## 5. Три слоя архитектуры
+## 5. Three Architecture Layers
 
-| Слой | Технология | Роль | Стоимость вызова |
-|------|-----------|------|-----------------|
-| 🧠 **Мозг** | MCP + AI (любой провайдер) | Понимает задачу, пишет код, отлаживает логику, решает когда компилировать | Дорого — вызывается редко |
-| ✋ **Руки** | Rhai (embedded scripting) | Исполняет написанный AI код. Быстро. Безопасно. Без перекомпиляции. | Дёшево |
-| ⚙️ **Железо** | Скомпилированный Rust | Горячие сценарии становятся нативным кодом. Максимальная скорость. | Бесплатно в runtime |
+| Layer | Technology | Role | Call cost |
+|-------|-----------|------|-----------|
+| 🧠 **Brain** | MCP + AI (any provider) | Understands the task, writes code, debugs logic, decides when to compile | Expensive — called rarely |
+| ✋ **Hands** | Rhai (embedded scripting) | Executes the AI-written code. Fast. Secure. Without recompilation. | Cheap |
+| ⚙️ **Iron** | Compiled Rust | Hot scenarios become native code. Maximum speed. | Free at runtime |
 
-### Ключевой принцип экономии
+### Key Economy Principle
 
-AI вызывается **только** когда нужен интеллект:
-- Написать новый скрипт
-- Разобраться в непонятной ошибке
-- Решить компилировать ли скрипт
+AI is called **only** when intelligence is needed:
+- Write a new script
+- Figure out an unclear error
+- Decide whether to compile the script
 
-Выполнение 10 миллионов записей — Rust, AI не участвует.
+Executing 10 million records — Rust, AI not involved.
 
-### Безопасность Rhai Sandbox
+### Rhai Sandbox Security
 
-Скрипт не имеет доступа ни к чему за пределами явно переданного API:
+The script has no access to anything beyond explicitly passed API:
 
-| Возможность | Статус |
-|-------------|--------|
-| Доступ к файловой системе | 🚫 Запрещено |
-| Сетевые запросы (HTTP) | 🚫 Только через whitelist |
-| Запуск процессов | 🚫 Запрещено |
-| Неограниченная память | 🚫 Лимит (настраивается) |
-| Запись в БД | ✅ Только через явный API |
-| Бесконечный цикл | 🚫 Таймаут |
-
----
-
-## 6. Жизненный цикл кода
-
-| # | Стадия | Кто | Режим |
-|---|--------|-----|-------|
-| 1 | Пользователь описывает задачу (текст / YAML / API) | Человек | — |
-| 2 | AI анализирует данные, структуру, аномалии, самописный функционал | AI | Авто |
-| 3 | AI пишет Rhai-скрипт с обработкой edge-cases | AI | Авто |
-| 4 | Скрипт исполняется в изолированной sandbox-среде | Rust/Rhai | Авто |
-| 5 | Мелкая ошибка (тип, формат) → AI патчит автоматически | AI | **Авто** |
-| 6 | Изменение логики → показывает diff человеку | AI + Человек | **Ручной** |
-| 7 | Runtime считает вызовы, измеряет latency, строит паттерны | Rust | Авто |
-| 8 | AI анализирует паттерны и решает: компилировать? | AI | Полуавто |
-| 9 | AI генерирует Rust-код из Rhai → cargo build → нативный модуль | AI + rustc | Авто |
-| 10 | Модуль публикуется в маркетплейс | Платформа | Авто |
+| Capability | Status |
+|------------|--------|
+| Filesystem access | 🚫 Denied |
+| Network requests (HTTP) | 🚫 Only through whitelist |
+| Process execution | 🚫 Denied |
+| Unlimited memory | 🚫 Limit (configurable) |
+| DB writes | ✅ Only through explicit API |
+| Infinite loop | 🚫 Timeout |
 
 ---
 
-## 7. Alloy и платформа
+## 6. Code Lifecycle
 
-### Alloy не tenant-модуль RusToK, а отдельный capability layer
+| # | Stage | Who | Mode |
+|---|-------|-----|------|
+| 1 | User describes the task (text / YAML / API) | Human | — |
+| 2 | AI analyzes data, structure, anomalies, custom functionality | AI | Auto |
+| 3 | AI writes Rhai script with edge-case handling | AI | Auto |
+| 4 | Script runs in isolated sandbox environment | Rust/Rhai | Auto |
+| 5 | Minor error (type, format) → AI patches automatically | AI | **Auto** |
+| 6 | Logic change → shows diff to human | AI + Human | **Manual** |
+| 7 | Runtime counts calls, measures latency, builds patterns | Rust | Auto |
+| 8 | AI analyzes patterns and decides: compile? | AI | Semi-auto |
+| 9 | AI generates Rust code from Rhai → cargo build → native module | AI + rustc | Auto |
+| 10 | Module published to marketplace | Platform | Auto |
 
-RusToK может хостить Alloy и давать ему управляемый доступ к auth, permissions, событиям, модульным API и UI shell. Но это не делает Alloy очередным модулем внутри tenant module lifecycle. Для Alloy RusToK — host-платформа и один из возможных execution surfaces.
+---
+
+## 7. Alloy and the Platform
+
+### Alloy is not a tenant module of RusToK, but a separate capability layer
+
+RusToK can host Alloy and give it managed access to auth, permissions, events, module APIs and UI shell. But this does not make Alloy another module inside the tenant module lifecycle. For Alloy, RusToK is a host platform and one of several possible execution surfaces.
 
 ```
-в"Њв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"ђ
-│          HOST PLATFORM (например, RusToK)    │
-в"' Auth В· Permissions В· Events В· Module APIs    в"'
-└──────────────────────┬───────────────────────┘
-                       в"' governed platform surface
-                 в"Њв"Ђв"Ђв"Ђв"Ђв"Ђв–јв"Ђв"Ђв"Ђв"Ђв"Ђв"ђ
-                 в"'   Alloy   в"'
-                 в"' runtime   в"'
-                 └─────┬─────┘
-                       в"'
-        в"Њв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"јв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"Ђв"ђ
-        в"'              в"'              в"'
-   integrations    scripts      generated modules
+┌─────────────────────────────────────────────────────────┐
+│                     HOST PLATFORM (e.g., RusToK)        │
+│  Auth · Permissions · Events · Module APIs              │
+└──────────────────────────┬──────────────────────────────┘
+                           │ governed platform surface
+                    ┌──────┴──────┐
+                    │   Alloy     │
+                    │   runtime   │
+                    └──────┬──────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+         integrations  scripts    generated modules
 ```
 
-### Alloy — горизонтальный capability layer
+### Alloy — a horizontal capability layer
 
-Обычный модуль делает одну вещь. Один домен знает про заказы, другой про клиентов, третий про контент. Они не обязаны знать друг о друге.
+A regular module does one thing. One domain knows about orders, another about customers, a third about content. They don't have to know about each other.
 
-Alloy работает поперёк этих границ. Он дирижёр. Может писать скрипты, которые одновременно трогают commerce, content, workflow и внешние API. Это его природа — интегратор и генератор capability flows.
+Alloy works across these boundaries. It is the conductor. It can write scripts that simultaneously touch commerce, content, workflow and external APIs. This is its nature — an integrator and generator of capability flows.
 
-### Автономный Alloy
+### Autonomous Alloy
 
-Alloy можно запускать не только поверх полного RusToK. Минимальная сборка — Alloy runtime плюс host-provided surface для auth, storage, events и execution policy. Внутри RusToK этим host-слоем выступают `rustok-core`, `apps/server`, `alloy` и `rustok-mcp`, но это не делает Alloy crate-ом RusToK по смыслу.
+Alloy can run not only on top of a full RusToK instance. The minimal assembly is the Alloy runtime plus a host-provided surface for auth, storage, events and execution policy. Inside RusToK, this host layer is represented by `rustok-core`, `apps/server`, `alloy` and `rustok-mcp`, but this does not make Alloy a RusToK crate in spirit.
 
 ---
 
-## 8. Сферы применения
+## 8. Application Areas
 
-### Миграция Legacy-систем
+### Legacy System Migration
 
-Любой источник данных — форумы (vBulletin, phpBB), CMS (WordPress, Joomla), ERP (SAP, Oracle), COBOL-системы банков, самописные монстры с утеряной документацией. AI понимает не идеальные данные, а реальные — кривые, битые, с самописным функционалом.
+Any data source — forums (vBulletin, phpBB), CMS (WordPress, Joomla), ERP (SAP, Oracle), COBOL banking systems, custom monsters with lost documentation. AI understands not ideal data, but real data — crooked, broken, with custom functionality.
 
-Пресет — это не маппинг полей. Это реверс-инжиниринг живой системы: AI анализирует реальные данные конкретной инсталляции включая все кастомные хаки, очищает артефакты и строит адаптер именно под неё.
+A preset is not field mapping. It's reverse engineering of a live system: AI analyzes real data of a specific installation including all custom hacks, cleans artifacts and builds an adapter specifically for it.
 
-### Интеграции реального времени
+### Real-time Integrations
 
-Любой сервис у которого есть документация по API. Stripe, PayPal, Telegram, Slack, 1С, любая ERP, любая CRM. Без программистов. Интеграция сама исправляется когда API меняется.
+Any service that has API documentation. Stripe, PayPal, Telegram, Slack, 1C, any ERP, any CRM. Without programmers. The integration fixes itself when the API changes.
 
-### Автоматизация бизнес-процессов
+### Business Process Automation
 
-- «Когда приходит заказ → invoice в 1С → SMS клиенту → обновить склад»
-- «Каждую ночь: аналитика, сравнение с прошлой неделей, алерт при падении»
-- «Синхронизировать товары между платформами каждые 15 минут»
+- "When an order arrives → invoice in 1C → SMS to customer → update warehouse"
+- "Every night: analytics, comparison with last week, alert on drop"
+- "Sync products between platforms every 15 minutes"
 
-### Быстрое прототипирование
+### Rapid Prototyping
 
-Описал идею → AI собрал скрипт → обкатал в изолированной среде → выкатил в прод. От идеи до работающего модуля — часы, не недели.
+Describe an idea → AI builds a script → test in an isolated environment → ship to production. From idea to working module — hours, not weeks.
 
-### Создание собственных сервисов
+### Building Custom Services
 
-Не нужен весь Salesforce — нужны только контакты? Создай свой модуль. Не хочешь платить за лишнее — построй своё. Rustok выдержит любые данные и любой масштаб.
+Don't need the entire Salesforce — just contacts? Create your own module. Don't want to pay for extras — build your own. Rustok can handle any data and any scale.
 
-### Генерация нативных модулей
+### Native Module Generation
 
-Каждый AI-сгенерированный скрипт который стал нативным модулем — это новая возможность для следующего пользователя. Маркетплейс растёт органически силами самих пользователей.
+Every AI-generated script that becomes a native module is a new opportunity for the next user. The marketplace grows organically by the users themselves.
 
-### Медицина
+### Healthcare
 
-DICOM, HL7 FHIR — 50 госпиталей в 50 форматах → единая структура. Anonymization pipeline. HIPAA, 152-ФЗ с аудит-трейлом. Цена ошибки — человеческая жизнь. Memory safety Rust — не опция, требование.
+DICOM, HL7 FHIR — 50 hospitals in 50 formats → unified structure. Anonymization pipeline. HIPAA, 152-FZ with audit trail. Cost of error — human life. Rust memory safety is not an option, it's a requirement.
 
-### Финансы и банки
+### Finance and Banking
 
-Legacy COBOL 1970-х. Транзакционные потоки. Regulatory reporting. Anti-fraud pipeline в реальном времени. Reconciliation между десятками внутренних систем.
+Legacy COBOL from the 1970s. Transactional flows. Regulatory reporting. Anti-fraud pipeline in real time. Reconciliation between dozens of internal systems.
 
-### Научные данные
+### Scientific Data
 
-NASA, ESA, CERN. Терабайты телеметрии в нестандартных форматах. HDF5, FITS, NetCDF. Данные в реальном времени — нельзя ждать.
+NASA, ESA, CERN. Terabytes of telemetry in non-standard formats. HDF5, FITS, NetCDF. Real-time data — cannot wait.
 
-### Игровые миры
+### Gaming Worlds
 
-Подключение к Unity, Unreal, Godot. AI генерирует правила для новых территорий. Rust исполняет для миллионов объектов в реальном времени. Правила эволюционируют на основе поведения игроков.
+Integration with Unity, Unreal, Godot. AI generates rules for new territories. Rust executes for millions of objects in real time. Rules evolve based on player behavior.
 
-### IoT Рё Edge Computing
+### IoT and Edge Computing
 
-Тысячи датчиков в тысячах форматов. Alloy работает на 512 MB RAM. Нормализует данные у источника. Нативные модули деплоятся OTA.
+Thousands of sensors in thousands of formats. Alloy runs on 512 MB RAM. Normalizes data at the source. Native modules are deployed OTA.
 
-### Переписывание Enterprise ERP
+### Enterprise ERP Rewrite
 
-Компания хочет уйти с SAP но 20 лет данных держат в заложниках. Alloy переваривает всю историю. Новая ERP за месяцы вместо лет.
+A company wants to leave SAP but 20 years of data holds them hostage. Alloy processes the entire history. New ERP in months instead of years.
 
-### CDC — живая синхронизация
+### CDC — Live Sync
 
-Следит за binlog/WAL источника в реальном времени. Постоянно работающий сервис, не разовая миграция. Основа подписочной бизнес-модели.
-
----
-
-## 9. Почему только Rust
-
-| Требование | Python/JS | Java/Go | C++ | Rust |
-|-----------|-----------|---------|-----|------|
-| Скорость уровня железа | ❌ | ⚠️ GC-паузы | ✅ | ✅ |
-| Memory safety (гарантия компилятора) | ❌ | ⚠️ GC | ❌ | ✅ |
-| Embedded scripting (Rhai — нативный) | N/A | N/A | N/A | ✅ |
-| От IoT (512 MB) до кластера | ❌ | ❌ VM | ✅ | ✅ |
-| Нет runtime / сборщика мусора | ❌ | ❌ | ✅ | ✅ |
-| Безопасно для мед/банк/NASA данных | ❌ | ⚠️ | ❌ | ✅ |
-
-Ни один другой язык не закрывает все шесть требований одновременно.
+Tracks the source's binlog/WAL in real time. A continuously running service, not a one-time migration. Foundation for a subscription business model.
 
 ---
 
-## 10. Маховик экосистемы
+## 9. Why Rust Only
 
-Alloy может быть механизмом роста экосистемы RusToK:
+| Requirement | Python/JS | Java/Go | C++ | Rust |
+|------------|-----------|---------|-----|------|
+| Hardware-level speed | ❌ | ⚠️ GC pauses | ✅ | ✅ |
+| Memory safety (compiler guarantee) | ❌ | ⚠️ GC | ❌ | ✅ |
+| Embedded scripting (Rhai — native) | N/A | N/A | N/A | ✅ |
+| From IoT (512 MB) to cluster | ❌ | ❌ VM | ✅ | ✅ |
+| No runtime / garbage collector | ❌ | ❌ | ✅ | ✅ |
+| Safe for medical/bank/NASA data | ❌ | ⚠️ | ❌ | ✅ |
+
+No other language satisfies all six requirements simultaneously.
+
+---
+
+## 10. Ecosystem Flywheel
+
+Alloy can be a growth mechanism for the RusToK ecosystem:
 
 ```
-Пользователь ищет решение боли
+User searches for a solution to their pain
           ↓
-Находит Alloy (бесплатный, мощный)
+Finds Alloy (free, powerful)
           ↓
-Данные и интеграции переезжают в Rustok
+Data and integrations move to Rustok
           ↓
-Уйти = начать всё сначала (не уходит)
+Leaving = starting from scratch (doesn't leave)
           ↓
-Просит новую интеграцию
+Asks for a new integration
           ↓
-Alloy генерирует → модуль идёт в маркетплейс
+Alloy generates → module goes to marketplace
           ↓
-Маркетплейс привлекает новых пользователей
+Marketplace attracts new users
           ↓
-      (повторить)
+      (repeat)
 ```
 
-Чем больше пользователей → тем богаче экосистема → тем больше пользователей.
+More users → richer ecosystem → more users.
 
-### Сравнение с конкурентами
+### Comparison with Competitors
 
 | | N8N/Zapier | Airbyte | LangChain | Alloy |
 |--|-----------|---------|-----------|-------|
-| AI пишет код интеграции | ❌ | ❌ | ⚠️ | ✅ |
-| Самоисправляется при смене API | ❌ | ❌ | ❌ | ✅ |
-| Скрипт → нативный модуль | ❌ | ❌ | ❌ | ✅ |
-| Понимает грязные/битые данные | ❌ | ⚠️ | ⚠️ | ✅ |
-| Rust (скорость + safety) | ❌ | ❌ | ❌ | ✅ |
-| Создаёт собственные сервисы | ❌ | ❌ | ❌ | ✅ |
+| AI writes integration code | ❌ | ❌ | ⚠️ | ✅ |
+| Self-heals on API changes | ❌ | ❌ | ❌ | ✅ |
+| Script → native module | ❌ | ❌ | ❌ | ✅ |
+| Understands dirty/broken data | ❌ | ⚠️ | ⚠️ | ✅ |
+| Rust (speed + safety) | ❌ | ❌ | ❌ | ✅ |
+| Creates own services | ❌ | ❌ | ❌ | ✅ |
 
-> **Alloy создаёт новую категорию: Self-Evolving Integration Runtime (SEIR)**
+> **Alloy creates a new category: Self-Evolving Integration Runtime (SEIR)**
 
 ---
 
-## 11. Дорожная карта
+## 11. Roadmap
 
-### Фаза 1 — Foundation (Q1 2026)
+### Phase 1 — Foundation (Q1 2026)
 
-- ✅ Rhai engine с хелперами (даты, кодировки, PHP-десериализация)
-- вњ… CLI interface
-- ✅ Парсер SQL-дампов
-- ⬜ Пресеты: vBulletin, phpBB, WordPress
-- ⬜ Базовый MCP-клиент
-- ⬜ Schema Probe (автоанализ структуры БД)
-- ⬜ Dry Run режим
-- ⬜ Rollback механизм
+- ✅ Rhai engine with helpers (dates, encodings, PHP deserialization)
+- ✅ CLI interface
+- ✅ SQL dump parser
+- ⬜ Presets: vBulletin, phpBB, WordPress
+- ⬜ Basic MCP client
+- ⬜ Schema Probe (auto-analysis of DB structure)
+- ⬜ Dry Run mode
+- ⬜ Rollback mechanism
 
-### Фаза 2 — AI Core (Q2 2026)
+### Phase 2 — AI Core (Q2 2026)
 
-- Автогенерация Rhai-скриптов по сэмплу данных
-- Самоотладка: мелкие ошибки авто, логика — подтверждение
-- Аудит-трейл каждой операции
-- AI-генерация тестов
-- Плагин-система AI-провайдеров (Claude, GPT, Ollama)
+- Auto-generation of Rhai scripts from data samples
+- Self-debugging: minor errors auto, logic — confirmation
+- Audit trail for every operation
+- AI test generation
+- AI provider plugin system (Claude, GPT, Ollama)
 
-### Фаза 3 — Integration Runtime (Q3 2026)
+### Phase 3 — Integration Runtime (Q3 2026)
 
 - Event-driven architecture
 - CDC (Change Data Capture): binlog/WAL
-- Webhook-обработчики с самоисправлением
-- HotTracker: мониторинг паттернов использования
-- YAML/JSON конфиги как first-class интерфейс
+- Webhook handlers with self-healing
+- HotTracker: monitoring usage patterns
+- YAML/JSON configs as first-class interface
 
-### Фаза 4 — Native Compilation (Q4 2026)
+### Phase 4 — Native Compilation (Q4 2026)
 
-- AI генерирует Rust-код из Rhai-скрипта
-- Pipeline: gen в†' review в†' cargo build в†' test в†' hot swap
-- Маркетплейс модулей v1
-- Web UI в RusToK-админке и/или во внешних host-приложениях
+- AI generates Rust code from Rhai script
+- Pipeline: gen → review → cargo build → test → hot swap
+- Module marketplace v1
+- Web UI in RusToK admin and/or external host applications
 
-### Фаза 5 — Ecosystem (2027)
+### Phase 5 — Ecosystem (2027)
 
 - Cloud SaaS (managed service, usage-based billing)
-- SDK для встраивания Alloy в сторонние приложения
-- Enterprise-контракты (банки, медицина, госсектор)
-- Специализированные пресеты: DICOM, SWIFT, COBOL, HDF5
-- Edge deployment: нативные модули на IoT-устройствах
-- Federated маркетплейс
+- SDK for embedding Alloy in third-party applications
+- Enterprise contracts (banks, healthcare, government)
+- Specialized presets: DICOM, SWIFT, COBOL, HDF5
+- Edge deployment: native modules on IoT devices
+- Federated marketplace
 
 ---
 
-## 12. Архитектурные решения
+## 12. Architectural Decisions
 
-Все ключевые решения приняты. Это единственный источник правды для разработки.
+All key decisions are made. This is the single source of truth for development.
 
-| Решение | Выбор | Обоснование |
-|---------|-------|-------------|
-| Лицензия | Business Source License 1.1 with RusTok Additional Use Grant | Non-production разрешён по BSL 1.1; production, включая SaaS/hosted/white-label/competing use всей платформы или существенных частей, разрешён при Total Finances до USD $3 млн, выше порога требуется commercial license |
-| AI-транспорт | Плагин-система (trait AiProvider) | Нет vendor lock-in на AI-провайдера |
-| Интерфейс задачи | Текст / YAML / API по контексту | AI генерирует YAML из текста |
-| Самоотладка | Авто для мелких, подтверждение для логики | Баланс автономии и контроля |
-| Определение «горячести» | AI на основе паттернов использования | Умное решение, не жёсткий порог |
-| Компиляция Rhai → Rust | AI генерирует Rust-код | Rhai динамический, нужен идиоматичный Rust |
-| Пресет | Реверс-инжиниринг живой системы | Не маппинг полей — адаптер под конкретную инсталляцию |
-| Sandbox | FS❌ HTTP-whitelist❌ Proc❌ Mem-лимит✅ | Полная изоляция, внешнее — только через явный API |
-| Регистрация API модулей | Трейты Core (compile-time) | Типобезопасность, нет overhead, новый модуль = новые инструменты |
-| Хранение скриптов | БД (источник правды) + файлы (version control) | Лучшее из двух миров |
-| Админка | Раздел внутри RusToK-админки или отдельный host UI | Alloy не привязан к одному shell |
-| MCP transport | `rustok-mcp` как RusToK adapter поверх `rmcp` | Alloy получает governed AI ↔ platform bridge без встраивания MCP в core |
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| License | Business Source License 1.1 with RusTok Additional Use Grant | Non-production allowed under BSL 1.1; production, including SaaS/hosted/white-label/competing use of the entire platform or substantial parts, is allowed when Total Finances is under USD $3 million, above threshold requires commercial license |
+| AI transport | Plugin system (trait AiProvider) | No vendor lock-in on AI provider |
+| Task interface | Text / YAML / API by context | AI generates YAML from text |
+| Self-debugging | Auto for minor, confirmation for logic | Balance of autonomy and control |
+| "Hotness" determination | AI based on usage patterns | Smart decision, not a hard threshold |
+| Compilation Rhai → Rust | AI generates Rust code | Rhai is dynamic, idiomatic Rust needed |
+| Preset | Reverse engineering of a live system | Not field mapping — adapter for a specific installation |
+| Sandbox | FS❌ HTTP-whitelist❌ Proc❌ Mem-limit✅ | Full isolation, external only through explicit API |
+| API module registration | Core traits (compile-time) | Type safety, no overhead, new module = new tools |
+| Script storage | DB (source of truth) + files (version control) | Best of both worlds |
+| Admin UI | Section inside RusToK admin or separate host UI | Alloy not tied to a single shell |
+| MCP transport | `rustok-mcp` as RusToK adapter over `rmcp` | Alloy gets governed AI ↔ platform bridge without embedding MCP in core |
 
 ---
 
-## Итог
+## Summary
 
 ```
 ⚗️ ALLOY
 ```
 
-AI пишет исполняемый код для любой задачи с данными.
-Rust выполняет его с максимальной скоростью и гарантированной безопасностью.
-Система сама отлаживает ошибки и компилирует стабильные сценарии в нативные модули.
-Бесконечное количество интеграций. Без программистов. Самовосстанавливающееся.
-**От личного блога до серверов NASA.**
+AI writes executable code for any data-related task.
+Rust executes it with maximum speed and guaranteed safety.
+The system debugs errors itself and compiles stable scenarios into native modules.
+Infinite integrations. Without programmers. Self-healing.
+**From a personal blog to NASA servers.**
 
 ---
 
-*⚗️ Переплавляй. Интегрируй. Эволюционируй.*
+*⚗️ Reshape. Integrate. Evolve.*
 
 ---
 
-## О названии
+## About the Name
 
-Любое описательное название для Alloy — это костыль.
+Any descriptive name for Alloy is a crutch.
 
-- "Мигратор данных" — только миграция
-- "Интегратор" — только интеграции
-- "ETL на стероидах" — только данные
-- "No-code автоматизация" — только автоматизация
-- "Self-Evolving Integration Runtime" — умно, но мёртво
+- "Data migrator" — only migration
+- "Integrator" — only integrations
+- "ETL on steroids" — only data
+- "No-code automation" — only automation
+- "Self-Evolving Integration Runtime" — clever, but dead
 
-Alloy делает всё это одновременно — плюс создаёт сервисы с нуля, плюс генерирует модули, плюс самовосстанавливается, плюс эволюционирует. Любое название описывает только одну грань и обедняет целое.
+Alloy does all of this simultaneously — plus creates services from scratch, plus generates modules, plus self-heals, plus evolves. Any name describes only one facet and diminishes the whole.
 
-Это как пытаться назвать электричество. "Источник света"? Однобоко. "Двигатель"? Тоже. Электричество — это просто электричество. Все знают что с ним можно сделать всё.
+It's like trying to name electricity. "Light source"? One-sided. "Engine"? Same. Electricity is just electricity. Everyone knows you can do everything with it.
 
-Лучшие инструменты называются просто: **Rust. Go. Rails. Stripe.** Одно слово. Никаких объяснений в названии. Бренд строится делами, а не описанием.
+The best tools are named simply: **Rust. Go. Rails. Stripe.** One word. No explanations in the name. Brand is built by deeds, not descriptions.
 
-**Alloy — это просто Alloy.**
+**Alloy is simply Alloy.**
 
-> *Там где есть данные — там работает Alloy.*
+> *Where there is data — there Alloy works.*

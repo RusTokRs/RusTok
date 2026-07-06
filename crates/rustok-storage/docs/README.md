@@ -1,38 +1,38 @@
-# Документация `rustok-storage`
+# `rustok-storage` Documentation
 
-`rustok-storage` — shared storage abstraction layer платформы. Он даёт единый
-`StorageBackend` contract для доменных модулей, которым нужно хранить файлы,
-независимо от конкретного backend-а.
+`rustok-storage` — shared storage abstraction layer of the platform. It provides a unified
+`StorageBackend` contract for domain modules that need to store files,
+regardless of the specific backend.
 
-## Назначение
+## Purpose
 
-- публиковать канонический storage backend contract;
-- изолировать доменные модули от деталей local/S3-compatible storage implementation;
-- держать единый high-level `StorageService` для file-oriented сценариев платформы.
+- publish the canonical storage backend contract;
+- isolate domain modules from the details of local/S3-compatible storage implementation;
+- maintain a unified high-level `StorageService` for file-oriented platform scenarios.
 
-## Зона ответственности
+## Scope
 
 - `StorageBackend`, `UploadedObject`, `StorageService`;
-- backend selection/configuration и path generation helpers;
-- local storage implementation и future backend seams;
-- storage errors, public URL construction и path-safety guarantees;
-- отсутствие domain-owned media/business logic.
+- backend selection/configuration and path generation helpers;
+- local storage implementation and future backend seams;
+- storage errors, public URL construction and path-safety guarantees;
+- absence of domain-owned media/business logic.
 
-## Интеграция
+## Integration
 
-- используется `rustok-media` и другими file-oriented модулями как shared storage dependency;
-- `apps/server` выступает только wiring-слоем для регистрации `StorageService`;
-- storage health и basic observability должны оставаться синхронизированными с host/runtime docs;
-- domain modules не должны обходить `rustok-storage` прямым backend-specific кодом без явной причины.
+- used by `rustok-media` and other file-oriented modules as a shared storage dependency;
+- `apps/server` acts only as a wiring layer for registering `StorageService`;
+- storage health and basic observability must remain synchronized with host/runtime docs;
+- domain modules must not bypass `rustok-storage` with direct backend-specific code without a clear reason.
 
-## Проверка
+## Verification
 
-- structural verification: local docs и storage contract должны оставаться синхронизированными;
-- targeted compile/tests при изменении `StorageBackend`, path safety или backend configuration;
-- integration checks нужны при изменении backend implementations и health semantics.
+- structural verification: local docs and the storage contract must remain synchronized;
+- targeted compile/tests when changing `StorageBackend`, path safety or backend configuration;
+- integration checks needed when changing backend implementations and health semantics.
 
-## Связанные документы
+## Related documents
 
-- [План реализации](./implementation-plan.md)
-- [Документация `rustok-media`](../../rustok-media/docs/README.md)
+- [Implementation plan](./implementation-plan.md)
+- [`rustok-media` documentation](../../rustok-media/docs/README.md)
 - [Observability quickstart](../../../docs/guides/observability-quickstart.md)

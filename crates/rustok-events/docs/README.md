@@ -1,40 +1,40 @@
-# Документация `rustok-events`
+# Documentation `rustok-events`
 
-`rustok-events` — канонический shared import surface для event contracts
-платформы. Он владеет `DomainEvent`, `EventEnvelope`, schema metadata и
-validation rules, а `rustok-core` сохраняет только compatibility re-export path.
+`rustok-events` is the canonical shared import surface for platform event
+contracts. It owns `DomainEvent`, `EventEnvelope`, schema metadata and
+validation rules, while `rustok-core` retains only a compatibility re-export path.
 
-## Назначение
+## Purpose
 
-- публиковать единый event-contract layer для платформы;
-- удерживать schema metadata, envelope shape и validation rules внутри отдельного модуля;
-- оторвать потребителей событий от прямой зависимости на `rustok-core::events`.
+- publish a unified event-contract layer for the platform;
+- keep schema metadata, envelope shape and validation rules inside a separate module;
+- decouple event consumers from a direct dependency on `rustok-core::events`.
 
-## Зона ответственности
+## Responsibilities
 
-- `DomainEvent`, `EventEnvelope`, `EventSchema`, `FieldSchema` и schema registry;
-- validation rules и versioning policy для event payloads;
-- compatibility aliases и non-breaking migration path для consumers;
-- contract tests и release-gate expectations для event-schema changes;
-- отсутствие transport-specific event delivery logic.
+- `DomainEvent`, `EventEnvelope`, `EventSchema`, `FieldSchema` and schema registry;
+- validation rules and versioning policy for event payloads;
+- compatibility aliases and non-breaking migration path for consumers;
+- contract tests and release-gate expectations for event-schema changes;
+- absence of transport-specific event delivery logic.
 
-## Интеграция
+## Integration
 
-- `rustok-core::events` остаётся compatibility adapter поверх канонического surface из `rustok-events`;
-- доменные модули, outbox/runtime crates и test utilities должны импортировать event contracts напрямую из `rustok-events`;
-- изменения event contracts должны быть синхронизированы с outbox, replay, DLQ и reindex guidance;
-- tenant lifecycle contracts (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) должны оставаться синхронизированными с tenancy-модулями и их outbox mutation paths;
-- breaking payload changes требуют version bump и explicit dual-read/migration plan.
+- `rustok-core::events` remains a compatibility adapter over the canonical surface from `rustok-events`;
+- domain modules, outbox/runtime crates and test utilities must import event contracts directly from `rustok-events`;
+- changes to event contracts must be synchronized with outbox, replay, DLQ and reindex guidance;
+- tenant lifecycle contracts (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) must remain synchronized with tenancy modules and their outbox mutation paths;
+- breaking payload changes require a version bump and an explicit dual-read/migration plan.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate events`
 - `cargo xtask module test events`
-- targeted tests для schema coverage, validation, versioning и envelope JSON roundtrip
+- targeted tests for schema coverage, validation, versioning and envelope JSON roundtrip
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Platform documentation map](../../../docs/index.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)

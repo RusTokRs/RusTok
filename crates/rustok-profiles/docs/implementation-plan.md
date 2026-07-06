@@ -1,69 +1,69 @@
-# План реализации `rustok-profiles`
+# Implementation plan for `rustok-profiles`
 
-Статус: storage/service/GraphQL foundation уже подняты; модуль находится в
-режиме rollout hardening вокруг profile summary, backfill и UI/read-model
-дальнейшего развития.
+Status: storage/service/GraphQL foundation is already up; the module is in
+rollout hardening mode around profile summary, backfill and UI/read-model
+further development.
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: After each increment, update this block.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-profiles` как отдельный public profile domain;
-- синхронизировать storage, summary contracts, GraphQL surfaces и local docs;
-- не допускать схлопывания `profiles`, `users`, `customer` и будущих seller surfaces.
+- maintain `rustok-profiles` as a separate public profile domain;
+- synchronize storage, summary contracts, GraphQL surfaces and local docs;
+- prevent collapsing `profiles`, `users`, `customer` and future seller surfaces.
 
-## Текущее состояние
+## Current state
 
-- `ProfilesModule`, `rustok-module.toml` и permission surface `profiles:*` уже существуют;
-- `profiles` и `profile_translations` уже живут в module-owned storage;
-- `ProfileService`, `ProfilesReader`, batched summary lookup и GraphQL transport уже реализованы;
-- `blog` и `forum` уже используют модуль как author presentation boundary;
-- taxonomy-backed `profile_tags`, `profile.updated` и explicit backfill path уже входят в live contract.
+- `ProfilesModule`, `rustok-module.toml` and permission surface `profiles:*` already exist;
+- `profiles` and `profile_translations` already live in module-owned storage;
+- `ProfileService`, `ProfilesReader`, batched summary lookup and GraphQL transport are already implemented;
+- `blog` and `forum` already use the module as an author presentation boundary;
+- taxonomy-backed `profile_tags`, `profile.updated` and explicit backfill path are already part of the live contract.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] зафиксировать profile boundary поверх `users`;
-- [x] поднять module-owned storage, service layer и GraphQL baseline;
-- [x] внедрить `ProfilesReader` как downstream integration contract;
-- [ ] удерживать sync между runtime contracts, GraphQL surface и module metadata.
+- [x] lock profile boundary over `users`;
+- [x] bring up module-owned storage, service layer and GraphQL baseline;
+- [x] introduce `ProfilesReader` as downstream integration contract;
+- [ ] maintain sync between runtime contracts, GraphQL surface and module metadata.
 
 ### 2. Rollout hardening
 
-- [ ] решить, нужен ли отдельный projection/read-model помимо прямого чтения из `profiles + profile_translations`;
-- [ ] довести visibility/media policy и оставшиеся storage решения вокруг handle uniqueness;
-- [ ] удерживать profile backfill и `profile.updated` semantics совместимыми с downstream consumers.
+- [ ] decide whether a separate projection/read-model is needed beyond direct reading from `profiles + profile_translations`;
+- [ ] finalize visibility/media policy and remaining storage decisions around handle uniqueness;
+- [ ] keep profile backfill and `profile.updated` semantics compatible with downstream consumers.
 
 ### 3. UI and operability
 
-- [ ] добавить module-owned UI packages после фиксации profile-domain contract;
-- [ ] развить audit trail, observability и runbook guidance для profile conflicts и rollout effects;
-- [ ] документировать новые guarantees одновременно с изменением runtime/API surface.
+- [ ] add module-owned UI packages after profile-domain contract is locked;
+- [ ] develop audit trail, observability and runbook guidance for profile conflicts and rollout effects;
+- [ ] document new guarantees concurrently with runtime/API surface changes.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate profiles`
 - `cargo xtask module test profiles`
-- targeted tests для handle policy, locale fallback, summary batching, GraphQL path и backfill/events
+- targeted tests for handle policy, locale fallback, summary batching, GraphQL path and backfill/events
 
-## Правила обновления
+## Update rules
 
-1. При изменении profile runtime contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
-4. При изменении downstream integration expectations обновлять consumer docs у `blog`, `forum` и других модулей.
+1. When changing profile runtime contract, first update this file.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
+4. When changing downstream integration expectations, update consumer docs for `blog`, `forum` and other modules.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and accuracy of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

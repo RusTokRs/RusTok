@@ -1,83 +1,83 @@
-# Документация `rustok-product`
+# `rustok-product` Documentation
 
-`rustok-product` — дефолтный каталоговый подмодуль семейства `ecommerce`.
+`rustok-product` — default catalog submodule of the `ecommerce` family.
 
-## Назначение
+## Purpose
 
-- каталог товаров;
-- варианты, опции, переводы и публикация;
-- taxonomy-backed product tags через shared `rustok-taxonomy` и product-owned relation `product_tags`;
+- product catalog;
+- variants, options, translations and publishing;
+- taxonomy-backed product tags via shared `rustok-taxonomy` and product-owned relation `product_tags`;
 - product-owned migrations;
-- `ProductModule`, `CatalogService`, module-owned admin UI пакет `rustok-product/admin` и module-owned storefront UI пакет `rustok-product/storefront`.
+- `ProductModule`, `CatalogService`, module-owned admin UI package `rustok-product/admin` and module-owned storefront UI package `rustok-product/storefront`.
 
-## Зона ответственности
+## Scope
 
-- `rustok-product` владеет module-owned admin/storefront UI packages, native `#[server]` внутренними путями и product-owned GraphQL contract types; umbrella `rustok-commerce` остаётся ecommerce composition layer, но не маскирует product owner boundary.
-- storefront read-side для published catalog уже живёт в `rustok-product/storefront` и использует native Leptos server functions поверх `CatalogService`, сохраняя GraphQL storefront contract как fallback.
-- product CRUD в admin UI вынесен из `rustok-commerce-admin`
-  в module-owned route `product`; native server functions являются основным внутренним путём,
-  а GraphQL поддерживается параллельно без возврата ownership в umbrella `rustok-commerce`;
-- generic GraphQL roots `product` / `storefrontProduct`, на которые пока опираются
-  module-owned product UI packages, считаются catalog-authoritative surface:
-  `variants.prices` в них остаётся compatibility snapshot без explicit
-  currency/region/price-list/channel resolution и не должен трактоваться как
-  pricing source of truth рядом с `adminPricingProduct` / `storefrontPricingProduct`;
-- module-owned `rustok-product/admin` и `rustok-product/storefront` теперь тоже
-  синхронизированы с этим split: UI больше не показывает generic catalog
-  `variants.prices` как resolved price, а держит отдельный pricing-module preview
-  hook для `adminPricingProduct` / `storefrontPricingProduct`; admin list/status/filter,
-  shipping-profile, pricing-preview и pricing deep-link helpers живут в
-  framework-agnostic `admin/src/core.rs` (включая `SelectedProductSummaryViewModel`),
-  admin GraphQL операции проходят через module-owned facade `admin/src/transport.rs`,
-  а Leptos render/effect adapter изолирован в `admin/src/ui/leptos.rs`;
-- storefront FFA slices вынесли route/query normalization, typed fetch request shape,
+- `rustok-product` owns module-owned admin/storefront UI packages, native `#[server]` internal paths and product-owned GraphQL contract types; the umbrella `rustok-commerce` remains the ecommerce composition layer, but does not mask the product owner boundary.
+- The storefront read-side for published catalog now lives in `rustok-product/storefront` and uses native Leptos server functions over `CatalogService`, keeping the GraphQL storefront contract as a fallback.
+- Product CRUD in the admin UI has been moved out of `rustok-commerce-admin`
+  into the module-owned route `product`; native server functions are the primary internal path,
+  and GraphQL is maintained in parallel without returning ownership to the umbrella `rustok-commerce`;
+- The generic GraphQL roots `product` / `storefrontProduct`, which are still used by
+  module-owned product UI packages, are considered a catalog-authoritative surface:
+  `variants.prices` in them remains a compatibility snapshot without explicit
+  currency/region/price-list/channel resolution and must not be treated as a
+  pricing source of truth alongside `adminPricingProduct` / `storefrontPricingProduct`;
+- Module-owned `rustok-product/admin` and `rustok-product/storefront` are now also
+  synchronized with this split: the UI no longer shows generic catalog
+  `variants.prices` as resolved price, but keeps a separate pricing-module preview
+  hook for `adminPricingProduct` / `storefrontPricingProduct`; admin list/status/filter,
+  shipping-profile, pricing-preview and pricing deep-link helpers live in
+  framework-agnostic `admin/src/core.rs` (including `SelectedProductSummaryViewModel`),
+  admin GraphQL operations go through the module-owned facade `admin/src/transport.rs`,
+  and the Leptos render/effect adapter is isolated in `admin/src/ui/leptos.rs`;
+- The storefront FFA slices have moved route/query normalization, typed fetch request shape,
   shell copy, selected-product view-model composition, selected-card labels/empty
   state, catalog rail presentation, pricing/seller labels, pricing-context
-  sanitization/defaulting и pricing deep-link state в `storefront/src/core.rs`;
-  native/GraphQL storefront fetch paths оформлены как `storefront/src/transport/`
-  adapters, а Leptos `ProductView`/`SelectedProductCard`/`CatalogRail` живут в
-  `storefront/src/ui/leptos.rs` как тонкий host-context/render слой поверх
-  подготовленного core-состояния;
-- Общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
-- FBA boundary опубликован как `ProductCatalogReadPort` / `product.catalog_read.v1`.
+  sanitization/defaulting and pricing deep-link state into `storefront/src/core.rs`;
+  native/GraphQL storefront fetch paths are structured as `storefront/src/transport/`
+  adapters, and Leptos `ProductView`/`SelectedProductCard`/`CatalogRail` live in
+  `storefront/src/ui/leptos.rs` as a thin host-context/render layer over
+  prepared core state;
+- Shared DTOs, entities and error surface come from `rustok-commerce-foundation`.
+- FBA boundary is published as `ProductCatalogReadPort` / `product.catalog_read.v1`.
   Registry `contracts/product-fba-registry.json`, static matrix,
-  no-compile runtime contract smoke и source-locked runtime fallback smoke держат статус
-  `boundary_ready`; `transport_verified` остаётся закрытым до live provider execution evidence.
-- canonical vocabulary и attach semantics для product tags живут в
-  `rustok-taxonomy` + `product_tags`, а public contract использует first-class
-  поле `tags` вместо legacy `metadata.tags`.
-- shipping profile для товара и варианта теперь имеет first-class typed surface в
-  product DTO (`shipping_profile_slug`) и typed persistence в
+  no-compile runtime contract smoke and source-locked runtime fallback smoke maintain status
+  `boundary_ready`; `transport_verified` remains closed until live provider execution evidence.
+- Canonical vocabulary and attach semantics for product tags live in
+  `rustok-taxonomy` + `product_tags`, and the public contract uses a first-class
+  `tags` field instead of legacy `metadata.tags`.
+- Shipping profile for product and variant now has a first-class typed surface in
+  product DTO (`shipping_profile_slug`) and typed persistence in
   `products.shipping_profile_slug` / `product_variants.shipping_profile_slug`; metadata-backed
-  `shipping_profile.slug` остаётся только backward-compatible формой нормализации для старых
-  read/write-path consumer'ов.
-- multivendor foundation теперь тоже начинается на product boundary: create/update/read contract
-  включает nullable `seller_id`, который считается canonical seller identity key для downstream
-  cart/order/fulfillment orchestration; merchandising/display поля вроде `vendor` не должны
-  использоваться как seller identity.
-- effective shipping profile для deliverability теперь разрешается как
-  `variant.shipping_profile_slug -> product.shipping_profile_slug -> default`, а omission
-  first-class поля на write-path не должен затирать уже существующую typed binding/compatibility
+  `shipping_profile.slug` remains only a backward-compatible normalization form for old
+  read/write-path consumers.
+- Multivendor foundation now also starts at the product boundary: the create/update/read contract
+  includes nullable `seller_id`, which is the canonical seller identity key for downstream
+  cart/order/fulfillment orchestration; merchandising/display fields like `vendor` must not
+  be used as seller identity.
+- Effective shipping profile for deliverability is resolved as
+  `variant.shipping_profile_slug -> product.shipping_profile_slug -> default`, and omission
+  of the first-class field on the write-path must not overwrite an existing typed binding/compatibility
   normalization.
-- transport-level validation для `shipping_profile_slug` теперь живёт в фасаде
-  `rustok-commerce` и проверяет ссылку против active shipping profiles из typed
-  registry `shipping_profiles`, чтобы product write-path не принимал произвольные slug'и.
+- Transport-level validation for `shipping_profile_slug` now lives in the
+  `rustok-commerce` facade and checks the reference against active shipping profiles from the typed
+  registry `shipping_profiles`, so that the product write-path does not accept arbitrary slugs.
 
-## Нативные атрибуты каталога
+## Native catalog attributes
 
-- `product_attributes` является единым справочником ecommerce-атрибутов.
-- `catalog_categories` хранит structural, collection и virtual категории; `products.primary_category_id` определяет product form только через structural category.
-- `product_attribute_schemas` являются опциональными reusable templates, а category bindings/groups дают inheritance, clone snapshot, custom и local override сценарии.
-- `product_categories` хранит дополнительные навигационные/витринные привязки и не меняет форму товара.
-- Значения живут в typed product/variant attribute value tables; localized labels и text-like values вынесены в translation tables.
-- Product-level значения читаются и изменяются через owner-owned typed read/patch contract: omitted атрибут не меняется, `clear` удаляет значение, пустой multiselect очищает значение, options и effective schema проверяются до транзакционной записи, а detached values сохраняются и возвращаются отдельным маркером.
-- Detached values отображаются в product admin отдельным review-блоком и очищаются только через owner-owned `clear_detached_product_attribute_values`; сервис проверяет, что каждый удаляемый attribute действительно находится вне текущей effective schema, native `#[server]` остаётся основным путём, GraphQL поддерживается параллельно.
-- Publish validation выполняется в owner-owned `ProductCatalogSchemaService`: required effective attributes должны быть заполнены до перехода товара в `Active`, localized text-like values требуют явную непустую translation row, option attributes требуют сохранённые option relations, а create-with-publish отклоняется для категорий с required typed attributes.
-- Effective form загружает локализованные options одним ограниченным запросом по effective attribute ids; schema/category groups возвращают локализованный `group_label` по host locale, binding использует стабильный `group_code`, а product admin группирует поля по label/code, отображает typed controls и отправляет только dirty patches после сохранения товара и его primary category.
-- `rustok-index` при индексации товара материализует tenant/locale-scoped строки категорий и нормализованные facet/search/sort значения. Multiselect раскладывается по одной строке на option, localized labels берутся только из явной строки запрошенной locale, а effective attribute ids вычисляются read-only resolver-ом `rustok-product`, поэтому detached values в read model не попадают.
-- `rustok-search` читает эти проекции напрямую для category/virtual-category filters, channel-scoped attribute facets и attribute sorting. Write model остаётся у `rustok-product`; search не пересобирает schema inheritance и не читает detached values как effective.
-- Visibility flags вычисляются с приоритетом `global attribute defaults < schema/category overrides < channel settings`. Overrides являются tri-state: отсутствующее поле наследует предыдущее значение, явный `false` отключает поведение. Resolver сохраняет overrides через live inheritance и clone snapshots, а indexer создаёт отдельные rows для каждого active channel с effective facet/search/sort, comparison, storefront и admin-grid flags. Если у tenant нет active channels, создаётся один global row с `channel_id = null`.
-- Virtual category использует bounded V1 rule contract. Все заполненные предикаты объединяются через AND: `statuses`, `primary_category_subtree_id`, пересекающийся диапазон `price_min`/`price_max`, `in_stock` и список `attributes` с операторами `eq`/`range`. Attribute rules работают только со стабильными option codes и locale-neutral product values; localized и variant-only attributes отклоняются на write-side.
+- `product_attributes` is the unified reference for ecommerce attributes.
+- `catalog_categories` stores structural, collection and virtual categories; `products.primary_category_id` determines product form only through structural category.
+- `product_attribute_schemas` are optional reusable templates, and category bindings/groups provide inheritance, clone snapshot, custom and local override scenarios.
+- `product_categories` stores additional navigation/storefront bindings and does not change the product form.
+- Values live in typed product/variant attribute value tables; localized labels and text-like values are in translation tables.
+- Product-level values are read and modified through an owner-owned typed read/patch contract: an omitted attribute does not change, `clear` deletes the value, an empty multiselect clears the value, options and effective schema are validated before transactional write, and detached values are preserved and returned with a separate marker.
+- Detached values are displayed in the product admin as a separate review block and are cleared only through the owner-owned `clear_detached_product_attribute_values`; the service verifies that each deleted attribute is indeed outside the current effective schema, native `#[server]` remains the primary path, GraphQL is maintained in parallel.
+- Publish validation is performed in the owner-owned `ProductCatalogSchemaService`: required effective attributes must be filled before the product transitions to `Active`, localized text-like values require an explicit non-empty translation row, option attributes require saved option relations, and create-with-publish is rejected for categories with required typed attributes.
+- Effective form loads localized options in a single bounded query by effective attribute ids; schema/category groups return a localized `group_label` by host locale, binding uses stable `group_code`, and the product admin groups fields by label/code, displays typed controls and sends only dirty patches after saving the product and its primary category.
+- `rustok-index` when indexing a product materializes tenant/locale-scoped category strings and normalized facet/search/sort values. Multiselect expands to one row per option, localized labels are taken only from the explicit row of the requested locale, and effective attribute ids are computed by a read-only resolver in `rustok-product`, so detached values do not enter the read model.
+- `rustok-search` reads these projections directly for category/virtual-category filters, channel-scoped attribute facets and attribute sorting. The write model remains with `rustok-product`; search does not recompute schema inheritance and does not read detached values as effective.
+- Visibility flags are computed with priority `global attribute defaults < schema/category overrides < channel settings`. Overrides are tri-state: a missing field inherits the previous value, explicit `false` disables the behavior. The resolver preserves overrides through live inheritance and clone snapshots, and the indexer creates separate rows for each active channel with effective facet/search/sort, comparison, storefront and admin-grid flags. If a tenant has no active channels, one global row is created with `channel_id = null`.
+- Virtual category uses a bounded V1 rule contract. All filled predicates are combined with AND: `statuses`, `primary_category_subtree_id`, overlapping range `price_min`/`price_max`, `in_stock` and a list of `attributes` with `eq`/`range` operators. Attribute rules work only with stable option codes and locale-neutral product values; localized and variant-only attributes are rejected on the write-side.
 
 ```json
 {
@@ -94,28 +94,28 @@
 }
 ```
 
-При переиндексации товара `rustok-index` сначала полностью заменяет его строки в `virtual_category_product_assignments`, затем строит локализованные category projections. Некорректные старые rule payloads не останавливают reindex: категория пропускается с warning; новые некорректные payloads сервис создания не принимает.
+When reindexing a product, `rustok-index` first completely replaces its rows in `virtual_category_product_assignments`, then builds localized category projections. Invalid old rule payloads do not stop reindex: the category is skipped with a warning; the creation service rejects new invalid payloads.
 
-## Интеграция
+## Integration
 
-- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
-- product-owned admin/storefront UI, native server functions, GraphQL contract types и FBA read port публикуются владельцем `rustok-product`; `rustok-commerce` только композирует ecommerce family и не возвращает себе product service/DTO ownership;
-- изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
+- the module is part of the ecommerce family and must maintain its own storage/runtime boundary without returning responsibility to the umbrella `rustok-commerce`;
+- product-owned admin/storefront UI, native server functions, GraphQL contract types and FBA read port are published by the owner `rustok-product`; `rustok-commerce` only composes the ecommerce family and does not reclaim product service/DTO ownership;
+- cross-module contract changes must be synchronized with `rustok-commerce` and neighboring split modules.
 
 ## Search metadata
 
-- Leptos product admin package экспортирует `fetch_catalog_search_options` и нейтральные option DTO. Helper требует host effective locale, использует current-tenant native `#[server]` endpoint с параллельным GraphQL fallback и уже подключён в `apps/admin` через host-owned `SearchAdminComposition` без прямой зависимости search UI от `rustok-product`.
-- Leptos product storefront package публикует отдельный public-safe `fetch_catalog_search_options`: native `product/storefront/catalog-search-options` является основным путём, GraphQL `storefrontCatalogSearchOptions(locale: String!)` остаётся параллельным. Payload содержит только category ids/labels и filterable/sortable attribute codes/labels; `apps/storefront` подключает его через `SearchStorefrontComposition` с host effective locale.
-- Next storefront имеет зеркальный product-owned helper `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions`, который читает тот же public GraphQL contract и отдаёт safe DTO в host search composition без прямой product dependency внутри search package.
+- The Leptos product admin package exports `fetch_catalog_search_options` and neutral option DTOs. The helper requires the host effective locale, uses a current-tenant native `#[server]` endpoint with parallel GraphQL fallback and is already connected in `apps/admin` through host-owned `SearchAdminComposition` without a direct dependency from search UI on `rustok-product`.
+- The Leptos product storefront package publishes a separate public-safe `fetch_catalog_search_options`: native `product/storefront/catalog-search-options` is the primary path, GraphQL `storefrontCatalogSearchOptions(locale: String!)` remains parallel. The payload contains only category ids/labels and filterable/sortable attribute codes/labels; `apps/storefront` connects it through `SearchStorefrontComposition` with host effective locale.
+- The Next storefront has a mirror product-owned helper `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions` which reads the same public GraphQL contract and returns safe DTOs to the host search composition without a direct product dependency inside the search package.
 
-- Next admin product package exposes owner-owned search metadata helpers: category options РІРѕР·РІСЂР°С‰Р°СЋС‚ `catalogCategories.id`, attribute options РІРѕР·РІСЂР°С‰Р°СЋС‚ filterable/sortable `productAttributes.code`, labels РёСЃРїРѕР»СЊР·СѓСЋС‚ host effective locale, Р° search UI РїРѕС‚СЂРµР±Р»СЏРµС‚ С‚РѕР»СЊРєРѕ host-provided options Р±РµР· РёРјРїРѕСЂС‚Р° product internals.
+- The Next admin product package exposes owner-owned search metadata helpers: category options return `catalogCategories.id`, attribute options return filterable/sortable `productAttributes.code`, labels use the host effective locale, and the search UI consumes only host-provided options without importing product internals.
 
 ## SEO ownership
 
-- `rustok-product/admin` уже держит owner-side product SEO panel через
-  `rustok-seo-admin-support`, не вынося product metadata editing в `rustok-seo-admin`.
+- `rustok-product/admin` already keeps an owner-side product SEO panel via
+  `rustok-seo-admin-support`, without moving product metadata editing into `rustok-seo-admin`.
 
-## Проверка
+## Verification
 
 - `npm.cmd run verify:product:runtime-fallback-smoke`
 - `npm.cmd run test:verify:product:runtime-fallback-smoke`
@@ -123,11 +123,11 @@
 - `npm.cmd run test:verify:ecommerce:fba`
 - cargo xtask module validate product
 - cargo xtask module test product
-- targeted commerce tests для product-домена при изменении runtime wiring
+- targeted commerce tests for the product domain when changing runtime wiring
 
-Cargo-проверки остаются targeted/live evidence шагом перед повышением product FBA до `transport_verified`; текущий быстрый gate для boundary evidence не требует Rust-компиляции.
-## Связанные документы
+Cargo checks remain a targeted/live evidence step before promoting product FBA to `transport_verified`; the current fast gate for boundary evidence does not require Rust compilation.
+## Related documents
 
 - [README crate](../README.md)
 - [README admin UI](../admin/README.md)
-- [План распила commerce](../../rustok-commerce/docs/implementation-plan.md)
+- [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)

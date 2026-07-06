@@ -6,148 +6,148 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# RusToK — Главный план верификации платформы
+# RusToK — Main Platform Verification Plan
 
-- **Дата актуализации структуры:** 2026-04-08
-- **Статус:** Готов к новому периодическому прогону
-- **Режим:** Master-plan для повторяемых verification-сессий
-- **Цель:** Запускать регулярную верификацию платформы по укрупнённым фазам без накопления исторического шума в одном документе
+- **Structure update date:** 2026-04-08
+- **Status:** Ready for new periodic run
+- **Mode:** Master-plan for repeatable verification sessions
+- **Goal:** Run regular platform verification by consolidated phases without accumulating historical noise in a single document
 
 ---
 
-## Как теперь устроен набор verification-планов
+## How the Verification Plan Set is Now Organized
 
-Главный документ больше не хранит весь детальный чеклист и историю исправлений в одном файле.
-Он используется как orchestration-слой для периодических запусков, а подробные проверки вынесены в специализированные документы внутри `docs/verification/`.
+The main document no longer stores the entire detailed checklist and history of fixes in one file.
+It is used as an orchestration layer for periodic runs, while detailed checks are extracted into specialized documents inside `docs/verification/`.
 
 ### Master / orchestration
 
-- [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md) — этот файл, reset-friendly master-checklist для нового прогона.
+- [Main Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md) — this file, reset-friendly master-checklist for a new run.
 
-### Детальные платформенные планы
+### Detailed platform plans
 
-- [План foundation-верификации](./platform-foundation-verification-plan.md) — workspace baseline, module composition, foundation crates, auth/RBAC/tenant foundation.
-- [План верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md) — event runtime, доменные модули, integration boundaries.
-- [План верификации API-поверхностей](./platform-api-surfaces-verification-plan.md) — GraphQL, REST, `#[server]`, operational endpoints.
-- [План верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md) — host apps, module-owned UI, shared libraries, i18n/routes.
-- [План верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md) — локальные проверки качества, observability, security/dependency hygiene, documentation sync и release-readiness.
+- [Foundation Verification Plan](./platform-foundation-verification-plan.md) — workspace baseline, module composition, foundation crates, auth/RBAC/tenant foundation.
+- [Events, Domains and Integrations Verification Plan](./platform-domain-events-integrations-verification-plan.md) — event runtime, domain modules, integration boundaries.
+- [API Surfaces Verification Plan](./platform-api-surfaces-verification-plan.md) — GraphQL, REST, `#[server]`, operational endpoints.
+- [Frontend Surfaces Verification Plan](./platform-frontend-surfaces-verification-plan.md) — host apps, module-owned UI, shared libraries, i18n/routes.
+- [Quality and Operational Readiness Verification Plan](./platform-quality-operations-verification-plan.md) — local quality checks, observability, security/dependency hygiene, documentation sync and release-readiness.
 
-### Специализированные companion-планы
+### Specialized companion plans
 
-- [План верификации RBAC, сервера и runtime-модулей](./rbac-server-modules-verification-plan.md) — прицельный проход по live authorization contract и capability boundaries.
-- [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md) — companion-план для shared Leptos/UI library layer.
-- [План верификации целостности ядра платформы](./platform-core-integrity-verification-plan.md) — server + admin surfaces + core crates как единый runtime baseline.
-
----
-
-## Правила периодического прогона
-
-- Этот master-план хранит только чистый чеклист текущего/следующего запуска.
-- Исторические `[x]`, `[!]` и детальные описания исправлений не накапливаются здесь.
-- Подробности проверок ведутся в специализированных планах, а история проблем — в отдельном реестре.
-- Если в ходе нового прогона найдена новая проблема, её нужно отразить прямо в профильном детальном плане и закрыть в том же verification-cycle.
-- После изменения архитектуры, API, модулей, UI-контрактов, observability или процесса верификации нужно синхронизировать [docs/index.md](../index.md) и [README каталога verification](./README.md).
-
-## Порядок прохождения
-
-1. Сначала пройти foundation-блок.
-2. Затем проверить события, доменные модули и интеграции.
-3. После этого проверить API и frontend surfaces.
-4. Завершить прогон quality/operations/release-readiness блоком.
-5. Отдельно сверить targeted companion-планы по RBAC и Leptos-библиотекам, если задеты соответствующие контуры.
+- [RBAC, Server and Runtime Module Verification Plan](./rbac-server-modules-verification-plan.md) — targeted pass on live authorization contract and capability boundaries.
+- [Leptos Libraries Verification Plan](./leptos-libraries-verification-plan.md) — companion plan for shared Leptos/UI library layer.
+- [Platform Core Integrity Verification Plan](./platform-core-integrity-verification-plan.md) — server + admin surfaces + core crates as a unified runtime baseline.
 
 ---
 
-## Master-checklist нового прогона
+## Periodic Run Rules
 
-### Фаза 0. Компиляция и сборка
+- This master-plan only stores the clean checklist of the current/next run.
+- Historical `[x]`, `[!]` and detailed fix descriptions are not accumulated here.
+- Check details are maintained in specialized plans, and issue history is in a separate registry.
+- If a new problem is found during a run, it should be reflected directly in the relevant detailed plan and closed within the same verification cycle.
+- After changing architecture, API, modules, UI contracts, observability or the verification process, synchronize [docs/index.md](../index.md) and the [verification catalog README](./README.md).
 
-- [ ] Пройти build baseline из [Плана foundation-верификации](./platform-foundation-verification-plan.md).
-- [ ] Зафиксировать блокеры окружения отдельно от продуктовых дефектов.
+## Order of Execution
 
-### Фаза 1. Соответствие архитектуре
-
-- [ ] Сверить registry, taxonomy и dependency graph через [План foundation-верификации](./platform-foundation-verification-plan.md).
-
-### Фаза 2. Ядро платформы
-
-- [ ] Проверить `rustok-core`, `rustok-outbox`, `rustok-events`, `rustok-telemetry` по [Плану foundation-верификации](./platform-foundation-verification-plan.md).
-
-### Фаза 3. Авторизация и аутентификация
-
-- [ ] Пройти auth surface по [Плану foundation-верификации](./platform-foundation-verification-plan.md).
-
-### Фаза 4. RBAC
-
-- [ ] Выполнить platform-level RBAC checks из [Плана foundation-верификации](./platform-foundation-verification-plan.md).
-- [ ] При изменениях server/runtime modules дополнительно пройти [План верификации RBAC, сервера и runtime-модулей](./rbac-server-modules-verification-plan.md).
-
-### Фаза 5. Multi-Tenancy
-
-- [ ] Пройти tenancy checks из [Плана foundation-верификации](./platform-foundation-verification-plan.md).
-
-### Фаза 6. Событийная система
-
-- [ ] Пройти event/outbox checks из [Плана верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md).
-
-### Фаза 7. Доменные модули
-
-- [ ] Пройти модульные проверки из [Плана верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md).
-
-### Фаза 8. API GraphQL
-
-- [ ] Пройти GraphQL contract checks из [Плана верификации API-поверхностей](./platform-api-surfaces-verification-plan.md).
-
-### Фаза 9. API REST
-
-- [ ] Пройти REST contract checks из [Плана верификации API-поверхностей](./platform-api-surfaces-verification-plan.md).
-
-### Фаза 10. Фронтенды Leptos
-
-- [ ] Пройти Leptos app checks из [Плана верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md).
-
-### Фаза 11. Фронтенды Next.js
-
-- [ ] Пройти Next.js app checks из [Плана верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md).
-
-### Фаза 12. Фронтенд-библиотеки
-
-- [ ] Пройти platform-level library/package checks из [Плана верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md).
-- [ ] Для targeted-проверки library contracts использовать [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md).
-
-### Фаза 13. Интеграционные связи
-
-- [ ] Пройти E2E integration checks из [Плана верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md).
-
-### Фаза 14. Локальный quality baseline
-
-- [ ] Пройти локальные проверки качества из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
-- [ ] Для изменений `page_builder/pages` дополнительно выполнить `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` и приложить отчёт в release evidence.
-
-### Фаза 15. Observability и operational readiness
-
-- [ ] Пройти observability/ops checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
-
-### Фаза 16. Documentation sync и release-readiness
-
-- [ ] Пройти documentation sync и release-readiness checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
-
-### Фаза 17. Security и dependency hygiene
-
-- [ ] Пройти security/dependency hygiene checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
-
-### Фаза 18. Quality anti-patterns и correctness
-
-- [ ] Пройти остаточные quality/correctness checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
+1. First go through the foundation block.
+2. Then check events, domain modules and integrations.
+3. After that, check API and frontend surfaces.
+4. Complete the run with the quality/operations/release-readiness block.
+5. Separately verify targeted companion plans for RBAC and Leptos libraries if the relevant circuits are affected.
 
 ---
 
-## Итоговый отчёт прогона
+## Master-Checklist for New Run
 
-Заполняется по завершении текущего цикла верификации:
+### Phase 0. Compilation and Build
 
-| Блок | Статус | Комментарий |
-|------|--------|-------------|
+- [ ] Pass the build baseline from the [Foundation Verification Plan](./platform-foundation-verification-plan.md).
+- [ ] Record environment blockers separately from product defects.
+
+### Phase 1. Architectural Compliance
+
+- [ ] Verify registry, taxonomy and dependency graph via the [Foundation Verification Plan](./platform-foundation-verification-plan.md).
+
+### Phase 2. Platform Core
+
+- [ ] Check `rustok-core`, `rustok-outbox`, `rustok-events`, `rustok-telemetry` against the [Foundation Verification Plan](./platform-foundation-verification-plan.md).
+
+### Phase 3. Authorization and Authentication
+
+- [ ] Pass the auth surface from the [Foundation Verification Plan](./platform-foundation-verification-plan.md).
+
+### Phase 4. RBAC
+
+- [ ] Execute platform-level RBAC checks from the [Foundation Verification Plan](./platform-foundation-verification-plan.md).
+- [ ] For server/runtime module changes, additionally go through the [RBAC, Server and Runtime Module Verification Plan](./rbac-server-modules-verification-plan.md).
+
+### Phase 5. Multi-Tenancy
+
+- [ ] Pass tenancy checks from the [Foundation Verification Plan](./platform-foundation-verification-plan.md).
+
+### Phase 6. Event System
+
+- [ ] Pass event/outbox checks from the [Events, Domains and Integrations Verification Plan](./platform-domain-events-integrations-verification-plan.md).
+
+### Phase 7. Domain Modules
+
+- [ ] Pass module checks from the [Events, Domains and Integrations Verification Plan](./platform-domain-events-integrations-verification-plan.md).
+
+### Phase 8. GraphQL API
+
+- [ ] Pass GraphQL contract checks from the [API Surfaces Verification Plan](./platform-api-surfaces-verification-plan.md).
+
+### Phase 9. REST API
+
+- [ ] Pass REST contract checks from the [API Surfaces Verification Plan](./platform-api-surfaces-verification-plan.md).
+
+### Phase 10. Leptos Frontends
+
+- [ ] Pass Leptos app checks from the [Frontend Surfaces Verification Plan](./platform-frontend-surfaces-verification-plan.md).
+
+### Phase 11. Next.js Frontends
+
+- [ ] Pass Next.js app checks from the [Frontend Surfaces Verification Plan](./platform-frontend-surfaces-verification-plan.md).
+
+### Phase 12. Frontend Libraries
+
+- [ ] Pass platform-level library/package checks from the [Frontend Surfaces Verification Plan](./platform-frontend-surfaces-verification-plan.md).
+- [ ] For targeted library contract checks, use the [Leptos Libraries Verification Plan](./leptos-libraries-verification-plan.md).
+
+### Phase 13. Integration Links
+
+- [ ] Pass E2E integration checks from the [Events, Domains and Integrations Verification Plan](./platform-domain-events-integrations-verification-plan.md).
+
+### Phase 14. Local Quality Baseline
+
+- [ ] Pass local quality checks from the [Quality and Operational Readiness Verification Plan](./platform-quality-operations-verification-plan.md).
+- [ ] For `page_builder/pages` changes, additionally run `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` and attach the report to release evidence.
+
+### Phase 15. Observability and Operational Readiness
+
+- [ ] Pass observability/ops checks from the [Quality and Operational Readiness Verification Plan](./platform-quality-operations-verification-plan.md).
+
+### Phase 16. Documentation Sync and Release-Readiness
+
+- [ ] Pass documentation sync and release-readiness checks from the [Quality and Operational Readiness Verification Plan](./platform-quality-operations-verification-plan.md).
+
+### Phase 17. Security and Dependency Hygiene
+
+- [ ] Pass security/dependency hygiene checks from the [Quality and Operational Readiness Verification Plan](./platform-quality-operations-verification-plan.md).
+
+### Phase 18. Quality Anti-Patterns and Correctness
+
+- [ ] Pass remaining quality/correctness checks from the [Quality and Operational Readiness Verification Plan](./platform-quality-operations-verification-plan.md).
+
+---
+
+## Final Run Report
+
+Fill in upon completion of the current verification cycle:
+
+| Block | Status | Comment |
+|-------|--------|---------|
 | Foundation | ⬜ | |
 | Events / Domains / Integrations | ⬜ | |
 | API Surfaces | ⬜ | |
@@ -155,15 +155,15 @@ status: verified
 | Quality / Operations / Release Readiness | ⬜ | |
 | Targeted RBAC/server companion plan | ⬜ | |
 | Targeted Leptos libraries companion plan | ⬜ | |
-| **ИТОГО** | ⬜ | |
+| **TOTAL** | ⬜ | |
 
 ---
 
-## Связанные документы
+## Related Documents
 
-- [README каталога verification](./README.md)
-- [Карта документации](../index.md)
+- [Verification catalog README](./README.md)
+- [Documentation Map](../index.md)
 - [Verification scripts README](../../scripts/verify/README.md)
-- [Паттерны vs Антипаттерны](../standards/patterns-vs-antipatterns.md)
-- [Запрещённые действия](../standards/forbidden-actions.md)
+- [Patterns vs Antipatterns](../standards/patterns-vs-antipatterns.md)
+- [Forbidden Actions](../standards/forbidden-actions.md)
 - [Known Pitfalls](../ai/KNOWN_PITFALLS.md)

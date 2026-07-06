@@ -5,90 +5,90 @@
 
 ## Context
 
-После переноса `forum` на module-owned storage остался последний незакрытый split
-вопрос: как именно сочетаются locale fallback и slug semantics на forum read-path.
+After moving `forum` to module-owned storage, one last open split
+question remained: how exactly locale fallback and slug semantics combine on the forum read-path.
 
-Базовый multilingual ADR уже зафиксировал общие правила:
+The base multilingual ADR already fixed the common rules:
 
-- locale normalization идёт через shared helper из `rustok-content`;
-- fallback order одинаковый для content-like доменов:
+- locale normalization goes through the shared helper from `rustok-content`;
+- fallback order is the same for content-like domains:
   `requested -> explicit fallback -> en -> first available`;
-- `forum` не должен оставаться на неявной legacy slug/locale модели после cutover.
+- `forum` must not remain on an implicit legacy slug/locale model after cutover.
 
-При этом live code форума уже показывает две разные сущности:
+At the same time, the live forum code already shows two distinct entities:
 
-- category переводы действительно несут собственный `slug`;
-- topic переводы хранят `slug` рядом с переводом, но при создании новой locale
-  translation он копируется из seed translation и не используется как отдельный
+- category translations indeed carry their own `slug`;
+- topic translations store `slug` alongside the translation, but when creating a new locale
+  translation it is copied from the seed translation and is not used as a separate
   locale-routed lookup key;
-- public forum API сегодня является ID-based и не обещает `get_by_slug` / list-by-slug
-  routing ни для categories, ни для topics.
+- the public forum API is currently ID-based and does not promise `get_by_slug` / list-by-slug
+  routing for either categories or topics.
 
-Нужно зафиксировать это явно, чтобы split можно было закрыть без ложных допущений.
+This needs to be fixed explicitly so that the split can be closed without false assumptions.
 
 ## Decision
 
-### 1. Shared locale contract обязателен и для `forum`
+### 1. Shared locale contract is mandatory for `forum` as well
 
-`rustok-forum` использует shared locale normalization/fallback helpers из
-`rustok-content` для category/topic/reply read-path.
+`rustok-forum` uses the shared locale normalization/fallback helpers from
+`rustok-content` for category/topic/reply read-path.
 
-Все forum read surfaces, где есть locale-sensitive данные, должны согласованно
-возвращать:
+All forum read surfaces with locale-sensitive data must consistently
+return:
 
 - `requested_locale`;
 - `effective_locale`;
 - `available_locales`.
 
-Это правило относится и к detail, и к list DTO/GraphQL surfaces.
+This rule applies to both detail and list DTO/GraphQL surfaces.
 
-### 2. Category slug является locale-aware translation field
+### 2. Category slug is a locale-aware translation field
 
-`forum_category_translation.slug` считается locale-aware slug на уровне перевода.
+`forum_category_translation.slug` is considered a locale-aware slug at the translation level.
 
-Следствия:
+Consequences:
 
-- `CategoryResponse` и `CategoryListItem` возвращают slug того же resolved translation,
-  что и `name` / `description`;
-- при добавлении новой locale translation category slug может отличаться от других
-  locale;
-- если позже появится lookup category по slug, он обязан использовать тот же
-  locale fallback contract, а не обходить его.
+- `CategoryResponse` and `CategoryListItem` return the slug of the same resolved translation
+  as `name` / `description`;
+- when adding a new locale translation, the category slug may differ from other
+  locales;
+- if a category lookup by slug is added later, it must use the same
+  locale fallback contract, not bypass it.
 
-### 3. Topic slug остаётся стабильным thread label
+### 3. Topic slug remains a stable thread label
 
-`forum_topic_translation.slug` пока не считается отдельным locale-routed slug
-контрактом.
+`forum_topic_translation.slug` is not currently considered a separate locale-routed slug
+contract.
 
-Текущая семантика:
+Current semantics:
 
-- topic slug задаётся при создании темы;
-- при добавлении новой locale translation slug по умолчанию копируется из
+- topic slug is set when creating the topic;
+- when adding a new locale translation, the slug is by default copied from the
   seed translation;
-- slug выступает как стабильный thread label в ответах, а не как обещанный
+- the slug acts as a stable thread label in responses, not as a promised
   locale-aware route key.
 
-Это сохраняет совместимость текущих DTO/storefront surfaces без введения
-несуществующего public routing contract.
+This preserves compatibility of current DTO/storefront surfaces without introducing
+a non-existent public routing contract.
 
-### 4. Public forum contract остаётся ID-based
+### 4. Public forum contract remains ID-based
 
-На текущем этапе `forum` не предоставляет канонический public lookup по slug.
+At the current stage, `forum` does not provide a canonical public lookup by slug.
 
-Следствия:
+Consequences:
 
-- split-track считается закрытым без дополнительного topic/category slug lookup;
-- если `get_by_slug` или slug-routed storefront path будет добавлен позже, это
-  будет отдельный product/API change и отдельное contract решение;
-- такой будущий lookup обязан явно выбрать одну из двух моделей:
-  `locale-aware slug` или `stable canonical slug`, и не смешивать их внутри
-  одной сущности.
+- the split-track is considered closed without additional topic/category slug lookup;
+- if `get_by_slug` or a slug-routed storefront path is added later, it will
+  be a separate product/API change and a separate contract decision;
+- such a future lookup must explicitly choose one of the two models:
+  `locale-aware slug` or `stable canonical slug`, and not mix them within
+  a single entity.
 
 ## Consequences
 
-- multilingual ADR для `forum` считается закрытым отдельным domain-specific ADR;
-- `rustok-content` остаётся shared owner locale helpers, но не storage-owner forum;
-- docs и public contract `rustok-forum` должны описывать category/topic slug
-  semantics раздельно;
-- split-track `blog / forum / pages off rustok-content` больше не зависит от
-  неявной forum slug/locale договорённости.
+- The multilingual ADR for `forum` is considered closed by a separate domain-specific ADR;
+- `rustok-content` remains the shared owner of locale helpers, but not the storage-owner of forum;
+- docs and public contract of `rustok-forum` must describe category/topic slug
+  semantics separately;
+- the split-track `blog / forum / pages off rustok-content` no longer depends on
+  an implicit forum slug/locale arrangement.

@@ -1,25 +1,25 @@
 # Resilience Module
 
-> **Статус:** ✅ Production-ready (Sprint 2)  
-> **Версия:** 1.0.0  
-> **Тесты:** 11 unit tests
+> **Status:** ✅ Production-ready (Sprint 2)  
+> **Version:** 1.0.0  
+> **Tests:** 11 unit tests
 
-Модуль resilience предоставляет паттерны устойчивости для fault-tolerant систем.
+The resilience module provides stability patterns for fault-tolerant systems.
 
-## Компоненты
+## Components
 
 ### 1. Circuit Breaker
 
-Предотвращает cascading failures через fail-fast механизм.
+Prevents cascading failures through a fail-fast mechanism.
 
-**Файл:** `circuit_breaker.rs` (600 строк)
+**File:** `circuit_breaker.rs` (600 lines)
 
 **3-State FSM:**
-- **Closed:** Нормальная работа, пропускаем запросы
-- **Open:** Сбой обнаружен, отклоняем запросы (fail-fast)
-- **HalfOpen:** Тестирование восстановления
+- **Closed:** Normal operation, requests pass through
+- **Open:** Failure detected, requests are rejected (fail-fast)
+- **HalfOpen:** Testing recovery
 
-**Пример:**
+**Example:**
 ```rust
 use rustok_core::resilience::{CircuitBreaker, CircuitBreakerConfig};
 
@@ -40,7 +40,7 @@ match cb.call(|| async {
 }
 ```
 
-**Метрики:**
+**Metrics:**
 ```rust
 let stats = cb.stats();
 println!("Success rate: {:.2}%", stats.success_rate() * 100.0);
@@ -50,16 +50,16 @@ println!("State transitions: {}", stats.state_transitions);
 
 ### 2. Retry Policy
 
-Автоматический retry с backoff стратегиями.
+Automatic retry with backoff strategies.
 
-**Файл:** `retry.rs` (185 строк)
+**File:** `retry.rs` (185 lines)
 
-**Стратегии:**
+**Strategies:**
 - **Exponential:** 1s, 2s, 4s, 8s, ...
 - **Linear:** 1s, 2s, 3s, 4s, ...
 - **Fixed:** 1s, 1s, 1s, 1s, ...
 
-**Пример:**
+**Example:**
 ```rust
 use rustok_core::resilience::{RetryPolicy, RetryStrategy};
 
@@ -81,9 +81,9 @@ let result = policy.execute(|| async {
 
 Enforce operation deadlines.
 
-**Файл:** `timeout.rs` (61 строка)
+**File:** `timeout.rs` (61 lines)
 
-**Пример:**
+**Example:**
 ```rust
 use rustok_core::resilience::with_timeout;
 
@@ -95,11 +95,11 @@ let result = with_timeout(
 ).await?;
 ```
 
-## Интеграция
+## Integration
 
-### Пример: Tenant Cache V3
+### Example: Tenant Cache V3
 
-Файл: `apps/server/src/middleware/tenant_cache_v3.rs`
+File: `apps/server/src/middleware/tenant_cache_v3.rs`
 
 ```rust
 use rustok_core::resilience::{CircuitBreaker, CircuitBreakerConfig};
@@ -126,11 +126,11 @@ impl TenantCacheV3 {
 }
 ```
 
-## Производительность
+## Performance
 
 ### Circuit Breaker
 
-| Метрика | До | После | Улучшение |
+| Metric | Before | After | Improvement |
 |---------|----|----|-----------|
 | Fail-Fast Latency | 30s | 0.1ms | **-99.997%** |
 | Wasted Connections | High | None | ✅ |
@@ -138,52 +138,52 @@ impl TenantCacheV3 {
 
 ### Retry Policy
 
-| Сценарий | Без Retry | С Retry | Успех |
+| Scenario | Without Retry | With Retry | Success |
 |----------|-----------|---------|-------|
 | Transient failures | ❌ Fail | ✅ Success | +95% |
 | Network timeouts | ❌ Fail | ✅ Success | +80% |
 | Rate limits | ❌ Fail | ✅ Success | +70% |
 
-## Тесты
+## Tests
 
-**Всего:** 11 unit tests
+**Total:** 11 unit tests
 
-**Circuit Breaker:** 7 тестов
+**Circuit Breaker:** 7 tests
 - `test_circuit_breaker_closed_to_open`
 - `test_circuit_breaker_half_open_recovery`
 - `test_circuit_breaker_manual_control`
 - `test_circuit_breaker_stats`
-- и др.
+- and others
 
-**Retry Policy:** 3 теста
+**Retry Policy:** 3 tests
 - `test_retry_exponential_backoff`
 - `test_retry_linear_backoff`
 - `test_retry_max_attempts`
 
-**Timeout:** 2 теста
+**Timeout:** 2 tests
 - `test_timeout_success`
 - `test_timeout_exceeded`
 
-## Документация
+## Documentation
 
-Полное руководство: [docs/CIRCUIT_BREAKER_GUIDE.md](../../../../docs/CIRCUIT_BREAKER_GUIDE.md)
+Full guide: [docs/CIRCUIT_BREAKER_GUIDE.md](../../../../docs/CIRCUIT_BREAKER_GUIDE.md)
 
-**Разделы:**
-1. Концепции и паттерны
-2. Circuit Breaker детально
-3. Retry стратегии
+**Sections:**
+1. Concepts and patterns
+2. Circuit Breaker in detail
+3. Retry strategies
 4. Timeout patterns
 5. Best practices
-6. Примеры интеграции
+6. Integration examples
 7. Troubleshooting
 
 ## Roadmap
 
 **v1.0.0 (Sprint 2):** ✅ DONE
 - Circuit Breaker 3-state FSM
-- Retry Policy с 3 стратегиями
+- Retry Policy with 3 strategies
 - Timeout helper
-- Comprehensive tests и docs
+- Comprehensive tests and docs
 
 **v1.1.0 (Future):**
 - [ ] Bulkhead pattern
@@ -196,7 +196,7 @@ impl TenantCacheV3 {
 - [ ] Adaptive retry (ML-based)
 - [ ] Advanced metrics (Prometheus)
 
-## Ссылки
+## References
 
 - [Martin Fowler: Circuit Breaker](https://martinfowler.com/bliki/CircuitBreaker.html)
 - [Microsoft: Retry Pattern](https://docs.microsoft.com/en-us/azure/architecture/patterns/retry)

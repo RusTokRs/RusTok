@@ -1,95 +1,95 @@
-# ADR: `rustok-ai` как отдельный capability-модуль
+# ADR: `rustok-ai` as a separate capability module
 
-- Дата: 2026-04-03
-- Статус: Accepted
+- Date: 2026-04-03
+- Status: Accepted
 
-## Контекст
+## Context
 
-В RusToK уже существует `rustok-mcp` как thin MCP adapter/server surface поверх официального SDK
-`rmcp`. При этом продукту нужен полноценный AI host/orchestrator слой:
+RusToK already has `rustok-mcp` as a thin MCP adapter/server surface on top of the official SDK
+`rmcp`. At the same time, the product needs a full AI host/orchestrator layer:
 
-- подключение к локальным и облачным model provider'ам;
-- orchestration chat runs;
-- вызов MCP tools;
-- persisted control plane для provider profiles, traces и approvals;
-- UI для операторской работы.
+- connection to local and cloud model providers;
+- orchestration of chat runs;
+- calling MCP tools;
+- persisted control plane for provider profiles, traces and approvals;
+- UI for operator work.
 
-Если встроить этот слой в `rustok-mcp`, MCP server boundary смешается с provider/runtime
-orchestration, а `rustok-mcp` перестанет быть thin adapter'ом.
+If this layer is embedded into `rustok-mcp`, the MCP server boundary will mix with provider/runtime
+orchestration, and `rustok-mcp` will cease to be a thin adapter.
 
-## Решение
+## Decision
 
-Создать отдельный capability crate `crates/rustok-ai`.
+Create a separate capability crate `crates/rustok-ai`.
 
 `rustok-ai`:
 
-- владеет `ModelProvider` abstraction;
-- владеет `AiRuntime`, chat/session model и approval policy;
-- использует `rustok-mcp` как MCP tool surface;
-- отдаёт `apps/server` server-side `AiManagementService` и persisted control-plane wiring;
-- владеет GraphQL query/mutation/subscription roots, DTO и permission checks;
-- принимает host-specific RBAC role lookup через `AiGraphqlRoleSlugProvider`, не импортируя
+- owns the `ModelProvider` abstraction;
+- owns `AiRuntime`, chat/session model and approval policy;
+- uses `rustok-mcp` as an MCP tool surface;
+- provides `apps/server` with server-side `AiManagementService` and persisted control-plane wiring;
+- owns GraphQL query/mutation/subscription roots, DTO and permission checks;
+- accepts host-specific RBAC role lookup via `AiGraphqlRoleSlugProvider`, without importing
   server models/services;
-- поставляет отдельный Leptos admin UI package `crates/rustok-ai/admin`;
-- поставляет отдельный Next.js admin UI package `apps/next-admin/packages/rustok-ai`.
+- ships a separate Leptos admin UI package `crates/rustok-ai/admin`;
+- ships a separate Next.js admin UI package `apps/next-admin/packages/rustok-ai`.
 
-`rustok-mcp` при этом остаётся:
+`rustok-mcp` meanwhile remains:
 
-- MCP transport/protocol boundary;
-- identity/policy/runtime binding layer;
-- tool surface для RusToK и Alloy;
-- без provider-specific responsibilities.
+- the MCP transport/protocol boundary;
+- the identity/policy/runtime binding layer;
+- the tool surface for RusToK and Alloy;
+- without provider-specific responsibilities.
 
-## Причины
+## Reasons
 
-### 1. MCP SDK reuse вместо собственной MCP-библиотеки
+### 1. MCP SDK reuse instead of a custom MCP library
 
-RusToK не должен поддерживать собственный protocol stack для MCP. Протокол и SDK уже живут
-в upstream (`modelcontextprotocol` / `rmcp`), а локальный код должен реализовывать только
-интеграционный слой.
+RusToK must not maintain its own protocol stack for MCP. The protocol and SDK already live
+upstream (`modelcontextprotocol` / `rmcp`), and local code should only implement the
+integration layer.
 
-### 2. Provider abstraction не должна жить в `rustok-mcp`
+### 2. Provider abstraction must not live in `rustok-mcp`
 
-Связь `LLM provider <-> host` не является responsibility MCP server layer. Этот слой должен жить
-в AI host/orchestrator capability и использовать MCP как отдельную шину инструментов.
+The `LLM provider <-> host` link is not a responsibility of the MCP server layer. This layer should live
+in the AI host/orchestrator capability and use MCP as a separate tool bus.
 
-### 3. Persisted control plane принадлежит server composition root
+### 3. Persisted control plane belongs to the server composition root
 
-Секреты, профили провайдеров, чат-сессии, traces и approvals должны храниться в `apps/server`,
-а не в UI-хостах и не в `rustok-mcp`.
+Secrets, provider profiles, chat sessions, traces, and approvals must be stored in `apps/server`,
+not in UI hosts and not in `rustok-mcp`.
 
-При этом transport contract не становится server-owned: `rustok-ai` владеет AI GraphQL
-resolver/DTO surface, а `apps/server` только добавляет roots в общую schema и регистрирует узкие
-адаптеры к host persistence.
+At the same time, the transport contract does not become server-owned: `rustok-ai` owns the AI GraphQL
+resolver/DTO surface, while `apps/server` only adds roots to the common schema and registers narrow
+adapters to host persistence.
 
-### 4. UI должен оставаться capability-owned, а host — только composition root
+### 4. UI must remain capability-owned, while the host is only a composition root
 
-Leptos UI поставляется как `crates/rustok-ai/admin`, Next.js UI — как
-`apps/next-admin/packages/rustok-ai`. Это сохраняет правило платформы:
+Leptos UI is shipped as `crates/rustok-ai/admin`, Next.js UI as
+`apps/next-admin/packages/rustok-ai`. This preserves the platform rule:
 
-- модульный/capability-specific business UI не уходит в `apps/admin` или `apps/next-admin`;
-- host-приложения только монтируют surface и предоставляют shell/navigation/runtime context.
+- module/capability-specific business UI does not go into `apps/admin` or `apps/next-admin`;
+- host applications only mount the surface and provide shell/navigation/runtime context.
 
-## Следствия
+## Consequences
 
-### Позитивные
+### Positive
 
-- отделён AI host/orchestrator слой от MCP server boundary;
-- один backend runtime покрывает и local, и cloud endpoint'ы через `OpenAI-compatible` family;
-- сохранён dual-path contract для Leptos: native `#[server]` first, GraphQL parallel;
-- AI GraphQL artifacts не дублируются в `apps/server` и защищены owner-boundary guard;
-- Leptos и Next.js получают паритетный capability-owned UI surface;
-- `rustok-mcp` остаётся thin adapter'ом и не разрастается в отдельный product runtime.
+- AI host/orchestrator layer is separated from the MCP server boundary;
+- a single backend runtime covers both local and cloud endpoints through the `OpenAI-compatible` family;
+- dual-path contract for Leptos is preserved: native `#[server]` first, GraphQL parallel;
+- AI GraphQL artifacts are not duplicated in `apps/server` and are protected by the owner-boundary guard;
+- Leptos and Next.js receive parity capability-owned UI surface;
+- `rustok-mcp` remains a thin adapter and does not grow into a separate product runtime.
 
-### Негативные
+### Negative
 
-- появляется новый capability crate и отдельный persisted control plane;
-- Next.js пакет требует ручного `package.json` wiring и ручной пересборки;
-- первая версия ограничена `OpenAI-compatible` provider family и request/response runs без streaming.
+- a new capability crate and a separate persisted control plane appear;
+- the Next.js package requires manual `package.json` wiring and manual rebuild;
+- the first version is limited to the `OpenAI-compatible` provider family and request/response runs without streaming.
 
-## Что не делаем
+## What we are not doing
 
-- не превращаем `rustok-mcp` в AI host;
-- не пишем собственную MCP-библиотеку;
-- не переносим AI business UI в host-приложения;
-- не делаем `rustok-ai` tenant-toggled optional module.
+- not turning `rustok-mcp` into an AI host;
+- not writing our own MCP library;
+- not moving AI business UI into host applications;
+- not making `rustok-ai` a tenant-toggled optional module.

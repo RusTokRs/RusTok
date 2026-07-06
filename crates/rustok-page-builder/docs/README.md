@@ -1,25 +1,25 @@
-# rustok-page-builder: runtime-контракт
+# rustok-page-builder: runtime contract
 
-`rustok-page-builder` — референсный FBA-модуль визуального билдера.
+`rustok-page-builder` — reference FBA module for the visual builder.
 
-## Назначение
+## Purpose
 
-Модуль вводит самостоятельный capability-контур билдера до интеграции в `pages`.
-Это позволяет закрепить FBA-first delivery и контрактную совместимость между host-реализациями.
+The module introduces an independent builder capability contour before integration into `pages`.
+This anchors FBA-first delivery and contract compatibility across host implementations.
 
-## Зона ответственности
+## Scope
 
-- самостоятельный FBA reference-контур visual builder до интеграции в доменные consumer-модули;
-- владение vendor-neutral payload contract (`grapesjs_v1`) и capability boundaries `preview/tree/properties/publish`;
-- lifecycle/health/observability seams для rollout и безопасного tenant-by-tenant включения.
+- independent FBA reference contour for the visual builder before integration into domain consumer modules;
+- ownership of vendor-neutral payload contract (`grapesjs_v1`) and capability boundaries `preview/tree/properties/publish`;
+- lifecycle/health/observability seams for rollout and safe tenant-by-tenant enablement.
 
-## Ответственности
+## Responsibilities
 
-- owner контракта visual builder payload (`grapesjs_v1`) на модульном уровне;
-- lifecycle-рамка для rollout/health/observability в терминах FBA;
-- совместимость с consumer-модулями по contract-first интеграции.
+- owner of the visual builder payload contract (`grapesjs_v1`) at the module level;
+- lifecycle framework for rollout/health/observability in FBA terms;
+- compatibility with consumer modules via contract-first integration.
 
-## Точки входа
+## Entry points
 
 - `src/lib.rs` — runtime metadata и permission surface;
 - `src/dto.rs` — transport-neutral DTO, `PageBuilderContractMetadata::BASELINE` и typed error catalog (`validation/sanitize/runtime/feature-disabled`) для contract package без привязки к transport adapters;
@@ -31,44 +31,44 @@
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 - `contracts/page-builder-flutter-wave-handoff.json` — machine-readable Flutter Wave hand-off contract for device/runtime evidence without duplicating FBA registry thresholds or control-plane toggle semantics in mobile.
 - `contracts/page-builder-adapter-seams.json` — machine-readable persistence/rendering adapter-seam contract for `PageBuilderProjectStore`, `PageBuilderRenderingAdapter` and `AdapterBackedPageBuilderService`, preserving `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle`, GraphQL/Leptos endpoint wrappers and canonical DTO/envelope names.
-- `PageBuilderAdapterCallEvidence` и `PageBuilderAdapterTelemetry` в `src/service.rs` фиксируют transport-neutral evidence для host adapter operations `load_project`, `save_project` и `render_preview`: module slug, `grapesjs_v1` contract, `started/succeeded/failed` status, tenant/page/revision identifiers, correlation id и typed error markers берутся из owner-side contract, не создавая transport-local DTO.
+- `PageBuilderAdapterCallEvidence` and `PageBuilderAdapterTelemetry` in `src/service.rs` capture transport-neutral evidence for host adapter operations `load_project`, `save_project` and `render_preview`: module slug, `grapesjs_v1` contract, `started/succeeded/failed` status, tenant/page/revision identifiers, correlation id and typed error markers sourced from the owner-side contract, without creating transport-local DTO.
 
-## Интеграция
+## Integration
 
-- `apps/server` подключает модуль через feature-флаг `mod-page-builder` и module registry codegen;
-- `rustok-pages` и другие layout/content модули используют builder как consumer по contract-first path;
-- host-реализации (Next/Leptos/Flutter) синхронизируются через capability contract, а не через UI 1:1.
+- `apps/server` connects the module via the `mod-page-builder` feature flag and module registry codegen;
+- `rustok-pages` and other layout/content modules use the builder as consumers via the contract-first path;
+- host implementations (Next/Leptos/Flutter) synchronize through the capability contract, not through a 1:1 UI mapping.
 
 
 ## Transport-neutral contract package
 
-Baseline DTO package теперь содержит `PageBuilderContractMetadata::BASELINE` с canonical provider slug `page_builder`, contract `grapesjs_v1`, `builder_contract_version = 1.0`, `consumer_min_version = 1.0` и capability set `preview/tree/properties/publish`. Это минимальный publish-ready marker для adapters: GraphQL, Leptos server functions и future mobile codegen должны брать имена capability из contract metadata/registry, а не вводить transport-local aliases.
+Baseline DTO package now includes `PageBuilderContractMetadata::BASELINE` with canonical provider slug `page_builder`, contract `grapesjs_v1`, `builder_contract_version = 1.0`, `consumer_min_version = 1.0` and capability set `preview/tree/properties/publish`. This is the minimal publish-ready marker for adapters: GraphQL, Leptos server functions and future mobile codegen must take capability names from contract metadata/registry, not introduce transport-local aliases.
 
-`PageBuilderCapabilityRequest` и `PageBuilderCapabilityResponse` задают tagged-envelope для transport adapters: GraphQL resolvers, Leptos `#[server]` functions и future mobile bridge могут принимать один canonical request envelope и dispatch через `AuthorizedPageBuilderHandlers::handle`. Такой seam удерживает RBAC, rollout guard и write-semantics enforcement в одном месте и не позволяет transport layer повторно изобретать имена capability или локальные error envelopes.
+`PageBuilderCapabilityRequest` and `PageBuilderCapabilityResponse` define a tagged-envelope for transport adapters: GraphQL resolvers, Leptos `#[server]` functions and future mobile bridge can accept a single canonical request envelope and dispatch through `AuthorizedPageBuilderHandlers::handle`. This seam holds RBAC, rollout guard and write-semantics enforcement in one place and prevents the transport layer from re-inventing capability names or local error envelopes.
 
-Первый transport bridge slice добавил `PageBuilderTransportKind`, `PageBuilderTransportSuccess`, `PageBuilderTransportError`, `dispatch_transport_envelope`, `dispatch_graphql_envelope` и `dispatch_leptos_server_function_envelope`. GraphQL/server-function adapters должны вызывать эти dispatch helpers, а затем маппить success/error envelope в свой framework-specific result; `PageBuilderTransportError` берёт `kind` и `stable_code` из `PageBuilderServiceError::kind()` / `stable_code()`, поэтому transport не владеет отдельным error catalog.
+The first transport bridge slice added `PageBuilderTransportKind`, `PageBuilderTransportSuccess`, `PageBuilderTransportError`, `dispatch_transport_envelope`, `dispatch_graphql_envelope` and `dispatch_leptos_server_function_envelope`. GraphQL/server-function adapters must call these dispatch helpers, then map the success/error envelope to their framework-specific result; `PageBuilderTransportError` takes `kind` and `stable_code` from `PageBuilderServiceError::kind()` / `stable_code()`, so transport does not own a separate error catalog.
 
-Endpoint adapter seam теперь закреплён в `src/adapters.rs`: `PageBuilderGraphqlEndpointInput` и `PageBuilderLeptosServerFunctionInput` принимают canonical `PageBuilderCapabilityRequest`, а `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint` возвращают единый `PageBuilderEndpointResult` поверх `PageBuilderTransportSuccess` / `PageBuilderTransportError`. Это даёт реальные host-facing точки подключения для GraphQL resolver-ов и Leptos `#[server]` wrappers без добавления framework-specific dependency в reference module и без transport-local capability/error aliases.
+The endpoint adapter seam is now established in `src/adapters.rs`: `PageBuilderGraphqlEndpointInput` and `PageBuilderLeptosServerFunctionInput` accept canonical `PageBuilderCapabilityRequest`, and `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint` return a unified `PageBuilderEndpointResult` over `PageBuilderTransportSuccess` / `PageBuilderTransportError`. This provides real host-facing connection points for GraphQL resolvers and Leptos `#[server]` wrappers without adding framework-specific dependency in the reference module and without transport-local capability/error aliases.
 
 ## Reference provider baseline
 
-`ReferencePageBuilderService` закрывает минимальный capability API baseline без vendor lock-in и без persistence side effects. Provider принимает только `grapesjs_v1`, валидирует `page_id`, `revision_id`, object-shaped `project_data` / `properties`, возвращает typed `validation` errors для contract violations и typed `sanitize` errors для forbidden preview HTML (`<script`). `preview` формирует deterministic HTML wrapper `data-rustok-page-builder="grapesjs_v1"`, `properties` echo-возвращает canonical node properties, а `publish` возвращает typed `PublishPageBuilderResult` только после contract validation. Реальная persistence/rendering adapter-реализация может заменить reference provider за тем же `PageBuilderCapabilityService`, не меняя DTO, RBAC, rollout или transport bridge.
+`ReferencePageBuilderService` covers the minimal capability API baseline without vendor lock-in and without persistence side effects. The provider accepts only `grapesjs_v1`, validates `page_id`, `revision_id`, object-shaped `project_data` / `properties`, returns typed `validation` errors for contract violations and typed `sanitize` errors for forbidden preview HTML (`<script`). `preview` generates a deterministic HTML wrapper `data-rustok-page-builder="grapesjs_v1"`, `properties` echo-returns canonical node properties, and `publish` returns typed `PublishPageBuilderResult` only after contract validation. A real persistence/rendering adapter implementation can replace the reference provider behind the same `PageBuilderCapabilityService` without changing DTO, RBAC, rollout or transport bridge.
 
-`AdapterBackedPageBuilderService` теперь формирует `PageBuilderAdapterCallEvidence` перед вызовом persistence/rendering seams и передаёт его в `PageBuilderAdapterTelemetry` как `started`, затем пишет `succeeded` или `failed` outcome. Failed evidence несёт `PageBuilderErrorKind` и stable code из `PageBuilderServiceError`. Default `NoopPageBuilderAdapterTelemetry` сохраняет прежнее поведение, а host wiring может подключить recorder для audit/observability слоя вокруг `PageBuilderProjectStore` и `PageBuilderRenderingAdapter`. Evidence не публикуется как новый transport response и не меняет `PageBuilderCapabilityRequest/Response`.
+`AdapterBackedPageBuilderService` now creates `PageBuilderAdapterCallEvidence` before invoking persistence/rendering seams and passes it to `PageBuilderAdapterTelemetry` as `started`, then writes `succeeded` or `failed` outcome. Failed evidence carries `PageBuilderErrorKind` and stable code from `PageBuilderServiceError`. Default `NoopPageBuilderAdapterTelemetry` preserves the previous behavior, and host wiring can connect a recorder for the audit/observability layer around `PageBuilderProjectStore` and `PageBuilderRenderingAdapter`. Evidence is not published as a new transport response and does not change `PageBuilderCapabilityRequest/Response`.
 
 ## Provider health and SLO baseline
 
-Machine-readable provider metadata включает health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) и pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. Runtime-код exposes тот же baseline через `ProviderHealthState`, `ProviderDegradationReason`, `ProviderSloThresholds::PILOT`, `ProviderHealthSnapshot::evaluate` и `ProviderHealthEvidence::from_observations`, чтобы Wave evidence можно было формировать без transport-specific adapters. Registry и Wave evidence packet gates держат эти thresholds синхронизированными с owner source до Wave 1 promotion.
+Machine-readable provider metadata includes health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) and pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. The runtime code exposes the same baseline through `ProviderHealthState`, `ProviderDegradationReason`, `ProviderSloThresholds::PILOT`, `ProviderHealthSnapshot::evaluate` and `ProviderHealthEvidence::from_observations`, so Wave evidence can be formed without transport-specific adapters. Registry and Wave evidence packet gates keep these thresholds synchronized with the owner source until Wave 1 promotion.
 
-Правила health evaluation намеренно консервативны: breach preview p95 или runtime error-rate помечает provider как `provider_unhealthy`, breach sanitize threshold помечает `sanitize_backpressure`, breach publish p95 помечает `publish_backlog`, а runtime error-rate выше двойного pilot threshold переводит state в `unavailable`; иначе непустой набор degradation reasons даёт `degraded`.
+Health evaluation rules are intentionally conservative: a preview p95 or runtime error-rate breach marks the provider as `provider_unhealthy`, a sanitize threshold breach marks `sanitize_backpressure`, a publish p95 breach marks `publish_backlog`, and a runtime error-rate above double the pilot threshold transitions state to `unavailable`; otherwise a non-empty set of degradation reasons yields `degraded`.
 
-## Типизированный каталог ошибок
+## Typed error catalog
 
-Runtime provider-а exposes те же error-семантики, которые объявлены в `rustok-module.toml` и `contracts/page-builder-fba-registry.json`: `PageBuilderErrorKind::ALL` покрывает `validation`, `sanitize`, `runtime` и `feature-disabled`, а `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE` закрепляет стабильный degraded-mode code `FEATURE_DISABLED`. `PageBuilderServiceError::kind()` и `PageBuilderServiceError::stable_code()` являются transport-neutral bridge для GraphQL, Leptos server functions и future mobile codegen adapters, поэтому adapters должны маппить provider errors из этих typed markers вместо локальных имён ошибок.
+The runtime provider exposes the same error semantics declared in `rustok-module.toml` and `contracts/page-builder-fba-registry.json`: `PageBuilderErrorKind::ALL` covers `validation`, `sanitize`, `runtime` and `feature-disabled`, and `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE` anchors a stable degraded-mode code `FEATURE_DISABLED`. `PageBuilderServiceError::kind()` and `PageBuilderServiceError::stable_code()` serve as the transport-neutral bridge for GraphQL, Leptos server functions and future mobile codegen adapters, so adapters must map provider errors from these typed markers instead of local error names.
 
-## Карта permission для capability
+## Permission map for capabilities
 
-Server-side capability handlers enforce стабильную page permission map перед делегированием в provider service. `pages:manage` остаётся effective override для всех builder capabilities. `PAGE_BUILDER_CAPABILITY_PERMISSIONS` публикует serializable capability -> permission descriptor для host/codegen surfaces. `PageBuilderCapabilityPortPolicies` держит owner-side source-lock для registry/manifest policy names, а `PAGE_BUILDER_CAPABILITY_PORT_POLICIES` публикует serializable descriptor для port policy surfaces: `preview`, `tree` и `properties` требуют `PortCallPolicy::read()` deadline semantics, а `publish` требует `PortCallPolicy::write()` с deadline и idempotency key.
+Server-side capability handlers enforce a stable page permission map before delegating to the provider service. `pages:manage` remains the effective override for all builder capabilities. `PAGE_BUILDER_CAPABILITY_PERMISSIONS` publishes a serializable capability -> permission descriptor for host/codegen surfaces. `PageBuilderCapabilityPortPolicies` holds the owner-side source-lock for registry/manifest policy names, and `PAGE_BUILDER_CAPABILITY_PORT_POLICIES` publishes a serializable descriptor for port policy surfaces: `preview`, `tree` and `properties` require `PortCallPolicy::read()` deadline semantics, and `publish` requires `PortCallPolicy::write()` with deadline and idempotency key.
 
 | Capability | Required permission | Notes |
 |---|---|---|
@@ -79,27 +79,27 @@ Server-side capability handlers enforce стабильную page permission map
 
 ## Fallback matrix
 
-Runtime provider-а фиксирует baseline fallback-профили в `src/rollout.rs`; consumer-модули и host adapters обязаны держать те же имена outcome.
+The runtime provider anchors baseline fallback profiles in `src/rollout.rs`; consumer modules and host adapters must use the same outcome names.
 
-| Профиль | Admin visual path | Preview | Properties/tree | Publish | Read/list/storefront paths | Disabled capabilities |
+| Profile | Admin visual path | Preview | Properties/tree | Publish | Read/list/storefront paths | Disabled capabilities |
 |---|---|---|---|---|---|---|
 | `all_on` | `editable_builder` | `available` | `available` | `available` | `stable` | — |
 | `publish_off` | `editable_builder_publish_disabled` | `available` | `available` | `typed_feature_disabled_error` | `stable` | `publish` |
 | `preview_off` | `preview_hidden_properties_available` | `typed_feature_disabled_error` | `available` | `typed_feature_disabled_error` | `stable` | `preview`, `publish` |
 | `builder_off` | `readonly_fallback` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `stable` | `preview`, `tree`, `properties`, `publish` |
 
-## Проверка
+## Verification
 
-- `cargo test -p rustok-page-builder --lib` — базовая проверка runtime metadata/contract surface;
-- `cargo xtask module validate page_builder` — проверка publish-readiness и manifest/docs contracts;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages` — anti-drift проверка machine-readable registry против provider/consumer manifests и owner source markers, включая provider health states, degradation reasons, pilot SLO thresholds, fallback profiles, port policies, permission map и typed error catalog.
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs` — проверка Wave 0 evidence packet, включая SLO thresholds/evaluation и correlation trace samples.
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-transport-bridge.mjs` — no-compile guardrail для canonical GraphQL/server-function transport bridge markers.
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-flutter-handoff.mjs` — no-compile guardrail для Flutter Wave hand-off evidence contract и mobile app-core typed error parity markers.
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs` — no-compile guardrail для persistence/rendering adapter seams; проверяет `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter`, `AdapterBackedPageBuilderService`, canonical entrypoints и запрет на transport-local aliases / pages-local visual builder ownership / vendor-specific payload requirements.
+- `cargo test -p rustok-page-builder --lib` — baseline check of runtime metadata/contract surface;
+- `cargo xtask module validate page_builder` — publish-readiness and manifest/docs contracts check;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages` — anti-drift check of machine-readable registry against provider/consumer manifests and owner source markers, including provider health states, degradation reasons, pilot SLO thresholds, fallback profiles, port policies, permission map and typed error catalog.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs` — Wave 0 evidence packet verification, including SLO thresholds/evaluation and correlation trace samples.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-transport-bridge.mjs` — no-compile guardrail for canonical GraphQL/server-function transport bridge markers.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-flutter-handoff.mjs` — no-compile guardrail for Flutter Wave hand-off evidence contract and mobile app-core typed error parity markers.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs` — no-compile guardrail for persistence/rendering adapter seams; verifies `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter`, `AdapterBackedPageBuilderService`, canonical entrypoints and prohibition of transport-local aliases / pages-local visual builder ownership / vendor-specific payload requirements.
 
-## Связанные документы
+## Related documents
 
-- `docs/modules/tiptap-page-builder-implementation-plan.md` — платформенный rollout-план builder-first FBA;
-- `docs/modules/manifest.md` — контракт `modules.toml` / `rustok-module.toml`;
-- `crates/rustok-pages/docs/implementation-plan.md` — consumer-интеграция `pages` с reference builder-модулем.
+- `docs/modules/tiptap-page-builder-implementation-plan.md` — platform rollout plan for builder-first FBA;
+- `docs/modules/manifest.md` — contract for `modules.toml` / `rustok-module.toml`;
+- `crates/rustok-pages/docs/implementation-plan.md` — consumer integration of `pages` with the reference builder module.

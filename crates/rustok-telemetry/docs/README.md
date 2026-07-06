@@ -1,37 +1,37 @@
-# Документация `rustok-telemetry`
+# `rustok-telemetry` Documentation
 
-`rustok-telemetry` — foundation-модуль наблюдаемости платформы. Он держит
-shared telemetry primitives и wiring contracts, которые должны использоваться
-модулями и host-слоем единообразно.
+`rustok-telemetry` — observability foundation module of the platform. It holds
+shared telemetry primitives and wiring contracts that should be used uniformly
+by modules and the host layer.
 
-## Назначение
+## Purpose
 
-- публиковать канонический telemetry/observability foundation contract;
-- держать shared telemetry helpers и wiring expectations вне `apps/server`;
-- снижать дрейф метрик, traces и logging conventions между модулями.
+- publish the canonical telemetry/observability foundation contract;
+- keep shared telemetry helpers and wiring expectations outside `apps/server`;
+- reduce drift in metrics, traces and logging conventions between modules.
 
-## Зона ответственности
+## Scope
 
-- shared telemetry primitives и instrumentation helpers;
-- базовые observability contracts для metrics, tracing и related runtime wiring;
-- foundation surface для consumer modules и host integrations;
-- отсутствие domain-owned metrics semantics и transport/business logic.
+- shared telemetry primitives and instrumentation helpers;
+- basic observability contracts for metrics, tracing and related runtime wiring;
+- foundation surface for consumer modules and host integrations;
+- no domain-owned metrics semantics or transport/business logic.
 
-## Интеграция
+## Integration
 
-- используется `apps/server` и runtime-модулями как shared observability dependency;
-- module-specific metrics остаются внутри owning modules, но строятся поверх общих foundation contracts;
-- любые изменения shared telemetry wiring должны синхронизироваться с host docs и verification docs;
-- `rustok-telemetry` не должен поглощать domain-specific observability runbooks.
+- used by `apps/server` and runtime modules as a shared observability dependency;
+- module-specific metrics remain inside owning modules but are built over the common foundation contracts;
+- any changes to shared telemetry wiring must be synchronized with host docs and verification docs;
+- `rustok-telemetry` must not absorb domain-specific observability runbooks.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate telemetry`
 - `cargo xtask module test telemetry`
-- targeted tests для telemetry helpers, wiring contracts и compatibility expectations
+- targeted tests for telemetry helpers, wiring contracts and compatibility expectations
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Observability quickstart](../../../docs/guides/observability-quickstart.md)

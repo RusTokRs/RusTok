@@ -1,49 +1,49 @@
 # Loco.rs docs index for RusToK
 
-Этот документ — **навигационный индекс** по Loco-документации в репозитории.
+This document is a **navigation index** for Loco documentation in this repository.
 
-## ⚠️ Для AI-агентов: читать в первую очередь
+## ⚠️ For AI agents: read first
 
-Если вы меняете `apps/server/**`, сначала проверьте:
+If you are modifying `apps/server/**`, first check:
 
-1. Этот файл (`apps/server/docs/loco/README.md`);
+1. This file (`apps/server/docs/loco/README.md`);
 2. `apps/server/docs/loco/changes.md`;
-3. `apps/server/docs/library-stack.md` (основные библиотеки сервера и роли);
-4. `apps/server/docs/loco/upstream/VERSION` (актуальность snapshot);
-5. Текущие паттерны в `apps/server/src/**` и `apps/server/migration/**`.
+3. `apps/server/docs/library-stack.md` (core server libraries and their roles);
+4. `apps/server/docs/loco/upstream/VERSION` (snapshot timeliness);
+5. Current patterns in `apps/server/src/**` and `apps/server/migration/**`.
 
-Короткое правило: **реальный код в `apps/server` важнее абстрактных рекомендаций из интернета**.
+Short rule: **real code in `apps/server` is more important than abstract advice from the internet**.
 
-## Что это
+## What this is
 
 1. [Upstream Loco.rs snapshot (`./upstream/`)](./upstream/)
-   - Это pinned-копия официальной документации Loco.rs.
-   - Версия источника зафиксирована в [`./upstream/VERSION`](./upstream/VERSION).
+   - This is a pinned copy of the official Loco.rs documentation.
+   - The source version is recorded in [`./upstream/VERSION`](./upstream/VERSION).
 
-> **Правило для AI-агентов и контрибьюторов:** при вопросах по Loco **сначала сверяться с `upstream/`**, и только потом с локальными заметками ниже.
+> **Rule for AI agents and contributors:** when in doubt about Loco, **first check `upstream/`**, and only then refer to the local notes below.
 
-## Repo-specific notes (только отличия RusToK от default Loco)
+## Repo-specific notes (RusToK differences from default Loco only)
 
-- Серверная реализация живёт в `apps/server` и может вводить проектные ограничения поверх дефолтных возможностей Loco.
-- При проектировании изменений приоритет у реального кода и текущих модулей (`app.rs`, `controllers/`, `models/`, `migration/`).
-- Краткие изменения локальных практик ведутся в [`changes.md`](./changes.md).
+- The server implementation lives in `apps/server` and may introduce project constraints on top of default Loco capabilities.
+- When designing changes, priority is given to real code and current modules (`app.rs`, `controllers/`, `models/`, `migration/`).
+- Brief changes to local practices are tracked in [`changes.md`](./changes.md).
 
-## Обновление upstream snapshot
+## Updating upstream snapshot
 
 ```bash
 scripts/docs/sync_loco_docs.sh
 ```
 
-## Что важно для AI-агентов
+## What matters for AI agents
 
-- Loco.rs уже используется как backend framework — не предлагать замену фреймворка для базовых задач.
-- Для auth, permissions, migrations и контроллеров опираться на текущие паттерны проекта, а не абстрактные "универсальные" рецепты.
-- Если в коде есть расхождения между общим guidance и реальной реализацией — приоритет у реального кода в `apps/server`.
+- Loco.rs is already used as the backend framework — do not suggest replacing the framework for basic tasks.
+- For auth, permissions, migrations, and controllers, rely on current project patterns, not abstract "universal" recipes.
+- If there are discrepancies between general guidance and the actual implementation — priority goes to real code in `apps/server`.
 
-## Как поддерживать "свежесть" этого контекста
+## How to keep this context fresh
 
-- При изменении server-архитектуры обновлять этот файл в том же PR.
-- При крупных изменениях Loco-слоя добавлять короткие заметки в `apps/server/docs/loco/changes.md`.
+- When changing server architecture, update this file in the same PR.
+- When making major changes to the Loco layer, add brief notes to `apps/server/docs/loco/changes.md`.
 
 ## Upstream snapshot freshness
 
@@ -54,26 +54,26 @@ scripts/docs/sync_loco_docs.sh
   - `>60` days old: CI failure.
 - `make docs-sync-loco` refreshes snapshot metadata date before opening a PR.
 
-## Как удалить Loco-документацию и автоматизацию (если временная мера больше не нужна)
+## How to remove Loco documentation and automation (if the temporary measure is no longer needed)
 
-Удаляйте это одним PR, чтобы не оставлять «битые» CI-проверки:
+Remove everything in one PR to avoid leaving broken CI checks:
 
-1. Удалить папку документации:
-   - `apps/server/docs/loco/` (включая `upstream/VERSION`).
-2. Удалить скрипт автоматизации:
+1. Delete the documentation folder:
+   - `apps/server/docs/loco/` (including `upstream/VERSION`).
+2. Delete the automation script:
    - `scripts/loco_upstream_snapshot.py`.
-3. Удалить make-цели:
-   - `docs-sync-loco` и `docs-check-loco` из `Makefile`.
-4. Удалить CI-job:
-   - `loco-docs-snapshot` из `.github/workflows/ci.yml`;
-   - убрать его из `ci-success.needs` и из финального условия проверки.
-5. Удалить пункт из PR-шаблона:
-   - checkbox про актуальность `apps/server/docs/loco/upstream`.
+3. Delete the make targets:
+   - `docs-sync-loco` and `docs-check-loco` from `Makefile`.
+4. Delete the CI job:
+   - `loco-docs-snapshot` from `.github/workflows/ci.yml`;
+   - remove it from `ci-success.needs` and from the final check condition.
+5. Delete the item from the PR template:
+   - checkbox about `apps/server/docs/loco/upstream` freshness.
 
-Минимальная проверка после удаления:
+Minimum check after removal:
 
 ```bash
 cargo check --workspace --all-targets --all-features
 ```
 
-и убедиться, что workflow CI проходит без `loco-docs-snapshot`.
+and verify that the CI workflow passes without `loco-docs-snapshot`.

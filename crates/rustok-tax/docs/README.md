@@ -1,31 +1,31 @@
-﻿# Документация `rustok-tax`
+﻿# `rustok-tax` Documentation
 
-`rustok-tax` — foundation crate для tax bounded context в commerce family.
+`rustok-tax` — foundation crate for the tax bounded context in the commerce family.
 
-## Назначение
+## Purpose
 
-- typed contract для tax calculation;
-- provider seam для будущих внешних tax engines;
-- default provider `region_default`, который пока сохраняет текущую семантику
-  `region.tax_rate` / `tax_included`;
-- текущий selection hook через `regions.tax_provider_id`, чтобы provider
-  choice уже был частью runtime contract до внешних tax integrations;
-- единый source of truth для `provider_id` в tax-line snapshot.
+- typed contract for tax calculation;
+- provider seam for future external tax engines;
+- default provider `region_default`, which currently preserves the existing semantics
+  of `region.tax_rate` / `tax_included`;
+- current selection hook via `regions.tax_provider_id`, so that the provider
+  choice is already part of the runtime contract before external tax integrations;
+- a unified source of truth for `provider_id` in the tax-line snapshot.
 
-## Зона ответственности
+## Scope
 
-- модуль не владеет cart/order transport;
-- модуль не владеет region identity, а потребляет policy snapshot;
-- внешние tax providers должны подключаться поверх этого seam, а не напрямую в
-  `rustok-cart` или `rustok-commerce`.
+- the module does not own cart/order transport;
+- the module does not own region identity, but consumes a policy snapshot;
+- external tax providers must connect over this seam, not directly into
+  `rustok-cart` or `rustok-commerce`.
 
-## Интеграция
+## Integration
 
-- `rustok-cart` вызывает `TaxService` для пересчёта cart tax lines;
-- checkout переносит provider-aware tax snapshot в `rustok-order`;
-- transport surface пока публикуется через `rustok-commerce`.
+- `rustok-cart` calls `TaxService` for recalculating cart tax lines;
+- checkout transfers the provider-aware tax snapshot to `rustok-order`;
+- transport surface is still published through `rustok-commerce`.
 
-## Проверка
+## Verification
 
-- targeted unit tests в `rustok-tax`;
-- compile-check для `rustok-tax`, `rustok-cart`, `rustok-order`, `rustok-commerce`.
+- targeted unit tests in `rustok-tax`;
+- compile-check for `rustok-tax`, `rustok-cart`, `rustok-order`, `rustok-commerce`.

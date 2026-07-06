@@ -1,31 +1,31 @@
-# Документация `rustok-commerce`
+# Documentation `rustok-commerce`
 
-В этой папке хранится документация umbrella-модуля `crates/rustok-commerce`.
+This folder contains the documentation for the umbrella module `crates/rustok-commerce`.
 
-## Назначение
+## Purpose
 
-- удерживать `rustok-commerce` как umbrella/root module для ecommerce family;
-- держать orchestration, transport и cross-domain contracts, которые ещё не вынесены в split-модули;
-- не возвращать domain ownership из split-модулей обратно в host-слой.
+- maintain `rustok-commerce` as the umbrella/root module for the ecommerce family;
+- hold orchestration, transport and cross-domain contracts that have not yet been extracted into split modules;
+- prevent domain ownership from being returned from split modules back to the host layer.
 
-## Зона ответственности
+## Responsibilities
 
-- orchestration между `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`;
-- REST/GraphQL transport и переходные orchestration UI-поверхности, пока доменные surfaces не вынесены по ownership boundaries;
-- shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping и admin payment HTTP handlers на узком `CommerceHttpRuntime`; остальные admin/storefront REST adapters режутся отдельными Loco-exit срезами;
-- channel-aware commerce contract поверх `rustok-channel`, checkout orchestration и cross-domain deliverability semantics;
-- поддержание thin-host роли `apps/server` без возврата commerce business logic в host.
+- orchestration between `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`;
+- REST/GraphQL transport and transitional orchestration UI surfaces until domain surfaces are moved to ownership boundaries;
+- shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping and admin payment HTTP handlers on a narrow `CommerceHttpRuntime`; remaining admin/storefront REST adapters are cut by separate Loco-exit slices;
+- channel-aware commerce contract over `rustok-channel`, checkout orchestration and cross-domain deliverability semantics;
+- maintaining the thin-host role of `apps/server` without returning commerce business logic to the host.
 
-## Интеграция
+## Integration
 
-- `apps/server` остаётся adapter/wiring слоем для route, OpenAPI и schema composition;
-- split ecommerce-модули владеют своими persistence/runtime boundaries, а `rustok-commerce` координирует cross-domain flow;
-- module-owned UI пакеты подключаются host-приложениями через manifest-driven composition;
-- любые изменения cross-domain contract нужно синхронизировать с local docs split-модулей и central docs платформы.
+- `apps/server` remains the adapter/wiring layer for route, OpenAPI and schema composition;
+- split ecommerce modules own their persistence/runtime boundaries, while `rustok-commerce` coordinates cross-domain flow;
+- module-owned UI packages are connected by host applications through manifest-driven composition;
+- any cross-domain contract changes must be synchronized with the local docs of split modules and the platform central docs.
 
-## Проверка
+## Verification
 
-Базовые verification gates для текущего состояния модуля:
+Baseline verification gates for the current module state:
 
 - `cargo xtask module validate commerce`
 - `cargo xtask module test commerce`
@@ -33,64 +33,64 @@
 - `cargo test -p rustok-commerce storefront_graphql_customer_and_order_queries_match_customer_owned_read_path -- --exact`
 - `cargo test -p rustok-order order_tax_lines_insert_without_provider_id_use_region_default -- --exact`
 
-Примечание: при изменении runtime wiring или transport-контрактов обязательно запускать targeted parity tests
-для checkout, REST/GraphQL transport и split-module integration дополнительно к baseline gate-командам.
+Note: when changing runtime wiring or transport contracts, targeted parity tests must be run
+for checkout, REST/GraphQL transport and split-module integration in addition to the baseline gate commands.
 
-## Связанные документы
+## Related documents
 
-- [План реализации](./implementation-plan.md) — актуальный roadmap по развитию ecommerce family, Medusa-style REST transport, channel-aware commerce поверх `rustok-channel` и выносу ответственности в отдельные модули.
-- [Сравнение RusTok и Medusa](../../../docs/research/medusa-vs-rustok-architecture.md)
-- [Пакет админского UI](../admin/README.md)
-- [Пакет storefront UI](../storefront/README.md)
+- [Implementation plan](./implementation-plan.md) — current roadmap for ecommerce family development, Medusa-style REST transport, channel-aware commerce over `rustok-channel` and responsibility extraction into separate modules.
+- [RusTok vs Medusa comparison](../../../docs/research/medusa-vs-rustok-architecture.md)
+- [Admin UI package](../admin/README.md)
+- [Storefront UI package](../storefront/README.md)
 
-## Текущее состояние
+## Current state
 
-- `rustok-commerce` остаётся umbrella/root module для ecommerce family и держит orchestration, transport и оставшиеся несрезанные части домена.
-- Основной REST-контракт живёт на `/store/*` и `/admin/*`; legacy `/api/commerce/*` удалён из live route tree и OpenAPI.
-- На admin surface кроме product management уже подняты paginated order transport (`GET /admin/orders`, `GET /admin/orders/{id}`), explicit order lifecycle routes (`mark-paid`, `ship`, `deliver`, `cancel`), list/detail/lifecycle routes для `payment-collections`, `refunds`, `fulfillments`, order-change preview/apply/cancel (`/admin/orders/{id}/changes`, `/admin/order-changes*`) и return decision tree (`POST /admin/orders/{id}/returns/decision`) с `return_only/refund/exchange/claim`, плюс manual post-order `create fulfillment` route с typed `items[]`.
-- GraphQL surface сохранён и использует те же application services, что и REST; для admin commerce уже есть parity по order/payment/fulfillment/order-change queries, включая list read-path для `paymentCollections`, `fulfillments` и `orderChanges`, lifecycle mutations, `createOrderChange`, `createOrderReturnDecision` (`return_only/refund/exchange/claim`) и manual `createFulfillment`, а storefront surface теперь включает `storefrontRegions`, `storefrontShippingOptions`, `storefrontCart`, `createStorefrontCart`, `updateStorefrontCartContext`, cart line-item lifecycle, `storefrontMe`, customer-owned `storefrontOrder`, `createStorefrontPaymentCollection`, `completeStorefrontCheckout`, а также pricing-facing read helpers `storefrontPricingChannels`, `storefrontActivePriceLists(channelId, channelSlug)`, `storefrontPricingProduct` и `adminPricingProduct` для module-owned fallback surfaces.
-- Generic catalog roots `product` / `storefrontProduct` теперь нужно трактовать только как catalog-authoritative surface: их `variants.prices` остаётся compatibility snapshot без explicit currency/region/price-list/channel resolution и не считается pricing source of truth рядом с dedicated pricing roots.
-- `apps/server` остаётся thin host-слоем: маршруты, OpenAPI и schema composition, без дублирования commerce business logic.
-- Cart snapshot уже хранит storefront context (`region_id`, `country_code`, `locale_code`, `selected_shipping_option_id`, `customer_id`, `email`, `currency_code`) и channel snapshot (`channel_id`, `channel_slug`); тот же channel snapshot теперь переносится в order transport при checkout.
-- Checkout flow использует `checking_out`, reuse payment collection и recovery semantics для повторных storefront запросов.
-- Платформа уже пробрасывает `ChannelContext` через `rustok-api` и `apps/server`, а `commerce` начал использовать этот слой как реальный storefront input: `/store/*` и storefront GraphQL теперь уважают `channel_module_bindings`, а catalog/shipping visibility можно ограничивать metadata-based allowlist'ом по `channel_slug`.
-- Storefront product detail, cart mutation path и checkout validation теперь учитывают не только channel-aware видимость товаров и shipping options, но и доступный inventory по stock locations, видимым для текущего `channel_slug`; stale cart больше не проходит checkout ни с hidden product, ни с уже недоступным для канала остатком.
-- Для shipping profiles metadata-backed baseline больше не является единственным source of truth: в `commerce` появился typed registry `shipping_profiles` + `ShippingProfileService`, а `products.shipping_profile_slug` и `product_variants.shipping_profile_slug` теперь живут как typed persistence с backward-compatible нормализацией в metadata.
-- Product catalog surface дополнительно экспонирует first-class `shipping_profile_slug`, shipping option surface экспонирует first-class `allowed_shipping_profile_slugs`, а admin/storefront write-path теперь валидирует эти ссылки против активного typed shipping-profile registry.
-- Cart и checkout теперь тоже стали deliverability-aware: line items, `cart_shipping_selections`, order line items и fulfillment metadata хранят canonical language-agnostic seller identity (`seller_id`); cart delivery grouping и shipping selection не используют `seller_scope` как fallback, cart response отдаёт seller-aware `delivery_groups[]`, cart context/checkout принимают typed `shipping_selections[]`, а checkout создаёт `fulfillments[]` по одной записи на delivery group с typed `fulfillment.items[]`.
-- Post-order admin create path теперь тоже опирается на typed `fulfillment.items[]`: manual follow-up fulfillments валидируют `order_line_item_id` против заказа, не дают превысить remaining quantity, удерживают seller-aware delivery-group boundary и пробрасывают этот же invariant в REST/GraphQL.
-- Admin lifecycle transport больше не coarse-only для fulfillments: `ship` и `deliver` теперь могут принимать item-level quantity adjustments, `fulfillment.items[]` возвращают `shipped_quantity` / `delivered_quantity` вместе с language-agnostic audit trail в metadata, а поверх этого уже появились explicit post-order recovery actions `reopen` / `reship`; свободный `delivered_note` остаётся typed-полем, а не дублируется в JSON audit.
-- Legacy single-group contract сохраняется только как compatibility shortcut: `selected_shipping_option_id`, singular `shipping_option_id` и singular `fulfillment` заполняются только для cart'ов с одной delivery group.
-- Preflight validation в checkout теперь отрабатывает до side effects: stale shipping-profile snapshot, отсутствующая per-group selection или несовместимый shipping option отпускают `checking_out` lock и не создают payment/order artifacts.
-- Admin REST и admin GraphQL теперь тоже имеют typed shipping-option management surface: `list/show/create/update/deactivate/reactivate` для shipping options поверх `FulfillmentService`, включая `allowed_shipping_profile_slugs` и lifecycle по `active`.
-- Admin REST и admin GraphQL теперь имеют и typed shipping-profile management surface: `list/show/create/update/deactivate/reactivate` поверх `ShippingProfileService`, так что compatibility rules больше не живут только в metadata или service helper'ах.
-- Module-owned admin UI пакет `rustok-commerce/admin` теперь уже не держит ни product CRUD, ни shipping-option UI и остался под typed shipping-profile registry, aggregate cart promotions и post-order operator surfaces.
-- Module-owned admin UI пакет `rustok-fulfillment/admin` забрал shipping-option lifecycle и compatibility UX по ownership boundary модуля `fulfillment`.
-- Module-owned admin UI пакет `rustok-customer/admin` забрал customer list/detail/create/update UX по ownership boundary модуля `customer` и использует native Leptos server functions вместо нового umbrella transport.
-- Module-owned admin UI пакет `rustok-region/admin` забрал region list/detail/create/update UX по ownership boundary модуля `region` и использует native Leptos server functions поверх `RegionService`.
-- Module-owned storefront UI пакет `rustok-region/storefront` забрал public region discovery UX по ownership boundary модуля `region`, используя native Leptos server functions с GraphQL fallback поверх `storefrontRegions`.
-- Module-owned storefront UI пакет `rustok-product/storefront` забрал published catalog discovery UX по ownership boundary модуля `product`, используя native Leptos server functions поверх `CatalogService` и сохраняя GraphQL storefront contract как fallback.
-- Module-owned storefront UI пакет `rustok-pricing/storefront` забрал public pricing atlas UX по ownership boundary модуля `pricing`, используя native Leptos server functions поверх `PricingService` и сохраняя GraphQL storefront contract как fallback.
-- Module-owned storefront UI пакет `rustok-cart/storefront` забрал storefront cart inspection UX и safe decrement/remove line-item actions по ownership boundary модуля `cart`, используя native Leptos server functions поверх `CartService` и сохраняя GraphQL storefront contract как fallback.
-- Aggregate storefront UI пакет `rustok-commerce/storefront` больше не дублирует catalog/pricing discovery и сжат до aggregate checkout workspace: он показывает effective storefront context, checkout state по `?cart_id=` и оставшиеся aggregate actions для seller-aware delivery-group shipping selection, `payment collection` и `complete checkout`, а discovery/edit surfaces уже живут в split storefront-пакетах.
-- В ecommerce зафиксирован минимальный multivendor foundation: product create/update contract теперь принимает nullable `seller_id`, grouping и ownership validation опираются на `seller_id`, а display-данные продавца больше не персистятся как source of truth в ecommerce storage.
-- Module-owned admin UI пакет `rustok-order/admin` забрал order list/detail/lifecycle UX по ownership boundary модуля `order`.
-- Module-owned admin UI пакет `rustok-inventory/admin` забрал inventory visibility и stock-health UX по ownership boundary модуля `inventory`; native inventory-owned read path уже primary, transitional commerce GraphQL adapter остаётся read-only fallback, а set/adjust/reserve/release quantity и check-availability flows вынесены в inventory-owned native write/validation surface без GraphQL fallback.
-- Module-owned admin UI пакет `rustok-pricing/admin` забрал pricing visibility и sale-marker UX по ownership boundary модуля `pricing`, сохранив transport gap явно задокументированным.
-- Publishable UI пакеты для admin/storefront живут внутри модуля и подключаются host-приложениями через manifest-driven composition.
+- `rustok-commerce` remains the umbrella/root module for the ecommerce family and holds orchestration, transport and the remaining uncut parts of the domain.
+- The main REST contract lives on `/store/*` and `/admin/*`; legacy `/api/commerce/*` has been removed from the live route tree and OpenAPI.
+- On the admin surface, besides product management, there are already paginated order transport (`GET /admin/orders`, `GET /admin/orders/{id}`), explicit order lifecycle routes (`mark-paid`, `ship`, `deliver`, `cancel`), list/detail/lifecycle routes for `payment-collections`, `refunds`, `fulfillments`, order-change preview/apply/cancel (`/admin/orders/{id}/changes`, `/admin/order-changes*`) and return decision tree (`POST /admin/orders/{id}/returns/decision`) with `return_only/refund/exchange/claim`, plus a manual post-order `create fulfillment` route with typed `items[]`.
+- GraphQL surface is preserved and uses the same application services as REST; for admin commerce there is parity on order/payment/fulfillment/order-change queries, including list read-path for `paymentCollections`, `fulfillments` and `orderChanges`, lifecycle mutations, `createOrderChange`, `createOrderReturnDecision` (`return_only/refund/exchange/claim`) and manual `createFulfillment`, while the storefront surface now includes `storefrontRegions`, `storefrontShippingOptions`, `storefrontCart`, `createStorefrontCart`, `updateStorefrontCartContext`, cart line-item lifecycle, `storefrontMe`, customer-owned `storefrontOrder`, `createStorefrontPaymentCollection`, `completeStorefrontCheckout`, as well as pricing-facing read helpers `storefrontPricingChannels`, `storefrontActivePriceLists(channelId, channelSlug)`, `storefrontPricingProduct` and `adminPricingProduct` for module-owned fallback surfaces.
+- Generic catalog roots `product` / `storefrontProduct` should now be treated only as a catalog-authoritative surface: their `variants.prices` remains a compatibility snapshot without explicit currency/region/price-list/channel resolution and is not considered a pricing source of truth alongside dedicated pricing roots.
+- `apps/server` remains a thin host layer: routes, OpenAPI and schema composition, without duplication of commerce business logic.
+- Cart snapshot already stores storefront context (`region_id`, `country_code`, `locale_code`, `selected_shipping_option_id`, `customer_id`, `email`, `currency_code`) and channel snapshot (`channel_id`, `channel_slug`); the same channel snapshot is now carried over into order transport on checkout.
+- The checkout flow uses `checking_out`, reuse payment collection and recovery semantics for repeated storefront requests.
+- The platform already passes `ChannelContext` through `rustok-api` and `apps/server`, and `commerce` has started using this layer as a real storefront input: `/store/*` and storefront GraphQL now respect `channel_module_bindings`, and catalog/shipping visibility can be restricted with a metadata-based allowlist by `channel_slug`.
+- Storefront product detail, cart mutation path and checkout validation now consider not only channel-aware product and shipping option visibility, but also available inventory by stock locations visible for the current `channel_slug`; stale cart no longer passes checkout with a hidden product or with stock already unavailable for the channel.
+- For shipping profiles, the metadata-backed baseline is no longer the sole source of truth: `commerce` now has a typed registry `shipping_profiles` + `ShippingProfileService`, and `products.shipping_profile_slug` and `product_variants.shipping_profile_slug` now live as typed persistence with backward-compatible normalization in metadata.
+- The product catalog surface additionally exposes first-class `shipping_profile_slug`, the shipping option surface exposes first-class `allowed_shipping_profile_slugs`, and the admin/storefront write-path now validates these references against the active typed shipping-profile registry.
+- Cart and checkout are now also deliverability-aware: line items, `cart_shipping_selections`, order line items and fulfillment metadata store canonical language-agnostic seller identity (`seller_id`); cart delivery grouping and shipping selection do not use `seller_scope` as a fallback, cart response returns seller-aware `delivery_groups[]`, cart context/checkout accept typed `shipping_selections[]`, and checkout creates `fulfillments[]` with one entry per delivery group with typed `fulfillment.items[]`.
+- The post-order admin create path now also relies on typed `fulfillment.items[]`: manual follow-up fulfillments validate `order_line_item_id` against the order, prevent exceeding remaining quantity, maintain seller-aware delivery-group boundary and propagate the same invariant to REST/GraphQL.
+- Admin lifecycle transport is no longer coarse-only for fulfillments: `ship` and `deliver` can now accept item-level quantity adjustments, `fulfillment.items[]` return `shipped_quantity` / `delivered_quantity` together with language-agnostic audit trail in metadata, and explicit post-order recovery actions `reopen` / `reship` have been added on top; the free-form `delivered_note` remains a typed field rather than being duplicated in JSON audit.
+- Legacy single-group contract is preserved only as a compatibility shortcut: `selected_shipping_option_id`, singular `shipping_option_id` and singular `fulfillment` are only filled for carts with one delivery group.
+- Preflight validation in checkout now fires before side effects: stale shipping-profile snapshot, missing per-group selection or incompatible shipping option release the `checking_out` lock and do not create payment/order artifacts.
+- Admin REST and admin GraphQL now also have a typed shipping-option management surface: `list/show/create/update/deactivate/reactivate` for shipping options over `FulfillmentService`, including `allowed_shipping_profile_slugs` and lifecycle via `active`.
+- Admin REST and admin GraphQL now also have a typed shipping-profile management surface: `list/show/create/update/deactivate/reactivate` over `ShippingProfileService`, so compatibility rules no longer live only in metadata or service helpers.
+- The module-owned admin UI package `rustok-commerce/admin` no longer holds product CRUD or shipping-option UI and has been narrowed to typed shipping-profile registry, aggregate cart promotions and post-order operator surfaces.
+- The module-owned admin UI package `rustok-fulfillment/admin` has taken shipping-option lifecycle and compatibility UX under the ownership boundary of the `fulfillment` module.
+- The module-owned admin UI package `rustok-customer/admin` has taken customer list/detail/create/update UX under the ownership boundary of the `customer` module and uses native Leptos server functions instead of a new umbrella transport.
+- The module-owned admin UI package `rustok-region/admin` has taken region list/detail/create/update UX under the ownership boundary of the `region` module and uses native Leptos server functions over `RegionService`.
+- The module-owned storefront UI package `rustok-region/storefront` has taken public region discovery UX under the ownership boundary of the `region` module, using native Leptos server functions with GraphQL fallback over `storefrontRegions`.
+- The module-owned storefront UI package `rustok-product/storefront` has taken published catalog discovery UX under the ownership boundary of the `product` module, using native Leptos server functions over `CatalogService` and preserving GraphQL storefront contract as fallback.
+- The module-owned storefront UI package `rustok-pricing/storefront` has taken public pricing atlas UX under the ownership boundary of the `pricing` module, using native Leptos server functions over `PricingService` and preserving GraphQL storefront contract as fallback.
+- The module-owned storefront UI package `rustok-cart/storefront` has taken storefront cart inspection UX and safe decrement/remove line-item actions under the ownership boundary of the `cart` module, using native Leptos server functions over `CartService` and preserving GraphQL storefront contract as fallback.
+- The aggregate storefront UI package `rustok-commerce/storefront` no longer duplicates catalog/pricing discovery and has been reduced to an aggregate checkout workspace: it shows effective storefront context, checkout state by `?cart_id=` and the remaining aggregate actions for seller-aware delivery-group shipping selection, `payment collection` and `complete checkout`, while discovery/edit surfaces already live in split storefront packages.
+- A minimal multivendor foundation has been established in ecommerce: the product create/update contract now accepts nullable `seller_id`, grouping and ownership validation rely on `seller_id`, and seller display data is no longer persisted as a source of truth in ecommerce storage.
+- The module-owned admin UI package `rustok-order/admin` has taken order list/detail/lifecycle UX under the ownership boundary of the `order` module.
+- The module-owned admin UI package `rustok-inventory/admin` has taken inventory visibility and stock-health UX under the ownership boundary of the `inventory` module; the native inventory-owned read path is now primary, the transitional commerce GraphQL adapter remains a read-only fallback, and set/adjust/reserve/release quantity and check-availability flows have been moved to an inventory-owned native write/validation surface without GraphQL fallback.
+- The module-owned admin UI package `rustok-pricing/admin` has taken pricing visibility and sale-marker UX under the ownership boundary of the `pricing` module, keeping the transport gap explicitly documented.
+- Publishable UI packages for admin/storefront live inside the module and are connected by host applications through manifest-driven composition.
 
-## Ближайший roadmap
+## Near-term roadmap
 
-- UI split уже идёт и storefront-side phase тоже продвинута: product admin route живёт в `rustok-product/admin`, shipping options переехали в `rustok-fulfillment/admin`, customer operations переехали в `rustok-customer/admin`, order operations переехали в `rustok-order/admin`, inventory visibility и targeted stock/reservation/availability actions переехали в `rustok-inventory/admin`, pricing visibility переехала в `rustok-pricing/admin`, region CRUD переехал в `rustok-region/admin`, public region discovery переехал в `rustok-region/storefront`, published catalog discovery переехал в `rustok-product/storefront`, public pricing atlas переехал в `rustok-pricing/storefront`, storefront cart inspection и safe decrement/remove actions переехали в `rustok-cart/storefront`, `rustok-commerce-admin` оставлен под shipping-profile registry, aggregate cart promotions и post-order operator surfaces, а `rustok-commerce-storefront` теперь держит aggregate checkout workspace с seller-aware delivery-group shipping selection.
-- Следующий шаг уже не в grouping, не в базовом fulfillment-item model, не в manual create path и не в partial ship/deliver baseline: stricter delivery audit trail, explicit `reopen` / `reship` semantics и стартовый refund slice уже закрыты, так что дальше остаётся transport publication для return decision tree и более широкий post-order OMS surface (`exchanges/claims/order changes`).
-- Cross-cutting трек `Marketplace Foundations` теперь активен параллельно фазам `7-12`: ближайший scope ограничен stable `seller_id`, seller-owned product/catalog ownership contract и seller-aware cart/order/fulfillment grouping без seller portal, payouts, commissions и disputes.
-- Затем идём в Pricing 2.0: channel-aware price resolution, price lists, rules и promotions.
-- После этого выносим tax, post-order flows и provider SPI.
+- The UI split is already underway and the storefront-side phase is also advanced: product admin route lives in `rustok-product/admin`, shipping options have moved to `rustok-fulfillment/admin`, customer operations have moved to `rustok-customer/admin`, order operations have moved to `rustok-order/admin`, inventory visibility and targeted stock/reservation/availability actions have moved to `rustok-inventory/admin`, pricing visibility has moved to `rustok-pricing/admin`, region CRUD has moved to `rustok-region/admin`, public region discovery has moved to `rustok-region/storefront`, published catalog discovery has moved to `rustok-product/storefront`, public pricing atlas has moved to `rustok-pricing/storefront`, storefront cart inspection and safe decrement/remove actions have moved to `rustok-cart/storefront`, `rustok-commerce-admin` has been left for shipping-profile registry, aggregate cart promotions and post-order operator surfaces, and `rustok-commerce-storefront` now holds the aggregate checkout workspace with seller-aware delivery-group shipping selection.
+- The next step is no longer about grouping, basic fulfillment-item model, manual create path or partial ship/deliver baseline: stricter delivery audit trail, explicit `reopen` / `reship` semantics and the initial refund slice are already completed, so what remains is transport publication for the return decision tree and a broader post-order OMS surface (`exchanges/claims/order changes`).
+- The cross-cutting track `Marketplace Foundations` is now active in parallel with phases `7-12`: the nearest scope is limited to stable `seller_id`, seller-owned product/catalog ownership contract and seller-aware cart/order/fulfillment grouping without seller portal, payouts, commissions and disputes.
+- Then we move to Pricing 2.0: channel-aware price resolution, price lists, rules and promotions.
+- After that we extract tax, post-order flows and provider SPI.
 
-## Контракты событий
+## Event contracts
 
 - [Event flow contract (central)](../../../docs/architecture/event-flow-contract.md)
 
 ## FFA core/transport/ui slice
 
-Срез 10.6 фиксирует structural shape `core_transport_ui`: admin и storefront получили framework-agnostic `core.rs` helpers, module-owned `transport.rs` facades и явные Leptos render adapters `admin/src/ui/leptos.rs` / `storefront/src/ui/leptos.rs`. Crate roots теперь только подключают module layers и re-export `CommerceAdmin` / `CommerceView`; covered flows обращаются к transport facade, а не к raw `api::*` functions.
+Slice 10.6 fixes the structural shape `core_transport_ui`: admin and storefront received framework-agnostic `core.rs` helpers, module-owned `transport.rs` facades and explicit Leptos render adapters `admin/src/ui/leptos.rs` / `storefront/src/ui/leptos.rs`. Crate roots now only connect module layers and re-export `CommerceAdmin` / `CommerceView`; covered flows go through the transport facade rather than raw `api::*` functions.

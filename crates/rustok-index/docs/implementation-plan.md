@@ -1,15 +1,15 @@
-# План реализации `rustok-index`
+# Implementation plan for `rustok-index`
 
-Статус: модуль зафиксирован как canonical index/read-model layer; локальная
-документация приведена к единому формату.
+Status: module is locked as the canonical index/read-model layer; local
+documentation has been aligned to a unified format.
 
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress + fba_provider_in_process_adapter_source_lock
-- Last checkpoint: no-compile инкремент добавил source-locked in-process adapter seams: `InProcessIndexReadModelAdapter` реализует `IndexReadModelPort` для read/list smoke с selector/tenant/type/locale/limit фильтрами, `RebuildDisabledIndexAdapter` реализует typed disabled `IndexRebuildPort`, а `verify:index:fba` закрепляет adapter metadata без запуска Rust-компиляции.
-- Next step: Подключить persistence-backed adapter поверх текущих in-process seams и собрать Rust runtime contract evidence; до этого статус остаётся `in_progress`.
+- Last checkpoint: no-compile increment added source-locked in-process adapter seams: `InProcessIndexReadModelAdapter` implements `IndexReadModelPort` for read/list smoke with selector/tenant/type/locale/limit filters, `RebuildDisabledIndexAdapter` implements typed disabled `IndexRebuildPort`, and `verify:index:fba` locks adapter metadata without running Rust compilation.
+- Next step: Connect persistence-backed adapter over the current in-process seams and collect Rust runtime contract evidence; until then, status remains `in_progress`.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
+- Hand-off notes for next agent: After each increment, update this block and the central FFA/FBA readiness board.
 - Last updated at (UTC): 2026-06-26T00:00:00Z
 
 ## FFA/FBA status
@@ -26,63 +26,63 @@
   - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;
   - FBA provider slice: `crates/rustok-index/src/ports.rs` declares `IndexReadModelPort` / `index.read_model.v1` for indexed document reads and `IndexRebuildPort` / `index.rebuild.v1` for operator rebuild orchestration with shared `rustok_api::PortContext`/`PortError`, tenant-scope preservation, `PortCallPolicy::read()` deadline semantics and `PortCallPolicy::write()` idempotency/deadline semantics for rebuilds; `crates/rustok-index/contracts/index-fba-registry.json`, `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` lock planned contract cases, fallback profiles, no-compile source markers and source-locked in-process adapter seams (`InProcessIndexReadModelAdapter`, `RebuildDisabledIndexAdapter`) under `npm run verify:index:fba`; persistence-backed Rust runtime contract execution remains the next step before `transport_verified`.
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-index` как infrastructure module для indexed reads и denormalized projections;
-- не смешивать index/read-model слой с product-facing search responsibilities;
-- синхронизировать ingestion contract, rebuild semantics и local docs.
+- keep `rustok-index` as an infrastructure module for indexed reads and denormalized projections;
+- do not mix the index/read-model layer with product-facing search responsibilities;
+- synchronize ingestion contract, rebuild semantics and local docs.
 
-## Текущее состояние
+## Current state
 
-- базовая crate/module structure уже встроена в workspace;
-- operator-facing admin overview уже опубликован через `rustok-index-admin` и разделён по FFA слоям (`core`, native-only `transport`, `ui/leptos`);
-- canonical direction зафиксирован: `index` отвечает за ingestion и indexed reads, а не за ranking/UX поиска;
-- модуль уже рассматривается как substrate для cross-module filtering и link-aware queries;
-- event-driven consumers переведены на module-owned runtime path через `register_event_listeners(...)`, старый host/legacy listener path удалён;
-- standalone `flex` ingestion теперь тоже живёт в `IndexModule`: `flex_indexer` поддерживает `index_flex_entries` как module-owned read model для `FlexEntry*` / `FlexSchema*` событий;
-- boundary `index != search` теперь дополнительно удерживается contract-проверкой в `xtask`, чтобы read-model слой не начал снова экспортировать search-owned engine surfaces;
-- root `README.md`, local docs и manifest metadata входят в scoped audit path.
+- base crate/module structure is already embedded in the workspace;
+- operator-facing admin overview is already published through `rustok-index-admin` and split by FFA layers (`core`, native-only `transport`, `ui/leptos`);
+- canonical direction is locked: `index` is responsible for ingestion and indexed reads, not for ranking/UX search;
+- module is already considered as substrate for cross-module filtering and link-aware queries;
+- event-driven consumers are moved to module-owned runtime path through `register_event_listeners(...)`, old host/legacy listener path removed;
+- standalone `flex` ingestion now also lives in `IndexModule`: `flex_indexer` supports `index_flex_entries` as module-owned read model for `FlexEntry*` / `FlexSchema*` events;
+- boundary `index != search` is now additionally maintained by a contract check in `xtask`, so the read-model layer does not start exporting search-owned engine surfaces again;
+- root `README.md`, local docs and manifest metadata are part of the scoped audit path.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] зафиксировать роль `rustok-index` как canonical index/read-model module;
-- [x] отделить boundary `index != search` на уровне локальной документации и ADR;
-- [ ] удерживать sync между ingestion contracts, runtime dependencies и host integration tests.
+- [x] lock the role of `rustok-index` as canonical index/read-model module;
+- [x] separate boundary `index != search` at the level of local documentation and ADR;
+- [ ] maintain sync between ingestion contracts, runtime dependencies and host integration tests.
 
 ### 2. Working index module
 
-- [~] довести ingestion lifecycle: bootstrap, incremental sync, rebuild, retry; текущий in-process/read-only adapter slice фиксирует shared rebuild policy and degraded-mode fallback, но persistence-backed scheduling/retry ещё pending;
-- [ ] зафиксировать canonical query surface для cross-module filtering и counts;
-- [~] довести tenant/locale scoping indexed records до production-ready contract; текущий FBA smoke фиксирует tenant-scope guard и locale selector validation, но persistence-backed evidence ещё pending.
+- [~] bring ingestion lifecycle: bootstrap, incremental sync, rebuild, retry; current in-process/read-only adapter slice locks shared rebuild policy and degraded-mode fallback, but persistence-backed scheduling/retry is still pending;
+- [ ] lock canonical query surface for cross-module filtering and counts;
+- [~] bring tenant/locale scoping of indexed records to production-ready contract; current FBA smoke locks tenant-scope guard and locale selector validation, but persistence-backed evidence is still pending.
 
 ### 3. Operability
 
-- [ ] покрыть consistency drift, rebuild duration и sync lag наблюдаемыми метриками;
-- [x] добавить no-compile runtime fallback smoke для read/list/rebuild provider ports и degraded rebuild-disabled profile;
-- [x] закрепить source-locked in-process adapter seams для read/list и rebuild-disabled runtime profiles без компиляции;
-- [~] добавить operator flows для health verification и rebuild control; текущий admin overview уже показывает tenant/module/counter bootstrap через FFA native-only transport;
-- [ ] документировать новые query/ingestion guarantees одновременно с изменением runtime surface.
-- [ ] заменить in-memory smoke adapter persistence-backed runtime adapter evidence при разрешённых компиляциях.
+- [ ] cover consistency drift, rebuild duration and sync lag with observable metrics;
+- [x] add no-compile runtime fallback smoke for read/list/rebuild provider ports and degraded rebuild-disabled profile;
+- [x] lock source-locked in-process adapter seams for read/list and rebuild-disabled runtime profiles without compilation;
+- [~] add operator flows for health verification and rebuild control; current admin overview already shows tenant/module/counter bootstrap through FFA native-only transport;
+- [ ] document new query/ingestion guarantees simultaneously with changing runtime surface.
+- [ ] replace in-memory smoke adapter with persistence-backed runtime adapter evidence when compilation is allowed.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate index`
 - `cargo xtask module test index`
-- targeted tests для ingestion, rebuild, filtering, consistency drift и tenant/locale scoping
-- контрактные тесты покрывают все публичные use-case module-owned index/read-model contract, включая registration path для `flex_indexer`
+- targeted tests for ingestion, rebuild, filtering, consistency drift and tenant/locale scoping
+- contract tests cover all public use-case module-owned index/read-model contract, including registration path for `flex_indexer`
 
-## Правила обновления
+## Update rules
 
-1. При изменении index/read-model contract сначала обновлять этот файл.
-2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata или dependency graph синхронизировать `rustok-module.toml`.
-4. При изменении boundary между `index` и `search` синхронизировать ADR и central docs.
+1. When changing index/read-model contract, update this file first.
+2. When changing public/runtime contract, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata or dependency graph, synchronize `rustok-module.toml`.
+4. When changing boundary between `index` and `search`, synchronize ADR and central docs.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

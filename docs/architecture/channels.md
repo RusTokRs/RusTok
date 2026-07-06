@@ -6,108 +6,108 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Каналы и real-time-поверхности
+# Channels and Real-time Surfaces
 
-Этот документ фиксирует роль real-time-каналов в RusToK и их место в общей
-transport-архитектуре.
+This document captures the role of real-time channels in RusToK and their place in the overall
+transport architecture.
 
-## Назначение
+## Purpose
 
-Real-time-каналы используются там, где нужен push-формат доставки событий в
-долгоживущем соединении:
+Real-time channels are used where a push delivery format of events over
+a long-lived connection is needed:
 
-- streaming статуса build/runtime операций
-- live progress для длительных задач
-- будущие notification/event streams, если они требуют push-доставки
+- streaming status of build/runtime operations
+- live progress for long-running tasks
+- future notification/event streams, if they require push delivery
 
-Каналы не заменяют GraphQL, REST или event bus. Это отдельный transport surface
-для live delivery.
+Channels do not replace GraphQL, REST, or the event bus. They are a separate transport surface
+for live delivery.
 
-## Текущий baseline
+## Current Baseline
 
-На текущем слое real-time-каналы строятся поверх WebSocket-routing в
+At the current layer, real-time channels are built on top of WebSocket routing in
 `apps/server`.
 
-Канонические правила:
+Canonical rules:
 
-- websocket route живёт в host layer
-- payload-контракт должен быть типизирован и документирован
-- auth/tenant/RBAC policy применяется до выдачи канала или в handshake path
-- канал не должен становиться источником правды для доменного состояния
+- the websocket route lives in the host layer
+- the payload contract must be typed and documented
+- auth/tenant/RBAC policy is applied before granting a channel or in the handshake path
+- the channel must not become a source of truth for domain state
 
-## Где проходит граница
+## Where the Boundary Lies
 
-### Host-слой
+### Host Layer
 
-`apps/server` отвечает за:
+`apps/server` is responsible for:
 
 - websocket handshake
 - connection lifecycle
 - auth/session validation
 - tenant context
-- fan-out transport и shutdown behavior
+- fan-out transport and shutdown behavior
 
-### Module / service-слой
+### Module / Service Layer
 
-Модуль или runtime service отвечает за:
+The module or runtime service is responsible for:
 
-- генерацию typed-событий
-- публикацию в hub/broadcast layer
-- семантический контракт payload-а
+- generating typed events
+- publishing to the hub/broadcast layer
+- semantic contract of the payload
 
-### Центральный event-flow
+### Central Event Flow
 
-WebSocket-канал не должен подменять event-runtime:
+WebSocket channel must not replace the event runtime:
 
-- доменные события идут через `rustok-outbox` и `rustok-events`
-- read-side и projections обновляются через event flow
-- websocket нужен только для live delivery текущего статуса или прогресса
+- domain events go through `rustok-outbox` and `rustok-events`
+- read-side and projections are updated through event flow
+- websocket is only needed for live delivery of current status or progress
 
-## Build/event-streaming
+## Build/Event-streaming
 
-Build/runtime progress-канал остаётся допустимым сценарием, если:
+Build/runtime progress channel remains a valid scenario if:
 
-- есть typed event-контракт
-- payload сериализуется стабильно
-- reconnect и lag не ломают семантический контракт
-- клиент может восстановить состояние через canonical API, если пропустил события
+- there is a typed event contract
+- payload serializes stably
+- reconnect and lag do not break the semantic contract
+- the client can restore state through canonical API if events were missed
 
-Это важно: WebSocket-stream не должен быть единственным источником состояния.
+This is important: WebSocket stream must not be the only source of state.
 
-## Wire-контракт
+## Wire Contract
 
-Для WebSocket payload действует такой минимум:
+For WebSocket payload, the following minimum applies:
 
-- явный `type`
-- стабильный machine-readable payload
-- минимальный набор обязательных полей для consumer-а
-- совместимость с tracing/observability
+- explicit `type`
+- stable machine-readable payload
+- minimal set of mandatory fields for the consumer
+- compatibility with tracing/observability
 
-Если канал становится долговременным платформенным контрактом, его payload должен быть
-описан и в local docs owning component.
+If the channel becomes a long-term platform contract, its payload must be
+described in the local docs of the owning component.
 
-## Shutdown и отказоустойчивость
+## Shutdown and Fault Tolerance
 
-Канал должен корректно переживать:
+The channel must correctly handle:
 
-- закрытие клиентом
-- graceful shutdown хоста
+- client close
+- graceful host shutdown
 - lag/backpressure
-- временную недоступность publisher-а
+- temporary publisher unavailability
 
-Отказ transport-канала не должен ломать write-side-операцию, если она уже
-завершена и подтверждена canonical API/state.
+Transport channel failure must not break a write-side operation if it has already
+completed and been confirmed by the canonical API/state.
 
-## Что не делать
+## What Not To Do
 
-- не использовать websocket как единственный источник доменного состояния
-- не обходить auth/tenant/RBAC policy ради convenience
-- не публиковать ad-hoc JSON без typed-контракта
-- не переносить ownership доменных событий из event runtime в websocket hub
+- do not use websocket as the only source of domain state
+- do not bypass auth/tenant/RBAC policy for convenience
+- do not publish ad-hoc JSON without a typed contract
+- do not transfer ownership of domain events from event runtime to websocket hub
 
-## Связанные документы
+## Related Documents
 
-- [Контракт потока доменных событий](./event-flow-contract.md)
-- [Архитектура API](./api.md)
-- [Маршрутизация и границы transport-слоя](./routing.md)
-- [Обзор архитектуры платформы](./overview.md)
+- [Domain Event Flow Contract](./event-flow-contract.md)
+- [API Architecture](./api.md)
+- [Routing and Transport Layer Boundaries](./routing.md)
+- [Platform Architecture Overview](./overview.md)

@@ -6,81 +6,82 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План устранения недостатков backend/runtime RusTok
 
-## Статус перепроверки
+# RusTok Backend/Runtime Defect Remediation Plan
 
-Документ `docs/research/error fix.md` переведён из аудиторского черновика в рабочий план устранения недостатков. Все исходные тезисы были перепроверены по текущему состоянию репозитория на 2026-06-01.
+## Re-verification Status
 
-Вопросов, блокирующих составление плана, нет. Перед стартом реализации нужно только подтвердить приоритеты и бюджеты из раздела «Открытые решения», потому что они влияют на объём первой волны, но не меняют список найденных дефектов.
+The document `docs/research/error fix.md` has been converted from an audit draft into a working defect remediation plan. All original theses have been re-verified against the current repository state as of 2026-06-01.
 
-## Executive summary
+There are no questions blocking the plan. Before implementation starts, only priorities and budgets from the "Open Decisions" section need confirmation, as they affect the scope of the first wave but do not change the list of identified defects.
 
-В репозитории подтверждены шесть проблемных зон:
+## Executive Summary
 
-1. **Дрейф/устаревание contract evidence по dependency graph модулей**: `modules.toml` и центральный реестр считают `pages` зависимым от `content` и `page_builder`, а runtime contract test в `apps/server/src/modules/mod.rs` всё ещё ожидает только `content`. При этом `cargo xtask validate-manifest` сейчас проходит, значит первоочередной риск — не доказанный runtime failure, а рассинхронизация тестового/документального evidence с canonical manifest validation.
-2. **Неполный request-context для channel resolution**: `channel` middleware исполняется до `auth_context`, а `RequestFacts` явно заполняет `oauth_app_id` и `locale` значениями `None`.
-3. **DB amplification на locale hot path**: `locale` middleware читает `tenant_locales` из БД на каждый запрос tenant-bound маршрута и не использует cache/versioned invalidation.
-4. **Протечка inventory через commerce GraphQL read-side**: inventory admin README прямо фиксирует временную зависимость UI read-side от `rustok-commerce` GraphQL contract.
-5. **Хрупкая агрегация миграций**: серверный migrator вручную собирает миграции множества crate-ов, но dependency descriptors агрегируются только из `rustok_product`.
-6. **CI не закрывает migration-safety и runtime-context invariants отдельными gates**: есть сильные базовые проверки, но нет явного обязательного smoke job на миграции с нуля / incremental apply / dependency graph runtime invariants.
+Six problem areas have been confirmed in the repository:
 
-### Обновление реализации на 2026-06-05
+1. **Drift/staleness of contract evidence for module dependency graph**: `modules.toml` and the central registry consider `pages` dependent on `content` and `page_builder`, while the runtime contract test in `apps/server/src/modules/mod.rs` still expects only `content`. Meanwhile, `cargo xtask validate-manifest` currently passes, meaning the primary risk is not a proven runtime failure but desynchronization of test/documentation evidence with canonical manifest validation.
+2. **Incomplete request context for channel resolution**: `channel` middleware executes before `auth_context`, and `RequestFacts` explicitly sets `oauth_app_id` and `locale` to `None`.
+3. **DB amplification on locale hot path**: `locale` middleware reads `tenant_locales` from DB on every request to a tenant-bound route and does not use cache/versioned invalidation.
+4. **Inventory leak through commerce GraphQL read-side**: the inventory admin README explicitly captures a temporary dependency of the UI read-side on `rustok-commerce` GraphQL contract.
+5. **Fragile migration aggregation**: the server migrator manually collects migrations from multiple crates, but dependency descriptors are aggregated only from `rustok_product`.
+6. **CI does not cover migration-safety and runtime-context invariants with separate gates**: there are strong basic checks, but no explicit mandatory smoke job for migrations from zero / incremental apply / dependency graph runtime invariants.
 
-- Wave 1 evidence по `pages -> [content, page_builder]`, Wave 2 channel request context и Wave 3 TTL-cache tenant locale policy уже отражены в коде текущей ветки.
-- В рамках продолжения Wave 4 добавлен первый migration-safety baseline: module-owned `migration_dependencies()` для известных cross-module FK/order boundaries (`channel -> auth`, `pricing/inventory -> product variants`, `commerce collections/categories -> product`, `blog/forum -> taxonomy`) и агрегация этих descriptors в server migrator.
-- Добавлен локальный PostgreSQL smoke `scripts/verify/verify-migration-smoke.sh`: он запускает ignored integration test, который сам создаёт временную БД без локального `psql`, применяет мигратор from-zero и проверяет representative module tables.
-- Wave 5 продвинут малым write-transport slice: inventory admin read-side остаётся на inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, а dedicated native endpoints `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` теперь идут через inventory-owned API/native facade без GraphQL fallback, вызывают inventory-owned service methods после tenant/permission checks, а inventory detail UI получил targeted set-quantity и +/-1 adjustment controls с локальной integer-валидацией и optimistic detail refresh.
-- Открытым остатком Wave 4 остаётся наблюдать первый CI `migration-smoke` прогон на реальном GitHub Actions окружении и исправить возможные environment-specific failures; для Wave 5 остаётся расширить parity coverage и закрыть оставшиеся inventory mutations вместо transitional adapter-а.
-- Следующий малый Wave 5 ownership slice вынес storefront product inventory projection в inventory-owned public-channel facade: `rustok-inventory` теперь возвращает `PublicChannelInventoryProjection { available_quantity, in_stock }`, а commerce storefront DTO adapter только переносит готовую projection в `ProductResponse`, не дублируя backorder policy branching и не вызывая availability loaders напрямую; быстрый verifier закрепляет этот boundary без долгой компиляции.
-- Следующий малый Wave 4 slice закрепил dependency descriptors в общем module contract: `MigrationSource` получил default `migration_dependencies()`, известные module crates с cross-module ordering metadata возвращают локальные descriptors через этот trait, а server migrator агрегирует их через module instances вместо прямого доступа к package-local migration modules. Последующий уточняющий slice расширил aggregation list до всех module crates, чьи migrations включены в server migrator, чтобы новые descriptors не требовали отдельного server-side allowlist.
-- Следующий малый Wave 4 smoke slice добавил opt-in incremental mode для PostgreSQL migration smoke (`RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`): тот же fresh DB теперь может проверять не только apply-from-zero целиком, но и последовательный `Migrator::up(..., Some(1))` path без отдельного `psql`; direct Rust test runs теперь валидируют binary smoke flags так же строго, как shell wrapper.
-- Следующий малый Wave 3 observability slice выровнял Prometheus naming для tenant locale cache counters с планом: hit/miss метрики теперь экспортируются как `rustok_tenant_locale_cache_hits_total` и `rustok_tenant_locale_cache_misses_total`, рядом с уже существующими `rustok_tenant_locale_db_queries_total` и `rustok_tenant_locale_cache_invalidations_total`; `rustok_tenant_locale_cache_entries` остаётся gauge.
-- Следующий малый Wave 6 guardrail slice добавил быстрый локальный `node scripts/verify/verify-runtime-context-invariants.mjs` и подключил его к `./scripts/verify/verify-all.sh runtime-context-invariants`: проверка закрепляет OAuth/locale dimensions для channel, source-order contract для фактического порядка middleware, имена locale-cache metrics и evidence `pages -> [content, page_builder]` без полной Rust-компиляции.
-- Следующий малый Wave 4/Wave 6 CI slice добавил отдельный GitHub Actions job `migration-smoke` с PostgreSQL service: CI запускает локальный smoke wrapper сначала в apply-from-zero режиме, затем с `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`, а aggregate `ci-success` теперь ждёт этот migration-safety gate.
-- Следующий малый Wave 6 docs-hardening slice расширил существующий `docs/verification/README.md` кратким runtime/backend regression runbook для module graph drift, channel locale/OAuth context, locale DB amplification и migration dependency failures без создания нового документа.
-- Следующий малый Wave 5 guardrail slice закрепил transitional commerce GraphQL adapter как read-only compatibility fallback: inventory admin boundary test теперь проверяет отсутствие GraphQL mutation/write markers в adapter-е и наличие README removal criteria для adapter-а, пока оставшийся dedicated write transport добирается.
-- Следующий малый Wave 5 docs-sync slice синхронизировал центральный FFA/FBA readiness board в `docs/modules/registry.md` с локальным inventory plan: registry evidence теперь явно включает read-only transitional adapter/removal criteria boundary coverage.
-- Следующий малый Wave 5 ops-sync slice обновил `docs/modules/implementation-plans-registry.md` для `rustok-inventory`: статус больше не `not_started`, checkpoint отражает native read/write split, read-only transitional adapter guardrail, следующий write-mutation slice и verification gates.
-- Следующий малый Wave 5 contract-semantics slice закрепил backend-level semantics для `InventoryQuantityWriteResult`: committed quantity теперь покрыта unit evidence для `inStock` derivation и native endpoint wire shape, чтобы write UI/API не восстанавливали stock state локальной догадкой.
-- Следующий малый Wave 5 reserve-transport slice вынес reservation write path в inventory-owned native/API facade: `InventoryService::reserve` возвращает typed `InventoryReservationWriteResult { reserved_quantity, available_quantity, in_stock }`, endpoint `inventory/variant/reserve-quantity` проходит tenant/permission checks без GraphQL fallback, а backend/admin serde evidence фиксирует reservation wire shape.
-- Следующий малый Wave 5 reserve-hardening slice закрепил reserve endpoint в no-fallback guardrail: API fallback predicate теперь явно не допускает `inventory/variant/reserve-quantity requires the ssr feature`, а admin locale copy больше не описывает dedicated write transport только как set-quantity и отражает set/adjust/reserve scope.
-- Следующий малый Wave 5 availability-read slice синхронизировал native read-side с выделенными stock writes: `AdminInventoryReadService` теперь берёт variant available quantity из `inventory_items`/`inventory_levels` при наличии stock-level state, поэтому set/adjust/reserve mutations не теряются при последующем native detail refresh; legacy `product_variant.inventory_quantity` остаётся fallback-ом для ещё неинициализированных stock levels.
-- Следующий малый Wave 5 reserve-ui slice подключил reserve-quantity к admin detail UI через inventory-owned API facade: UI валидирует non-negative quantity, вызывает `reserve_variant_quantity` без GraphQL fallback, применяет `InventoryReservationWriteResult.available_quantity/in_stock` в optimistic detail refresh и обновляет boundary evidence для native-only reservation controls.
-- Следующий малый Wave 5 evidence-sync slice убрал оставшийся stale UI fallback текст и синхронизировал local/central registry evidence: readiness теперь описывает set/adjust/reserve UI controls, available-quantity optimistic refresh и native-only boundary guardrail одним контрактом.
-- Следующий малый Wave 5 reservation-noop slice уточнил backend semantics для zero-quantity reservation: `InventoryService::reserve(..., 0)` теперь возвращает текущий available quantity / in-stock state из inventory levels или legacy variant snapshot, не создавая synthetic zero-availability result и не создавая reservation item для admin optimistic refresh.
-- Следующий малый Wave 5 reservation-release consistency slice синхронизировал release path с reservation ledger: `InventoryService::release_reservation_quantity` теперь перед списанием levels проверяет active `reservation_items`, списывает release из tracked rows (soft-delete при полном списании строки) и возвращает validation error, если levels показывают reserved quantity, но reservation item rows не покрывают requested release.
-- Следующий малый Wave 5 UI-boundary slice развёл client-side parsing и i18n copy для reservation и availability flows: detail UI вызывает `parse_availability_quantity` для dedicated availability validation, availability/reservation invalid labels больше не переиспользуют reserve-specific текст, тесты фиксируют domain-labeled non-negative error и source boundary дополнительно запрещает `releaseReservation` в transitional GraphQL adapter-е.
-- Следующий малый Wave 5 availability-semantics slice закрепил case-insensitive matching для inventory backorder policy `continue` в общем `services/policy.rs`: write-result `in_stock`, set/adjust/reserve/check-availability guardrails и admin read-side stock state больше не зависят от регистра policy value и не держат дублирующие helpers.
-- Следующий малый Wave 5 docs-sync slice синхронизировал umbrella commerce docs и центральный FFA/FBA registry с inventory-owned native set/adjust/reserve/release/check-availability surface и shared case-insensitive backorder policy semantics; local inventory operability docs отмечены закрытыми для текущего runtime surface.
-- Следующий малый Wave 5 compatibility-semantics slice экспортировал inventory-owned backorder policy helper и подключил его в umbrella commerce checkout/storefront compatibility paths, чтобы `continue` не становился case-sensitive за пределами inventory-owned read/write services. Следующий Wave 6 guardrail slice добавил быстрый `node scripts/verify/verify-inventory-admin-boundary.mjs` и подключил его к `./scripts/verify/verify-all.sh inventory-admin-boundary`: проверка закрепляет policy-aware native write result, отсутствие duplicate variant pre-read, read-only transitional GraphQL adapter и native-only inventory admin write facades без полной Rust-компиляции. Следующий Wave 6 runbook slice расширил существующий `docs/guides/runtime-guardrails.md` короткими diagnostics для module graph drift, channel locale/oauth dimensions, locale DB amplification, migration dependency failures и inventory admin boundary drift без создания нового документа. Следующий Wave 6 central-docs slice обновил `docs/architecture/api.md` для request-context/channel fast gate и `docs/modules/module-authoring.md` для migration dependency descriptor contract. Следующий verification-hardening slice добавил fixture tests для `verify-inventory-admin-boundary.mjs`, проверяющие successful fixture, duplicate pre-read failure, transitional GraphQL mutation drift failure и запрет token/tenant-slug GraphQL fallback в native write facade. Текущий max-scope Wave 5 cleanup удалил transitional commerce GraphQL fallback из inventory admin package: `admin/src/transport.rs`, `leptos-graphql`, `leptos-auth` token/tenant fallback inputs, `CommerceGraphqlInventoryReadAdapter`, GraphQL variable/error-mapping tests и README removal criteria заменены native-only read path evidence; verifier и boundary tests теперь падают при возвращении GraphQL transport file/markers. Следующий ownership slice вынес public-channel inventory visibility helpers из umbrella `rustok-commerce::storefront_channel` в `rustok-inventory::services::public_channel`, оставив commerce только request-context wrapper и DTO application. Следующий small Wave 5 parity slice добавил inventory-owned storefront availability facade для GraphQL cart line quantity mutations, checkout cart inventory validation и store REST cart validation: `check_variant_availability_for_public_channel` совмещает request guard, case-insensitive backorder policy и channel-visible availability lookup, а negative requested quantity отклоняется до DB lookup; быстрый verifier теперь запрещает возврат direct loader/backorder branching в этих commerce callers.
+### Implementation Update as of 2026-06-05
 
-## Проверенные факты
+- Wave 1 evidence for `pages -> [content, page_builder]`, Wave 2 channel request context and Wave 3 TTL-cache tenant locale policy already reflected in code on the current branch.
+- As part of Wave 4 continuation, a first migration-safety baseline was added: module-owned `migration_dependencies()` for known cross-module FK/order boundaries (`channel -> auth`, `pricing/inventory -> product variants`, `commerce collections/categories -> product`, `blog/forum -> taxonomy`) and aggregation of these descriptors in the server migrator.
+- A local PostgreSQL smoke script `scripts/verify/verify-migration-smoke.sh` was added: it runs an ignored integration test that creates a temporary DB without local `psql`, applies the migrator from-zero, and checks representative module tables.
+- Wave 5 advanced with a small write-transport slice: inventory admin read-side remains on inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, while dedicated native endpoints `inventory/variant/set-quantity` and `inventory/variant/adjust-quantity` now go through inventory-owned API/native facade without GraphQL fallback, call inventory-owned service methods after tenant/permission checks, and the inventory detail UI received targeted set-quantity and +/-1 adjustment controls with local integer validation and optimistic detail refresh.
+- The open Wave 4 remainder is to observe the first CI `migration-smoke` run on a real GitHub Actions environment and fix possible environment-specific failures; for Wave 5, the remainder is to extend parity coverage and close remaining inventory mutations instead of a transitional adapter.
+- The next small Wave 5 ownership slice extracted storefront product inventory projection into an inventory-owned public-channel facade: `rustok-inventory` now returns `PublicChannelInventoryProjection { available_quantity, in_stock }`, and the commerce storefront DTO adapter only transfers the ready projection into `ProductResponse`, without duplicating backorder policy branching or calling availability loaders directly; a quick verifier captures this boundary without long compilation.
+- The next small Wave 4 slice captured dependency descriptors in the common module contract: `MigrationSource` received a default `migration_dependencies()`, known module crates with cross-module ordering metadata return local descriptors through this trait, and the server migrator aggregates them through module instances instead of directly accessing package-local migration modules. A subsequent clarifying slice expanded the aggregation list to all module crates whose migrations are included in the server migrator, so new descriptors do not require a separate server-side allowlist.
+- The next small Wave 4 smoke slice added an opt-in incremental mode for PostgreSQL migration smoke (`RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`): the same fresh DB can now check not only apply-from-zero entirely but also sequential `Migrator::up(..., Some(1))` path without a separate `psql`; direct Rust test runs now validate binary smoke flags as strictly as the shell wrapper.
+- The next small Wave 3 observability slice aligned Prometheus naming for tenant locale cache counters with the plan: hit/miss metrics are now exported as `rustok_tenant_locale_cache_hits_total` and `rustok_tenant_locale_cache_misses_total`, alongside existing `rustok_tenant_locale_db_queries_total` and `rustok_tenant_locale_cache_invalidations_total`; `rustok_tenant_locale_cache_entries` remains a gauge.
+- The next small Wave 6 guardrail slice added a fast local `node scripts/verify/verify-runtime-context-invariants.mjs` and connected it to `./scripts/verify/verify-all.sh runtime-context-invariants`: the check captures OAuth/locale dimensions for channel, source-order contract for actual middleware order, locale-cache metric names and evidence `pages -> [content, page_builder]` without full Rust compilation.
+- The next small Wave 4/Wave 6 CI slice added a separate GitHub Actions job `migration-smoke` with PostgreSQL service: CI runs the local smoke wrapper first in apply-from-zero mode, then with `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`, and the aggregate `ci-success` now waits for this migration-safety gate.
+- The next small Wave 6 docs-hardening slice expanded the existing `docs/verification/README.md` with a brief runtime/backend regression runbook for module graph drift, channel locale/OAuth context, locale DB amplification and migration dependency failures without creating a new document.
+- The next small Wave 5 guardrail slice captured the transitional commerce GraphQL adapter as a read-only compatibility fallback: the inventory admin boundary test now checks for absence of GraphQL mutation/write markers in the adapter and presence of README removal criteria for the adapter while the remaining dedicated write transport is being completed.
+- The next small Wave 5 docs-sync slice synchronized the central FFA/FBA readiness board in `docs/modules/registry.md` with the local inventory plan: registry evidence now explicitly includes read-only transitional adapter/removal criteria boundary coverage.
+- The next small Wave 5 ops-sync slice updated `docs/modules/implementation-plans-registry.md` for `rustok-inventory`: status is no longer `not_started`, checkpoint reflects native read/write split, read-only transitional adapter guardrail, next write-mutation slice and verification gates.
+- The next small Wave 5 contract-semantics slice captured backend-level semantics for `InventoryQuantityWriteResult`: committed quantity now covered by unit evidence for `inStock` derivation and native endpoint wire shape, so the write UI/API do not recover stock state by local guesswork.
+- The next small Wave 5 reserve-transport slice extracted reservation write path into inventory-owned native/API facade: `InventoryService::reserve` returns typed `InventoryReservationWriteResult { reserved_quantity, available_quantity, in_stock }`, endpoint `inventory/variant/reserve-quantity` passes tenant/permission checks without GraphQL fallback, and backend/admin serde evidence captures reservation wire shape.
+- The next small Wave 5 reserve-hardening slice captured the reserve endpoint in a no-fallback guardrail: the API fallback predicate now explicitly forbids `inventory/variant/reserve-quantity requires the ssr feature`, and admin locale copy no longer describes dedicated write transport only as set-quantity and reflects set/adjust/reserve scope.
+- The next small Wave 5 availability-read slice synchronized the native read-side with dedicated stock writes: `AdminInventoryReadService` now takes variant available quantity from `inventory_items`/`inventory_levels` when stock-level state is present, so set/adjust/reserve mutations are not lost on subsequent native detail refresh; legacy `product_variant.inventory_quantity` remains a fallback for not-yet-initialized stock levels.
+- The next small Wave 5 reserve-ui slice connected reserve-quantity to admin detail UI through inventory-owned API facade: UI validates non-negative quantity, calls `reserve_variant_quantity` without GraphQL fallback, applies `InventoryReservationWriteResult.available_quantity/in_stock` in optimistic detail refresh and updates boundary evidence for native-only reservation controls.
+- The next small Wave 5 evidence-sync slice removed remaining stale UI fallback text and synchronized local/central registry evidence: readiness now describes set/adjust/reserve UI controls, available-quantity optimistic refresh and native-only boundary guardrail as a single contract.
+- The next small Wave 5 reservation-noop slice clarified backend semantics for zero-quantity reservation: `InventoryService::reserve(..., 0)` now returns current available quantity / in-stock state from inventory levels or legacy variant snapshot, without creating a synthetic zero-availability result and without creating a reservation item for admin optimistic refresh.
+- The next small Wave 5 reservation-release consistency slice synchronized the release path with the reservation ledger: `InventoryService::release_reservation_quantity` now checks active `reservation_items` before debiting levels, debits release from tracked rows (soft-delete on full row debit) and returns validation error if levels show reserved quantity but reservation item rows do not cover the requested release.
+- The next small Wave 5 UI-boundary slice separated client-side parsing and i18n copy for reservation and availability flows: detail UI calls `parse_availability_quantity` for dedicated availability validation, availability/reservation invalid labels no longer reuse reserve-specific text, tests capture domain-labeled non-negative error, and source boundary additionally forbids `releaseReservation` in the transitional GraphQL adapter.
+- The next small Wave 5 availability-semantics slice captured case-insensitive matching for inventory backorder policy `continue` in common `services/policy.rs`: write-result `in_stock`, set/adjust/reserve/release/check-availability guardrails and admin read-side stock state no longer depend on policy value case and do not hold duplicate helpers.
+- The next small Wave 5 docs-sync slice synchronized umbrella commerce docs and the central FFA/FBA registry with inventory-owned native set/adjust/reserve/release/check-availability surface and shared case-insensitive backorder policy semantics; local inventory operability docs marked closed for the current runtime surface.
+- The next small Wave 5 compatibility-semantics slice exported the inventory-owned backorder policy helper and connected it in umbrella commerce checkout/storefront compatibility paths, so `continue` does not become case-sensitive outside inventory-owned read/write services. The next Wave 6 guardrail slice added a fast `node scripts/verify/verify-inventory-admin-boundary.mjs` and connected it to `./scripts/verify/verify-all.sh inventory-admin-boundary`: the check captures policy-aware native write result, absence of duplicate variant pre-read, read-only transitional GraphQL adapter and native-only inventory admin write facades without full Rust compilation. The next Wave 6 runbook slice expanded the existing `docs/guides/runtime-guardrails.md` with short diagnostics for module graph drift, channel locale/oauth dimensions, locale DB amplification, migration dependency failures and inventory admin boundary drift without creating a new document. The next Wave 6 central-docs slice updated `docs/architecture/api.md` for request-context/channel fast gate and `docs/modules/module-authoring.md` for migration dependency descriptor contract. The next verification-hardening slice added fixture tests for `verify-inventory-admin-boundary.mjs`, checking successful fixture, duplicate pre-read failure, transitional GraphQL mutation drift failure and token/tenant-slug GraphQL fallback prohibition in native write facade. The current max-scope Wave 5 cleanup removed transitional commerce GraphQL fallback from inventory admin package: `admin/src/transport.rs`, `leptos-graphql`, `leptos-auth` token/tenant fallback inputs, `CommerceGraphqlInventoryReadAdapter`, GraphQL variable/error-mapping tests and README removal criteria replaced by native-only read path evidence; verifier and boundary tests now fail on reintroduction of GraphQL transport file/markers. The next ownership slice extracted public-channel inventory visibility helpers from umbrella `rustok-commerce::storefront_channel` to `rustok-inventory::ser... (line truncated to 2000 chars)
 
-| ID | Тезис из аудита | Статус | Подтверждение в коде/документации | Вывод |
-|---|---|---:|---|---|
-| VF-01 | `modules.toml`, центральный registry docs и runtime contract test расходятся по `pages` dependencies | ✅ подтверждено, уточнено | `modules.toml` задаёт `pages -> [content, page_builder]`; `docs/modules/registry.md` повторяет эту связь; source-level runtime contract test ожидает `pages.dependencies() == ["content"]`; `cargo xtask validate-manifest` при перепроверке прошёл. | Сначала исправить stale contract evidence/test, затем закрепить общую проверку manifest ↔ registry, чтобы будущий drift не зависел от ручных assertions. |
-| VF-02 | В коде уже есть validator manifest ↔ runtime registry | ✅ подтверждено | `ManifestManager::validate_with_registry` сравнивает `depends_on` из resolved manifest со списком `module.dependencies()`. | Не писать дублирующий валидатор с нуля; использовать существующий механизм в `xtask`/tests и добавить regression coverage на обнаруженный drift. |
-| VF-03 | `channel` не видит auth-derived dimensions | ✅ подтверждено | В router `auth_context` добавлен перед `channel`, но из-за порядка `Router::layer` фактически `channel` исполняется раньше `auth_context`; `build_request_facts` не принимает extensions и ставит `oauth_app_id: None`. | Переставить layer order так, чтобы execution order был `tenant -> locale -> auth_context -> channel`, и расширить `build_request_facts`. |
-| VF-04 | `channel` не учитывает locale | ✅ подтверждено | `locale` middleware вставляет `ResolvedRequestLocale`, но `channel::build_request_facts` не читает extensions и ставит `locale: None`; cache key тоже не содержит locale/oauth dimensions. | Добавить locale/oauth в `RequestFacts` и `ChannelCacheKey`; покрыть тестами разные locale/oauth combinations. |
-| VF-05 | `locale` делает БД-запрос к `tenant_locales` на request hot path | ✅ подтверждено | `resolve_locale` вызывает `load_tenant_locales(&ctx, tenant.id).await` для каждого tenant context без cache. | Ввести tenant locale cache с TTL как минимальный шаг и versioned invalidation как целевой вариант. |
-| VF-06 | Inventory admin сейчас читает commerce GraphQL read-side | ✅ устранено в текущей ветке | `crates/rustok-inventory/admin` теперь использует native `AdminInventoryReadService` facade без `src/transport.rs`, `leptos-graphql`, token/tenant-slug fallback inputs и `CommerceGraphqlInventoryReadAdapter`; boundary/verifier checks запрещают возврат GraphQL fallback markers. | Inventory admin read-side больше не описывает commerce GraphQL как contract; оставшийся Wave 5 хвост — non-admin/umbrella mutation parity beyond текущих native set/adjust/reserve/release/check-availability flows. |
-| VF-07 | Migration aggregation централизована в server migrator | ✅ подтверждено | `apps/server/migration/src/lib.rs` вручную `extend`-ит миграции domain crate-ов. | Сократить ручной hotspot через module-owned descriptors/exporters и smoke-проверку порядка. |
-| VF-08 | Dependency descriptors миграций собираются не для всех модулей | ✅ подтверждено | `collect_migration_descriptors()` агрегирует `rustok_product::migrations::migration_dependencies()`, тогда как migrator подключает много модулей. | Ввести обязательный descriptor contract для модулей с cross-module FK/order assumptions. |
-| VF-09 | CI сильный, но отдельного migration smoke gate не видно | ✅ подтверждено | Workflow содержит fmt, clippy, check, platform-contract, audit/deny, coverage, nextest, SBOM, reference artifacts и др.; отдельный job с явной командой migration smoke отсутствует. | Добавить отдельный migration-safety job после локального smoke-скрипта, не ломая текущие jobs. |
+## Verified Facts
 
-## Целевое состояние
+| ID | Audit Thesis | Status | Code/Documentation Confirmation | Conclusion |
+|---|---:|---:|---|---|
+| VF-01 | `modules.toml`, central registry docs and runtime contract test diverge on `pages` dependencies | ✅ confirmed, clarified | `modules.toml` defines `pages -> [content, page_builder]`; `docs/modules/registry.md` repeats this; source-level runtime contract test expects `pages.dependencies() == ["content"]`; `cargo xtask validate-manifest` passed on re-verification. | Fix stale contract evidence/test first, then establish a general manifest ↔ registry check so future drift does not depend on manual assertions. |
+| VF-02 | Code already has a validator for manifest ↔ runtime registry | ✅ confirmed | `ManifestManager::validate_with_registry` compares `depends_on` from resolved manifest with the `module.dependencies()` list. | Do not write a duplicate validator from scratch; use the existing mechanism in `xtask`/tests and add regression coverage for detected drift. |
+| VF-03 | `channel` does not see auth-derived dimensions | ✅ confirmed | In router, `auth_context` is added before `channel`, but due to `Router::layer` order, `channel` actually executes before `auth_context`; `build_request_facts` does not accept extensions and sets `oauth_app_id: None`. | Reorder layers so execution order is `tenant -> locale -> auth_context -> channel`, and extend `build_request_facts`. |
+| VF-04 | `channel` does not consider locale | ✅ confirmed | `locale` middleware inserts `ResolvedRequestLocale`, but `channel::build_request_facts` does not read extensions and sets `locale: None`; cache key also lacks locale/oauth dimensions. | Add locale/oauth to `RequestFacts` and `ChannelCacheKey`; cover with tests for different locale/oauth combinations. |
+| VF-05 | `locale` makes a DB query to `tenant_locales` on request hot path | ✅ confirmed | `resolve_locale` calls `load_tenant_locales(&ctx, tenant.id).await` for each tenant context without cache. | Introduce tenant locale cache with TTL as minimal step and versioned invalidation as target option. |
+| VF-06 | Inventory admin currently reads through commerce GraphQL read-side | ✅ resolved in current branch | `crates/rustok-inventory/admin` now uses native `AdminInventoryReadService` facade without `src/transport.rs`, `leptos-graphql`, token/tenant-slug fallback inputs and `CommerceGraphqlInventoryReadAdapter`; boundary/verifier checks forbid reintroduction of GraphQL fallback markers. | Inventory admin read-side no longer describes commerce GraphQL as a contract; remaining Wave 5 tail — non-admin/umbrella mutation parity beyond current native set/adjust/reserve/release/check-availability flows. |
+| VF-07 | Migration aggregation is centralized in server migrator | ✅ confirmed | `apps/server/migration/src/lib.rs` manually `extend`s migrations from domain crates. | Reduce the manual hotspot through module-owned descriptors/exporters and smoke order checking. |
+| VF-08 | Migration dependency descriptors are not collected for all modules | ✅ confirmed | `collect_migration_descriptors()` aggregates `rustok_product::migrations::migration_dependencies()` while the migrator connects many modules. | Introduce mandatory descriptor contract for modules with cross-module FK/order assumptions. |
+| VF-09 | CI is strong but no separate migration smoke gate visible | ✅ confirmed | Workflow contains fmt, clippy, check, platform-contract, audit/deny, coverage, nextest, SBOM, reference artifacts and others; no separate job with explicit migration smoke command. | Add a separate migration-safety job after local smoke script, without breaking current jobs. |
+
+## Target State
 
 ### Runtime/module contracts
 
-- `modules.toml` остаётся source of intent для install/runtime composition.
-- Runtime `ModuleRegistry` и generated registry code не расходятся с `modules.toml` по slug, required/core flags и dependency edges.
-- `docs/modules/registry.md` отражает тот же dependency graph, но не является единственным техническим gate.
-- Любой drift manifest ↔ runtime registry падает в `cargo xtask validate-manifest` и/или dedicated regression test.
+- `modules.toml` remains source of intent for install/runtime composition.
+- Runtime `ModuleRegistry` and generated registry code do not diverge from `modules.toml` in slug, required/core flags and dependency edges.
+- `docs/modules/registry.md` reflects the same dependency graph, but is not the sole technical gate.
+- Any manifest ↔ runtime registry drift fails in `cargo xtask validate-manifest` and/or dedicated regression test.
 
 ### Request context and channel resolution
 
-Целевой execution order для full application router:
+Target execution order for full application router:
 
 ```mermaid
 flowchart LR
@@ -98,7 +99,7 @@ flowchart LR
     Channel --> Ctx[ChannelContext: tenant + locale + oauth + selectors]
 ```
 
-`RequestFacts` для channel resolution должен включать:
+`RequestFacts` for channel resolution must include:
 
 - tenant id;
 - target surface;
@@ -107,185 +108,185 @@ flowchart LR
 - auth-derived OAuth/client dimension;
 - effective locale.
 
-`ChannelCacheKey` должен варьироваться как минимум по tenant, resolver version, explicit selectors, host, OAuth/client dimension и locale. Иначе один request может прогреть cache для другого locale/client контекста.
+`ChannelCacheKey` must vary at least by tenant, resolver version, explicit selectors, host, OAuth/client dimension and locale. Otherwise one request may warm the cache for a different locale/client context.
 
 ### Locale hot path
 
-- Базовый шаг: TTL cache для `tenant_locales` на tenant id.
-- Целевой шаг: versioned invalidation при изменении tenant locale policy.
-- Наблюдаемость: отдельные counters для DB hits, cache hits, cache misses и invalidations.
+- Baseline step: TTL cache for `tenant_locales` by tenant id.
+- Target step: versioned invalidation on tenant locale policy change.
+- Observability: separate counters for DB hits, cache hits, cache misses and invalidations.
 
 ### Inventory transport boundary
 
-- Inventory admin package не должен напрямую зависеть от commerce GraphQL как от canonical read-side.
-- Временная совместимость с commerce GraphQL допускается только внутри inventory-owned adapter/facade.
-- Новый facade должен возвращать UI read model, необходимый inventory admin, не раскрывая commerce schema как inventory contract.
+- Inventory admin package must not directly depend on commerce GraphQL as the canonical read-side.
+- Temporary compatibility with commerce GraphQL is allowed only within the inventory-owned adapter/facade.
+- The new facade must return the UI read model needed by inventory admin, without exposing the commerce schema as an inventory contract.
 
 ### Migration safety
 
-- Module-owned migration descriptors находятся рядом с migration exporters соответствующих crate-ов.
-- Server migrator агрегирует descriptors для всех модулей, которым нужен cross-module порядок.
-- CI имеет отдельный smoke gate для пустой PostgreSQL DB и, по возможности, incremental apply.
-- Diagnostic ignored tests остаются допустимыми, но не считаются единственной защитой migration path.
+- Module-owned migration descriptors reside alongside migration exporters of the corresponding crates.
+- Server migrator aggregates descriptors for all modules that need cross-module ordering.
+- CI has a separate smoke gate for empty PostgreSQL DB and, where feasible, incremental apply.
+- Diagnostic ignored tests remain acceptable but are not considered the sole protection for the migration path.
 
-## План работ
+## Work Plan
 
-### Wave 0 — Подготовка и фиксация baseline
+### Wave 0 — Preparation and Baseline Capture
 
-**Цель:** превратить подтверждённые проблемы в измеримые задачи до функциональных изменений.
+**Goal:** turn confirmed problems into measurable tasks before functional changes.
 
-1. Завести tracking issue/эпик по этому плану.
-2. Зафиксировать текущие failures/ожидаемые failures:
-   - source-level contract-test mismatch для `pages` и результат `cargo xtask validate-manifest`;
-   - отсутствие locale/oauth в `RequestFacts`;
-   - отсутствие locale/oauth в `ChannelCacheKey`;
-   - отсутствие locale cache;
-   - текущий список migration descriptors.
-3. Добавить ссылку на этот план в `docs/index.md`, чтобы документ был виден из канонической карты.
+1. Create tracking issue/epic for this plan.
+2. Capture current failures/expected failures:
+   - source-level contract-test mismatch for `pages` and result of `cargo xtask validate-manifest`;
+   - missing locale/oauth in `RequestFacts`;
+   - missing locale/oauth in `ChannelCacheKey`;
+   - missing locale cache;
+   - current list of migration descriptors.
+3. Add a link to this plan in `docs/index.md` so the document is visible from the canonical map.
 
-**Готовность:** план доступен из `docs/index.md`, baseline воспроизводим локальными командами.
+**Readiness:** plan accessible from `docs/index.md`, baseline reproducible with local commands.
 
-### Wave 1 — Module graph drift
+### Wave 1 — Module Graph Drift
 
-**Цель:** устранить подтверждённое рассинхронизированное evidence по `pages -> page_builder` и закрыть класс ошибок общей проверкой.
+**Goal:** eliminate confirmed desynchronized evidence for `pages -> page_builder` and close the class of errors with a general check.
 
-1. Подтвердить canonical runtime graph для `pages`:
-   - предпочтительный вариант: runtime registry должен включать `page_builder`, потому что `modules.toml` и `docs/modules/registry.md` уже это фиксируют;
-   - альтернативный вариант: удалить `page_builder` из `modules.toml` и registry docs, если эта связь была ошибочной.
-2. Исправить stale runtime contract test и, если перепроверка конкретного runtime registry выявит отличие от manifest, исправить generated registry source так, чтобы `pages.dependencies()` совпадал с выбранным graph.
-3. Добавить или усилить regression test, который сравнивает resolved `modules.toml` dependencies с `ModuleRegistry::dependencies()` для всех registry modules.
-4. Убедиться, что `cargo xtask validate-manifest` продолжает проходить на исправленном состоянии и падает на искусственно внесённый drift в локальной проверке.
-5. Обновить `docs/modules/registry.md`, если выбранный graph отличается от текущего docs state.
+1. Confirm canonical runtime graph for `pages`:
+   - preferred option: runtime registry should include `page_builder` because `modules.toml` and `docs/modules/registry.md` already capture this;
+   - alternative: remove `page_builder` from `modules.toml` and registry docs if the relationship was erroneous.
+2. Fix stale runtime contract test and, if re-verification of a specific runtime registry reveals a difference from manifest, fix the generated registry source so `pages.dependencies()` matches the chosen graph.
+3. Add or strengthen a regression test that compares resolved `modules.toml` dependencies with `ModuleRegistry::dependencies()` for all registry modules.
+4. Ensure `cargo xtask validate-manifest` continues to pass on the fixed state and fails on artificially introduced drift in local verification.
+5. Update `docs/modules/registry.md` if the chosen graph differs from current docs state.
 
 **Acceptance criteria:**
 
-- `cargo xtask validate-manifest` проходит и его результат зафиксирован в verification evidence.
-- Dedicated test manifest ↔ registry dependencies проходит.
-- Stale assertion `pages.dependencies() == ["content"]` удалён или заменён canonical expectation.
-- Нет ручного special-case для `pages` без общей проверки.
+- `cargo xtask validate-manifest` passes and its result is captured in verification evidence.
+- Dedicated test for manifest ↔ registry dependencies passes.
+- Stale assertion `pages.dependencies() == ["content"]` removed or replaced with canonical expectation.
+- No manual special-case for `pages` without a general check.
 
-### Wave 2 — Channel request-context contract
+### Wave 2 — Channel Request-Context Contract
 
-**Цель:** сделать channel resolution зависящим от полного request context.
+**Goal:** make channel resolution depend on full request context.
 
-1. Переставить middleware layers так, чтобы execution order был:
+1. Reorder middleware layers so execution order is:
    1. `security_headers`;
    2. `tenant::resolve`;
    3. `locale::resolve_locale`;
    4. `auth_context::resolve_optional`;
    5. `channel::resolve`;
    6. handlers.
-2. Расширить `channel::build_request_facts`:
-   - передавать `req.extensions()`;
-   - читать `AuthContextExtension` / текущий auth context type;
-   - читать `ResolvedRequestLocale`;
-   - заполнять `oauth_app_id` и `locale`.
-3. Расширить `ChannelCacheKey`:
-   - добавить OAuth/client dimension;
-   - добавить locale;
-   - убедиться, что negative cache entries тоже различаются по этим dimensions.
-4. Добавить regression tests:
+2. Extend `channel::build_request_facts`:
+   - pass `req.extensions()`;
+   - read `AuthContextExtension` / current auth context type;
+   - read `ResolvedRequestLocale`;
+   - fill `oauth_app_id` and `locale`.
+3. Extend `ChannelCacheKey`:
+   - add OAuth/client dimension;
+   - add locale;
+   - ensure negative cache entries also differ by these dimensions.
+4. Add regression tests:
    - middleware/order smoke;
-   - `build_request_facts` переносит locale/auth в `RequestFacts`;
-   - cache key отличается при смене locale;
-   - cache key отличается при смене OAuth/client id.
-5. Обновить архитектурные docs по API/runtime context, если текущий контракт там описан иначе.
+   - `build_request_facts` carries locale/auth into `RequestFacts`;
+   - cache key differs on locale change;
+   - cache key differs on OAuth/client id change.
+5. Update architectural docs on API/runtime context if the current contract is described differently.
 
 **Acceptance criteria:**
 
-- Channel resolver получает non-empty locale/auth dimensions там, где они есть в request extensions.
-- Cache не шарится между разными locale/oauth contexts.
-- Тесты не завязаны на порядок `.layer(...)` как текст, а проверяют фактическое поведение.
+- Channel resolver receives non-empty locale/auth dimensions where they exist in request extensions.
+- Cache is not shared between different locale/oauth contexts.
+- Tests do not depend on `.layer(...)` order as text but verify actual behavior.
 
-### Wave 3 — Locale cache and observability
+### Wave 3 — Locale Cache and Observability
 
-**Цель:** убрать лишний DB round-trip на каждый tenant-bound request.
+**Goal:** eliminate extra DB round-trip on each tenant-bound request.
 
-1. Ввести shared cache для tenant locale policy:
+1. Introduce shared cache for tenant locale policy:
    - key: tenant id;
    - value: locales snapshot;
-   - initial TTL: 60 секунд, если нет утверждённого SLA на freshness;
+   - initial TTL: 60 seconds, unless an approved freshness SLA exists;
    - bounded capacity.
-2. Подключить cache в `resolve_locale` перед `load_tenant_locales`.
-3. Добавить invalidation hook для операций изменения tenant locale policy, если такая command surface уже есть.
-4. Добавить counters/log events:
+2. Connect cache in `resolve_locale` before `load_tenant_locales`.
+3. Add invalidation hook for operations that change tenant locale policy, if such command surface already exists.
+4. Add counters/log events:
    - `tenant_locale_db_queries_total`;
    - `tenant_locale_cache_hits_total`;
    - `tenant_locale_cache_misses_total`;
    - `tenant_locale_cache_invalidations_total`.
-5. Добавить tests:
-   - repeated request не вызывает повторный DB load внутри TTL;
+5. Add tests:
+   - repeated request does not trigger repeated DB load within TTL;
    - disabled locale still constrained correctly;
-   - invalidation/TTL обновляет snapshot.
+   - invalidation/TTL updates snapshot.
 
 **Acceptance criteria:**
 
-- Locale behavior не меняется функционально.
-- Hot path получает cache hit для повторных requests одного tenant.
-- Наблюдаемость позволяет увидеть DB amplification regression.
+- Locale behavior does not change functionally.
+- Hot path gets cache hit for repeated requests from same tenant.
+- Observability allows seeing DB amplification regression.
 
-### Wave 4 — Migration safety
+### Wave 4 — Migration Safety
 
-**Цель:** сделать порядок модульных миграций явным и проверяемым.
+**Goal:** make module migration ordering explicit and verifiable.
 
-1. Инвентаризировать migrations с cross-module references/FK/order assumptions.
-2. Для каждого такого module crate добавить `migration_dependencies()` рядом с `migrations()`.
-3. Расширить `collect_migration_descriptors()` так, чтобы он агрегировал descriptors не только из `rustok_product`, но и из остальных модулей с declared dependencies.
-4. Добавить тест на полноту descriptors для known cross-module dependencies.
-5. Добавить локальный smoke script для пустой PostgreSQL DB:
+1. Inventory migrations with cross-module references/FK/order assumptions.
+2. For each such module crate, add `migration_dependencies()` alongside `migrations()`.
+3. Extend `collect_migration_descriptors()` to aggregate descriptors not only from `rustok_product` but also from other modules with declared dependencies.
+4. Add test for completeness of descriptors for known cross-module dependencies.
+5. Add local smoke script for empty PostgreSQL DB:
    - create empty database/schema;
    - apply server migrator from zero;
    - optionally run lightweight schema sanity checks.
-6. ✅ Добавить отдельный CI job `migration-smoke`; следующий шаг — отследить первый GitHub Actions прогон и исправить только environment-specific failures, если они появятся.
+6. ✅ Add separate CI job `migration-smoke`; next step — track first GitHub Actions run and fix only environment-specific failures if they appear.
 
 **Acceptance criteria:**
 
-- Descriptors ссылаются только на существующие migrations.
-- Duplicate/cycle/missing dependency tests остаются зелёными.
-- Migration smoke проходит на пустой PostgreSQL DB.
+- Descriptors reference only existing migrations.
+- Duplicate/cycle/missing dependency tests remain green.
+- Migration smoke passes on empty PostgreSQL DB.
 
-### Wave 5 — Inventory-owned read-side facade
+### Wave 5 — Inventory-Owned Read-Side Facade
 
-**Цель:** убрать прямую зависимость inventory admin package от commerce GraphQL как от фактического backend contract.
+**Goal:** eliminate direct dependency of inventory admin package on commerce GraphQL as the actual backend contract.
 
-**Статус на 2026-06-06:** admin package уже имеет inventory-owned core/api/transport/ui boundary и transitional commerce GraphQL read adapter; backend crate экспортирует `AdminInventoryReadService`/DTO для tenant-scoped product/variant/price/translations read-side, admin package подключает primary native/server-function read path к этому service, а первые dedicated native write endpoints `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` вызывают inventory-owned service methods без GraphQL fallback, а targeted set-quantity и +/-1 adjustment controls используются в inventory detail UI. Добавлен следующий малый parity slice: model-level serde compatibility snapshots для текущего inventory admin read model (product list/detail, localized copy, variants, inventory fields, prices) и source-level parity check между backend DTO, native mapper и transitional GraphQL adapter. Set/adjust quantity write path дополнительно переведён с bare `i32` на typed `InventoryQuantityWriteResult { quantity, in_stock }`, а endpoint wire shape закреплён serde snapshot-ом, чтобы UI не восстанавливал stock state локальной догадкой. Следующий малый slice вывел availability validation в inventory-owned native/API facade: `InventoryService::check_variant_availability` возвращает typed `InventoryAvailabilityCheckResult { available }`, endpoint `inventory/variant/check-availability` проходит tenant/permission checks без GraphQL fallback, detail UI вызывает его через inventory-owned API facade для targeted availability validation, общий service-level `check_availability` path теперь тоже отклоняет negative requested quantity до DB lookup, а следующий write slice добавил native/API facade `inventory/variant/release-reservation` с typed `InventoryReservationReleaseWriteResult { released_quantity, available_quantity, in_stock }`, non-negative release invariant, no-create failed release guardrail, tracked reservation item guardrail и detail UI release action с optimistic available-quantity refresh. Следующий targeted semantics slice вынес reserve negative-request validation в явный backend helper до transaction/DB lookup и закрепил его unit test-ом рядом с release/availability guardrails. Следующий малый semantics slice выровнял set-quantity с reservation-aware read model: service сохраняет existing reserved units при расчёте stocked quantity для целевой available quantity, а targeted unit test фиксирует расчёт optimistic/result parity. Следующий backend semantics slice закрепил policy-aware typed write result для set/adjust quantity: depleted variants с `continue`/`CONTINUE` policy остаются `in_stock=true` в `InventoryQuantityWriteResult`, а native write facades больше не восстанавливают stock state только из числовой quantity. Model/boundary/unit tests закрепляют wire shapes, native-only facades и validation semantics. Остаётся вынести оставшиеся dedicated inventory mutations/write transport, сохранив GraphQL только как native-unavailable read compatibility fallback до удаления adapter-а.
+**Status as of 2026-06-06:** admin package already has inventory-owned core/api/transport/ui boundary and transitional commerce GraphQL read adapter; backend crate exports `AdminInventoryReadService`/DTO for tenant-scoped product/variant/price/translations read-side, admin package connects primary native/server-function read path to this service, and the first dedicated native write endpoints `inventory/variant/set-quantity` and `inventory/variant/adjust-quantity` call inventory-owned service methods without GraphQL fallback, with targeted set-quantity and +/-1 adjustment controls in inventory detail UI. A following small parity slice added model-level serde compatibility snapshots for current inventory admin read model (product list/detail, localized copy, variants, inventory fields, prices) and source-level parity check between backend DTO, native mapper and transitional GraphQL adapter. Set/adjust quantity write path additionally migrated from bare `i32` to typed `InventoryQuantityWriteResult { quantity, in_stock }`, with endpoint wire shape captured by serde snapshot so UI does not recover stock state by local guesswork. The next small slice extracted availability validation into inventory-owned native/API facade: `InventoryService::check_variant_availability` returns typed `InventoryAvailabilityCheckResult { available }`, endpoint `inventory/variant/check-availability` passes tenant/permission checks without GraphQL fallback, detail UI calls it through inventory-owned API facade for targeted availability validation, the common service-level `check_availability` path now also rejects negative requested quantity before DB lookup, and the next write slice added native/API facade `inventory/variant/release-reservation` with typed `InventoryReservationReleaseWriteResult { released_quantity, available_quantity, in_stock }`, non-negative release invariant, no-create failed release guardrail, tracked reservation item guardrail and detail UI release action with optimistic available-qu... (line truncated to 2000 chars)
 
-1. Описать minimal inventory admin read model:
+1. Describe minimal inventory admin read model:
    - product id/slug/title needed for inventory views;
    - variant identifiers;
    - stock/visibility/health fields;
    - localized copy requirements.
-2. Создать inventory-owned backend read service/read DTO.
-3. Создать inventory-owned facade/transport boundary.
-4. Перенести текущий commerce GraphQL access внутрь временного adapter.
-5. Обновить inventory admin package так, чтобы UI зависел от inventory facade, а не от commerce GraphQL schema напрямую.
-6. Добавить compatibility tests/snapshots для текущего UI read model.
-7. Подключить native `#[server]`/dedicated read transport к backend `AdminInventoryReadService`.
-8. Обновить `crates/rustok-inventory/admin/README.md` и module docs.
+2. Create inventory-owned backend read service/read DTO.
+3. Create inventory-owned facade/transport boundary.
+4. Move current commerce GraphQL access into a temporary adapter.
+5. Update inventory admin package so the UI depends on the inventory facade, not directly on the commerce GraphQL schema.
+6. Add compatibility tests/snapshots for current UI read model.
+7. Connect native `#[server]`/dedicated read transport to backend `AdminInventoryReadService`.
+8. Update `crates/rustok-inventory/admin/README.md` and module docs.
 
 **Acceptance criteria:**
 
-- Inventory backend crate экспортирует tenant-scoped inventory-owned admin read service/DTO.
-- Inventory UI импортирует/использует inventory-owned contract.
-- Commerce GraphQL больше не является публично описанным read-side contract для inventory admin.
-- Временный adapter удалён из inventory admin package; guardrails запрещают возврат `src/transport.rs`/GraphQL markers.
-- Native/server-function read transport закреплён parity tests против backend DTO/current admin read model после удаления adapter-а.
+- Inventory backend crate exports tenant-scoped inventory-owned admin read service/DTO.
+- Inventory UI imports/uses inventory-owned contract.
+- Commerce GraphQL is no longer a publicly described read-side contract for inventory admin.
+- Temporary adapter removed from inventory admin package; guardrails forbid reintroduction of `src/transport.rs`/GraphQL markers.
+- Native/server-function read transport captured by parity tests against backend DTO/current admin read model after adapter removal.
 
-### Wave 6 — CI gates and docs hardening
+### Wave 6 — CI Gates and Docs Hardening
 
-**Цель:** закрепить исправления как постоянно проверяемые platform invariants.
+**Goal:** consolidate fixes as permanently verifiable platform invariants.
 
-1. Добавить/усилить CI checks:
+1. Add/strengthen CI checks:
    - manifest ↔ runtime registry graph;
    - migration smoke;
    - channel context/cache key invariants;
    - locale cache tests;
    - inventory admin native write/read boundary invariants (`verify-inventory-admin-boundary.mjs`).
-2. ✅ Обновить central docs:
-   - `docs/architecture/api.md` для request context/channel contract и fast runtime-context gate;
-   - `docs/modules/module-authoring.md` для migration dependency descriptors;
-   - `docs/modules/registry.md` при изменении graph/status.
-3. ✅ Добавить краткий runbook для диагностики в `docs/guides/runtime-guardrails.md`:
+2. ✅ Update central docs:
+   - `docs/architecture/api.md` for request context/channel contract and fast runtime-context gate;
+   - `docs/modules/module-authoring.md` for migration dependency descriptors;
+   - `docs/modules/registry.md` on graph/status changes.
+3. ✅ Add short runbook for diagnostics in `docs/guides/runtime-guardrails.md`:
    - module graph drift;
    - channel resolution without locale/oauth;
    - locale DB amplification;
@@ -294,34 +295,34 @@ flowchart LR
 
 **Acceptance criteria:**
 
-- Все новые invariants имеют tests или CI commands.
-- Docs описывают фактическое состояние после code changes.
-- Нет новых документов там, где можно расширить существующие.
+- All new invariants have tests or CI commands.
+- Docs describe the actual state after code changes.
+- No new documents where existing ones can be extended.
 
-## Приоритеты
+## Priorities
 
-| Приоритет | Wave | Почему |
+| Priority | Wave | Reason |
 |---:|---|---|
-| P0 | Wave 1 — Module graph drift/evidence | Уже есть конкретное расхождение source-level contract evidence; без общей проверки оно может скрыть будущий runtime drift. |
-| P0 | Wave 2 — Channel request-context contract | Неполный context может приводить к неверному channel resolution/cache reuse. |
-| P1 | Wave 4 — Migration safety | Риск проявляется при schema evolution и production rollout; требует отдельной стабилизации. |
-| P1 | Wave 3 — Locale cache | Улучшает hot path и снижает DB amplification без смены внешнего API. |
-| P2 | Wave 5 — Inventory facade | Архитектурный долг важен, но может идти после P0 runtime fixes. |
-| P2 | Wave 6 — Docs/CI hardening | Должен завершать каждую волну, но общий runbook можно оформить после P0/P1. |
+| P0 | Wave 1 — Module graph drift/evidence | Specific source-level contract evidence divergence already exists; without a general check, future runtime drift may be hidden. |
+| P0 | Wave 2 — Channel request-context contract | Incomplete context may lead to incorrect channel resolution/cache reuse. |
+| P1 | Wave 4 — Migration safety | Risk manifests during schema evolution and production rollout; requires separate stabilization. |
+| P1 | Wave 3 — Locale cache | Improves hot path and reduces DB amplification without changing external API. |
+| P2 | Wave 5 — Inventory facade | Architectural debt is important but may follow P0 runtime fixes. |
+| P2 | Wave 6 — Docs/CI hardening | Should complete each wave, but general runbook can be done after P0/P1. |
 
-## Открытые решения перед реализацией
+## Open Decisions Before Implementation
 
-Эти вопросы не блокируют план, но должны быть явно решены владельцами перед соответствующей волной:
+These questions do not block the plan but must be explicitly decided by owners before the corresponding wave:
 
-1. **Canonical graph для `pages`:** подтверждаем ли `pages -> page_builder` как runtime dependency? Рекомендация: да, потому что это уже зафиксировано в `modules.toml` и `docs/modules/registry.md`.
-2. **Locale cache freshness:** достаточно ли TTL 60 секунд как стартового baseline? Рекомендация: да, затем перейти к versioned invalidation.
-3. **Migration smoke scope:** нужен ли только `up from zero` или ещё incremental apply по одной migration? Рекомендация: начать с `up from zero`, затем добавить incremental smoke для критичных migrations.
-4. **Inventory adapter deprecation date:** когда временный commerce GraphQL adapter должен быть удалён? Рекомендация: назначить removal criteria после появления inventory-owned facade tests.
-5. **CI runtime budget:** сколько минут допустимо добавить к CI? Рекомендация: держать P0 checks быстрыми, migration smoke вынести в отдельный job с PostgreSQL service.
+1. **Canonical graph for `pages`:** do we confirm `pages -> page_builder` as a runtime dependency? Recommendation: yes, because it is already captured in `modules.toml` and `docs/modules/registry.md`.
+2. **Locale cache freshness:** is TTL of 60 seconds sufficient as a starting baseline? Recommendation: yes, then move to versioned invalidation.
+3. **Migration smoke scope:** is only `up from zero` needed or also incremental apply one migration at a time? Recommendation: start with `up from zero`, then add incremental smoke for critical migrations.
+4. **Inventory adapter deprecation date:** when should the temporary commerce GraphQL adapter be removed? Recommendation: set removal criteria after inventory-owned facade tests are available.
+5. **CI runtime budget:** how many minutes are acceptable to add to CI? Recommendation: keep P0 checks fast, move migration smoke to a separate job with PostgreSQL service.
 
-## Рекомендуемые команды проверки
+## Recommended Verification Commands
 
-Минимальный локальный контур после каждой волны:
+Minimal local loop after each wave:
 
 ```bash
 cargo fmt --all -- --check
@@ -332,7 +333,7 @@ cargo test -p rustok-server middleware::locale
 cargo test -p server-migration
 ```
 
-Полный контур перед merge:
+Full loop before merge:
 
 ```bash
 cargo clippy --workspace --all-targets --no-deps -- -D warnings
@@ -340,7 +341,7 @@ cargo test --workspace --all-targets --all-features
 cargo xtask module validate
 ```
 
-## Метрики и события для контроля результата
+## Metrics and Events for Outcome Monitoring
 
 - `module_graph_drift_detected_total`
 - `channel_resolution_without_oauth_dimension_total`
@@ -354,15 +355,15 @@ cargo xtask module validate
 - `migration_dependency_validation_failures_total`
 - `graphql_inventory_read_via_commerce_total`
 
-## Definition of done для всего плана
+## Definition of Done for the Entire Plan
 
-План можно считать выполненным, когда:
+The plan can be considered complete when:
 
-- manifest/runtime/docs/test evidence graph не расходятся и drift ловится автоматикой;
-- `ChannelContext` строится из tenant + locale + auth-derived dimensions + request selectors;
-- channel cache key безопасно различает locale/oauth contexts;
-- locale middleware не делает обязательный DB query на каждый повторный request;
-- migration descriptors покрывают modules с cross-module order assumptions;
-- CI содержит явный migration-safety gate;
-- inventory admin использует inventory-owned facade/transport boundary;
-- документация отражает фактические контракты после изменений.
+- manifest/runtime/docs/test evidence graphs do not diverge and drift is caught automatically;
+- `ChannelContext` is built from tenant + locale + auth-derived dimensions + request selectors;
+- channel cache key safely distinguishes locale/oauth contexts;
+- locale middleware does not make a mandatory DB query on every repeated request;
+- migration descriptors cover modules with cross-module order assumptions;
+- CI contains an explicit migration-safety gate;
+- inventory admin uses inventory-owned facade/transport boundary;
+- documentation reflects actual contracts after changes.

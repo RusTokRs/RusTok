@@ -1,69 +1,69 @@
 # SEO operations runbook
 
-Этот runbook фиксирует D9 baseline для production SEO Suite. Он дополняет `replay-repair-runbook.md` и покрывает три частых operational-сценария без изменения API-контрактов.
+This runbook captures the D9 baseline for the production SEO Suite. It supplements `replay-repair-runbook.md` and covers three common operational scenarios without changing API contracts.
 
-## Когда использовать
+## When to use
 
-- backlog в `seo_event_deliveries` или `seo_index_deliveries` перестал уменьшаться;
-- sitemap/robots или storefront metadata отстают от owner-module changes;
-- оператору нужно безопасно запустить repair/replay без повторной публикации всех SEO entities.
+- backlog in `seo_event_deliveries` or `seo_index_deliveries` stops shrinking;
+- sitemap/robots or storefront metadata lag behind owner-module changes;
+- the operator needs to safely run repair/replay without republishing all SEO entities.
 
 ## 1. SEO event backlog stuck
 
-1. Проверить, что tenant module enabled и rollout flags не выключены для tenant-а.
-2. Снять delivery summary через GraphQL/REST control-plane (`seoIndexDeliveryStatus` или `/api/seo/index/tracking`).
-3. Сгруппировать failures по `last_error`, `target_kind`, `status` и retry counter.
-4. Если есть transient transport errors — перезапустить consumer/worker и дождаться bounded retry.
-5. Если есть deterministic validation/config errors — остановить replay, исправить root cause и только затем запускать repair.
+1. Verify that the tenant module is enabled and rollout flags are not turned off for the tenant.
+2. Capture delivery summary via GraphQL/REST control-plane (`seoIndexDeliveryStatus` or `/api/seo/index/tracking`).
+3. Group failures by `last_error`, `target_kind`, `status` and retry counter.
+4. If there are transient transport errors — restart the consumer/worker and wait for bounded retry.
+5. If there are deterministic validation/config errors — stop replay, fix the root cause and only then run repair.
 
 ### Stop criteria
 
-- растёт `dead_letter` быстрее, чем `retry` переходит в `sent`;
-- один idempotency key создаёт больше одного фактического state transition;
-- tenant/module gating даёт `PERMISSION_DENIED` или `NOT_FOUND` для оператора без ожидаемой причины.
+- `dead_letter` grows faster than `retry` transitions to `sent`;
+- one idempotency key creates more than one actual state transition;
+- tenant/module gating gives `PERMISSION_DENIED` or `NOT_FOUND` for the operator without an expected reason.
 
 ## 2. Partial indexing failures
 
-1. Отфильтровать `seo_index_deliveries` по tenant, `target_kind` и failed/dead-letter status.
-2. Проверить cursor: high-water mark не должен откатываться назад.
-3. Запустить `repair_only` для ограниченного target scope и лимита `1..500`.
-4. После repair сверить, что failed count уменьшается, а cursor остаётся forward-only.
-5. Для повторяющихся dead-letter items открыть owner-module data issue вместо force replay.
+1. Filter `seo_index_deliveries` by tenant, `target_kind` and failed/dead-letter status.
+2. Check cursor: the high-water mark must not roll back.
+3. Run `repair_only` for a limited target scope with a limit of `1..500`.
+4. After repair, verify that the failed count decreases and the cursor remains forward-only.
+5. For recurring dead-letter items, open an owner-module data issue instead of force replay.
 
 ### Rollback / containment
 
-- Не удалять delivery rows вручную.
-- Не сбрасывать cursor назад.
-- Для остановки blast radius отключать tenant rollout flag, а не менять transport contract.
+- Do not delete delivery rows manually.
+- Do not reset the cursor backward.
+- To stop blast radius, disable the tenant rollout flag instead of changing the transport contract.
 
 ## 3. Replay / reindex procedure
 
-1. Начинать с `repair_only`.
-2. Использовать `repair+historical_replay` только после подтверждения, что repair не закрывает gap.
-3. Держать replay mode forward-only: `not_started -> repair_only -> replay_requested -> replaying -> replay_completed`.
-4. Для каждого запуска фиксировать: tenant, target scope, limit, operator, command/surface и итоговые counters.
-5. После replay выполнить storefront parity smoke: runtime page context, robots/sitemap source и non-home metadata routes.
+1. Start with `repair_only`.
+2. Use `repair+historical_replay` only after confirming that repair does not close the gap.
+3. Keep replay mode forward-only: `not_started -> repair_only -> replay_requested -> replaying -> replay_completed`.
+4. For each run, record: tenant, target scope, limit, operator, command/surface and final counters.
+5. After replay, perform storefront parity smoke: runtime page context, robots/sitemap source and non-home metadata routes.
 
 ## Evidence checklist
 
-- Команда/поверхность запуска записана в issue/PR.
-- Есть before/after counters по delivery statuses.
-- Есть sample `last_error` для оставшихся failed/dead-letter rows.
-- Зафиксировано, что GraphQL и REST возвращают совместимые semantic error codes.
-- Для Next host подтверждён fallback reason (`module_disabled`, `not_found`, `permission_denied`, `transport_failure`) вместо blanket failure.
+- The command/surface run is recorded in an issue/PR.
+- There are before/after counters by delivery statuses.
+- There is a sample `last_error` for remaining failed/dead-letter rows.
+- It is confirmed that GraphQL and REST return compatible semantic error codes.
+- For the Next host, the fallback reason is confirmed (`module_disabled`, `not_found`, `permission_denied`, `transport_failure`) instead of a blanket failure.
 
 ## Live artifact schema (D8/D9 closeout)
 
-Каждый live artifact для D8/D9 closeout должен содержать одинаковый минимальный набор полей, чтобы owner sign-off нельзя было перевести в `signed` по неполным скриншотам или логам:
+Each live artifact for D8/D9 closeout must contain the same minimal set of fields, so that owner sign-off cannot be moved to `signed` based on incomplete screenshots or logs:
 
-- `captured_at`, `surface`, `command_or_ci_job` и redacted environment (`git_sha`, SEO flags, backend/host base URL without secrets);
-- before/after snapshots для `pending`, `sent`, `retry`, `failed`, `dead_letter`, `replay_mode`;
-- semantic error sample для `BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND` или transport failure, если surface покрывает error parity;
-- storefront sample для route, `target_kind`, fallback reason/source и JSON-LD/metadata assertions;
-- `redactions_applied` с подтверждением удаления auth tokens, cookies, tenant secrets и user/customer identifiers;
-- `result.passed`, `result.high_severity_defects` и `result.owner_review_required`.
+- `captured_at`, `surface`, `command_or_ci_job` and redacted environment (`git_sha`, SEO flags, backend/host base URL without secrets);
+- before/after snapshots for `pending`, `sent`, `retry`, `failed`, `dead_letter`, `replay_mode`;
+- semantic error sample for `BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND` or transport failure, if the surface covers error parity;
+- storefront sample for route, `target_kind`, fallback reason/source and JSON-LD/metadata assertions;
+- `redactions_applied` with confirmation of removal of auth tokens, cookies, tenant secrets and user/customer identifiers;
+- `result.passed`, `result.high_severity_defects` and `result.owner_review_required`.
 
-Owner sign-off переводится из `pending_live_runtime_evidence` в `signed` только после того, как все required artifacts из `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json` приложены, каждый artifact удовлетворяет своему `liveEvidenceArtifactTemplates[].mustCapture`, high-severity defects отсутствуют или имеют владельца remediation, а owner просмотрел redacted samples.
+Owner sign-off moves from `pending_live_runtime_evidence` to `signed` only after all required artifacts from `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json` are attached, each artifact satisfies its `liveEvidenceArtifactTemplates[].mustCapture`, high-severity defects are absent or have a remediation owner, and the owner has reviewed redacted samples.
 
 ## Live incident evidence template (D9)
 

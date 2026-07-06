@@ -1,49 +1,49 @@
-# Документация Next Frontend
+# Next Frontend Documentation
 
-Локальная документация для `apps/next-frontend`.
+Local documentation for `apps/next-frontend`.
 
-## Назначение
+## Purpose
 
-`apps/next-frontend` является Next.js storefront host для RusToK. Он даёт React/Next storefront path, работает параллельно с `apps/storefront` и должен сохранять parity с Leptos storefront на уровне transport/auth/i18n/module contracts.
+`apps/next-frontend` is the Next.js storefront host for RusToK. It provides the React/Next storefront path, runs in parallel with `apps/storefront`, and must maintain parity with the Leptos storefront at the transport/auth/i18n/module contracts level.
 
-FFA classification: `apps/next-frontend` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять Next storefront route/context/transport parity без переноса module-specific storefront workflows в host.
+FFA classification: `apps/next-frontend` is an `FFA-compatible composition host`, not a module-owned UI package. Its FFA responsibility is to maintain Next storefront route/context/transport parity without transferring module-specific storefront workflows into the host.
 
-## Границы ответственности
+## Responsibility boundaries
 
-- владеть Next.js storefront host и его route composition;
-- использовать shared frontend contracts для GraphQL, auth, forms и state;
-- собирать storefront через `src/app`, `src/modules`, `src/shared` и `src/components`;
-- не дублировать transport/auth code по страницам;
-- не подменять собой module-owned storefront UI contracts.
+- own the Next.js storefront host and its route composition;
+- use shared frontend contracts for GraphQL, auth, forms and state;
+- assemble the storefront through `src/app`, `src/modules`, `src/shared` and `src/components`;
+- not duplicate transport/auth code across pages;
+- not replace module-owned storefront UI contracts.
 
 ## Runtime contract
 
-- host следует FSD-ориентиру `src/app`, `src/modules`, `src/shared`, `src/components`;
-- shared integration gateways живут в `src/shared/lib/*`;
-- backend API идёт через `apps/server`;
-- auth и transport contracts переиспользуются через shared packages, а не через ad-hoc clients;
-- storefront host должен оставаться синхронизированным с `apps/storefront` по route/i18n/auth contracts.
-- locale-aware middleware должен матчить весь storefront surface без hardcoded `/en|/ru`
-  filter; поддерживаемые locales берутся из host-owned message loaders.
-- query semantics для module-owned storefront surfaces должны оставаться в parity с `apps/storefront`;
-  host не inventит отдельную schema/policy поверх backend и Leptos host contract.
-- Search storefront composition живёт в `src/features/search`: host передаёт route locale, tenant slug и enabled modules, product-owned `packages/rustok-product` читает public `storefrontCatalogSearchOptions(locale: String!)`, а `packages/search` получает только host-provided category/attribute option props.
+- host follows the FSD orientation of `src/app`, `src/modules`, `src/shared`, `src/components`;
+- shared integration gateways live in `src/shared/lib/*`;
+- backend API goes through `apps/server`;
+- auth and transport contracts are reused through shared packages, not through ad-hoc clients;
+- storefront host must stay synchronized with `apps/storefront` on route/i18n/auth contracts.
+- locale-aware middleware should match the entire storefront surface without hardcoded `/en|/ru`
+  filter; supported locales are taken from host-owned message loaders.
+- query semantics for module-owned storefront surfaces must remain in parity with `apps/storefront`;
+  host does not invent a separate schema/policy on top of backend and Leptos host contract.
+- Search storefront composition lives in `src/features/search`: host passes route locale, tenant slug and enabled modules, product-owned `packages/rustok-product` reads the public `storefrontCatalogSearchOptions(locale: String!)`, and `packages/search` receives only host-provided category/attribute option props.
 
 ## Frontend contract
 
-- GraphQL contract идёт через shared storefront transport layer;
-- auth/session contract идёт через shared auth package boundary;
-- forms/state contract переиспользует shared frontend packages;
-- i18n route/layout contract должен совпадать с platform storefront expectations.
-- если module-owned storefront surface использует query-driven state, Next host обязан держать
-  те же key semantics и canonical behavior, что и Leptos storefront.
-- SEO runtime не дублируется в host: canonical source of truth живёт в `rustok-seo`, а Next host выступает только adapter-слоем поверх `SeoPageContext = route + document`.
-- runtime transport policy для SEO в Next host: `REST-first + GraphQL fallback` с typed semantic error mapping (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures), без blanket `catch {}`.
-- built-in Next Metadata API считается основным render target для SEO head; shared metadata builder маппит туда typed robots, Open Graph, Twitter, verification и alternates без собственного SEO source-of-truth в host.
-- `robots.ts` и `sitemap.ts` работают в runtime-driven режиме через SEO runtime source; host-local static правила допустимы только как аварийный fallback или rollout guard.
-- Rollout guard для runtime robots/sitemap задаётся флагом `NEXT_PUBLIC_SEO_NEXT_RUNTIME_SITEMAP_ENABLED` (или `SEO_NEXT_RUNTIME_SITEMAP_ENABLED` в server env).
-- `SeoStructuredDataBlock` в shared TypeScript contract сохраняет backend-provided `schemaKind`, `schemaType`, legacy `kind`, `source` и payload; Next host не классифицирует schema.org types локально и рендерит JSON-LD blocks как runtime-provided scripts.
-- Rust-host путь при этом вынесен в отдельный support crate `rustok-seo-render`; Next host остаётся TypeScript adapter-слоем и не пытается делить с ним source-of-truth.
+- GraphQL contract goes through shared storefront transport layer;
+- auth/session contract goes through shared auth package boundary;
+- forms/state contract reuses shared frontend packages;
+- i18n route/layout contract must match platform storefront expectations.
+- if a module-owned storefront surface uses query-driven state, Next host must maintain
+  the same key semantics and canonical behavior as the Leptos storefront.
+- SEO runtime is not duplicated in the host: canonical source of truth lives in `rustok-seo`, and the Next host acts only as an adapter layer on top of `SeoPageContext = route + document`.
+- runtime transport policy for SEO in Next host: `REST-first + GraphQL fallback` with typed semantic error mapping (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures), without blanket `catch {}`.
+- built-in Next Metadata API is considered the primary render target for SEO head; the shared metadata builder maps typed robots, Open Graph, Twitter, verification and alternates there without its own SEO source-of-truth in the host.
+- `robots.ts` and `sitemap.ts` operate in runtime-driven mode through the SEO runtime source; host-local static rules are allowed only as an emergency fallback or rollout guard.
+- Rollout guard for runtime robots/sitemap is set by the `NEXT_PUBLIC_SEO_NEXT_RUNTIME_SITEMAP_ENABLED` flag (or `SEO_NEXT_RUNTIME_SITEMAP_ENABLED` in server env).
+- `SeoStructuredDataBlock` in the shared TypeScript contract preserves backend-provided `schemaKind`, `schemaType`, legacy `kind`, `source` and payload; Next host does not classify schema.org types locally and renders JSON-LD blocks as runtime-provided scripts.
+- The Rust-host path is extracted into a separate support crate `rustok-seo-render`; the Next host remains a TypeScript adapter layer and does not attempt to share source-of-truth with it.
 
 ## D8/D9 SEO closeout contract
 
@@ -51,24 +51,24 @@ FFA classification: `apps/next-frontend` является `FFA-compatible compos
 - The verifier intentionally does not compile the app; it checks contract shape, fallback semantics, route ownership, smoke assertions, docs sync rows, owner sign-off rows, targeted unit coverage inventory, integration matrix plan, live artifact manifest template, concrete per-file artifact templates and the deferred live evidence plan.
 - Before final closeout, this host must attach live evidence for runtime `robots.ts`, `sitemap.ts`, home metadata and at least product/blog non-home metadata routes against a running backend.
 
-## Взаимодействия
+## Interactions
 
 - `apps/server` — backend/API provider;
-- `apps/storefront` — параллельный Leptos storefront host для contract parity;
-- `crates/rustok-*` и module-owned surfaces подключаются через backend и frontend integration layer, а не через host-local business logic.
+- `apps/storefront` — parallel Leptos storefront host for contract parity;
+- `crates/rustok-*` and module-owned surfaces connect through the backend and frontend integration layer, not through host-local business logic.
 
-## Проверка
+## Verification
 
-- lint/typecheck прогоны по `apps/next-frontend`
+- lint/typecheck runs across `apps/next-frontend`
 - storefront route/i18n contract checks
-- сверка shared contract с `docs/UI/storefront.md` и `docs/modules/manifest.md`
+- shared contract reconciliation with `docs/UI/storefront.md` and `docs/modules/manifest.md`
 
-## Связанные документы
+## Related documents
 
 - [App README](../README.md)
 - [Storefront docs](../../../docs/UI/storefront.md)
-- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
-- [Карта документации](../../../docs/index.md)
+- [Manifest layer contract](../../../docs/modules/manifest.md)
+- [Documentation map](../../../docs/index.md)
 
 ## SEO runtime parity evidence
 

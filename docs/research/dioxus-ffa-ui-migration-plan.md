@@ -6,290 +6,288 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План: FFA-рефактор UI пакетов и подготовка к Dioxus
 
-## Контекст
+# Plan: FFA Refactor of UI Packages and Preparation for Dioxus
 
-Платформа уже фиксирует dual-path транспортный контракт для Leptos UI:
+## Context
 
-- native `#[server]` functions — preferred внутренний путь в SSR/hydrate runtime;
-- GraphQL `/api/graphql` — обязательный параллельный контракт для headless hosts и fallback.
+The platform already captures a dual-path transport contract for Leptos UI:
 
-Цель этого плана — подготовить module-owned UI пакеты к FFA-паттерну
-(shared core + transport adapters + host adapters), чтобы переход к Dioxus был
-инкрементальным, а не вторым полным переписыванием.
+- native `#[server]` functions — preferred internal path in SSR/hydrate runtime;
+- GraphQL `/api/graphql` — mandatory parallel contract for headless hosts and fallback.
 
-## Цели
+The goal of this plan is to prepare module-owned UI packages for the FFA pattern
+(shared core + transport adapters + host adapters) so that migration to Dioxus can be
+incremental, rather than a second full rewrite.
 
-1. Сохранить текущий production-контракт (`native + GraphQL fallback`) без регресса.
-2. Декомпозировать Leptos UI пакеты на framework-agnostic и framework-specific слои.
-3. Подготовить инфраструктуру для Dioxus host/adapters без изменения доменной логики.
-4. Удержать parity для headless клиентов (Next.js/mobile/external).
+## Goals
 
-## Не-цели
+1. Preserve the current production contract (`native + GraphQL fallback`) without regression.
+2. Decompose Leptos UI packages into framework-agnostic and framework-specific layers.
+3. Prepare infrastructure for Dioxus host/adapters without changing domain logic.
+4. Maintain parity for headless clients (Next.js/mobile/external).
 
-- Немедленный полный перевод всех UI пакетов на Dioxus.
-- Удаление GraphQL/REST контрактов.
-- Изменение ownership модели (UI ownership остаётся у модулей).
+## Non-goals
 
-## Инварианты
+- Immediate full migration of all UI packages to Dioxus.
+- Removal of GraphQL/REST contracts.
+- Changing the ownership model (UI ownership remains with modules).
 
-- GraphQL нельзя удалять из-за появления/расширения native server path.
-- UI package должен продолжать работать в SSR/hydrate и standalone CSR compatibility режиме.
-- Host application остаётся mount/wiring/navigation слоем, а не владельцем доменного UI.
+## Invariants
 
-## Фазы реализации
+- GraphQL must not be removed because of the emergence/expansion of native server path.
+- UI package must continue to work in SSR/hydrate and standalone CSR compatibility mode.
+- Host application remains a mount/wiring/navigation layer, not the owner of domain UI.
 
-## Phase A — Baseline и инвентаризация (1–2 недели)
+## Implementation Phases
 
-### A1. Выбор пилотов
+## Phase A — Baseline and Inventory (1–2 weeks)
 
-- Пилот 1 (средняя сложность): `rustok-pages` или `rustok-blog`.
-- Пилот 2 (высокая сложность): `rustok-search` или `rustok-commerce`/`rustok-cart`.
+### A1. Pilot Selection
 
-### A2. Карта связности
+- Pilot 1 (medium complexity): `rustok-pages` or `rustok-blog`.
+- Pilot 2 (high complexity): `rustok-search` or `rustok-commerce`/`rustok-cart`.
 
-Для каждого пилота зафиксировать:
+### A2. Connectivity Map
 
-- Leptos-specific точки (`#[component]`, router hooks, reactive state);
-- transport binding точки (`#[server]`, GraphQL requests, fallback branches);
-- места смешения UI/state/business логики.
-- Базовая карта связности пилотов (`rustok-pages`, `rustok-search`) зафиксирована в `docs/research/dioxus-ffa-pilot-connectivity-map.md`.
+For each pilot, capture:
 
-### A3. Contract freeze
+- Leptos-specific points (`#[component]`, router hooks, reactive state);
+- transport binding points (`#[server]`, GraphQL requests, fallback branches);
+- places where UI/state/business logic are mixed.
+- Baseline connectivity map for pilots (`rustok-pages`, `rustok-search`) captured in `docs/research/dioxus-ffa-pilot-connectivity-map.md`.
 
-- Зафиксировать текущие GraphQL/native surfaces и smoke-скрипты.
-- Добавить checklist parity: SSR native path, GraphQL fallback, headless path.
-- Базовый checklist закреплён в `docs/verification/ffa-ui-parity-checklist.md` и обязателен для phase-gate evidence.
+### A3. Contract Freeze
 
-## Phase B — FFA-декомпозиция в пилотах (2–4 недели)
+- Capture current GraphQL/native surfaces and smoke scripts.
+- Add parity checklist: SSR native path, GraphQL fallback, headless path.
+- Baseline checklist established in `docs/verification/ffa-ui-parity-checklist.md` and mandatory for phase-gate evidence.
 
-Для каждого пилотного UI пакета ввести 3 слоя:
+## Phase B — FFA Decomposition in Pilots (2–4 weeks)
 
-1. `core.rs` или `core/` (framework-agnostic)
+For each pilot UI package, introduce 3 layers:
+
+1. `core.rs` or `core/` (framework-agnostic)
    - use-cases, typed state transitions, view-model mapping;
-   - ошибки и policy-результаты в transport-agnostic форме;
-   - `core.rs` допустим для маленького среза, `core/` обязателен при появлении нескольких поддоменов (`view_model`, `policy`, `error`, `ports`, `identifiers`).
+   - errors and policy results in transport-agnostic form;
+   - `core.rs` acceptable for a small slice, `core/` mandatory when multiple subdomains appear (`view_model`, `policy`, `error`, `ports`, `identifiers`).
 2. `transport/`
-   - `native_server_adapter` (текущий Leptos native path);
+   - `native_server_adapter` (current Leptos native path);
    - `graphql_adapter` (fallback/headless-compatible path);
-   - если срез временно имеет только один adapter, это фиксируется как temporary single-adapter state с next-step parity plan.
-3. `ui/leptos.rs` или `ui/leptos/`
-   - только render/bind слой без transport/business ownership;
-   - `ui/leptos.rs` допустим для одного adapter file, `ui/leptos/` используется при разрастании render adapter слоя.
+   - if the slice temporarily has only one adapter, this is captured as a temporary single-adapter state with next-step parity plan.
+3. `ui/leptos.rs` or `ui/leptos/`
+   - render/bind layer only, without transport/business ownership;
+   - `ui/leptos.rs` acceptable for a single adapter file, `ui/leptos/` used when the render adapter layer grows.
 
-Ключевое правило: UI adapter не вызывает raw GraphQL/native functions напрямую. Он может обращаться только к module-owned `transport/` facade; request/command/state construction, validation и business/policy decisions остаются в `core` ports/helpers.
+Key rule: UI adapter does not call raw GraphQL/native functions directly. It may only access module-owned `transport/` facade; request/command/state construction, validation and business/policy decisions remain in `core` ports/helpers.
 
-### Стандарт минимального FFA-среза и anti-over-extraction
+### Standard for minimal FFA slice and anti-over-extraction
 
-FFA-срез должен уменьшать связность, а не механически переносить каждую строку из Leptos adapter
-в `core`. Для всех модулей действует единый decision gate: перенос в `core` разрешён, если
-выполнено хотя бы одно из условий ниже.
+An FFA slice should reduce coupling, not mechanically move every line from Leptos adapter
+into `core`. For all modules, a unified decision gate applies: moving to `core` is allowed if
+at least one of the conditions below is met.
 
-**Переносить в `core`:**
+**Move to `core`:**
 
-1. request/command construction, normalization и validation, которые влияют на transport payload
-   или доменную семантику;
-2. view-model mapping, где есть вычисляемые поля, fallback policy, CSS/status class policy,
-   route/query intent, pagination/filter/sort state или reusable display rules;
-3. transport-agnostic error/policy envelope, если его должны одинаково потреблять Leptos,
-   будущий Dioxus adapter, Next/mobile/headless host или tests;
-4. state transitions, busy/selected/empty/error policy и mutation outcomes, если они могут
-   разойтись между adapters или должны тестироваться без UI runtime;
-5. повторяющийся паттерн, который уже встречается минимум в двух surfaces или ожидаемо будет
-   вынесен в shared foundation.
+1. request/command construction, normalization and validation that affect transport payload
+   or domain semantics;
+2. view-model mapping with computable fields, fallback policy, CSS/status class policy,
+   route/query intent, pagination/filter/sort state or reusable display rules;
+3. transport-agnostic error/policy envelope, if it must be consumed identically by Leptos,
+   future Dioxus adapter, Next/mobile/headless host or tests;
+4. state transitions, busy/selected/empty/error policy and mutation outcomes, if they could
+   diverge between adapters or need to be tested without UI runtime;
+5. a recurring pattern already present in at least two surfaces or expected to be
+   extracted into shared foundation.
 
-**Оставлять в `ui/leptos`:**
+**Keep in `ui/leptos`:**
 
-1. простые i18n label bindings (`t(locale, key, fallback)`) и одноразовые success/error copy,
-   если они не меняют policy и не нужны другим host adapters;
-2. DOM layout, classes без state/policy ветвления, event binding, signals/resources/effects;
-3. reset/refresh side effects после mutation, если они завязаны на конкретный adapter state;
-4. механические wrappers над одной строкой форматирования, которые не дают reuse и увеличивают
-   количество DTO/enum/label structs;
-5. код, перенос которого увеличивает public surface сильнее, чем уменьшает coupling.
+1. simple i18n label bindings (`t(locale, key, fallback)`) and one-shot success/error copy,
+   if they do not change policy and are not needed by other host adapters;
+2. DOM layout, classes without state/policy branching, event binding, signals/resources/effects;
+3. reset/refresh side effects after mutation, if they depend on specific adapter state;
+4. mechanical wrappers over a single formatting line that provide no reuse and increase
+   the number of DTO/enum/label structs;
+5. code whose extraction increases public surface more than it reduces coupling.
 
-**Правило размера:** маленький FFA-срез предпочтительнее большого, но он должен иметь
-архитектурный смысл. Если изменение добавляет больше boilerplate, чем удаляет coupling,
-срез отклоняется или откатывается.
+**Size rule:** a small FFA slice is preferable to a large one, but it must have
+architectural meaning. If a change adds more boilerplate than it removes coupling,
+the slice is rejected or reverted.
 
-**Обязательный review после каждого среза:**
+**Mandatory review after each slice:**
 
-- зафиксировать в local implementation plan, какую coupling-проблему решил срез;
-- проверить, что UI adapter стал тоньше именно по business/policy/transport ownership, а не просто
-  получил больше passthrough DTO;
-- если обнаружен over-extraction, откатить его в той же итерации и оставить reusable rule в этом плане;
-- при расхождении между модулями сначала искать общий паттерн, затем переносить его в shared crate,
-  а не копировать крупные module-local structs.
+- capture in the local implementation plan which coupling problem the slice solved;
+- verify that the UI adapter became thinner specifically in business/policy/transport ownership, not just
+   gained more passthrough DTOs;
+- if over-extraction is detected, revert it in the same iteration and leave a reusable rule in this plan;
+- when modules diverge, first look for a common pattern, then extract it to a shared crate
+   rather than copying large module-local structs.
 
-## Phase C — Shared platform abstractions (1–2 недели)
+## Phase C — Shared Platform Abstractions (1–2 weeks)
 
-Вынести повторяющиеся контракты в shared crate(s):
+Extract recurring contracts into shared crate(s):
 
 - `RequestMeta`, `EffectiveLocale`, `TenantScope`;
-- типизированные query/filter/pagination контракты;
-- единый UI error envelope.
+- typed query/filter/pagination contracts;
+- unified UI error envelope.
 
-Отдельно подготовить portability-порт для route/query plumbing:
+Separately prepare a portability port for route/query plumbing:
 
-- текущий Leptos implementation остаётся;
-- добавляется transport/framework-agnostic контракт для будущего Dioxus routing adapter;
-- shared foundation для первых wave вынесен в `rustok-api`: `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate`, а Leptos adapter применяет эти intents через `leptos-ui-routing`.
+- current Leptos implementation remains;
+- add transport/framework-agnostic contract for future Dioxus routing adapter;
+- shared foundation for first wave extracted into `rustok-api`: `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate`, with Leptos adapter applying these intents through `leptos-ui-routing`.
 
-## Phase D — Wave rollout по остальным UI пакетам (3–6 недель)
+## Phase D — Wave Rollout to Remaining UI Packages (3–6 weeks)
 
-### Wave 1 (низкая/средняя сложность)
+### Wave 1 (low/medium complexity)
 
 - `pages`, `blog`, `region`, `product`.
 
-### Wave 2 (высокая сложность)
+### Wave 2 (high complexity)
 
 - `search`, `cart`, `commerce`, `workflow`.
 
-Для каждого пакета обязательный DoD:
+For each package, mandatory DoD:
 
-- structural shape зафиксирован как минимум до `core_only`, а для phase-gate — до `core_transport_ui`;
-- core отделён от Leptos runtime (`core.rs` и `core/` не содержат `leptos*` imports);
-- native + GraphQL adapters работают и покрыты integration тестами либо temporary single-adapter state явно отмечен с next-step parity plan;
-- Leptos UI слой стал thin adapter и не вызывает raw GraphQL/native functions напрямую;
-- docs модуля и central docs обновлены при изменении контрактов.
+- structural shape captured at minimum as `core_only`, and for phase-gate at least `core_transport_ui`;
+- core separated from Leptos runtime (`core.rs` and `core/` do not contain `leptos*` imports);
+- native + GraphQL adapters work and are covered by integration tests, or temporary single-adapter state is explicitly noted with next-step parity plan;
+- Leptos UI layer became a thin adapter and does not call raw GraphQL/native functions directly;
+- module docs and central docs updated when contracts change.
 
-## Параллельный host-track для admin/storefront
+## Parallel Host Track for Admin/Storefront
 
-Админки и фронтенды переводятся **параллельно, но не как первый слой**:
+Admin and frontends are migrated **in parallel, but not as the first layer**:
 
-1. Сначала module-owned UI packages выделяют `core/transport/ui` и сохраняют Leptos UI как thin adapter.
-2. Одновременно host-приложения (`apps/admin`, `apps/storefront` и будущие Dioxus shells) получают только переносимые host contracts: route/query, locale, auth/session, tenant scope, mount registry и manifest wiring.
-3. Host-приложения не становятся владельцами доменной UI-логики; они монтируют module surfaces через adapters.
-4. Dioxus host подключается после готовности 1–2 пилотных module cores и проверяет reuse без удаления Leptos или GraphQL/headless paths.
+1. First, module-owned UI packages extract `core/transport/ui` and keep Leptos UI as a thin adapter.
+2. Simultaneously, host applications (`apps/admin`, `apps/storefront` and future Dioxus shells) receive only portable host contracts: route/query, locale, auth/session, tenant scope, mount registry and manifest wiring.
+3. Host applications do not become owners of domain UI logic; they mount module surfaces through adapters.
+4. Dioxus host connects after 1–2 pilot module cores are ready and verifies reuse without removing Leptos or GraphQL/headless paths.
 
-Это означает, что изменение host wiring требует отдельной parity-проверки, но перевод доменной логики остаётся в module UI packages.
+This means changing host wiring requires a separate parity check, but domain logic migration remains in module UI packages.
 
-## Phase E — Dioxus pilot (2–4 недели)
+## Phase E — Dioxus Pilot (2–4 weeks)
 
-1. Поднять минимальный Dioxus host shell.
-2. Подключить 1–2 пилотных module UI surface через уже выделенный core.
-3. Реализовать Dioxus-specific UI adapter + native transport adapter.
-4. Подтвердить parity с Leptos по сценариям и отказам.
+1. Set up a minimal Dioxus host shell.
+2. Connect 1–2 pilot module UI surfaces through the already extracted core.
+3. Implement Dioxus-specific UI adapter + native transport adapter.
+4. Confirm parity with Leptos across scenarios and failure modes.
 
-## Верификация
+## Verification
 
-Для каждого затронутого модуля/волны:
+For each affected module/wave:
 
 - `cargo xtask module validate <slug>`
 - `cargo xtask module test <slug>`
 
-При изменении host/UI wiring дополнительно:
+When changing host/UI wiring, additionally:
 
 - `npm run verify:i18n:ui`
 - `npm run verify:i18n:contract`
 - `npm.cmd run verify:storefront:routes`
 
-## Принцип исполнения backlog (одна задача за итерацию)
+## Backlog Execution Principle (One Task Per Iteration)
 
-Чтобы не накапливать архитектурный drift и противоречивые записи, программа выполняется
-строго по принципу **"одна задача -> все UI surfaces -> двойная документационная сверка"**:
+To avoid accumulating architectural drift and contradictory records, the program is executed
+strictly following the **"one task -> all UI surfaces -> double documentation verification"** principle:
 
-1. Берём **одну конкретную задачу** (например, выделение `core` для выбранного use-case).
-2. Применяем её **во всех релевантных UI пакетах/host surfaces**, где этот контракт должен быть одинаковым.
-3. Обновляем документацию:
-   - локальные docs модулей;
-   - central docs в `docs/`;
-   - при необходимости ADR/decision trail.
-4. Делаем **двойную сверку документации** перед переходом к следующей задаче:
-   - проход №1: проверить, что новые формулировки полностью соответствуют фактическому коду;
-   - проход №2: целевой поиск и удаление/правка старых формулировок, которые вводят в заблуждение
-     (устаревшие "Leptos-only" или конфликтующие transport-описания и т.п.).
-5. Только после этого закрываем задачу и переходим к следующей.
+1. Take **one specific task** (e.g., extracting `core` for a selected use-case).
+2. Apply it **across all relevant UI packages/host surfaces** where this contract must be identical.
+3. Update documentation:
+   - local module docs;
+   - central docs in `docs/`;
+   - ADR/decision trail if necessary.
+4. Perform **double documentation verification** before moving to the next task:
+   - pass #1: verify that new wording fully matches the actual code;
+   - pass #2: targeted search and removal/correction of old wording that is misleading
+     (outdated "Leptos-only" or conflicting transport descriptions, etc.).
+5. Only then close the task and move to the next one.
 
-Этот режим обязателен для фаз B–E, чтобы не получить частичный rollout, где код и docs расходятся
-между модулями или хостами.
+This mode is mandatory for phases B–E to avoid partial rollout where code and docs diverge
+between modules or hosts.
 
+## Verification Script Update Policy
 
+Verification scripts (`scripts/verify/*`) are considered part of the live platform contract and
+must be updated together with changes to the rules they check.
 
-## Политика актуализации verification scripts
+Mandatory rules:
 
-Verification scripts (`scripts/verify/*`) считаются частью живого platform contract и
-обновляются вместе с изменением правил, которые они проверяют.
+1. If a migration task changes transport/UI/doc contract, it **must** include
+   updating the corresponding verify scripts in the same PR/iteration.
+2. A task is not considered complete if the contract has been changed but verify scripts do not
+   reflect the new rules.
+3. After each wave (Phase D), a separate review of verify scripts is performed for
+   outdated patterns/exceptions and addition of new anti-pattern checks.
+4. Before closing a phase-gate, the task owner must attach the output of running the current
+   verify scripts as part of the evidence.
 
-Обязательные правила:
+`test:verify:ffa:ui:migration` is a batch fast-run of source-level FFA guardrails.
+It must include fixture sets for boundary sweep, transport profile and module boundaries
+(`channel`, `region`, `blog`, `pages`, `fulfillment`, `product`, `forum`) if the corresponding
+verify script already exists.
 
-1. Если migration-задача меняет transport/UI/doc contract, она **обязана** включать
-   обновление соответствующих verify-скриптов в том же PR/итерации.
-2. Задача не считается завершённой, если contract уже изменён, а verify-скрипты не
-   отражают новые правила.
-3. После каждой wave (Phase D) выполняется отдельный review verify-скриптов на предмет
-   устаревших паттернов/исключений и добавления новых anti-pattern checks.
-4. Перед закрытием phase-gate владелец задачи прикладывает вывод запуска актуальных
-   verify-скриптов как часть evidence.
+Minimum revision cadence: at least once every 2–4 weeks and always upon
+completion of each rollout wave.
 
-`test:verify:ffa:ui:migration` является пакетным быстрым прогоном source-level FFA guardrails.
-Он должен включать fixture-наборы для boundary sweep, transport profile и модульных границ
-(`channel`, `region`, `blog`, `pages`, `fulfillment`, `product`, `forum`), если соответствующий
-verify-скрипт уже существует.
+## Documentation and Governance
 
-Минимальный ритм плановой ревизии: не реже 1 раза в 2–4 недели и обязательно по
-завершению каждой волны rollout.
+For platform-level changes:
 
-## Документация и governance
+1. update local docs of affected modules;
+2. update central docs in `docs/`;
+3. keep `docs/index.md` up to date;
+4. create an ADR in `DECISIONS/` if the platform transport/UI contract changes.
 
-При platform-level изменениях:
+## Risks and Mitigation
 
-1. обновить локальные docs затронутых модулей;
-2. обновить central docs в `docs/`;
-3. поддержать актуальность `docs/index.md`;
-4. оформить ADR в `DECISIONS/`, если меняется platform transport/UI contract.
+1. **Risk:** core layer remains coupled to Leptos types.
+   - **Mitigation:** CI check that forbids `leptos*` dependencies in `core` crates.
 
-## Риски и mitigation
+2. **Risk:** fallback path stops being actually verified.
+   - **Mitigation:** mandatory parity integration suites for native and GraphQL adapters.
 
-1. **Риск:** core слой останется связанным с Leptos типами.
-   - **Mitigation:** CI-check, запрещающий `leptos*` зависимости в `core` crates.
+3. **Risk:** divergence between Leptos and Dioxus behavior.
+   - **Mitigation:** contract tests at the shared use-case level + snapshot tests of key state transitions.
 
-2. **Риск:** fallback path перестанет реально проверяться.
-   - **Mitigation:** обязательные parity integration suites для native и GraphQL adapters.
+## Program Completion Criteria
 
-3. **Риск:** divergence поведения Leptos и Dioxus.
-   - **Mitigation:** contract tests на уровне shared use-cases + snapshot тесты ключевых state transitions.
+The program is considered complete when:
 
-## Критерии готовности программы
+- at least 2 complex modules have undergone FFA decomposition and parity verification;
+- Dioxus pilot confirms reuse of shared core without duplicating domain logic;
+- headless contracts have not degraded;
+- documentation and ADR reflect the new target state.
 
-Программа считается завершённой, когда:
+## Reconciliation with Current Code (as of 2026-05-23)
 
-- минимум 2 сложных модуля прошли FFA-декомпозицию и parity verification;
-- Dioxus pilot подтверждает reuse shared core без дублирования доменной логики;
-- headless контракты не деградировали;
-- документация и ADR отражают новое целевое состояние.
+Below captures the alignment of the plan with the current repository state.
 
+### 1) Actual dual-path contract already captured in docs
 
-## Сверка с текущим кодом (на 2026-05-23)
+- `docs/UI/graphql-architecture.md` captures the model: native `#[server]` preferred + GraphQL as mandatory parallel contract.
+- `apps/storefront/docs/README.md` captures native-first in SSR/hydrate and mandatory GraphQL fallback for storefront surfaces.
 
-Ниже зафиксирована привязка плана к текущему состоянию репозитория.
+### 2) UI packages in code are currently Leptos-specific
 
-### 1) Фактический dual-path контракт уже закреплён в docs
-
-- `docs/UI/graphql-architecture.md` фиксирует модель: native `#[server]` preferred + GraphQL как обязательный параллельный контракт.
-- `apps/storefront/docs/README.md` фиксирует native-first в SSR/hydrate и обязательный GraphQL fallback для storefront surfaces.
-
-### 2) UI-пакеты в коде сейчас Leptos-specific
-
-- Базовые shared UI crates завязаны на Leptos:
+- Basic shared UI crates depend on Leptos:
   - `crates/leptos-ui/Cargo.toml`
   - `crates/leptos-ui-routing/Cargo.toml`
   - `crates/leptos-graphql/Cargo.toml`
   - `crates/leptos-auth/Cargo.toml`
-- Module-owned UI пакеты активно используют `leptos::*`, `#[component]`, `leptos_router` и Leptos hooks (пример: `rustok-search`, `rustok-workflow`, `rustok-commerce`, `rustok-cart`).
+- Module-owned UI packages actively use `leptos::*`, `#[component]`, `leptos_router` and Leptos hooks (example: `rustok-search`, `rustok-workflow`, `rustok-commerce`, `rustok-cart`).
 
-### 3) Данные уже ходят через native/GraphQL гибрид
+### 3) Data already flows through native/GraphQL hybrid
 
-- В `crates/rustok-*/storefront/src/api.rs` и `crates/rustok-*/admin/src/api.rs` видны GraphQL adapters (`leptos_graphql`) и `#[cfg(feature = "ssr")]` ветви для native SSR paths.
-- Это означает, что план не придумывает новую модель, а формализует уже существующий runtime split и переводит его в FFA-структуру.
+- In `crates/rustok-*/storefront/src/api.rs` and `crates/rustok-*/admin/src/api.rs`, GraphQL adapters (`leptos_graphql`) and `#[cfg(feature = "ssr")]` branches for native SSR paths are visible.
+- This means the plan does not invent a new model but formalizes an already existing runtime split and converts it into an FFA structure.
 
-### 4) Кандидаты пилота подтверждены текущей сложностью
+### 4) Pilot candidates confirmed by current complexity
 
-- `rustok-pages`/`rustok-blog`: меньший объём UI state и проще сценарии CRUD/read.
-- `rustok-search` и `rustok-commerce`/`rustok-cart`: выраженная сложность по state/fallback flows и SSR branches.
+- `rustok-pages`/`rustok-blog`: smaller UI state volume and simpler CRUD/read scenarios.
+- `rustok-search` and `rustok-commerce`/`rustok-cart`: pronounced complexity in state/fallback flows and SSR branches.
 
-### 5) Команды сверки, которыми обновлялся этот документ
+### 5) Verification commands used to update this document
 
 ```bash
 rg -n "Dioxus|Leptos|headless|server functions|UI packages|GraphQL" docs crates apps
@@ -299,31 +297,31 @@ nl -ba apps/storefront/docs/README.md
 npm run verify:ffa:ui:migration
 ```
 
-### 6) Следствие для исполнения плана
+### 6) Implication for plan execution
 
-План выполняется **без смены продуктового контракта**: сначала рефактор структуры пакетов (core/transport/ui), затем Dioxus adapter pilot. GraphQL/REST остаются обязательными контрактами для headless parity на каждом этапе.
+The plan is executed **without changing the product contract**: first, package structure refactor (core/transport/ui), then Dioxus adapter pilot. GraphQL/REST remain mandatory contracts for headless parity at every stage.
 
-## Phase-gate критерии (обязательные переходы между фазами)
+## Phase-Gate Criteria (mandatory transitions between phases)
 
-- **A -> B**: завершена карта связности пилотов, зафиксированы current native/GraphQL surfaces, составлен parity checklist.
-- **B -> C**: в пилотах реально выделены `core/transport/ui`, UI не ходит напрямую в transport, parity тесты проходят в pilot scope.
-- **C -> D**: shared abstractions согласованы с владельцами модулей, portability-порт для route/query принят как contract.
-- **D -> E**: минимум одна wave завершена без doc drift, двойная documentation verification выполнена для всех затронутых модулей.
-- **E -> Program done**: Dioxus pilot прошёл parity/KPI проверки и не нарушил headless контракты.
+- **A -> B**: pilot connectivity map completed, current native/GraphQL surfaces captured, parity checklist compiled.
+- **B -> C**: `core/transport/ui` actually extracted in pilots, UI does not go directly to transport, parity tests pass in pilot scope.
+- **C -> D**: shared abstractions agreed with module owners, portability port for route/query accepted as contract.
+- **D -> E**: at least one wave completed without doc drift, double documentation verification performed for all affected modules.
+- **E -> Program done**: Dioxus pilot passes parity/KPI checks and does not violate headless contracts.
 
-## KPI parity (измеримые пороги)
+## KPI Parity (measurable thresholds)
 
-- Функциональный parity: все обязательные сценарии pilot checklist проходят и в native path, и в GraphQL fallback path.
-- Error parity: доля расхождений по error-classification между адаптерами = 0 для обязательных сценариев.
-- Performance guard: p95 latency новых adapter-path не ухудшается более чем на 15% относительно baseline пилота.
-- Contract guard: 0 случаев удаления/ослабления headless GraphQL/REST контракта в рамках migration PR.
-- Docs guard: 0 известных конфликтующих/устаревших transport-формулировок после двойной сверки.
+- Functional parity: all mandatory scenarios of pilot checklist pass in both native path and GraphQL fallback path.
+- Error parity: error-classification divergence rate between adapters = 0 for mandatory scenarios.
+- Performance guard: p95 latency of new adapter paths does not degrade more than 15% relative to pilot baseline.
+- Contract guard: 0 cases of removal/weakening of headless GraphQL/REST contract in migration PRs.
+- Docs guard: 0 known conflicting/outdated transport wordings after double verification.
 
-## RACI (кто принимает phase-gates)
+## RACI (who approves phase-gates)
 
-- **Responsible (R):** владелец конкретного модуля UI пакета + исполнитель migration task.
-- **Accountable (A):** platform foundation team (финальный gate по transport/UI contract).
-- **Consulted (C):** владельцы `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend` по host parity.
-- **Informed (I):** смежные module owners и observability/QA владельцы.
+- **Responsible (R):** owner of the specific module UI package + migration task executor.
+- **Accountable (A):** platform foundation team (final gate on transport/UI contract).
+- **Consulted (C):** owners of `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend` on host parity.
+- **Informed (I):** adjacent module owners and observability/QA owners.
 
-Phase-gate не считается пройденным без явного подтверждения `A` и отметки о двойной documentation verification.
+A phase-gate is not considered passed without explicit confirmation from `A` and a note on double documentation verification.

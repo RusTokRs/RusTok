@@ -6,116 +6,116 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План верификации платформы: API-поверхности
+# Platform Verification Plan: API Surfaces
 
-- **Статус:** актуальный детальный чеклист
-- **Контур:** GraphQL, REST, `#[server]`, OpenAPI, host/runtime API contract
-- **Companion-план:** [Rolling-план RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md)
+- **Status:** current detailed checklist
+- **Scope:** GraphQL, REST, `#[server]`, OpenAPI, host/runtime API contract
+- **Companion plan:** [RBAC Rolling Plan for Server and Runtime Modules](./rbac-server-modules-verification-plan.md)
 
 ---
 
-## Актуальный scoped contract
+## Current Scoped Contract
 
-API-слой RusToK должен оставаться согласованным с current-state transport model:
+The RusToK API layer must remain consistent with the current-state transport model:
 
 - GraphQL — canonical UI-facing contract
 - REST — integration/ops/module-owned HTTP contract
 - `#[server]` — internal Leptos data layer
-- OpenAPI — машиночитаемый REST contract
+- OpenAPI — machine-readable REST contract
 
-Проверка API-поверхностей не должна ломать это разделение.
+API surface verification must not break this separation.
 
-## Фаза 1. GraphQL
+## Phase 1. GraphQL
 
 ### 1.1 Schema composition
 
-**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` проверяет generated composition для optional GraphQL-модулей по `modules.toml` и package-local декларациям `rustok-module.toml`.
+**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` checks generated composition for optional GraphQL modules against `modules.toml` and package-local `rustok-module.toml` declarations.
 
-**Файлы:**
+**Files:**
 - `apps/server/src/graphql/schema.rs`
 - `apps/server/src/graphql/mod.rs`
 - `apps/server/src/graphql/queries.rs`
 - `apps/server/src/graphql/mutations.rs`
 
-- [ ] `Query`, `Mutation` и `Subscription` собираются через актуальный composition root.
-- [ ] Core surfaces отражают current-state contract хоста и модулей.
-- [x] Optional modules подключаются через актуальный generated/manifest-driven path, без старого ручного drift (`apps/server/build.rs` → `graphql_schema_codegen.rs`, `app_routes_codegen.rs`).
-- [ ] GraphQL routing согласован с `apps/server` и `docs/architecture/api.md`.
+- [ ] `Query`, `Mutation` and `Subscription` are assembled through the current composition root.
+- [ ] Core surfaces reflect the current-state contract of the host and modules.
+- [x] Optional modules are connected through the current generated/manifest-driven path, without the old manual drift (`apps/server/build.rs` → `graphql_schema_codegen.rs`, `app_routes_codegen.rs`).
+- [ ] GraphQL routing is consistent with `apps/server` and `docs/architecture/api.md`.
 
 ### 1.2 Module ownership
 
-- [ ] GraphQL-resolvers используют module/service layer, а не host-local shortcuts.
-- [ ] Module-owned GraphQL surfaces согласованы с локальными docs модуля.
-- [ ] Capability-owned surfaces не выдаются за платформенные модули.
+- [ ] GraphQL resolvers use the module/service layer, not host-local shortcuts.
+- [ ] Module-owned GraphQL surfaces are consistent with the module's local docs.
+- [ ] Capability-owned surfaces are not passed off as platform modules.
 
 ### 1.3 Locale / auth / RBAC
 
-- [ ] GraphQL path использует единый tenant/auth/RBAC context.
-- [ ] Locale contract совпадает с `docs/architecture/i18n.md` и `docs/UI/*`.
-- [ ] Нет module-local locale fallback chains внутри API contract.
+- [ ] The GraphQL path uses a unified tenant/auth/RBAC context.
+- [ ] Locale contract matches `docs/architecture/i18n.md` and `docs/UI/*`.
+- [ ] No module-local locale fallback chains within the API contract.
 
-## Фаза 2. REST и HTTP surfaces
+## Phase 2. REST and HTTP Surfaces
 
 ### 2.1 REST boundaries
 
-**Файлы:**
+**Files:**
 - `apps/server/src/controllers/`
 - module-owned `controllers/`
 
-- [ ] REST используется для integration/ops/webhook flows и module-owned HTTP contract.
-- [ ] REST не дублирует UI-only GraphQL flows без причины.
-- [ ] Commerce-compatible routes отражают текущий host/runtime contract.
+- [ ] REST is used for integration/ops/webhook flows and module-owned HTTP contract.
+- [ ] REST does not duplicate UI-only GraphQL flows without reason.
+- [ ] Commerce-compatible routes reflect the current host/runtime contract.
 
 ### 2.2 Module-owned routing
 
-**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` проверяет, что модули с `[provides.http]` читаются из package manifests и отражены в центральном реестре.
+**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` checks that modules with `[provides.http]` are read from package manifests and reflected in the central registry.
 
-- [ ] HTTP routes модуля согласованы с `rustok-module.toml`, если модуль публикует transport surface.
-- [x] Host application только монтирует routing, а не становится owner transport-логики модуля через generated `append_optional_module_routes` path.
-- [ ] Наличие controller-path без manifest/doc contract не считается завершённым wiring.
+- [ ] Module HTTP routes are consistent with `rustok-module.toml`, if the module publishes a transport surface.
+- [x] The host application only mounts routing, not becomes the owner of module transport logic via the generated `append_optional_module_routes` path.
+- [ ] Presence of a controller-path without a manifest/doc contract is not considered completed wiring.
 
-## Фаза 3. `#[server]` contract
+## Phase 3. `#[server]` Contract
 
 ### 3.1 Leptos internal data layer
 
-- [ ] Для Leptos hosts и module-owned Leptos UI `#[server]` functions остаются preferred internal path.
-- [ ] GraphQL сохраняется параллельно и не вырезается.
-- [ ] `#[server]` functions не используются как внешний integration API.
+- [ ] For Leptos hosts and module-owned Leptos UI, `#[server]` functions remain the preferred internal path.
+- [ ] GraphQL is preserved in parallel and not removed.
+- [ ] `#[server]` functions are not used as external integration API.
 
-## Фаза 4. OpenAPI и operational endpoints
+## Phase 4. OpenAPI and Operational Endpoints
 
-### 4.1 Discovery и ops
+### 4.1 Discovery and ops
 
-**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` — быстрый source guardrail; runtime/export evidence остаётся в 4.2.
+**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` — fast source guardrail; runtime/export evidence stays in 4.2.
 
-- [ ] OpenAPI endpoints публикуют актуальный REST contract.
-- [ ] health/metrics/ops endpoints соответствуют текущему server/runtime contract.
-- [ ] API documentation layer не расходится с реальным routing.
+- [ ] OpenAPI endpoints publish the current REST contract.
+- [ ] health/metrics/ops endpoints match the current server/runtime contract.
+- [ ] The API documentation layer does not diverge from actual routing.
 
 ### 4.2 Reference artifacts export (DOC-09 / B11)
 
-- [ ] Выполнен экспорт `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` (или эквивалентная CI/Unix-обёртка `.sh`).
-- [ ] В output присутствуют `openapi/openapi.json`, `openapi/openapi.yaml`, `graphql/introspection.json`, `graphql/schema.graphql`, `manifest.json`.
-- [ ] Экспорт прошёл `node scripts/verify/verify-reference-artifacts.mjs artifacts/reference`.
-- [ ] Для API-контрактных PR приложен Verification Evidence с датой, командами и статусами.
+- [ ] Export completed: `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` (or equivalent CI/Unix wrapper `.sh`).
+- [ ] Output contains `openapi/openapi.json`, `openapi/openapi.yaml`, `graphql/introspection.json`, `graphql/schema.graphql`, `manifest.json`.
+- [ ] Export passed `node scripts/verify/verify-reference-artifacts.mjs artifacts/reference`.
+- [ ] For API contract PRs, Verification Evidence with date, commands and statuses is attached.
 
 
-## Фаза 5. Точечные проверки
+## Phase 5. Targeted Checks
 
-### 5.1 Локальный минимум
+### 5.1 Local Minimum
 
 - [ ] `cargo check --workspace --all-targets --all-features`
-- [ ] профильные `cargo test` или `xtask module test <slug>` для затронутых API-модулей
-- [ ] targeted GraphQL/REST smoke, если менялся routing или schema contract
+- [ ] targeted `cargo test` or `xtask module test <slug>` for affected API modules
+- [ ] targeted GraphQL/REST smoke, if routing or schema contract changed
 
-## Open blockers
+## Open Blockers
 
-- [ ] Зафиксировать отдельно runtime-only blockers, если их нельзя воспроизвести в текущем локальном окружении.
-- [ ] Не превращать этот документ в backlog; blockers описывать кратко и привязывать к owning component.
+- [ ] Record runtime-only blockers separately if they cannot be reproduced in the current local environment.
+- [ ] Do not turn this document into a backlog; describe blockers briefly and link to the owning component.
 
-## Связанные документы
+## Related Documents
 
-- [Архитектура API](../architecture/api.md)
-- [Маршрутизация и transport boundaries](../architecture/routing.md)
-- [Архитектура модулей](../architecture/modules.md)
-- [Главный README по верификации](./README.md)
+- [API Architecture](../architecture/api.md)
+- [Routing and Transport Boundaries](../architecture/routing.md)
+- [Module Architecture](../architecture/modules.md)
+- [Main Verification README](./README.md)

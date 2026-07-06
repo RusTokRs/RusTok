@@ -1,50 +1,50 @@
-# Документация `rustok-customer`
+# Documentation `rustok-customer`
 
-`rustok-customer` — дефолтный storefront-customer подмодуль семейства `ecommerce`.
+`rustok-customer` is the default storefront-customer submodule of the `ecommerce` family.
 
-## Назначение
+## Purpose
 
-- схема `customers`;
-- `CustomerModule` и `CustomerService`;
-- module-owned admin UI пакет `rustok-customer/admin`;
-- customer profile boundary, отделённый от platform/admin user;
-- optional linkage на `user_id` для сценариев `store/customers/me`;
-- optional service-level bridge `customer -> user -> profile`, который может вернуть customer вместе с `ProfileSummary`;
-- FBA provider boundary `CustomerReadPort` для read-projection сценариев commerce checkout и order customer snapshots.
+- schema `customers`;
+- `CustomerModule` and `CustomerService`;
+- module-owned admin UI package `rustok-customer/admin`;
+- customer profile boundary, separated from the platform/admin user;
+- optional linkage to `user_id` for `store/customers/me` scenarios;
+- optional service-level bridge `customer -> user -> profile` that can return a customer together with `ProfileSummary`;
+- FBA provider boundary `CustomerReadPort` for read-projection scenarios in commerce checkout and order customer snapshots.
 
-## Зона ответственности
+## Responsibilities
 
-- модуль не зависит от `rustok-commerce` umbrella, чтобы не создавать цикл;
-- customer profile хранится отдельно от auth/user домена;
-- связь с пользователем опциональна, tenant-scoped и не отменяет самостоятельность customer-модели;
-- bridge к `profiles` остаётся опциональным read-contract и не превращает customer в канонический public profile;
-- admin UI ownership теперь живёт в `rustok-customer/admin`; list defaults вынесены в `admin/src/core.rs`, Leptos-отрисовка вынесена в `admin/src/ui/leptos.rs`, а CRUD-вызовы идут через `admin/src/transport.rs`; storefront GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
+- the module does not depend on the `rustok-commerce` umbrella to avoid creating a cycle;
+- customer profile is stored separately from the auth/user domain;
+- the link to a user is optional, tenant-scoped and does not negate the autonomy of the customer model;
+- the bridge to `profiles` remains an optional read-contract and does not turn the customer into a canonical public profile;
+- admin UI ownership now lives in `rustok-customer/admin`; list defaults are extracted to `admin/src/core.rs`, Leptos rendering is extracted to `admin/src/ui/leptos.rs`, and CRUD calls go through `admin/src/transport.rs`; storefront GraphQL and REST transport remain in the `rustok-commerce` facade for now.
 
-## Интеграция
+## Integration
 
-- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
-- storefront transport и GraphQL по-прежнему публикуются через `rustok-commerce`, но admin UI-поверхность уже зафиксирована как отдельный module-owned surface в `rustok-customer/admin`;
-- изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями;
-- `CustomerService` нормализует email до проверки уникальности и хранения, поэтому create/update не допускают trimmed-дубликаты внутри tenant; duplicate `user_id` linkage остаётся tenant-scoped и не превращает customer в auth/user domain.
-- `CustomerReadPort` использует общий `PortContext`/`PortError`, требует read deadline semantics и мапит invalid tenant / not found в typed port errors; no-compile runtime smoke зафиксирован в `contracts/evidence/customer-read-projection-runtime-smoke.json`, но FBA status остаётся `in_progress` до фактического compiled runtime execution.
+- the module is part of the ecommerce family and must maintain its own storage/runtime boundary without returning responsibility to the umbrella `rustok-commerce`;
+- storefront transport and GraphQL are still published through `rustok-commerce`, but the admin UI surface is already established as a separate module-owned surface in `rustok-customer/admin`;
+- cross-module contract changes must be synchronized with `rustok-commerce` and neighboring split modules;
+- `CustomerService` normalizes email before uniqueness check and storage, so create/update do not allow trimmed duplicates within a tenant; duplicate `user_id` linkage remains tenant-scoped and does not turn the customer into auth/user domain.
+- `CustomerReadPort` uses the common `PortContext`/`PortError`, requires read deadline semantics and maps invalid tenant / not found to typed port errors; no-compile runtime smoke is captured in `contracts/evidence/customer-read-projection-runtime-smoke.json`, but FBA status remains `in_progress` until actual compiled runtime execution.
 
-## Разделение FFA для admin
+## FFA split for admin
 
-Пакет admin теперь использует framework-agnostic defaults `admin/src/core.rs`, фасад `admin/src/transport.rs` поверх native Leptos server functions и явный Leptos-адаптер отрисовки `admin/src/ui/leptos.rs`; корень crate только подключает слои модуля и повторно экспортирует `CustomerAdmin`.
+The admin package now uses framework-agnostic defaults `admin/src/core.rs`, a facade `admin/src/transport.rs` over native Leptos server functions and an explicit Leptos render adapter `admin/src/ui/leptos.rs`; the crate root only connects the module layers and re-exports `CustomerAdmin`.
 
-## Проверка
+## Verification
 
-- No-compile source/evidence gates для итераций без сборки:
+- No-compile source/evidence gates for iterations without compilation:
   - `node scripts/verify/verify-customer-fba-no-compile.mjs`
   - `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`
   - `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`
-- После снятия ограничения на компиляции:
+- After removing the compilation restriction:
   - `cargo xtask module validate customer`
   - `cargo xtask module test customer`
-  - targeted commerce tests для customer-домена при изменении runtime wiring
-  - targeted customer port tests для `CustomerReadPort` deadline/error/fallback smoke перед повышением FBA статуса
+  - targeted commerce tests for the customer domain when changing runtime wiring
+  - targeted customer port tests for `CustomerReadPort` deadline/error/fallback smoke before promoting FBA status
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План распила commerce](../../rustok-commerce/docs/implementation-plan.md)
+- [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)

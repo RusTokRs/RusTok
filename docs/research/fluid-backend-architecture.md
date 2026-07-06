@@ -6,50 +6,51 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Fluid Backend Architecture для RusTok
 
-Fluid Backend Architecture (FBA) — это предлагаемая RusTok архитектурная модель для
-переносимых backend-модулей, в которой один и тот же module-owned domain/service слой
-может работать как embedded часть modular monolith и как отдельный remote service без
-переписывания бизнес-логики.
+# Fluid Backend Architecture for RusTok
 
-Короткий ответ на вопрос «можно ли применить похожий паттерн к backend-у, чтобы модули
-могли работать как микросервисы через `server-grpc`»: **да, но FBA должна описывать не
-обязательный переход всех модулей в микросервисы, а переносимость backend boundary между
-in-process и out-of-process topology**.
+Fluid Backend Architecture (FBA) is a proposed RusTok architectural model for
+portable backend modules, where the same module-owned domain/service layer
+can operate both as an embedded part of a modular monolith and as a separate remote
+service without rewriting business logic.
 
-В FBA `microservice` — это topology deployment-а, а не новая идентичность модуля. Меняется
-runtime boundary и transport, но не domain contract, ownership, tenancy, policy model,
-observability и module lifecycle semantics.
+The short answer to the question "can a similar pattern be applied to the backend so that modules
+can work as microservices via `server-grpc`": **yes, but FBA should describe not a
+mandatory migration of all modules to microservices, but portability of the backend boundary between
+in-process and out-of-process topology**.
 
-## Связь с FFA
+In FBA, `microservice` is a deployment topology, not a new module identity. What changes is the
+runtime boundary and transport, but not domain contract, ownership, tenancy, policy model,
+observability and module lifecycle semantics.
 
-Fluid Frontend Architecture (FFA) отвечает на вопрос:
+## Relationship with FFA
 
-```text
-может ли один frontend работать embedded и headless без переписывания UI?
-```
-
-Fluid Backend Architecture (FBA) отвечает на симметричный backend-вопрос:
+Fluid Frontend Architecture (FFA) answers the question:
 
 ```text
-может ли один backend-модуль работать in-process и remote service без переписывания
-business/application layer?
+can one frontend work embedded and headless without rewriting UI?
 ```
 
-Сравнение:
+Fluid Backend Architecture (FBA) answers the symmetric backend question:
 
-| Слой | Fluid-модель | Что становится заменяемым | Что остаётся стабильным |
+```text
+can one backend module work in-process and as a remote service without rewriting
+the business/application layer?
+```
+
+Comparison:
+
+| Layer | Fluid model | What becomes replaceable | What remains stable |
 |---|---|---|---|
 | Frontend | FFA | `#[server]`, GraphQL, REST, RPC, edge transport | UI identity, routes, state, UX logic |
 | Backend | FBA | in-process call, gRPC, HTTP/RPC, async events | module identity, service contract, domain rules |
 
-Идея одинаковая: topology исполнения не должна диктовать архитектурную идентичность
-компонента.
+The idea is the same: execution topology should not dictate the architectural identity
+of a component.
 
-## Проблема backend-модулей
+## The Problem with Backend Modules
 
-Обычно platform backend развивается одним из двух путей.
+Typically, a platform backend evolves along one of two paths.
 
 ### Modular monolith
 
@@ -62,20 +63,20 @@ Server process
      Database
 ```
 
-Плюсы:
+Pros:
 
-- простой deployment;
-- короткий in-process call path;
-- общие транзакции и единый request context;
-- меньше сетевой сложности;
-- удобнее поддерживать typed Rust contracts.
+- simple deployment;
+- short in-process call path;
+- shared transactions and unified request context;
+- less network complexity;
+- easier to maintain typed Rust contracts.
 
-Минусы:
+Cons:
 
-- operational isolation ограничен;
-- тяжёлые модули нельзя независимо масштабировать;
-- failure domain часто общий;
-- модуль трудно вынести в отдельный сервис, если domain/service слой связан с host internals.
+- operational isolation is limited;
+- heavy modules cannot be scaled independently;
+- failure domain is often shared;
+- a module is hard to extract as a separate service if the domain/service layer is coupled to host internals.
 
 ### Microservices
 
@@ -87,66 +88,66 @@ Server/API gateway → Service A
                   Service-owned storage
 ```
 
-Плюсы:
+Pros:
 
-- независимое масштабирование;
-- отдельные release/deploy cadence;
-- независимые failure domains;
-- явные service boundaries.
+- independent scaling;
+- separate release/deploy cadence;
+- independent failure domains;
+- explicit service boundaries.
 
-Минусы:
+Cons:
 
-- network boundary становится частью business path;
-- появляются latency, retries, timeouts, compatibility windows;
-- сложнее транзакции и consistency;
-- легко получить distributed monolith, если boundaries не совпадают с ownership.
+- network boundary becomes part of the business path;
+- introduces latency, retries, timeouts, compatibility windows;
+- more complex transactions and consistency;
+- easy to end up with a distributed monolith if boundaries do not match ownership.
 
-## Почему «сразу микросервисы» — не цель FBA
+## Why "Microservices First" Is Not the Goal of FBA
 
-FBA не говорит, что каждый модуль RusTok должен стать отдельным сервисом. Для большинства
-модулей embedded modular monolith остаётся лучшим default: он проще, быстрее, дешевле в
-эксплуатации и лучше подходит для ранней продуктовой итерации.
+FBA does not say that every RusTok module should become a separate service. For the majority of
+modules, an embedded modular monolith remains the best default: it is simpler, faster, cheaper to
+operate and better suited for early product iteration.
 
-FBA нужна для другого: **проектировать module boundary так, чтобы remote extraction была
-архитектурно возможна без переписывания модуля**.
+FBA serves a different purpose: **design the module boundary so that remote extraction is
+architecturally possible without rewriting the module**.
 
-Иными словами:
+In other words:
 
 ```text
 FBA ≠ microservices-first
 FBA = service-boundary-ready modules
 ```
 
-## Определение
+## Definition
 
-**Fluid Backend Architecture (FBA)** — архитектурная модель, в которой один и тот же
-backend-модуль может работать как in-process часть modular monolith и как отдельный remote
-service без переписывания domain/application layer.
+**Fluid Backend Architecture (FBA)** — an architectural model in which the same
+backend module can operate as an in-process part of a modular monolith and as a separate remote
+service without rewriting the domain/application layer.
 
-В FBA:
+In FBA:
 
-- идентичность модуля остаётся неизменной;
-- module-owned service contract остаётся canonical;
-- transport является adapter layer, а не владельцем бизнес-логики;
-- runtime topology может быть embedded, remote или hybrid;
-- tenant, auth, locale, channel, policy и observability context передаются через общий
-  contract, а не через ad-hoc headers;
-- gRPC является одним из transport-ов для backend-to-backend boundary, но не заменяет
+- module identity remains unchanged;
+- the module-owned service contract remains canonical;
+- transport is an adapter layer, not the owner of business logic;
+- runtime topology can be embedded, remote or hybrid;
+- tenant, auth, locale, channel, policy and observability context are passed through a common
+  contract, not through ad-hoc headers;
+- gRPC is one of the transports for backend-to-backend boundary, but does not replace
   GraphQL/REST/UI contracts.
 
-## `server-grpc` как backend transport profile
+## `server-grpc` as a Backend Transport Profile
 
-Для RusTok `server-grpc` можно рассматривать как optional backend transport profile:
+For RusTok, `server-grpc` can be considered as an optional backend transport profile:
 
 ```text
 apps/server ──in-process──> module service
 apps/server ───gRPC───────> module service process
 ```
 
-Важно: `server-grpc` — это не новый public API для UI и не замена GraphQL/REST. Его роль —
-backend-to-backend communication между host/runtime и module-owned service boundary.
+Importantly: `server-grpc` is not a new public API for UI and not a replacement for GraphQL/REST. Its role is
+backend-to-backend communication between the host/runtime and the module-owned service boundary.
 
-Минимальная модель:
+Minimal model:
 
 ```text
 module domain/service trait
@@ -156,11 +157,11 @@ module domain/service trait
         └─ gRPC client/server adapter
 ```
 
-При этом GraphQL, REST, `#[server]` functions и UI-facing surfaces остаются внешними
-контрактами host-а. Они обращаются к тому же module service contract, независимо от того,
-выполняется он локально или удалённо.
+GraphQL, REST, `#[server]` functions and UI-facing surfaces remain external
+contracts of the host. They access the same module service contract, regardless of whether it
+executes locally or remotely.
 
-## Топологии FBA
+## FBA Topologies
 
 ### 1. Embedded modular monolith
 
@@ -173,8 +174,8 @@ apps/server
      shared runtime/database boundary
 ```
 
-Это baseline topology для RusTok. Модули живут in-process, но уже имеют явные typed
-service contracts и не зависят напрямую от host-specific shortcuts.
+This is the baseline topology for RusTok. Modules live in-process but already have explicit typed
+service contracts and do not directly depend on host-specific shortcuts.
 
 ### 2. Remote module service
 
@@ -184,8 +185,8 @@ apps/server → gRPC → order-service
 apps/server → gRPC → forum-service
 ```
 
-Host остаётся composition root для public API, auth/session, tenant routing и UI-facing
-contracts, но конкретный module service может выполняться в отдельном процессе.
+The host remains the composition root for public API, auth/session, tenant routing and UI-facing
+contracts, but a specific module service can execute in a separate process.
 
 ### 3. Hybrid topology
 
@@ -196,8 +197,8 @@ apps/server
   └─ gRPC: ai/recommendations
 ```
 
-Часть модулей остаётся embedded, часть выносится remote. Эта модель наиболее практична:
-она позволяет выносить только те модули, где есть реальная operational причина.
+Some modules remain embedded, others are extracted remote. This model is the most practical:
+it allows extracting only those modules where there is a real operational reason.
 
 ### 4. Async-first companion service
 
@@ -205,40 +206,40 @@ apps/server
 module service → outbox/events → worker/service
 ```
 
-Не каждый backend boundary должен быть synchronous gRPC. Для indexing, email, analytics,
-AI enrichment, media processing и похожих задач event/outbox path часто лучше, чем request
+Not every backend boundary needs to be synchronous gRPC. For indexing, email, analytics,
+AI enrichment, media processing and similar tasks, the event/outbox path is often better than a request
 path RPC.
 
-## Основные принципы FBA
+## Core Principles of FBA
 
-### 1. Сохранение идентичности модуля
+### 1. Preserving module identity
 
-Модуль остаётся тем же самым модулем во всех topology:
+The module remains the same module in all topologies:
 
-- тот же `slug` и ownership;
-- те же domain rules;
-- тот же service contract;
-- те же RBAC/policy expectations;
-- та же документация runtime profiles;
-- та же совместимость с module lifecycle.
+- same `slug` and ownership;
+- same domain rules;
+- same service contract;
+- same RBAC/policy expectations;
+- same documentation of runtime profiles;
+- same compatibility with module lifecycle.
 
-Если remote service требует отдельной реализации бизнес-логики, FBA нарушена.
+If a remote service requires a separate implementation of business logic, FBA is violated.
 
-### 2. Transport agnosticism service layer-а
+### 2. Transport agnosticism of the service layer
 
-Application/domain layer не должен знать, вызвали его in-process или через gRPC.
+The application/domain layer should not know whether it was called in-process or via gRPC.
 
-Правильная форма:
+Correct form:
 
 ```text
 GraphQL/REST/#[server]/job/CLI
         ↓
 module service contract
         ↓
-in-process impl или remote client adapter
+in-process impl or remote client adapter
 ```
 
-Неправильная форма:
+Incorrect form:
 
 ```text
 GraphQL resolver → in-process business logic
@@ -246,87 +247,87 @@ Grpc handler     → separate business logic
 REST handler     → third business logic
 ```
 
-### 3. Context propagation как contract
+### 3. Context propagation as a contract
 
-Remote boundary не должен превращаться в набор случайных headers. Через FBA boundary
-нужно явно переносить:
+A remote boundary should not turn into a set of random headers. Across an FBA boundary,
+the following must be explicitly propagated:
 
 - tenant context;
 - authenticated principal/service identity;
 - RBAC/policy claims;
-- locale/effective language context, если операция зависит от locale;
-- channel context для storefront/read-side scenarios;
+- locale/effective language context, if the operation depends on locale;
+- channel context for storefront/read-side scenarios;
 - correlation/request id;
 - trace/span context;
-- idempotency key для retry-safe mutations;
+- idempotency key for retry-safe mutations;
 - deadline/timeout/cancellation semantics.
 
-### 4. Data ownership и consistency должны быть явными
+### 4. Data ownership and consistency must be explicit
 
-FBA не должна скрывать вопрос хранения данных. Для каждого remote-capable модуля нужно
-заранее описать, какой режим он поддерживает:
+FBA should not hide the question of data storage. For each remote-capable module, the
+supported mode must be described in advance:
 
-| Режим | Описание | Когда подходит |
+| Mode | Description | When appropriate |
 |---|---|---|
-| Shared database, in-process | Модуль работает в общем DB/schema boundary host-а | baseline modular monolith |
-| Shared database, remote service | Remote process обращается к той же DB с теми же tenant/policy constraints | временная extraction или controlled internal deployment |
-| Service-owned database | Модуль владеет своей storage boundary и публикует read/write contracts | зрелый microservice boundary |
-| Read-model replica | Remote service держит read-side projection через events/outbox | search, index, analytics, recommendations |
+| Shared database, in-process | Module operates within the shared DB/schema boundary of the host | baseline modular monolith |
+| Shared database, remote service | Remote process accesses the same DB with the same tenant/policy constraints | temporary extraction or controlled internal deployment |
+| Service-owned database | Module owns its storage boundary and publishes read/write contracts | mature microservice boundary |
+| Read-model replica | Remote service maintains a read-side projection via events/outbox | search, index, analytics, recommendations |
 
-Переход к service-owned database — отдельное архитектурное решение. FBA может подготовить
-contract, но не должна автоматически обещать distributed transaction semantics.
+Transition to a service-owned database is a separate architectural decision. FBA can prepare the
+contract but should not automatically promise distributed transaction semantics.
 
-### 5. Synchronous RPC — не замена events
+### 5. Synchronous RPC is not a substitute for events
 
-`server-grpc` подходит для request/response операций, где host-у нужен немедленный ответ.
-Для фоновых, eventually consistent и fan-out сценариев лучше использовать events/outbox.
+`server-grpc` is suitable for request/response operations where the host needs an immediate answer.
+For background, eventually consistent and fan-out scenarios, events/outbox are better.
 
-Практическое правило:
+Practical rule:
 
-- command/query в request path → может быть gRPC;
-- workflow, projection, integration, notification → чаще event/outbox;
-- cross-module transaction → требует отдельного design, а не «просто gRPC».
+- command/query in request path → may be gRPC;
+- workflow, projection, integration, notification → typically event/outbox;
+- cross-module transaction → requires a separate design, not just "use gRPC".
 
 ### 6. Observability parity
 
-Один и тот же service contract должен давать сопоставимую telemetry в embedded и remote
-режимах:
+The same service contract should provide comparable telemetry in embedded and remote
+modes:
 
-- metrics для latency/error rate;
-- tracing spans на host и service side;
+- metrics for latency/error rate;
+- tracing spans on the host and service side;
 - structured errors;
-- health/readiness для remote service;
+- health/readiness for remote service;
 - version/capability negotiation;
-- clear degradation path при недоступности optional remote service.
+- clear degradation path when an optional remote service is unavailable.
 
-## Где FBA особенно полезна в RusTok
+## Where FBA Is Especially Useful in RusTok
 
-FBA имеет смысл применять не ко всем модулям одинаково, а к тем boundaries, где есть
-реальная причина для remote topology.
+FBA should be applied not to all modules equally, but to those boundaries where there is a
+real reason for remote topology.
 
-Хорошие кандидаты:
+Good candidates:
 
 - search/indexing service;
 - AI/recommendations/enrichment;
 - media processing;
-- heavy export/import и batch jobs;
+- heavy export/import and batch jobs;
 - integrations/webhooks dispatch;
 - analytics/reporting projections;
 - high-throughput catalog read-side;
-- fraud/risk scoring, если появится отдельный lifecycle.
+- fraud/risk scoring, if a separate lifecycle appears.
 
-Осторожнее с выносом:
+Be cautious about extracting:
 
 - checkout/payment/order write path;
 - tenant/module lifecycle;
 - auth/session/RBAC core;
 - i18n/locale resolution foundation;
 - cross-cutting SEO metadata write path;
-- любые flows, где нужна strong consistency без зрелой saga/outbox модели.
+- any flows where strong consistency is needed without a mature saga/outbox model.
 
-## Архитектурный скелет для RusTok
+## Architectural Skeleton for RusTok
 
-Для FBA-ready модуля backend можно мыслить слоями:
+For an FBA-ready backend module, think in layers:
 
 ```text
 crates/rustok-<module>/
@@ -349,85 +350,85 @@ apps/server
   public API surfaces
 ```
 
-Ключевой момент: gRPC crate не владеет бизнес-логикой. Он только сериализует вызов,
-переносит context и вызывает canonical service contract.
+Key point: the gRPC crate does not own business logic. It only serializes the call,
+propagates context and invokes the canonical service contract.
 
-## Критерии FBA-ready модуля
+## FBA-Ready Module Criteria
 
-Модуль можно считать FBA-ready, если выполняются условия:
+A module can be considered FBA-ready if the following conditions are met:
 
-1. Domain/application service contract отделён от Axum, GraphQL, REST и host internals.
-2. Public API handlers вызывают service contract, а не дублируют business logic.
-3. Есть typed request context для tenant/auth/locale/channel/policy/trace data.
-4. Ошибки имеют stable mapping между domain errors и transport status codes.
-5. Mutations имеют idempotency/deadline/retry story, если их планируют вызывать remote.
-6. Cross-module dependencies выражены через explicit ports/events, а не через прямой доступ
-   к чужим repository internals.
-7. Data ownership и consistency model описаны в local docs модуля.
-8. Observability и health/readiness поведение описаны для remote profile.
-9. Версионирование service contract-а не ломает embedded и remote topology одновременно.
-10. `server-grpc` profile можно включить или отключить без изменения UI-facing API contract-а.
+1. Domain/application service contract is separated from Axum, GraphQL, REST and host internals.
+2. Public API handlers call the service contract rather than duplicating business logic.
+3. There is a typed request context for tenant/auth/locale/channel/policy/trace data.
+4. Errors have a stable mapping between domain errors and transport status codes.
+5. Mutations have an idempotency/deadline/retry story if they are intended to be called remotely.
+6. Cross-module dependencies are expressed through explicit ports/events, not through direct access
+   to other repository internals.
+7. Data ownership and consistency model are described in the module's local docs.
+8. Observability and health/readiness behavior are described for a remote profile.
+9. Versioning of the service contract does not break embedded and remote topology simultaneously.
+10. The `server-grpc` profile can be enabled or disabled without changing the UI-facing API contract.
 
-## Антипаттерны
+## Anti-patterns
 
-FBA нарушается, если появляются:
+FBA is violated when the following appear:
 
-- «микросервис» с отдельной копией бизнес-логики;
-- gRPC handler как новый canonical domain owner;
-- прямые SQL-запросы из host-а в таблицы remote-owned модуля;
-- ad-hoc headers для tenant/auth/locale вместо typed context contract;
-- synchronous RPC там, где нужен event/outbox workflow;
-- distributed transaction без явной saga/compensation модели;
-- разные RBAC/policy checks для embedded и remote mode;
-- remote service, который невозможно запустить in-process для local/dev/test profile;
-- module extraction без документации data ownership и failure semantics.
+- a "microservice" with a separate copy of business logic;
+- a gRPC handler as the new canonical domain owner;
+- direct SQL queries from the host into tables of a remote-owned module;
+- ad-hoc headers for tenant/auth/locale instead of a typed context contract;
+- synchronous RPC where an event/outbox workflow is needed;
+- distributed transaction without an explicit saga/compensation model;
+- different RBAC/policy checks for embedded and remote mode;
+- a remote service that cannot be started in-process for local/dev/test profile;
+- module extraction without documentation of data ownership and failure semantics.
 
-## Практический вывод
+## Practical Conclusion
 
-Да, RusTok может применить похожий паттерн к backend-у. Но лучше формулировать FBA не как
-«все модули становятся микросервисами», а так:
-
-```text
-Один module-owned backend contract может выполняться in-process или через server-grpc,
-а public API/UI/event contracts продолжают видеть тот же модуль и те же domain semantics.
-```
-
-Это даёт RusTok постепенный путь:
-
-1. сначала строить строгий modular monolith;
-2. затем выделять service contracts и context propagation;
-3. потом добавлять optional `server-grpc` adapters для подходящих модулей;
-4. только после этого выносить конкретные модули в remote deployment, если есть
-   operational причина.
-
-## Короткая формула
-
-Традиционная модель:
+Yes, RusTok can apply a similar pattern to the backend. But it is better to formulate FBA not as
+"all modules become microservices", but as:
 
 ```text
-Microservice mode = новая backend-реализация
+One module-owned backend contract can execute in-process or via server-grpc,
+while public API/UI/event contracts continue to see the same module and the same domain semantics.
 ```
 
-FBA-модель:
+This gives RusTok a gradual path:
+
+1. first build a strict modular monolith;
+2. then extract service contracts and context propagation;
+3. then add optional `server-grpc` adapters for suitable modules;
+4. only then extract specific modules to remote deployment, if there is an
+   operational reason.
+
+## Short Formula
+
+Traditional model:
+
+```text
+Microservice mode = new backend implementation
+```
+
+FBA model:
 
 ```text
 Same module service + different transport + different topology = fluid backend
 ```
 
-Для RusTok это можно сформулировать так:
+For RusTok, this can be formulated as:
 
 ```text
-Modular monolith и server-grpc microservice profile должны быть режимами исполнения
-одного module-owned backend contract-а, а не двумя разными backend-продуктами.
+Modular monolith and server-grpc microservice profile should be execution modes
+of one module-owned backend contract, not two different backend products.
 ```
 
-## Связанные документы
+## Related Documents
 
-- [Единый план реализации Fluid Backend Architecture](./fluid-backend-architecture-unified-plan.md)
-- [Fluid Frontend Architecture для RusTok](./fluid-frontend-architecture.md)
-- [Архитектура модулей](../architecture/modules.md)
-- [API и surface-контракты](../architecture/api.md)
-- [Контракт event flow](../architecture/event-flow-contract.md)
+- [Unified Fluid Backend Architecture Implementation Plan](./fluid-backend-architecture-unified-plan.md)
+- [Fluid Frontend Architecture for RusTok](./fluid-frontend-architecture.md)
+- [Module Architecture](../architecture/modules.md)
+- [API and Surface Contracts](../architecture/api.md)
+- [Event Flow Contract](../architecture/event-flow-contract.md)
 - [DataLoader](../architecture/dataloader.md)
-- [Обзор модульной платформы](../modules/overview.md)
-- [Как писать модуль в RusToK](../modules/module-authoring.md)
+- [Modular Platform Overview](../modules/overview.md)
+- [How to Write a Module in RusToK](../modules/module-authoring.md)

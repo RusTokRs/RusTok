@@ -1,3 +1,3 @@
 # leptos-graphql docs
 
-В этой папке хранится документация модуля `crates/leptos-graphql`.
+This folder contains documentation for the `crates/leptos-graphql` module.

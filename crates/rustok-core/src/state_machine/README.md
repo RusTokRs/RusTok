@@ -1,29 +1,29 @@
 # State Machine Module
 
-> **Статус:** ✅ Production-ready (Sprint 2)  
-> **Версия:** 1.0.0  
-> **Тесты:** 14 unit tests (6 content + 8 commerce)
+> **Status:** ✅ Production-ready (Sprint 2)  
+> **Version:** 1.0.0  
+> **Tests:** 14 unit tests (6 content + 8 commerce)
 
-Модуль state_machine предоставляет type-safe state machines с compile-time гарантиями.
+The state_machine module provides type-safe state machines with compile-time guarantees.
 
-## Концепция
+## Concept
 
-**Type-State Pattern:** Каждое состояние - это отдельный тип. Невозможные transitions = compile errors.
+**Type-State Pattern:** Each state is a separate type. Impossible transitions = compile errors.
 
-**Преимущества:**
-- ✅ **Compile-Time Safety:** Ошибки на этапе компиляции, не runtime
-- ✅ **Impossible States:** Невозможные состояния невыразимы
-- ✅ **State-Specific Data:** Type-safe доступ к полям
-- ✅ **Self-Documenting:** State graph виден в типах
+**Advantages:**
+- ✅ **Compile-Time Safety:** Errors at compile time, not runtime
+- ✅ **Impossible States:** Impossible states are inexpressible
+- ✅ **State-Specific Data:** Type-safe access to fields
+- ✅ **Self-Documenting:** State graph visible in types
 - ✅ **Zero Overhead:** Monomorphization, no runtime cost
 
-## Компоненты
+## Components
 
 ### 1. Core Framework
 
-**Файл:** `mod.rs` (146 строк)
+**File:** `mod.rs` (146 lines)
 
-**Ключевые типы:**
+**Key types:**
 ```rust
 pub trait State: Sized {
     type Machine;
@@ -41,7 +41,7 @@ pub struct StateMachine<M, S: State<Machine = M>> {
 
 ### 2. Transition Guards
 
-**Файл:** `transition.rs` (183 строки)
+**File:** `transition.rs` (183 lines)
 
 **Guards:**
 ```rust
@@ -49,13 +49,13 @@ pub trait TransitionGuard<S> {
     fn can_transition(&self, state: &S) -> bool;
 }
 
-// Композиция
+// Composition
 impl<S, G1, G2> TransitionGuard<S> for And<G1, G2>
 impl<S, G1, G2> TransitionGuard<S> for Or<G1, G2>
 impl<S, G> TransitionGuard<S> for Not<G>
 ```
 
-**Пример:**
+**Example:**
 ```rust
 let guard = And::new(
     HasPermission("publish"),
@@ -69,23 +69,23 @@ if guard.can_transition(&draft) {
 
 ### 3. Builder Pattern
 
-**Файл:** `builder.rs` (62 строки)
+**File:** `builder.rs` (62 lines)
 
 ```rust
 pub struct StateMachineBuilder<M, S> { /* ... */ }
 pub struct TransitionBuilder<From, To> { /* ... */ }
 ```
 
-## Примеры реализаций
+## Example Implementations
 
 ### Content Node State Machine
 
-**Файл:** `crates/rustok-content/src/state_machine.rs` (380 строк)
+**File:** `crates/rustok-content/src/state_machine.rs` (380 lines)
 
 **States:**
-- `Draft` - черновик
-- `Published` - опубликовано
-- `Archived` - архив
+- `Draft` - draft
+- `Published` - published
+- `Archived` - archived
 
 **State Diagram:**
 ```
@@ -104,11 +104,11 @@ pub struct TransitionBuilder<From, To> { /* ... */ }
  └──────────┘         └──────────┘
 ```
 
-**Использование:**
+**Usage:**
 ```rust
 use rustok_content::{ContentNode, Draft, Published, Archived};
 
-// Создание черновика
+// Create a draft
 let node = ContentNode::new_draft(
     id,
     tenant_id,
@@ -122,12 +122,12 @@ let node = node.publish(); // Returns ContentNode<Published>
 // Published → Archived
 let node = node.archive("Content outdated".to_string());
 
-// ❌ Compile error: нельзя archived draft напрямую
+// ❌ Compile error: cannot archive a draft directly
 // let node = ContentNode::new_draft(...).archive("test");
 //                                        ^^^^^^^ no method `archive` on `ContentNode<Draft>`
 ```
 
-**State-specific поля:**
+**State-specific fields:**
 ```rust
 impl ContentNode<Draft> {
     pub fn last_edited(&self) -> DateTime<Utc> {
@@ -137,36 +137,36 @@ impl ContentNode<Draft> {
 
 impl ContentNode<Published> {
     pub fn published_at(&self) -> DateTime<Utc> {
-        self.state.published_at // Только у Published!
+        self.state.published_at // Only available on Published!
     }
     
     pub fn view_count(&self) -> u64 {
-        self.state.view_count // Только у Published!
+        self.state.view_count // Only available on Published!
     }
 }
 
 impl ContentNode<Archived> {
     pub fn archived_at(&self) -> DateTime<Utc> {
-        self.state.archived_at // Только у Archived!
+        self.state.archived_at // Only available on Archived!
     }
     
     pub fn reason(&self) -> &str {
-        &self.state.reason // Только у Archived!
+        &self.state.reason // Only available on Archived!
     }
 }
 ```
 
 ### Order State Machine
 
-**Файл:** `crates/rustok-commerce/src/state_machine.rs` (550 строк)
+**File:** `crates/rustok-commerce/src/state_machine.rs` (550 lines)
 
 **States:**
-- `Pending` - создан
-- `Confirmed` - подтвержден
-- `Paid` - оплачен
-- `Shipped` - отправлен
-- `Delivered` - доставлен
-- `Cancelled` - отменен
+- `Pending` - created
+- `Confirmed` - confirmed
+- `Paid` - paid
+- `Shipped` - shipped
+- `Delivered` - delivered
+- `Cancelled` - cancelled
 
 **State Diagram:**
 ```
@@ -195,11 +195,11 @@ impl ContentNode<Archived> {
  └───────────┘
 ```
 
-**Использование:**
+**Usage:**
 ```rust
 use rustok_commerce::{Order, Pending, Confirmed, Paid, Shipped, Delivered};
 
-// Создание заказа
+// Create an order
 let order = Order::new_pending(
     id,
     tenant_id,
@@ -226,7 +226,7 @@ let order = order.ship(
 // Shipped → Delivered
 let order = order.deliver(Some("John Doe".to_string()));
 
-// ❌ Compile error: нельзя ship pending order
+// ❌ Compile error: cannot ship a pending order
 // let order = Order::new_pending(...).ship(...);
 //                                     ^^^^ no method `ship` on `Order<Pending>`
 ```
@@ -264,7 +264,7 @@ impl Order<Confirmed> {
 
 ## Conversion Traits
 
-**Сохранение/загрузка в DB:**
+**Save/load to/from DB:**
 
 ```rust
 // Content
@@ -291,12 +291,12 @@ impl From<Order<Pending>> for String {
     }
 }
 
-// И т.д. для всех состояний
+// And so on for all states
 ```
 
-## Тесты
+## Tests
 
-**Content Node:** 6 тестов
+**Content Node:** 6 tests
 ```rust
 #[cfg(test)]
 mod tests {
@@ -320,7 +320,7 @@ mod tests {
 }
 ```
 
-**Order:** 8 тестов
+**Order:** 8 tests
 ```rust
 #[cfg(test)]
 mod tests {
@@ -352,7 +352,7 @@ mod tests {
 
 ## Best Practices
 
-### 1. Держите состояния простыми
+### 1. Keep states simple
 
 ```rust
 // ✅ Good
@@ -360,7 +360,7 @@ pub struct Draft {
     last_edited: DateTime<Utc>,
 }
 
-// ❌ Bad - слишком много логики в состоянии
+// ❌ Bad - too much logic in the state
 pub struct Draft {
     last_edited: DateTime<Utc>,
     database: Arc<Database>,
@@ -369,7 +369,7 @@ pub struct Draft {
 }
 ```
 
-### 2. Используйте Result для fallible transitions
+### 2. Use Result for fallible transitions
 
 ```rust
 // ✅ Good
@@ -382,7 +382,7 @@ impl Order<Confirmed> {
     }
 }
 
-// ❌ Bad - unwrap может паниковать
+// ❌ Bad - unwrap can panic
 impl Order<Confirmed> {
     pub fn pay(self, payment_id: String) -> Order<Paid> {
         assert!(!payment_id.is_empty()); // Panic!
@@ -391,7 +391,7 @@ impl Order<Confirmed> {
 }
 ```
 
-### 3. Документируйте state graph
+### 3. Document the state graph
 
 ```rust
 /// Order State Machine
@@ -404,7 +404,7 @@ impl Order<Confirmed> {
 pub struct Order<S: State<Machine = OrderMachine>> { /* ... */ }
 ```
 
-### 4. Используйте guards для сложных условий
+### 4. Use guards for complex conditions
 
 ```rust
 let can_publish = And::new(
@@ -423,7 +423,7 @@ if can_publish.can_transition(&draft) {
 ## Performance
 
 **Zero Runtime Overhead:**
-- Monomorphization → разные типы = разный compiled code
+- Monomorphization → different types = different compiled code
 - No vtables, no dynamic dispatch
 - Compiler optimizes away phantom data
 
@@ -437,16 +437,16 @@ test bench_enum_transition        ... bench:      12 ns/iter
 test bench_typestate_transition   ... bench:      11 ns/iter
 ```
 
-## Документация
+## Documentation
 
-Полное руководство: [docs/STATE_MACHINE_GUIDE.md](../../../../docs/STATE_MACHINE_GUIDE.md)
+Full guide: [docs/STATE_MACHINE_GUIDE.md](../../../../docs/STATE_MACHINE_GUIDE.md)
 
-**Разделы:**
-1. Концепции Type-State Pattern
+**Sections:**
+1. Type-State Pattern Concepts
 2. Core Framework API
 3. Transition Guards
-4. Content Node детально
-5. Order State Machine детально
+4. Content Node in detail
+5. Order State Machine in detail
 6. Best Practices
 7. Database Integration
 8. Testing Strategies
@@ -473,7 +473,7 @@ test bench_typestate_transition   ... bench:      11 ns/iter
 - [ ] Event sourcing support
 - [ ] State history tracking
 
-## Ссылки
+## References
 
 - [Rust Type-State Pattern](https://cliffle.com/blog/rust-typestate/)
 - [Finite State Machines](https://en.wikipedia.org/wiki/Finite-state_machine)

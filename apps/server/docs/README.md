@@ -1,18 +1,18 @@
-# Документация `apps/server`
+# Documentation: `apps/server`
 
-Локальная документация для главного backend host-приложения RusToK. Этот файл фиксирует только живой composition/runtime contract; детальные runbook, framework notes и rollout-планы вынесены в профильные документы внутри этой папки и в central docs.
+Local documentation for the main RusToK backend host application. This file captures only the live composition/runtime contract; detailed runbooks, framework notes, and rollout plans live in specialized documents inside this folder and in the central docs.
 
-## Назначение
+## Purpose
 
-`apps/server` является главным backend composition root. Приложение:
+`apps/server` is the main backend composition root. The application:
 
-- собирает platform modules, shared foundation crates и host-level capabilities в единый runtime;
-- публикует HTTP, GraphQL, Leptos `#[server]`, health, metrics и related control-plane surfaces;
-- остаётся thin transport/wiring слоем там, где доменная логика уже вынесена в модульные crates.
+- assembles platform modules, shared foundation crates, and host-level capabilities into a single runtime;
+- publishes HTTP, GraphQL, Leptos `#[server]`, health, metrics, and related control-plane surfaces;
+- remains a thin transport/wiring layer where domain logic has already been extracted into module crates.
 
-## Обязательный platform baseline
+## Mandatory platform baseline
 
-Для `apps/server` обязательный baseline состоит из двух слоёв.
+For `apps/server`, the mandatory baseline consists of two layers.
 
 Platform `Core` modules:
 
@@ -32,209 +32,209 @@ Shared foundation / support crates:
 - `rustok-telemetry`
 - `rustok-api`
 
-Логика tenant-toggle относится только к `Optional` modules. `Core` modules не должны трактоваться как отключаемые host-конфигурацией.
+The tenant-toggle logic applies only to `Optional` modules. `Core` modules should not be treated as switchable by host configuration.
 
 ## Runtime surface
 
-- `/api/graphql` и `/api/fn/*` являются параллельными transport-слоями; Leptos server functions не заменяют GraphQL API.
-- `/api/graphql/schema.graphql` публикует собранную SDL-схему без tenant context для contract tooling; full introspection экспортируется POST-запросом к `/api/graphql`. Оба snapshot входят в reference artifacts вместе с OpenAPI JSON/YAML.
-- Embedded UI больше не считается безусловной частью backend binary: `rustok-admin` и `rustok-storefront` линкуются только при compile-time feature-флагах `embed-admin` / `embed-storefront`, а не просто по факту наличия кода в workspace.
-- Commerce OpenAPI/REST surface на `/admin/*` теперь включает первый post-order refund contract поверх `payment-collections`; host публикует эти routes, но refund lifecycle остаётся domain-owned в `rustok-payment` и `rustok-commerce`.
-- Commerce surface больше не является compile-time baseline для любого server build: `controllers::commerce`, commerce-specific error mapping и commerce fragment в OpenAPI живут только при `mod-commerce`, так что reduced/headless host может собираться без ecommerce transport слоя.
-- Content REST/OpenAPI surface для `blog`, `forum` и `pages` тоже больше не считается unconditional частью host binary: соответствующие server controllers и OpenAPI fragments подключаются только при `mod-blog`, `mod-forum` и `mod-pages`, так что module-sliced build не обязан тянуть чужие content transport-зависимости.
-- Maintenance binary `migrate_legacy_richtext` принадлежит content storage migration path и собирается только при `mod-content`; headless server profiles без content module не должны линковать этот инструмент.
-- `flex` attached field-definition и standalone schemas/entries GraphQL публикуются через `/api/graphql`, а standalone REST остаётся на `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle и DTO принадлежат `flex::graphql`; roots входят в schema через `[provides.graphql]` manifest codegen, а server builder регистрирует только `FlexGraphqlRuntime` поверх concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter. REST request/response DTO, command mapping и view mapping принадлежат `flex::rest`; attached field-definition row-to-core/view/command mapping, create guardrails, persisted JSON shape helpers, persisted type-name normalization, lifecycle events и cache invalidation event taxonomy принадлежат `flex::registry`; server остаётся Loco/Axum/SeaORM adapter.
-- Health/observability surface публикуется через `/health*` и `/metrics`.
-- Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
-- Optional module REST/GraphQL surfaces монтируются только из owner-owned crate entrypoints,
-  объявленных в `rustok-module.toml` (`provides.http`, `provides.graphql`) и `modules.toml`.
-  OpenAPI fragments для optional modules также живут в owner crates и merge-ятся сервером
-  как готовые documents, без перечисления module-owned handlers/DTO в `apps/server`.
-  `apps/server/src/controllers/<module>` и `apps/server/src/graphql/<module>` не являются
-  valid composition points для optional modules; source guard `module_surface_boundary_guard`
-  блокирует возврат server-owned shims.
-- Shared content canonical query и cross-module conversion mutations также приходят готовыми
-  GraphQL roots из `rustok-content` и `rustok-content-orchestration`; host не владеет их resolver/DTO.
-- `rustok-content-orchestration` регистрируется host-ом как `SharedContentOrchestrationService`,
-  построенный из явных DB и `TransactionalEventBus`; conversion GraphQL resolvers читают этот handle из schema data,
-  а не через Loco `AppContext`.
-- Auth lifecycle и OAuth GraphQL query/mutation/types принадлежат `rustok-auth`; server реализует только `AuthLifecyclePort`/`OAuthAdminPort` поверх persisted lifecycle/OAuth/email services и регистрирует соответствующие runtimes в shared runtime extensions. `AuthLifecycleService` принимает только `ServerRuntimeContext` и явный `AuthConfig`, без Loco compatibility entrypoints. `ServerAuthLifecycleProvider` получает явные `ServerRuntimeContext`, `AuthConfig` и mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware и RBAC permission extractors используют узкий `ServerAuthRuntime`; полный Loco `AppContext` остаётся только в bootstrap/REST boundary adapters, которые собирают эти зависимости.
-- AI GraphQL/service/direct execution получает `rustok_ai::AiHostRuntime` как schema-owned data: host передаёт явные DB, transactional event bus, module registry, storage и Alloy runtime handles. `rustok-ai` не читает Loco `AppContext`; Leptos admin adapter пока остаётся host-boundary точкой, которая собирает этот runtime из текущего app context.
-- MCP GraphQL query/mutation/types принадлежат `rustok-mcp`; server реализует `McpManagementPort` поверх persisted `McpManagementService` и регистрирует `McpManagementRuntime`.
-- Content GraphQL dataloaders для `nodes`, `node_translations` и `bodies` живут в
-  `rustok-content`; `apps/server` только регистрирует owner-owned loader types в schema builder.
-- System GraphQL может публиковать media usage, но читает его через `rustok-media::load_media_usage_snapshot`,
-  без прямого импорта module-owned media entities.
-- Settings и system GraphQL resolvers получают `ServerRuntimeContext`, DB и schema-owned
-  `TransactionalEventBus` через GraphQL data. Они не извлекают и не адаптируют Loco `AppContext`;
-  request/connection boundary пока продолжает передавать его только для ещё не перенесённых resolvers.
-- App runtime rate-limit bootstrap и shared limiter registration используют `ServerRuntimeContext`;
-  Alloy runtime bootstrap также регистрирует `SharedAlloyRuntime` через `ServerRuntimeContext` из явного DB handle,
-  а Alloy GraphQL получает этот runtime как schema-owned data без Loco `AppContext`.
-  Loco `AppContext` внутри bootstrap остаётся только для текущих boundary adapters вроде mailer.
-- User complex fields и build progress subscription используют schema-owned `DatabaseConnection`
-  напрямую и также не зависят от Loco host context.
-- Host-owned `RootQuery` также не извлекает Loco `AppContext`: DB-only read paths используют
-  schema-owned `DatabaseConnection`, а marketplace/cache paths — `ServerRuntimeContext`.
-- Весь `apps/server/src/graphql/**`, включая `RootMutation`, RBAC writer и search rate limiter,
-  не импортирует Loco. `services/graphql_schema.rs` также принимает только `ServerRuntimeContext`;
-  текущий app bootstrap/controller boundary отвечает за однократную адаптацию host context.
-- Server event runtime строит обычный и transactional event bus из `ServerRuntimeContext` и больше
-  не реэкспортирует `rustok_outbox::loco`; crate-local Loco adapter остаётся до удаления dependency feature.
-- GraphQL HTTP и WebSocket handlers извлекают `ServerRuntimeContext`/`ServerAuthRuntime` как Axum
-  substate и не передают Loco `AppContext` в request/connection data. `loco_rs::controller::Routes`
-  остаётся только временным routing adapter до Phase 2.
-- Users REST handlers также извлекают `ServerRuntimeContext`; Loco response/error helpers пока
-  сохраняются как отдельная часть Phase 2, без смешивания state migration и response cutover.
-- Metrics handler и весь metrics helper pipeline используют `ServerRuntimeContext`; состояние
-  mailer передаётся отдельным `ServerEmailRuntime`, а worker handles читаются через scoped shared API.
-- Health readiness/runtime handlers используют те же runtime contracts для DB, settings, cache,
-  event transport, rate limits, worker lifecycle и email backend state; Loco response formatter
-  остаётся только до общего Phase 2 error/response cutover.
-- Channel и standalone Flex REST handlers получают `ServerRuntimeContext`; Flex controller tests
-  собирают тот же neutral runtime fixture и не создают Loco `AppContext`.
-- Auth REST handlers извлекают узкий `ServerAuthRuntime`; password reset и verification endpoints
-  дополнительно получают `ServerEmailRuntime`. Controller не читает Loco config, DB или mailer напрямую.
-- Module guard и server channel contract типизированы через `ServerRuntimeContext`; Loco `AppContext`
-  не является request/channel contract для server-owned runtime paths.
-- OAuth discovery metadata также использует `ServerAuthRuntime` как единственный источник auth config.
-- OAuth REST token, authorize/consent, browser-session и revoke handlers извлекают `ServerAuthRuntime`
-  или `ServerRuntimeContext`; Loco `AppContext` больше не участвует в OAuth request state.
-- Marketplace registry/governance REST handlers извлекают `ServerRuntimeContext`; catalog projection,
-  artifact storage и remote executor policy читаются через DB/settings/shared handles neutral runtime.
+- `/api/graphql` and `/api/fn/*` are parallel transport layers; Leptos server functions do not replace the GraphQL API.
+- `/api/graphql/schema.graphql` publishes the assembled SDL schema without tenant context for contract tooling; full introspection is exported via POST request to `/api/graphql`. Both snapshots are part of reference artifacts alongside OpenAPI JSON/YAML.
+- Embedded UI is no longer considered an unconditional part of the backend binary: `rustok-admin` and `rustok-storefront` are linked only with compile-time feature flags `embed-admin` / `embed-storefront`, not merely by their presence in the workspace.
+- Commerce OpenAPI/REST surface on `/admin/*` now includes the first post-order refund contract built on top of `payment-collections`; the host publishes these routes, but the refund lifecycle remains domain-owned in `rustok-payment` and `rustok-commerce`.
+- Commerce surface is no longer a compile-time baseline for any server build: `controllers::commerce`, commerce-specific error mapping, and the commerce fragment in OpenAPI live only with `mod-commerce`, so a reduced/headless host can build without the ecommerce transport layer.
+- Content REST/OpenAPI surface for `blog`, `forum`, and `pages` is also no longer an unconditional part of the host binary: the corresponding server controllers and OpenAPI fragments are included only with `mod-blog`, `mod-forum`, and `mod-pages`, so a module-sliced build does not have to pull in other content transport dependencies.
+- Maintenance binary `migrate_legacy_richtext` belongs to the content storage migration path and is built only with `mod-content`; headless server profiles without the content module should not link this tool.
+- `flex` attached field-definition and standalone schemas/entries GraphQL are published via `/api/graphql`, while standalone REST remains at `/api/v1/flex/schemas*`; this is a live tenant-scoped surface with separate `flex_schemas:*` and `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle, and DTO belong to `flex::graphql`; roots are included in the schema via `[provides.graphql]` manifest codegen, and the server builder registers only `FlexGraphqlRuntime` on top of concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle, and cache adapter. REST request/response DTO, command mapping, and view mapping belong to `flex::rest`; attached field-definition row-to-core/view/command mapping, create guardrails, persisted JSON shape helpers, persisted type-name normalization, lifecycle events, and cache invalidation event taxonomy belong to `flex::registry`; the server remains a Loco/Axum/SeaORM adapter.
+- Health/observability surface is published via `/health*` and `/metrics`.
+- Module/runtime wiring relies on `modules.toml`, `rustok-module.toml`, and generated host integration.
+- Optional module REST/GraphQL surfaces are mounted only from owner-owned crate entrypoints,
+  declared in `rustok-module.toml` (`provides.http`, `provides.graphql`) and `modules.toml`.
+  OpenAPI fragments for optional modules also live in owner crates and are merged by the server
+  as ready-made documents, without enumerating module-owned handlers/DTO in `apps/server`.
+  `apps/server/src/controllers/<module>` and `apps/server/src/graphql/<module>` are not
+  valid composition points for optional modules; the source guard `module_surface_boundary_guard`
+  prevents the return of server-owned shims.
+- Shared content canonical query and cross-module conversion mutations also arrive as ready-made
+  GraphQL roots from `rustok-content` and `rustok-content-orchestration`; the host does not own their resolver/DTO.
+- `rustok-content-orchestration` is registered by the host as `SharedContentOrchestrationService`,
+  constructed from explicit DB and `TransactionalEventBus`; conversion GraphQL resolvers read this handle from schema data,
+  not through Loco `AppContext`.
+- Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; the server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services and registers the corresponding runtimes in shared runtime extensions. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`, without Loco compatibility entrypoints. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`; the full Loco `AppContext` remains only in bootstrap/REST boundary adapters that assemble these dependencies.
+- AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, and Alloy runtime handles. `rustok-ai` does not read Loco `AppContext`; the Leptos admin adapter remains a host-boundary point that assembles this runtime from the current app context.
+- MCP GraphQL query/mutation/types belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService` and registers `McpManagementRuntime`.
+- Content GraphQL dataloaders for `nodes`, `node_translations`, and `bodies` live in
+  `rustok-content`; `apps/server` only registers owner-owned loader types in the schema builder.
+- System GraphQL may publish media usage, but reads it through `rustok-media::load_media_usage_snapshot`,
+  without directly importing module-owned media entities.
+- Settings and system GraphQL resolvers receive `ServerRuntimeContext`, DB, and schema-owned
+  `TransactionalEventBus` through GraphQL data. They do not extract or adapt Loco `AppContext`;
+  the request/connection boundary continues to pass it only for resolvers that have not yet been migrated.
+- App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
+  Alloy runtime bootstrap also registers `SharedAlloyRuntime` via `ServerRuntimeContext` from an explicit DB handle,
+  and Alloy GraphQL receives this runtime as schema-owned data without Loco `AppContext`.
+  Loco `AppContext` inside bootstrap remains only for current boundary adapters such as the mailer.
+- User complex fields and build progress subscription use schema-owned `DatabaseConnection`
+  directly and also do not depend on the Loco host context.
+- Host-owned `RootQuery` also does not extract Loco `AppContext`: DB-only read paths use
+  schema-owned `DatabaseConnection`, and marketplace/cache paths use `ServerRuntimeContext`.
+- All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
+  does not import Loco. `services/graphql_schema.rs` also accepts only `ServerRuntimeContext`;
+  the current app bootstrap/controller boundary is responsible for the one-time adaptation of the host context.
+- Server event runtime builds the regular and transactional event bus from `ServerRuntimeContext` and no longer
+  re-exports `rustok_outbox::loco`; the crate-local Loco adapter remains until the dependency feature is removed.
+- GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
+  substate and do not pass Loco `AppContext` into request/connection data. `loco_rs::controller::Routes`
+  remains only a temporary routing adapter until Phase 2.
+- Users REST handlers also extract `ServerRuntimeContext`; Loco response/error helpers are
+  kept as a separate part of Phase 2, without mixing state migration and response cutover.
+- Metrics handler and the entire metrics helper pipeline use `ServerRuntimeContext`; the mailer
+  state is passed via a separate `ServerEmailRuntime`, and worker handles are read through a scoped shared API.
+- Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
+  event transport, rate limits, worker lifecycle, and email backend state; the Loco response formatter
+  remains only until the general Phase 2 error/response cutover.
+- Channel and standalone Flex REST handlers receive `ServerRuntimeContext`; Flex controller tests
+  assemble the same neutral runtime fixture and do not create Loco `AppContext`.
+- Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
+  additionally receive `ServerEmailRuntime`. The controller does not read Loco config, DB, or mailer directly.
+- Module guard and server channel contract are typed through `ServerRuntimeContext`; Loco `AppContext`
+  is not a request/channel contract for server-owned runtime paths.
+- OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
+- OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
+  or `ServerRuntimeContext`; Loco `AppContext` no longer participates in OAuth request state.
+- Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
+  artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Swagger document filtering, installer persistence reads, admin DLQ, MCP management/remote tools
-  и build WebSocket извлекают `ServerRuntimeContext`; DB/shared runtime semantics не зависят от Loco state.
-- Channel runtime surface остаётся thin transport around `rustok-channel`: `/api/channels/*` уже покрывает bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints и request-level `resolution_trace` diagnostics, а сам resolution pipeline живёт в модуле. Request-level `tenant`, `channel` и `locale` middleware получают `ServerRuntimeContext`, auth context получает `ServerAuthRuntime`; Loco `AppContext` остаётся только в router/controller boundary adapters для текущего host.
-- Module-owned event listeners собираются из `ModuleRegistry` в общий `EventDispatcher`; `apps/server` больше не держит отдельные host-owned index/search/workflow listener paths.
-- Server migrator является backend composition root для module-owned schema: content-family модули (`blog`, `pages`, `comments`) и search обязаны подключаться здесь через `crates/rustok-*/src/migrations`, иначе внешние Next/Leptos admin surfaces получают рабочий route shell без нужных таблиц.
-- `apps/server` может работать как `full` host или как `registry_only`, но `host_mode` не заменяет deployment profile и не меняет build/deploy semantics.
-- `settings.rustok.runtime.background_workers` управляет только maintenance workers поверх уже опубликованной HTTP/GraphQL surface. В `development.yaml` для standalone admin debug выключены `workflow_cron_enabled` и `seo_bulk_enabled`, чтобы cron/bulk loops не забивали локальный PostgreSQL pool; production/default runtime оставляет их включёнными.
-- `development.yaml` держит `database.max_connections: 30`, потому что тяжёлые admin bootstrap routes вроде AI control plane резолвят несколько GraphQL root fields параллельно. Это локальный debug guardrail для обеих админок, а не новый production contract.
-- Для registry/governance surfaces именно сервер остаётся каноническим валидатором lifecycle policy, `reason` / `reason_code` contract и allowed action set; thin clients могут делать preflight, но не определяют policy локально.
-- Для control-plane composition install/uninstall/upgrade server использует единый orchestration path: manifest validation, CAS-update `platform_state` и enqueue build выполняются атомарно в одном transaction boundary. `manifest_ref` для build всегда формируется как `platform_state:<revision>`, а `manifest_hash` считается как SHA-256 canonical JSON snapshot.
-- Tenant module enable/disable идёт через canonical lifecycle entrypoint `ModuleLifecycleService::toggle_module_with_actor()`; bypass model-level toggle не считается production contract. `module_operations` фиксирует lifecycle status в typed модели `validated/running/committed/failed`, а pre-validation ошибки/no-op переходы не должны создавать лишние journal rows. GraphQL mapper остаётся владельцем lifecycle taxonomy (`BAD_USER_INPUT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`) и journal/recovery metadata; admin/SSR clients не должны remap'ить эти поля.
-- Для post-hook failure recovery/compensation используется отдельный runbook `module-lifecycle-retry-compensation-runbook.md`; committed tenant state не откатывается автоматически, а retry/compensation выполняются как отдельные lifecycle операции через canonical entrypoint.
-- Registry metadata теперь следует общему multilingual storage contract: publish/release base rows держат language-agnostic state и `default_locale`, а display metadata (`name`, `description`) живут в `registry_*_translations`.
-- Registry audit payload больше не держит historical runtime fallback: `registry_governance_events.details` нормализован на typed shape (`stage_key`, nested `owner_transition`, structured principal objects), а controller маппит lifecycle failures от typed `RegistryGovernanceError`, а не от substring matching.
-- `GET /v2/catalog/publish/{request_id}` остаётся machine-readable operator status contract: без bearer auth он возвращает status-driven superset `governanceActions`, а при session-backed user bearer режет request-level действия до реально разрешённых для этого principal.
-- Registry artifacts больше не читаются и не записываются через прямой filesystem path внутри governance service: persisted state хранит только `artifact_storage_key`, upload/validation идут через `StorageService`, а `GET /v2/catalog/publish/{request_id}/artifact/download` уже работает как storage-backed private download route с presign-or-stream fallback.
-- Repo-side surface для текущего `module-system` считается закрытым для цели Admin-driven install/uninstall/upgrade/deploy с progress feedback; дальше остаётся поддерживать targeted verification и docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
-- GraphQL control-plane surface публикует read/write contract для lifecycle recovery: `moduleOperationRecoveryPlan` и `failedModuleOperationRecoveryPlans` отдают tenant-scoped retryability/action metadata из `module_operations`, а `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` выполняют recovery только через `ModuleLifecycleService` и `modules:manage`, без raw SQL/bypass rollback.
-- GraphQL auth surface `me.permissions` отдаёт request-scoped RBAC snapshot для headless/mobile UI gating; это не заменяет server-side permission enforcement на mutations/queries.
-- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` выполняет server-owned token-to-runtime-binding handshake для non-stdio transport: принимает Bearer/plaintext MCP token, возвращает tenant/client/token binding и effective access context, обновляет last-used timestamps и пишет audit event `remote_session_bootstrapped` с correlation id. Remote tool transport дополняют `POST /api/mcp/runtime/tools/call` для JSON-вызовов и `POST /api/mcp/runtime/tools/stream` для SSE-вызовов core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`) и Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`) с тем же persisted token binding, policy enforcement и audit trail. Scaffold tools в remote transport используют server-owned persisted draft store, поэтому stage/review/apply проходят через `mcp_scaffold_drafts`, tenant/client binding и audit surface, а не через process-local память MCP runtime.
-- Гибридный product installer вводится через support crate `rustok-installer`:
-  CLI `rustok-server install ...` и `/api/install/*` endpoints должны
-  делегировать plan/state/receipt/preflight semantics в этот crate. Web wizard
-  не должен становиться отдельной реализацией bootstrap logic.
-- Текущий начальный CLI surface уже доступен как offline pre-apply слой:
-  `rustok-server install preflight ...` валидирует install plan и возвращает
-  JSON report, а `rustok-server install plan ...` печатает redacted plan snapshot
-  без подключения к БД и без запуска миграций.
-- `rustok-server install apply ...` выполняет текущий CLI bootstrap end-to-end:
-  preflight, при `--create-database` может создать PostgreSQL database/role
-  через `--pg-admin-url`, проверяет target DB через `SELECT 1`, запускает server
-  `Migrator::up`, создаёт `install_sessions`, ставит session lock, выполняет
-  tenant/module seed, создаёт или синхронизирует superadmin, проверяет результат,
-  пишет `Preflight` / `Config` / `Database` / `Migrate` / `Seed` / `Admin` /
-  `Verify` / `Finalize` receipts и переводит session в `completed`.
-  `apply` резолвит локальные secret refs `env:<VAR>`, `file:<path>`,
-  `mounted-file:<path>`, `dotenv:<path>#<VAR>` и `dotenv:<VAR>`; external
-  backends вроде `vault:*`, `kubernetes:*` и cloud secret managers пока
-  принимаются только как contract-level refs для `plan`/`preflight` и fail-fast
-  на `apply` до подключения внешнего resolver-а.
-- HTTP adapter для Leptos wizard доступен как thin surface поверх того же
+  and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on Loco state.
+- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline itself lives in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, auth context receives `ServerAuthRuntime`; Loco `AppContext` remains only in router/controller boundary adapters for the current host.
+- Module-owned event listeners are assembled from `ModuleRegistry` into a common `EventDispatcher`; `apps/server` no longer holds separate host-owned index/search/workflow listener paths.
+- Server migrator is the backend composition root for module-owned schema: content-family modules (`blog`, `pages`, `comments`) and search must connect here via `crates/rustok-*/src/migrations`, otherwise external Next/Leptos admin surfaces get a working route shell without the needed tables.
+- `apps/server` can run as a `full` host or as `registry_only`, but `host_mode` does not replace the deployment profile and does not change build/deploy semantics.
+- `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled` and `seo_bulk_enabled` are disabled so that cron/bulk loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
+- `development.yaml` keeps `database.max_connections: 30` because heavy admin bootstrap routes like AI control plane resolve several GraphQL root fields in parallel. This is a local debug guardrail for both admin panels, not a new production contract.
+- For registry/governance surfaces the server remains the canonical validator of lifecycle policy, `reason` / `reason_code` contract and allowed action set; thin clients may do preflight but do not define policy locally.
+- For control-plane composition install/uninstall/upgrade server uses a single orchestration path: manifest validation, CAS-update `platform_state` and enqueue build are executed atomically within one transaction boundary. `manifest_ref` for build is always formed as `platform_state:<revision>`, and `manifest_hash` is computed as SHA-256 canonical JSON snapshot.
+- Tenant module enable/disable goes through the canonical lifecycle entrypoint `ModuleLifecycleService::toggle_module_with_actor()`; bypass model-level toggle is not a production contract. `module_operations` records lifecycle status in a typed model `validated/running/committed/failed`, and pre-validation errors/no-op transitions must not create extraneous journal rows. GraphQL mapper remains the owner of lifecycle taxonomy (`BAD_USER_INPUT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`) and journal/recovery metadata; admin/SSR clients must not remap these fields.
+- For post-hook failure recovery/compensation a separate runbook `module-lifecycle-retry-compensation-runbook.md` is used; committed tenant state is not rolled back automatically, and retry/compensation are executed as separate lifecycle operations through the canonical entrypoint.
+- Registry metadata now follows the common multilingual storage contract: publish/release base rows hold language-agnostic state and `default_locale`, while display metadata (`name`, `description`) live in `registry_*_translations`.
+- Registry audit payload no longer holds historical runtime fallback: `registry_governance_events.details` is normalized to a typed shape (`stage_key`, nested `owner_transition`, structured principal objects), and the controller maps lifecycle failures from typed `RegistryGovernanceError`, not from substring matching.
+- `GET /v2/catalog/publish/{request_id}` remains a machine-readable operator status contract: without bearer auth it returns a status-driven superset `governanceActions`, and with a session-backed user bearer it scopes request-level actions to those actually allowed for that principal.
+- Registry artifacts are no longer read or written via a direct filesystem path inside the governance service: persisted state stores only `artifact_storage_key`, upload/validation go through `StorageService`, and `GET /v2/catalog/publish/{request_id}/artifact/download` already works as a storage-backed private download route with presign-or-stream fallback.
+- The repo-side surface for the current `module-system` is considered closed for the purpose of Admin-driven install/uninstall/upgrade/deploy with progress feedback; ongoing work is limited to targeted verification and docs/audit, while rollout of `modules.rustok.dev` remains an external infra task.
+- GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` perform recovery only via `ModuleLifecycleService` and `modules:manage`, without raw SQL/bypass rollback.
+- GraphQL auth surface `me.permissions` returns a request-scoped RBAC snapshot for headless/mobile UI gating; this does not replace server-side permission enforcement on mutations/queries.
+- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`) and Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`) with the same persisted token binding, policy enforcement, and audit trail. Scaffold tools in remote transport use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
+- The hybrid product installer is introduced via support crate `rustok-installer`:
+  CLI `rustok-server install ...` and `/api/install/*` endpoints must
+  delegate plan/state/receipt/preflight semantics to this crate. The web wizard
+  must not become a separate implementation of the bootstrap logic.
+- The current initial CLI surface is already available as an offline pre-apply layer:
+  `rustok-server install preflight ...` validates the install plan and returns a
+  JSON report, while `rustok-server install plan ...` prints a redacted plan snapshot
+  without connecting to the DB and without running migrations.
+- `rustok-server install apply ...` performs the current CLI bootstrap end-to-end:
+  preflight, with `--create-database` it can create a PostgreSQL database/role
+  via `--pg-admin-url`, checks the target DB via `SELECT 1`, runs the server
+  `Migrator::up`, creates `install_sessions`, places a session lock, executes
+  tenant/module seed, creates or synchronizes superadmin, verifies the result,
+  writes `Preflight` / `Config` / `Database` / `Migrate` / `Seed` / `Admin` /
+  `Verify` / `Finalize` receipts and transitions the session to `completed`.
+  `apply` resolves local secret refs `env:<VAR>`, `file:<path>`,
+  `mounted-file:<path>`, `dotenv:<path>#<VAR>`, and `dotenv:<VAR>`; external
+  backends such as `vault:*`, `kubernetes:*`, and cloud secret managers are
+  accepted only as contract-level refs for `plan`/`preflight` and fail-fast
+  on `apply` until an external resolver is connected.
+- The HTTP adapter for the Leptos wizard is available as a thin surface on top of the same
   pipeline: `GET /api/install/status`, `POST /api/install/plan`,
   `POST /api/install/preflight`, `POST /api/install/apply`,
-  `GET /api/install/jobs/{job_id}` и
-  `GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` стартует
-  background job и возвращает `202 Accepted` с `job_id`; wizard должен poll-ить
-  job status и читать persisted receipts для progress UI. Mutating HTTP install
-  requests поддерживают setup-token guard через
-  `RUSTOK_INSTALL_SETUP_TOKEN` и header `x-rustok-setup-token` или
-  `Authorization: Bearer <token>`; production HTTP apply без setup token
-  отклоняется. `/api/install/*` намеренно обходит tenant resolution middleware,
-  потому что первый install запускается до создания tenant context. CLI остаётся
-  canonical automation path.
-- Tenant middleware resolution contract зафиксирован integration tests в
-  `apps/server/tests/tenant_resolver_invariants_test.rs`: active tenant
-  разрешается через `header`, `host` и `subdomain`, disabled tenant стабильно
-  отвечает `403`, отсутствующий tenant — `404`.
-- Provisioning/deprovisioning path обязан инициировать cache invalidation
-  (`invalidate_tenant_cache_by_uuid/slug/host`) после create/update/deactivate/
-  domain-change операций: положительный cache живёт до `TENANT_CACHE_TTL=300s`,
-  negative cache miss — до `TENANT_NEGATIVE_CACHE_TTL=60s`, поэтому без
-  invalidation stale resolver state допустим только в рамках этих TTL.
-  Regression matrix дополнительно фиксирует lifecycle сценарии stale positive
-  cache после deactivate/update, negative cache после create-like flow, host
-  cache после domain-change и UUID invalidation.
+  `GET /api/install/jobs/{job_id}`, and
+  `GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` starts a
+  background job and returns `202 Accepted` with `job_id`; the wizard must poll
+  the job status and read persisted receipts for progress UI. Mutating HTTP install
+  requests support a setup-token guard via
+  `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
+  `Authorization: Bearer <token>`; production HTTP apply without a setup token
+  is rejected. `/api/install/*` intentionally bypasses the tenant resolution middleware,
+  because the first install runs before a tenant context is created. The CLI remains
+  the canonical automation path.
+- The tenant middleware resolution contract is fixed by integration tests in
+  `apps/server/tests/tenant_resolver_invariants_test.rs`: the active tenant
+  is resolved via `header`, `host`, and `subdomain`; a disabled tenant consistently
+  returns `403`; a missing tenant returns `404`.
+- The provisioning/deprovisioning path must trigger cache invalidation
+  (`invalidate_tenant_cache_by_uuid/slug/host`) after create/update/deactivate/
+  domain-change operations: the positive cache lives for `TENANT_CACHE_TTL=300s`,
+  the negative cache miss lives for `TENANT_NEGATIVE_CACHE_TTL=60s`, so without
+  invalidation stale resolver state is acceptable only within these TTLs.
+  The regression matrix additionally captures lifecycle scenarios: stale positive
+  cache after deactivate/update, negative cache after create-like flow, host
+  cache after domain-change, and UUID invalidation.
 
-## Границы ответственности
+## Responsibility boundaries
 
-`apps/server` отвечает за:
+`apps/server` is responsible for:
 
-- transport adapters, middleware, request/runtime context и host wiring;
-- общий GraphQL schema surface и Leptos server-function entrypoints;
-- композицию owner-owned AI GraphQL roots из `rustok-ai` и узкий RBAC persistence adapter
-  `AiGraphqlRoleSlugProvider`; AI resolver/DTO surface в `apps/server` не размещается;
-- композицию `rustok-media::MediaQuery`, включая owner-owned `mediaUsage`; media resolver/DTO
-  не размещаются в server `SystemQuery`;
-- композицию dashboard order statistics через `rustok-order::load_order_stats_snapshot` при
-  включённом `mod-order`; SQL и DTO для order analytics принадлежат `rustok-order`, а не
+- transport adapters, middleware, request/runtime context, and host wiring;
+- the overall GraphQL schema surface and Leptos server-function entrypoints;
+- composition of owner-owned AI GraphQL roots from `rustok-ai` and the narrow RBAC persistence adapter
+  `AiGraphqlRoleSlugProvider`; AI resolver/DTO surface is not placed in `apps/server`;
+- composition of `rustok-media::MediaQuery`, including owner-owned `mediaUsage`; media resolver/DTO
+  are not placed in server `SystemQuery`;
+- composition of dashboard order statistics via `rustok-order::load_order_stats_snapshot` when
+  `mod-order` is enabled; SQL and DTO for order analytics belong to `rustok-order`, not
   `apps/server::RootQuery`;
-- композицию dashboard post statistics через `rustok-content::load_post_stats_snapshot` при
-  включённом `mod-content`; SQL и DTO для content analytics принадлежат `rustok-content`,
-  а не `apps/server::RootQuery`;
-- host-level user dashboard statistics и recent user activity через
-  `services::dashboard_user_activity`; `RootQuery` только мапит service DTO в GraphQL DTO и не
-  содержит SQL/read-model логику для этих dashboard виджетов;
-- manifest-driven композицию owner-owned `flex::graphql::FlexQuery` / `flex::graphql::FlexMutation` и
-  регистрацию concrete persistence adapter в `FlexGraphqlRuntime`; standalone Flex
-  и attached field-definition resolver/DTO/error/RBAC/event mapping в `apps/server` не размещается;
-- Loco/Axum REST handler для standalone Flex, который использует owner-owned `flex::rest`
-  request/response DTO, request-to-command mapping и view mapping; server не владеет Flex REST contract types;
-- SeaORM adapter для standalone Flex, который хранит persisted schema rows,
-  но fields_config parsing/schema build/serialization, localized key derivation, row-to-view mapping, normalize/defaults/strip/validate, shared/localized split, read resolution и PATCH merge выполняет через owner-owned helpers из `flex::standalone`;
-- field-definition registry bootstrap, который регистрирует donor persistence adapters для `user`/`order`/`product`/`topic`,
-  но row-to-core `FieldDefinition` mapping, `FieldDefinitionView` shape mapping, command-to-adapter-input conversions, persisted JSON shape helpers и lifecycle policy/event construction делегирует owner-owned `flex::registry`;
-- bootstrap общего module-owned event runtime через `ModuleRegistry` и `EventDispatcher`;
-- health/runtime guardrails, build/release orchestration и operator control-plane endpoints;
-- installer HTTP/CLI adapters поверх `rustok-installer`, install locks и
-  persistence installer session receipts;
-- RBAC enforcement, auth/session integration и host-level observability.
+- composition of dashboard post statistics via `rustok-content::load_post_stats_snapshot` when
+  `mod-content` is enabled; SQL and DTO for content analytics belong to `rustok-content`,
+  not `apps/server::RootQuery`;
+- host-level user dashboard statistics and recent user activity via
+  `services::dashboard_user_activity`; `RootQuery` only maps service DTO into GraphQL DTO and does not
+  contain SQL/read-model logic for these dashboard widgets;
+- manifest-driven composition of owner-owned `flex::graphql::FlexQuery` / `flex::graphql::FlexMutation` and
+  registration of the concrete persistence adapter in `FlexGraphqlRuntime`; standalone Flex
+  and attached field-definition resolver/DTO/error/RBAC/event mapping is not placed in `apps/server`;
+- Loco/Axum REST handler for standalone Flex, which uses owner-owned `flex::rest`
+  request/response DTO, request-to-command mapping, and view mapping; the server does not own Flex REST contract types;
+- SeaORM adapter for standalone Flex, which stores persisted schema rows,
+  but performs fields_config parsing/schema build/serialization, localized key derivation, row-to-view mapping, normalize/defaults/strip/validate, shared/localized split, read resolution, and PATCH merge via owner-owned helpers from `flex::standalone`;
+- field-definition registry bootstrap, which registers donor persistence adapters for `user`/`order`/`product`/`topic`,
+  but delegates row-to-core `FieldDefinition` mapping, `FieldDefinitionView` shape mapping, command-to-adapter-input conversions, persisted JSON shape helpers, and lifecycle policy/event construction to owner-owned `flex::registry`;
+- bootstrap of the common module-owned event runtime via `ModuleRegistry` and `EventDispatcher`;
+- health/runtime guardrails, build/release orchestration, and operator control-plane endpoints;
+- installer HTTP/CLI adapters on top of `rustok-installer`, install locks, and
+  persisted installer session receipts;
+- RBAC enforcement, auth/session integration, and host-level observability.
 
-`apps/server` не должен:
+`apps/server` must not:
 
-- дублировать module-owned domain services, storage и permission logic;
-- подменять модульные interaction contracts собственными ad hoc соглашениями;
-- превращать cron, relay worker или maintenance task в псевдо-`event_listener` мимо модульного runtime contract;
-- ломать dual-path contract между GraphQL и `#[server]`, если добавляется новый internal path.
+- duplicate module-owned domain services, storage, and permission logic;
+- replace module interaction contracts with its own ad hoc conventions;
+- turn a cron, relay worker, or maintenance task into a pseudo-`event_listener` bypassing the module runtime contract;
+- break the dual-path contract between GraphQL and `#[server]` when adding a new internal path.
 
-## Health и runtime guardrails
+## Health and runtime guardrails
 
-- [health.md](./health.md) является каноническим документом для readiness, runtime guardrails, `registry_only` smoke и rollout evidence.
-- `apps/server` обязан явно различать `DeploymentProfile` и `settings.rustok.runtime.host_mode`.
-- Для reduced hosts health/runtime surface должен описывать фактически поднятый runtime, а не full monolith по умолчанию.
+- [health.md](./health.md) is the canonical document for readiness, runtime guardrails, `registry_only` smoke, and rollout evidence.
+- `apps/server` must explicitly distinguish between `DeploymentProfile` and `settings.rustok.runtime.host_mode`.
+- For reduced hosts, the health/runtime surface must describe the actually deployed runtime, not the full monolith by default.
 
 ## Verification
 
-Минимальный локальный verification path для изменений в `apps/server`:
+Minimum local verification path for changes in `apps/server`:
 
-- точечные `cargo check` и `cargo test` по затронутым crates и transport slices;
-- для изменений build/profile wiring отдельно проверять хотя бы один reduced build без embedded UI и один module-sliced профиль вроде `mod-commerce`-only или no-commerce content host, чтобы server binary не тащил лишние surface-зависимости;
-- `cargo xtask module validate <slug>` для модулей, чей host wiring или manifest contract изменился;
-- targeted contract checks для GraphQL, REST, server functions и health/runtime surface;
-- отдельная проверка health/runtime paths, если затронуты deployment profile, `host_mode` или remote executor/runtime guardrails.
-- export API contracts через `node scripts/verify/export-reference-artifacts.mjs artifacts/reference`; Bash-обёртка `scripts/verify/export-reference-artifacts.sh` предназначена для CI и Unix-сред.
+- targeted `cargo check` and `cargo test` on affected crates and transport slices;
+- for build/profile wiring changes, separately verify at least one reduced build without embedded UI and one module-sliced profile such as `mod-commerce`-only or no-commerce content host, so that the server binary does not pull in extraneous surface dependencies;
+- `cargo xtask module validate <slug>` for modules whose host wiring or manifest contract has changed;
+- targeted contract checks for GraphQL, REST, server functions, and health/runtime surface;
+- separate check of health/runtime paths if deployment profile, `host_mode`, or remote executor/runtime guardrails are affected.
+- export API contracts via `node scripts/verify/export-reference-artifacts.mjs artifacts/reference`; the Bash wrapper `scripts/verify/export-reference-artifacts.sh` is intended for CI and Unix environments.
 
-## Связанные документы
+## Related documents
 
-- [Health и runtime guardrails](./health.md)
-- [Стек библиотек](./library-stack.md)
-- [План ухода от Loco RS к чистому Axum и своим CLI](../../../docs/architecture/loco-exit-plan.md)
-- [Контракт транспорта событий](./event-transport.md)
-- [План верификации ядра](./CORE_VERIFICATION_PLAN.md)
+- [Health and runtime guardrails](./health.md)
+- [Library stack](./library-stack.md)
+- [Plan to migrate from Loco RS to pure Axum and custom CLI](../../../docs/architecture/loco-exit-plan.md)
+- [Event transport contract](./event-transport.md)
+- [Core verification plan](./CORE_VERIFICATION_PLAN.md)
 - [Loco integration](./loco-core-integration-plan.md) — historical/deprecated context; active roadmap is the Loco exit plan above
-- [Контракт event flow](../../../docs/architecture/event-flow-contract.md)
-- [Контракты manifest-слоя](../../../docs/modules/manifest.md)
+- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+- [Manifest layer contracts](../../../docs/modules/manifest.md)
 - [Runbook retry/compensation lifecycle hook failures](./module-lifecycle-retry-compensation-runbook.md)
-- [Карта документации](../../../docs/index.md)
+- [Documentation map](../../../docs/index.md)

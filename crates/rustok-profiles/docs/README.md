@@ -1,38 +1,38 @@
-# Документация `rustok-profiles`
+# `rustok-profiles` Documentation
 
-`rustok-profiles` — доменный модуль универсального публичного профиля
-пользователя для RusToK. Он задаёт profile boundary поверх platform `users`,
-не смешивая auth identity, customer и будущие seller/merchant surfaces.
+`rustok-profiles` — domain module for the unified public user profile
+in RusToK. It defines the profile boundary over the platform `users`,
+without mixing auth identity, customer and future seller/merchant surfaces.
 
-## Назначение
+## Purpose
 
-- публиковать канонический profile runtime contract для public profile и author/member summary;
-- держать storage, service layer и transport boundary профилей внутри отдельного модуля;
-- давать downstream-модулям единый источник author/member presentation без прямой зависимости на `users`.
+- publish the canonical profile runtime contract for public profile and author/member summary;
+- keep storage, service layer and transport boundary of profiles inside a separate module;
+- provide downstream modules with a single source for author/member presentation without a direct dependency on `users`.
 
-## Зона ответственности
+## Scope
 
 - profile aggregate: `profiles`, `profile_translations`, `profile_tags`;
-- `ProfileService`, `ProfilesReader`, `ProfileSummary` и related DTO/enum contracts;
-- public handle, display name, bio, avatar/banner references, locale и visibility policy;
-- GraphQL read/write surfaces для public profile lookup и self-service edit path;
-- event contract `profile.updated` и backfill path для существующих пользователей.
+- `ProfileService`, `ProfilesReader`, `ProfileSummary` and related DTO/enum contracts;
+- public handle, display name, bio, avatar/banner references, locale and visibility policy;
+- GraphQL read/write surfaces for public profile lookup and self-service edit path;
+- event contract `profile.updated` and backfill path for existing users.
 
-## Интеграция
+## Integration
 
-- `users` остаётся identity/security boundary и не превращается в public profile source;
-- `rustok-customer` остаётся отдельным commerce-domain профилем с optional linkage на `user_id`;
-- `rustok-blog` и `rustok-forum` уже используют `ProfilesReader` для author presentation;
-- `rustok-taxonomy` даёт shared dictionary для `profile_tags`, но ownership привязок остаётся у модуля профилей.
+- `users` remains the identity/security boundary and does not become the public profile source;
+- `rustok-customer` remains a separate commerce-domain profile with optional linkage to `user_id`;
+- `rustok-blog` and `rustok-forum` already use `ProfilesReader` for author presentation;
+- `rustok-taxonomy` provides a shared dictionary for `profile_tags`, but ownership of the bindings remains with the profiles module.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate profiles`
 - `cargo xtask module test profiles`
-- targeted tests для handle policy, locale fallback, summary batching, GraphQL self-service path и profile backfill
+- targeted tests for handle policy, locale fallback, summary batching, GraphQL self-service path and profile backfill
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [Карта документации платформы](../../../docs/index.md)
+- [Implementation plan](./implementation-plan.md)
+- [Platform documentation map](../../../docs/index.md)

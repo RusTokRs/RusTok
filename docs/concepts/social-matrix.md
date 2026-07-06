@@ -6,604 +6,431 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
+
 # Social Matrix Concept
 
-0) Доктрина системы
-0.1. Главный принцип
+0) System Doctrine
+0.1. Main Principle
 
-Всё — Сущность (Entity) с:
+Everything is an Entity with:
 
-настраиваемыми полями (Custom Fields / Schema)
+- configurable fields (Custom Fields / Schema)
+- universal relations (Relations)
+- unified privacy (ACL/Visibility Matrix)
+- single lifecycle (Draft→Publish→Edit→Archive→Delete)
 
-универсальными связями (Relations)
+This allows launching the platform incrementally: profiles+feed → groups → forum → marketplace → media, etc.
 
-унифицированной приватностью (ACL/Visibility Matrix)
+0.2. 7 Fundamental Principles
 
-единым жизненным циклом (Draft→Publish→Edit→Archive→Delete)
+- Entity-based data model
+- Groups = micro-social networks with modular constructor
+- Forum = knowledge skeleton, not a "plugin on the side"
+- Feed = central event aggregator
+- Granular privacy "on every field/section/object"
+- Module enablement at platform and group level
+- Trust Levels + gamification as the systemic "glue" of engagement
 
-Это позволяет запускать платформу поэтапно: профили+лента → группы → форум → маркет → медиа и т.д.
+1) Entity and Relation Layer
+1.1. Basic Building Blocks
 
-0.2. 7 фундаментальных принципов
+- Entity: id, type, owner_id, created_at, updated_at, status
+- FieldSchema (for custom fields): type (text/number/date/select/file/relation), validations, localization
+- Relation: from_entity → to_entity + relation_type + metadata (role, weight, date, source)
+- Visibility/ACL: access rule for field, section, entity, action
 
-Entity-based модель данных
+1.2. Unified Privacy Standard (Visibility Matrix)
 
-Группы = микро-соцсети с модульным конструктором
+Audiences:
 
-Форум — скелет знаний, не “плагин сбоку”
+- Public / Everyone
+- Friends
+- Friends of Friends
+- Followers
+- Lists (custom)
+- Only Me
+- Hidden
+- Group Members
+- Role-based (admins/moderators/Trust Level ≥ N)
 
-Лента — центральный агрегатор событий
+Important: BlackList (Block) = strict isolation (content/search/messages/mentions).
 
-Гранулярная приватность “на каждом поле/разделе/объекте”
-
-Включаемость модулей на уровне платформы и группы
-
-Trust Levels + геймификация как системный “клей” вовлечения
-
-1) Слой сущностей и связей
-1.1. Базовые строительные блоки
-
-Entity: id, type, owner_id, created_at, updated_at, status
-
-FieldSchema (для кастомных полей): тип (text/number/date/select/file/relation), валидации, локализация
-
-Relation: from_entity → to_entity + relation_type + метаданные (роль, вес, дата, источник)
-
-Visibility/ACL: правило доступа к полю, разделу, сущности, действию
-
-1.2. Единый стандарт приватности (Visibility Matrix)
-
-Аудитории (audience):
-
-Public / Все
-
-Friends / Друзья
-
-Friends of Friends / Друзья друзей
-
-Followers / Подписчики
-
-Lists / Списки (кастомные)
-
-Only Me / Только я
-
-Hidden / Скрыто
-
-Group Members / Участники группы
-
-Role-based (админы/модеры/Trust Level ≥ N)
-
-Важное: BlackList (Block) = жёсткая изоляция (контент/поиск/сообщения/упоминания).
-
-2) Идентичность, профиль, аккаунт
+2) Identity, Profile, Account
 2.1. User (User Entity)
 
-Идентификация
+Identification:
+- username, email, phone
 
-username, email, телефон
-Статусы аккаунта
+Account statuses:
+- active / blocked / deleted / frozen
 
-active / blocked / deleted / frozen
-Типы
+Types:
+- regular / premium / moderator / admin
 
-обычный / premium / moderator / admin
-Верификация
+Verification:
+- email, SMS, documents
+- "badge" as attribute (blue/grey or trust levels)
 
-email, SMS, документы
+Online status:
+- online/offline, "last seen", custom status (emoji+text)
 
-“галочка” как атрибут (blue/grey или уровни доверия)
-Онлайн-статус
+2.2. Profile (part of User or separate Entity)
 
-online/offline, “last seen”, кастомный статус (эмодзи+текст)
+- Base: avatar, cover, name, bio, city
+- Extended: work, education, marital status
+- Custom fields (CMS): admin adds any fields ("car brand", "favorite IDE")
+- Showcase: achievements, badges, counters (friends, followers, reputation)
 
-2.2. Profile (часть User или отдельная Entity)
+2.3. Profile Privacy
 
-База: аватар, обложка, имя, био, город
+Access matrix for each field/section:
+- who can see the profile
+- who can see friends/subscriptions
+- who can see online/last seen
+- who can write
+- who can comment/mention
 
-Расширенное: работа, образование, семейное положение
-
-Кастомные поля (CMS): админ добавляет любые поля (“марка авто”, “любимая IDE”)
-
-Витрина: достижения, бейджи, счётчики (друзья, подписчики, репутация)
-
-2.3. Приватность профиля
-
-Матрица доступа по каждому полю/разделу:
-
-кто видит профиль
-
-кто видит друзей/подписок
-
-кто видит онлайн/last seen
-
-кто может писать
-
-кто может комментировать/упоминать
-
-3) Репутация, Trust Levels, роли
+3) Reputation, Trust Levels, Roles
 3.1. Trust Levels (Discourse-style 0–4)
 
-TL0 Новичок: ограничения на ссылки/медиа/упоминания
+- TL0 Newcomer: restrictions on links/media/mentions
+- TL1 Basic: standard rights
+- TL2 Participant: can edit wiki posts
+- TL3 Regular: extended rights (topic management, moving/renaming — by policy)
+- TL4 Leader: almost a moderator (partially or fully)
 
-TL1 Базовый: стандартные права
+Level growth is automatic based on activity (reading/replies/likes/time/reputation).
 
-TL2 Участник: может править wiki-посты
+3.2. Global Platform Roles (CMS Roles)
 
-TL3 Постоянный: расширенные права (управление темами, перенос/переименование — по политике)
+- SuperAdmin / Admin / Editor / Global Moderator (+ granular permission scopes)
 
-TL4 Лидер: почти модератор (частично или полностью)
+3.3. Gamification (Systemic)
 
-Рост уровня — автоматически по активности (чтение/ответы/лайки/время/репутация).
+- Karma/reputation: points for activity + thanks from people
+- Badges: auto (year on site, 100 posts) + manual (awards from moderators)
+- Leaderboards: top users/groups per week/month/all time
 
-3.2. Глобальные роли платформы (CMS Roles)
+4) Social Graph (Hybrid Model)
+4.1. Relationship Types (SocialEdge)
 
-SuperAdmin / Admin / Editor / Global Moderator (+ гранулярные permission scopes)
+- Friend (mutual, confirmation)
+- Follow (one-way)
+- Soft downgrade: if removed from friends → remains a follower (optional)
+- Lists: "close friends", "colleagues", "family", custom
+- Mute: hide from feed without unfollowing
+- Block: full isolation
 
-3.3. Геймификация (системная)
+4.2. Graph Functions
 
-Карма/репутация: очки за активность + благодарности от людей
+- incoming/outgoing requests
+- recommendations (mutual friends/interests/geo — if available)
+- contact import (optional)
 
-Бейджи: авто (год на сайте, 100 постов) + ручные (награды от модераторов)
+5) Community Model: Groups, Pages, Events
+5.1. Groups — Key Structural Element
 
-Лидерборды: топ пользователей/групп за неделю/месяц/всё время
+Types:
+- open / closed (by application) / secret (invite only, not searchable)
 
-4) Социальный граф (гибридная модель)
-4.1. Типы связей (SocialEdge)
+Roles within a group:
+- owner (transferable), admin, moderator, member, banned
 
-Friend (взаимная, подтверждение)
+Settings:
+- who can post (all / admins / premoderation)
+- who can invite
+- which modules are enabled
 
-Follow (односторонняя)
+5.2. Group Modularity (phpFox-style constructor)
 
-Soft downgrade: если удалили из друзей → остаёшься подписчиком (опционально)
+Group admin enables/disables blocks:
 
-Lists: “близкие”, “коллеги”, “семья”, кастомные
+- Wall (micro-posts)
+- Group Forum (see section 6)
+- Media: photo/video/audio/files
+- Wiki / knowledge base
+- Polls
+- Group Chat
+- Group Market
+- Group Events
 
-Mute: скрыть из ленты без отписки
+5.3. Pages — Brands/Individuals/Organizations/Products
 
-Block: полная изоляция
+Differences:
+- no "join", only "subscribe"
+- possible hierarchy "brand → product"
+- CTA buttons, contacts, business hours, reviews/ratings
+- page market showcase
 
-4.2. Функции графа
+5.4. Events
 
-входящие/исходящие заявки
+- name, description, cover
+- date/time, timezone
+- location: online/offline
+- organizer: user/group/page
+- participation statuses: "going/maybe/not going/invited"
+- content: discussion wall, photo reports, related forum topics
 
-рекомендации (общие друзья/интересы/гео — при наличии)
+6) Forum Core (Discourse Engine) as "Knowledge Skeleton"
+6.1. Global Forum + Local Group Forum
 
-импорт контактов (опционально)
+- Global forum: categories/subcategories/topics
+- Group forum: tab within a group (topics live "longer than feed")
 
-5) Комьюнити-модель: Группы, Страницы, События
-5.1. Группы (Groups) — ключевой структурный элемент
+6.2. Topic / Thread and Features
 
-Типы:
+- statuses: open/closed/pinned/archived
+- wiki mode (first post editable by trusted users)
+- mark as solution (Q&A)
+- auto-close after N days
+- merge/move
+- tags
+- editor: Markdown/BBCode, quote, @mention, attachments
 
-open / closed (по заявке) / secret (инвайт, не в поиске)
+Important: forum is the source of "eternal" content; feed is the accelerator of distribution.
 
-Роли внутри группы
+6.3. "Group ↔ Forum" Relationship
 
-owner (передаваемый), admin, moderator, member, banned
+Rule:
+- "Discussion in group" = forum topic + group privacy inheritance
 
-Настройки
-
-кто может публиковать (все / админы / премодерация)
-
-кто может приглашать
-
-какие модули включены
-
-5.2. Модульность группы (phpFox-style constructor)
-
-Админ группы включает/выключает блоки:
-
-Стена (микропосты)
-
-Форум группы (см. раздел 6)
-
-Медиа: фото/видео/аудио/файлы
-
-Wiki / база знаний
-
-Опросы
-
-Чат группы
-
-Маркет группы
-
-События группы
-
-5.3. Страницы (Pages) — бренды/личности/организации/продукты
-
-Отличия:
-
-нет “вступить”, есть “подписаться”
-
-возможна иерархия “бренд → продукт”
-
-CTA-кнопки, контакты, часы работы, отзывы/рейтинги
-
-витрина маркета страницы
-
-5.4. События (Events)
-
-название, описание, обложка
-
-дата/время, таймзона
-
-локация: онлайн/оффлайн
-
-организатор: user/group/page
-
-статусы участия: “пойду/возможно/не пойду/приглашён”
-
-контент: стена обсуждений, фотоотчёты, связанные темы форума
-
-6) Форумное ядро (Discourse Engine) как “скелет знаний”
-6.1. Глобальный форум + локальный форум группы
-
-Глобальный форум: категории/подкатегории/темы
-
-Форум группы: вкладка внутри группы (темы живут “дольше ленты”)
-
-6.2. Тема (Topic / Thread) и возможности
-
-статусы: open/closed/pinned/archived
-
-wiki-режим (первый пост редактируется доверенными)
-
-mark as solution (Q&A)
-
-авто-закрытие через N дней
-
-merge/перемещение
-
-теги
-
-редактор: Markdown/BBCode, quote, @mention, вложения
-
-Важно: форум — источник “вечного” контента; лента — ускоритель распространения.
-
-6.3. Связь “Группа ↔ Форум”
-
-Правило:
-
-“Обсуждение в группе” = тема форума + наследование приватности группы
-Синхронизация:
-
-Open group: может отображаться в глобальном форуме/поиске и попадать в общие ленты (по настройке)
-
-Closed/Secret: темы видны только участникам, не индексируются глобально
-
-7) Контент (Posts) и жизненный цикл
-7.1. Типы контента (как Entity)
-
-Short Post (текст + фон)
-
-Rich Post (текст + вложения: фото/видео/опрос/аудио/файлы)
-
-Article (лонгрид, “VK Articles/Telegraph-style”) Telegraph
-
-Link preview (OG-парсинг)
-
-Repost (с комментом/без)
-
-Forum Thread Snippet (с кнопкой “Обсудить”)
-
-Media posts (галерея, видео, аудио)
-
-7.2. Атрибуты публикации
-
-author
-
-место публикации: user wall / group / page / event
-
-приватность: public/friends/lists/only me/group members
-
-гео, теги/хэштеги, @mentions
-
-scheduled posting
-
-комментарии: on/off
-
-pinned post
-
-7.3. Жизненный цикл
+Synchronization:
+- Open group: may appear in global forum/search and reach general feeds (by setting)
+- Closed/Secret: topics visible only to members, not indexed globally
+
+7) Content (Posts) and Lifecycle
+7.1. Content Types (as Entity)
+
+- Short Post (text + background)
+- Rich Post (text + attachments: photo/video/poll/audio/files)
+- Article (long-read, "VK Articles/Telegraph-style")
+- Link preview (OG parsing)
+- Repost (with/without comment)
+- Forum Thread Snippet (with "Discuss" button)
+- Media posts (gallery, video, audio)
+
+7.2. Publication Attributes
+
+- author
+- publication location: user wall / group / page / event
+- privacy: public/friends/lists/only me/group members
+- geo, tags/hashtags, @mentions
+- scheduled posting
+- comments: on/off
+- pinned post
+
+7.3. Lifecycle
 
 Draft → Scheduled → Published → Edited → Archived → Deleted
-История редактирований — видима (по политике).
+Edit history — visible (by policy).
 
-8) Реакции, комментарии, взаимодействие
-8.1. Реакции
+8) Reactions, Comments, Interaction
+8.1. Reactions
 
-базовый лайк + расширенные эмоции (❤️ 😂 😮 😢 😡 🔥)
+- basic like + extended emotions (❤️ 😂 😮 😢 😡 🔥)
+- custom reactions (admin configurable)
 
-кастомные реакции (настройка админом)
+8.2. Comments
 
-8.2. Комментарии
+- structure: flat + threaded replies
+- reactions on comments
+- @mentions, markdown
+- edit/delete (by rules/time windows)
+- comment pinning by author
 
-структура: flat + threaded replies
+8.3. Sharing
 
-реакции на комментарии
+- to wall / to group / to DM / external link / to stories (if module enabled)
 
-@mentions, markdown
+9) Feed — Central Event Aggregator
+9.1. Aggregation Sources
 
-edit/delete (по правилам/окнам времени)
+- friends + subscriptions
+- groups/pages/events
+- forum topics (from subscribed categories/groups)
+- recommendations (algorithmic)
 
-закреп комментария автором
+9.2. Feed Modes
 
-8.3. Шеринг
+- Chronological: strictly by time
+- Smart Feed: affinity score + engagement + freshness
+- Interesting: popular for a period
 
-на стену / в группу / в личку / внешняя ссылка / в истории (если модуль включён)
+Filters:
+- photo/video only
+- friends/groups only
+- hide authors (mute)
 
-9) Лента (Feed) — центральный агрегатор событий
-9.1. Источники агрегации
+Technique:
+- infinite scroll, pagination, feed caching
 
-друзья + подписки
+10) Media Matrix (Global Media)
+10.1. Photos
 
-группы/страницы/события
+- albums (user/group/event)
+- face tagging
+- reactions/comments
+- EXIF (hideable)
+- download (togglable)
 
-темы форума (из подписанных категорий/групп)
+10.2. Video
 
-рекомендации (алгоритм)
+- upload + HLS streaming
+- embed (YouTube, Vimeo, RuTube)
+- shorts/reels — vertical feed
+- live (optional)
+- playlists, views, reactions
 
-9.2. Режимы ленты
+10.3. Audio (VK-style)
 
-Хронология: строго по времени
+- track/podcast upload
+- playlists
+- global player (SPA behavior)
 
-Smart Feed: affinity score + вовлечённость + свежесть
+10.4. Files/Documents
 
-Интересное: популярное за период
+- preview, versioning
+- types: pdf/doc/zip/gif…
+- sharing by audiences
 
-Фильтры:
+11) Messenger (Messaging)
+11.1. Structure
 
-только фото/видео
+- 1-on-1 dialogs
+- group chats (conferences) with administration
 
-только от друзей/групп
+11.2. Message Types
 
-скрыть авторов (mute)
+- text, emoji/stickers/GIF
+- photo/video/audio/files
+- voice messages with recognition (Speech-to-Text) — "killer feature"
+- geo
+- reposts of posts/topics/products
+- contact forwarding (profile)
 
-Техника:
+11.3. Statuses and Features
 
-infinite scroll, пагинация, кэширование фида
+- sent/delivered/read
+- reply/forward
+- edit/delete (by rules)
+- message search
+- pin/archive dialogs
+- settings "who can write"
 
-10) Медиа-матрица (Global Media)
-10.1. Фото
+12) Marketplace (Socially Embedded)
+12.1. Types
 
-альбомы (user/group/event)
+- classifieds (private listings)
+- stores (shops within groups/pages)
 
-тегирование лиц
-
-реакции/комментарии
-
-EXIF (скрываемо)
-
-скачивание (переключаемо)
-
-10.2. Видео
-
-загрузка + HLS-стриминг
-
-embed (YouTube, Vimeo, RuTube)
-
-shorts/reels — вертикальная лента
-
-live (опционально)
-
-плейлисты, просмотры, реакции
-
-10.3. Аудио (VK-style)
-
-загрузка треков/подкастов
-
-плейлисты
-
-глобальный плеер (SPA-поведение)
-
-10.4. Файлы/документы
-
-превью, версионирование
-
-типы: pdf/doc/zip/gif…
-
-расшаривание по аудиториям
-
-11) Мессенджер (Messaging)
-11.1. Структура
-
-диалоги 1-на-1
-
-групповые чаты (конфы) с администрированием
-
-11.2. Типы сообщений
-
-текст, эмодзи/стикеры/GIF
-
-фото/видео/аудио/файлы
-
-голосовые с распознаванием (Speech-to-Text) — “killer feature”
-
-гео
-
-репосты постов/тем/товаров
-
-пересылка контактов (профиля)
-
-11.3. Статусы и функции
-
-sent/delivered/read
-
-reply/forward
-
-edit/delete (по правилам)
-
-поиск по сообщениям
-
-закреп/архив диалогов
-
-настройки “кто может писать”
-
-12) Marketplace (социально встроенный)
-12.1. Типы
-
-classifieds (частные объявления)
-
-stores (магазины внутри групп/страниц)
-
-12.2. Product/Listing entity
-
-название, описание, цена/валюта, состояние, категория
-
-галерея фото, гео
-
-статусы: active/sold/removed
-
-доставка (варианты)
-
-Интеграции:
-
-“написать продавцу” → мессенджер
-
-отзывы и рейтинг продавца
-
-объявления в группах (барахолки)
-
-витрина на страницах
-
-13) Уведомления
-
-Категории:
-
-социальные (друзья/подписки/группы)
-
-контент (лайк/коммент/репост)
-
-упоминания
-
-форум (ответ/новая тема)
-
-сообщения
-
-события
-
-маркет
-
-системные (верификация/безопасность/политики)
-
-Каналы:
-
-in-app, push, email (мгновенные/дайджест), SMS (критичное)
-
-Настройки:
-
-гранулярные включатели по категории+каналу
-
-DND режим
-
-группировка одинаковых событий
-
-частота дайджестов
-
-14) Поиск и навигация
-
-Глобальный поиск по:
-
-люди, группы, страницы, посты, темы, комментарии
-
-события, товары, медиа, файлы
-
-Фильтры:
-
-тип, дата, локация, автор, группа/страница
-
-Хэштеги:
-
-кликабельные, страницы тегов, тренды за период
-
-15) Модерация, безопасность, приватность
-15.1. Модерация (двухуровневая)
-
-Глобальная
-
-пользователи (баны/страйки/верификация)
-
-контент (посты/комменты/темы)
-
-группы/страницы (закрытие/передача)
-
-маркет
-
-Локальная (в группе/странице)
-
-премодерация постов
-
-управление участниками
-
-модерация форума группы
-
-модерация маркета группы
-
-Инструменты:
-
-reports с причинами
-
-очередь модерации
-
-automod (антиспам/стоп-слова/скоринг, AI опционально)
-
-аудит-логи действий модераторов
-
-тени/временные/перманентные баны
-
-15.2. Безопасность
-
-2FA
-
-история сессий и устройств
-
-журнал активности (входы/изменения)
-
-восстановление аккаунта
-
-алерты о подозрительной активности
-
-16) CMS-слой: темы, блоки, локализация, расширяемость
+12.2. Product/Listing Entity
+
+- name, description, price/currency, condition, category
+- photo gallery, geo
+- statuses: active/sold/removed
+- shipping (options)
+
+Integrations:
+- "message seller" → messenger
+- seller reviews and rating
+- listings in groups (flea markets)
+- showcase on pages
+
+13) Notifications
+
+Categories:
+- social (friends/subscriptions/groups)
+- content (like/comment/repost)
+- mentions
+- forum (reply/new topic)
+- messages
+- events
+- market
+- system (verification/security/policies)
+
+Channels:
+- in-app, push, email (instant/digest), SMS (critical)
+
+Settings:
+- granular toggles by category+channel
+- DND mode
+- grouping of identical events
+- digest frequency
+
+14) Search and Navigation
+
+Global search for:
+- people, groups, pages, posts, topics, comments
+- events, products, media, files
+
+Filters:
+- type, date, location, author, group/page
+
+Hashtags:
+- clickable, tag pages, trends by period
+
+15) Moderation, Security, Privacy
+15.1. Moderation (Two-Level)
+
+Global:
+- users (bans/strikes/verification)
+- content (posts/comments/topics)
+- groups/pages (closure/transfer)
+- market
+
+Local (in group/page):
+- post premoderation
+- member management
+- group forum moderation
+- group market moderation
+
+Tools:
+- reports with reasons
+- moderation queue
+- automod (anti-spam/stop-words/scoring, AI optional)
+- moderator action audit logs
+- shadow/temporary/permanent bans
+
+15.2. Security
+
+- 2FA
+- session and device history
+- activity log (logins/changes)
+- account recovery
+- suspicious activity alerts
+
+16) CMS Layer: Themes, Blocks, Localization, Extensibility
 16.1. Block/Widget System (phpFox-style)
 
-drag&drop лейаут-редактор
+- drag&drop layout editor
+- widgets: "popular topics", "new users", "birthdays", "advertising"
+- sidebar/header/footer configuration
 
-виджеты: “популярные темы”, “новые пользователи”, “дни рождения”, “реклама”
+16.2. Localization
 
-настройка сайдбаров/хедера/футера
-
-16.2. Локализация
-
-фразы как переменные
-
-мультиязычность + RTL
+- phrases as variables
+- multilingual + RTL
 
 16.3. Themes
 
-dark/light (авто)
-
-брендирование через CSS-переменные
+- dark/light (auto)
+- branding via CSS variables
 
 16.4. Custom Fields
 
-создание полей для любой сущности
+- field creation for any entity
+- types: text/number/date/select/file/relation
+- view/edit permissions
 
-типы: текст/число/дата/выбор/файл/связь
+17) API and Integrations
 
-права на просмотр/редактирование
+- OAuth login via Google / Apple, etc. (by policy)
+- contact import
+- embed widgets for external sites
+- internal API: REST + GraphQL, webhooks
+- Bot API (Telegram model) — optional
 
-17) API и интеграции
-
-OAuth-логин через Google / Apple и др. (по политике)
-
-импорт контактов
-
-embed-виджеты для внешних сайтов
-
-внутреннее API: REST + GraphQL, webhooks
-
-Bot API (по модели Telegram) — опционально
-
-18) Итоговая карта связей (логическая)
+18) Final Relationship Map (Logical)
 graph TD
   U[User] --> P[Profile]
   U --> SG[Social Graph]
@@ -629,30 +456,22 @@ graph TD
   U --> N[Notifications]
   U --> R[Reputation/Badges/Trust Level]
 
-19) Каноничный user-flow (сценарий, который доказывает “склейку” системы)
+19) Canonical User Flow (Scenario Proving System "Glue")
 
-Пользователь заходит в группу “Rust Developers”
+- A user enters the "Rust Developers" group
+- The group has the "Forum" + "Wiki" modules enabled
+- Sees a pinned wiki post "FAQ/Rules"
+- Writes a reply with Markdown, receives reactions
+- Activity increases reputation → grows Trust Level
+- The forum topic appears in friends'/subscribers' feeds (if audience allows)
+- A friend sees the topic snippet in the feed, reacts 🔥 and reposts
+- The author receives a notification (in-app + push), and the group gets engagement growth
+- Knowledge remains in the forum "for years," while the feed brings traffic "now"
 
-В группе включён модуль “Форум” + “Wiki”
+Summary (Concise)
 
-Видит закреплённый wiki-пост “FAQ/Правила”
+From Gemini: concept of feed, entities, hybrid social graph, idea of "groups as micro-social networks", VK-like media/audio
 
-Пишет ответ с Markdown, получает реакции
+From Opus: full modular layout, role/privacy/lifecycle tables, admin panel, security, search, notifications, forum engine as core
 
-Активность повышает репутацию → растёт Trust Level
-
-Тема форума попадает в ленту друзьям/подписчикам (если аудитория позволяет)
-
-Друг видит сниппет темы в ленте, реагирует 🔥 и делает репост
-
-Автор получает уведомление (in-app + push), а группа — рост вовлечения
-
-Знание остаётся в форуме “на годы”, а лента приносит трафик “сейчас”
-
-Что получилось в “одном варианте” (кратко)
-
-От Gemini взяли: концепцию ленты, сущности, гибридный социальный граф, идею “группы как микро-соцсети”, VK-подобные медиа/аудио
-
-От Opus взяли: полную модульную раскладку, таблицы ролей/приватности/жизненных циклов, админку, безопасность, поиск, уведомления, форумный движок как ядро
-
-В итоге: единый документ, который можно резать на модули и сразу проектировать домены/контракты.
+Result: a single document that can be split into modules and immediately used for domain/contract design.

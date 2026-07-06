@@ -1,72 +1,72 @@
-# Контракт навигации и RBAC
+# Navigation and RBAC Contract
 
-## Назначение
+## Purpose
 
-Этот документ фиксирует текущий контракт sidebar/navigation в `apps/next-admin`.
-Навигация является UX-фильтром, а не security boundary: server pages, API routes,
-GraphQL и server actions обязаны выполнять собственные проверки доступа.
+This document defines the current sidebar/navigation contract in `apps/next-admin`.
+Navigation is a UX filter, not a security boundary: server pages, API routes,
+GraphQL, and server actions must perform their own access checks.
 
-## Активные файлы
+## Active Files
 
-- `src/shared/config/nav-config.ts` задаёт host-owned core navigation.
-- `src/modules/index.ts` импортирует module-owned entrypoints и собирает registry.
-- `src/modules/registry.ts` отдаёт зарегистрированные module-owned пункты.
-- `src/shared/hooks/use-nav.ts` фильтрует пункты по session role и enabled modules.
-- `src/widgets/app-shell/app-sidebar.tsx` группирует отфильтрованные пункты в shell.
-- `src/widgets/command-palette/index.tsx` рекурсивно индексирует те же отфильтрованные пункты.
+- `src/shared/config/nav-config.ts` defines host-owned core navigation.
+- `src/modules/index.ts` imports module-owned entrypoints and assembles the registry.
+- `src/modules/registry.ts` exposes registered module-owned items.
+- `src/shared/hooks/use-nav.ts` filters items by session role and enabled modules.
+- `src/widgets/app-shell/app-sidebar.tsx` groups filtered items into the shell.
+- `src/widgets/command-palette/index.tsx` recursively indexes the same filtered items.
 
-## Источники данных
+## Data Sources
 
-- Пользовательская роль приходит из `next-auth` session: `session.user.role`.
-- Enabled modules читаются через host hook `useEnabledModules()`.
-- Module-owned navigation обязана приходить из module/package entrypoint, а не из
-  host-owned feature folder.
-- Starter-only routes вроде `billing`, `exclusive`, `workspaces` и `workspaces/team`
-  не должны попадать в public navigation RusTok.
+- User role comes from `next-auth` session: `session.user.role`.
+- Enabled modules are read via the host hook `useEnabledModules()`.
+- Module-owned navigation must come from the module/package entrypoint, not from
+  a host-owned feature folder.
+- Starter-only routes like `billing`, `exclusive`, `workspaces`, and `workspaces/team`
+  must not appear in RusTok's public navigation.
 
-## Фильтрация
+## Filtering
 
-`useFilteredNavItems()` применяет два синхронных UX-фильтра:
+`useFilteredNavItems()` applies two synchronous UX filters:
 
-1. Если у пункта есть `moduleSlug`, он показывается только когда этот slug есть в
-   списке enabled modules.
-2. Если у пункта есть `access.role`, роль пользователя должна быть не ниже заданной
-   в иерархии `customer < manager < admin < super_admin`.
+1. If an item has a `moduleSlug`, it is shown only when that slug is present in the
+   enabled modules list.
+2. If an item has `access.role`, the user's role must be at least the specified one
+   in the hierarchy `customer < manager < admin < super_admin`.
 
-`access.requireOrg` сейчас считается legacy starter-полем и скрывает пункт. Новые
-пункты не должны использовать `requireOrg`, `permission`, `plan` или `feature` без
-обновления реального runtime contract.
+`access.requireOrg` is currently considered a legacy starter field and hides the item. New
+items must not use `requireOrg`, `permission`, `plan`, or `feature` without
+updating the actual runtime contract.
 
-Фильтрация применяется рекурсивно: сначала проверяются сами пункты и дети, затем
-пустые container-пункты с `url: '#'` скрываются. Это не даёт показывать пустые
-collapsible-разделы, если все дочерние routes недоступны роли или отключены по
+Filtering is applied recursively: items and children are checked first, then
+empty container items with `url: '#'` are hidden. This prevents showing empty
+collapsible sections when all child routes are unavailable by role or disabled by
 `moduleSlug`.
 
-## Sidebar grouping
+## Sidebar Grouping
 
-Shell группирует уже отфильтрованные пункты через поле `group` с fallback на
-`moduleSlug` для module-owned пунктов:
+The shell groups already-filtered items via the `group` field, falling back to
+`moduleSlug` for module-owned items:
 
 - `Overview` — `Dashboard`.
 - `Management` — collapsible `Access`, `Platform`, `Operations`.
 - `Module Plugins` — collapsible module-owned containers `Blog`, `Forum`, `Catalog`, `Workflows`.
-- `Account` — `Profile`; `Sign Out` остаётся в footer user menu.
+- `Account` — `Profile`; `Sign Out` remains in the footer user menu.
 
-Core Next Admin navigation использует `i18nKey` для всех host-owned labels.
-Sidebar и command palette берут localized labels из `messages/en.json` и
-`messages/ru.json`. Module-owned пункты могут передать `i18nKey`, но не должны
-вводить собственную locale fallback-chain поверх host/runtime locale.
+Core Next Admin navigation uses `i18nKey` for all host-owned labels.
+The sidebar and command palette take localized labels from `messages/en.json` and
+`messages/ru.json`. Module-owned items may pass `i18nKey`, but must not
+introduce their own locale fallback-chain above the host/runtime locale.
 
-Active state считается рекурсивно по текущему pathname, поэтому detail routes вроде
-`/dashboard/product/:id` подсвечивают родительский пункт `/dashboard/product`.
+Active state is computed recursively from the current pathname, so detail routes like
+`/dashboard/product/:id` highlight the parent item `/dashboard/product`.
 
-## Добавление пункта
+## Adding an Item
 
-Host-owned platform screen добавляется в `coreNavItems` только если это действительно
-обязанность host shell. Module-owned screen должен регистрироваться из package/module
-entrypoint через `registerAdminModule()`.
+A host-owned platform screen is added to `coreNavItems` only when it is genuinely
+a host shell responsibility. A module-owned screen must register from the package/module
+entrypoint via `registerAdminModule()`.
 
-Пример host-owned пункта:
+Example host-owned item:
 
 ```ts
 {
@@ -86,7 +86,7 @@ entrypoint через `registerAdminModule()`.
 }
 ```
 
-Пример module-owned пункта должен жить в пакете модуля:
+Example module-owned item should live in the module package:
 
 ```ts
 registerAdminModule({
@@ -113,10 +113,10 @@ registerAdminModule({
 
 ## Verification
 
-После изменений навигации нужно прогнать:
+After navigation changes, run:
 
-- `npm run typecheck` в `apps/next-admin`;
-- визуальную проверку sidebar на active state и группировку;
-- проверку, что отключённые module slug не показывают module-owned пункты.
-- проверку command palette: дочерние routes индексируются рекурсивно и названы
-  на текущем языке.
+- `npm run typecheck` in `apps/next-admin`;
+- visual sidebar check for active state and grouping;
+- verify that disabled module slugs do not show module-owned items.
+- verify command palette: child routes are indexed recursively and named
+  in the current language.

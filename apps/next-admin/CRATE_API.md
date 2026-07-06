@@ -1,25 +1,25 @@
 # apps/next-admin / CRATE_API
 
-## Публичные модули
+## Public Modules
 
 - Next.js admin dashboard (App Router): layout, navigation, RBAC-aware pages, theme/clerk integrations.
 
-## Основные структуры/контракты
+## Key Structures/Contracts
 
-- Публичные маршруты `/admin/*`.
-- Контракты с backend API/GraphQL.
+- Public routes `/admin/*`.
+- Contracts with backend API/GraphQL.
 - Auth provider integration (Clerk).
 
-## События
+## Events
 
-- Публикует: админские команды в backend через API.
-- Потребляет: ответы API и auth session events от Clerk.
+- Publishes: admin commands to backend via API.
+- Consumes: API responses and auth session events from Clerk.
 
-## Зависимости от других крейтов/пакетов
+## Dependencies on Other Crates/Packages
 
 - `packages/leptos-*` (TS packages), backend `apps/server` API.
 
-## Частые ошибки ИИ
+## Common AI Mistakes
 
-- Путает источники типов между локальными `types` и generated GraphQL types.
-- Ломает RBAC в sidebar/nav при рефакторинге маршрутов.
+- Confusing type sources between local `types` and generated GraphQL types.
+- Breaking RBAC in sidebar/nav when refactoring routes.

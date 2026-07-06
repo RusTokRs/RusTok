@@ -1,41 +1,41 @@
-# Документация Leptos Storefront
+# Leptos Storefront Documentation
 
-Локальная документация для `apps/storefront` как Leptos SSR-host приложения витрины.
+Local documentation for `apps/storefront` as the Leptos SSR-host storefront application.
 
-## Назначение
+## Purpose
 
-`apps/storefront` является Rust-first SSR-first storefront host для RusToK. Приложение рендерит shell, домашнюю страницу, generic module pages и монтирует module-owned storefront UI через manifest-driven wiring.
+`apps/storefront` is the Rust-first SSR-first storefront host for RusToK. The application renders shell, home page, generic module pages, and mounts module-owned storefront UI through manifest-driven wiring.
 
-FFA classification: `apps/storefront` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять storefront shell/routing/context composition и не переносить module-specific storefront workflows из owner packages в host.
+FFA classification: `apps/storefront` is an `FFA-compatible composition host`, not a module-owned UI package. Its FFA responsibility is to maintain storefront shell/routing/context composition and not move module-specific storefront workflows from owner packages into the host.
 
-Первый host-level FFA срез уже применён к storefront header: route/link policy живёт в
-`src/widgets/header/core.rs` без Leptos-зависимостей, а `header/mod.rs` остаётся Leptos
-render adapter. Этот split закреплён быстрым verifier-ом `npm run verify:frontend:host-ffa-contract`.
+The first host-level FFA slice has already been applied to the storefront header: route/link policy lives in
+`src/widgets/header/core.rs` without Leptos dependencies, while `header/mod.rs` remains the Leptos
+render adapter. This split is enforced by the fast verifier `npm run verify:frontend:host-ffa-contract`.
 
-## Границы ответственности
+## Responsibility boundaries
 
-- владеть Leptos storefront host и его SSR/runtime wiring;
-- монтировать module-owned storefront packages из `crates/rustok-*/storefront`;
-- поддерживать generic route contract для storefront-модулей;
-- передавать в module-owned пакеты `UiRouteContext` и effective locale;
-- не забирать внутрь host модульный business UI и модульные transport contracts.
+- own the Leptos storefront host and its SSR/runtime wiring;
+- mount module-owned storefront packages from `crates/rustok-*/storefront`;
+- maintain the generic route contract for storefront modules;
+- pass `UiRouteContext` and effective locale to module-owned packages;
+- not pull module business UI and module transport contracts into the host.
 
 ## Runtime contract
 
-- GraphQL transport не удаляется и остаётся обязательным внешним контрактом.
-- Native Leptos `#[server]` functions используются как preferred внутренний data-layer path в SSR/hydrate runtime параллельно с GraphQL.
-- CSR/WASM для Leptos storefront packages является compatibility/debug профилем. Если package должен запускаться standalone, он обязан иметь GraphQL/REST fallback и не требовать `/api/fn/*`.
-- Generic storefront routes живут в семействе `/modules/{route_segment}` и `/{locale}/modules/{route_segment}`.
-- Host сначала пытается использовать native `#[server]` path там, где он есть в SSR/hydrate runtime, и только потом откатывается к GraphQL.
-- Generated search mount использует host-owned `SearchStorefrontComposition`: adapter проверяет tenant enablement модуля `product`, передаёт `UiRouteContext.locale` в public-safe product metadata helper и маппит owner DTO в search props без переноса product/search domain logic в host.
-- Module-owned storefront packages обязаны строить внутренние ссылки через `UiRouteContext::module_route_base()`, а не через hardcoded route strings.
-- Module-owned storefront packages не определяют собственную locale negotiation policy; effective locale приходит из host/runtime contract.
-- Module-owned Leptos storefront packages читают query/state через общий helper слой `leptos-ui-routing`,
-  а не через package-local direct access к `UiRouteContext.query_value(...)`.
+- GraphQL transport is not removed and remains a mandatory external contract.
+- Native Leptos `#[server]` functions are used as the preferred internal data-layer path in the SSR/hydrate runtime in parallel with GraphQL.
+- CSR/WASM for Leptos storefront packages is a compatibility/debug profile. If a package must run standalone, it must have a GraphQL/REST fallback and not require `/api/fn/*`.
+- Generic storefront routes live under the `/modules/{route_segment}` and `/{locale}/modules/{route_segment}` families.
+- The host first tries to use the native `#[server]` path where available in the SSR/hydrate runtime, and only falls back to GraphQL.
+- Generated search mount uses host-owned `SearchStorefrontComposition`: the adapter checks tenant enablement of the `product` module, passes `UiRouteContext.locale` to a public-safe product metadata helper, and maps owner DTO to search props without moving product/search domain logic into the host.
+- Module-owned storefront packages must build internal links through `UiRouteContext::module_route_base()`, not through hardcoded route strings.
+- Module-owned storefront packages do not define their own locale negotiation policy; the effective locale comes from the host/runtime contract.
+- Module-owned Leptos storefront packages read query/state through the common helper layer `leptos-ui-routing`,
+  not through package-local direct access to `UiRouteContext.query_value(...)`.
 
 ## Module-owned storefront surfaces
 
-Сейчас этот contract уже используется как минимум для:
+This contract is currently used for at least:
 
 - `rustok-pages-storefront`
 - `rustok-blog-storefront`
@@ -50,14 +50,14 @@ render adapter. Этот split закреплён быстрым verifier-ом `
 - `rustok-forum-storefront`
 - `rustok-search-storefront`
 
-Build-time wiring генерируется из `modules.toml` и `rustok-module.toml` через `apps/storefront/build.rs`.
-Checkout composition использует отдельные platform-known slots `checkout_shipping_handoff`,
-`checkout_payment_handoff` и `checkout_result_handoff`; host передаёт effective locale через
-`UiRouteContext`, а модульные пакеты разрешают строки из собственных manifest-declared каталогов.
+Build-time wiring is generated from `modules.toml` and `rustok-module.toml` through `apps/storefront/build.rs`.
+Checkout composition uses separate platform-known slots `checkout_shipping_handoff`,
+`checkout_payment_handoff` and `checkout_result_handoff`; the host passes the effective locale through
+`UiRouteContext`, while module packages resolve strings from their own manifest-declared directories.
 
-## Доступ к данным
+## Data access
 
-Прямые storefront server functions сейчас покрывают:
+Direct storefront server functions currently cover:
 
 - `list-enabled-modules`
 - `resolve-canonical-route`
@@ -71,9 +71,9 @@ Checkout composition использует отдельные platform-known slot
 - `commerce/create-payment-collection`
 - `commerce/complete-checkout`
 - `pricing/storefront-data`
-- `pricing/storefront-data` теперь также может показывать effective pricing preview,
-  если storefront route несёт optional query context (`currency`, `region_id`, `price_list_id`, `quantity`),
-  и выводит pricing-owned selector активных price lists поверх этого context;
+- `pricing/storefront-data` can now also show an effective pricing preview,
+  if the storefront route carries optional query context (`currency`, `region_id`, `price_list_id`, `quantity`),
+  and exposes a pricing-owned selector of active price lists over this context;
 - `product/storefront-data`
 - `region/storefront-data`
 - `forum/storefront-data`
@@ -82,20 +82,20 @@ Checkout composition использует отдельные platform-known slot
 - `search/storefront-suggestions`
 - `search/storefront-track-click`
 
-GraphQL path при этом остаётся рабочим и поддерживаемым fallback-контрактом для module-owned storefront surfaces, `cart/storefront-data` теперь обслуживает cart-owned cart workspace с seller-aware delivery-group snapshot, `cart/decrement-line-item` и `cart/remove-line-item` дают безопасный line-item write-side внутри cart boundary, а `commerce/storefront-data`, `commerce/select-shipping-option`, `commerce/create-payment-collection` и `commerce/complete-checkout` обслуживают aggregate checkout workspace в `rustok-commerce/storefront`, сохраняя seller-aware shipping selection contract end-to-end.
+The GraphQL path remains a working and supported fallback contract for module-owned storefront surfaces, `cart/storefront-data` now serves the cart-owned cart workspace with a seller-aware delivery-group snapshot, `cart/decrement-line-item` and `cart/remove-line-item` provide a safe line-item write-side within the cart boundary, and `commerce/storefront-data`, `commerce/select-shipping-option`, `commerce/create-payment-collection`, and `commerce/complete-checkout` serve the aggregate checkout workspace in `rustok-commerce/storefront`, maintaining the seller-aware shipping selection contract end-to-end.
 
-## Canonical routing и locale
+## Canonical routing and locale
 
-- Canonical и alias state хранится в backend/domain слоях, а не в storefront host.
-- Storefront использует SEO preflight перед рендером страницы: сначала читает `SeoPageContext`, а canonical-only path остаётся fallback-веткой.
-- Consume policy фиксирована как deterministic `#[server]` first + GraphQL fallback; при transport ошибках host сохраняет SSR render path без разрыва route contract.
-- `SeoPageContext` разделён на `route` и `document`: route-часть отвечает за redirect/canonical/hreflang, document-часть — за typed SSR head metadata.
-- `SeoPageContext.document.structured_data_blocks` содержит typed JSON-LD blocks (`schema_kind`, `schema_type`, `source`, payload), а не host-local raw schema mapping.
-- `storefront/seo-page-context` на SSR теперь также передаёт host `RequestContext.channel_slug` в `rustok-seo`, поэтому channel-restricted forum topics получают SEO head только в совпавшем публичном канале.
-- Rust-side head serialization вынесен в `rustok-seo-render`, поэтому host не держит собственный второй renderer поверх того же SEO contract.
-- Locale-prefixed routes являются основным route contract.
-- Host locale normalization идёт через shared `rustok_core::normalize_locale_tag`, а не через package-local правила.
-- Legacy query-based locale fallback допускается только как backward-compatible path.
+- Canonical and alias state is stored in backend/domain layers, not in the storefront host.
+- Storefront uses SEO preflight before rendering a page: it first reads `SeoPageContext`, and the canonical-only path remains a fallback branch.
+- Consume policy is fixed as deterministic `#[server]` first + GraphQL fallback; on transport errors the host preserves the SSR render path without breaking the route contract.
+- `SeoPageContext` is split into `route` and `document`: the route part handles redirect/canonical/hreflang, the document part handles typed SSR head metadata.
+- `SeoPageContext.document.structured_data_blocks` contains typed JSON-LD blocks (`schema_kind`, `schema_type`, `source`, payload), not host-local raw schema mapping.
+- `storefront/seo-page-context` on SSR now also passes the host `RequestContext.channel_slug` to `rustok-seo`, so channel-restricted forum topics receive SEO head only in the matching public channel.
+- Rust-side head serialization is extracted to `rustok-seo-render`, so the host does not maintain its own second renderer over the same SEO contract.
+- Locale-prefixed routes are the primary route contract.
+- Host locale normalization goes through the shared `rustok_core::normalize_locale_tag`, not through package-local rules.
+- Legacy query-based locale fallback is only allowed as a backward-compatible path.
 
 ## SEO parity evidence
 
@@ -103,24 +103,24 @@ GraphQL path при этом остаётся рабочим и поддержи
 - D8/D9 compile-free evidence is seeded in the Next storefront fixture so route ownership and long-tail differences stay explicit across Rust and Next hosts.
 - Final closeout still requires live SSR smoke evidence for runtime page context, robots/canonical/hreflang metadata and structured-data blocks against a running backend.
 
-## Взаимодействия
+## Interactions
 
-- `apps/server` предоставляет GraphQL и Leptos server-function surfaces.
-- `crates/rustok-*` публикуют module-owned storefront packages и runtime transport contracts.
-- `apps/next-frontend` идёт параллельным storefront host и должен сохранять parity на уровне контрактов, а не на уровне буквального устройства кода.
-- `leptos-ui-routing` выступает общим Leptos route/query plumbing и для admin, и для storefront;
-  storefront host не должен дублировать этот слой отдельным Rust helper crate.
+- `apps/server` provides GraphQL and Leptos server-function surfaces.
+- `crates/rustok-*` publish module-owned storefront packages and runtime transport contracts.
+- `apps/next-frontend` is a parallel storefront host and must maintain parity at the contract level, not at the literal code structure level.
+- `leptos-ui-routing` serves as the common Leptos route/query plumbing for both admin and storefront;
+  the storefront host must not duplicate this layer with a separate Rust helper crate.
 
-## Проверка
+## Verification
 
 - `npm.cmd run verify:storefront:routes`
-- storefront-specific точечные smoke/contract прогоны по module-owned surfaces
-- при изменении manifest wiring сверяться с `docs/modules/manifest.md`
+- storefront-specific targeted smoke/contract runs on module-owned surfaces
+- when changing manifest wiring, cross-reference with `docs/modules/manifest.md`
 
-## Связанные документы
+## Related documents
 
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Storefront architecture notes](../../../docs/UI/storefront.md)
-- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+- [Manifest layer contract](../../../docs/modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
-- [Карта документации](../../../docs/index.md)
+- [Documentation map](../../../docs/index.md)

@@ -1,70 +1,70 @@
-# План реализации `rustok-cache`
+# `rustok-cache` — Implementation Plan
 
-Статус: core cache baseline зафиксирован; модуль приведён к обязательному
+Status: core cache baseline locked; module brought to mandatory
 manifest/doc contract.
 
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Invalidation contract усилен validation guardrails, channel-scoped local subscriptions, service-level counters и source-level real-Redis integration сценариями; Redis subscription adapter теперь reject-ит пустые channel до подключения и отбрасывает invalid payloads без вызова handler-а. Tenant anti-stampede path уже переведён на `CacheService::load_or_fill`, а cache capability экспортирует service-level Prometheus gauges для Redis health/configuration, metrics toggle, in-flight loaders и invalidation counters.
-- Next step: Добавить compile/test evidence при снятии ограничения на компиляции и прогнать ignored real-Redis сценарий с `RUSTOK_CACHE_REAL_REDIS_URL` поверх channel-scoped subscription contract.
-- Open blockers: Compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем прогнать `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture` для real-Redis pub/sub evidence.
+- Last checkpoint: Invalidation contract strengthened with validation guardrails, channel-scoped local subscriptions, service-level counters and source-level real-Redis integration scenarios; Redis subscription adapter now rejects empty channels before connection and drops invalid payloads without calling the handler. Tenant anti-stampede path already switched to `CacheService::load_or_fill`, and cache capability exports service-level Prometheus gauges for Redis health/configuration, metrics toggle, in-flight loaders and invalidation counters.
+- Next step: Add compile/test evidence when the compilation restriction is lifted and run the ignored real-Redis scenario with `RUSTOK_CACHE_REAL_REDIS_URL` over the channel-scoped subscription contract.
+- Open blockers: Compile/test evidence deferred by explicit iteration constraint: no compilations.
+- Hand-off notes for next agent: Run `cargo test -p rustok-cache --lib` when compilations are allowed; then run `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture` for real-Redis pub/sub evidence.
 - Last updated at (UTC): 2026-06-24T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-cache` как capability-only core module без собственного UI;
-- синхронизировать cache backend contract, local docs и manifest metadata;
-- расширять cache semantics без размазывания backend wiring по host-слою.
+- maintain `rustok-cache` as a capability-only core module without its own UI;
+- synchronize cache backend contract, local docs and manifest metadata;
+- expand cache semantics without spreading backend wiring across the host layer.
 
-## Текущее состояние
+## Current state
 
-- `CacheModule` и `CacheService` уже выделены из `rustok-core`;
-- модуль публикует единый cache backend contract для runtime;
-- root `README.md`, local docs и `rustok-module.toml` входят в scoped audit path;
-- Redis support остаётся optional feature, а in-memory/fallback path — частью базового contract.
+- `CacheModule` and `CacheService` already extracted from `rustok-core`;
+- module publishes a unified cache backend contract for the runtime;
+- root `README.md`, local docs and `rustok-module.toml` are part of the scoped audit path;
+- Redis support remains an optional feature, and the in-memory/fallback path is part of the base contract.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] вернуть `rustok-module.toml` в module standard path;
-- [x] выровнять local docs и root README под единый contract;
-- [x] удерживать sync между backend contract и host integration tests через instrumented `CacheBackend::stats()` contract и documented verification debt.
+- [x] return `rustok-module.toml` to the module standard path;
+- [x] align local docs and root README under a unified contract;
+- [x] maintain sync between backend contract and host integration tests via instrumented `CacheBackend::stats()` contract and documented verification debt.
 
 ### 2. Runtime hardening
 
-- [x] завершить anti-stampede коалесцинг;
-- [x] завершить circuit breaker для Redis backend на уровне cache factory options;
-- [x] добавить generic Redis pub/sub invalidation publisher и local fan-out contract;
-- [x] завершить generic subscription/listener adapter для Redis pub/sub invalidation между инстансами;
-- [x] добавить validation guardrails для invalidation messages и channel-scoped local subscription parity;
+- [x] complete anti-stampede coalescing;
+- [x] complete circuit breaker for Redis backend at the cache factory options level;
+- [x] add generic Redis pub/sub invalidation publisher and local fan-out contract;
+- [x] complete generic subscription/listener adapter for Redis pub/sub invalidation between instances;
+- [x] add validation guardrails for invalidation messages and channel-scoped local subscription parity;
 
 ### 3. Operability
 
-- [x] довести Prometheus metrics export до production-ready service-level слоя, включая invalidation publish/rejection counters;
-- [x] добавить baseline hit/miss/invalidation/entry stats и health diagnostics в cache factory contract;
-- [x] добавить source-level ignored real-Redis pub/sub integration сценарий для publish/subscription parity;
-- [x] документировать publisher/local fan-out guarantees для generic invalidation contract;
-- [x] документировать listener/reconnect guarantees после выноса subscription adapter в `rustok-cache`.
+- [x] bring Prometheus metrics export to a production-ready service-level layer, including invalidation publish/rejection counters;
+- [x] add baseline hit/miss/invalidation/entry stats and health diagnostics to the cache factory contract;
+- [x] add source-level ignored real-Redis pub/sub integration scenario for publish/subscription parity;
+- [x] document publisher/local fan-out guarantees for the generic invalidation contract;
+- [x] document listener/reconnect guarantees after moving the subscription adapter to `rustok-cache`.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate cache`
 - `cargo xtask module test cache`
-- targeted runtime tests для backend selection, fallback, `load_or_fill` coalescing, invalidation validation/channel filtering, invalidation counters, Prometheus formatting и health semantics
+- targeted runtime tests for backend selection, fallback, `load_or_fill` coalescing, invalidation validation/channel filtering, invalidation counters, Prometheus formatting and health semantics
 
-## Правила обновления
+## Update rules
 
-1. При изменении cache backend contract сначала обновлять этот файл.
-2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
+1. When changing the cache backend contract, first update this file.
+2. When changing the public/runtime contract, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
 
 
 ## Quality backlog
 
-- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены source-level тесты для invalidation validation guardrails, channel-scoped local subscription parity, invalidation counters и Prometheus counter formatting без запуска компиляции.
-- [ ] Добавить compile/test evidence для нового invalidation coverage и ignored real-Redis сценария при снятии ограничения на компиляции.
-- [x] Проверить полноту и актуальность `README.md` и локальных docs: listener contract синхронизирован с Redis subscription validation и invalid payload rejection.
-- [x] Зафиксировать/обновить verification gates для текущего состояния модуля: добавлен explicit ignored gate для real Redis pub/sub (`RUSTOK_CACHE_REAL_REDIS_URL=... cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture`).
+- [x] Update test coverage for key module scenarios: added source-level tests for invalidation validation guardrails, channel-scoped local subscription parity, invalidation counters and Prometheus counter formatting without running compilation.
+- [ ] Add compile/test evidence for the new invalidation coverage and the ignored real-Redis scenario when the compilation restriction is lifted.
+- [x] Verify completeness and relevance of `README.md` and local docs: listener contract synchronized with Redis subscription validation and invalid payload rejection.
+- [x] Lock/update verification gates for the current module state: added explicit ignored gate for real Redis pub/sub (`RUSTOK_CACHE_REAL_REDIS_URL=... cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture`).

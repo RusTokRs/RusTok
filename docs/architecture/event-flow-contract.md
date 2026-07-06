@@ -6,144 +6,144 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Контракт потока доменных событий
+# Domain Event Flow Contract
 
-Этот документ фиксирует канонический путь `DomainEvent` в RusToK: от доменной
-операции до обновления downstream read-side состояния.
+This document captures the canonical path of a `DomainEvent` in RusToK: from a domain
+operation to updating downstream read-side state.
 
-## Канонический путь
+## Canonical Path
 
-1. Domain/service layer выполняет бизнес-операцию.
-2. Изменение write-side состояния и запись в outbox происходят в одной транзакции.
-3. `rustok-outbox` доставляет событие в transport/runtime layer.
-4. Зарегистрированные consumers обновляют projections, индексы и другие
-   downstream surfaces идемпотентно.
-5. UI и API читают уже согласованное read-side состояние.
+1. Domain/service layer performs a business operation.
+2. The write-side state change and outbox write occur in a single transaction.
+3. `rustok-outbox` delivers the event to the transport/runtime layer.
+4. Registered consumers update projections, indexes and other
+   downstream surfaces idempotently.
+5. UI and API read the already consistent read-side state.
 
-## Источники истины
+## Sources of Truth
 
-- canonical event contracts живут в `rustok-events`
-- compatibility re-export может существовать в `rustok-core`, но не должен
-  подменять ownership
-- transactional delivery contract живёт в `rustok-outbox`
-- consumer-specific semantics должны быть отражены в local docs publisher-а и
-  consumer-а
+- canonical event contracts live in `rustok-events`
+- compatibility re-export may exist in `rustok-core`, but must not
+  replace ownership
+- transactional delivery contract lives in `rustok-outbox`
+- consumer-specific semantics must be reflected in local docs of the publisher and
+  consumer
 
-## Роли компонентов
+## Component Roles
 
-### Публикатор
+### Publisher
 
 Publisher:
 
-- владеет semantic meaning события
-- определяет обязательные поля payload-а
-- публикует событие через canonical write path
+- owns the semantic meaning of the event
+- defines mandatory payload fields
+- publishes the event through the canonical write path
 
-Publisher не должен считать event bus своим read-model API.
+Publisher must not treat the event bus as its read-model API.
 
-### Outbox/runtime-слой
+### Outbox/Runtime Layer
 
-`rustok-outbox` отвечает за:
+`rustok-outbox` is responsible for:
 
 - transactional persistence
 - retry/backoff
 - delivery bookkeeping
-- предсказуемый runtime contract для consumers
+- predictable runtime contract for consumers
 
-`rustok-outbox` остаётся `Core` module, а не support utility.
+`rustok-outbox` remains a `Core` module, not a support utility.
 
-### Консьюмер
+### Consumer
 
 Consumer:
 
-- должен быть идемпотентным
-- должен пересчитывать своё состояние из source of truth, а не из локальных
-  предположений
-- не должен ломать write-side contract publisher-а
+- must be idempotent
+- must recompute its state from the source of truth, not from local
+  assumptions
+- must not break the publisher's write-side contract
 
-## Модульные event listeners
+## Module Event Listeners
 
-Module-owned event listeners публикуются через runtime contract самого модуля:
+Module-owned event listeners are published through the module's own runtime contract:
 
-- `RusToKModule::register_event_listeners(...)` регистрирует handlers в `ModuleEventListenerRegistry`;
-- `apps/server` собирает их через `ModuleRegistry::build_event_listeners(...)` и подключает к общему `EventDispatcher`;
-- runtime dependencies для listeners передаются через `ModuleEventListenerContext` и `ModuleRuntimeExtensions`, а не через host-owned ручной wiring в `apps/server`.
+- `RusToKModule::register_event_listeners(...)` registers handlers in `ModuleEventListenerRegistry`;
+- `apps/server` collects them through `ModuleRegistry::build_event_listeners(...)` and connects them to the common `EventDispatcher`;
+- runtime dependencies for listeners are passed through `ModuleEventListenerContext` and `ModuleRuntimeExtensions`, not through host-owned manual wiring in `apps/server`.
 
-Это означает, что модуль владеет своими event consumers так же, как он владеет
-`GraphQL`, `HTTP` и UI surfaces.
+This means the module owns its event consumers just as it owns its
+`GraphQL`, `HTTP` and UI surfaces.
 
-### Что не считается event listener
+### What Is Not Considered an Event Listener
 
-В этот contract не входят:
+This contract does not include:
 
 - cron/background jobs;
 - relay workers;
 - transport forwarders;
 - long-running host maintenance tasks.
 
-Например, `WorkflowCronScheduler` остаётся отдельным background runtime path и не
-публикуется как `event_listener`.
+For example, `WorkflowCronScheduler` remains a separate background runtime path and is not
+published as an `event_listener`.
 
-## Content и orchestration-события
+## Content and Orchestration Events
 
-Нужно различать:
+A distinction must be made between:
 
-- storage-owner domain events конкретного модуля
+- storage-owner domain events of a specific module
 - orchestration/canonical-routing events
-- helper/reindex events для legacy или shared paths
+- helper/reindex events for legacy or shared paths
 
-Новые сценарии должны опираться на typed storage-owner или orchestration events,
-а не расширять бесконечно shared helper surface.
+New scenarios should rely on typed storage-owner or orchestration events,
+rather than endlessly extending the shared helper surface.
 
-## Commerce-события
+## Commerce Events
 
-Для commerce family действует тот же принцип:
+For the commerce family, the same principle applies:
 
-- ownership события у конкретного domain/service layer
-- projections и index updates идут через consumer path
-- transport/runtime не подменяет ownership домена
+- ownership of the event belongs to the specific domain/service layer
+- projections and index updates go through the consumer path
+- transport/runtime does not replace domain ownership
 
-## Retry и устойчивость
+## Retry and Resilience
 
-Для event flow обязательны:
+For event flow, the following are mandatory:
 
-- конечный и наблюдаемый retry
+- finite and observable retry
 - backoff
-- идемпотентные consumer operations
-- replay-safe поведение
+- idempotent consumer operations
+- replay-safe behavior
 
-Если consumer не идемпотентен, он не соответствует platform event contract.
+If a consumer is not idempotent, it does not conform to the platform event contract.
 
-Идемпотентность должна переживать перезапуск процесса и поэтому не может
-основываться только на in-memory state. Для business-effect consumers нужен
-durable ключ обработки и DB constraint. Например, event-triggered workflow
-execution использует `(workflow_id, trigger_event_id)` и при redelivery
-возвращает уже существующий execution без повторного запуска шагов.
+Idempotence must survive process restart and therefore cannot be based
+solely on in-memory state. For business-effect consumers, a durable
+processing key and DB constraint are needed. For example, event-triggered workflow
+execution uses `(workflow_id, trigger_event_id)` and on redelivery
+returns the already existing execution without re-running steps.
 
-## Что не делать
+## What Not To Do
 
-- не публиковать межмодульные события мимо outbox, если нужна транзакционная
-  согласованность
-- не считать event payload единственным долгоживущим storage format
-- не переносить canonical ownership событий в host layer
-- не строить новый consumer path без обновления local docs и central contract
+- do not publish cross-module events bypassing the outbox if transactional
+  consistency is needed
+- do not treat event payload as the only long-lived storage format
+- do not transfer canonical ownership of events to the host layer
+- do not build a new consumer path without updating local docs and the central contract
 
-## Когда обновлять этот документ
+## When to Update This Document
 
-Этот central contract нужно обновлять, если меняется:
+This central contract needs to be updated if any of the following changes:
 
-- ownership event family
-- canonical publisher path
-- consumer class
+- ownership of an event family
+- the canonical publisher path
+- a consumer class
 - retry/runtime semantics
-- роль `rustok-events` или `rustok-outbox`
+- the role of `rustok-events` or `rustok-outbox`
 
-При этом сначала обновляются local docs publisher-а и consumer-а, потом central
+When doing so, first update the local docs of the publisher and consumer, then the central
 docs.
 
-## Связанные документы
+## Related Documents
 
-- [Архитектура модулей](./modules.md)
-- [Каналы и real-time surfaces](./channels.md)
-- [Диаграммы платформы](./diagram.md)
-- [Реестр crate-ов модульной платформы](../modules/crates-registry.md)
+- [Module Architecture](./modules.md)
+- [Channels and Real-time Surfaces](./channels.md)
+- [Platform Diagrams](./diagram.md)
+- [Module Platform Crate Registry](../modules/crates-registry.md)

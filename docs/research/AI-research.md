@@ -6,53 +6,54 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Интеграция и вывод в продакшн AI-модуля для экосистемы RusTok
 
-## Executive summary
+# AI Module Integration and Production Deployment for the RusTok Ecosystem
 
-Исследование, начатое с GitHub-коннектора и ограниченное репозиторием `RusTokRs/RusTok`, показывает, что в RusTok уже есть не «заготовка», а полноценный AI-MVP: отдельный capability-crate `rustok-ai`, мульти-провайдерный runtime, task profiles, hybrid direct/MCP execution, RBAC-first модель доступа, persisted control plane, потоковая выдача, diagnostics и две админские поверхности — Leptos и Next.js. Иначе говоря, основная задача сейчас не в создании AI-модуля с нуля, а в его промышленном ужесточении и доменном расширении для новых сценариев: модерации, автозаполнения атрибутов товаров, аналитики заказов и полуавтоматической обработки заказов. fileciteturn35file0L1-L3
+## Executive Summary
 
-Наиболее рациональная целевая архитектура для RusTok — **гибридная**: `Direct` по умолчанию для first-party вертикалей экосистемы и `McpTooling` для удалённых инструментов, высокорисковых операций и межсистемных сценариев. Такой выбор уже поддержан текущей моделью `ExecutionMode::{Auto, Direct, McpTooling}`, существующим роутером `AiRouter`, прямыми обработчиками `alloy_code`, `image_asset`, `product_copy`, `blog_draft`, а также тем фактом, что в backlog отдельно помечены «richer provider routing / fallback / multi-model policy» и «более глубокие domain-direct verticals». fileciteturn31file0L1-L3 fileciteturn33file0L1-L3 fileciteturn44file0L1-L3 fileciteturn47file0L1-L3 fileciteturn48file0L1-L3 fileciteturn35file0L1-L3
+The research, started with a GitHub connector and limited to the `RusTokRs/RusTok` repository, shows that RusTok already has not a "skeleton" but a full AI-MVP: a separate capability-crate `rustok-ai`, multi-provider runtime, task profiles, hybrid direct/MCP execution, RBAC-first access model, persisted control plane, streaming output, diagnostics and two admin surfaces — Leptos and Next.js. In other words, the main task now is not creating an AI module from scratch, but hardening it for production and expanding domain coverage for new scenarios: moderation, product attribute autofill, order analytics and semi-automated order processing.
 
-По провайдерам лучшая практическая стратегия для RusTok выглядит так: **OpenAI-compatible** как основной «универсальный» интерфейс и базовый продакшн-шлюз, **Anthropic** как премиальный fallback для сложных текстовых и tool-heavy сценариев, **Gemini** как сильный кандидат для мультимодальности, извлечения атрибутов и cost-aware batch-задач. Это хорошо ложится на уже реализованные в RusTok `ProviderKind::{OpenAiCompatible, Anthropic, Gemini}` и capability-модель, а снаружи подтверждается официальными возможностями: у OpenAI есть function calling c JSON Schema и strict mode, у Anthropic — tool use, prompt caching и batch processing, у Gemini — parallel/compositional function calling, context caching и batch pricing. fileciteturn32file0L1-L3 fileciteturn30file0L1-L3 citeturn12view0turn12view2turn17view1turn17view2turn13view0turn13view4
+The most rational target architecture for RusTok is **hybrid**: `Direct` by default for first-party ecosystem verticals and `McpTooling` for remote tools, high-risk operations and cross-system scenarios. This choice is already supported by the current `ExecutionMode::{Auto, Direct, McpTooling}` model, the existing `AiRouter`, direct handlers `alloy_code`, `image_asset`, `product_copy`, `blog_draft`, and the fact that the backlog separately notes "richer provider routing / fallback / multi-model policy" and "deeper domain-direct verticals".
 
-Ключевые продакшн-риски в текущем состоянии — не отсутствие AI-фундамента, а недостаточная глубина нескольких слоёв: fallback и routing-политик, secret management для provider keys, cost analytics на уровне tenant/provider/task, защита чувствительных payload’ов в persisted traces/messages, и расширение direct-вертикалей за пределы Alloy/Media/Commerce/Blog. Именно эти пункты должны стать первой очередью внедрения. fileciteturn42file0L1-L3 fileciteturn43file0L1-L3 fileciteturn35file0L1-L3
+For providers, the best practical strategy for RusTok is: **OpenAI-compatible** as the primary "universal" interface and basic production gateway, **Anthropic** as a premium fallback for complex text and tool-heavy scenarios, **Gemini** as a strong candidate for multimodality, attribute extraction and cost-aware batch tasks. This aligns well with the already implemented `ProviderKind::{OpenAiCompatible, Anthropic, Gemini}` and capability model in RusTok, and externally is confirmed by official capabilities: OpenAI has function calling with JSON Schema and strict mode, Anthropic has tool use, prompt caching and batch processing, Gemini has parallel/compositional function calling, context caching and batch pricing.
 
-## Исходное состояние RusTok и что это означает для AI
+The key production risks in the current state are not the absence of an AI foundation, but insufficient depth in several layers: fallback and routing policies, secret management for provider keys, cost analytics at the tenant/provider/task level, protection of sensitive payloads in persisted traces/messages, and expansion of direct verticals beyond Alloy/Media/Commerce/Blog. These are exactly the items that should become the first implementation priority.
 
-RusTok — это модульный Rust-монорепозиторий, в котором AI уже встроен как capability рядом с `alloy`, `rustok-mcp`, `rustok-rbac`, `rustok-product`, `rustok-order`, `rustok-search`, сервером на Loco и отдельными admin-host’ами. GraphQL-схема сервера мержит owner-owned AI, MCP, Search и RBAC roots в единый API-контур, а AI transport surface живёт в `crates/rustok-ai/src/graphql/*`. Это важно: новая AI-функциональность в RusTok должна жить не «сбоку», а как продолжение существующего capability-паттерна. fileciteturn22file0L1-L3 fileciteturn74file0L1-L3 fileciteturn75file0L1-L3
+## Current RusTok State and What It Means for AI
 
-Текущее ядро `rustok-ai` уже покрывает важнейшие элементы control plane: профили провайдеров, tool profiles, task profiles, chat sessions/runs/messages, approval requests, tool traces, recent stream events и runtime metrics snapshot. На уровне persisted-модели это вынесено в отдельные миграции и таблицы; на уровне API — в GraphQL queries, mutations и subscription `aiSessionEvents`; на уровне UI — в capability-owned пакеты для Leptos и Next.js. Из этого следует прямой вывод: **операторская поверхность, аудит и управляемость уже существуют**, поэтому новые бизнес-сценарии надо подключать к этому контуру, а не строить параллельный. fileciteturn42file0L1-L3 fileciteturn43file0L1-L3 fileciteturn49file0L1-L3 fileciteturn50file0L1-L3 fileciteturn51file0L1-L3 fileciteturn52file0L1-L3 fileciteturn57file0L1-L3
+RusTok is a modular Rust monorepo where AI is already embedded as a capability alongside `alloy`, `rustok-mcp`, `rustok-rbac`, `rustok-product`, `rustok-order`, `rustok-search`, the Loco server and separate admin hosts. The server's GraphQL schema merges owner-owned AI, MCP, Search and RBAC roots into a single API circuit, and the AI transport surface lives in `crates/rustok-ai/src/graphql/*`. This is important: new AI functionality in RusTok should live not "on the side" but as a continuation of the existing capability pattern.
 
-Особенно показательно, что реестр прямых обработчиков уже зарегистрирован в коде: `AlloyScriptAssistHandler`, `MediaImageAssetHandler`, `ProductCopyHandler`, `BlogDraftHandler`. Для `product_copy` AI уже генерирует локализованные title/description/meta-поля и пишет их напрямую через `CatalogService`; для `blog_draft` — создаёт или обновляет локализованные черновики через `PostService`; для `alloy_code` — умеет list/get/validate/run Alloy scripts; для `image_asset` — генерирует изображение и сразу сохраняет его в media library. Это снижает стоимость дальнейшего развития: moderation, product attributes и order workflows можно добавлять как новые direct handlers того же класса. fileciteturn44file0L1-L3 fileciteturn47file0L1-L3 fileciteturn48file0L1-L3
+The current `rustok-ai` core already covers the most important control plane elements: provider profiles, tool profiles, task profiles, chat sessions/runs/messages, approval requests, tool traces, recent stream events and runtime metrics snapshot. At the persisted model level, this is extracted into separate migrations and tables; at the API level — into GraphQL queries, mutations and the `aiSessionEvents` subscription; at the UI level — into capability-owned packages for Leptos and Next.js. The direct conclusion follows: **operator surface, audit and manageability already exist**, so new business scenarios should be connected to this circuit rather than building a parallel one.
 
-Важный ограничитель тоже виден уже сейчас: в `implementation-plan.md` прямо отмечено, что более глубокие domain-direct verticals, richer routing/fallback и полноценная remote MCP bootstrap-цепочка — это post-MVP backlog, а не уже закрытая часть системы. Поэтому смешивать «есть в коде сегодня» и «целевой дизайн» не стоит: для товарных атрибутов, модерации и order automation потребуется отдельная реализация, пусть и на хорошо подготовленной базе. fileciteturn35file0L1-L3
+It is especially telling that the direct handler registry is already registered in code: `AlloyScriptAssistHandler`, `MediaImageAssetHandler`, `ProductCopyHandler`, `BlogDraftHandler`. For `product_copy`, AI already generates localized title/description/meta fields and writes them directly through `CatalogService`; for `blog_draft` — creates or updates localized drafts through `PostService`; for `alloy_code` — can list/get/validate/run Alloy scripts; for `image_asset` — generates an image and immediately saves it to the media library. This reduces the cost of further development: moderation, product attributes and order workflows can be added as new direct handlers of the same class.
 
-Ниже — краткая фиксация текущего состояния и пробелов.
+An important limiter is also visible now: the `implementation-plan.md` explicitly notes that deeper domain-direct verticals, richer routing/fallback and a full remote MCP bootstrap chain are post-MVP backlog, not already closed parts of the system. Therefore, "what's in the code today" and "target design" should not be mixed: product attributes, moderation and order automation will require separate implementation, albeit on a well-prepared base.
 
-| Область | Что уже есть в RusTok | Что ещё нужно для продакшн-экосистемы |
+Below is a brief snapshot of the current state and gaps.
+
+| Area | What already exists in RusTok | What is still needed for production ecosystem |
 |---|---|---|
-| AI runtime | Multiprovider runtime, task/tool/provider profiles, direct + MCP, streaming, diagnostics. fileciteturn35file0L1-L3 | Политики failover, circuit breaker, cost ledger, health-based routing. fileciteturn35file0L1-L3 |
-| Доменные AI-сценарии | Alloy, media image asset, product copy, blog draft. fileciteturn44file0L1-L3 fileciteturn47file0L1-L3 fileciteturn48file0L1-L3 | Moderation, product attributes, order analytics, order ops assistant. |
-| Безопасность | Typed permissions, approvals, MCP policies/audit, GraphQL permission guards. fileciteturn37file0L1-L3 fileciteturn39file0L1-L3 fileciteturn41file0L1-L3 fileciteturn49file0L1-L3 | KMS/Vault, payload redaction, PII-aware persistence, SSRF-safe MCP remote mode. |
-| Операционка | GitHub Actions: fmt, clippy, check, audit, deny, coverage, SBOM, nextest, Next builds. fileciteturn70file0L1-L3 | Performance/regression suites specifically for AI flows and provider outages. |
-| Observability | AI metrics snapshot + GraphQL diagnostics; OTel guide в репозитории. fileciteturn34file0L1-L3 fileciteturn51file0L1-L3 fileciteturn68file0L1-L3 | Per-tenant spend dashboards, fallback analytics, task-quality eval dashboards. |
+| AI runtime | Multiprovider runtime, task/tool/provider profiles, direct + MCP, streaming, diagnostics. | Failover policies, circuit breaker, cost ledger, health-based routing. |
+| Domain AI scenarios | Alloy, media image asset, product copy, blog draft. | Moderation, product attributes, order analytics, order ops assistant. |
+| Security | Typed permissions, approvals, MCP policies/audit, GraphQL permission guards. | KMS/Vault, payload redaction, PII-aware persistence, SSRF-safe MCP remote mode. |
+| Operations | GitHub Actions: fmt, clippy, check, audit, deny, coverage, SBOM, nextest, Next builds. | Performance/regression suites specifically for AI flows and provider outages. |
+| Observability | AI metrics snapshot + GraphQL diagnostics; OTel guide in repository. | Per-tenant spend dashboards, fallback analytics, task-quality eval dashboards. |
 
-## Архитектурные варианты интеграции с Alloy и MCP
+## Architectural Integration Options with Alloy and MCP
 
-Внутренняя модель RusTok уже задаёт правильную рамку: у AI есть `ExecutionMode::Auto`, `Direct` и `McpTooling`, а `AiRouter` принимает `task_profile`, список доступных provider profiles, explicit override, attached tool profile и actor roles, после чего выбирает execution mode, provider и model. Иными словами, архитектурный слой выбора стратегии в RusTok уже не надо придумывать — его нужно лишь довести до production-grade политики. fileciteturn31file0L1-L3 fileciteturn32file0L1-L3
+The internal RusTok model already sets the right framework: AI has `ExecutionMode::Auto`, `Direct` and `McpTooling`, and `AiRouter` takes `task_profile`, a list of available provider profiles, explicit override, attached tool profile and actor roles, then selects execution mode, provider and model. In other words, the architectural strategy selection layer in RusTok no longer needs to be invented — it just needs to be matured to production-grade policy.
 
-С инженерной точки зрения здесь есть три жизнеспособных варианта. **Direct-first** означает, что AI вызывает first-party сервисы RusTok напрямую из `rustok-ai` через service layer; это даёт лучшую управляемость, ниже latency, меньше токенов на tool loop и естественный аудит. **MCP-first** означает, что AI почти всё делает через MCP tools; это повышает изоляцию и делает контракты инструментов явными, но добавляет hop, сложность авторизации и риск инструментального «разрастания». **Hybrid** сочетает оба мира: direct для внутренних вертикалей и MCP для удалённых интеграций, операторских инструментов и операций, где лучше явный tool boundary. По совокупности факторов именно hybrid лучше всего соответствует текущему коду RusTok и официальной модели MCP, где hosts/clients/servers разделены, а user consent, authorization и access controls считаются обязательными элементами безопасной реализации. fileciteturn35file0L1-L3 fileciteturn44file0L1-L3 fileciteturn31file0L1-L3 citeturn6view0turn6view1turn14view0
+From an engineering perspective, there are three viable options. **Direct-first** means AI calls first-party RusTok services directly from `rustok-ai` through the service layer; this gives better manageability, lower latency, fewer tokens on tool loops and natural audit. **MCP-first** means AI does almost everything through MCP tools; this increases isolation and makes tool contracts explicit but adds a hop, authorization complexity and the risk of tool "proliferation." **Hybrid** combines both worlds: direct for internal verticals and MCP for remote integrations, operator tools and operations where explicit tool boundaries are better. By aggregate factors, hybrid best matches the current RusTok code and the official MCP model, where hosts/clients/servers are separated and user consent, authorization and access controls are considered mandatory elements of a secure implementation.
 
-| Вариант | Где силён | Где слаб | Вывод |
+| Option | Where it is strong | Where it is weak | Conclusion |
 |---|---|---|---|
-| Direct-first | Товарные карточки, локализация, генерация контента, media, Alloy; минимальный hop и прямой доступ к `CatalogService`/`PostService`/Alloy runtime. fileciteturn47file0L1-L3 fileciteturn48file0L1-L3 | Слабее подходит для внешних систем и ситуаций, где нужен независимый tool boundary. | Должен быть default для first-party сценариев. |
-| MCP-first | Удобен для удалённых инструментов, межсистемных операций, внешних data/tools surfaces. MCP формализует tools/resources/prompts и OAuth-подобную защиту для remote mode. citeturn6view0turn6view1turn14view0 | Выше latency и сложнее security surface. | Использовать там, где нужен явный boundary или сторонние системы. |
-| Hybrid | Соответствует текущему RusTok: direct verticals уже есть, `mcp_tooling` уже есть, а router умеет выбирать режим. fileciteturn31file0L1-L3 fileciteturn35file0L1-L3 | Требует более зрелых политик маршрутизации и cost control. | Рекомендуемый целевой вариант. |
+| Direct-first | Product cards, localization, content generation, media, Alloy; minimal hop and direct access to `CatalogService`/`PostService`/Alloy runtime. | Less suitable for external systems and situations requiring an independent tool boundary. | Should be default for first-party scenarios. |
+| MCP-first | Convenient for remote tools, cross-system operations, external data/tools surfaces. MCP formalizes tools/resources/prompts and OAuth-like protection for remote mode. | Higher latency and more complex security surface. | Use where an explicit boundary or third-party systems are needed. |
+| Hybrid | Matches current RusTok: direct verticals already exist, `mcp_tooling` already exists, and the router can select the mode. | Requires more mature routing policies and cost control. | Recommended target option. |
 
-Интеграция с Alloy уже на удивление зрелая. `alloy_code` в direct-path умеет перечислять, читать, валидировать и запускать скрипты Alloy, а сам модуль Alloy публикует собственные permissions и runtime. При этом движок Alloy уже имеет защитные лимиты: по умолчанию `max_operations=50_000`, `timeout=100ms`, `max_call_depth=16`, лимиты на размеры строк, массивов и глубину карт. Для AI-assisted scripting это сильный аргумент в пользу **direct Alloy assist как базового пути**, а не обязательной упаковки каждого сценария в MCP-инструмент. fileciteturn44file0L1-L3 fileciteturn63file0L1-L3 fileciteturn66file0L1-L3
+Integration with Alloy is already surprisingly mature. `alloy_code` in direct-path can list, read, validate and run Alloy scripts, and the Alloy module itself publishes its own permissions and runtime. The Alloy engine already has protective limits: by default `max_operations=50_000`, `timeout=100ms`, `max_call_depth=16`, limits on string sizes, array sizes and map depth. For AI-assisted scripting, this is a strong argument for **direct Alloy assist as the base path** rather than mandatory packaging of every scenario as an MCP tool.
 
-Диаграмма ниже — рекомендуемая целевая архитектура на базе того, что уже есть в RusTok.
+The diagram below shows the recommended target architecture based on what already exists in RusTok.
 
 ```mermaid
 flowchart TD
@@ -80,99 +81,99 @@ flowchart TD
     GQL --> OBS[OTel + Prometheus]
 ```
 
-Практическая рекомендация здесь такая: для RusTok стоит формализовать правило **«Direct by default, MCP by policy exception»**. Это означает, что `product_copy`, `product_attributes`, `content_moderation`, `order_analytics`, `order_ops_assistant`, `alloy_code` должны жить как direct handlers, а `McpTooling` должен включаться, когда задача требует удалённого инструмента, сквозного audit boundary, third-party authorization или операторского подтверждения. Такой режим лучше всего согласуется с текущим реестром обработчиков, task profiles и approval-моделью. fileciteturn44file0L1-L3 fileciteturn42file0L1-L3 fileciteturn43file0L1-L3
+The practical recommendation here: for RusTok, it is worth formalizing the rule **"Direct by default, MCP by policy exception"**. This means that `product_copy`, `product_attributes`, `content_moderation`, `order_analytics`, `order_ops_assistant`, `alloy_code` should live as direct handlers, and `McpTooling` should be activated when the task requires a remote tool, cross-cutting audit boundary, third-party authorization or operator confirmation. This mode best aligns with the current handler registry, task profiles and approval model.
 
-## Продакшн-требования и дизайн мульти-провайдерной абстракции
+## Production Requirements and Multi-Provider Abstraction Design
 
-Текущая абстракция провайдера в RusTok уже хорошо выбрана. В коде есть `ModelProvider` с методами `test_connection`, `complete`, `complete_stream`, `generate_image`, а также три семейства: `OpenAiCompatible`, `Anthropic`, `Gemini`. На уровне capability-matrix AI уже различает `TextGeneration`, `StructuredGeneration`, `ImageGeneration`, `MultimodalUnderstanding`, `CodeGeneration`, `AlloyAssist`. Это очень сильная опора: добавлять нужно не новый abstraction layer, а политику поверх уже существующего. fileciteturn30file0L1-L3 fileciteturn32file0L1-L3
+The current provider abstraction in RusTok is already well chosen. The code has `ModelProvider` with methods `test_connection`, `complete`, `complete_stream`, `generate_image`, as well as three families: `OpenAiCompatible`, `Anthropic`, `Gemini`. At the capability-matrix level, AI already distinguishes `TextGeneration`, `StructuredGeneration`, `ImageGeneration`, `MultimodalUnderstanding`, `CodeGeneration`, `AlloyAssist`. This is a very strong foundation: what needs to be added is not a new abstraction layer but a policy layer on top of what already exists.
 
-На уровне control plane текущая модель тоже достаточно зрелая: `AiProviderConfig` уже хранит `provider_kind`, `base_url`, `api_key`, `model`, `temperature`, `max_tokens`, `capabilities` и `usage_policy`; `TaskProfile` хранит `allowed_provider_profile_ids`, `preferred_provider_profile_ids`, `fallback_strategy`, `tool_profile_id`, `approval_policy`, `default_execution_mode`; а роутер уже учитывает `restricted_role_slugs`. Недостающее звено — это **боевые policy-механизмы**, а именно: health-scored routing, ordered fallback по типам ошибок, circuit breaker, tenant budgets, capture реальных token/cost/cache counters и более глубокая аналитика отказов. Сам репозиторий прямо фиксирует richer fallback/routing как post-MVP backlog. fileciteturn32file0L1-L3 fileciteturn31file0L1-L3 fileciteturn43file0L1-L3 fileciteturn35file0L1-L3
+At the control plane level, the current model is also quite mature: `AiProviderConfig` already stores `provider_kind`, `base_url`, `api_key`, `model`, `temperature`, `max_tokens`, `capabilities` and `usage_policy`; `TaskProfile` stores `allowed_provider_profile_ids`, `preferred_provider_profile_ids`, `fallback_strategy`, `tool_profile_id`, `approval_policy`, `default_execution_mode`; and the router already considers `restricted_role_slugs`. The missing link is **production policy mechanisms**, specifically: health-scored routing, ordered fallback by error type, circuit breaker, tenant budgets, capture of real token/cost/cache counters and deeper failure analytics. The repository itself explicitly captures richer fallback/routing as post-MVP backlog.
 
-Важное проектное правило для RusTok: **маршрутизация должна быть task-centric, а не provider-centric**. То есть решение принимает не «провайдер по умолчанию для всего tenant’а», а связка `task_profile × tenant policy × role × locale × budget × latency class`. Это естественно продолжает текущую структуру `task_profile -> target_capability -> preferred/allowed providers -> execution_mode`. Для production это лучше, чем глобальный default model, поскольку генерация товарных атрибутов, chat operator flows, Alloy assist и order analytics слишком различаются по допустимой цене, задержке и риску ошибки. fileciteturn31file0L1-L3 fileciteturn32file0L1-L3
+An important design rule for RusTok: **routing should be task-centric, not provider-centric**. That is, the decision should not be "default provider for the entire tenant", but the combination of `task_profile × tenant policy × role × locale × budget × latency class`. This naturally extends the current structure of `task_profile -> target_capability -> preferred/allowed providers -> execution_mode`. For production, this is better than a global default model because product attribute generation, chat operator flows, Alloy assist and order analytics differ too much in acceptable cost, latency and error risk.
 
-Рекомендуемая приоритизация провайдеров выглядит так.
+The recommended provider prioritization is as follows.
 
-| Приоритет в RusTok | Провайдер | Почему имеет смысл | Что учесть в дизайне |
+| Priority in RusTok | Provider | Why It Makes Sense | Design Considerations |
 |---|---|---|---|
-| Основной интерфейс | OpenAI-compatible | Уже реализован в RusTok; function calling определяется JSON Schema; strict mode делает вызовы функций надёжнее; OpenAI имеет org/project-level rate limits и поддерживает Batch API и cached input pricing. fileciteturn30file0L1-L3 citeturn12view0turn12view2turn16view0turn16view2turn7view0 | Хорош как базовый adapter/gateway; нужен отдельный compatibility-profile для cloud/self-hosted endpoints. |
-| Премиальный fallback | Anthropic | Tool use поддерживает client/server tools и strict tool use; prompt caching снижает latency/cost на повторяющихся префиксах; официально есть usage-based tiers, batch -50% и постепенный ramp-up из-за acceleration limits. citeturn17view1turn17view2turn17view3turn17view0turn12view4 | Сильный выбор для длинных инструкций, complex reasoning и operator workflows. |
-| Мультимодальность и cost-aware batch | Gemini | Поддерживает parallel и compositional function calling; pricing показывает context caching, batch/flex режимы и enterprise security/compliance; rate limits завязаны на project tier. citeturn13view0turn13view2turn11view0turn13view3turn13view4 | Хорош для product attributes по изображению и batch-аналитики, но лимиты tier-dependent. |
+| Primary interface | OpenAI-compatible | Already implemented in RusTok; function calling defined by JSON Schema; strict mode makes function calls more reliable; OpenAI has org/project-level rate limits and supports Batch API and cached input pricing. | Good as base adapter/gateway; separate compatibility profile needed for cloud/self-hosted endpoints. |
+| Premium fallback | Anthropic | Tool use supports client/server tools and strict tool use; prompt caching reduces latency/cost on repeating prefixes; officially has usage-based tiers, batch -50% and gradual ramp-up due to acceleration limits. | Strong choice for long instructions, complex reasoning and operator workflows. |
+| Multimodality and cost-aware batch | Gemini | Supports parallel and compositional function calling; pricing shows context caching, batch/flex modes and enterprise security/compliance; rate limits depend on project tier. | Good for product attributes from images and batch analytics, but limits are tier-dependent. |
 
-Из этого вытекает следующая production-политика выбора. Для **синхронных текстовых черновиков и строгих JSON-контрактов** — OpenAI-compatible. Для **длинных системных префиксов и tool-heavy reasoning** — Anthropic, особенно если есть повторяемые prompts и long multi-turn conversations, потому что prompt caching переиспользует общий prefix и может снижать и стоимость, и задержку. Для **мультимодальных и batch-ориентированных сценариев** — Gemini, где context caching и batch economics дают хороший компромисс. citeturn12view2turn17view2turn13view0turn13view3
+From this follows the following production selection policy. For **synchronous text drafts and strict JSON contracts** — OpenAI-compatible. For **long system prefixes and tool-heavy reasoning** — Anthropic, especially if there are repeatable prompts and long multi-turn conversations, because prompt caching reuses the common prefix and can reduce both cost and latency. For **multimodal and batch-oriented scenarios** — Gemini, where context caching and batch economics provide a good compromise.
 
-Ниже — рекомендуемый каркас продакшн-требований для RusTok. Там, где пользовательские требования не указаны, я так и помечаю.
+Below is the recommended production requirements framework for RusTok. Where user requirements are not specified, I note it accordingly.
 
-| Область | Рекомендация | Статус в репозитории |
+| Area | Recommendation | Status in Repository |
 |---|---|---|
-| Хранилище control plane | PostgreSQL для profiles/sessions/runs/messages/traces/approvals; отдельные индексы по tenant/run/session. fileciteturn42file0L1-L3 | Уже есть. |
-| Очереди и async jobs | Для batch, offline analytics и order automation нужен отдельный worker lane; точная технология — **не указано**. | Частично не видно в AI-срезе. |
-| CI/CD | Сохранить текущий GitHub Actions pipeline и добавить AI-specific eval/load/failover джобы. fileciteturn70file0L1-L3 | Основа уже есть. |
-| Мониторинг | OTel для traces/metrics/logs и Prometheus для time-series/alerting; связать с `ai_runtime_metrics` и recent runs. fileciteturn34file0L1-L3 fileciteturn51file0L1-L3 citeturn15view0turn15view2 | Частично есть. |
-| GraphQL safety | Оставить schema controls: `limit_depth(12)` и `limit_complexity(600)`, security + observability extensions. fileciteturn75file0L1-L3 | Уже есть. |
-| Latency SLO | Interactive p95, background SLA и budget caps — **не указано**; их нужно зафиксировать до rollout. | Не указано. |
-| Cost control | Tenant/project budgets, cached-prefix accounting, batch lanes, model tiering, rate-limit backoff. citeturn12view3turn16view0turn17view2turn13view2turn7view0 | Нужна реализация поверх MVP. |
-| Secrets | Provider secrets должны уйти в KMS/Vault или быть зашифрованы envelope-схемой; plaintext/text-column для продакшна плох как конечное состояние. fileciteturn42file0L1-L3 | Требует hardening. |
+| Control plane storage | PostgreSQL for profiles/sessions/runs/messages/traces/approvals; separate indices by tenant/run/session. | Already exists. |
+| Queues and async jobs | For batch, offline analytics and order automation, a separate worker lane is needed; exact technology — **not specified**. | Partially not visible in AI slice. |
+| CI/CD | Keep current GitHub Actions pipeline and add AI-specific eval/load/failover jobs. | Foundation already exists. |
+| Monitoring | OTel for traces/metrics/logs and Prometheus for time-series/alerting; link to `ai_runtime_metrics` and recent runs. | Partially exists. |
+| GraphQL safety | Keep schema controls: `limit_depth(12)` and `limit_complexity(600)`, security + observability extensions. | Already exists. |
+| Latency SLO | Interactive p95, background SLA and budget caps — **not specified**; need to be defined before rollout. | Not specified. |
+| Cost control | Tenant/project budgets, cached-prefix accounting, batch lanes, model tiering, rate-limit backoff. | Needs implementation on top of MVP. |
+| Secrets | Provider secrets should go to KMS/Vault or be encrypted with envelope scheme; plaintext/text-column is poor as final state for production. | Needs hardening. |
 
-В отдельности нужно подчеркнуть rate-limit engineering. OpenAI работает с RPM/TPM/RPD/TPD и рекомендует random exponential backoff; к тому же Batch API помогает повышать throughput, когда request-per-minute становится bottleneck. Anthropic использует token-bucket, usage tiers/spend limits и отдельно предупреждает про acceleration limits при резком росте трафика. Gemini применяет лимиты на уровне проекта и usage tier, а для preview/experimental моделей лимиты строже. Поэтому в RusTok необходим **единый internal rate-limit facade**, который знает о tenant-level, provider-level и task-level очередях и умеет переводить провайдерские 429/over-quota/capacity сигналы в унифицированную retry/fallback-политику. citeturn16view0turn16view2turn12view3turn17view0turn12view4turn13view2
+Separately, rate-limit engineering needs emphasis. OpenAI works with RPM/TPM/RPD/TPD and recommends random exponential backoff; additionally, Batch API helps increase throughput when request-per-minute becomes a bottleneck. Anthropic uses token-bucket, usage tiers/spend limits and separately warns about acceleration limits during rapid traffic growth. Gemini applies limits at the project level and usage tier, and preview/experimental models have stricter limits. Therefore, RusTok needs a **unified internal rate-limit facade** that knows about tenant-level, provider-level and task-level queues and can translate provider 429/over-quota/capacity signals into a unified retry/fallback policy.
 
-## RBAC и безопасность данных
+## RBAC and Data Security
 
-RBAC в RusTok уже продуман как typed permission vocabulary. В `rustok-core` заданы отдельные ресурсы и действия для `ai:providers`, `ai:task_profiles`, `ai:sessions`, `ai:runs`, `ai:approvals`, `ai:router`, а также группы задач `ai:tasks:text`, `ai:tasks:image`, `ai:tasks:code`, `ai:tasks:alloy`, `ai:tasks:multimodal`. Есть и доменные разрешения для `products`, `orders`, `analytics`, `scripts`, `mcp`, а также moderation-related permissions для форумных тем и ответов. Слой `rustok-rbac` при этом объявлен как Casbin-backed live authorization runtime, а GraphQL AI-резолверы реально проверяют permissions на read/manage/run/cancel/resolve. Это отличный фундамент для AI-governance «по ролям», а не по ad-hoc флагам. fileciteturn37file0L1-L3 fileciteturn39file0L1-L3 fileciteturn40file0L1-L3 fileciteturn49file0L1-L3
+RBAC in RusTok is already designed as a typed permission vocabulary. In `rustok-core`, separate resources and actions are defined for `ai:providers`, `ai:task_profiles`, `ai:sessions`, `ai:runs`, `ai:approvals`, `ai:router`, as well as task groups `ai:tasks:text`, `ai:tasks:image`, `ai:tasks:code`, `ai:tasks:alloy`, `ai:tasks:multimodal`. There are also domain permissions for `products`, `orders`, `analytics`, `scripts`, `mcp`, and moderation-related permissions for forum topics and replies. The `rustok-rbac` layer is declared as a Casbin-backed live authorization runtime, and GraphQL AI resolvers actually check permissions for read/manage/run/cancel/resolve. This is an excellent foundation for AI governance "by roles" rather than by ad-hoc flags.
 
-При этом текущая persisted-модель показывает, где лежат реальные data-risks. В AI control plane хранятся `api_key_secret`, chat messages, tool traces с `input_payload`/`output_payload`, approval requests с `tool_input`, metadata и т.д. В MCP-модели хранятся token hashes/previews, granted permissions/scopes, allowed/denied tools и audit logs. Для production этого достаточно, чтобы обеспечить управляемость; но этого же достаточно, чтобы непреднамеренно сохранить PII, коммерческие секреты или чувствительные tool payload’ы, если не ввести redaction и encryption discipline. fileciteturn41file0L1-L3 fileciteturn42file0L1-L3 fileciteturn43file0L1-L3
+At the same time, the current persisted model shows where the real data risks lie. The AI control plane stores `api_key_secret`, chat messages, tool traces with `input_payload`/`output_payload`, approval requests with `tool_input`, metadata, etc. The MCP model stores token hashes/previews, granted permissions/scopes, allowed/denied tools and audit logs. For production, this is enough to ensure manageability; but it is also enough to unintentionally retain PII, commercial secrets or sensitive tool payloads if redaction and encryption discipline are not introduced.
 
-Официальная документация MCP здесь даёт очень чёткие ориентиры. Для remote MCP authorization настоятельно рекомендуется, когда сервер даёт доступ к user-specific data, административным действиям, аудиту и per-user usage tracking. Спецификация и security best practices требуют явного user consent перед доступом к данным и перед вызовом tools; рекомендуют OAuth 2.1-style authorization; требуют per-client consent, exact redirect URI validation, cryptographically secure `state`, запрет token passthrough и защиту от SSRF при OAuth metadata discovery. Для RusTok это означает, что вывод remote MCP в продакшн без полноценной authn/authz-цепочки, SSRF-hardened fetcher и consent UI — плохая идея. citeturn6view0turn6view1turn14view0
+Official MCP documentation here provides very clear guidance. For remote MCP, authorization is strongly recommended when the server provides access to user-specific data, administrative actions, audit and per-user usage tracking. The specification and security best practices require explicit user consent before data access and before tool invocation; recommend OAuth 2.1-style authorization; require per-client consent, exact redirect URI validation, cryptographically secure `state`, prohibition of token passthrough and SSRF protection during OAuth metadata discovery. For RusTok, this means that deploying remote MCP to production without a full authn/authz chain, SSRF-hardened fetcher and consent UI is a bad idea.
 
-С точки зрения security-patterns для LLM-приложений RusTok должен проектироваться как система под угрозами OWASP GenAI Top 10, в первую очередь: **Prompt Injection**, **Sensitive Information Disclosure**, **Improper Output Handling**, **Excessive Agency** и **Unbounded Consumption**. Эти риски очень хорошо совпадают с реальными сценариями RusTok: модерация пользовательского контента, генерация JSON для карточек, выполнение Alloy-операций, order suggestions и MCP tools. Следовательно, обязательными становятся три практики: строгие schema contracts на structured outputs, обязательный human approval для чувствительных или state-changing действий и жёсткая санитизация/валидация model outputs перед записью в product/order/blog domains. citeturn15view3turn15view4turn15view5
+From a security patterns perspective for LLM applications, RusTok should be designed as a system under the OWASP GenAI Top 10 threats, primarily: **Prompt Injection**, **Sensitive Information Disclosure**, **Improper Output Handling**, **Excessive Agency** and **Unbounded Consumption**. These risks align very well with real RusTok scenarios: user content moderation, JSON generation for product cards, Alloy operation execution, order suggestions and MCP tools. Consequently, three practices become mandatory: strict schema contracts for structured outputs, mandatory human approval for sensitive or state-changing actions, and strict sanitization/validation of model outputs before writing to product/order/blog domains.
 
-Практический security-дизайн для RusTok я рекомендую такой.
+I recommend the following practical security design for RusTok.
 
-| Контроль | Как лучше сделать в RusTok |
+| Control | Best Approach for RusTok |
 |---|---|
-| Secrets | Перевести `api_key_secret` в `secret_ref` + KMS/Vault или хотя бы encrypt-at-rest с envelope keys; UI должен видеть только `hasSecret`. Текущее хранение как text-column допустимо лишь как промежуточный этап. fileciteturn42file0L1-L3 |
-| PII minimization | Перед внешним provider-call формировать redacted prompt envelope: customer email/phone/address/notes по умолчанию не отправлять; отправлять только поля, которые реально нужны для задачи. |
-| Persisted traces | В `AiToolTraces`, `AiChatMessages`, `AiApprovalRequests` хранить redacted payload и отдельно debug-only sealed payload с коротким TTL — либо не хранить вовсе. fileciteturn42file0L1-L3 |
-| Approval gates | Всё, что меняет состояние заказа, публикует контент, выполняет Alloy script или обращается к удалённым MCP tools, должно идти через approval policy и correlation ID. fileciteturn42file0L1-L3 fileciteturn41file0L1-L3 |
-| Output handling | Любой model JSON проходит schema validation + domain validation + permission check перед `CatalogService`/`OrderService`/`PostService`. citeturn12view2turn15view3 |
-| MCP security | No token passthrough, exact redirect URI, SSRF-safe metadata discovery, HTTPS-only for production OAuth URLs. citeturn14view0turn6view1 |
+| Secrets | Migrate `api_key_secret` to `secret_ref` + KMS/Vault or at least encrypt-at-rest with envelope keys; UI should only see `hasSecret`. Current storage as text-column is acceptable only as an intermediate stage. |
+| PII minimization | Before external provider calls, form a redacted prompt envelope: customer email/phone/address/notes are not sent by default; only send fields actually needed for the task. |
+| Persisted traces | In `AiToolTraces`, `AiChatMessages`, `AiApprovalRequests` store a redacted payload and separately a debug-only sealed payload with short TTL — or do not store at all. |
+| Approval gates | Everything that changes order state, publishes content, executes an Alloy script or accesses remote MCP tools must go through approval policy and correlation ID. |
+| Output handling | Any model JSON passes schema validation + domain validation + permission check before `CatalogService`/`OrderService`/`PostService`. |
+| MCP security | No token passthrough, exact redirect URI, SSRF-safe metadata discovery, HTTPS-only for production OAuth URLs. |
 
-Если упростить до одного принципа, он будет таким: **RBAC отвечает на вопрос “кто вообще может инициировать сценарий”, approval policy — “что можно выполнить автоматически”, а data policy — “какие поля реально можно передать модели и сохранить обратно”**. В RusTok эти три слоя уже можно связать без архитектурного рефакторинга, потому что permission vocabulary, approvals и persisted traces уже существуют. fileciteturn39file0L1-L3 fileciteturn42file0L1-L3
+If simplified to one principle, it would be: **RBAC answers "who can generally initiate the scenario", approval policy answers "what can be executed automatically", and data policy answers "which fields can actually be sent to the model and stored back"**. In RusTok, these three layers can already be connected without architectural refactoring, because the permission vocabulary, approvals and persisted traces already exist.
 
-## Сценарии применения и интеграция в код RusTok
+## Application Scenarios and Integration into RusTok Code
 
-### Генерация описаний и локализация
+### Description Generation and Localization
 
-Этот сценарий уже частично реализован в `product_copy`: direct handler читает product через `CatalogService`, выбирает source translation, вызывает модель, формирует локализованный target translation и записывает его обратно через `update_product`. Для RusTok это означает, что генерация описаний товаров — не гипотетический use case, а уже существующий production path, который нужно расширить, а не изобретать. Наиболее полезные дополнения здесь — draft/publish split, auto-SEO variants, category-aware tone policies и confidence-driven approval. fileciteturn47file0L1-L3 fileciteturn48file0L1-L3 fileciteturn55file0L1-L3
+This scenario is already partially implemented in `product_copy`: the direct handler reads a product through `CatalogService`, selects a source translation, calls the model, forms a localized target translation and writes it back through `update_product`. For RusTok, this means that product description generation is not a hypothetical use case but an already existing production path that needs to be extended, not invented. The most useful additions here are: draft/publish split, auto-SEO variants, category-aware tone policies and confidence-driven approval.
 
-### Модерация контента
+### Content Moderation
 
-Отдельного moderation handler в текущем AI-регистре нет, но для него уже есть все основные опоры: permission vocabulary знает `Moderate`-действия, форумные moderation permissions уже определены, а AI-approval и tool-trace контур уже существует. Поэтому `content_moderation` стоит делать как новый direct vertical с **строго структурированным** JSON-выходом: `decision`, `labels`, `severity`, `explanation`, `requires_human`, `recommended_action`. Авто-блокировка допустима только для narrow high-confidence policy classes; все спорные кейсы — через `AiApprovalRequests`. fileciteturn37file0L1-L3 fileciteturn39file0L1-L3 fileciteturn42file0L1-L3
+There is no separate moderation handler in the current AI registry, but all the basic supports already exist for it: the permission vocabulary knows `Moderate` actions, forum moderation permissions are already defined, and the AI approval and tool-trace circuit already exists. Therefore, `content_moderation` should be implemented as a new direct vertical with a **strictly structured** JSON output: `decision`, `labels`, `severity`, `explanation`, `requires_human`, `recommended_action`. Auto-blocking is allowed only for narrow high-confidence policy classes; all borderline cases go through `AiApprovalRequests`.
 
-### Автозаполнение атрибутов товаров
+### Product Attribute Autofill
 
-Этот сценарий, на мой взгляд, — следующий по приоритету после уже существующего `product_copy`. Модуль `rustok-product` отвечает за translations, options, variants и locale-aware custom-field flows через shared `flex` attached localized storage. В Next admin product form при этом сейчас есть только image/name/category/price/description, без AI-assisted autofill surface. Следовательно, самый короткий путь — добавить новый direct handler `product_attributes` и кнопку/панель `AI Fill` в product form, которая после загрузки изображения и выбора категории вызывает мультимодальный или text+tool pipeline и возвращает строго валидируемый JSON по схеме: `brand`, `material`, `color`, `size`, `dimensions`, `compatibility`, `care_instructions`, `hazmat`, `flex_attributes[]`. Именно этот сценарий лучше всего подходит под Gemini или другой multimodal-capable профиль. fileciteturn55file0L1-L3 fileciteturn53file0L1-L3 fileciteturn32file0L1-L3 citeturn13view0turn13view3
+This scenario is, in my opinion, the next priority after the already existing `product_copy`. The `rustok-product` module handles translations, options, variants and locale-aware custom-field flows through shared `flex` attached localized storage. The Next admin product form currently has only image/name/category/price/description, without AI-assisted autofill surface. Therefore, the shortest path is to add a new direct handler `product_attributes` and an `AI Fill` button/panel in the product form, which, after image upload and category selection, calls a multimodal or text+tool pipeline and returns a strictly validated JSON per schema: `brand`, `material`, `color`, `size`, `dimensions`, `compatibility`, `care_instructions`, `hazmat`, `flex_attributes[]`. This scenario is best suited for Gemini or another multimodal-capable profile.
 
-### Аналитика заказов
+### Order Analytics
 
-`rustok-order` уже владеет order snapshots, line items, status transitions и admin UI, а order admin package уже использует GraphQL queries для списков/деталей заказов. Это создаёт хороший фундамент для AI-аналитики второго порядка: выявление причин отмен, summarization возвратов, поиск повторяющихся инцидентов доставки, weekly executive summaries, risk flags по carrier/tracking/payment patterns. Критично, чтобы AI здесь не становился источником истины; он должен работать поверх уже существующих order snapshots и выдавать summaries/insights, а не «новые факты». fileciteturn54file0L1-L3 fileciteturn58file0L1-L3
+`rustok-order` already owns order snapshots, line items, status transitions and admin UI, and the order admin package already uses GraphQL queries for order lists/details. This creates a good foundation for second-order AI analytics: identifying cancellation reasons, summarizing returns, finding recurring delivery incidents, weekly executive summaries, risk flags by carrier/tracking/payment patterns. It is critical that AI here does not become the source of truth; it should work on top of existing order snapshots and produce summaries/insights, not "new facts."
 
-### Автоматизация обработки заказов
+### Order Processing Automation
 
-Для order ops в репозитории уже есть явные GraphQL lifecycle operations: `markOrderPaid`, `shipOrder`, `deliverOrder`, `cancelOrder`. Это делает сценарий AI-автоматизации практичным, но с важной оговоркой: на первом этапе AI должен **предлагать и заполнять**, а не молча исполнять. Например, AI может по входящему событию сформировать «следующее рекомендуемое действие», предзаполнить tracking/carrier/reason, собрать сводку аномалий и передать её оператору. Полный auto-execution имеет смысл только для узких whitelisted политик и только после approval или явного разрешения через tool profile/MCP policy. fileciteturn58file0L1-L3 fileciteturn41file0L1-L3 fileciteturn42file0L1-L3
+For order ops, the repository already has explicit GraphQL lifecycle operations: `markOrderPaid`, `shipOrder`, `deliverOrder`, `cancelOrder`. This makes the AI automation scenario practical, but with an important caveat: in the first phase, AI should **suggest and prefill**, not silently execute. For example, AI can, based on an incoming event, form a "next recommended action", prefill tracking/carrier/reason, compile an anomaly summary and pass it to the operator. Full auto-execution makes sense only for narrow whitelisted policies and only after approval or explicit permission through a tool profile/MCP policy.
 
-Ниже — рекомендуемая карта изменений по коду RusTok.
+Below is the recommended change map across RusTok code.
 
-| Модуль | Что менять / добавлять | Зачем |
+| Module | What to Change/Add | Why |
 |---|---|---|
-| `crates/rustok-ai/src/direct.rs` | Добавить `ContentModerationHandler`, `ProductAttributesHandler`, `OrderAnalyticsHandler`, `OrderOpsAssistantHandler`. fileciteturn44file0L1-L3 | Это самый естественный extension point. |
-| `crates/rustok-ai/src/model.rs` | Добавить новые task input structs; возможно, расширить `DirectExecutionTarget`, который сейчас знает только `Alloy`, `Media`, `Commerce`, `Blog`. fileciteturn33file0L1-L3 | Чтобы новые вертикали были типизированы. |
-| `crates/rustok-ai/src/graphql/*` | Расширить owner-owned query/mutation/types под новые task jobs, quality stats, spend stats и domain-specific approvals. fileciteturn49file0L1-L3 fileciteturn50file0L1-L3 fileciteturn51file0L1-L3 | Для headless и Next/Leptos UI. |
-| `apps/next-admin/packages/rustok-ai` | Добавить разделы task health, spend, fallback history и domain job launchers. fileciteturn57file0L1-L3 | Чтобы оператор видел не только sessions/runs, но и бизнес-сценарии. |
-| `apps/next-admin/.../product-form.tsx` | Добавить `AI Fill` и `Apply Suggested Attributes` с preview diff. fileciteturn53file0L1-L3 | Это точка входа для attribute autofill. |
-| `crates/rustok-order/admin/src/api.rs` и order service surfaces | Добавить helper flows для AI suggestions, но сохранить финальное выполнение через существующие lifecycle mutations. fileciteturn58file0L1-L3 | Не ломает текущий order contract. |
-| `crates/rustok-core/src/permissions.rs` | При необходимости добавить более узкие permissions вроде `ai:tasks:moderation` или `ai:tasks:orders`, если текущих text/image/multimodal групп не хватит. fileciteturn39file0L1-L3 | Для более прозрачного governance. |
+| `crates/rustok-ai/src/direct.rs` | Add `ContentModerationHandler`, `ProductAttributesHandler`, `OrderAnalyticsHandler`, `OrderOpsAssistantHandler`. | This is the most natural extension point. |
+| `crates/rustok-ai/src/model.rs` | Add new task input structs; possibly extend `DirectExecutionTarget`, which currently only knows `Alloy`, `Media`, `Commerce`, `Blog`. | So new verticals are typed. |
+| `crates/rustok-ai/src/graphql/*` | Extend owner-owned query/mutation/types for new task jobs, quality stats, spend stats and domain-specific approvals. | For headless and Next/Leptos UI. |
+| `apps/next-admin/packages/rustok-ai` | Add sections for task health, spend, fallback history and domain job launchers. | So operators see not only sessions/runs but also business scenarios. |
+| `apps/next-admin/.../product-form.tsx` | Add `AI Fill` and `Apply Suggested Attributes` with preview diff. | This is the entry point for attribute autofill. |
+| `crates/rustok-order/admin/src/api.rs` and order service surfaces | Add helper flows for AI suggestions, but keep final execution through existing lifecycle mutations. | Does not break the current order contract. |
+| `crates/rustok-core/src/permissions.rs` | If needed, add narrower permissions like `ai:tasks:moderation` or `ai:tasks:orders`, if current text/image/multimodal groups are insufficient. | For more transparent governance. |
 
-В качестве совместимого с текущей моделью RusTok контракта я рекомендую такой формат запуска task job. Он не копирует точный публичный API из репозитория, а **следует его текущим сущностям** `TaskProfile`, `ExecutionMode`, `ProviderProfile`, `tool_profile_id` и locale-aware contract. fileciteturn32file0L1-L3 fileciteturn33file0L1-L3
+As a contract compatible with the current RusTok model, I recommend the following task job launch format. It does not copy the exact public API from the repository but **follows its current entities** `TaskProfile`, `ExecutionMode`, `ProviderProfile`, `tool_profile_id` and locale-aware contract.
 
 ```json
 {
@@ -185,14 +186,14 @@ RBAC в RusTok уже продуман как typed permission vocabulary. В `r
     "product_id": "UUID",
     "category_slug": "electronics",
     "image_urls": ["sandbox-or-cdn-url"],
-    "source_title": "Наушники беспроводные",
-    "source_description": "не указано",
-    "copy_instructions": "Сформируй только подтверждаемые атрибуты"
+    "source_title": "Wireless headphones",
+    "source_description": "not specified",
+    "copy_instructions": "Generate only verifiable attributes"
   }
 }
 ```
 
-Именно такую задачу затем можно пустить по целевому потоку:
+This task can then be routed through the target flow:
 
 ```mermaid
 flowchart LR
@@ -208,34 +209,34 @@ flowchart LR
     DOMAIN --> TRACE[Tool trace + metrics + recent runs]
 ```
 
-## Тестирование, валидация и дорожная карта
+## Testing, Validation and Roadmap
 
-Сильная сторона RusTok состоит в том, что базовый CI уже довольно жёсткий: formatting, clippy, cargo check, MSRV, cargo audit, cargo deny, typos, docs, udeps, coverage, SBOM, nextest, builds для server/storefront и для Next apps. Поэтому AI-модуль не надо заводить в отдельную «ручную» дисциплину качества; наоборот, AI-изменения должны встраиваться в существующий pipeline и расширять его. fileciteturn70file0L1-L3
+A strong point of RusTok is that the base CI is already quite strict: formatting, clippy, cargo check, MSRV, cargo audit, cargo deny, typos, docs, udeps, coverage, SBOM, nextest, builds for server/storefront and for Next apps. Therefore, the AI module does not need to be introduced to a separate "manual" quality discipline; on the contrary, AI changes should be integrated into the existing pipeline and extend it.
 
-Для AI-функций я рекомендую четыре класса валидации. Первый — **schema correctness**: доля валидных JSON outputs, доля strict-schema passes, число domain-validation ошибок на 1 000 запросов. Второй — **business quality**: accept rate, publish-without-edit rate, average edit distance, attribute accuracy, moderation precision/recall, operator suggestion acceptance. Третий — **safety**: prompt injection regression suite, PII leakage tests, tool misuse tests, approval bypass tests, SSRF tests для remote MCP-флоу. Четвёртый — **операционный класс**: p95/p99 latency, fallback rate, provider error rate, token cost per completed task, queue delay, cancellation rate и approval turnaround time. Эти метрики естественно сочетаются с already existing `ai_runtime_metrics`, recent runs и `aiSessionEvents`. fileciteturn34file0L1-L3 fileciteturn51file0L1-L3 fileciteturn52file0L1-L3
+For AI functions, I recommend four validation classes. The first is **schema correctness**: share of valid JSON outputs, share of strict-schema passes, number of domain-validation errors per 1,000 requests. The second is **business quality**: accept rate, publish-without-edit rate, average edit distance, attribute accuracy, moderation precision/recall, operator suggestion acceptance. The third is **safety**: prompt injection regression suite, PII leakage tests, tool misuse tests, approval bypass tests, SSRF tests for remote MCP flow. The fourth is **operational class**: p95/p99 latency, fallback rate, provider error rate, token cost per completed task, queue delay, cancellation rate and approval turnaround time. These metrics naturally combine with the already existing `ai_runtime_metrics`, recent runs and `aiSessionEvents`.
 
-A/B-подход здесь обязателен. Для генерации описаний стоит сравнивать «человек без AI» против «AI draft + human edit» по времени, edit distance и publish rate. Для product attributes — «ручной ввод» против «AI prefill + manual confirmation» по скорости и точности. Для order ops — «AI recommendation visible / hidden» по operator throughput и error rate. Для moderation — offline benchmark и staged shadow-mode перед включением enforce-решений. Поскольку OWASP прямо выделяет prompt injection, sensitive information disclosure, excessive agency и improper output handling как базовые риски GenAI-приложений, safety validation не должна быть факультативной частью rollout. citeturn15view3turn15view4turn15view5
+An A/B approach is mandatory here. For description generation, it is worth comparing "human without AI" vs "AI draft + human edit" on time, edit distance and publish rate. For product attributes — "manual input" vs "AI prefill + manual confirmation" on speed and accuracy. For order ops — "AI recommendation visible / hidden" on operator throughput and error rate. For moderation — offline benchmark and staged shadow-mode before enabling enforce decisions. Since OWASP explicitly highlights prompt injection, sensitive information disclosure, excessive agency and improper output handling as basic risks for GenAI applications, safety validation should not be an optional part of rollout.
 
-Ниже — реалистичная дорожная карта внедрения, если идти от текущего состояния репозитория.
+Below is a realistic implementation roadmap, starting from the current repository state.
 
-| Этап | Содержание | Оценка усилий | Основные риски |
+| Stage | Content | Effort Estimate | Main Risks |
 |---|---|---|---|
-| Foundation hardening | Secret storage, payload redaction, provider cost ledger, health checks, retry/fallback policy, eval harness. | 2–4 недели | Недооценка объёма доработок вокруг persisted traces и budgets. |
-| Catalog AI | Довести `product_copy`; добавить `product_attributes`, preview diff и schema validation в product form. | 3–5 недель | Атрибутная точность и image-quality variability. |
-| Moderation | Добавить `content_moderation`, policy matrix, appeal queue, shadow mode. | 3–4 недели | False positives / policy drift. |
-| Order analytics | Batch summaries, anomaly clusters, operator dashboards, spend/latency dashboards. | 2–4 недели | Смещение «аналитики» в принятие решений без достаточной проверки. |
-| Order operations assistant | Suggest-next-action, prefill lifecycle inputs, approval-gated automation. | 4–6 недель | Excessive agency и риск неправильных state transitions. |
-| Advanced routing | Cost- and health-aware routing, provider fallback tree, batch segmentation, provider scorecards. | 2–4 недели | Complexity creep и трудность объяснимости выбора модели. |
+| Foundation hardening | Secret storage, payload redaction, provider cost ledger, health checks, retry/fallback policy, eval harness. | 2–4 weeks | Underestimating the volume of work around persisted traces and budgets. |
+| Catalog AI | Harden `product_copy`; add `product_attributes`, preview diff and schema validation in product form. | 3–5 weeks | Attribute accuracy and image-quality variability. |
+| Moderation | Add `content_moderation`, policy matrix, appeal queue, shadow mode. | 3–4 weeks | False positives / policy drift. |
+| Order analytics | Batch summaries, anomaly clusters, operator dashboards, spend/latency dashboards. | 2–4 weeks | Shifting "analytics" into decision-making without sufficient verification. |
+| Order operations assistant | Suggest-next-action, prefill lifecycle inputs, approval-gated automation. | 4–6 weeks | Excessive agency and risk of incorrect state transitions. |
+| Advanced routing | Cost- and health-aware routing, provider fallback tree, batch segmentation, provider scorecards. | 2–4 weeks | Complexity creep and difficulty of model selection explainability. |
 
-Диаграмма ниже — рекомендуемый timeline с зависимостями.
+The diagram below shows the recommended timeline with dependencies.
 
 ```mermaid
 gantt
-    title Дорожная карта вывода AI в продакшн для RusTok
+    title AI Production Rollout Roadmap for RusTok
     dateFormat  YYYY-MM-DD
     axisFormat  %d.%m
 
-    section Основа
+    section Foundation
     Hardening security, secrets, cost ledger     :a1, 2026-05-26, 21d
     Eval harness and provider routing base       :a2, after a1, 14d
 
@@ -256,152 +257,152 @@ gantt
     Controlled production rollout                :e2, after c2, 14d
 ```
 
-Итоговая рекомендация по приоритетам такая. Если цель — получить максимальный бизнес-эффект при минимальном техриске, то порядок должен быть следующим: **сначала hardening control plane и мульти-провайдерной политики**, затем **product copy + product attributes**, потом **moderation**, и только после этого — **order automation**. Order analytics можно запускать раньше automation, потому что у неё ниже риск excessive agency и она опирается на уже существующие order snapshots. fileciteturn35file0L1-L3 fileciteturn54file0L1-L3 citeturn15view3turn15view5
+The final recommendation on priorities is as follows. If the goal is to achieve maximum business impact with minimal technical risk, the order should be: **first harden the control plane and multi-provider policy**, then **product copy + product attributes**, then **moderation**, and only after that — **order automation**. Order analytics can be started before automation because it has a lower risk of excessive agency and relies on already existing order snapshots.
 
-## Открытые вопросы и ограничения
+## Open Questions and Limitations
 
-Входные параметры, без которых нельзя окончательно зафиксировать infra- и rollout-профиль, в запросе **не указаны**: целевой cloud/region, обязательная data residency, допустимость self-hosted/open-weight моделей, нагрузка по RPM/TPM, месячный бюджет на inference, целевой SLA/latency budget, перечень ролей и уровень допустимой авто-обработки заказов, а также формальный compliance-режим для персональных данных. Поэтому архитектурные решения выше являются **наиболее практичной и низкорисковой траекторией** из текущего состояния RusTok, но не заменяют финальный solution design с реальными SLO и compliance-constraints.
+Input parameters without which the infra and rollout profile cannot be definitively fixed are **not specified** in the request: target cloud/region, mandatory data residency, acceptability of self-hosted/open-weight models, load in RPM/TPM, monthly inference budget, target SLA/latency budget, list of roles and level of acceptable order auto-processing, as well as formal compliance mode for personal data. Therefore, the architectural decisions above represent the **most practical and low-risk trajectory** from the current RusTok state but do not replace a final solution design with real SLOs and compliance constraints.
 
-Ограничение исследования тоже важно зафиксировать: GitHub-анализ был намеренно ограничен **только** репозиторием `RusTokRs/RusTok`, как вы и просили; другие GitHub-репозитории не использовались. Внешний контекст добирался лишь из официальной документации MCP, OpenAI, Anthropic, Gemini, а также OpenTelemetry, Prometheus и OWASP. citeturn6view0turn6view1turn14view0turn12view0turn12view2turn16view0turn17view1turn17view2turn13view0turn13view2turn15view0turn15view2turn15view3
+The research limitation is also important to note: the GitHub analysis was intentionally limited **only** to the `RusTokRs/RusTok` repository, as requested; other GitHub repositories were not used. External context was gathered only from official documentation of MCP, OpenAI, Anthropic, Gemini, as well as OpenTelemetry, Prometheus and OWASP.
 
-Если свести весь отчёт к одному практическому решению, то оно звучит так: **в RusTok уже есть правильный AI-каркас; лучший путь — не строить новый AI-модуль, а довести существующий `rustok-ai` до production-grade governance и добавить новые direct verticals для moderation, product attributes и order flows, оставив MCP как controlled boundary, а не как обязательный путь для всего подряд**. fileciteturn35file0L1-L3 fileciteturn31file0L1-L3 fileciteturn44file0L1-L3
+If the entire report is reduced to one practical conclusion, it sounds like this: **RusTok already has the right AI framework; the best path is not to build a new AI module but to mature the existing `rustok-ai` to production-grade governance and add new direct verticals for moderation, product attributes and order flows, leaving MCP as a controlled boundary rather than a mandatory path for everything**.
 
-## План реализации (проверенный по исследованию)
+## Implementation Plan (verified against research)
 
-Источник задач: [`docs/research/AI-research.md`](./AI-research.md).
+Source of tasks: [`docs/research/AI-research.md`](./AI-research.md).
 
-Ниже — последовательный implementation plan на базе пунктов исследования (с приоритизацией «минимальный риск → максимальный эффект»).
+Below is a sequential implementation plan based on the research findings (prioritized as "minimum risk → maximum effect").
 
-### Phase 0 — Alignment и scope freeze (1 неделя)
+### Phase 0 — Alignment and scope freeze (1 week)
 
-- Подтвердить целевые ограничения: cloud/region, data residency, SLA (p95/p99), бюджет inference, policy по auto-actions.
-- Зафиксировать owner-матрицу по AI verticals: catalog, moderation, order analytics, order ops.
-- Согласовать definition of done по safety/quality/latency/cost.
+- Confirm target constraints: cloud/region, data residency, SLA (p95/p99), inference budget, auto-action policy.
+- Fix owner matrix for AI verticals: catalog, moderation, order analytics, order ops.
+- Agree on definition of done for safety/quality/latency/cost.
 
 **Deliverables**
-- RFC/ADR с финальными ограничениями rollout.
-- Список tenant’ов для pilot и deny-list сценариев.
+- RFC/ADR with final rollout constraints.
+- List of tenants for pilot and deny-list scenarios.
 
-### Phase 1 — Foundation hardening control-plane (2–4 недели)
+### Phase 1 — Foundation hardening control-plane (2–4 weeks)
 
 1. **Secrets & provider governance**
-   - Вынести ключи провайдеров в managed secrets.
-   - Ввести environment separation (dev/stage/prod) и scoped provider profiles.
+   - Move provider keys to managed secrets.
+   - Introduce environment separation (dev/stage/prod) and scoped provider profiles.
 2. **Data policy & redaction**
-   - Добавить redaction для traces/messages/approvals payload.
-   - Закрыть хранение sensitive payload: short TTL или отключаемое sealed-хранилище для debug.
+   - Add redaction for traces/messages/approvals payload.
+   - Close sensitive payload storage: short TTL or disableable sealed storage for debug.
 3. **Approval gates**
-   - Все state-changing действия (заказы/публикации/удалённые инструменты) перевести на approval policy + correlation id.
+   - All state-changing actions (orders/publications/remote tools) migrate to approval policy + correlation id.
 4. **Routing reliability**
-   - Добавить retry/fallback policy (по health/cost/capability), circuit-breaker и provider scorecard.
+   - Add retry/fallback policy (by health/cost/capability), circuit-breaker and provider scorecard.
 5. **Observability**
-   - Метрики: valid JSON rate, domain-validation errors, p95/p99, fallback rate, token cost/task, approval turnaround.
+   - Metrics: valid JSON rate, domain-validation errors, p95/p99, fallback rate, token cost/task, approval turnaround.
 
 **Deliverables**
 - Production-ready AI control-plane baseline.
-- Dashboard `ai_runtime_metrics` + alerting правила.
+- Dashboard `ai_runtime_metrics` + alerting rules.
 
-### Phase 2 — Catalog AI (product_copy + product_attributes) (3–5 недель)
+### Phase 2 — Catalog AI (product_copy + product_attributes) (3–5 weeks)
 
-1. **Hardening существующего `product_copy`**
+1. **Hardening existing `product_copy`**
    - Draft/publish split.
-   - Confidence score + human approval для low-confidence output.
-2. **Новый vertical `product_attributes`**
+   - Confidence score + human approval for low-confidence output.
+2. **New vertical `product_attributes`**
    - Strict JSON schema: brand/material/color/size/dimensions/compatibility/care/hazmat/flex_attributes.
-   - Domain validation перед записью в catalog.
+   - Domain validation before writing to catalog.
 3. **Admin UX**
-   - В product form добавить `AI Fill` + preview diff + `Apply Suggested Attributes`.
-   - Отображать source-of-truth и причины отклонения валидации.
+   - Add `AI Fill` + preview diff + `Apply Suggested Attributes` in product form.
+   - Display source-of-truth and validation rejection reasons.
 
 **Deliverables**
 - End-to-end path: product form → AI task → validated preview → apply.
 - A/B baseline: manual vs AI-assisted.
 
-### Phase 3 — Content moderation vertical (3–4 недели)
+### Phase 3 — Content moderation vertical (3–4 weeks)
 
-1. Добавить `content_moderation` direct handler.
-2. Выход только в структурированном JSON: `decision`, `labels`, `severity`, `explanation`, `requires_human`, `recommended_action`.
-3. Включить shadow-mode, затем human-in-the-loop queue.
-4. Авто-блокировку разрешать только для whitelisted high-confidence policy классов.
+1. Add `content_moderation` direct handler.
+2. Output only in structured JSON: `decision`, `labels`, `severity`, `explanation`, `requires_human`, `recommended_action`.
+3. Enable shadow-mode, then human-in-the-loop queue.
+4. Auto-blocking allowed only for whitelisted high-confidence policy classes.
 
 **Deliverables**
 - Moderation policy matrix.
-- Offline benchmark + regression suite по false positives/false negatives.
+- Offline benchmark + regression suite for false positives/false negatives.
 
-### Phase 4 — Order analytics (2–4 недели)
+### Phase 4 — Order analytics (2–4 weeks)
 
-1. Summaries по отменам/возвратам/доставке/рискам.
-2. Incident clustering по carrier/tracking/payment patterns.
-3. Operator dashboards (insights-only, без auto execution).
+1. Summaries for cancellations/returns/delivery/risks.
+2. Incident clustering by carrier/tracking/payment patterns.
+3. Operator dashboards (insights-only, without auto execution).
 
 **Deliverables**
 - Weekly executive summaries.
 - KPI: insight adoption rate, review-time reduction.
 
-### Phase 5 — Order operations assistant (4–6 недель)
+### Phase 5 — Order operations assistant (4–6 weeks)
 
-1. Suggest-next-action для lifecycle операций (`paid/ship/deliver/cancel`).
-2. Prefill inputs (carrier/tracking/reason) с валидацией.
-3. Approval-gated automation для узкого whitelist policy.
-4. Явный запрет silent execution вне policy.
+1. Suggest-next-action for lifecycle operations (`paid/ship/deliver/cancel`).
+2. Prefill inputs (carrier/tracking/reason) with validation.
+3. Approval-gated automation for narrow whitelist policy.
+4. Explicit prohibition of silent execution outside policy.
 
 **Deliverables**
-- Operator co-pilot в order admin flow.
-- Error budget + rollback playbook для automated transitions.
+- Operator co-pilot in order admin flow.
+- Error budget + rollback playbook for automated transitions.
 
-### Phase 6 — Controlled rollout и масштабирование (2–4 недели)
+### Phase 6 — Controlled rollout and scaling (2–4 weeks)
 
 1. Pilot tenants → controlled production rollout.
 2. Cost-aware routing + dynamic provider fallback tree.
-3. Регулярный evaluation cycle (качество, безопасность, стоимость, latency).
+3. Regular evaluation cycle (quality, safety, cost, latency).
 
 **Deliverables**
-- Go/No-Go checklist для каждого tenant.
-- Quarterly recalibration модели/политик/порогов.
+- Go/No-Go checklist for each tenant.
+- Quarterly recalibration of models/policies/thresholds.
 
-## Фактическая сверка по коду перед реализацией
+## Actual Code Reconciliation Before Implementation
 
-Проверка выполнена по текущему коду репозитория (а не только по исследовательским тезисам).
+Verification performed against the current repository code (not only research theses).
 
-### Что уже есть в коде (confirmed)
+### What already exists in code (confirmed)
 
-- `rustok-ai` уже имеет direct handlers для `alloy_code`, `image_asset`, `product_copy`, `blog_draft`.
-- `DirectExecutionTarget` сейчас ограничен категориями `Alloy`, `Media`, `Commerce`, `Blog`.
-- В GraphQL уже есть `ai_runtime_metrics`, recent runs/events и доступ к tool traces.
-- В order admin уже есть lifecycle operations `markOrderPaid`, `shipOrder`, `deliverOrder`, `cancelOrder`.
-- В persisted control plane уже есть таблицы для `AiApprovalRequests` и `AiToolTraces`.
+- `rustok-ai` already has direct handlers for `alloy_code`, `image_asset`, `product_copy`, `blog_draft`.
+- `DirectExecutionTarget` is currently limited to `Alloy`, `Media`, `Commerce`, `Blog` categories.
+- GraphQL already has `ai_runtime_metrics`, recent runs/events and access to tool traces.
+- Order admin already has lifecycle operations `markOrderPaid`, `shipOrder`, `deliverOrder`, `cancelOrder`.
+- Persisted control plane already has tables for `AiApprovalRequests` and `AiToolTraces`.
 
-### Чего ещё нет (gaps to implement)
+### What is still missing (gaps to implement)
 
-- Direct vertical handlers `content_moderation`, `product_attributes`, `order_analytics`, `order_ops_assistant` уже добавлены в `rustok-ai`; следующий шаг — довести production-hardening (redaction/approvals/telemetry DoD) для этих вертикалей.
-- В Next admin product form нет `AI Fill`/`Apply Suggested Attributes` и preview-diff для атрибутов.
-- Нет domain-specific launchers/health panels для новых vertical задач в `apps/next-admin/packages/rustok-ai`.
-- Нет formalized rollout-metrics как отдельного acceptance-gate для новых verticals (нужно закрепить как DoD).
+- Direct vertical handlers `content_moderation`, `product_attributes`, `order_analytics`, `order_ops_assistant` already added to `rustok-ai`; next step — complete production-hardening (redaction/approvals/telemetry DoD) for these verticals.
+- Next admin product form does not have `AI Fill`/`Apply Suggested Attributes` and preview-diff for attributes.
+- No domain-specific launchers/health panels for new vertical tasks in `apps/next-admin/packages/rustok-ai`.
+- No formalized rollout-metrics as a separate acceptance-gate for new verticals (needs to be captured as DoD).
 
-### Корректировка приоритета реализации по факту кода
+### Implementation Priority Correction Based on Current Code
 
-1. **Сначала foundation hardening + observability gates** (переиспользуем существующий control-plane).
-2. **Далее `product_attributes` + product form UX**, так как `product_copy` и catalog-path уже в прод-контуре.
-3. **Потом moderation (shadow → HITL → selective enforce)**.
-4. **Затем order analytics (insights-only)**.
-5. **И только после этого order ops assistant с approval-gated automation**.
+1. **First, foundation hardening + observability gates** (reuse existing control-plane).
+2. **Then `product_attributes` + product form UX**, since `product_copy` and catalog-path are already in the production circuit.
+3. **Then moderation (shadow → HITL → selective enforce)**.
+4. **Then order analytics (insights-only)**.
+5. **And only after that, order ops assistant with approval-gated automation**.
 
-## Проверочный чек-лист по пунктам исследования
+## Verification Checklist Against Research Items
 
-- [ ] Секреты и провайдеры изолированы по окружениям.
-- [ ] PII/sensitive payload редактируется до сохранения.
-- [ ] State-changing AI действия проходят approval gate.
-- [ ] JSON-output проходит schema + domain + permission validation.
-- [ ] MCP/remote tools работают без token passthrough и с SSRF-safe политиками.
-- [ ] `product_copy` переведён в управляемый draft/publish pipeline.
-- [~] Реализован `product_attributes` на backend; UI preview/apply в product form остаётся в работе.
-- [~] Реализован `content_moderation` backend-handler; shadow rollout/policy matrix ещё не завершены.
-- [~] Добавлен `order_analytics` direct handler; dashboards и KPI-контур ещё не доведены.
-- [~] Добавлен `order_ops_assistant` handler; whitelist automation и rollback playbook ещё в работе.
-- [ ] Собираются метрики качества/безопасности/стоимости/latency.
-- [ ] Проведены A/B и regression тесты перед полным rollout.
+- [ ] Secrets and providers isolated by environments.
+- [ ] PII/sensitive payload redacted before storage.
+- [ ] State-changing AI actions go through approval gate.
+- [ ] JSON-output passes schema + domain + permission validation.
+- [ ] MCP/remote tools work without token passthrough and with SSRF-safe policies.
+- [ ] `product_copy` migrated to a managed draft/publish pipeline.
+- [~] `product_attributes` implemented on backend; UI preview/apply in product form still in progress.
+- [~] `content_moderation` backend-handler implemented; shadow rollout/policy matrix not yet complete.
+- [~] `order_analytics` direct handler added; dashboards and KPI circuit not yet completed.
+- [~] `order_ops_assistant` handler added; whitelist automation and rollback playbook still in progress.
+- [ ] Quality/safety/cost/latency metrics being collected.
+- [ ] A/B and regression tests conducted before full rollout.
 
-## Быстрые ссылки для исполнения
+## Quick Links for Execution
 
-- Основной документ требований и контекста: [`docs/research/AI-research.md`](./AI-research.md)
-- Рекомендуемый старт реализации: разделы про `rustok-ai` direct handlers, approvals, validations, observability в этом же документе.
+- Main requirements and context document: [`docs/research/AI-research.md`](./AI-research.md)
+- Recommended implementation start: sections about `rustok-ai` direct handlers, approvals, validations, observability in this same document.

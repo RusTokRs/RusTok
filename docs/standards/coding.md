@@ -6,40 +6,35 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Стандарты Качества Кода RusToK
+
+# RusToK Code Quality Standards
 
 ## Governance: language, naming, ownership-review
 
-Этот раздел фиксирует обязательный governance baseline для изменений кода и
-документации (DOC-10), чтобы снизить drift между runtime-контрактами и docs.
+This section defines the mandatory governance baseline for code and documentation changes (DOC-10) to reduce drift between runtime contracts and docs.
 
 - **Documentation language:**
   - all documentation is written in English;
   - `README.ru.md` is the only file allowed in Russian (localized translation of the main README);
   - one file = one language, mixed language within a single file is not allowed.
-- **Именование:**
-  - query-keys и URL state в module-owned admin UI должны использовать typed
-    `snake_case` ключи;
-  - новые имена модулей/crate-ов/документов должны совпадать с `modules.toml`
-    и `docs/modules/registry.md`.
-- **Ownership-review path (обязательно для cross-cutting правок):**
-  1. сначала обновить локальные docs компонента (`apps/*/docs` или
-     `crates/*/docs`);
-  2. затем синхронизировать центральные документы в `docs/`;
-  3. при изменении модульной карты — обновить `docs/modules/registry.md`;
-  4. получить review от owner затронутого модуля (или platform team для
-     cross-cutting изменений).
+- **Naming:**
+  - query-keys and URL state in module-owned admin UI must use typed `snake_case` keys;
+  - new module/crate/document names must match `modules.toml` and `docs/modules/registry.md`.
+- **Ownership-review path (mandatory for cross-cutting changes):**
+  1. first update the component's local docs (`apps/*/docs` or `crates/*/docs`);
+  2. then synchronize central documents in `docs/`;
+  3. when changing the module map — update `docs/modules/registry.md`;
+  4. get review from the affected module's owner (or platform team for cross-cutting changes).
 
-Нарушение этих правил считается дефектом качества документации/контрактов и
-должно блокировать merge до исправления.
+Violation of these rules is considered a documentation/contract quality defect and must block merge until fixed.
 
-## 1. Архитектурные Принципы
+## 1. Architectural Principles
 
-### 1.1 SOLID в Rust
+### 1.1 SOLID in Rust
 
 ```rust
 // S - Single Responsibility
-// ✅ Правильно: Один модуль = одна ответственность
+// ✅ Correct: One module = one responsibility
 pub mod order_service {
     pub async fn create_order() -> Result<Order> { }
     pub async fn cancel_order() -> Result<()> { }
@@ -51,7 +46,7 @@ pub mod order_repository {
 }
 
 // O - Open/Closed
-// ✅ Правильно: Расширяем через trait, не модифицируя
+// ✅ Correct: Extend via trait, not modification
 pub trait PricingStrategy {
     fn calculate_price(&self, product: &Product, quantity: u32) -> Decimal;
 }
@@ -64,17 +59,17 @@ impl PricingStrategy for StandardPricing { }
 impl PricingStrategy for VolumeDiscountPricing { }
 
 // L - Liskov Substitution
-// ✅ Правильно: Реализации взаимозаменяемы
+// ✅ Correct: Implementations are interchangeable
 pub trait CacheBackend: Send + Sync {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
     async fn set(&self, key: &str, value: Vec<u8>, ttl: Duration) -> Result<()>;
 }
 
-// InMemoryCacheBackend и RedisCacheBackend взаимозаменяемы
+// InMemoryCacheBackend and RedisCacheBackend are interchangeable
 fn configure_cache<B: CacheBackend>(backend: B) { }
 
 // I - Interface Segregation
-// ✅ Правильно: Мелкозернистые трейты
+// ✅ Correct: Fine-grained traits
 #[async_trait]
 pub trait Readable {
     async fn read(&self, id: Uuid) -> Result<Option<Entity>>;
@@ -90,36 +85,36 @@ pub trait Deletable {
     async fn delete(&self, id: Uuid) -> Result<()>;
 }
 
-// Repository может имплементировать только нужное
+// Repository can implement only what's needed
 #[async_trait]
 pub trait Repository: Readable + Writable { }
 
 // D - Dependency Inversion
-// ✅ Правильно: Зависимость от абстракций
+// ✅ Correct: Depend on abstractions
 pub struct OrderService {
     repository: Arc<dyn OrderRepository>, // trait object
     event_bus: Arc<dyn EventBus>,         // trait object
 }
 
-// ❌ Неправильно: Зависимость от конкретики
+// ❌ Incorrect: Depend on concretions
 pub struct BadOrderService {
-    repository: PgOrderRepository,  // конкретный тип
-    event_bus: KafkaEventBus,       // конкретный тип
+    repository: PgOrderRepository,  // concrete type
+    event_bus: KafkaEventBus,       // concrete type
 }
 ```
 
 ### 1.2 Type Safety First
 
 ```rust
-// ✅ Правильно: Newtype pattern для type safety
+// ✅ Correct: Newtype pattern for type safety
 pub struct TenantId(Uuid);
 pub struct UserId(Uuid);
 pub struct OrderId(Uuid);
 
-// Нельзя случайно передать UserId вместо TenantId
+// Cannot accidentally pass UserId instead of TenantId
 fn get_tenant(id: TenantId) -> Tenant { }
 
-// ✅ Правильно: Phantom types для состояний
+// ✅ Correct: Phantom types for states
 pub struct Order<S> {
     id: OrderId,
     state: S,
@@ -130,19 +125,19 @@ pub struct Pending;
 pub struct Confirmed;
 pub struct Shipped;
 
-// Только Pending можно подтвердить
+// Only Pending can be confirmed
 impl Order<Pending> {
     pub fn confirm(self) -> Order<Confirmed> { }
 }
 
-// ❌ Неправильно: Stringly-typed
-fn process_order(id: String, status: String) { }  // Легко перепутать
+// ❌ Incorrect: Stringly-typed
+fn process_order(id: String, status: String) { }  // Easy to mix up
 ```
 
 ### 1.3 Zero-Cost Abstractions
 
 ```rust
-// ✅ Правильно: Generic = zero-cost
+// ✅ Correct: Generic = zero-cost
 pub struct Repository<T> {
     _phantom: PhantomData<T>,
 }
@@ -151,28 +146,28 @@ impl<T: Entity> Repository<T> {
     pub async fn find(&self, id: T::Id) -> Result<Option<T>> { }
 }
 
-// Мономорфизация создаст оптимальный код для каждого типа
+// Monomorphization creates optimal code for each type
 
-// ✅ Правильно: Inline для горячих путей
+// ✅ Correct: Inline for hot paths
 #[inline(always)]
 pub fn calculate_hash(bytes: &[u8]) -> u64 {
     // ...
 }
 
-// ✅ Правильно: Const для compile-time вычислений
+// ✅ Correct: Const for compile-time computations
 pub const MAX_RETRY_ATTEMPTS: u32 = 3;
 pub const DEFAULT_TIMEOUT_MS: u64 = 5000;
 
-// ❌ Неправильно: Runtime вычисление того, что можно сделать на этапе компиляции
-pub fn get_max_retries() -> u32 { 3 }  // Лучше сделать const
+// ❌ Incorrect: Runtime computation of something that can be done at compile time
+pub fn get_max_retries() -> u32 { 3 }  // Better to make const
 ```
 
 ## 2. Error Handling
 
-### 2.1 Иерархия Ошибок
+### 2.1 Error Hierarchy
 
 ```rust
-// ✅ Правильно: Иерархия от общего к специфичному
+// ✅ Correct: Hierarchy from general to specific
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -202,7 +197,7 @@ pub enum DatabaseError {
     Constraint(String),
 }
 
-// ✅ Правильно: Контекст ошибки
+// ✅ Correct: Error context
 type Result<T> = std::result::Result<T, AppError>;
 
 pub trait Context<T> {
@@ -219,7 +214,7 @@ impl<T, E: Into<AppError>> Context<T> for std::result::Result<T, E> {
     }
 }
 
-// Использование
+// Usage
 let user = repository
     .find_by_id(id)
     .context("Failed to find user")?;
@@ -228,13 +223,13 @@ let user = repository
 ### 2.2 Recoverable vs Unrecoverable
 
 ```rust
-// ✅ Правильно: Panic только для программных ошибок
+// ✅ Correct: Panic only for programming errors
 pub fn parse_config(contents: &str) -> Config {
-    // Это баг в коде - должен быть Some
+    // This is a code bug - should always be Some
     let value = some_option.expect("config always has defaults");
 }
 
-// ✅ Правильно: Result для ожидаемых ошибок
+// ✅ Correct: Result for expected errors
 pub async fn fetch_user(id: Uuid) -> Result<User> {
     match repository.find(id).await {
         Some(user) => Ok(user),
@@ -242,7 +237,7 @@ pub async fn fetch_user(id: Uuid) -> Result<User> {
     }
 }
 
-// ✅ Правильно: Option для nullable значений
+// ✅ Correct: Option for nullable values
 pub fn find_admin(admins: &[User]) -> Option<&User> {
     admins.iter().find(|u| u.is_admin)
 }
@@ -253,7 +248,7 @@ pub fn find_admin(admins: &[User]) -> Option<&User> {
 ### 3.1 Cancellation Safety
 
 ```rust
-// ✅ Правильно: Cancellation-safe операции
+// ✅ Correct: Cancellation-safe operations
 use tokio::select;
 
 pub async fn process_with_timeout<T>(
@@ -264,7 +259,7 @@ pub async fn process_with_timeout<T>(
         .map_err(|_| TimeoutError::Elapsed)
 }
 
-// ✅ Правильно: Graceful shutdown
+// ✅ Correct: Graceful shutdown
 pub async fn run_service(mut rx: mpsc::Receiver<Command>) {
     loop {
         tokio::select! {
@@ -280,41 +275,41 @@ pub async fn run_service(mut rx: mpsc::Receiver<Command>) {
     }
 }
 
-// ❌ Неправильно: Забыть про cancellation
+// ❌ Incorrect: Forget about cancellation
 pub async fn critical_operation() {
     let file = File::create("important.dat").await.unwrap();
-    // Если future отменена здесь, файл останется открытым/битым
+    // If future is cancelled here, the file remains open/broken
     file.write_all(b"data").await.unwrap();
 }
 
-// ✅ Правильно: Scope guard для cleanup
+// ✅ Correct: Scope guard for cleanup
 pub async fn critical_operation() -> Result<()> {
     let temp_path = tempfile::NamedTempFile::new()?.into_temp_path();
     
     {
         let file = File::create(&temp_path).await?;
         file.write_all(b"data").await?;
-    } // файл закрыт
+    } // file closed
     
-    // Атомарное переименование
+    // Atomic rename
     tokio::fs::rename(&temp_path, "important.dat").await?;
-    // temp_path автоматически удалится при выходе из scope
+    // temp_path is automatically deleted when leaving scope
     
     Ok(())
 }
 ```
 
-### 3.2 Spawn и Task Management
+### 3.2 Spawn and Task Management
 
 ```rust
-// ✅ Правильно: Именованные таски для отладки
+// ✅ Correct: Named tasks for debugging
 let handle = tokio::task::Builder::new()
     .name("order-processor")
     .spawn(async move {
         process_orders(rx).await
     });
 
-// ✅ Правильно: JoinSet для управления множеством тасков
+// ✅ Correct: JoinSet for managing multiple tasks
 use tokio::task::JoinSet;
 
 async fn process_batch(orders: Vec<Order>) -> Vec<Result<Receipt>> {
@@ -334,13 +329,13 @@ async fn process_batch(orders: Vec<Order>) -> Vec<Result<Receipt>> {
     results
 }
 
-// ❌ Неправильно: Неограниченный spawn
+// ❌ Incorrect: Unlimited spawn
 for order in orders {
-    // Опасно: может создать тысячи тасков
+    // Dangerous: may create thousands of tasks
     tokio::spawn(async move { process(order).await });
 }
 
-// ✅ Правильно: Semaphore для ограничения concurrency
+// ✅ Correct: Semaphore for limiting concurrency
 use tokio::sync::Semaphore;
 
 async fn process_limited(orders: Vec<Order>, limit: usize) {
@@ -365,16 +360,16 @@ async fn process_limited(orders: Vec<Order>, limit: usize) {
 
 ## 4. Memory Management
 
-### 4.1 Zero-Copy когда возможно
+### 4.1 Zero-Copy When Possible
 
 ```rust
-// ✅ Правильно: Borrowed data
+// ✅ Correct: Borrowed data
 pub fn parse_header(data: &[u8]) -> Result<Header<'_>> {
-    // Нет копирования, только парсинг
+    // No copying, only parsing
     Ok(Header { raw: data })
 }
 
-// ✅ Правильно: Cow для гибкости
+// ✅ Correct: Cow for flexibility
 use std::borrow::Cow;
 
 pub fn normalize_name(name: &str) -> Cow<'_, str> {
@@ -385,11 +380,11 @@ pub fn normalize_name(name: &str) -> Cow<'_, str> {
     }
 }
 
-// ✅ Правильно: Bytes для сетевых данных
+// ✅ Correct: Bytes for network data
 use bytes::Bytes;
 
 pub fn process_chunk(data: Bytes) {
-    // Arc под капотом - cheap clone
+    // Arc under the hood - cheap clone
     let data2 = data.clone();
 }
 ```
@@ -397,7 +392,7 @@ pub fn process_chunk(data: Bytes) {
 ### 4.2 Arena Allocation
 
 ```rust
-// ✅ Правильно: Bump allocator для краткосрочных данных
+// ✅ Correct: Bump allocator for short-lived data
 use bumpalo::Bump;
 
 fn parse_large_file(contents: &str) -> Vec<Node> {
@@ -409,7 +404,7 @@ fn parse_large_file(contents: &str) -> Vec<Node> {
         nodes.push(node);
     }
     
-    // Все данные очищаются за O(1)
+    // All data is cleared in O(1)
     nodes
 }
 ```
@@ -419,7 +414,7 @@ fn parse_large_file(contents: &str) -> Vec<Node> {
 ### 5.1 Lazy Evaluation
 
 ```rust
-// ✅ Правильно: once_cell для lazy static
+// ✅ Correct: once_cell for lazy static
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -427,7 +422,7 @@ static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
 });
 
-// ✅ Правильно: tokio::sync::OnceCell для async
+// ✅ Correct: tokio::sync::OnceCell for async
 static DB_POOL: OnceCell<PgPool> = OnceCell::const_new();
 
 async fn get_pool() -> &'static PgPool {
@@ -438,7 +433,7 @@ async fn get_pool() -> &'static PgPool {
     }).await
 }
 
-// ✅ Правильно: itertools для ленивых операций
+// ✅ Correct: itertools for lazy operations
 use itertools::Itertools;
 
 let sum: i32 = (0..1_000_000)
@@ -451,17 +446,17 @@ let sum: i32 = (0..1_000_000)
 ### 5.2 SIMD (where appropriate)
 
 ```rust
-// ✅ Правильно: auto-vectorization
+// ✅ Correct: auto-vectorization
 pub fn sum_array(arr: &[i32]) -> i32 {
-    arr.iter().sum()  // Компилятор использует SIMD
+    arr.iter().sum()  // Compiler uses SIMD
 }
 
-// ✅ Правильно: explicit SIMD для hot paths
+// ✅ Correct: explicit SIMD for hot paths
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
 pub unsafe fn sum_simd(arr: &[i32]) -> i32 {
-    // Реализация с AVX2
+    // AVX2 implementation
 }
 ```
 
@@ -470,7 +465,7 @@ pub unsafe fn sum_simd(arr: &[i32]) -> i32 {
 ### 6.1 Test Organization
 
 ```rust
-// ✅ Правильно: Модульные тесты в том же файле
+// ✅ Correct: Unit tests in the same file
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,7 +493,7 @@ mod tests {
     }
 }
 
-// ✅ Правильно: Интеграционные тесты в tests/
+// ✅ Correct: Integration tests in tests/
 // tests/order_integration.rs
 
 #[tokio::test]
@@ -524,7 +519,7 @@ async fn test_create_order_flow() {
 ### 6.2 Property-Based Testing
 
 ```rust
-// ✅ Правильно: Proptest для инвариантов
+// ✅ Correct: Proptest for invariants
 use proptest::prelude::*;
 
 proptest! {
@@ -561,22 +556,22 @@ proptest! {
 ### 7.1 Doc Comments
 
 ```rust
-/// Создает новый заказ в системе.
+/// Creates a new order in the system.
 ///
 /// # Type Parameters
 ///
-/// * `T` - Тип продукта, должен реализовывать `Product`
+/// * `T` - Product type, must implement `Product`
 ///
 /// # Arguments
 ///
-/// * `input` - Данные для создания заказа
-/// * `ctx` - Контекст выполнения с tenant_id и user_id
+/// * `input` - Data for creating the order
+/// * `ctx` - Execution context with tenant_id and user_id
 ///
 /// # Returns
 ///
-/// * `Ok(Order)` - Успешно созданный заказ
-/// * `Err(OrderError::ProductNotFound)` - Продукт не существует
-/// * `Err(OrderError::InsufficientInventory)` - Недостаточно товара
+/// * `Ok(Order)` - Successfully created order
+/// * `Err(OrderError::ProductNotFound)` - Product does not exist
+/// * `Err(OrderError::InsufficientInventory)` - Insufficient stock
 ///
 /// # Examples
 ///
@@ -619,25 +614,25 @@ proptest! {
 ///
 /// # Errors
 ///
-/// Эта функция вернет ошибку если:
-/// - Продукт не найден в базе данных
-/// - Недостаточно инвентаря для заказа
-/// - Пользователь не имеет права `order:create`
+/// This function will return an error if:
+/// - The product is not found in the database
+/// - There is insufficient inventory for the order
+/// - The user does not have the `order:create` permission
 ///
 /// # Performance
 ///
-/// - O(1) для проверки прав доступа
-/// - O(n) для резервирования инвентаря, где n = quantity
-/// - Время выполнения обычно < 50ms для quantity < 1000
+/// - O(1) for permission check
+/// - O(n) for inventory reservation, where n = quantity
+/// - Typical execution time < 50ms for quantity < 1000
 ///
 /// # Safety
 ///
-/// Эта функция является безопасной и не использует unsafe код.
+/// This function is safe and does not use unsafe code.
 ///
 /// # Panics
 ///
-/// Функция не должна паниковать при корректных входных данных.
-/// Паника возможна только при нарушении инвариантов базы данных.
+/// The function should not panic with correct input data.
+/// Panics are only possible if database invariants are violated.
 #[instrument(skip(self, input), fields(order.product_id = %input.product_id))]
 pub async fn create_order<T: Product>(
     &self,
@@ -651,17 +646,17 @@ pub async fn create_order<T: Product>(
 ### 7.2 Architecture Decision Records
 
 ```markdown
-# ADR-001: Использование Type-State Pattern для Order
+# ADR-001: Using Type-State Pattern for Order
 
 ## Status
 Accepted
 
 ## Context
-Order может находиться в разных состояниях (Pending, Confirmed, Shipped, etc.).
-Нужно гарантировать валидные переходы между состояниями на уровне типов.
+Order can be in different states (Pending, Confirmed, Shipped, etc.).
+Need to guarantee valid state transitions at the type level.
 
 ## Decision
-Использовать Type-State pattern с PhantomData:
+Use Type-State pattern with PhantomData:
 
 ```rust
 pub struct Order<S> {
@@ -674,13 +669,13 @@ pub struct Order<S> {
 ## Consequences
 
 ### Positive
-- Ошибки переходов ловятся на этапе компиляции
-- Нет runtime overhead
+- Transition errors are caught at compile time
+- No runtime overhead
 - Self-documenting code
 
 ### Negative
-- Больше шаблонного кода
-- Сложнее сериализация
+- More boilerplate
+- More complex serialization
 ```
 
 ## 8. Security Guidelines
@@ -688,23 +683,23 @@ pub struct Order<S> {
 ### 8.1 Input Validation
 
 ```rust
-// ✅ Правильно: Defense in depth
+// ✅ Correct: Defense in depth
 pub async fn create_order(&self, input: CreateOrderInput) -> Result<Order> {
-    // 1. Синтаксическая валидация
+    // 1. Syntactic validation
     input.validate()?;  // validator crate
     
-    // 2. Семантическая валидация
+    // 2. Semantic validation
     if input.quantity == 0 {
         return Err(Error::InvalidQuantity);
     }
     
-    // 3. Бизнес-валидация
+    // 3. Business validation
     let product = self.get_product(input.product_id).await?;
     if input.quantity > product.max_order_quantity {
         return Err(Error::QuantityExceeded);
     }
     
-    // 4. Авторизация
+    // 4. Authorization
     self.authz.check_permission(&ctx.user, "order:create").await?;
     
     // ...
@@ -714,13 +709,13 @@ pub async fn create_order(&self, input: CreateOrderInput) -> Result<Order> {
 ### 8.2 Secrets Management
 
 ```rust
-// ✅ Правильно: Не хранить секреты в коде
+// ✅ Correct: Do not store secrets in code
 pub struct Config {
     #[serde(skip_serializing)]
     pub database_password: SecretString,
 }
 
-// ✅ Правильно: Zeroize для чувствительных данных
+// ✅ Correct: Zeroize for sensitive data
 use zeroize::Zeroize;
 
 pub struct ApiKey([u8; 32]);
@@ -736,34 +731,34 @@ impl Drop for ApiKey {
 
 ### 9.1 Code Metrics
 
-| Метрика | Хорошо | Требует внимания | Плохо |
+| Metric | Good | Needs Attention | Bad |
 |---------|--------|------------------|-------|
-| Функция | <20 строк | 20-40 строк | >40 строк |
-| Модуль | <500 строк | 500-1000 строк | >1000 строк |
-| Аргументы функции | <4 | 4-6 | >6 |
-| Цикломатическая сложность | <10 | 10-20 | >20 |
-| Публичные элементы | <20 | 20-40 | >40 |
+| Function | <20 lines | 20-40 lines | >40 lines |
+| Module | <500 lines | 500-1000 lines | >1000 lines |
+| Function arguments | <4 | 4-6 | >6 |
+| Cyclomatic complexity | <10 | 10-20 | >20 |
+| Public items | <20 | 20-40 | >40 |
 
 ### 9.2 Test Metrics
 
-| Метрика | Минимум | Цель |
+| Metric | Minimum | Target |
 |---------|---------|------|
 | Line coverage | 80% | 90% |
 | Branch coverage | 70% | 85% |
 | Mutation score | 60% | 80% |
-| Test execution time | <5 мин | <2 мин |
+| Test execution time | <5 min | <2 min |
 
 ---
 
-## Чеклист Code Review
+## Code Review Checklist
 
-- [ ] Все публичные API задокументированы
-- [ ] Обработка ошибок корректна
-- [ ] Нет unwrap/expect в production коде
-- [ ] Все unsafe блоки обоснованы и документированы
-- [ ] Тесты покрывают новый функционал
-- [ ] Клонирование минимизировано
-- [ ] Нет блокирующих операций в async коде
-- [ ] Логирование добавлено для важных операций
-- [ ] Метрики добавлены для observability
-- [ ] Секреты не захардкожены
+- [ ] All public APIs are documented
+- [ ] Error handling is correct
+- [ ] No unwrap/expect in production code
+- [ ] All unsafe blocks are justified and documented
+- [ ] Tests cover new functionality
+- [ ] Cloning is minimized
+- [ ] No blocking operations in async code
+- [ ] Logging added for important operations
+- [ ] Metrics added for observability
+- [ ] Secrets are not hardcoded

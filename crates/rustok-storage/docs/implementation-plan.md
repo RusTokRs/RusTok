@@ -1,65 +1,65 @@
-# План реализации `rustok-storage`
+# Implementation plan for `rustok-storage`
 
-Статус: storage abstraction baseline уже работает; дальнейшая работа связана с
-удержанием backend boundary и аккуратным расширением backend-support matrix.
+Status: storage abstraction baseline is already working; further work involves
+maintaining the backend boundary and carefully expanding the backend-support matrix.
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: After each increment, update this block.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-storage` как shared storage abstraction layer;
-- синхронизировать backend contracts, path-safety guarantees и local docs;
-- не допускать размывания domain logic в storage layer.
+- maintain `rustok-storage` as a shared storage abstraction layer;
+- synchronize backend contracts, path-safety guarantees and local docs;
+- do not allow domain logic to blur into the storage layer.
 
-## Текущее состояние
+## Current state
 
-- `StorageBackend`, `UploadedObject` и `StorageService` уже составляют базовый contract;
-- local backend уже реализован и используется платформой;
-- path generation, public URL construction и basic health semantics уже являются частью live surface;
-- будущие S3-compatible backends рассматриваются как additive extension, а не как повод ломать существующий contract.
+- `StorageBackend`, `UploadedObject` and `StorageService` already form the base contract;
+- local backend is already implemented and used by the platform;
+- path generation, public URL construction and basic health semantics are already part of the live surface;
+- future S3-compatible backends are treated as additive extensions, not as a reason to break the existing contract.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрепить единый storage backend contract;
-- [x] удерживать path traversal protection и backend abstraction внутри crate;
-- [ ] удерживать sync между storage surface, host wiring и local docs.
+- [x] lock a single storage backend contract;
+- [x] maintain path traversal protection and backend abstraction inside the crate;
+- [ ] maintain sync between storage surface, host wiring and local docs.
 
 ### 2. Backend expansion
 
-- [ ] добавить production-grade внешние backends как additive feature-based extension;
-- [ ] покрывать backend-specific failure semantics и config edge-cases targeted integration tests;
-- [ ] удерживать public URL и deletion semantics совместимыми между backends.
+- [ ] add production-grade external backends as additive feature-based extensions;
+- [ ] cover backend-specific failure semantics and config edge-cases with targeted integration tests;
+- [ ] keep public URL and deletion semantics compatible across backends.
 
 ### 3. Operability
 
-- [ ] развивать storage health, metrics и runbook guidance вместе с backend expansion;
-- [ ] удерживать local docs синхронизированными с `rustok-media` и host/runtime docs;
-- [ ] документировать новые guarantees одновременно с изменением storage contract.
+- [ ] evolve storage health, metrics and runbook guidance together with backend expansion;
+- [ ] keep local docs synchronized with `rustok-media` and host/runtime docs;
+- [ ] document new guarantees concurrently with storage contract changes.
 
-## Проверка
+## Verification
 
-- structural verification для docs и storage boundary;
-- targeted compile/tests при изменении `StorageBackend`, `StorageService` или config contracts;
-- integration checks для backend implementations и health semantics.
+- structural verification for docs and storage boundary;
+- targeted compile/tests when changing `StorageBackend`, `StorageService` or config contracts;
+- integration checks for backend implementations and health semantics.
 
-## Правила обновления
+## Update rules
 
-1. При изменении storage contract сначала обновлять этот файл.
-2. При изменении public surface синхронизировать `docs/README.md` и связанные consumer docs.
-3. При изменении host/storage wiring ожиданий обновлять runtime docs потребителей.
+1. When changing storage contract, first update this file.
+2. When changing public surface, synchronize `docs/README.md` and related consumer docs.
+3. When changing host/storage wiring expectations, update consumer runtime docs.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and accuracy of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

@@ -1,38 +1,38 @@
-# Документация `rustok-taxonomy`
+# `rustok-taxonomy` Documentation
 
-`rustok-taxonomy` — shared vocabulary module платформы. Он владеет dictionary
-layer для terms, translations и aliases, но не забирает ownership доменных
-attachment tables у blog/forum/product/profile и других модулей.
+`rustok-taxonomy` — shared vocabulary module of the platform. It owns the dictionary
+layer for terms, translations and aliases, but does not take ownership of domain
+attachment tables from blog/forum/product/profile and other modules.
 
-## Назначение
+## Purpose
 
-- публиковать канонический taxonomy dictionary contract;
-- держать term identity, localized labels/slugs и scope rules внутри модуля;
-- давать доменным модулям shared vocabulary без возврата к polymorphic shared product storage.
+- publish the canonical taxonomy dictionary contract;
+- keep term identity, localized labels/slugs and scope rules inside the module;
+- provide domain modules with shared vocabulary without reverting to polymorphic shared product storage.
 
-## Зона ответственности
+## Scope
 
 - `taxonomy_terms`, `taxonomy_term_translations`, `taxonomy_term_aliases`;
-- tenant-scoped term identity и `canonical_key`;
-- scope contract для `global` и `module` terms;
-- alias-aware lookup и module integration helpers;
-- отсутствие ownership над relation tables вроде `blog_post_tags` или `forum_topic_tags`.
+- tenant-scoped term identity and `canonical_key`;
+- scope contract for `global` and `module` terms;
+- alias-aware lookup and module integration helpers;
+- no ownership over relation tables such as `blog_post_tags` or `forum_topic_tags`.
 
-## Интеграция
+## Integration
 
-- `rustok-blog`, `rustok-forum`, `rustok-product` и `rustok-profiles` используют taxonomy как shared dictionary;
-- attachment ownership и public domain contracts остаются внутри owning modules;
-- locale normalization и fallback должны оставаться синхронизированными с shared `rustok-content` contract;
-- любые новые taxonomy consumers должны входить через explicit module-owned relation tables.
+- `rustok-blog`, `rustok-forum`, `rustok-product` and `rustok-profiles` use taxonomy as a shared dictionary;
+- attachment ownership and public domain contracts remain inside owning modules;
+- locale normalization and fallback must remain synchronized with the shared `rustok-content` contract;
+- any new taxonomy consumers must enter through explicit module-owned relation tables.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
-- targeted tests для term CRUD, scope rules, alias lookup и consumer-module integration helpers
+- targeted tests for term CRUD, scope rules, alias lookup and consumer-module integration helpers
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+- [Implementation plan](./implementation-plan.md)
+- [Manifest layer contract](../../../docs/modules/manifest.md)

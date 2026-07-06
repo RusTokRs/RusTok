@@ -1,90 +1,90 @@
 # Next Admin App — Implementation Plan
 
-## Фокус
+## Focus
 
-Усилить `apps/next-admin` как primary admin UI с контрактной синхронизацией с backend и единым operational quality baseline.
+Strengthen `apps/next-admin` as the primary admin UI with contract synchronization with the backend and a unified operational quality baseline.
 
-## Улучшения
+## Improvements
 
-### Архитектурные долги
+### Architecture debt
 
-- Завершить нормализацию FSD-структуры и ограничить импортные зависимости между слоями.
-- Централизовать data-access/auth integrations в `shared` для исключения копипаста по страницам.
-- Упростить повторное использование виджетов между разделами админки.
-- Удалить legacy import paths после прохождения type-check/build, чтобы canonical `shared/*`, `entities/*`, `widgets/*` стали единственным живым API.
+- Complete FSD structure normalization and restrict import dependencies between layers.
+- Centralize data-access/auth integrations in `shared` to eliminate copy-paste across pages.
+- Simplify widget reuse across admin sections.
+- Remove legacy import paths after passing type-check/build, so canonical `shared/*`, `entities/*`, `widgets/*` become the only live API.
 
-### API/UI контракты
+### API/UI contracts
 
-- Выровнять контракты GraphQL/REST ответов с `apps/server` для критичных admin сценариев.
-- Зафиксировать единые UX-паттерны для таблиц, форм, уведомлений, optimistic updates.
-- Синхронизировать RBAC-навигацию и action-level permissions с backend policy.
+- Align GraphQL/REST response contracts with `apps/server` for critical admin scenarios.
+- Establish unified UX patterns for tables, forms, notifications, optimistic updates.
+- Synchronize RBAC navigation and action-level permissions with backend policy.
 
 ### Observability
 
-- Добавить клиентские telemetry events для critical admin flows.
-- Пробросить trace/correlation идентификаторы в backend вызовы.
-- Определить SLI для UX: время загрузки экрана, успешность submit, частота recoverable ошибок.
+- Add client-side telemetry events for critical admin flows.
+- Propagate trace/correlation identifiers in backend calls.
+- Define SLIs for UX: screen load time, submit success rate, recoverable error frequency.
 
 ### Security
 
-- Усилить защиту клиентских маршрутов/действий через RBAC guards и fail-closed поведение.
-- Добавить secure handling токенов/сессий и аудит чувствительных операций.
-- Проверить CSP/XSS/CSRF меры для административных форм и rich content inputs.
+- Strengthen client route/action protection via RBAC guards and fail-closed behavior.
+- Add secure token/session handling and audit of sensitive operations.
+- Verify CSP/XSS/CSRF measures for admin forms and rich content inputs.
 
 ### Test coverage
 
-- Расширить e2e покрытие критических разделов (auth, users, content, settings).
-- Добавить contract-тесты API маппинга и проверки typed clients.
-- Увеличить unit/component coverage для shared UI и form logic.
-- Держать `pnpm --filter next-admin type-check` и `pnpm --filter next-admin build` в зелёном baseline после каждого изменения FSD/UI структуры.
+- Expand e2e coverage for critical sections (auth, users, content, settings).
+- Add contract tests for API mapping and typed client validation.
+- Increase unit/component coverage for shared UI and form logic.
+- Keep `pnpm --filter next-admin type-check` and `pnpm --filter next-admin build` at green baseline after every FSD/UI structure change.
 
-## Готовность Blog/Forum к rich-text (Tiptap) и Pages к GrapesJS Builder
+## Blog/Forum rich-text (Tiptap) and Pages GrapesJS Builder readiness
 
-- [x] Production-форма постов использует реальный Tiptap-based `RtJsonEditor` и сериализует rich-text в канонический `rt_json_v1`.
-- [x] Добавлены отдельные маршруты для сценариев:
-  - `/dashboard/blog/page-builder` для визуального `GrapesJS`-конструктора `PageBuilder` (функционал страниц внутри меню блога).
-  - `/dashboard/forum/reply` для `ForumReplyEditor` (`rt_json_v1`) внутри меню форума.
-- [x] `ForumReplyEditor` использует тот же Tiptap-based `RtJsonEditor` и тот же контракт `rt_json_v1`, что и production CRUD-flow блога.
-- [x] Placeholder ID заменены на выбор реальных сущностей (селекторы page/topic) через live GraphQL-запросы.
-- [x] `PageBuilder` сохраняет pages в канонический body-формат `grapesjs_v1`; legacy `blocks` остаются read-compatible до отдельного storefront migration slice.
+- [x] Production post form uses real Tiptap-based `RtJsonEditor` and serializes rich-text to canonical `rt_json_v1`.
+- [x] Separate routes added for scenarios:
+  - `/dashboard/blog/page-builder` for the visual `GrapesJS` `PageBuilder` (page functionality inside blog menu).
+  - `/dashboard/forum/reply` for `ForumReplyEditor` (`rt_json_v1`) inside forum menu.
+- [x] `ForumReplyEditor` uses the same Tiptap-based `RtJsonEditor` and the same `rt_json_v1` contract as the blog production CRUD-flow.
+- [x] Placeholder IDs replaced with real entity selection (page/topic selectors) via live GraphQL queries.
+- [x] `PageBuilder` saves pages in canonical body format `grapesjs_v1`; legacy `blocks` remain read-compatible until a separate storefront migration slice.
 
-## Паритет стеков (Leptos/Next.js)
+## Stack parity (Leptos/Next.js)
 
-- Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
+- Any feature for admin/storefront is planned, decomposed, and tracked for both implementations (Leptos and Next.js) in the same delivery cycle.
 
 ### Capability-first parity contract (Phase 1, 2026-05-23)
 
-Must-have parity между `apps/next-admin` и `apps/admin`:
+Must-have parity between `apps/next-admin` and `apps/admin`:
 
-- единый backend payload contract `grapesjs_v1` (`body.format`, `body.contentJson`);
-- capability surfaces `preview/tree/properties/publish` на обоих host-стэках;
-- publish/write actions и compatibility-правила для legacy `blocks/body` не расходятся;
-- единый UX-паттерн ошибок write-path (`validation/sanitize/runtime`) для rich/page-builder форм;
-- для page-builder save/publish ошибок Next Admin использует тот же typed catalog, что и `rustok-pages`: `validation`, `sanitize`, `runtime`, `feature-disabled` (`FEATURE_DISABLED`) с operator-guidance для disabled publish capability.
+- unified backend payload contract `grapesjs_v1` (`body.format`, `body.contentJson`);
+- capability surfaces `preview/tree/properties/publish` on both host stacks;
+- publish/write actions and compatibility rules for legacy `blocks/body` do not diverge;
+- unified write-path error UX pattern (`validation/sanitize/runtime`) for rich/page-builder forms;
+- for page-builder save/publish errors, Next Admin uses the same typed catalog as `rustok-pages`: `validation`, `sanitize`, `runtime`, `feature-disabled` (`FEATURE_DISABLED`) with operator-guidance for disabled publish capability.
 
-Host-specific UX, который допустим без drift:
+Host-specific UX that is allowed without drift:
 
-- разные визуальные компоненты, layout и взаимодействие внутри capability surface;
-- разная глубина визуального tree/preview при неизменном payload contract;
-- разная компоновка route-shell, если RBAC/navigation semantics совпадают.
+- different visual components, layout and interaction within capability surface;
+- different depth of visual tree/preview with unchanged payload contract;
+- different route-shell composition if RBAC/navigation semantics match.
 
-### Checklist готовности фичи
+### Feature readiness checklist
 
-- [x] Реализовано в Leptos-варианте.
-- [x] Реализовано в Next.js-варианте.
-- [x] Контракты API/UI совпадают на capability-уровне.
-- [x] Навигация и RBAC-поведение эквивалентны для `pages` write/publish surfaces.
+- [x] Implemented in Leptos variant.
+- [x] Implemented in Next.js variant.
+- [x] API/UI contracts match at capability level.
+- [x] Navigation and RBAC behavior are equivalent for `pages` write/publish surfaces.
 
 ## FSD/UI follow-up backlog
 
-- Вычистить compatibility imports из `components/`, `lib/`, `hooks/` и перевести потребителей на canonical FSD-layer paths.
-- Выровнять widget/shared boundaries для таблиц, form shells и app-shell композиций.
-- Довести parity-check с `apps/admin` по loading/error/permission-gated UX и navigation contract.
-- Удерживать `@iu/*` и `UI/docs/api-contracts.md` как source of truth для cross-stack UI API.
+- Clean up compatibility imports from `components/`, `lib/`, `hooks/` and migrate consumers to canonical FSD-layer paths.
+- Align widget/shared boundaries for tables, form shells and app-shell compositions.
+- Complete parity-check with `apps/admin` for loading/error/permission-gated UX and navigation contract.
+- Maintain `@iu/*` and `UI/docs/api-contracts.md` as source of truth for cross-stack UI API.
 
-### Текущий статус rich-text/blog-forum и GrapesJS pages
+### Current rich-text/blog-forum and GrapesJS pages status
 
-- **Админка (Leptos, `apps/admin`)**: [~] Частично реализовано (`pages` получил capability surfaces `preview/tree/properties/publish`, rich/page-builder write-path ошибки выровнены в общий паттерн).
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (production blog/forum уже используют реальный Tiptap-based editor и канонический `rt_json_v1`, pages переведены на `GrapesJS` + `grapesjs_v1`, forum flow использует live entity selection, остаётся parity-check со storefront rendering slice).
-- **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-- **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
+- **Admin (Leptos, `apps/admin`)**: [~] Partially implemented (`pages` got capability surfaces `preview/tree/properties/publish`, rich/page-builder write-path errors aligned to a common pattern).
+- **Admin (Next.js, `apps/next-admin`)**: [~] Partially implemented (production blog/forum already use real Tiptap-based editor and canonical `rt_json_v1`, pages migrated to `GrapesJS` + `grapesjs_v1`, forum flow uses live entity selection, parity-check with storefront rendering slice remains).
+- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).
+- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).

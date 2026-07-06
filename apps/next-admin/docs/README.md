@@ -1,60 +1,60 @@
-# Документация Next Admin
+# Next Admin Documentation
 
-Локальная документация для `apps/next-admin`.
+Local documentation for `apps/next-admin`.
 
-## Назначение
+## Purpose
 
-`apps/next-admin` является Next.js admin host для RusToK. Он даёт React/Next-путь для админки, работает параллельно с `apps/admin` и монтирует module-owned/admin-owned пакеты вместо того, чтобы переносить модульный UI внутрь host.
+`apps/next-admin` is the Next.js admin host for RusToK. It provides the React/Next path for the admin panel, works in parallel with `apps/admin`, and mounts module-owned/admin-owned packages instead of moving module UI inside the host.
 
-FFA classification: `apps/next-admin` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять Next shell/routing/context composition и parity с Leptos admin без переноса module-specific workflows в host.
+FFA classification: `apps/next-admin` is an `FFA-compatible composition host`, not a module-owned UI package. Its FFA responsibility is to maintain Next shell/routing/context composition and parity with Leptos admin without moving module-specific workflows into the host.
 
-## Границы ответственности
+## Boundaries of Responsibility
 
-- владеть Next.js admin host, routing и shared integration layer;
-- монтировать package-owned admin surfaces из `packages/*`;
-- использовать canonical frontend contracts для auth, GraphQL, forms и shared UI;
-- поддерживать parity с `apps/admin` на уровне платформенных контрактов;
-- держать admin shell navigation в parity с Leptos Admin: `Overview`, `Management`,
-  `Module Plugins`, `Account`, при этом module-owned пункты остаются registry-driven
-  и фильтруются по enabled module slug;
-- не забирать module-owned business UI в host-код.
+- own the Next.js admin host, routing and shared integration layer;
+- mount package-owned admin surfaces from `packages/*`;
+- use canonical frontend contracts for auth, GraphQL, forms and shared UI;
+- maintain parity with `apps/admin` at the platform contract level;
+- keep admin shell navigation in parity with Leptos Admin: `Overview`, `Management`,
+  `Module Plugins`, `Account`, with module-owned items remaining registry-driven
+  and filtered by enabled module slug;
+- do not pull module-owned business UI into host code.
 
 ## Runtime contract
 
-- canonical FSD-слои для host: `app`, `shared`, `entities`, `features`, `widgets`;
-- backend integration идёт через `apps/server` и shared transport packages;
-- effective locale выбирается host/runtime слоем через `x-rustok-effective-locale`
-  и `next-intl`; module-owned packages читают host-provided locale, а не cookie/query fallback chain;
-- пользовательский выбор языка в Next Admin хранится host-owned cookie `rustok-admin-locale`;
-  middleware нормализует effective locale в порядке `?locale` → cookie → `x-rustok-effective-locale`
-  → `Accept-Language` → `en`, а UI использует dropdown в header и auth screens;
-- глобальный admin search использует `rustok-search` как host-level capability;
-- shared SEO operator/headless contract тоже должен идти через backend surface:
-  registry-backed target descriptors читаются из GraphQL `seoTargets`, а не из host-local slug mapping;
-- legacy import paths допускаются только как временный compatibility layer;
-- новый код должен идти через canonical FSD paths и shared package boundaries.
+- canonical FSD layers for host: `app`, `shared`, `entities`, `features`, `widgets`;
+- backend integration goes through `apps/server` and shared transport packages;
+- effective locale is selected by the host/runtime layer via `x-rustok-effective-locale`
+  and `next-intl`; module-owned packages read the host-provided locale, not a cookie/query fallback chain;
+- user language selection in Next Admin is stored in the host-owned cookie `rustok-admin-locale`;
+  middleware normalizes the effective locale in order `?locale` → cookie → `x-rustok-effective-locale`
+  → `Accept-Language` → `en`, and the UI uses dropdown in header and auth screens;
+- global admin search uses `rustok-search` as a host-level capability;
+- shared SEO operator/headless contract must also go through the backend surface:
+  registry-backed target descriptors are read from GraphQL `seoTargets`, not from host-local slug mapping;
+- legacy import paths are allowed only as a temporary compatibility layer;
+- new code must go through canonical FSD paths and shared package boundaries.
 
-## Ownership contract для module UI
+## Ownership contract for module UI
 
-- Если модуль поставляет admin UI, он остаётся module-owned package рядом с модулем или в `packages/*`.
-- Host `apps/next-admin` выступает только composition root.
-- Core navigation `apps/next-admin` не должен содержать module-owned business routes. Каждый модуль или capability подключает свой Next UX через `apps/next-admin/packages/*` / `@rustok/*-admin` entrypoint, а shell фильтрует пункты по enabled module slug.
-- Если у tenant включён только `blog`, ecommerce/catalog/product UX не должен появляться в navigation и не должен жить как host-owned starter page.
-- Starter-only routes `billing`, `exclusive`, `workspaces` и `workspaces/team` не являются публичной админской поверхностью RusTok и должны возвращать `notFound()`, а не placeholder UI.
-- То же правило действует для core-modules, optional-modules и capability packages.
-- Capability-owned surface `rustok-ai` монтируется как package-owned UI, а не как ad-hoc host feature.
-- Route-selection contract обязан быть в parity с `apps/admin`: selection state URL-owned,
-  используются только typed `snake_case` query keys, invalid key не fallback’ится на first item,
-  а локальные Next helpers не inventят отдельную schema/policy поверх `rustok-api` contract.
+- If a module supplies admin UI, it remains a module-owned package alongside the module or in `packages/*`.
+- Host `apps/next-admin` acts only as the composition root.
+- Core navigation `apps/next-admin` must not contain module-owned business routes. Each module or capability connects its Next UX through `apps/next-admin/packages/*` / `@rustok/*-admin` entrypoint, and the shell filters items by enabled module slug.
+- If a tenant has only `blog` enabled, ecommerce/catalog/product UX must not appear in navigation and must not live as a host-owned starter page.
+- Starter-only routes `billing`, `exclusive`, `workspaces` and `workspaces/team` are not public RusTok admin surfaces and must return `notFound()`, not a placeholder UI.
+- The same rule applies for core-modules, optional-modules and capability packages.
+- Capability-owned surface `rustok-ai` is mounted as a package-owned UI, not as an ad-hoc host feature.
+- Route-selection contract must be in parity with `apps/admin`: selection state URL-owned,
+  only typed `snake_case` query keys are used, invalid keys do not fallback to the first item,
+  and local Next helpers do not invent a separate schema/policy on top of the `rustok-api` contract.
 
-## Пакеты и интеграции
+## Packages and Integrations
 
-- shared UI и frontend contracts идут через `UI/next` и внутренние transport/auth packages;
+- shared UI and frontend contracts go through `UI/next` and internal transport/auth packages;
 - backend — `apps/server`;
-- module-owned Next admin packages живут в `apps/next-admin/packages/*`;
-- shared API helper `src/shared/api/seo.ts` даёт typed доступ к SEO control-plane: `seoTargets`, diagnostics, sitemap status/jobs, bulk jobs и job detail с REST-first (rollout-gated) + GraphQL fallback стратегией;
-- semantic SEO error taxonomy (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures) считается canonical для Next hosts и переиспользуется не только в `next-admin`, но и в Next storefront SEO runtime adapters;
-- package naming contract для module-owned admin UI остаётся `@rustok/*-admin`.
+- module-owned Next admin packages live in `apps/next-admin/packages/*`;
+- shared API helper `src/shared/api/seo.ts` provides typed access to SEO control-plane: `seoTargets`, diagnostics, sitemap status/jobs, bulk jobs and job detail with REST-first (rollout-gated) + GraphQL fallback strategy;
+- semantic SEO error taxonomy (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures) is considered canonical for Next hosts and is reused not only in `next-admin`, but also in Next storefront SEO runtime adapters;
+- package naming contract for module-owned admin UI remains `@rustok/*-admin`.
 
 ## SEO operator readiness evidence
 
@@ -62,22 +62,22 @@ FFA classification: `apps/next-admin` является `FFA-compatible compositi
 - Compile-free documentation evidence is tracked from the Next storefront SEO fixture docs sync matrix; live sign-off still requires a running backend sample for semantic error mapping and repair/replay telemetry.
 - The required owner sign-off evidence is: REST/GraphQL error-code parity, bounded replay input validation, before/after index delivery counters and no duplicate idempotency transition.
 
-## Взаимодействия
+## Interactions
 
-- `apps/server` предоставляет API/runtime contract;
-- `apps/admin` остаётся primary Leptos admin stack и референсом для parity;
-- module-owned UI packages подключаются как внешние surfaces, а не как host-owned business code.
+- `apps/server` provides the API/runtime contract;
+- `apps/admin` remains the primary Leptos admin stack and the reference for parity;
+- module-owned UI packages are connected as external surfaces, not as host-owned business code.
 
-## Проверка
+## Verification
 
-- typecheck/lint прогоны по `apps/next-admin`
-- точечные проверки package-owned admin surfaces
-- сверка shared contract с `docs/UI/*` и `docs/modules/manifest.md`
+- typecheck/lint runs on `apps/next-admin`
+- targeted checks on package-owned admin surfaces
+- cross-reference shared contract with `docs/UI/*` and `docs/modules/manifest.md`
 
-## Связанные документы
+## Related Documents
 
 - [Implementation Plan](./implementation-plan.md)
 - [Navigation RBAC](./nav-rbac.md)
-- [Устаревшая starter-справка Clerk](./clerk_setup.md) — не является активным auth contract RusTok.
+- [Deprecated Clerk starter reference](./clerk_setup.md) — not an active RusTok auth contract.
 - [Themes](./themes.md)
-- [Карта документации](../../../docs/index.md)
+- [Documentation Map](../../../docs/index.md)

@@ -1,30 +1,30 @@
-# Документация `rustok-ai-product`
+# `rustok-ai-product` Documentation
 
-`rustok-ai-product` — domain-owned support crate для AI-вертикалей продуктового домена.
+`rustok-ai-product` is a domain-owned support crate for product domain AI verticals.
 
-## Назначение
+## Purpose
 
-- вынести product AI vertical ownership из `rustok-ai` core runtime;
-- держать product-scoped AI contracts (`product_copy`, `product_attributes`) рядом с продуктовым доменом;
-- подготовить модуль к поэтапному переносу direct handler wiring.
+- move product AI vertical ownership out of the `rustok-ai` core runtime;
+- keep product-scoped AI contracts (`product_copy`, `product_attributes`) next to the product domain;
+- prepare the module for phased migration of direct handler wiring.
 
-## Зона ответственности
+## Area of Responsibility
 
-- registration seam для product AI verticals;
-- typed generated-payload contracts и validators для product AI задач;
-- координация с `rustok-product`/`rustok-commerce` по read/write контрактам.
+- registration seam for product AI verticals;
+- typed generated-payload contracts and validators for product AI tasks;
+- coordination with `rustok-product`/`rustok-commerce` on read/write contracts.
 
-## Интеграция
+## Integration
 
 - generated payload contracts consumed by execution host: `rustok-ai`;
 - domain services: `rustok-product`, `rustok-commerce`;
 - operator surface: `rustok-ai` admin packages.
 
-## Проверка
+## Verification
 
 - `cargo check -p rustok-ai-product`
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation Plan](./implementation-plan.md)

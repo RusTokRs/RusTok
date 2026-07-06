@@ -6,206 +6,205 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Архитектура API
+# API Architecture
 
-Политика выбора API-стиля описана в [routing.md](./routing.md). Этот документ
-фиксирует верхнеуровневую карту API surfaces RusToK.
+The API style selection policy is described in [routing.md](./routing.md). This document
+captures the top-level API surfaces map of RusToK.
 
-## Краткое резюме
+## Brief Summary
 
-RusToK использует гибридный transport layer:
+RusToK uses a hybrid transport layer:
 
-- GraphQL для UI-клиентов
-- REST для интеграций, webhooks, ops и module-owned HTTP contracts
-- `#[server]` functions для internal Leptos data layer
-- OpenAPI для машиночитаемого REST contract
-- health/metrics endpoints для observability
+- GraphQL for UI clients
+- REST for integrations, webhooks, ops and module-owned HTTP contracts
+- `#[server]` functions for internal Leptos data layer
+- OpenAPI for machine-readable REST contract
+- health/metrics endpoints for observability
 
-## Канонические эндпоинты
+## Canonical Endpoints
 
-| Surface | Endpoint | Назначение |
+| Surface | Endpoint | Purpose |
 |---|---|---|
-| GraphQL | `/api/graphql` | Единая точка для admin/storefront UI |
+| GraphQL | `/api/graphql` | Single point for admin/storefront UI |
 | GraphQL WS | `/api/graphql/ws` | Subscriptions transport |
 | GraphQL SDL | `/api/graphql/schema.graphql` | Machine-readable GraphQL schema export for reference artifacts |
-| REST | `/api/v1/...` | Интеграции, webhooks, batch/ops scenarios |
-| MCP management/runtime | `/api/mcp/...` | Persisted MCP clients/tokens/policies/audit и remote runtime bootstrap |
-| Commerce REST | `/store/...`, `/admin/...` | Совместимые ecommerce HTTP flows |
+| REST | `/api/v1/...` | Integrations, webhooks, batch/ops scenarios |
+| MCP management/runtime | `/api/mcp/...` | Persisted MCP clients/tokens/policies/audit and remote runtime bootstrap |
+| Commerce REST | `/store/...`, `/admin/...` | Compatible ecommerce HTTP flows |
 | OpenAPI | `/api/openapi.json`, `/api/openapi.yaml` | REST contract discovery |
 | Health | `/health`, `/health/live`, `/health/ready` | Health and readiness |
 | Metrics | `/metrics` | Observability and scraping |
 
-## Владение API-поверхностью
+## API Surface Ownership
 
-- `apps/server` владеет общим API host layer
-- platform modules владеют domain contracts, resolvers, handlers и service layer
-- host applications и UI packages не должны становиться canonical owner API logic
-- module-owned HTTP/GraphQL-поверхности должны совпадать с manifest wiring и local docs
+- `apps/server` owns the common API host layer
+- platform modules own domain contracts, resolvers, handlers and service layer
+- host applications and UI packages must not become canonical owner of API logic
+- module-owned HTTP/GraphQL surfaces must align with manifest wiring and local docs
 
-## GraphQL-поверхность
+## GraphQL Surface
 
-GraphQL остаётся canonical UI-facing contract для:
+GraphQL remains the canonical UI-facing contract for:
 
 - Leptos hosts
 - Next.js hosts
 - module-owned UI packages
-- mobile/headless hosts, включая Flutter admin/frontend clients
+- mobile/headless hosts, including Flutter admin/frontend clients
 
-GraphQL должен собирать domain data через module/service layer, а не обходить
-ownership модулей через host-specific shortcuts. Auth bootstrap для headless/mobile hosts использует `me.permissions` как UI-facing RBAC snapshot; server-side enforcement остаётся обязательным для самих mutations/queries.
+GraphQL must collect domain data through module/service layer, not bypass
+module ownership via host-specific shortcuts. Auth bootstrap for headless/mobile hosts uses `me.permissions` as a UI-facing RBAC snapshot; server-side enforcement remains mandatory for the mutations/queries themselves.
 
-Public storefront/read GraphQL queries не должны превращать отсутствие
-`AuthContext` в `SecurityContext::system()`. Anonymous read flow использует
-`SecurityContext::public_read()` (`SecurityActorKind::Public`) и обязан сохранять
-module-level published/channel-visible filters рядом с read. `SecurityContext::system()`
-разрешён только trusted platform runtime paths: bootstrap, jobs, migrations,
-batch/internal providers и `PortActorKind::System`.
+Public storefront/read GraphQL queries must not turn absence of
+`AuthContext` into `SecurityContext::system()`. Anonymous read flow uses
+`SecurityContext::public_read()` (`SecurityActorKind::Public`) and must preserve
+module-level published/channel-visible filters alongside reads. `SecurityContext::system()`
+is permitted only for trusted platform runtime paths: bootstrap, jobs, migrations,
+batch/internal providers and `PortActorKind::System`.
 
-## REST-поверхность
+## REST Surface
 
-REST остаётся обязательным для сценариев, где нужен явный HTTP contract:
+REST remains mandatory for scenarios where an explicit HTTP contract is needed:
 
-- внешние интеграции
+- external integrations
 - webhooks
 - operational endpoints
-- совместимые ecommerce flows
+- compatible ecommerce flows
 - module-owned transport routes
-- для post-order ecommerce surface первый OMS slice уже включает admin refund routes поверх `payment-collections` (`/admin/payment-collections/{id}/refunds`, `/admin/refunds/{id}/complete`, `/admin/refunds/{id}/cancel`)
+- for post-order ecommerce surface the first OMS slice already includes admin refund routes over `payment-collections` (`/admin/payment-collections/{id}/refunds`, `/admin/refunds/{id}/complete`, `/admin/refunds/{id}/cancel`)
 
-REST не должен использоваться как скрытая замена GraphQL для UI-only flows.
+REST must not be used as a hidden replacement for GraphQL for UI-only flows.
 
-MCP runtime bootstrap является platform-owned REST surface: `POST /api/mcp/runtime/bootstrap` принимает MCP Bearer token или `plaintext_token`, требует non-stdio transport, возвращает persisted runtime binding/effective access context и пишет audit event с correlation id.
+MCP runtime bootstrap is a platform-owned REST surface: `POST /api/mcp/runtime/bootstrap` accepts MCP Bearer token or `plaintext_token`, requires non-stdio transport, returns persisted runtime binding/effective access context and writes an audit event with correlation id.
 
-## `#[server]`-поверхность
+## `#[server]` Surface
 
-Leptos `#[server]` functions — это internal host/UI contract, а не замена
-публичного API surface.
+Leptos `#[server]` functions are an internal host/UI contract, not a replacement
+for the public API surface.
 
-Правила:
+Rules:
 
-- `#[server]` functions по умолчанию используются внутри Leptos hosts и
+- `#[server]` functions are used by default inside Leptos hosts and
   module-owned Leptos UI
-- server-side native adapters получают host runtime данные через
-  `rustok_api::HostRuntimeContext`, а не через framework-specific application context
-- GraphQL сохраняется параллельно
-- external integrations не завязываются на `#[server]`
+- server-side native adapters receive host runtime data through
+  `rustok_api::HostRuntimeContext`, not through framework-specific application context
+- GraphQL is preserved in parallel
+- external integrations do not depend on `#[server]`
 
-## Нейтральные портовые primitives
+## Neutral Port Primitives
 
-Для перевода модулей на Fluid Backend Architecture новый портовый слой должен
-использовать shared primitives из `rustok-api::ports`:
+For migrating modules to Fluid Backend Architecture, the new port layer must
+use shared primitives from `rustok-api::ports`:
 
-- `PortContext` передаёт tenant, actor/service identity, claims/roles, channel, locale,
-  correlation/causation, trace context, idempotency key и deadline semantics;
-- `PortError` и `PortErrorKind` задают transport-agnostic доменную error envelope до mapping
-  в GraphQL/REST/gRPC;
-- `PortCallPolicy` и `PortOperationKind` задают reusable enforcement для read/write/event-replay/best-effort операций без module-specific behavior;
-- read-порты должны проверять deadline semantics; write и event-replay порты должны проверять idempotency key и deadline до обращения к owner storage
-  или remote adapter.
+- `PortContext` passes tenant, actor/service identity, claims/roles, channel, locale,
+  correlation/causation, trace context, idempotency key and deadline semantics;
+- `PortError` and `PortErrorKind` provide a transport-agnostic domain error envelope prior to mapping
+  into GraphQL/REST/gRPC;
+- `PortCallPolicy` and `PortOperationKind` provide reusable enforcement for read/write/event-replay/best-effort operations without module-specific behavior;
+- read ports must check deadline semantics; write and event-replay ports must check idempotency key and deadline before accessing owner storage
+  or remote adapter.
 
-Эти types не являются application service layer и не должны содержать module-specific
+These types are not application service layer and must not contain module-specific
 business logic.
 
-`rustok-api` владеет `Port*`, permission и locale primitives и не зависит от
-`rustok-core` ни в одном feature. Runtime RBAC/security policy принадлежит core,
-который зависит от API contract layer. Runtime-specific adapters также не входят в neutral contract surface:
-outbox Loco wiring принадлежит `rustok-outbox::loco` и включается feature
+`rustok-api` owns `Port*`, permission and locale primitives and does not depend on
+`rustok-core` in any feature. Runtime RBAC/security policy belongs to core,
+which depends on the API contract layer. Runtime-specific adapters are also not part of the neutral contract surface:
+outbox Loco wiring belongs to `rustok-outbox::loco` and is enabled by feature
 `rustok-outbox/loco-adapter`.
 
-## Безопасность и контракт контекста
+## Security and Context Contract
 
-Каждый API path должен работать через единый host/runtime context:
+Each API path must operate through a single host/runtime context:
 
 - tenant resolution
 - request-scoped locale
 - auth/session handling
-- request-scoped `ChannelContext`, включая `resolution_source` и `resolution_trace` для channel-aware runtime diagnostics
+- request-scoped `ChannelContext`, including `resolution_source` and `resolution_trace` for channel-aware runtime diagnostics
 - RBAC enforcement
 - observability hooks
 
-Для full application router канонический порядок подготовки request context:
+For the full application router, the canonical request context preparation order:
 `security_headers -> tenant::resolve -> locale::resolve_locale -> auth_context::resolve_optional -> channel::resolve -> handler`.
-`channel::resolve` должен строить `RequestFacts` из tenant id, request selectors, effective host,
-auth-derived OAuth/client dimension и effective locale; channel cache key обязан различать locale/OAuth dimensions,
-чтобы request одного client/locale не переиспользовал resolution другого контекста.
+`channel::resolve` must build `RequestFacts` from tenant id, request selectors, effective host,
+auth-derived OAuth/client dimension and effective locale; the channel cache key must distinguish locale/OAuth dimensions,
+so that one client/locale request does not reuse resolution from a different context.
 
-API surface не должен обходить эти слои через локальные shortcuts.
+API surface must not bypass these layers through local shortcuts.
 
-### Проверка request-context/channel invariant
+### Request-context/channel Invariant Verification
 
-Для изменений в middleware, channel resolution, locale/auth extensions или cache key
-обязателен быстрый source-level gate:
+For changes to middleware, channel resolution, locale/auth extensions or cache key,
+a fast source-level gate is mandatory:
 
 ```bash
 node scripts/verify/verify-runtime-context-invariants.mjs
 ./scripts/verify/verify-all.sh runtime-context-invariants
 ```
 
-Эта проверка закрепляет следующие runtime contracts без полной Rust-компиляции:
+This verification enforces the following runtime contracts without full Rust compilation:
 
-- `build_request_facts` читает OAuth/client dimension из `AuthContextExtension`;
-- `build_request_facts` читает effective locale из `ResolvedRequestLocale`;
-- `ChannelCacheKey` содержит `oauth_app_id` и `locale`, включая negative cache entries;
-- source-order middleware в `compose_application_router` сохраняет фактический Axum execution order
+- `build_request_facts` reads OAuth/client dimension from `AuthContextExtension`;
+- `build_request_facts` reads effective locale from `ResolvedRequestLocale`;
+- `ChannelCacheKey` contains `oauth_app_id` and `locale`, including negative cache entries;
+- source-order middleware in `compose_application_router` preserves the actual Axum execution order
   `locale -> auth_context -> channel`;
-- tenant locale cache metrics остаются экспортируемыми через `/metrics`.
+- tenant locale cache metrics remain exportable via `/metrics`.
 
-Если проверка падает, нельзя чинить только текстовый порядок `.layer(...)`: нужно
-восстановить фактическое поведение request extensions, cache-key dimensions и
+If the verification fails, do not just fix the textual order of `.layer(...)`: restore
+the actual behavior of request extensions, cache-key dimensions and
 observability evidence.
 
+## Reference Artifacts (DOC-09)
 
-## Reference artifacts (DOC-09)
-
-Для contract-level изменений API обязательны обновляемые reference-артефакты:
+For contract-level API changes, updatable reference artifacts are mandatory:
 
 - OpenAPI snapshots (`/api/openapi.json`, `/api/openapi.yaml`)
 - GraphQL snapshots: full introspection (`/api/graphql`) and SDL (`/api/graphql/schema.graphql`)
-- rustdoc artifacts для `rustok-server` и `rustok-workflow`
+- rustdoc artifacts for `rustok-server` and `rustok-workflow`
 
-Канонический локальный экспорт выполняется через:
+Canonical local export is performed via:
 
 ```bash
 node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 ```
 
-Unix/CI wrapper `scripts/verify/export-reference-artifacts.sh` делегирует тому же
-Node.js exporter, поэтому Windows и CI формируют идентичный layout.
+The Unix/CI wrapper `scripts/verify/export-reference-artifacts.sh` delegates to the same
+Node.js exporter, so Windows and CI produce an identical layout.
 
-Правило: при изменении GraphQL/REST/`#[server]` contract в PR должен быть
-Verification Evidence по экспорту артефактов и ссылке на diff.
+Rule: when changing GraphQL/REST/`#[server]` contract, the PR must contain
+Verification Evidence for artifact export and a link to the diff.
 
-## Совместимость API
+## API Compatibility
 
-- GraphQL, REST, OpenAPI и `#[server]` contracts считаются публичными для своих
-  целевых клиентов и не удаляются без documented migration path.
-- Breaking change требует явного описания миграции в PR и обновления локальных
+- GraphQL, REST, OpenAPI and `#[server]` contracts are considered public for their
+  target clients and must not be removed without a documented migration path.
+- Breaking change requires an explicit migration description in the PR and updates to local
   module/app docs.
-- Новый Leptos `#[server]` path не заменяет существующий GraphQL/REST contract,
-  если этот contract уже используется как fallback или headless surface.
-- Для revision-aware control-plane mutations stale client state должен получать
-  conflict-style ошибку, а не silent overwrite или blind rollback.
+- A new Leptos `#[server]` path must not replace an existing GraphQL/REST contract,
+  if that contract is already used as a fallback or headless surface.
+- For revision-aware control-plane mutations, stale client state must receive
+  a conflict-style error, not a silent overwrite or blind rollback.
 
-## Tenant isolation и RLS
+## Tenant Isolation and RLS
 
-- Базовая модель остаётся shared DB/shared schema с `tenant_id` как обязательным
+- The base model remains shared DB/shared schema with `tenant_id` as a mandatory
   application/runtime boundary.
-- DB-level RLS является целевым hardening layer для high-risk tenant-scoped
-  таблиц, но включается staged: сначала platform-control/tenant-module pilot
-  после появления request-scoped tenant DB session context.
-- Broad RLS big-bang миграция запрещена без отдельного ADR и rollback plan.
+- DB-level RLS is a target hardening layer for high-risk tenant-scoped
+  tables, but is enabled staged: first platform-control/tenant-module pilot
+  after request-scoped tenant DB session context becomes available.
+- Broad RLS big-bang migration is prohibited without a separate ADR and rollback plan.
 
-## Что не делать
+## What Not To Do
 
-- не смешивать ownership API contract между host и module crate
-- не дублировать transport flows без явной причины
-- не считать UI package источником правды для API surface
-- не вводить отдельный locale/auth contract на уровне конкретного endpoint family
+- do not mix API contract ownership between host and module crate
+- do not duplicate transport flows without a clear reason
+- do not consider a UI package as the source of truth for API surface
+- do not introduce a separate locale/auth contract at a specific endpoint family level
 
-## Связанные документы
+## Related Documents
 
-- [Маршрутизация и границы transport-слоя](./routing.md)
-- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
-- [Архитектура модулей](./modules.md)
-- [Обзор архитектуры платформы](./overview.md)
+- [Routing and Transport Layer Boundaries](./routing.md)
+- [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
+- [Module Architecture](./modules.md)
+- [Platform Architecture Overview](./overview.md)

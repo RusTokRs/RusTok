@@ -6,28 +6,28 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План верификации платформы: Leptos-библиотеки
+# Platform Verification Plan: Leptos Libraries
 
-- **Статус:** актуальный детальный чеклист
-- **Контур:** shared Leptos libraries, host integration, module-owned UI packages, reusable UI/tooling layer
-- **Companion-план:** [План верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md)
+- **Status:** current detailed checklist
+- **Scope:** shared Leptos libraries, host integration, module-owned UI packages, reusable UI/tooling layer
+- **Companion plan:** [Frontend Surface Verification Plan](./platform-frontend-surfaces-verification-plan.md)
 
 ---
 
-## Актуальный контракт Leptos-библиотек
+## Current Leptos Library Contract
 
-Этот план подтверждает, что библиотечный UI-контур остаётся согласованным
-между reusable Leptos crates, host-приложениями и module-owned UI surfaces.
+This plan confirms that the library UI loop remains consistent
+between reusable Leptos crates, host applications and module-owned UI surfaces.
 
-Проверка опирается на current-state contract:
+Verification relies on the current-state contract:
 
-- Leptos hosts монтируют UI surfaces, но не подменяют ownership модулей
-- reusable библиотеки остаются общими building blocks, а не скрытым application layer
-- internal Leptos data path использует `#[server]` как default internal layer
-- GraphQL сохраняется как параллельный transport contract
-- effective locale приходит из host/runtime layer, а не из package-local fallback chain
+- Leptos hosts mount UI surfaces but do not override module ownership
+- reusable libraries remain common building blocks, not a hidden application layer
+- internal Leptos data path uses `#[server]` as the default internal layer
+- GraphQL is preserved as a parallel transport contract
+- effective locale comes from the host/runtime layer, not from a package-local fallback chain
 
-## Контур проверки
+## Verification Scope
 
 ### Shared Leptos crates
 
@@ -46,81 +46,81 @@ status: verified
 - [ ] `apps/admin`
 - [ ] `apps/storefront`
 
-## Фаза 1. Публичный контракт библиотек
+## Phase 1. Public Library Contract
 
-### 1.1 Root README и локальные docs
+### 1.1 Root README and local docs
 
-- [ ] Каждая библиотека сохраняет актуальный `README.md` с `Purpose`, `Responsibilities`, `Entry points`, `Interactions`.
-- [ ] Local docs внутри `crates/leptos-*` не расходятся с фактическим public contract.
-- [ ] Библиотека явно фиксирует, где заканчивается reusable layer и начинается host/module-owned logic.
+- [ ] Each library maintains an up-to-date `README.md` with `Purpose`, `Responsibilities`, `Entry points`, `Interactions`.
+- [ ] Local docs inside `crates/leptos-*` do not diverge from the actual public contract.
+- [ ] The library explicitly documents where the reusable layer ends and host/module-owned logic begins.
 
 ### 1.2 Ownership boundary
 
-- [ ] Reusable Leptos crates не маскируются под module-owned UI packages.
-- [ ] Библиотеки не вводят собственный auth/locale/runtime contract поверх host policy.
-- [ ] App-specific сценарии не закрепляются в shared crate как скрытая зависимость на конкретный host.
+- [ ] Reusable Leptos crates are not disguised as module-owned UI packages.
+- [ ] Libraries do not introduce their own auth/locale/runtime contract on top of host policy.
+- [ ] App-specific scenarios are not embedded in shared crates as hidden dependencies on a specific host.
 
-## Фаза 2. Host integration
+## Phase 2. Host Integration
 
 ### 2.1 `apps/admin`
 
-- [ ] `apps/admin` использует Leptos libraries как building blocks, а не как контейнер для обхода module-owned UI.
-- [ ] `UiRouteContext`, effective locale и module route base остаются host-provided.
-- [ ] `#[server]` и GraphQL integration не расходятся с текущим UI/runtime contract.
+- [ ] `apps/admin` uses Leptos libraries as building blocks, not as a container for bypassing module-owned UI.
+- [ ] `UiRouteContext`, effective locale and module route base remain host-provided.
+- [ ] `#[server]` and GraphQL integration do not diverge from the current UI/runtime contract.
 
 ### 2.2 `apps/storefront`
 
-- [ ] `apps/storefront` использует shared Leptos libraries без дублирования storefront-specific business logic в shared crates.
-- [ ] Storefront route/locale contract совпадает с `docs/UI/storefront.md` и `docs/architecture/i18n.md`.
-- [ ] Library-level abstractions не подменяют module-owned storefront packages.
+- [ ] `apps/storefront` uses shared Leptos libraries without duplicating storefront-specific business logic in shared crates.
+- [ ] Storefront route/locale contract matches `docs/UI/storefront.md` and `docs/architecture/i18n.md`.
+- [ ] Library-level abstractions do not replace module-owned storefront packages.
 
-## Фаза 3. Data layer и transport contract
+## Phase 3. Data Layer and Transport Contract
 
-### 3.1 `#[server]` и GraphQL
+### 3.1 `#[server]` and GraphQL
 
-- [ ] Leptos libraries не ломают правило: `#[server]` как default internal layer, GraphQL как параллельный contract.
-- [ ] Shared crates не зашивают host-specific transport assumptions.
-- [ ] Library APIs не создают второй источник истины для fetching/mutations поверх server contract.
+- [ ] Leptos libraries do not break the rule: `#[server]` as default internal layer, GraphQL as parallel contract.
+- [ ] Shared crates do not hardcode host-specific transport assumptions.
+- [ ] Library APIs do not create a second source of truth for fetching/mutations on top of the server contract.
 
-### 3.2 i18n и runtime context
+### 3.2 i18n and runtime context
 
-- [ ] Shared packages не вводят package-local locale negotiation chain.
-- [ ] Locale, tenant и auth context приходят из host/runtime layer.
-- [ ] UI libraries не расходятся с manifest/module wiring и host route context.
+- [ ] Shared packages do not introduce a package-local locale negotiation chain.
+- [ ] Locale, tenant and auth context come from the host/runtime layer.
+- [ ] UI libraries do not diverge from manifest/module wiring and host route context.
 
-## Фаза 4. Bypass и drift checks
+## Phase 4. Bypass and Drift Checks
 
 ### 4.1 Bypass patterns
 
-- [ ] В `apps/admin` и `apps/storefront` нет систематических bypass-реализаций поверх shared Leptos contracts.
-- [ ] Если bypass временно существует, он зафиксирован локально и не подменяет библиотечный contract.
-- [ ] Новый reusable functionality добавляется в shared crate, а не размазывается по host apps.
+- [ ] In `apps/admin` and `apps/storefront` there are no systematic bypass implementations on top of shared Leptos contracts.
+- [ ] If a bypass temporarily exists, it is documented locally and does not replace the library contract.
+- [ ] New reusable functionality is added to a shared crate, not scattered across host apps.
 
-### 4.2 Документационный drift
+### 4.2 Documentation drift
 
-- [ ] `docs/UI/README.md`, `docs/UI/graphql-architecture.md`, `docs/UI/storefront.md` согласованы с текущим библиотечным слоем.
-- [ ] Local docs приложений и библиотек описывают один и тот же integration contract.
+- [ ] `docs/UI/README.md`, `docs/UI/graphql-architecture.md`, `docs/UI/storefront.md` are consistent with the current library layer.
+- [ ] Local docs of applications and libraries describe the same integration contract.
 
-## Точечные локальные проверки
+## Targeted Local Checks
 
-- [ ] targeted `cargo check` / `cargo test` для затронутых `crates/leptos-*`
-- [ ] targeted `cargo check` / `cargo test` для `apps/admin` и `apps/storefront`, если менялся host integration path
-- [ ] `npm run verify:i18n:ui`, если менялись shared locale/UI contracts
-- [ ] `npm run verify:i18n:contract`, если менялся locale/runtime contract
-- [ ] targeted UI smoke, если менялся route wiring или shared rendering contract
+- [ ] targeted `cargo check` / `cargo test` for affected `crates/leptos-*`
+- [ ] targeted `cargo check` / `cargo test` for `apps/admin` and `apps/storefront`, if the host integration path changed
+- [ ] `npm run verify:i18n:ui`, if shared locale/UI contracts changed
+- [ ] `npm run verify:i18n:contract`, if locale/runtime contract changed
+- [ ] targeted UI smoke, if route wiring or shared rendering contract changed
 
-## Open blockers
+## Open Blockers
 
-- [ ] Не превращать этот документ в weekly-таблицу статусов и backlog обходов.
-- [ ] Runtime-only blockers фиксировать кратко и отдельно от library contract.
-- [ ] При drift между shared crate и host app сначала чинить owning docs и public contract, а не накапливать исключения.
+- [ ] Do not turn this document into a weekly status table and backlog of workarounds.
+- [ ] Runtime-only blockers should be recorded briefly and separately from the library contract.
+- [ ] When drift occurs between shared crate and host app, first fix the owning docs and public contract, rather than accumulating exceptions.
 
-## Связанные документы
+## Related Documents
 
-- [Верификация frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md)
+- [Frontend Surface Verification](./platform-frontend-surfaces-verification-plan.md)
 - [UI README](../UI/README.md)
-- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [GraphQL and Leptos server functions](../UI/graphql-architecture.md)
 - [Storefront](../UI/storefront.md)
-- [Архитектура i18n](../architecture/i18n.md)
-- [Документация Leptos Admin](../../apps/admin/docs/README.md)
-- [Документация Leptos Storefront](../../apps/storefront/docs/README.md)
+- [i18n Architecture](../architecture/i18n.md)
+- [Leptos Admin Documentation](../../apps/admin/docs/README.md)
+- [Leptos Storefront Documentation](../../apps/storefront/docs/README.md)

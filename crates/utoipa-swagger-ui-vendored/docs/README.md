@@ -1,3 +1,3 @@
 # utoipa-swagger-ui-vendored docs
 
-В этой папке хранится документация модуля `crates/utoipa-swagger-ui-vendored`.
+This folder contains documentation for the `crates/utoipa-swagger-ui-vendored` module.

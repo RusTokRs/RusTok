@@ -6,86 +6,86 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Архитектура Flutter-приложения для RusTok
+# Flutter Application Architecture for RusTok
 
 ## Executive summary
 
-Доступный включённый коннектор в этой сессии — **GitHub**; анализ через него выполнен **только** по репозиторию `RusTokRs/RusTok`, как и требовалось. По результатам анализа видно, что RusTok уже мыслит платформу как **modular monolith** с явным `apps/server` как composition root, с host-приложениями, которые **монтируют** поверхности модулей, но не забирают у модулей ownership доменной логики и UI. Для UI-клиентов **каноническим transport-контрактом** объявлен GraphQL, а внешние/headless/mobile клиенты должны использовать GraphQL и/или REST, не полагаясь на внутренние Leptos `#[server]` функции. Это делает Flutter-клиент не «ещё одной папкой с экранами», а **новым host-клиентом платформы**, который должен уметь подключать module-owned mobile surfaces по manifest-driven правилам платформы. fileciteturn30file0L3-L3 fileciteturn14file0L3-L3 fileciteturn33file0L3-L3
+The available connected connector in this session is **GitHub**; the analysis was performed **only** on the `RusTokRs/RusTok` repository, as required. The analysis shows that RusTok already thinks of the platform as a **modular monolith** with an explicit `apps/server` as the composition root, with host applications that **mount** module surfaces but do not take domain logic and UI ownership away from modules. For UI clients the **canonical transport contract** is declared as GraphQL, and external/headless/mobile clients must use GraphQL and/or REST, without relying on internal Leptos `#[server]` functions. This makes the Flutter client not "just another folder of screens" but a **new host client of the platform** that must be able to mount module-owned mobile surfaces according to manifest-driven platform rules.
 
-Рекомендуемая стратегия — **feature-first modular Flutter app** с **Clean Architecture-lite**, где:
-- **Riverpod** отвечает за state management и DI на уровне приложения и фич,
-- **go_router** отвечает за shell-routing, deep links и typed query/path-параметры,
-- **graphql_flutter** + **graphql_codegen** дают стандартное подключение к RusTok GraphQL, кэш, subscriptions и типизированные операции,
-- module-owned мобильный UI живёт в отдельных пакетах вида `packages/modules/<slug>_mobile`, а общий каркас, токены, роут-контракты, locale/tenant/auth-контекст и GraphQL wiring выносятся в shared-пакеты. Такой подход лучше всего совпадает с текущей платформенной логикой RusTok: shared UI должен оставаться presentational, locale и routing-контракт должны быть host-owned, а модульные поверхности должны подключаться декларативно, а не жёстким копированием в host. fileciteturn17file0L3-L3 fileciteturn31file0L3-L3 fileciteturn32file0L3-L3 fileciteturn36file0L3-L3
+The recommended strategy is a **feature-first modular Flutter app** with **Clean Architecture-lite**, where:
+- **Riverpod** handles state management and DI at the app and feature level,
+- **go_router** handles shell-routing, deep links and typed query/path parameters,
+- **graphql_flutter** + **graphql_codegen** provide standard connection to RusTok GraphQL, cache, subscriptions and typed operations,
+- module-owned mobile UI lives in separate packages like `packages/modules/<slug>_mobile`, while the common scaffold, tokens, route contracts, locale/tenant/auth context and GraphQL wiring are placed in shared packages. This approach best matches the current platform logic of RusTok: shared UI should remain presentational, locale and routing contracts should be host-owned, and module surfaces should be connected declaratively rather than by hard copying into the host.
 
-С точки зрения Flutter-экосистемы выбор в пользу Riverpod/go_router выглядит наиболее прагматичным: Flutter прямо подчёркивает важность intentional architecture, MVVM/state management и dependency injection для масштабируемых приложений; Riverpod позиционируется как reactive caching/data-binding framework с compile-safety, автоматической обработкой loading/error и тестопригодностью; go_router остаётся официально публикуемым Flutter-пакетом для declarative routing, deep linking, ShellRoute и typed routes; а `graphql_flutter` поддерживает `GraphQLClient`, `AuthLink`, `GraphQLCache`, `HiveStore`, optimistic updates и subscriptions через split между HTTP и WebSocket link. citeturn11view4turn14view0turn14view2turn15view0turn15view2turn18view2turn9view1turn9view3turn9view4turn18view4
+From a Flutter ecosystem perspective, the choice of Riverpod/go_router seems the most pragmatic: Flutter directly emphasizes the importance of intentional architecture, MVVM/state management and dependency injection for scalable applications; Riverpod is positioned as a reactive caching/data-binding framework with compile-safety, automatic loading/error handling and testability; go_router remains the officially published Flutter package for declarative routing, deep linking, ShellRoute and typed routes; and `graphql_flutter` supports `GraphQLClient`, `AuthLink`, `GraphQLCache`, `HiveStore`, optimistic updates and subscriptions via split between HTTP and WebSocket links.
 
-Ключевой вывод: **не стоит** строить Flutter-приложение как один большой `lib/features/...` без package boundaries. Для RusTok лучше подходит схема **host app + shared scaffold packages + module-owned mobile packages + generated contracts**. Это снижает UI drift, позволяет повторять параллельную структуру модулей платформы, упрощает поэтапную миграцию и делает mobile-клиент совместимым с manifest-driven будущим платформы. fileciteturn12file0L3-L3 fileciteturn15file0L3-L3
+Key takeaway: **do not** build the Flutter application as one large `lib/features/...` without package boundaries. For RusTok a better approach is the **host app + shared scaffold packages + module-owned mobile packages + generated contracts** scheme. This reduces UI drift, allows mirroring the parallel module structure of the platform, simplifies phased migration and makes the mobile client compatible with the manifest-driven future of the platform.
 
-## Что показал анализ RusTok
+## What the RusTok Analysis Showed
 
-В репозитории RusTok уже сформулированы почти все архитектурные правила, которые нужны для мобильного клиента. Платформа разделена на host-приложения (`apps/server`, `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`), платформенные модули и shared/capability crates; UI ownership остаётся у модуля, а host отвечает за routing, shell, locale propagation, auth/session UX и wiring модульных поверхностей. Иными словами, Flutter-клиент логичнее всего вводить как **ещё один host**, а не как набор хаотично скопированных экранов. fileciteturn30file0L3-L3 fileciteturn33file0L3-L3
+The RusTok repository already has almost all the architectural rules needed for a mobile client. The platform is divided into host applications (`apps/server`, `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`), platform modules and shared/capability crates; UI ownership stays with the module, and the host is responsible for routing, shell, locale propagation, auth/session UX and wiring module surfaces. In other words, it makes most sense to introduce the Flutter client as **yet another host**, not as a set of chaotically copied screens.
 
-У платформы уже есть сильный контрактный слой для UI. Manifest модуля (`rustok-module.toml`) может объявлять `provides.admin_ui` и `provides.storefront_ui`, route segment, i18n-пути, child pages и UI-classification; пример `rustok-blog` показывает `ui_classification = "dual_surface"`, admin/storefront route segments, child pages и отдельные locale bundles. Для Flutter это прямой сигнал: mobile-клиенту стоит ввести **аналогичную contract-модель**, например через `provides.mobile_ui`, либо через внешний generated JSON-реестр, который экспортируется из существующих manifest-файлов RusTok. fileciteturn11file0L3-L3 fileciteturn36file0L3-L3
+The platform already has a strong contract layer for UI. The module manifest (`rustok-module.toml`) can declare `provides.admin_ui` and `provides.storefront_ui`, route segment, i18n paths, child pages and UI-classification; the `rustok-blog` example shows `ui_classification = "dual_surface"`, admin/storefront route segments, child pages and separate locale bundles. For Flutter this is a direct signal: the mobile client should introduce a **similar contract model**, for example via `provides.mobile_ui`, or via an external generated JSON registry exported from existing RusTok manifest files.
 
-Отдельно важен транспортный контракт. RusTok фиксирует GraphQL как **единый UI-facing surface** для admin/storefront/Next/module-owned UI, а REST — для интеграций, webhooks и ops. Канонические endpoints платформы: `/api/graphql` и `/api/graphql/ws`; серверный GraphQL host реально поднимает POST handler на `/api/graphql` и WebSocket handler на `/api/graphql/ws`. В schema builder уже заданы depth/complexity limits (`12` и `600`), а в UI-модуле `apps/admin/src/features/modules/api.rs` видны реальные query/mutation/subscription contracts, включая `BuildProgress` subscription. Для мобильного клиента это означает, что “стандартное подключение” должно сразу учитывать не только запросы/мутации, но и subscriptions, лимиты сложности и внятные fetch policies. fileciteturn14file0L3-L3 fileciteturn25file0L3-L3 fileciteturn27file0L3-L3 fileciteturn18file0L3-L3
+The transport contract is particularly important. RusTok establishes GraphQL as the **single UI-facing surface** for admin/storefront/Next/module-owned UI, and REST for integrations, webhooks and ops. The canonical platform endpoints are: `/api/graphql` and `/api/graphql/ws`; the server GraphQL host actually raises a POST handler on `/api/graphql` and a WebSocket handler on `/api/graphql/ws`. The schema builder already sets depth/complexity limits (`12` and `600`), and in the UI module `apps/admin/src/features/modules/api.rs` actual query/mutation/subscription contracts are visible, including the `BuildProgress` subscription. For the mobile client this means the "standard connection" should immediately account not only for queries/mutations but also for subscriptions, complexity limits and clear fetch policies.
 
-Header-и auth-контракт тоже уже хорошо читаются из репозитория. В Next.js helper для GraphQL RusTok прокидывает `Authorization: Bearer ...`, `X-Tenant-Slug`, при возможности `X-Tenant-ID`, а также `Accept-Language`; GraphQL auth API использует GraphQL-мутции `signIn`, `signUp`, `refreshToken`, а также query `me` и `currentTenant`. Для WebSocket subscriptions сервер требует в `connection_init` как минимум `token` и `tenantSlug`, и опционально `locale`. Это прямой шаблон для mobile-клиента: **весь transport context должен собираться централизованно**, а не в каждой фиче отдельно. fileciteturn24file0L3-L3 fileciteturn37file0L3-L3 fileciteturn25file0L3-L3
+Header and auth contracts are also well readable from the repository. In the Next.js helper for GraphQL RusTok passes `Authorization: Bearer ...`, `X-Tenant-Slug`, optionally `X-Tenant-ID`, and `Accept-Language`; the GraphQL auth API uses GraphQL mutations `signIn`, `signUp`, `refreshToken`, as well as queries `me` and `currentTenant`. For WebSocket subscriptions the server requires in `connection_init` at least `token` and `tenantSlug`, and optionally `locale`. This is a direct template for the mobile client: **all transport context must be assembled centrally**, not in each feature separately.
 
-RusTok также очень чётко разделяет shared UI и app-local UI. В каталоге UI сказано, что shared tokens и primitives живут отдельно, должны держать parity по назначению и базовому API, но не обязаны иметь зеркальную реализацию один-в-один; shared UI packages должны оставаться **presentational** и не владеть transport/auth/routing/domain behavior. Это критично для Flutter: дублировать нужно не исходный React/Leptos component tree, а **design contract, semantic roles и UX invariants**. То есть `Button`, `Badge`, `Input`, `Select`, `Card`, `Spinner` и layout primitives — в shared `ui_kit`; а сложные domain components вроде product editor, module registry dashboard, SEO panels, users list — в module-owned mobile packages. fileciteturn17file0L3-L3
+RusTok also very clearly separates shared UI and app-local UI. The UI catalog says that shared tokens and primitives live separately, must maintain parity in purpose and basic API, but are not required to have a one-to-one mirrored implementation; shared UI packages should remain **presentational** and not own transport/auth/routing/domain behavior. This is critical for Flutter: what needs to be duplicated is not the original React/Leptos component tree, but the **design contract, semantic roles and UX invariants**. That is, `Button`, `Badge`, `Input`, `Select`, `Card`, `Spinner` and layout primitives — in the shared `ui_kit`; and complex domain components like product editor, module registry dashboard, SEO panels, users list — in module-owned mobile packages.
 
-Наконец, в RusTok уже зафиксированы два очень полезных host-level контракта, которые обязательно стоит перенести в mobile:
-- **i18n**: effective locale выбирается host/runtime layer; module-owned UI не должен придумывать свой fallback-chain. fileciteturn31file0L3-L3
-- **routing/query contract**: selection state — URL-owned source of truth; используются typed `snake_case` keys вроде `product_id`, `order_id`, `media_id`, `tab`, а generic `id` и camelCase-алиасы не считаются canonical. Для Flutter это значит: route params, deep links и screen selection state нужно проектировать по этим же правилам, чтобы later parity с web/admin оставалась естественной. fileciteturn32file0L3-L3
+Finally, RusTok has already documented two very useful host-level contracts that should definitely be carried over to mobile:
+- **i18n**: the effective locale is selected by the host/runtime layer; module-owned UI must not invent its own fallback chain.
+- **routing/query contract**: selection state is URL-owned source of truth; typed `snake_case` keys like `product_id`, `order_id`, `media_id`, `tab` are used, while generic `id` and camelCase aliases are not considered canonical. For Flutter this means: route params, deep links and screen selection state should be designed by the same rules so that later parity with web/admin remains natural.
 
-### Ключевые артефакты репозитория и их вывод для Flutter
+### Key Repository Artifacts and Their Implications for Flutter
 
-| Наблюдение в RusTok | Вывод для Flutter | Источник |
+| Observation in RusTok | Implication for Flutter | Source |
 |---|---|---|
-| `apps/server` — composition root; hosts монтируют surfaces | Flutter должен быть новым host-клиентом | fileciteturn30file0L3-L3 |
-| Module-owned UI остаётся у модуля | Экраны модулей выносить в отдельные mobile packages | fileciteturn12file0L3-L3 fileciteturn33file0L3-L3 |
-| GraphQL — канонический UI-facing contract | Основа mobile transport — GraphQL, не REST-first | fileciteturn14file0L3-L3 |
-| Сервер поднимает `/api/graphql` и `/api/graphql/ws` | Клиент нужен с HTTP + subscriptions | fileciteturn25file0L3-L3 |
-| Shared UI должен быть presentational only | В shared-пакеты не класть auth/routing/domain behavior | fileciteturn17file0L3-L3 |
-| Effective locale определяется host-слоем | Locale-provider — в app shell; не в модульных пакетах | fileciteturn31file0L3-L3 |
-| Query keys typed и `snake_case` | Deep links и selection state делать по тем же правилам | fileciteturn32file0L3-L3 |
-| Manifest объявляет `admin_ui`/`storefront_ui`, i18n и child pages | Для mobile нужен аналогичный registry/export layer | fileciteturn11file0L3-L3 fileciteturn36file0L3-L3 |
+| `apps/server` — composition root; hosts mount surfaces | Flutter must be a new host client |  |
+| Module-owned UI stays with the module | Extract module screens into separate mobile packages |  |
+| GraphQL is the canonical UI-facing contract | Mobile transport foundation is GraphQL, not REST-first |  |
+| Server raises `/api/graphql` and `/api/graphql/ws` | Client needs HTTP + subscriptions |  |
+| Shared UI must be presentational only | Do not put auth/routing/domain behavior in shared packages |  |
+| Effective locale is determined by the host layer | Locale provider in app shell; not in module packages |  |
+| Query keys are typed and `snake_case` | Design deep links and selection state by the same rules |  |
+| Manifest declares `admin_ui`/`storefront_ui`, i18n and child pages | Mobile needs a similar registry/export layer |  |
 
-## Рекомендуемая архитектура
+## Recommended Architecture
 
-### Рекомендованный вариант
+### Recommended Option
 
-Для RusTok я рекомендую следующий стек архитектурных решений:
+For RusTok I recommend the following stack of architectural decisions:
 
 **Feature-first modular structure + Clean Architecture-lite + Riverpod + go_router + module-owned packages**.
 
-Почему именно так:
-- Flutter сам акцентирует важность intentional architecture, dependency injection, state management и testability в масштабируемых приложениях. citeturn11view4turn11view2
-- Riverpod даёт compile-safety, native async/network patterns, loading/error handling, test readiness и хорошо работает в plain Dart и пакетной архитектуре. citeturn14view0turn14view2turn14view3
-- go_router уже решает deep linking, ShellRoute, query/path parameters и redirect flows, что хорошо ложится на RusTok routing contract. citeturn15view0turn15view2
-- RusTok сам уже мыслит UI как **host shell + module-owned surfaces**, поэтому modular package boundaries на клиенте естественны. fileciteturn12file0L3-L3 fileciteturn33file0L3-L3
+Why this approach:
+- Flutter itself emphasizes the importance of intentional architecture, dependency injection, state management and testability in scalable applications.
+- Riverpod provides compile-safety, native async/network patterns, loading/error handling, test readiness and works well in plain Dart and package architecture.
+- go_router already solves deep linking, ShellRoute, query/path parameters and redirect flows, which fits well with the RusTok routing contract.
+- RusTok itself already thinks of UI as a **host shell + module-owned surfaces**, so modular package boundaries on the client are natural.
 
-Под **Clean Architecture-lite** я здесь имею в виду не академический “три десятка папок на каждую фичу”, а практический минимум:
+By **Clean Architecture-lite** I mean not the academic "three dozen folders per feature", but a practical minimum:
 - `presentation`
 - `application`
 - `data`
-- `domain` только там, где действительно есть сложные правила и use cases
+- `domain` only where there are genuinely complex rules and use cases
 
-Для CRUD-heavy экранов доменный слой можно держать тонким. Для auth, permissions, module registry, workflows, SEO/publishing, pricing, offline drafts — наоборот, domain/application слой нужен обязательно.
+For CRUD-heavy screens the domain layer can be kept thin. For auth, permissions, module registry, workflows, SEO/publishing, pricing, offline drafts — on the contrary, a domain/application layer is definitely needed.
 
-### Сравнение вариантов
+### Option Comparison
 
-| Вариант | Плюсы | Минусы | Вывод |
-|---|---|---|---|---|---|
-| **Provider** | Очень простой, официальный экосистемный базис, мало порога входа | Отлично подходит для небольших приложений, но для крупного package-driven клиента быстро упирается в ручную дисциплину и слабее по ergonomics для async/state contracts | Подходит для MVP, не оптимален как основной фундамент |
-| **BLoC** | Сильное разделение presentation и business logic, хорошие DI/repository widgets | Больше boilerplate, особенно если модулей и экранов много | Хорош для команд, уже живущих в event-driven стиле |
-| **Riverpod** | Compile-safety, async-first ergonomics, test-ready, plain Dart, удобно раскладывается по пакетам | Нужна дисциплина в naming/provider design; команде без опыта понадобится onboarding | **Лучший базовый выбор** |
-| **flutter_modular** | Встроенные modular routes + DI, удобен для package/module мышления | Смешивает routing и DI в отдельную мета-архитектуру; в RusTok это может дублировать Riverpod + go_router и делать систему тяжелее | Использовать только если команда уже стандартизировала всё на Modular |
-| **Clean Architecture full** | Сильная изоляция и тестируемость | Риск переусложнения, лишняя многослойность для простых фич | Брать как принцип, но в стиле **lite** |
+| Option | Pros | Cons | Verdict |
+|---|---|---|---|
+| **Provider** | Very simple, official ecosystem foundation, low barrier to entry | Good for small apps, but for a large package-driven client it quickly hits manual discipline limits and is weaker in ergonomics for async/state contracts | Suitable for MVP, not optimal as the main foundation |
+| **BLoC** | Strong separation of presentation and business logic, good DI/repository widgets | More boilerplate, especially with many modules and screens | Good for teams already living in event-driven style |
+| **Riverpod** | Compile-safety, async-first ergonomics, test-ready, plain Dart, easy to distribute across packages | Needs discipline in naming/provider design; team without experience needs onboarding | **Best baseline choice** |
+| **flutter_modular** | Built-in modular routes + DI, convenient for package/module thinking | Mixes routing and DI into a separate meta-architecture; in RusTok this may duplicate Riverpod + go_router and make the system heavier | Use only if the team has already standardized everything on Modular |
+| **Clean Architecture full** | Strong isolation and testability | Risk of over-engineering, unnecessary multi-layering for simple features | Take as a principle but in **lite** style |
 
-Основания для сравнения: `provider` — wrapper around `InheritedWidget`; `flutter_bloc` подчёркивает separation of presentation/business logic и DI widgets (`BlocProvider`, `RepositoryProvider`); Riverpod декларирует compile safety, async/error handling, test-ready и поддержку WebSocket/network scenarios; `flutter_modular` позиционируется как smart structure для modularized routes и DI. citeturn17view0turn16view0turn14view0turn14view2turn17view1
+Basis for comparison: `provider` — wrapper around `InheritedWidget`; `flutter_bloc` emphasizes separation of presentation/business logic and DI widgets (`BlocProvider`, `RepositoryProvider`); Riverpod declares compile safety, async/error handling, test-ready and WebSocket/network scenario support; `flutter_modular` positions itself as a smart structure for modularized routes and DI.
 
-### Архитектурная схема
+### Architecture Diagram
 
 ```mermaid
 flowchart LR
@@ -115,23 +115,23 @@ flowchart LR
     I --> L[/api/graphql/ws]
 ```
 
-### Практические trade-offs
+### Practical Trade-offs
 
-Если команда RusTok уже сильно привыкла к BLoC, технической ошибки в выборе BLoC не будет. Но с учётом текущего устройства RusTok — manifest-driven, module-owned UI, host-level locale/routing contracts, много async GraphQL reads/writes/subscriptions — Riverpod даёт более дешёвую по когнитивной нагрузке архитектуру. BLoC здесь особенно хорош для очень сложных workflow/state machines, но как **универсальный** фундамент для десятков модульных surfaces Riverpod обычно быстрее и легче в сопровождении. Это мой архитектурный вывод на основании сочетания требований RusTok и свойств библиотек. fileciteturn12file0L3-L3 fileciteturn32file0L3-L3 citeturn14view0turn16view0
+If the RusTok team is already strongly accustomed to BLoC, choosing BLoC would not be a technical mistake. But given the current structure of RusTok — manifest-driven, module-owned UI, host-level locale/routing contracts, lots of async GraphQL reads/writes/subscriptions — Riverpod provides a lower cognitive load architecture. BLoC is particularly good for very complex workflow/state machines, but as a **universal** foundation for dozens of modular surfaces, Riverpod is usually faster and easier to maintain. This is my architectural conclusion based on the combination of RusTok requirements and library properties.
 
-## Файловая структура и размещение UI-компонентов
+## File Structure and UI Component Placement
 
-### Базовый принцип размещения
+### Basic Placement Principle
 
-Для RusTok я бы **не стал** делать один пакет `lib/features` с полным содержимым всех модулей платформы. Правильнее сделать monorepo из Flutter-пакетов:
+For RusTok I would **not** make a single `lib/features` package with the complete content of all platform modules. It is better to create a monorepo of Flutter packages:
 
-- один **host app**,
-- несколько **shared packages**,
-- набор **module-owned mobile packages**.
+- one **host app**,
+- several **shared packages**,
+- a set of **module-owned mobile packages**.
 
-Это буквально повторяет текущую философию RusTok, где host монтирует surfaces, а ownership UI остаётся у модуля. Shared UI должен содержать только presentational primitives и tokens; app shell должен держать routing, auth, locale, nav shell и module registry; module-owned mobile packages — собственные экраны и их data/application layers. fileciteturn17file0L3-L3 fileciteturn33file0L3-L3
+This literally mirrors the current RusTok philosophy, where the host mounts surfaces and UI ownership stays with the module. Shared UI should contain only presentational primitives and tokens; app shell should hold routing, auth, locale, nav shell and module registry; module-owned mobile packages own their screens and data/application layers.
 
-### Рекомендуемое дерево репозитория
+### Recommended Repository Tree
 
 ```text
 rustok_mobile/
@@ -240,54 +240,54 @@ rustok_mobile/
 └── pubspec.yaml
 ```
 
-### Что лежит где и зачем
+### What Goes Where and Why
 
-| Путь | Назначение |
+| Path | Purpose |
 |---|---|
-| `apps/rustok_admin_mobile` | Host-приложение: запуск, shell, маршрутизация, registry wiring, глобальный контекст |
-| `packages/app_core` | Базовые error/result/env/logging-инструменты без UI и domain-specific кода |
-| `packages/app_ui_kit` | Общие design tokens, темы, базовые widgets и scaffold-компоненты |
-| `packages/app_graphql` | Единая точка сборки GraphQL client, auth/tenant/locale headers, refresh token, mapping ошибок |
-| `packages/app_route_contracts` | Typed route/query keys и sanitization по правилам RusTok |
-| `packages/app_module_contracts` | Интерфейсы для подключения module-owned mobile packages |
-| `packages/rustok_<slug>_mobile` | Экраны, application/data слои и GraphQL-документы конкретного модуля |
-| `registry/generated/mobile_manifest.g.dart` | Generated-реестр модулей, child pages, nav metadata, permissions, route segments |
-| `tooling/build.yaml` | Настройки `graphql_codegen` и других codegen-задач |
-| `integration_test/` | E2E тесты host-приложения |
+| `apps/rustok_admin_mobile` | Host application: bootstrap, shell, routing, registry wiring, global context |
+| `packages/app_core` | Basic error/result/env/logging tools without UI or domain-specific code |
+| `packages/app_ui_kit` | Shared design tokens, themes, base widgets and scaffold components |
+| `packages/app_graphql` | Single point for GraphQL client assembly, auth/tenant/locale headers, refresh token, error mapping |
+| `packages/app_route_contracts` | Typed route/query keys and sanitization by RusTok rules |
+| `packages/app_module_contracts` | Interfaces for connecting module-owned mobile packages |
+| `packages/rustok_<slug>_mobile` | Screens, application/data layers and GraphQL documents for a specific module |
+| `registry/generated/mobile_manifest.g.dart` | Generated module registry, child pages, nav metadata, permissions, route segments |
+| `tooling/build.yaml` | `graphql_codegen` and other codegen task settings |
+| `integration_test/` | E2E tests of the host application |
 
-### Где размещать UI-компоненты и как дублировать UI модулей платформы
+### Where to Place UI Components and How to Duplicate Platform Module UI
 
-Правило должно быть таким.
+The rule should be as follows.
 
-**В `app_ui_kit`** живут только:
+**In `app_ui_kit`** live only:
 - tokens,
-- темы,
-- базовые кнопки и поля,
-- карточки, бейджи, списочные контейнеры,
-- layout/scaffold-примитивы,
+- themes,
+- basic buttons and fields,
+- cards, badges, list containers,
+- layout/scaffold primitives,
 - loading/empty/error views.
 
-**В `rustok_<slug>_mobile`** живут:
+**In `rustok_<slug>_mobile`** live:
 - screen widgets,
 - domain-specific forms,
 - complex lists/tables/cards,
 - route builders,
 - feature controllers,
-- GraphQL documents и mappers.
+- GraphQL documents and mappers.
 
-Это соответствует тому, как RusTok уже разделяет shared primitives и app-local/modular UI. fileciteturn17file0L3-L3
+This matches how RusTok already separates shared primitives from app-local/modular UI.
 
-Для **дублирования UI существующих модулей** я рекомендую не делать визуальный copy-paste с web-host’ов, а придерживаться трёх уровней parity:
+For **duplicating existing module UI** I recommend not doing visual copy-paste from web hosts, but adhering to three levels of parity:
 
-| Уровень parity | Что копировать | Что не копировать |
+| Parity Level | What to Copy | What Not to Copy |
 |---|---|---|
-| **Contract parity** | Названия сущностей, permission gates, route semantics, empty/loading/error states, locale keys | Внутренние web-specific implementation details |
-| **UX parity** | Информационная архитектура, порядок секций, action hierarchy, form semantics | Точное повторение desktop layouts на мобильном экране |
-| **Visual parity** | Tokens, typography, colors, radius, iconography, component intent | Пиксель-в-пиксель сетки web-админки |
+| **Contract parity** | Entity names, permission gates, route semantics, empty/loading/error states, locale keys | Internal web-specific implementation details |
+| **UX parity** | Information architecture, section order, action hierarchy, form semantics | Exact reproduction of desktop layouts on a mobile screen |
+| **Visual parity** | Tokens, typography, colors, radius, iconography, component intent | Pixel-perfect web admin grids |
 
-Иными словами, экран `modules` в Flutter должен воспроизводить **тот же product contract**, что и web `modules`: те же статусы, те же actions, те же constraints, тот же tenant/auth/locale context — но в мобильной layout-модели. RusTok сам уже подчёркивает parity discipline между Leptos и Next admin и фиксирует единые locale files / FSD-like structure для модульного UI; для Flutter нужно продолжить эту линию, а не строить третий, независимый UX. fileciteturn16file0L3-L3 fileciteturn33file0L3-L3
+In other words, the `modules` screen in Flutter should reproduce the **same product contract** as the web `modules`: the same statuses, the same actions, the same constraints, the same tenant/auth/locale context — but in a mobile layout model. RusTok itself already emphasizes parity discipline between Leptos and Next admin and establishes unified locale files / FSD-like structure for modular UI; for Flutter this line needs to be continued, not a third, independent UX built.
 
-### Предлагаемый registry-driven поток подключения модулей
+### Proposed Registry-Driven Module Connection Flow
 
 ```mermaid
 flowchart TD
@@ -300,13 +300,13 @@ flowchart TD
     E --> H[Permissions/Locale/Tenant Context]
 ```
 
-Практически это означает: либо backend/CI RusTok публикует JSON-реестр модулей для mobile, либо Flutter-репозиторий периодически подтягивает manifest snapshots и генерирует Dart registry code. Второй вариант проще стартовать; первый — архитектурно чище в долгую.
+Practically this means: either the RusTok backend/CI publishes a JSON module registry for mobile, or the Flutter repository periodically pulls manifest snapshots and generates Dart registry code. The second option is easier to start with; the first is architecturally cleaner in the long run.
 
-## Каркас проекта и интеграция GraphQL
+## Project Scaffold and GraphQL Integration
 
-### Базовый каркас приложения
+### Basic Application Scaffold
 
-RusTok уже задаёт правильную host-модель: shell, routing, locale propagation, auth UX, permissions и wiring модульных surfaces должны быть host-owned. Именно это и должно появиться в Flutter-`main.dart`, а не “голый MaterialApp с тремя экранами”. fileciteturn33file0L3-L3
+RusTok already sets the correct host model: shell, routing, locale propagation, auth UX, permissions and wiring of module surfaces should be host-owned. This is exactly what should appear in the Flutter `main.dart`, not a "bare MaterialApp with three screens".
 
 ```dart
 // apps/rustok_admin_mobile/lib/main.dart
@@ -346,7 +346,7 @@ Future<ProviderContainer> bootstrap() async {
     ],
   );
 
-  // Можно здесь прогреть сессию, tenant и locale.
+  // Can warm up session, tenant and locale here.
   return container;
 }
 ```
@@ -380,7 +380,7 @@ class RustokAdminMobileApp extends ConsumerWidget {
 }
 ```
 
-Для UI-слоя разумно строиться на **Material 3**: Flutter указывает, что начиная с 3.16 `useMaterial3` включён по умолчанию, а переход к Material 3 предполагает новые компоненты, обновлённые визуальные значения и переход на `ColorScheme.fromSeed`. Для RusTok это хороший baseline: современный системный набор компонентов без лишнего кастомного низкоуровневого UI. citeturn13view3turn13view4
+For the UI layer it is reasonable to build on **Material 3**: Flutter indicates that starting from 3.16 `useMaterial3` is enabled by default, and the transition to Material 3 includes new components, updated visual values and migration to `ColorScheme.fromSeed`. For RusTok this is a good baseline: a modern system component set without excessive custom low-level UI.
 
 ```dart
 // packages/app_ui_kit/lib/theme/app_theme.dart
@@ -404,15 +404,15 @@ ThemeData buildDarkTheme() {
 }
 ```
 
-### Маршрутизация
+### Routing
 
-Для RusTok особенно важно, чтобы routing был:
+For RusTok it is especially important that routing is:
 - declarative,
 - deep-link friendly,
 - shell-capable,
-- совместим с typed query/path contract платформы.
+- compatible with the platform's typed query/path contract.
 
-Именно здесь `go_router` даёт наилучший баланс: URL-based API, deep links, redirects, sub-routes и `ShellRoute` для постоянного shell/navigation bar. citeturn15view0turn15view2
+This is where `go_router` provides the best balance: URL-based API, deep links, redirects, sub-routes and `ShellRoute` for a persistent shell/navigation bar.
 
 ```dart
 // apps/rustok_admin_mobile/lib/app_router.dart
@@ -458,9 +458,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 });
 ```
 
-### DI и registry-driven подключение модулей
+### DI and Registry-Driven Module Connection
 
-В RusTok host-приложение не должно становиться владельцем модульной логики; оно должно только монтировать surfaces и прокидывать контекст. Ровно это и нужно сделать в Flutter через registry. fileciteturn33file0L3-L3
+In RusTok the host application should not become the owner of module logic; it should only mount surfaces and pass context. This is exactly what needs to be done in Flutter through a registry.
 
 ```dart
 // packages/app_module_contracts/lib/mobile_module_entry.dart
@@ -488,7 +488,7 @@ final mobileModuleRegistryProvider = Provider<MobileModuleRegistry>((ref) {
   final entries = [
     BlogMobileModule(),
     ModulesMobileModule(),
-    // далее auto-generated wiring
+    // further auto-generated wiring
   ]..sort((a, b) => a.navOrder.compareTo(b.navOrder));
 
   return MobileModuleRegistry(
@@ -508,9 +508,9 @@ class MobileModuleRegistry {
 }
 ```
 
-### Стандартное подключение GraphQL для RusTok
+### Standard GraphQL Connection for RusTok
 
-Официальные рекомендации GraphQL over HTTP задают очень понятную основу: GraphQL обычно работает через **один endpoint**, запросы идут по `POST` c `application/json`, а тело содержит `query`, `operationName`, `variables`, `extensions`; ответ использует top-level keys `data`, `errors`, `extensions`, причём partial success допустим как `data + errors`. RusTok со своей стороны фиксирует UI-facing endpoint `/api/graphql`, WebSocket endpoint `/api/graphql/ws` и использует дополнительные контекстные headers (`Authorization`, `X-Tenant-Slug`, `X-Tenant-ID`, `Accept-Language`) и payload для WS-инициализации (`token`, `tenantSlug`, `locale`). citeturn10view7turn10view8turn10view9turn10view0turn10view1 fileciteturn24file0L3-L3 fileciteturn25file0L3-L3
+Official GraphQL over HTTP recommendations set a very clear foundation: GraphQL usually works through a **single endpoint**, requests go via `POST` with `application/json`, and the body contains `query`, `operationName`, `variables`, `extensions`; the response uses top-level keys `data`, `errors`, `extensions`, and partial success is allowed as `data + errors`. RusTok in turn establishes the UI-facing endpoint `/api/graphql`, WebSocket endpoint `/api/graphql/ws` and uses additional context headers (`Authorization`, `X-Tenant-Slug`, `X-Tenant-ID`, `Accept-Language`) and WS initialization payload (`token`, `tenantSlug`, `locale`).
 
 ```mermaid
 sequenceDiagram
@@ -618,17 +618,17 @@ class GraphqlClientFactory {
 }
 ```
 
-`graphql_flutter` требует `GraphQLClient` с `link` и `cache`, поддерживает `AuthLink`, `GraphQLCache`, `HiveStore`, optimistic mutations и subscriptions через split на subscription link и обычный terminating link. Это хорошо совпадает с RusTok transport-контрактом. citeturn18view2turn9view3turn9view4turn18view4turn9view1
+`graphql_flutter` requires `GraphQLClient` with `link` and `cache`, supports `AuthLink`, `GraphQLCache`, `HiveStore`, optimistic mutations and subscriptions via split on subscription link and regular terminating link. This matches the RusTok transport contract well.
 
-### Авторизация и refresh
+### Authorization and Refresh
 
-RusTok уже показывает GraphQL-мутции `signIn`, `signUp`, `refreshToken`, а также query `me` и `currentTenant`. На мобильном клиенте я рекомендую такую политику:
+RusTok already shows GraphQL mutations `signIn`, `signUp`, `refreshToken`, as well as queries `me` and `currentTenant`. On the mobile client I recommend the following policy:
 
-- `accessToken` и `refreshToken` — только в `flutter_secure_storage`,
-- `tenantSlug` и non-sensitive UI prefs — в `shared_preferences`,
-- refresh — централизованный сервис в `app_graphql/auth`,
-- повтор запроса — **один раз** после успешного refresh,
-- при провале refresh — hard logout и очистка кэша/сессии. fileciteturn37file0L3-L3 citeturn6view4turn6view5
+- `accessToken` and `refreshToken` — only in `flutter_secure_storage`,
+- `tenantSlug` and non-sensitive UI prefs — in `shared_preferences`,
+- refresh — centralized service in `app_graphql/auth`,
+- request retry — **once** after successful refresh,
+- on refresh failure — hard logout and cache/session cleanup.
 
 ```dart
 abstract interface class SessionStore {
@@ -650,19 +650,19 @@ class AuthSession {
 }
 ```
 
-### Кэширование, обработка ошибок и subscriptions
+### Caching, Error Handling and Subscriptions
 
-Для RusTok я бы рекомендовал **не обещать офлайн-first**, если это отдельно не подтверждено требованиями. Сейчас разумный baseline такой:
+For RusTok I would recommend **not promising offline-first** unless separately confirmed by requirements. The current reasonable baseline is:
 
-- persisted GraphQL cache для чтений;
+- persisted GraphQL cache for reads;
 - secure session store;
-- local drafts только для реально нужных фич;
-- subscriptions там, где есть live surfaces: build progress, возможно notifications, audit/event streams;
-- сложную offline-синхронизацию отложить до explicit product requirement.
+- local drafts only for features that really need them;
+- subscriptions where live surfaces exist: build progress, possibly notifications, audit/event streams;
+- complex offline synchronization deferred until explicit product requirement.
 
-Это соответствует и природе platform admin-клиента, и общим механизмам GraphQL demand control/security. GraphQL Foundation отдельно рекомендует demand control через pagination, depth limiting, breadth/batch limiting и rate limiting; RusTok уже ограничивает depth/complexity на сервере, значит мобильному клиенту не стоит плодить «fat queries» ради удобства UI. citeturn10view3turn10view4turn10view5 fileciteturn27file0L3-L3
+This matches both the nature of a platform admin client and the general GraphQL demand control/security mechanisms. The GraphQL Foundation separately recommends demand control through pagination, depth limiting, breadth/batch limiting and rate limiting; RusTok already limits depth/complexity on the server, so the mobile client should not create "fat queries" for UI convenience.
 
-### Пример GraphQL-документов и маппинга
+### Example GraphQL Documents and Mapping
 
 ```graphql
 # packages/rustok_modules_mobile/lib/graphql/list_modules.graphql
@@ -781,7 +781,7 @@ class ModuleSummary {
 }
 ```
 
-### Шаблоны экранов и виджетов
+### Screen and Widget Templates
 
 ```dart
 // packages/app_ui_kit/lib/scaffolds/app_screen.dart
@@ -831,7 +831,7 @@ class AsyncScreen<T> extends StatelessWidget {
       data: data,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stack) => Center(
-        child: Text('Ошибка: $error'),
+        child: Text('Error: $error'),
       ),
     );
   }
@@ -871,52 +871,52 @@ class ModulesScreen extends ConsumerWidget {
 }
 ```
 
-## Библиотеки и самописные модули
+## Libraries and Custom Modules
 
-### Рекомендуемые готовые библиотеки
+### Recommended Third-Party Libraries
 
-Ниже — рекомендуемый набор библиотек для стартового production-scaffold. Версии ниже взяты с официальных страниц библиотек по состоянию на **22 мая 2026 года**. Для state/routing/DI это `flutter_riverpod 3.3.1`, `go_router 17.2.3`, `get_it 9.2.1`, `flutter_bloc 9.1.1`, `provider 6.1.5+1`, `flutter_modular 6.4.1`, `auto_route 11.1.0`; для data/GraphQL — `graphql_flutter 5.3.0`, `graphql_codegen 3.0.1`, `build_runner 2.15.0`, `dio 5.9.2`, `flutter_secure_storage 10.2.0`, `shared_preferences 2.5.5`, `drift 2.33.0`, `isar 3.1.0+1`, `json_serializable 6.14.0`; для UI/testing — `flutter_svg 2.3.0`, `flex_color_scheme 8.4.0`, `skeletonizer 2.1.3`, `mocktail 1.0.5`, `patrol 4.6.0`. Отдельно важно, что `golden_toolkit 0.15.0` на pub.dev помечен как **discontinued**, поэтому для нового проекта я бы его не брал. citeturn6view1turn6view0turn6view6turn16view0turn17view0turn17view1turn17view2turn6view2turn8view5turn8view4turn6view3turn6view4turn6view5turn8view1turn8view0turn8view2turn8view7turn8view8turn8view9turn7view0turn8view10turn6view7
+Below is the recommended set of libraries for a starter production scaffold. The versions below are taken from official library pages as of **May 22, 2026**. For state/routing/DI: `flutter_riverpod 3.3.1`, `go_router 17.2.3`, `get_it 9.2.1`, `flutter_bloc 9.1.1`, `provider 6.1.5+1`, `flutter_modular 6.4.1`, `auto_route 11.1.0`; for data/GraphQL: `graphql_flutter 5.3.0`, `graphql_codegen 3.0.1`, `build_runner 2.15.0`, `dio 5.9.2`, `flutter_secure_storage 10.2.0`, `shared_preferences 2.5.5`, `drift 2.33.0`, `isar 3.1.0+1`, `json_serializable 6.14.0`; for UI/testing: `flutter_svg 2.3.0`, `flex_color_scheme 8.4.0`, `skeletonizer 2.1.3`, `mocktail 1.0.5`, `patrol 4.6.0`. Note that `golden_toolkit 0.15.0` is marked as **discontinued** on pub.dev, so I would not use it for a new project.
 
-| Категория | Рекомендовано | Почему | Альтернатива | Когда выбрать альтернативу |
-|---|---|---|---|---|---|
-| State management | **flutter_riverpod** | Лучший баланс async ergonomics, modularity, testability | `flutter_bloc`, `provider` | BLoC — если команда уже на event-driven модели; Provider — для маленького MVP |
-| Routing | **go_router** | Deep links, ShellRoute, query/path params, стабильность | `auto_route`, `flutter_modular` | `auto_route` — если нужна сильная codegen-типизация маршрутов |
-| DI | **Riverpod providers** как primary DI; `get_it` только точечно | Меньше дублирования DI-механизмов | `get_it` | Только для низкоуровневых сервисов без UI-context |
-| GraphQL client | **graphql_flutter** | Прямо покрывает link/cache/auth/subscriptions | `ferry_flutter` | Если нужна более жёсткая typed-архитектура и команда готова к steeper setup |
-| GraphQL codegen | **graphql_codegen** + `build_runner` | Типизированные операции и маппинг schema/documents | ручной gql client | Только на очень маленьком проекте |
-| HTTP fallback/REST | **dio** | Interceptors, cancelation, adapters | `http` | Если нужен совсем простой клиент |
-| Secure storage | **flutter_secure_storage** | Правильное место для токенов и секретов | — | Без альтернативы в baseline |
-| Preferences | **shared_preferences** | Простые non-critical настройки | — | Только для prefs, не для критичных данных |
-| Local DB | **drift** | Более свежая stable-линейка и хороший контроль SQL/queries | `isar` | `isar` — если нужен object-store стиль и команда уже его знает |
-| JSON models | **json_serializable** | Стабильный официальный путь к сериализации | ручной код | Если моделей мало |
-| SVG assets | **flutter_svg** | Практический стандарт для иконографии | PNG-only | Если SVG вообще не используются |
-| Theming | **flex_color_scheme** | Быстрый production-grade старт поверх Material 3 | только ThemeData вручную | Если нужен предельно минималистичный theming |
-| Skeleton loading | **skeletonizer** | Быстро даёт consistent loading states | самописные placeholders | Если дизайн-система совсем уникальна |
-| Unit/widget mocks | **mocktail** | Не требует code generation | `mockito` | Если команде нужен именно Mockito flow |
-| Integration/E2E | **integration_test** baseline + `patrol` optional | Patrol закрывает native interactions, где `integration_test` неудобен | только `integration_test` | Если native prompts/permissions не тестируются |
+| Category | Recommended | Why | Alternative | When to Choose Alternative |
+|---|---|---|---|---|
+| State management | **flutter_riverpod** | Best balance of async ergonomics, modularity, testability | `flutter_bloc`, `provider` | BLoC — if the team is already on event-driven model; Provider — for a small MVP |
+| Routing | **go_router** | Deep links, ShellRoute, query/path params, stability | `auto_route`, `flutter_modular` | `auto_route` — if strong codegen typing of routes is needed |
+| DI | **Riverpod providers** as primary DI; `get_it` only selectively | Less DI mechanism duplication | `get_it` | Only for low-level services without UI-context |
+| GraphQL client | **graphql_flutter** | Directly covers link/cache/auth/subscriptions | `ferry_flutter` | If a more rigid typed architecture is needed and the team is ready for a steeper setup |
+| GraphQL codegen | **graphql_codegen** + `build_runner` | Typed operations and schema/document mapping | Manual gql client | Only on a very small project |
+| HTTP fallback/REST | **dio** | Interceptors, cancelation, adapters | `http` | If a very simple client is sufficient |
+| Secure storage | **flutter_secure_storage** | Right place for tokens and secrets | — | No alternative in baseline |
+| Preferences | **shared_preferences** | Simple non-critical settings | — | Only for prefs, not for critical data |
+| Local DB | **drift** | More recent stable line and good SQL/query control | `isar` | `isar` — if object-store style is preferred and the team already knows it |
+| JSON models | **json_serializable** | Stable official serialization path | Manual code | If there are few models |
+| SVG assets | **flutter_svg** | De facto standard for iconography | PNG-only | If SVG is not used at all |
+| Theming | **flex_color_scheme** | Fast production-grade start on top of Material 3 | Manual ThemeData only | If minimal theming is needed |
+| Skeleton loading | **skeletonizer** | Quickly gives consistent loading states | Custom placeholders | If the design system is very unique |
+| Unit/widget mocks | **mocktail** | No code generation required | `mockito` | If the team needs exactly the Mockito flow |
+| Integration/E2E | **integration_test** baseline + optional `patrol` | Patrol covers native interactions where `integration_test` is inconvenient | only `integration_test` | If native prompts/permissions are not tested |
 
-### Почему выбранные лучше именно для RusTok
+### Why the Chosen Libraries Are Better for RusTok
 
-Для RusTok главный критерий — не “самая модная библиотека”, а **совместимость с архитектурой модульной платформы**. Поэтому:
-- `go_router` лучше `flutter_modular` как базовый роутинг, потому что он решает routing-плоскость без навязывания отдельной DI/meta-архитектуры поверх RusTok host-shell.
-- Riverpod лучше Provider как основной state/DI фундамент, потому что RusTok явно тяготеет к package boundaries, async GraphQL flows, strict contracts и тестопригодности.
-- `graphql_flutter + graphql_codegen` лучше ручного GraphQL, потому что платформа уже богата schema-driven поверхностями, subscriptions и сложными query/mutation contracts; ручной string-based клиент быстро станет источником drift и ошибок.
-- `drift` как optional offline/data-db выглядит надёжнее для long-lived production mobile, чем брать object-store только потому, что он “быстрее стартует”. При этом если офлайн-режим ограничен лишь persisted GraphQL cache + drafts, отдельная БД может вообще не понадобиться на первом этапе. Это уже продуктовый выбор, а не обязательный обязательный слой.
+For RusTok the main criterion is not "the trendiest library" but **compatibility with the modular platform architecture**. Therefore:
+- `go_router` is better than `flutter_modular` as a base routing package because it solves the routing plane without imposing a separate DI/meta-architecture on top of the RusTok host-shell.
+- Riverpod is better than Provider as the main state/DI foundation because RusTok clearly leans toward package boundaries, async GraphQL flows, strict contracts and testability.
+- `graphql_flutter + graphql_codegen` is better than manual GraphQL because the platform is already rich with schema-driven surfaces, subscriptions and complex query/mutation contracts; a manual string-based client will quickly become a source of drift and errors.
+- `drift` as an optional offline/data-db looks more reliable for long-lived production mobile than taking an object-store just because it "starts faster". However, if offline mode is limited to persisted GraphQL cache + drafts only, a separate DB might not be needed at all in the first phase. This is a product decision, not a mandatory layer.
 
-### Предлагаемые самописные библиотеки и модули
+### Proposed Custom Libraries and Modules
 
-Вот набор **самописных** пакетов, которые я бы считал не “лишней абстракцией”, а архитектурным минимумом.
+Here is a set of **custom** packages that I would consider not "unnecessary abstraction" but an architectural minimum.
 
-| Пакет/модуль | Ответственность | Почему нужен именно как отдельный пакет |
+| Package/Module | Responsibility | Why Needed as a Separate Package |
 |---|---|---|
-| `app_core` | env, Result/Failure, logging, retry utils, typed errors | Чтобы не дублировать инфраструктуру по фичам |
-| `app_ui_kit` | tokens, themes, base widgets, scaffolds | Чтобы держать parity с RusTok shared UI contract |
-| `app_graphql` | client factory, headers/ws payload, refresh policy, error mapping | Чтобы auth/tenant/locale transport context не расползся по всем фичам |
-| `app_route_contracts` | query keys, route sanitization, deep-link parsing | Чтобы mirror-ить RusTok route-selection contract |
-| `app_module_contracts` | интерфейсы module entry, nav metadata, permissions wiring | Чтобы модульные mobile packages были truly pluggable |
-| `generated_module_registry` | generated wiring из manifest/export | Чтобы host не редактировался вручную при каждом новом модуле |
+| `app_core` | env, Result/Failure, logging, retry utils, typed errors | To avoid duplicating infrastructure across features |
+| `app_ui_kit` | tokens, themes, base widgets, scaffolds | To maintain parity with the RusTok shared UI contract |
+| `app_graphql` | client factory, headers/ws payload, refresh policy, error mapping | To keep auth/tenant/locale transport context from spreading across all features |
+| `app_route_contracts` | query keys, route sanitization, deep-link parsing | To mirror the RusTok route-selection contract |
+| `app_module_contracts` | interfaces for module entry, nav metadata, permissions wiring | To make module-owned mobile packages truly pluggable |
+| `generated_module_registry` | generated wiring from manifest/export | So the host does not need manual editing for each new module |
 
-### Примеры публичных интерфейсов
+### Example Public Interfaces
 
 ```dart
 abstract interface class GraphqlHeadersProvider {
@@ -967,15 +967,15 @@ final class GraphqlFailure extends AppFailure {
 }
 ```
 
-## CI/CD, риски и рекомендации по миграции
+## CI/CD, Risks and Migration Recommendations
 
-### Что стоит перенять из текущего CI RusTok
+### What to Adopt from Current RusTok CI
 
-Текущий CI RusTok уже очень строгий: formatting, clippy/check, platform contract validation, audit/deny, documentation, unused dependencies, coverage, SBOM, сборка серверных и UI-артефактов, а также отдельные jobs для Next-приложений. Для Flutter-репозитория имеет смысл взять **тот же уровень дисциплины**, а не ограничиться `flutter test`. fileciteturn29file0L3-L3
+The current RusTok CI is already very strict: formatting, clippy/check, platform contract validation, audit/deny, documentation, unused dependencies, coverage, SBOM, server and UI artifact builds, and separate jobs for Next applications. For the Flutter repository it makes sense to take **the same level of discipline**, not just `flutter test`.
 
-### Рекомендуемый pipeline для Flutter
+### Recommended Pipeline for Flutter
 
-Минимальный production pipeline:
+Minimum production pipeline:
 1. `dart format --set-exit-if-changed .`
 2. `flutter analyze`
 3. codegen-check: `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code`
@@ -983,10 +983,10 @@ final class GraphqlFailure extends AppFailure {
 5. integration tests
 6. Android build
 7. iOS build
-8. артефакты + релизная публикация для internal channels
+8. artifacts + release publication for internal channels
 9. contract checks: GraphQL schema snapshot, generated registry snapshot, route/query contract tests
 
-### Шаблон GitHub Actions
+### GitHub Actions Template
 
 ```yaml
 name: Flutter CI
@@ -1102,391 +1102,391 @@ jobs:
           path: build/ios/ipa/*.ipa
 ```
 
-### Риски и митигации
+### Risks and Mitigations
 
-| Риск | Почему реален для RusTok | Митигация |
+| Risk | Why Real for RusTok | Mitigation |
 |---|---|---|
-| **UI drift** между Flutter и web-host’ами | RusTok уже поддерживает несколько UI-стеков | Единые tokens, locale keys, route/query contracts, review checklist на parity |
-| **Разъезд transport-контрактов** | Платформа уже богата GraphQL/REST/WS surfaces | Весь transport context только через `app_graphql`, никаких feature-local клиентов |
-| **Over-modularization** | Легко превратить всё в слишком большое число пакетов | Пакет выделять только если есть ownership boundary или повторное использование |
-| **Schema drift / codegen drift** | GraphQL surface живой и растущий | Schema snapshot + codegen CI + generated files checked in |
-| **Сложность офлайна** | Не указано, нужен ли offline-first | Начать с persisted cache + secure session; Drift/outbox только после подтверждения требований |
-| **Сложный routing state** | В RusTok route/query contract уже строгий | Единый sanitizer и typed route keys package |
-| **Auth/tenant bugs** | У RusTok контекст tenant/auth/locale обязателен | HTTP/WS заголовки и payload собирать централизованно и контрактно тестировать |
+| **UI drift** between Flutter and web hosts | RusTok already supports multiple UI stacks | Unified tokens, locale keys, route/query contracts, review checklist for parity |
+| **Transport contract divergence** | Platform already rich with GraphQL/REST/WS surfaces | All transport context only through `app_graphql`, no feature-local clients |
+| **Over-modularization** | Easy to turn everything into too many packages | Extract a package only if there is an ownership boundary or reuse |
+| **Schema drift / codegen drift** | GraphQL surface is live and growing | Schema snapshot + codegen CI + generated files checked in |
+| **Offline complexity** | Not specified whether offline-first is needed | Start with persisted cache + secure session; Drift/outbox only after requirements are confirmed |
+| **Complex routing state** | RusTok route/query contract is already strict | Single sanitizer and typed route keys package |
+| **Auth/tenant bugs** | RusTok tenant/auth/locale context is mandatory | HTTP/WS headers and payload assembled centrally and contract-tested |
 
-### Фазный план реализации (без дубляжа)
+### Phased Implementation Plan (Without Duplication)
 
-Ниже — единый implementation plan, который **ссылается на уже описанные разделы** документа вместо повторения одних и тех же решений.
+Below is a single implementation plan that **references already described sections** of this document instead of repeating the same decisions.
 
 
-_Легенда статусов: `⬜ Planned` — не начато, `🟡 In progress` — в работе, `✅ Done` — выполнено._
+_Legend: `⬜ Planned` — not started, `🟡 In progress` — in progress, `✅ Done` — completed._
 
-| Статус | Фаза | Объём работ | На что опираемся в этом документе | Definition of Done |
+| Status | Phase | Scope | Reference in This Document | Definition of Done |
 |---|---|---|---|---|
-| 🟡 In progress | **Phase 0 — Foundation** | Создать `host app`, app shell, тему, auth session store, GraphQL client factory, route contracts и сразу зафиксировать FFA-baseline для Flutter (единый product/capability contract без Flutter-specific API). | [Базовый каркас приложения](#базовый-каркас-приложения), [Маршрутизация](#маршрутизация), [Стандартное подключение GraphQL для RusTok](#стандартное-подключение-graphql-для-rustok), [Авторизация и refresh](#авторизация-и-refresh) | Работают login + `me` + `currentTenant`, есть базовый shell и deep-link вход в защищённый экран; FFA-baseline зафиксирован с начала разработки. |
-| 🟡 In progress | **Phase 1 — Pilot module** | Внедрить один module-owned пакет (рекомендовано: `modules` или `blog`) с реальным E2E флоу. | [Файловая структура и размещение UI-компонентов](#файловая-структура-и-размещение-ui-компонентов), [DI и registry-driven подключение модулей](#di-и-registry-driven-подключение-модулей), [Шаблоны экранов и виджетов](#шаблоны-экранов-и-виджетов) | Один бизнес-сценарий модуля проходит end-to-end в мобильном host без feature-local transport-клиентов. |
-| 🟡 In progress | **Phase 2 — Registry/codegen** | Подключить generated mobile registry из manifest/export и убрать ручное wiring в host. Заложить расширяемость только под mobile-safe host metadata: nested routes, nav, locale namespace и permission gates. | [Предлагаемый registry-driven поток подключения модулей](#предлагаемый-registry-driven-поток-подключения-модулей), [Предлагаемые самописные библиотеки и модули](#предлагаемые-самописные-библиотеки-и-модули) | Новый модуль подключается через manifest/codegen без правок в навигационном каркасе host; registry не содержит server-side FBA/provider metadata. |
-| ⬜ Planned | **Phase 3 — Parity expansion** | Перенести остальные high-value модули, закрепить route/i18n/permission parity и единые error/loading/empty паттерны. | [Где размещать UI-компоненты и как дублировать UI модулей платформы](#где-размещать-ui-компоненты-и-как-дублировать-ui-модулей-платформы), [Кэширование, обработка ошибок и subscriptions](#кэширование-обработка-ошибок-и-subscriptions) | Покрыты основные operator flows; контракты query keys/locale/permissions не расходятся с web-host правилами. |
-| ⬜ Planned | **Phase 4 — Hardening & release** | E2E, performance, observability, crash reporting, release pipeline (Android/iOS), rollout gates. | [Рекомендуемый pipeline для Flutter](#рекомендуемый-pipeline-для-flutter), [Шаблон GitHub Actions](#шаблон-github-actions), [Риски и митигации](#риски-и-митигации) | Готовы alpha/beta релизы, pipeline стабилен, критичные риски закрыты митигациями. |
-| ⬜ Planned | **Phase 5 — Offline/advanced sync (optional)** | Добавить офлайн-сценарии только после продуктового подтверждения требований. | [Open questions и ограничения](#open-questions-и-ограничения), [Риски и митигации](#риски-и-митигации) | Есть утверждённые offline requirements и реализована целевая стратегия sync/outbox. |
+| 🟡 In progress | **Phase 0 — Foundation** | Create `host app`, app shell, theme, auth session store, GraphQL client factory, route contracts and immediately establish FFA-baseline for Flutter (single product/capability contract without Flutter-specific API). | [Basic Application Scaffold](#basic-application-scaffold), [Routing](#routing), [Standard GraphQL Connection for RusTok](#standard-graphql-connection-for-rustok), [Authorization and Refresh](#authorization-and-refresh) | login + `me` + `currentTenant` work, basic shell and deep-link entry to a protected screen; FFA-baseline established from the start. |
+| 🟡 In progress | **Phase 1 — Pilot module** | Implement one module-owned package (recommended: `modules` or `blog`) with a real E2E flow. | [File Structure and UI Component Placement](#file-structure-and-ui-component-placement), [DI and Registry-Driven Module Connection](#di-and-registry-driven-module-connection), [Screen and Widget Templates](#screen-and-widget-templates) | One business scenario of the module passes end-to-end in the mobile host without feature-local transport clients. |
+| 🟡 In progress | **Phase 2 — Registry/codegen** | Connect generated mobile registry from manifest/export and remove manual wiring in the host. Lay foundation for extensibility only under mobile-safe host metadata: nested routes, nav, locale namespace and permission gates. | [Proposed Registry-Driven Module Connection Flow](#proposed-registry-driven-module-connection-flow), [Proposed Custom Libraries and Modules](#proposed-custom-libraries-and-modules) | New module connects via manifest/codegen without host navigation frame edits; registry does not contain server-side FBA/provider metadata. |
+| ⬜ Planned | **Phase 3 — Parity expansion** | Migrate remaining high-value modules, establish route/i18n/permission parity and unified error/loading/empty patterns. | [Where to Place UI Components and How to Duplicate Platform Module UI](#where-to-place-ui-components-and-how-to-duplicate-platform-module-ui), [Caching, Error Handling and Subscriptions](#caching-error-handling-and-subscriptions) | Main operator flows covered; query keys/locale/permissions contracts do not diverge from web-host rules. |
+| ⬜ Planned | **Phase 4 — Hardening & release** | E2E, performance, observability, crash reporting, release pipeline (Android/iOS), rollout gates. | [Recommended Pipeline for Flutter](#recommended-pipeline-for-flutter), [GitHub Actions Template](#github-actions-template), [Risks and Mitigations](#risks-and-mitigations) | Alpha/beta releases ready, pipeline stable, critical risks closed with mitigations. |
+| ⬜ Planned | **Phase 5 — Offline/advanced sync (optional)** | Add offline scenarios only after product requirement confirmation. | [Open Questions and Limitations](#open-questions-and-limitations), [Risks and Mitigations](#risks-and-mitigations) | Approved offline requirements exist and target sync/outbox strategy implemented. |
 
 
-#### Операционный статус плана (обновлено: 2026-06-13, storefront GraphQL evidence hardening)
+#### Operational Plan Status (updated: 2026-06-13, storefront GraphQL evidence hardening)
 
-- **FFA в плане отмечен:** ✅ Да. FFA-baseline явно зафиксирован в `Phase 0 — Foundation` и отдельно закреплён в anti-drift guardrail разделе.
-- **Текущий фокус выполнения:** `Phase 1 — Pilot module` остаётся `🟡 In progress` для admin/operator flow, но его ключевые seams уже закрыты: module-owned package, shared GraphQL transport, `toggleModule`, hydrated `me.permissions`, retry/compensation actions и dedicated operation history/recovery screen используют существующие lifecycle GraphQL contracts без feature-local transport-клиентов. `Phase 2 — Registry/codegen` работает как supporting track: admin и storefront registry/codegen проверяются локальными deterministic checks, а storefront registry уже используется для package discovery и generated home navigation.
-- **Storefront track:** `rustok_frontend_mobile` отделён от admin/operator host; catalog/cart package работает через host-owned repository seam, durable cart id seam, host-owned checkout intent surface и source-backed GraphQL contract verifier для `storefrontSearch`, `storefrontCart` и create/add/update/remove cart mutations.
-- **Следующая точка контроля:** превратить source-backed storefront verifier в live schema/test-server CI job, когда доступен Flutter SDK или lightweight server harness; до этого не расширять Flutter API surface и не добавлять package-local transport/storage fallback chains.
+- **FFA noted in plan:** ✅ Yes. FFA-baseline explicitly established in `Phase 0 — Foundation` and separately enforced in the anti-drift guardrail section.
+- **Current execution focus:** `Phase 1 — Pilot module` remains `🟡 In progress` for admin/operator flow, but its key seams are already closed: module-owned package, shared GraphQL transport, `toggleModule`, hydrated `me.permissions`, retry/compensation actions and dedicated operation history/recovery screen use existing lifecycle GraphQL contracts without feature-local transport clients. `Phase 2 — Registry/codegen` works as a supporting track: admin and storefront registry/codegen are checked by local deterministic checks, and storefront registry is already used for package discovery and generated home navigation.
+- **Storefront track:** `rustok_frontend_mobile` separated from admin/operator host; catalog/cart package works through host-owned repository seam, durable cart id seam, host-owned checkout intent surface and source-backed GraphQL contract verifier for `storefrontSearch`, `storefrontCart` and create/add/update/remove cart mutations.
+- **Next checkpoint:** promote the source-backed storefront verifier to a live schema/test-server CI job when Flutter SDK or a lightweight server harness is available; until then, do not expand Flutter API surface or add package-local transport/storage fallback chains.
 
-#### Ближайший execution backlog (Phase 1 pilot)
+#### Nearest Execution Backlog (Phase 1 pilot)
 
-1. **Registry schema freeze (FFA-safe):** зафиксировать минимальный mobile registry contract (`module_slug`, `surface_kind`, `route_segment`, `child_pages`, `permissions`, `locale_namespace`) без Flutter-only полей.
-2. **Codegen pipeline:** добавить reproducible генерацию `mobile_manifest.g.dart` из manifest snapshot + CI-проверку diff generated-файлов (в работе: локальная verify-команда уже фиксирует stale-state для manifest + snapshot).
-3. **Host integration seam:** подключить registry через единый adapter-слой (`module_entry_adapter`) и убрать ручное перечисление модулей в shell routing/nav.
-4. **Pilot gate:** `Phase 1 — Pilot module` переведён в `🟡 In progress`; первый mutation-backed operator action реализован через `toggleModule`, permission gate подключён к hydrated `me.permissions`, retryable post-hook failures показывают recovery feedback и retry/compensation actions; operation history/recovery screen добавлен как следующий audit-oriented слой pilot-флоу.
+1. **Registry schema freeze (FFA-safe):** establish the minimum mobile registry contract (`module_slug`, `surface_kind`, `route_segment`, `child_pages`, `permissions`, `locale_namespace`) without Flutter-only fields.
+2. **Codegen pipeline:** add reproducible generation of `mobile_manifest.g.dart` from manifest snapshot + CI diff check of generated files (in progress: local verify command already locks stale-state for manifest + snapshot).
+3. **Host integration seam:** connect registry through a single adapter layer (`module_entry_adapter`) and remove manual module enumeration in shell routing/nav.
+4. **Pilot gate:** `Phase 1 — Pilot module` moved to `🟡 In progress`; first mutation-backed operator action implemented via `toggleModule`, permission gate connected to hydrated `me.permissions`, retryable post-hook failures show recovery feedback and retry/compensation actions; operation history/recovery screen added as the next audit-oriented layer of the pilot flow.
 
 
 
-#### Sprint continuation (FFA-first, ближайшие 2 PR)
+#### Sprint Continuation (FFA-first, next 2 PRs)
 
-| PR | Цель | Обязательные артефакты | FFA-критерий приёмки |
+| PR | Goal | Mandatory Artifacts | FFA Acceptance Criterion |
 |---|---|---|---|
-| **PR-A: Registry contract freeze** | Зафиксировать минимальный mobile contract без Flutter-only расширений | `mobile_manifest` schema snapshot, таблица compatibility-правил, changelog полей | Contract описывает capability/surface, а не runtime-детали Flutter; отсутствуют mobile-exclusive API поля. |
-| **PR-B: Codegen + host seam** | Сделать deterministic codegen и единый adapter в host | reproducible generation pipeline, diff-check generated файлов в CI, `module_entry_adapter` как единственная точка подключения | Новый модуль подключается декларативно через registry без ручной правки shell-routing; route/locale/auth контекст остаётся host-owned. |
+| **PR-A: Registry contract freeze** | Establish minimum mobile contract without Flutter-only extensions | `mobile_manifest` schema snapshot, compatibility rules table, field changelog | Contract describes capability/surface, not Flutter runtime details; no mobile-exclusive API fields present. |
+| **PR-B: Codegen + host seam** | Make codegen deterministic and create a single adapter in the host | reproducible generation pipeline, diff-check of generated files in CI, `module_entry_adapter` as the single connection point | New module connects declaratively via registry without manual shell-routing edits; route/locale/auth context remains host-owned. |
 
-**Правило перехода в `Phase 1`:** после merge `PR-A` и `PR-B` взять pilot-флоу `modules` (предпочтительно) или `blog`, и зафиксировать первое E2E-доказательство parity (login → module list/detail → обратно в shell) без feature-local transport-клиентов.
+**Phase 1 transition rule:** after `PR-A` and `PR-B` merge, take the pilot flow `modules` (preferred) or `blog`, and establish the first E2E parity evidence (login → module list/detail → back to shell) without feature-local transport clients.
 
-#### Inline comments resolution log (update 2026-05-24)
+#### Inline Comments Resolution Log (update 2026-05-24)
 
-Чтобы снять замечания по предыдущему PR и избежать «плана ради плана», фиксируем обязательные выходы по каждому ближайшему шагу:
+To address feedback from the previous PR and avoid a "plan for the plan's sake", we fix mandatory outputs for each nearest step:
 
-- **PR-A считается закрытым только при наличии артефактов в репозитории**: snapshot schema, compatibility matrix и field changelog в одном месте документации трека.
-- **PR-B считается закрытым только при проверяемом CI-сигнале**: deterministic codegen + `git diff --exit-code` для generated-файлов после генерации.
-- **Переход в Phase 1 запрещён без evidence-блока**: ссылка на конкретный E2E прогон pilot-флоу (`modules`/`blog`) и отметка FFA-checklist без исключений.
+- **PR-A is considered closed only when artifacts exist in the repository**: snapshot schema, compatibility matrix and field changelog in one track documentation location.
+- **PR-B is considered closed only with a verifiable CI signal**: deterministic codegen + `git diff --exit-code` for generated files after generation.
+- **Phase 1 transition is prohibited without an evidence block**: a link to a specific E2E run of the pilot flow (`modules`/`blog`) and FFA-checklist mark without exceptions.
 
-#### Concrete deliverables (Phase 2 execution board)
+#### Concrete Deliverables (Phase 2 execution board)
 
-| Deliverable | Owner zone | Verification command / signal | Status |
+| Deliverable | Owner Zone | Verification Command / Signal | Status |
 |---|---|---|---|
-| `mobile_manifest` minimal schema snapshot | `rustok_mobile/tooling` + docs трека | schema snapshot обновлён и закоммичен | ✅ Done |
-| Compatibility matrix (`required/optional/deprecated`) | `docs/research/flutter.md` | матрица заполнена для всех contract-полей | ✅ Done |
+| `mobile_manifest` minimal schema snapshot | `rustok_mobile/tooling` + track docs | schema snapshot updated and committed | ✅ Done |
+| Compatibility matrix (`required/optional/deprecated`) | `docs/research/flutter.md` | matrix filled for all contract fields | ✅ Done |
 | Deterministic codegen job | mobile CI pipeline | `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code` | ⬜ Planned |
 | Local deterministic codegen check | `rustok_mobile/tooling/scripts/check_mobile_codegen.py` | generator CLI runs into temp outputs and diffs against committed manifest/snapshot | ✅ Done |
 | Generated-file diff diagnostics | `rustok_mobile/tooling/scripts/verify_mobile_manifest.py` | stale manifest/snapshot failures print unified diff + regeneration command | ✅ Done |
-| Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ✅ Done |
-| Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav использует `nav.icon` из generated manifest и fallback по module metadata без ручного списка routes | ✅ Done |
+| Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry connects without manual module list in shell-router | ✅ Done |
+| Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav uses `nav.icon` from generated manifest and fallback by module metadata without manual route list | ✅ Done |
 | Pilot E2E evidence (modules/blog) | `rustok_mobile/apps/rustok_admin_mobile/test/pilot_modules_flow_test.dart` + `rustok_mobile/packages/rustok_modules_mobile/test/modules_mobile_screen_test.dart` | authenticated shell → GraphQL-backed module list → module detail route → shell back; package widget test verifies `toggleModule` action refresh and operation history/recovery actions | 🟡 In progress |
 | Storefront catalog/cart GraphQL source verifier | `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` + `rustok_mobile/tooling/tests/test_storefront_cart_graphql_contract.py` | `python3 rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` verifies catalog/cart operation documents against existing server-owned surfaces | ✅ Done |
 | Storefront live schema/test-server promotion | mobile CI pipeline + server test harness | source verifier now accepts `--live-results` JSON for the same catalog/cart operation set and fails on missing/non-passed live results; producing that JSON from a real test server remains the CI harness step | 🟡 In progress |
 | Storefront package mapping expansion gate | `apps/rustok_frontend_mobile` + module-owned packages | add a new package-backed route only when a module-owned package exists and consumes a host-provided repository | ⬜ Planned |
 
-#### PR-D evidence pack (Flutter storefront mobile host)
+#### PR-D Evidence Pack (Flutter storefront mobile host)
 
 **Storefront mobile host:** `rustok_mobile/apps/rustok_frontend_mobile`.
 
-Добавлен отдельный customer-facing Flutter host, потому что web storefront уже существует как `apps/storefront` + `apps/next-frontend`, а мобильный storefront не должен смешиваться с admin/operator приложением:
-- host-owned runtime context — `StorefrontRuntimeContext` и `storefrontGraphQlConfigProvider` собирают `tenantSlug`, `locale` и `/api/graphql` endpoint централизованно;
-- route contract — shell содержит `home/catalog/cart/profile`, монтирует module-owned catalog/cart package и использует generated storefront registry для reserved `/modules/:routeSegment`;
-- FFA rule — новый host не вводит Flutter-only backend API и не копирует canonical routing/storage logic из web storefront;
-- evidence — `rustok_mobile/apps/rustok_frontend_mobile/test/storefront_router_test.dart` проверяет home runtime context, catalog/cart routes и generic module placeholder route.
+A separate customer-facing Flutter host was added because the web storefront already exists as `apps/storefront` + `apps/next-frontend`, and the mobile storefront should not be mixed with the admin/operator application:
+- host-owned runtime context — `StorefrontRuntimeContext` and `storefrontGraphQlConfigProvider` assemble `tenantSlug`, `locale` and `/api/graphql` endpoint centrally;
+- route contract — shell contains `home/catalog/cart/profile`, mounts the module-owned catalog/cart package and uses generated storefront registry for reserved `/modules/:routeSegment`;
+- FFA rule — the new host does not introduce Flutter-only backend API and does not copy canonical routing/storage logic from web storefront;
+- evidence — `rustok_mobile/apps/rustok_frontend_mobile/test/storefront_router_test.dart` checks home runtime context, catalog/cart routes and generic module placeholder route.
 
-Следующий storefront mobile шаг: довести cart-часть до shared-transport backend implementation и подключить storefront packages через generated registry, синхронно с `docs/UI/storefront.md` и web storefront parity rules.
+Next storefront mobile step: advance the cart part to a shared-transport backend implementation and connect storefront packages through the generated registry, synchronously with `docs/UI/storefront.md` and web storefront parity rules.
 
-#### PR-C evidence pack (Phase 1 pilot modules flow)
+#### PR-C Evidence Pack (Phase 1 pilot modules flow)
 
 **Pilot package:** `rustok_mobile/packages/rustok_modules_mobile`.
 
-Минимальный Phase 1 pilot теперь закреплён как module-owned mobile package для surface `modules`:
-- data boundary — `ModulesRepository`, где host обязан передать shared GraphQL client;
-- transport implementation — `GraphQlModulesRepository` использует существующий platform query `moduleRegistry`;
-- UI entry point — `ModulesMobileScreen` с loading/error/empty состояниями и переходом в generated host route;
-- host seam — `apps/rustok_admin_mobile` overrides `modulesRepositoryProvider` через `graphQlClientProvider`, сохраняя auth/tenant/locale context на host-слое;
-- evidence — widget E2E `pilot_modules_flow_test.dart` проверяет authenticated shell → module list → generated detail route → return to `/modules`.
+Minimum Phase 1 pilot now established as a module-owned mobile package for surface `modules`:
+- data boundary — `ModulesRepository`, where the host must pass a shared GraphQL client;
+- transport implementation — `GraphQlModulesRepository` uses the existing platform query `moduleRegistry`;
+- UI entry point — `ModulesMobileScreen` with loading/error/empty states and navigation to a generated host route;
+- host seam — `apps/rustok_admin_mobile` overrides `modulesRepositoryProvider` via `graphQlClientProvider`, preserving auth/tenant/locale context at the host layer;
+- evidence — widget E2E `pilot_modules_flow_test.dart` checks authenticated shell → module list → generated detail route → return to `/modules`.
 
-FFA-ограничение для этого шага: пакет `rustok_modules_mobile` не создаёт собственный GraphQL client, auth/session store, tenant resolver или locale fallback chain. Он только потребляет host-provided repository и existing GraphQL surface.
+FFA restriction for this step: the `rustok_modules_mobile` package does not create its own GraphQL client, auth/session store, tenant resolver or locale fallback chain. It only consumes the host-provided repository and existing GraphQL surface.
 
-#### PR-E evidence pack (Phase 1 modules mutation action)
+#### PR-E Evidence Pack (Phase 1 modules mutation action)
 
-**Mutation-backed operator action:** `toggleModule` в `rustok_mobile/packages/rustok_modules_mobile`.
+**Mutation-backed operator action:** `toggleModule` in `rustok_mobile/packages/rustok_modules_mobile`.
 
-Pilot-флоу `modules` расширен от read-only list/detail evidence к первому operator action:
-- data boundary — `ModulesRepository.toggleModule(...)` добавляет write-side контракт рядом с `listModules()`;
-- transport implementation — `GraphQlModulesRepository` использует существующую canonical GraphQL mutation `toggleModule(moduleSlug, enabled)` и возвращает typed `ModuleToggleResult`;
-- UI action — `ModulesMobileScreen` показывает enable/disable action только для optional modules и GraphQL-hydrated `modules:manage` capability context;
-- refresh evidence — после успешной mutation UI инвалидирует `modulesControllerProvider` и перечитывает `moduleRegistry`;
-- test evidence — `modules_mobile_screen_test.dart` проверяет mutation request, refresh state, recovery feedback и retry/compensation actions without feature-local GraphQL client.
+The `modules` pilot flow expanded from read-only list/detail evidence to the first operator action:
+- data boundary — `ModulesRepository.toggleModule(...)` adds a write-side contract alongside `listModules()`;
+- transport implementation — `GraphQlModulesRepository` uses the existing canonical GraphQL mutation `toggleModule(moduleSlug, enabled)` and returns typed `ModuleToggleResult`;
+- UI action — `ModulesMobileScreen` shows enable/disable action only for optional modules and GraphQL-hydrated `modules:manage` capability context;
+- refresh evidence — after a successful mutation, UI invalidates `modulesControllerProvider` and re-reads `moduleRegistry`;
+- test evidence — `modules_mobile_screen_test.dart` checks mutation request, refresh state, recovery feedback and retry/compensation actions without feature-local GraphQL client.
 
-Permission source теперь hydrated через GraphQL `me.permissions` в host bootstrap probe; retryable lifecycle failures читаются через existing query `failedModuleOperationRecoveryPlans`, а recovery выполняется через existing mutations `retryFailedModuleOperationPostHook` и `compensateFailedModuleOperation`. Это не новый Flutter-specific backend API и не feature-local fallback chain.
+Permission source now hydrated via GraphQL `me.permissions` in host bootstrap probe; retryable lifecycle failures read through existing query `failedModuleOperationRecoveryPlans`, and recovery executed through existing mutations `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation`. This is not a new Flutter-specific backend API and not a feature-local fallback chain.
 
-#### PR-F evidence pack (Phase 1 lifecycle recovery actions)
+#### PR-F Evidence Pack (Phase 1 lifecycle recovery actions)
 
-**Recovery actions:** `retryFailedModuleOperationPostHook` и `compensateFailedModuleOperation` в `rustok_mobile/packages/rustok_modules_mobile`.
+**Recovery actions:** `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation` in `rustok_mobile/packages/rustok_modules_mobile`.
 
-Pilot-флоу `modules` теперь не только показывает recovery feedback, но и даёт оператору выполнить canonical recovery actions:
-- data boundary — `ModulesRepository.retryFailedPostHook(...)` и `ModulesRepository.compensateFailedOperation(...)` добавляют write-side recovery contract рядом с `toggleModule(...)`;
-- transport implementation — `GraphQlModulesRepository` использует существующие lifecycle GraphQL mutations без Flutter-only API;
-- UI action — `_RecoveryPlanNotice` показывает `Retry post-hook` и `Compensate`, блокирует retry для non-retryable plans и инвалидирует `modulesControllerProvider` после recovery;
-- test evidence — `modules_mobile_screen_test.dart` проверяет retry и compensation action requests, очистку recovery notice и отсутствие feature-local GraphQL client.
+The `modules` pilot flow now not only shows recovery feedback but also allows the operator to execute canonical recovery actions:
+- data boundary — `ModulesRepository.retryFailedPostHook(...)` and `ModulesRepository.compensateFailedOperation(...)` add a write-side recovery contract alongside `toggleModule(...)`;
+- transport implementation — `GraphQlModulesRepository` uses existing lifecycle GraphQL mutations without Flutter-only API;
+- UI action — `_RecoveryPlanNotice` shows `Retry post-hook` and `Compensate`, blocks retry for non-retryable plans and invalidates `modulesControllerProvider` after recovery;
+- test evidence — `modules_mobile_screen_test.dart` checks retry and compensation action requests, recovery notice cleanup and absence of feature-local GraphQL client.
 
-Следующий шаг после PR-F был закрыт отдельным audit-oriented слоем: inline recovery notice теперь может вести в dedicated operation history/recovery screen без feature-local GraphQL client.
+The next step after PR-F was closed by a separate audit-oriented layer: the inline recovery notice can now lead to a dedicated operation history/recovery screen without a feature-local GraphQL client.
 
-#### PR-G evidence pack (Phase 1 operation history/recovery screen)
+#### PR-G Evidence Pack (Phase 1 operation history/recovery screen)
 
-**Operation history screen:** `ModulesRecoveryScreen` в `rustok_mobile/packages/rustok_modules_mobile`.
+**Operation history screen:** `ModulesRecoveryScreen` in `rustok_mobile/packages/rustok_modules_mobile`.
 
-Pilot-флоу `modules` расширен от inline recovery notice к отдельному экрану истории failed lifecycle operations:
-- UI boundary — `ModulesRecoveryScreen` показывает список `failedModuleOperationRecoveryPlans` с `operationId`, requested/previous state, `issue`, `recommendedAction`, `correlationId`, `requestedBy` и `errorMessage`;
-- host route — `apps/rustok_admin_mobile` монтирует `/modules/recovery/:moduleSlug` внутри существующего shell и передаёт тот же host-provided `ModulesRepository`;
-- action parity — экран выполняет те же canonical `retryFailedModuleOperationPostHook` и `compensateFailedModuleOperation`, инвалидирует `modulesControllerProvider` и перечитывает recovery history;
-- FFA guardrail — recovery screen не добавляет Flutter-only API, не создаёт feature-local GraphQL client и остаётся потребителем existing lifecycle GraphQL contracts;
-- test evidence — `modules_mobile_screen_test.dart` проверяет metadata/history rendering и recovery action requests, а `pilot_modules_flow_test.dart` проверяет переход из recovery feedback в shell-mounted recovery route.
+The `modules` pilot flow expanded from an inline recovery notice to a separate screen for failed lifecycle operations history:
+- UI boundary — `ModulesRecoveryScreen` shows a list of `failedModuleOperationRecoveryPlans` with `operationId`, requested/previous state, `issue`, `recommendedAction`, `correlationId`, `requestedBy` and `errorMessage`;
+- host route — `apps/rustok_admin_mobile` mounts `/modules/recovery/:moduleSlug` inside the existing shell and passes the same host-provided `ModulesRepository`;
+- action parity — the screen executes the same canonical `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation`, invalidates `modulesControllerProvider` and re-reads recovery history;
+- FFA guardrail — the recovery screen does not add Flutter-only API, does not create a feature-local GraphQL client and remains a consumer of existing lifecycle GraphQL contracts;
+- test evidence — `modules_mobile_screen_test.dart` checks metadata/history rendering and recovery action requests, and `pilot_modules_flow_test.dart` checks the transition from recovery feedback to a shell-mounted recovery route.
 
-Следующий шаг после PR-G: закрепить operation history/recovery screen в CI/codegen evidence и продолжить storefront mobile track с первым module-owned catalog/cart package.
+Next step after PR-G: establish the operation history/recovery screen in CI/codegen evidence and continue the storefront mobile track with the first module-owned catalog/cart package.
 
 
-#### PR-H evidence pack (storefront catalog/cart mobile package)
+#### PR-H Evidence Pack (storefront catalog/cart mobile package)
 
 **Storefront catalog/cart package:** `rustok_mobile/packages/rustok_catalog_mobile`.
 
-В storefront mobile-треке появился первый module-owned package вместо catalog/cart placeholder-экранов:
-- UI-boundary — `StorefrontCatalogScreen` и `StorefrontCartScreen` живут вне host-а и владеют customer-facing loading/error/empty состояниями;
-- data-boundary — `StorefrontCatalogRepository` передаётся host-ом через Riverpod, поэтому package не создаёт GraphQL client, tenant resolver, auth/session store или locale fallback chain;
-- shared-transport wiring — `apps/rustok_frontend_mobile` использует host-owned `GraphQlStorefrontCatalogRepository`, который читает каталог через существующий GraphQL `storefrontSearch`;
-- host route — `apps/rustok_frontend_mobile` монтирует package на `/catalog` и `/cart`, а shell navigation, runtime `tenantSlug`/`locale` и GraphQL-конфигурация остаются host-owned;
-- test evidence — `catalog_screens_test.dart` проверяет package UI states с host-provided repositories, а `storefront_router_test.dart` проверяет catalog/cart mounting внутри customer storefront shell.
+The storefront mobile track now has its first module-owned package instead of catalog/cart placeholder screens:
+- UI-boundary — `StorefrontCatalogScreen` and `StorefrontCartScreen` live outside the host and own customer-facing loading/error/empty states;
+- data-boundary — `StorefrontCatalogRepository` is passed by the host via Riverpod, so the package does not create a GraphQL client, tenant resolver, auth/session store or locale fallback chain;
+- shared-transport wiring — `apps/rustok_frontend_mobile` uses host-owned `GraphQlStorefrontCatalogRepository`, which reads the catalog via the existing GraphQL `storefrontSearch`;
+- host route — `apps/rustok_frontend_mobile` mounts the package on `/catalog` and `/cart`, and shell navigation, runtime `tenantSlug`/`locale` and GraphQL configuration remain host-owned;
+- test evidence — `catalog_screens_test.dart` checks package UI states with host-provided repositories, and `storefront_router_test.dart` checks catalog/cart mounting inside the customer storefront shell.
 
-FFA guardrail для этого шага: это только mobile client/package boundary. Изменение не добавляет Flutter-specific backend API, feature-local transport client или дублирующую canonical routing/storage logic.
+FFA guardrail for this step: this is only a mobile client/package boundary. The change does not add Flutter-specific backend API, feature-local transport client or duplicate canonical routing/storage logic.
 
-Следующий storefront шаг: довести cart-часть до canonical shared-transport reads/writes, когда соответствующая GraphQL/REST surface будет готова.
+Next storefront step: advance the cart part to canonical shared-transport reads/writes when the corresponding GraphQL/REST surface is ready.
 
 
-#### PR-I evidence pack (storefront mobile registry/codegen)
+#### PR-I Evidence Pack (storefront mobile registry/codegen)
 
 **Storefront registry:** `rustok_mobile/apps/rustok_frontend_mobile/lib/registry/storefront_mobile_manifest.g.dart`.
 
-Storefront mobile получил generated registry рядом с admin mobile registry:
-- codegen surface — `generate_mobile_manifest.py --surface storefront` читает `provides.storefront_ui` из `rustok-module.toml` и выставляет `MobileSurfaceKind.storefront`;
-- snapshot evidence — `rustok_mobile/tooling/snapshots/storefront_mobile_manifest.snapshot.json` фиксирует `storefront_mobile` contract поля `module_slug`, `route_segment`, `permissions`, `locale_namespace` и `child_pages`;
-- host route — generic `/modules/:routeSegment` теперь показывает manifest-backed title для storefront modules вместо raw segment-only placeholder;
-- verification — `check_mobile_codegen.py` и `verify_mobile_manifest.py` принимают `--surface storefront`, поэтому admin и storefront generated outputs можно проверять одинаковым CI-friendly сигналом.
+Storefront mobile received a generated registry alongside the admin mobile registry:
+- codegen surface — `generate_mobile_manifest.py --surface storefront` reads `provides.storefront_ui` from `rustok-module.toml` and sets `MobileSurfaceKind.storefront`;
+- snapshot evidence — `rustok_mobile/tooling/snapshots/storefront_mobile_manifest.snapshot.json` captures `storefront_mobile` contract fields `module_slug`, `route_segment`, `permissions`, `locale_namespace` and `child_pages`;
+- host route — generic `/modules/:routeSegment` now shows a manifest-backed title for storefront modules instead of a raw segment-only placeholder;
+- verification — `check_mobile_codegen.py` and `verify_mobile_manifest.py` accept `--surface storefront`, so admin and storefront generated outputs can be checked with the same CI-friendly signal.
 
-FFA guardrail для этого шага: registry содержит только mobile-safe surface metadata и не переносит server-side FBA/provider details в Flutter host.
+FFA guardrail for this step: the registry contains only mobile-safe surface metadata and does not carry server-side FBA/provider details into the Flutter host.
 
-Следующий storefront шаг: довести cart-часть до canonical shared-transport reads/writes и расширять manifest-to-package mapping по мере появления новых module-owned storefront packages.
+Next storefront step: advance the cart part to canonical shared-transport reads/writes and expand manifest-to-package mapping as new module-owned storefront packages appear.
 
 
-#### PR-J evidence pack (storefront registry package discovery)
+#### PR-J Evidence Pack (storefront registry package discovery)
 
 **Storefront package discovery:** `rustok_mobile/apps/rustok_frontend_mobile/lib/registry/storefront_surface_registry.dart`.
 
-Generated storefront registry теперь используется не только для placeholder-title metadata, но и для выбора mounted package surface:
-- registry adapter — `StorefrontSurfaceRegistry` нормализует `route_segment` из generated manifest и возвращает typed `catalog`, `cart` или `generic` surface match;
-- host route — `/modules/products` монтирует `StorefrontCatalogScreen`, а `/modules/cart` монтирует `StorefrontCartScreen` через тот же host-provided `StorefrontCatalogRepository`;
-- generic fallback — остальные storefront module routes продолжают показывать manifest-backed placeholder без feature-local transport clients;
-- test evidence — `storefront_router_test.dart` проверяет generic `blog`, package-backed `products` и package-backed `cart` routes внутри shell.
+The generated storefront registry is now used not only for placeholder-title metadata but also for selecting the mounted package surface:
+- registry adapter — `StorefrontSurfaceRegistry` normalizes `route_segment` from the generated manifest and returns a typed `catalog`, `cart` or `generic` surface match;
+- host route — `/modules/products` mounts `StorefrontCatalogScreen`, and `/modules/cart` mounts `StorefrontCartScreen` through the same host-provided `StorefrontCatalogRepository`;
+- generic fallback — remaining storefront module routes still show manifest-backed placeholders without feature-local transport clients;
+- test evidence — `storefront_router_test.dart` checks generic `blog`, package-backed `products` and package-backed `cart` routes inside the shell.
 
-FFA guardrail для этого шага: mapping остаётся host-side adapter logic поверх generated mobile-safe registry и не переносит server-side provider/FBA metadata в Flutter package.
+FFA guardrail for this step: mapping remains host-side adapter logic on top of the generated mobile-safe registry and does not carry server-side provider/FBA metadata into the Flutter package.
 
-Следующий storefront шаг: добавить canonical cart write actions (create/add/update/remove) и расширять manifest-to-package mappings только при появлении соответствующих module-owned packages.
+Next storefront step: add canonical cart write actions (create/add/update/remove) and expand manifest-to-package mappings only when corresponding module-owned packages appear.
 
 
-#### PR-K evidence pack (storefront cart read transport)
+#### PR-K Evidence Pack (storefront cart read transport)
 
 **Cart read path:** `rustok_mobile/apps/rustok_frontend_mobile/lib/data/storefront_catalog_repository.dart`.
 
-Storefront catalog/cart package теперь получает cart data через host-owned shared GraphQL transport:
-- runtime context — `StorefrontRuntimeContext.cartId` берётся из optional `RUSTOK_STOREFRONT_CART_ID` и не создаёт package-local storage contract;
-- data adapter — `GraphQlStorefrontCatalogRepository.cartLines()` вызывает existing GraphQL `storefrontCart(id)` и маппит `lineItems` в `StorefrontCartLine`;
-- empty fallback — если host не передал cart id, cart surface остаётся empty state без Flutter-only API или локального fallback resolver;
-- FFA guardrail — catalog/cart package по-прежнему потребляет только host-provided repository и не создаёт собственный GraphQL client, tenant resolver или locale fallback chain.
+The storefront catalog/cart package now receives cart data through host-owned shared GraphQL transport:
+- runtime context — `StorefrontRuntimeContext.cartId` comes from optional `RUSTOK_STOREFRONT_CART_ID` and does not create a package-local storage contract;
+- data adapter — `GraphQlStorefrontCatalogRepository.cartLines()` calls existing GraphQL `storefrontCart(id)` and maps `lineItems` to `StorefrontCartLine`;
+- empty fallback — if the host did not pass a cart id, the cart surface remains in an empty state without Flutter-only API or local fallback resolver;
+- FFA guardrail — the catalog/cart package still consumes only the host-provided repository and does not create its own GraphQL client, tenant resolver or locale fallback chain.
 
-#### PR-L evidence pack (storefront cart write transport)
+#### PR-L Evidence Pack (storefront cart write transport)
 
 **Cart write path:** `rustok_mobile/apps/rustok_frontend_mobile/lib/data/storefront_catalog_repository.dart` + `rustok_mobile/packages/rustok_catalog_mobile/lib/src/catalog_repository.dart`.
 
-Storefront catalog/cart package теперь выполняет customer cart write actions через тот же host-owned repository seam:
-- repository contract — module-owned package объявляет create/add/update/remove intents, но не создаёт GraphQL client, tenant resolver, locale fallback или package-local cart storage;
-- data adapter — host repository вызывает canonical GraphQL mutations `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem` и `removeStorefrontCartLineItem`, повторно используя shared GraphQL headers/context;
-- UX actions — catalog cards могут добавить товар только при наличии backend-provided `variantId`, empty cart может стартовать cart, line items могут увеличить/уменьшить quantity или удалить строку;
-- runtime guardrail — созданный cart id хранится в host-owned `StorefrontCartIdStore`; durable storage остаётся отдельным host-owned product decision, а не package-local contract;
-- contract tests — `rustok_mobile/tooling/tests/test_storefront_cart_contract.py` фиксирует, что package не fallback-ит product id в variant id и что host repository использует host cart id store.
+The storefront catalog/cart package now performs customer cart write actions through the same host-owned repository seam:
+- repository contract — the module-owned package declares create/add/update/remove intents, but does not create a GraphQL client, tenant resolver, locale fallback or package-local cart storage;
+- data adapter — the host repository calls canonical GraphQL mutations `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem` and `removeStorefrontCartLineItem`, reusing shared GraphQL headers/context;
+- UX actions — catalog cards can add a product only when a backend-provided `variantId` exists, an empty cart can start a cart, line items can increase/decrease quantity or remove a row;
+- runtime guardrail — the created cart id is stored in the host-owned `StorefrontCartIdStore`; durable storage remains a separate host-owned product decision, not a package-local contract;
+- contract tests — `rustok_mobile/tooling/tests/test_storefront_cart_contract.py` verifies that the package does not fallback product id to variant id and that the host repository uses the host cart id store.
 
-Следующий storefront шаг был закрыт host-owned persistence seam и schema-backed contract evidence: cart id больше не привязан к package-local или repository-local памяти, а Flutter cart operations проверяются против существующего commerce GraphQL surface.
+The next storefront step was closed by a host-owned persistence seam and schema-backed contract evidence: cart id is no longer tied to package-local or repository-local memory, and Flutter cart operations are checked against the existing commerce GraphQL surface.
 
-#### PR-M evidence pack (storefront cart durable host seam + schema contract)
+#### PR-M Evidence Pack (storefront cart durable host seam + schema contract)
 
 **Cart persistence and schema evidence:** `rustok_mobile/apps/rustok_frontend_mobile/lib/app_shell/storefront_context.dart` + `rustok_mobile/tooling/tests/test_storefront_cart_graphql_contract.py`.
 
-Storefront cart write path получил host-owned durable seam без расширения Flutter-specific API:
-- persistence boundary — `DurableStorefrontCartIdStore` работает через `StorefrontCartIdPersistence`, поэтому package `rustok_catalog_mobile` по-прежнему не создаёт cart storage contract;
-- host adapter — `FileStorefrontCartIdPersistence` может хранить cart id в host-provided JSON file через `RUSTOK_STOREFRONT_CART_ID_FILE`, а previews/tests сохраняют in-memory persistence;
-- runtime guardrail — storage key задаётся host-слоем (`RUSTOK_STOREFRONT_CART_STORAGE_KEY`), tenant/locale/auth context остаётся в shared GraphQL config;
-- schema-backed evidence — `test_storefront_cart_graphql_contract.py` сверяет Flutter cart operations и input types с существующими resolver/input declarations в `crates/rustok-commerce`;
-- FFA guardrail — durable seam не добавляет `/api/flutter`, `/api/mobile` или feature-local GraphQL client и не переносит storage ownership в module-owned catalog package.
+The storefront cart write path received a host-owned durable seam without extending the Flutter-specific API:
+- persistence boundary — `DurableStorefrontCartIdStore` works through `StorefrontCartIdPersistence`, so the `rustok_catalog_mobile` package still does not create a cart storage contract;
+- host adapter — `FileStorefrontCartIdPersistence` can store a cart id in host-provided JSON file via `RUSTOK_STOREFRONT_CART_ID_FILE`, while previews/tests keep in-memory persistence;
+- runtime guardrail — the storage key is set by the host layer (`RUSTOK_STOREFRONT_CART_STORAGE_KEY`), tenant/locale/auth context remains in shared GraphQL config;
+- schema-backed evidence — `test_storefront_cart_graphql_contract.py` verifies Flutter cart operations and input types against existing resolver/input declarations in `crates/rustok-commerce`;
+- FFA guardrail — the durable seam does not add `/api/flutter`, `/api/mobile` or feature-local GraphQL client and does not move storage ownership to the module-owned catalog package.
 
-Следующий storefront шаг частично закрыт registry-driven home navigation: storefront host теперь показывает все generated manifest routes на главной поверхности, разделяя package-backed и manifest-only entries без ручного hard-code blog route. Более глубокий integration/e2e сигнал поверх реального schema snapshot или test server остаётся следующим CI-шагом, когда Flutter SDK будет доступен в окружении.
+The next storefront step is partially closed by registry-driven home navigation: the storefront host now shows all generated manifest routes on the main surface, separating package-backed and manifest-only entries without a hard-coded blog route. A deeper integration/e2e signal against a real schema snapshot or test server remains the next CI step when the Flutter SDK is available in the environment.
 
-#### PR-N evidence pack (storefront generated module navigation)
+#### PR-N Evidence Pack (storefront generated module navigation)
 
 **Generated storefront module links:** `rustok_mobile/apps/rustok_frontend_mobile/lib/routes/storefront_router.dart`.
 
-Storefront host начал использовать generated registry не только для direct `/modules/:routeSegment` resolution, но и для home navigation discovery:
-- navigation boundary — `StorefrontHomePage` рендерит список `storefrontSurfaceRegistry.entries`, поэтому новые storefront manifest entries становятся видимыми без hard-coded home links;
-- package/fallback signal — package-backed `products`/`cart` routes помечаются как `package`, остальные manifest-only surfaces остаются generic `manifest` entries;
-- route parity — tap по generated entry ведёт на тот же `/modules/<route_segment>` seam, который уже монтирует `StorefrontCatalogScreen`, `StorefrontCartScreen` или generic placeholder;
-- test evidence — `storefront_router_test.dart` проверяет generated home links и переход в manifest-backed `blog`, а `test_storefront_home_registry_contract.py` фиксирует отсутствие hard-coded `/modules/blog` home route.
+The storefront host now uses the generated registry not only for direct `/modules/:routeSegment` resolution but also for home navigation discovery:
+- navigation boundary — `StorefrontHomePage` renders a list of `storefrontSurfaceRegistry.entries`, so new storefront manifest entries become visible without hard-coded home links;
+- package/fallback signal — package-backed `products`/`cart` routes are marked as `package`, remaining manifest-only surfaces stay as generic `manifest` entries;
+- route parity — tapping a generated entry leads to the same `/modules/<route_segment>` seam that already mounts `StorefrontCatalogScreen`, `StorefrontCartScreen` or a generic placeholder;
+- test evidence — `storefront_router_test.dart` checks generated home links and navigation to manifest-backed `blog`, and `test_storefront_home_registry_contract.py` verifies the absence of a hard-coded `/modules/blog` home route.
 
-Следующий storefront шаг частично закрыт source-backed сигналом для catalog/cart GraphQL path: Flutter operation documents теперь сверяются с существующими storefront/search API и server runtime parity flow. Live schema/test-server CI остаётся следующим усилением, когда Flutter SDK и тестовый server harness будут доступны в целевом окружении. Package mappings по-прежнему расширяются только при появлении новых module-owned storefront packages.
+The next storefront step is partially closed by a source-backed signal for the catalog/cart GraphQL path: Flutter operation documents are now verified against existing storefront/search API and server runtime parity flow. Live schema/test-server CI remains the next enhancement when the Flutter SDK and test server harness are available in the target environment. Package mappings are still expanded only when new module-owned storefront packages appear.
 
-#### PR-O evidence pack (storefront catalog/cart GraphQL integration signal)
+#### PR-O Evidence Pack (storefront catalog/cart GraphQL integration signal)
 
 **Source-backed integration signal:** `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` + `rustok_mobile/tooling/tests/test_storefront_cart_graphql_contract.py`.
 
-Storefront track получил первый детерминированный CI-friendly сигнал для catalog/cart GraphQL path без добавления Flutter-specific API:
-- catalog contract — переиспользуемая CLI-проверка извлекает mobile `StorefrontMobileCatalog` query из Dart raw-string const и сверяет её с существующей surface `storefrontSearch(input: $input)` и `SearchPreviewInput` в `crates/rustok-search/storefront/src/api.rs`;
-- cart contract — CLI-проверка извлекает mobile `StorefrontMobileCart` read и create/add/update/remove mutation documents, проверяет operation/root-field markers и сверяет их с canonical commerce operation names;
-- server-backed evidence — cart operation documents дополнительно привязаны к `crates/rustok-commerce/tests/graphql_runtime_parity_test.rs`, где те же create/add/query/update/remove steps выполняются через `schema.execute(Request::new(...))` и проверяют отсутствие GraphQL errors;
-- FFA guardrail — CLI-проверка не вводит `/api/flutter`, `/api/mobile`, feature-local transport client или package-local tenant/locale/cart ownership и запрещает `tenantId` в mobile operation documents, потому что tenant/locale остаются host-provided GraphQL context;
-- environment note — это source-backed contract/integration evidence для текущего окружения без Flutter SDK; CLI умеет печатать JSON evidence со списком server evidence paths через `--json`, а live schema/test-server job остаётся следующим CI-усилением, а не новым архитектурным контрактом.
+The storefront track received its first deterministic CI-friendly signal for the catalog/cart GraphQL path without adding Flutter-specific API:
+- catalog contract — a reusable CLI check extracts the mobile `StorefrontMobileCatalog` query from Dart raw-string const and verifies it against the existing surface `storefrontSearch(input: $input)` and `SearchPreviewInput` in `crates/rustok-search/storefront/src/api.rs`;
+- cart contract — the CLI check extracts mobile `StorefrontMobileCart` read and create/add/update/remove mutation documents, checks operation/root-field markers and verifies them against canonical commerce operation names;
+- server-backed evidence — cart operation documents are additionally tied to `crates/rustok-commerce/tests/graphql_runtime_parity_test.rs`, where the same create/add/query/update/remove steps execute via `schema.execute(Request::new(...))` and check for absence of GraphQL errors;
+- FFA guardrail — the CLI check does not introduce `/api/flutter`, `/api/mobile`, feature-local transport client or package-local tenant/locale/cart ownership and forbids `tenantId` in mobile operation documents because tenant/locale remain host-provided GraphQL context;
+- environment note — this is source-backed contract/integration evidence for the current environment without Flutter SDK; the CLI can print JSON evidence with a list of server evidence paths via `--json`, while a live schema/test-server job remains the next CI enhancement, not a new architectural contract.
 
-Следующий storefront шаг: поднять этот сигнал до live schema/test-server job в CI, когда будет доступен Flutter SDK/test server harness, и расширять package mappings только при появлении новых module-owned storefront packages.
+Next storefront step: promote this signal to a live schema/test-server job in CI when the Flutter SDK/test server harness becomes available, and expand package mappings only when new module-owned storefront packages appear.
 
-#### PR-P execution slice (storefront live-schema promotion plan)
+#### PR-P Execution Slice (storefront live-schema promotion plan)
 
-**Цель:** перевести существующий source-backed verifier в CI-grade live сигнал без изменения mobile/backend API contract.
+**Goal:** promote the existing source-backed verifier to a CI-grade live signal without changing the mobile/backend API contract.
 
-Так как текущая проверка уже доказывает совпадение Flutter operation documents с server-owned source и runtime parity test paths, следующий PR должен быть не новым architectural layer, а promotion-шагом:
-- preflight — оставить `verify_storefront_graphql_contract.py` как быстрый обязательный шаг до запуска Flutter/server harness;
-- live execution — поднять test schema/server и выполнить тот же набор operations: `StorefrontMobileCatalog`, `StorefrontMobileCart`, `StorefrontMobileCreateCart`, `StorefrontMobileAddCartLine`, `StorefrontMobileUpdateCartLine`, `StorefrontMobileRemoveCartLine`;
-- evidence output — сохранять JSON с operation name, root field, source marker, server evidence path и результатом live execution;
-- failure policy — падение live job не должно компенсироваться Flutter fallback endpoint-ом; исправлять нужно schema/resolver/client document drift;
-- package expansion gate — новые package-backed storefront routes разрешены только после появления module-owned package и host-owned repository adapter, а manifest-only routes остаются generic placeholders.
+Since the current check already proves Flutter operation documents match server-owned source and runtime parity test paths, the next PR should be not a new architectural layer but a promotion step:
+- preflight — keep `verify_storefront_graphql_contract.py` as a fast mandatory step before running Flutter/server harness;
+- live execution — spin up a test schema/server and execute the same set of operations: `StorefrontMobileCatalog`, `StorefrontMobileCart`, `StorefrontMobileCreateCart`, `StorefrontMobileAddCartLine`, `StorefrontMobileUpdateCartLine`, `StorefrontMobileRemoveCartLine`;
+- evidence output — save JSON with operation name, root field, source marker, server evidence path and live execution result;
+- failure policy — a live job failure should not be compensated by a Flutter fallback endpoint; the fix should address schema/resolver/client document drift;
+- package expansion gate — new package-backed storefront routes are allowed only after a module-owned package and host-owned repository adapter appear; manifest-only routes remain generic placeholders.
 
-**Не делать в PR-P:** не добавлять `/api/flutter`, `/api/mobile`, package-local GraphQL clients, tenant/locale/cart fallback chains или server-side FBA metadata в Flutter registry. Это hardening existing contract, а не расширение platform surface.
+**Not to do in PR-P:** do not add `/api/flutter`, `/api/mobile`, package-local GraphQL clients, tenant/locale/cart fallback chains or server-side FBA metadata to the Flutter registry. This is hardening existing contract, not expanding the platform surface.
 
 
-#### PR-Q evidence pack (storefront checkout intent seam)
+#### PR-Q Evidence Pack (storefront checkout intent seam)
 
 **Checkout intent surface:** `rustok_mobile/apps/rustok_frontend_mobile/lib/routes/storefront_router.dart`.
 
-Storefront mobile host закрыл следующий небольшой FFA-safe шаг вокруг checkout handoff без расширения backend/mobile API:
-- host-owned checkout route — `/checkout` теперь читает `StorefrontRuntimeContext` и `storefrontCartIdStoreProvider`, показывает tenant/locale/cart context и остаётся частью storefront shell, а не module-owned catalog package;
-- package boundary — `rustok_catalog_mobile` по-прежнему только вызывает `onStartCheckout`, не создаёт checkout API, GraphQL client, tenant resolver или cart storage;
-- fallback policy — если cart id ещё не сохранён host-owned seam-ом, checkout page отправляет пользователя обратно в cart/catalog вместо создания Flutter-only checkout endpoint;
-- no-compile guardrail — `test_storefront_cart_contract.py` фиксирует, что checkout intent stays host-owned, не содержит `/api/flutter` или `/api/mobile`, и не переносится в package screens.
+The storefront mobile host closed the next small FFA-safe step around checkout handoff without expanding backend/mobile API:
+- host-owned checkout route — `/checkout` now reads `StorefrontRuntimeContext` and `storefrontCartIdStoreProvider`, shows tenant/locale/cart context and remains part of the storefront shell, not the module-owned catalog package;
+- package boundary — `rustok_catalog_mobile` still only calls `onStartCheckout`, does not create a checkout API, GraphQL client, tenant resolver or cart storage;
+- fallback policy — if the cart id is not yet persisted by the host-owned seam, the checkout page sends the user back to cart/catalog instead of creating a Flutter-only checkout endpoint;
+- no-compile guardrail — `test_storefront_cart_contract.py` verifies that the checkout intent stays host-owned, does not contain `/api/flutter` or `/api/mobile`, and is not moved into package screens.
 
-Следующий storefront шаг остаётся прежним: подключить реальный live schema/test-server producer для `--live-results` и затем расширять package mappings только при появлении новых module-owned storefront packages.
+The next storefront step remains the same: connect a real live schema/test-server producer for `--live-results` and then expand package mappings only when new module-owned storefront packages appear.
 
-#### PR-P evidence pack (storefront live-schema promotion seam)
+#### PR-P Evidence Pack (storefront live-schema promotion seam)
 
 **Live evidence seam:** `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py`.
 
-Storefront GraphQL verifier теперь поддерживает promotion-путь без изменения mobile/backend API:
-- preflight остаётся source-backed и проверяет те же Flutter operation documents против server-owned search/commerce sources;
-- `--json` дополнительно печатает `storefront_live_execution` со статусом `skipped`, если live harness не передан;
-- `--live-results <path>` принимает JSON от будущего schema/test-server harness и требует `passed` для всех шести operation/root-field пар: `StorefrontMobileCatalog`, `StorefrontMobileCart`, `StorefrontMobileCreateCart`, `StorefrontMobileAddCartLine`, `StorefrontMobileUpdateCartLine`, `StorefrontMobileRemoveCartLine`;
-- failure policy уже закреплена в tooling: неполный live-result или non-`passed` статус валит verifier, а не включает Flutter fallback endpoint;
-- tests фиксируют skipped preflight, positive live evidence и missing-live-evidence failure без Flutter SDK и без компиляции.
+The storefront GraphQL verifier now supports a promotion path without changing mobile/backend API:
+- preflight remains source-backed and checks the same Flutter operation documents against server-owned search/commerce sources;
+- `--json` additionally prints `storefront_live_execution` with status `skipped` if live harness is not provided;
+- `--live-results <path>` accepts JSON from a future schema/test-server harness and requires `passed` for all six operation/root-field pairs: `StorefrontMobileCatalog`, `StorefrontMobileCart`, `StorefrontMobileCreateCart`, `StorefrontMobileAddCartLine`, `StorefrontMobileUpdateCartLine`, `StorefrontMobileRemoveCartLine`;
+- failure policy is already established in tooling: incomplete live-result or non-`passed` status fails the verifier, not enables a Flutter fallback endpoint;
+- tests verify skipped preflight, positive live evidence and missing-live-evidence failure without Flutter SDK and without compilation.
 
-Оставшийся шаг PR-P — подключить реальный producer этого JSON из live schema/test-server job, когда в CI будет доступен соответствующий server harness.
+The remaining PR-P step is to connect a real producer of this JSON from a live schema/test-server job when the corresponding server harness is available in CI.
 
-#### PR-R evidence pack (storefront checkout intent host view-model)
+#### PR-R Evidence Pack (storefront checkout intent host view-model)
 
 **Checkout policy seam:** `rustok_mobile/apps/rustok_frontend_mobile/lib/app_shell/storefront_context.dart`.
 
-Следующий FFA-safe storefront slice углубил checkout handoff без компиляции и без расширения backend/mobile API:
-- host-owned view-model — `StorefrontCheckoutIntentViewModel` теперь владеет checkout title/description, tenant/locale label, cart label, action labels и `canContinueCheckout` policy;
-- router adapter — `StorefrontCheckoutIntentPage` только читает runtime/cart-id seam и рендерит подготовленную модель, не дублируя `cartId.trim().isNotEmpty` или cart-label formatting;
-- package boundary — `rustok_catalog_mobile` по-прежнему только вызывает `onStartCheckout`; checkout route, copy и fallback остаются в storefront host;
-- no-compile guardrail — `test_storefront_cart_contract.py` фиксирует host view-model seam и запрет widget-owned cart-id branching / Flutter-only endpoints.
+The next FFA-safe storefront slice deepened checkout handoff without compilation and without expanding backend/mobile API:
+- host-owned view-model — `StorefrontCheckoutIntentViewModel` now owns checkout title/description, tenant/locale label, cart label, action labels and `canContinueCheckout` policy;
+- router adapter — `StorefrontCheckoutIntentPage` only reads the runtime/cart-id seam and renders the prepared model, not duplicating `cartId.trim().isNotEmpty` or cart-label formatting;
+- package boundary — `rustok_catalog_mobile` still only calls `onStartCheckout`; the checkout route, copy and fallback remain in the storefront host;
+- no-compile guardrail — `test_storefront_cart_contract.py` verifies the host view-model seam and prohibits widget-owned cart-id branching / Flutter-only endpoints.
 
-Следующий storefront шаг остаётся promotion-задачей: подключить реальный live schema/test-server producer для `--live-results`, когда в CI будет доступен соответствующий server harness.
+The next storefront step remains a promotion task: connect a real live schema/test-server producer for `--live-results` when the corresponding server harness is available in CI.
 
-#### PR-A evidence pack (registry contract freeze)
+#### PR-A Evidence Pack (registry contract freeze)
 
 **Snapshot source (canonical):** `rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json`.
 
-Минимальный schema contract для mobile registry фиксируется следующими полями:
+The minimum schema contract for the mobile registry is established with the following fields:
 - `module_slug` — required;
 - `surface_kind` — required;
 - `route_segment` — required;
-- `nav_icon` — required в snapshot/codegen output, optional на уровне исходных module manifests с fallback `module`;
-- `child_pages` — optional (по умолчанию пустой список);
-- `permissions` — optional (по умолчанию пустой список);
+- `nav_icon` — required in snapshot/codegen output, optional at source module manifest level with fallback to `module`;
+- `child_pages` — optional (default empty list);
+- `permissions` — optional (default empty list);
 - `locale_namespace` — optional.
 
-##### Compatibility matrix (`required/optional/deprecated`)
+##### Compatibility Matrix (`required/optional/deprecated`)
 
-| Поле | Статус | Правило совместимости | Примечание FFA |
+| Field | Status | Compatibility Rule | FFA Note |
 |---|---|---|---|
-| `module_slug` | required | Запрещено переименование без migration-слоя в codegen | Идентификатор capability-поверхности, не runtime-деталь Flutter |
-| `surface_kind` | required | Допустимо расширение enum только backward-compatible значениями | Нормализует тип surface для host-клиентов |
-| `route_segment` | required | Изменение требует явного redirect/mapping в host routing | Поддерживает единый routing contract между host-ами |
-| `nav_icon` | required in snapshot / optional in source manifests | Отсутствие в manifest нормализуется в `module`; новые значения должны быть backward-compatible с host fallback mapping | Visual parity metadata без Flutter-specific API или transport contract |
-| `child_pages` | optional | Отсутствие трактуется как `[]`; новые элементы добавляются additive | Нужен для nested mobile/admin surfaces без server-side FBA metadata |
-| `permissions` | optional | Отсутствие трактуется как `[]`; новые permission strings additive | Capability-level gate, без mobile-only API |
-| `locale_namespace` | optional | Отсутствие означает fallback на module slug namespace | Сохраняет host-owned locale policy без feature-local fallback |
+| `module_slug` | required | Renaming prohibited without codegen migration layer | Identifies capability surface, not Flutter runtime detail |
+| `surface_kind` | required | Enum extension allowed only with backward-compatible values | Normalizes surface type for host clients |
+| `route_segment` | required | Change requires explicit redirect/mapping in host routing | Supports unified routing contract between hosts |
+| `nav_icon` | required in snapshot / optional in source manifests | Absence in manifest normalizes to `module`; new values must be backward-compatible with host fallback mapping | Visual parity metadata without Flutter-specific API or transport contract |
+| `child_pages` | optional | Absence treated as `[]`; new elements added additively | Needed for nested mobile/admin surfaces without server-side FBA metadata |
+| `permissions` | optional | Absence treated as `[]`; new permission strings additive | Capability-level gate, without mobile-only API |
+| `locale_namespace` | optional | Absence means fallback to module slug namespace | Preserves host-owned locale policy without feature-local fallback |
 
-##### Field changelog (PR-A freeze)
+##### Field Changelog (PR-A freeze)
 
-- Добавлено явное требование использовать только capability-поля, без Flutter-specific transport/UI API.
-- Зафиксированы правила default/fallback для optional-полей (`child_pages`, `permissions`, `locale_namespace`).
-- Закреплён запрет на breaking rename для `module_slug` и обязательный redirect/mapping для `route_segment`.
-- Runtime-contract в `app_module_contracts` синхронизирован со snapshot: `surface_kind`, `module_slug/route_segment` и нормализованный `nav_icon` обязательны в generated snapshot, `child_pages`/`permissions` имеют default `[]`, `locale_namespace` optional.
+- Added explicit requirement to use only capability fields, without Flutter-specific transport/UI API.
+- Established default/fallback rules for optional fields (`child_pages`, `permissions`, `locale_namespace`).
+- Enforced prohibition on breaking rename for `module_slug` and mandatory redirect/mapping for `route_segment`.
+- Runtime-contract in `app_module_contracts` synchronized with snapshot: `surface_kind`, `module_slug/route_segment` and normalized `nav_icon` are required in generated snapshot, `child_pages`/`permissions` have default `[]`, `locale_namespace` optional.
 
-**Execution rule:** каждый следующий PR в этом треке должен обновлять таблицу статусов выше и добавлять ссылку на проверяемое evidence (commit, CI job или test log).
+**Execution rule:** each subsequent PR in this track must update the status table above and add a reference to verifiable evidence (commit, CI job or test log).
 
-#### FFA-проверка для каждого PR в этом треке
+#### FFA Check for Each PR in This Track
 
-- [x] Нет Flutter-specific API-контрактов поверх платформы (только consumption существующих platform contracts).
-- [x] Route/query keys соответствуют canonical `snake_case` правилам RusTok.
-- [x] Locale/tenant/auth context собирается host-слоем централизованно (без feature-local fallback chains).
-- [x] Registry/codegen изменения не ломают возможность module-owned surfaces подключаться декларативно.
+- [x] No Flutter-specific API contracts on top of the platform (only consumption of existing platform contracts).
+- [x] Route/query keys match canonical `snake_case` rules of RusTok.
+- [x] Locale/tenant/auth context assembled by the host layer centrally (no feature-local fallback chains).
+- [x] Registry/codegen changes do not break the ability of module-owned surfaces to connect declaratively.
 
-#### Чек-лист anti-duplication для PR
+#### Anti-Duplication Checklist for PR
 
-- Не дублировать архитектурные решения в новых docs: ссылаться на разделы этого файла.
-- Новые детали добавлять только там, где им логически место (routing — в routing разделе, GraphQL — в transport разделе).
-- При изменении фаз обновлять только эту таблицу и связанные разделы, а не создавать параллельные «планы-повторы».
+- Do not duplicate architectural decisions in new docs: reference sections of this file.
+- Add new details only where they logically belong (routing — in the routing section, GraphQL — in the transport section).
+- When changing phases, update only this table and related sections, not create parallel "plan duplicates".
 
-### Open questions и ограничения
-
-
-### Scope clarification: клиенты, а не третий web frontend
-
-Для текущего трека Flutter scope фиксируется так:
-- не создавать «третий web frontend» параллельно `apps/admin` / `apps/next-admin` / `apps/storefront` / `apps/next-frontend`;
-- развивать **headless-клиенты** (mobile и desktop) как host-приложения поверх существующего backend-контракта;
-- держать admin/operator и customer storefront как отдельные Flutter host-приложения (`rustok_admin_mobile` и `rustok_frontend_mobile`), а не смешивать их навигацию и UX;
-- переиспользовать общий client-core (auth/session, tenant/locale context, GraphQL transport, route/query contracts) между mobile и desktop поверхностями.
-
-Это сохраняет platform parity и снижает стоимость сопровождения по сравнению с отдельным web-host fork.
-
-### Зависимости между планами (anti-drift guardrail)
-
-- Flutter host, базовый app shell и module-owned mobile UI пакеты нужно развивать в логике FFA (один product contract при разных runtime/topology), но **без** Flutter-специфичных API-контрактов поверх платформы.
-- FBA/provider-consumer metadata относится к серверным модулям и backend governance. Flutter registry/codegen не должен читать или дублировать `fba.*` manifest sections, `builder_contract_version`, `consumer_min_version`, machine-readable builder registry, provider capabilities или toggle profiles.
-- Для практики это означает:
-  - Flutter держит только mobile-safe host metadata: route segment, nav, child pages, locale namespace и permissions;
-  - canonical правила builder/state/validation/RBAC остаются на backend и в общем page-builder плане;
-  - parity проверяется по UI-facing GraphQL/REST contracts и host navigation semantics, а не по server-side FBA manifest fields.
-- Если когда-нибудь появится отдельный UI-facing page-builder contract для мобильного host, его нужно вводить отдельным Flutter-планом и не смешивать с server-side FBA metadata.
-- Чекпойнт реализации (2026-05-31): сгенерированный Flutter-реестр переносит из `rustok-module.toml` только mobile-safe host metadata: маршруты, навигацию, дочерние страницы, `locale_namespace` и `permissions`. FBA/provider-consumer metadata и `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` остаются server/module concern и не попадают во Flutter snapshot; мобильный host не вводит `builder_surface` или page-builder-specific route guards.
-- Чекпойнт синхронизации Page Builder (2026-06-13): synthetic Wave 0 observability evidence (`metrics` + минимум 2 `trace_samples`) остаётся server/module artifact в `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json`; Flutter adapters обязаны предоставлять runtime/device evidence только на Wave hand-off, не дублируя FBA registry или control-plane toggle semantics в mobile registry.
-- Чекпойнт синхронизации Page Builder (2026-06-13, SLO): provider health/SLO metadata (`ready/degraded/unavailable`, degradation reasons, pilot thresholds) остаётся server/module artifact в `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`; Flutter Wave hand-off должен приложить device/runtime evidence, но не дублировать эти FBA thresholds в mobile registry.
-- Чекпойнт синхронизации Page Builder (2026-06-22, hand-off contract): `crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json` закрепляет обязательные секции Flutter device/runtime evidence (`metadata`, baseline profiles, runtime checks, trace sample, approvals) и non-goals: не дублировать FBA registry thresholds, control-plane toggle semantics или локальный mobile error catalog.
+### Open Questions and Limitations
 
 
-Ниже — то, что в постановке **не указано**, поэтому в отчёте я дал только разумные варианты, а не жёсткие требования:
+### Scope Clarification: Clients, Not a Third Web Frontend
 
-| Параметр | Статус | Разумный вариант по умолчанию |
+For the current track, the Flutter scope is established as:
+- do not create a "third web frontend" parallel to `apps/admin` / `apps/next-admin` / `apps/storefront` / `apps/next-frontend`;
+- develop **headless clients** (mobile and desktop) as host applications on top of the existing backend contract;
+- keep admin/operator and customer storefront as separate Flutter host applications (`rustok_admin_mobile` and `rustok_frontend_mobile`), not mixing their navigation and UX;
+- reuse common client-core (auth/session, tenant/locale context, GraphQL transport, route/query contracts) between mobile and desktop surfaces.
+
+This preserves platform parity and reduces maintenance cost compared to a separate web-host fork.
+
+### Dependencies Between Plans (Anti-Drift Guardrail)
+
+- The Flutter host, basic app shell and module-owned mobile UI packages should be developed in the FFA logic (one product contract with different runtime/topology), but **without** Flutter-specific API contracts on top of the platform.
+- FBA/provider-consumer metadata pertains to server modules and backend governance. The Flutter registry/codegen must not read or duplicate `fba.*` manifest sections, `builder_contract_version`, `consumer_min_version`, machine-readable builder registry, provider capabilities or toggle profiles.
+- In practice this means:
+  - Flutter keeps only mobile-safe host metadata: route segment, nav, child pages, locale namespace and permissions;
+  - canonical builder/state/validation/RBAC rules stay on the backend and in the general page-builder plan;
+  - parity is checked via UI-facing GraphQL/REST contracts and host navigation semantics, not by server-side FBA manifest fields.
+- If a separate UI-facing page-builder contract for mobile host ever appears, it should be introduced as a separate Flutter plan and not mixed with server-side FBA metadata.
+- Implementation checkpoint (2026-05-31): the generated Flutter registry carries from `rustok-module.toml` only mobile-safe host metadata: routes, navigation, child pages, `locale_namespace` and `permissions`. FBA/provider-consumer metadata and `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` remain a server/module concern and do not enter the Flutter snapshot; the mobile host does not introduce `builder_surface` or page-builder-specific route guards.
+- Page Builder sync checkpoint (2026-06-13): synthetic Wave 0 observability evidence (`metrics` + minimum 2 `trace_samples`) remains a server/module artifact in `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json`; Flutter adapters must provide runtime/device evidence only at Wave hand-off, not duplicating FBA registry or control-plane toggle semantics in the mobile registry.
+- Page Builder sync checkpoint (2026-06-13, SLO): provider health/SLO metadata (`ready/degraded/unavailable`, degradation reasons, pilot thresholds) remains a server/module artifact in `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`; the Flutter Wave hand-off must attach device/runtime evidence but not duplicate these FBA thresholds in the mobile registry.
+- Page Builder sync checkpoint (2026-06-22, hand-off contract): `crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json` establishes mandatory Flutter device/runtime evidence sections (`metadata`, baseline profiles, runtime checks, trace sample, approvals) and non-goals: do not duplicate FBA registry thresholds, control-plane toggle semantics or local mobile error catalog.
+
+
+Below are items **not specified** in the requirements, so in the report I gave only reasonable options, not hard requirements:
+
+| Parameter | Status | Reasonable Default |
 |---|---|---|
-| Целевые платформы | **Уточнено** | Mobile-first (iOS + Android), затем desktop (macOS/Windows/Linux) на общем client-core; без запуска нового web-host |
-| Минимальные OS/SDK требования | **Не указано** | Брать актуальную stable-ветку Flutter и согласовать minima после freeze набора пакетов |
-| Offline support | **Не указано** | Стартовать без offline-first; только persisted cache + secure auth + drafts |
-| Тип мобильного приложения | **Уточнено** | Admin/operator и customer storefront ведутся как отдельные host-приложения: `rustok_admin_mobile` и `rustok_frontend_mobile` |
-| Способ получения manifest/export для mobile registry | **Не указано** | На первом этапе — snapshot/codegen из RusTok repo; в долгую — backend/export endpoint |
-| Distribution model | **Не указано** | Internal/TestFlight/Play Internal на первых этапах |
-| Live schema/test-server harness для Flutter storefront | **Запланировано** | Использовать source-backed verifier как preflight; live job должен выполнять те же catalog/cart operations против test schema/server без новых Flutter-specific endpoints |
+| Target platforms | **Clarified** | Mobile-first (iOS + Android), then desktop (macOS/Windows/Linux) on common client-core; without starting a new web host |
+| Minimum OS/SDK requirements | **Not specified** | Take the current stable Flutter branch and agree on minima after package set freeze |
+| Offline support | **Not specified** | Start without offline-first; only persisted cache + secure auth + drafts |
+| Mobile app type | **Clarified** | Admin/operator and customer storefront as separate host applications: `rustok_admin_mobile` and `rustok_frontend_mobile` |
+| Method of obtaining manifest/export for mobile registry | **Not specified** | First phase — snapshot/codegen from RusTok repo; long term — backend/export endpoint |
+| Distribution model | **Not specified** | Internal/TestFlight/Play Internal in early phases |
+| Live schema/test-server harness for Flutter storefront | **Planned** | Use source-backed verifier as preflight; live job should execute the same catalog/cart operations against test schema/server without new Flutter-specific endpoints |
 
-Итоговая рекомендация остаётся высокой уверенности: **строить Flutter-клиент как новый host платформы RusTok, а не как набор экранов без ownership-границ**. Именно это лучше всего соответствует текущей архитектуре репозитория и лучше всего масштабируется в сопровождении. fileciteturn30file0L3-L3 fileciteturn33file0L3-L3
+The final recommendation remains high confidence: **build the Flutter client as a new host of the RusTok platform, not as a set of screens without ownership boundaries**. This is what best matches the current repository architecture and best scales in maintenance.

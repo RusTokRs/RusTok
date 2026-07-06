@@ -1,39 +1,39 @@
-# Документация `rustok-email`
+# Documentation `rustok-email`
 
-`rustok-email` — core-модуль доставки писем платформы. Он держит SMTP transport,
-typed email rendering и delivery helpers для auth и operational notification flow.
+`rustok-email` is the core email delivery module of the platform. It holds SMTP transport,
+typed email rendering and delivery helpers for auth and operational notification flows.
 
-## Назначение
+## Purpose
 
-- публиковать канонический runtime entry type `EmailModule`;
-- держать SMTP transport и email rendering вне host-слоя;
-- давать платформе единый delivery contract для typed email payloads.
+- publish the canonical runtime entry type `EmailModule`;
+- keep SMTP transport and email rendering outside the host layer;
+- provide the platform with a unified delivery contract for typed email payloads.
 
-## Зона ответственности
+## Responsibilities
 
-- SMTP configuration и sender wiring на уровне модуля;
-- typed rendering contract для password reset и соседних email flows;
-- delivery abstractions и email-related error model на shared `rustok_api::PortContext`/`PortError` + `PortCallPolicy::write()` baseline;
-- targeted contract tests для policy mapping, typed validation и disabled-provider noop fallback находятся в `src/ports.rs`.
-- отсутствие собственной RBAC vocabulary и UI surface.
+- SMTP configuration and sender wiring at the module level;
+- typed rendering contract for password reset and adjacent email flows;
+- delivery abstractions and email-related error model on the shared `rustok_api::PortContext`/`PortError` + `PortCallPolicy::write()` baseline;
+- targeted contract tests for policy mapping, typed validation and disabled-provider noop fallback are located in `src/ports.rs`.
+- no own RBAC vocabulary or UI surface.
 
-## Интеграция
+## Integration
 
-- зависит от `rustok-core` и shared libraries;
-- используется `apps/server` для auth lifecycle и operational notification path;
-- module-level `health()` возвращает `Degraded`, потому что effective SMTP/Loco transport можно проверить только с host runtime context; конкретная проверка находится в `apps/server` как `email_backend` readiness check;
-- не публикует собственный UI и остаётся `ui_classification = "capability_only"`;
-- любые admin-facing actions, которые триггерят отправку писем, авторизуются в вызывающем модуле, а не в `rustok-email`.
+- depends on `rustok-core` and shared libraries;
+- used by `apps/server` for auth lifecycle and operational notification path;
+- module-level `health()` returns `Degraded` because effective SMTP/Loco transport can only be verified with host runtime context; the specific check is in `apps/server` as an `email_backend` readiness check;
+- does not publish its own UI and remains `ui_classification = "capability_only"`;
+- any admin-facing actions that trigger email sending are authorized in the calling module, not in `rustok-email`.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate email`
 - `cargo xtask module test email`
-- `cargo test -p rustok-email ports::tests` для targeted delivery-port contract tests;
-- targeted host tests для auth/email delivery flows при изменении runtime wiring
+- `cargo test -p rustok-email ports::tests` for targeted delivery-port contract tests;
+- targeted host tests for auth/email delivery flows when changing runtime wiring
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
-- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+- [Implementation plan](./implementation-plan.md)
+- [Manifest layer contract](../../../docs/modules/manifest.md)

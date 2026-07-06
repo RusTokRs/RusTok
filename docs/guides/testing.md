@@ -51,7 +51,7 @@ These guidelines capture what we should take from the shared rules to keep tests
 - Coverage for anonymous reads must assert the same published/channel-visible filters as authenticated reads.
 - `SecurityContext::system()` fixtures are allowed only in test-only trusted runtime scenarios, not as a public read shortcut.
 
-> **Статус документа:** Актуальный. Расширенные примеры — в [`docs/guides/testing-integration.md`](./testing-integration.md) и [`docs/guides/testing-property.md`](./testing-property.md).
+> **Document status:** Current. Extended examples in [`docs/guides/testing-integration.md`](./testing-integration.md) and [`docs/guides/testing-property.md`](./testing-property.md).
 
 ## Local quality gates (architecture boundaries)
 Run architecture checks locally before commit when changing crate/app dependencies:
@@ -93,17 +93,17 @@ When checks are skipped by policy for text-only edits, use only:
 
 Reference template: `.github/pull_request_template.md`.
 
-## Ownership-review path для docs/testing изменений
+## Ownership-review path for docs/testing changes
 
-Для изменений, затрагивающих тестовые контракты, quality gates, ownership или
-review policy, применяйте обязательный маршрут согласования:
+For changes affecting test contracts, quality gates, ownership or
+review policy, the mandatory approval path applies:
 
-1. Зафиксировать owner затронутой зоны (module owner или platform/DevEx owner).
-2. В PR явно перечислить scope файлов без «и др.».
-3. Добавить **Testing** и зеркальный **Verification Evidence** с фактическими
-   статусами `pass`/`fail`/`blocked`.
-4. Для `fail`/`blocked` указать точную причину и последующий шаг.
-5. Обновить связанные central docs (`docs/index.md`, `docs/modules/registry.md`
-   или `docs/verification/*`), если контракт изменился.
+1. Identify the owner of the affected area (module owner or platform/DevEx owner).
+2. In the PR, explicitly list the file scope without "etc.".
+3. Add **Testing** and a mirror **Verification Evidence** section with actual
+   statuses `pass`/`fail`/`blocked`.
+4. For `fail`/`blocked`, specify the exact reason and the next step.
+5. Update related central docs (`docs/index.md`, `docs/modules/registry.md`
+   or `docs/verification/*`) if the contract changed.
 
-Это обязательный baseline для DOC-10/DOC-11 и всех последующих docs PR.
+This is a mandatory baseline for DOC-10/DOC-11 and all subsequent docs PRs.

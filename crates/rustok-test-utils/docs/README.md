@@ -1,39 +1,39 @@
-# Документация `rustok-test-utils`
+# `rustok-test-utils` Documentation
 
-`rustok-test-utils` — shared support crate для тестовой инфраструктуры RusToK.
-Он держит reusable fixtures, mocks и helpers, которые должны сокращать
-локальное дублирование в unit/integration/contract tests.
+`rustok-test-utils` — shared support crate for the RusToK testing infrastructure.
+It holds reusable fixtures, mocks and helpers that should reduce
+local duplication in unit/integration/contract tests.
 
-## Назначение
+## Purpose
 
-- публиковать канонический shared testing helper surface;
-- стандартизировать test setup patterns для платформенных и модульных тестов;
-- снижать количество ad-hoc fixtures и локальных mock implementations в workspace.
+- publish a canonical shared testing helper surface;
+- standardize test setup patterns for platform and module tests;
+- reduce the number of ad-hoc fixtures and local mock implementations in the workspace.
 
-## Зона ответственности
+## Scope
 
 - database setup helpers;
 - mock event bus/transport utilities;
-- fixtures/builders для common domain entities;
-- helper functions и test context shortcuts;
-- отсутствие production runtime logic и domain-owned behavior.
+- fixtures/builders for common domain entities;
+- helper functions and test context shortcuts;
+- no production runtime logic or domain-owned behavior.
 
-## Интеграция
+## Integration
 
-- используется как `dev-dependencies` в crates и app test targets;
-- опирается на `rustok-core`/`rustok-events` contracts для test doubles и fixtures;
-- testing guide и module-level verification docs должны оставаться синхронизированными с этим crate;
-- расширение helpers должно идти через reusable patterns, а не через случайные одноразовые fixtures.
+- used as `dev-dependencies` in crates and app test targets;
+- relies on `rustok-core`/`rustok-events` contracts for test doubles and fixtures;
+- the testing guide and module-level verification docs must remain synchronized with this crate;
+- extension of helpers must go through reusable patterns, not through random one-off fixtures.
 
-## Проверка
+## Verification
 
-- structural verification для local docs и public test-utils surface;
-- targeted self-tests нужны при изменении fixtures, mocks и helper contracts;
-- consumer-module docs обновляются при изменении рекомендованных testing patterns.
+- structural verification for local docs and the public test-utils surface;
+- targeted self-tests needed when changing fixtures, mocks and helper contracts;
+- consumer-module docs updated when changing recommended testing patterns.
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Platform documentation map](../../../docs/index.md)
 - [Testing guide](../../../docs/guides/testing.md)

@@ -1,21 +1,21 @@
-# План реализации `rustok-channel`
+# Implementation plan for `rustok-channel`
 
-Статус: experimental core capability; `v0 baseline complete`. Текущий фокус —
-post-v0 rollout policy lifecycle, runtime integration parity, no-compile executable FBA fallback evidence и закрепление решения по built-in host fast-path.
+Status: experimental core capability; `v0 baseline complete`. Current focus is
+post-v0 rollout policy lifecycle, runtime integration parity, no-compile executable FBA fallback evidence and locking down the decision on built-in host fast-path.
 
-## Текущее состояние
+## Current state
 
-- План синхронизирован с текущей реализацией policy lifecycle: update/reorder/disable для rules уже присутствуют в domain/service и server transport.
-- Rollout-решение зафиксировано: built-in host fast-path остаётся отдельным быстрым слоем между explicit selectors и typed policies, чтобы host-target lookup не деградировал в policy-only mode и сохранял совместимость с существующими каналами; canonical order: `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`.
-- Дополнительный focus текущей итерации: стабилизация runtime facts parity (`locale`/`oauth_app_id`) и поддержание deterministic contract в tests/docs.
+- Plan is synchronized with the current policy lifecycle implementation: update/reorder/disable for rules already present in domain/service and server transport.
+- Rollout decision is locked: built-in host fast-path remains a separate fast layer between explicit selectors and typed policies, so host-target lookup does not degrade in policy-only mode and maintains compatibility with existing channels; canonical order: `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`.
+- Additional focus of the current iteration: stabilizing runtime facts parity (`locale`/`oauth_app_id`) and maintaining deterministic contract in tests/docs.
 
 ## Execution checkpoint
 
 - Current phase: semantic_proof_points_guardrail
-- Last checkpoint: semantic proof-points slice добавил no-compile guardrail `npm run verify:channel:proof-points`, который source-locks channel-aware интеграцию `rustok-pages`, `rustok-blog`, `rustok-commerce` и `rustok-forum`: host `ChannelContext`/`channel_module_bindings`, metadata `channelSlugs` visibility, commerce cart/pricing channel snapshot, forum topic/reply/SEO channel visibility и документацию proof-point modules.
-- Next step: Собрать full Rust runtime contract evidence для `ChannelReadPort` и полный `cargo check`/`cargo test` evidence для `rustok-channel-admin`/server middleware в CI или в сессии без короткого execution limit; до Rust runtime evidence FBA остаётся `in_progress`, но fallback smoke profiles теперь закреплены dedicated no-compile executable verifier-ом, а resolution-order decision — быстрым source verifier-ом.
-- Open blockers: по запросу итерации компиляции не запускались; compile evidence отсутствует, поэтому FFA/FBA status остаётся `in_progress`. Compile-free evidence проходит: channel admin boundary verifier, channel FBA verifier со static matrix + no-compile executable runtime fallback smoke, channel resolution contract verifier, channel proof-points verifier и channel boundary fixture suite 13/13.
-- Hand-off notes for next agent: Держать вызовы channel admin UI за `transport`, а route-selection policy — в `core` или shared route helpers; не возвращать raw transport calls в `ui/leptos/`.
+- Last checkpoint: semantic proof-points slice added no-compile guardrail `npm run verify:channel:proof-points`, which source-locks channel-aware integration of `rustok-pages`, `rustok-blog`, `rustok-commerce` and `rustok-forum`: host `ChannelContext`/`channel_module_bindings`, metadata `channelSlugs` visibility, commerce cart/pricing channel snapshot, forum topic/reply/SEO channel visibility and proof-point module documentation.
+- Next step: Collect full Rust runtime contract evidence for `ChannelReadPort` and full `cargo check`/`cargo test` evidence for `rustok-channel-admin`/server middleware in CI or in a session without short execution limit; until Rust runtime evidence FBA remains `in_progress`, but fallback smoke profiles are now locked by dedicated no-compile executable verifier, and resolution-order decision by a fast source verifier.
+- Open blockers: compilation was not requested in this iteration; compile evidence is absent, so FFA/FBA status remains `in_progress`. Compile-free evidence passes: channel admin boundary verifier, channel FBA verifier with static matrix + no-compile executable runtime fallback smoke, channel resolution contract verifier, channel proof-points verifier and channel boundary fixture suite 13/13.
+- Hand-off notes for next agent: Keep channel admin UI calls behind `transport`, and route-selection policy in `core` or shared route helpers; do not return raw transport calls to `ui/leptos/`.
 - Last updated at (UTC): 2026-06-26T00:00:00Z
 
 ## FFA/FBA readiness
@@ -26,165 +26,165 @@ post-v0 rollout policy lifecycle, runtime integration parity, no-compile executa
 - Evidence:
   - Foundation FBA batch update: `npm run verify:channel:fba` now runs `npm run verify:foundation:fba-runtime-smoke`, so `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` is checked together with `tenant`, `index` and `email` runtime fallback evidence instead of only as a standalone channel gate.
   - Boundary readiness update: `crates/rustok-channel/contracts/channel-fba-registry.json`, `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` and `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` are locked by `npm run verify:channel:fba`; FBA status is `boundary_ready`, while full Rust runtime contract evidence remains the next step before `transport_verified`.
-  - `crates/rustok-channel/admin/src/lib.rs` теперь является composition/re-export слоем для module-owned admin surface.
+  - `crates/rustok-channel/admin/src/lib.rs` is now the composition/re-export layer for module-owned admin surface.
   - Runtime facts parity slice: `apps/server/src/middleware/channel.rs` builds `RequestFacts.locale` from `ResolvedRequestLocale.effective_locale` and `RequestFacts.oauth_app_id` from `AuthContextExtension.client_id`; `ChannelResolutionCacheKey` includes both fields to avoid cross-locale/cross-client policy cache reuse, and source-level middleware tests now cover `LocaleEquals`/`OAuthAppEquals` policy selection from real request extensions.
-  - FBA provider slice: `crates/rustok-channel/src/ports.rs` declares `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projection consumers with shared `rustok_api::PortContext`/`PortError`, tenant-scope preservation, inactive-channel degraded-mode filtering and `PortCallPolicy::read()` deadline semantics; `crates/rustok-channel/contracts/channel-fba-registry.json` plus `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` lock planned contract cases, and `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` locks fallback profiles under `npm run verify:channel:fba` через dedicated no-compile executable smoke verifier; Rust runtime execution remains the next step before `transport_verified`.
-  - Resolution contract slice: built-in host fast-path остаётся отдельным слоем после header/query selectors и до typed policies; `npm run verify:channel:resolution-contract` фиксирует source order и docs sync для canonical order `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`.
-  - Semantic proof-points slice: `npm run verify:channel:proof-points` source-locks `rustok-pages`, `rustok-blog`, `rustok-commerce` и `rustok-forum` как текущие channel-aware proof points: public REST/GraphQL gates используют resolved host `ChannelContext` и `channel_module_bindings`, page/blog publication visibility остаётся за metadata `channelSlugs`, commerce сохраняет channel snapshot в cart/order/pricing flows без второго sales-channel домена, а forum фиксирует topic/reply/SEO filtering через `forum_topic_channel_access` и request channel slug.
-  - FBA provider slice: `crates/rustok-channel/src/ports.rs` declares `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation, inactive-channel degraded-mode filtering and read deadline semantics; `crates/rustok-channel/contracts/channel-fba-registry.json` plus `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` lock planned contract cases, and `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` locks fallback profiles under `npm run verify:channel:fba` через dedicated no-compile executable smoke verifier; Rust runtime execution remains the next step before `transport_verified`.
-  - `crates/rustok-channel/admin/src/core.rs` содержит Leptos-free selection policy для очистки URL-owned channel selection.
-  - `ChannelPolicySelectionCleanup` / `channel_policy_selection_cleanup` централизуют trim, policy-set lookup и stale rule cleanup; Leptos route effect больше не владеет этой decision logic.
-  - `PolicyRuleFormState` и create/edit builders владеют приоритетом по умолчанию, fallback action channel и predicate-to-form mapping; Leptos применяет подготовленное состояние только к signals.
-  - `reorder_policy_rule_ids` владеет проверкой first/last boundary и перестановкой rule IDs; Leptos move-up/move-down handlers только отправляют подготовленный порядок в transport facade.
-  - `PolicyRuleFormState::{create_payload,update_payload}` и `policy_rule_active_update_payload` владеют optional-text normalization и transport DTO construction для create/edit/toggle flows.
-  - `crates/rustok-channel/admin/src/transport/mod.rs` содержит module-owned transport facade и fallback policy, `native_server_adapter.rs` содержит server-function endpoints, а `rest_adapter.rs` содержит REST fallback; Leptos adapter больше не импортирует pre-FFA модуль `api`.
-  - `crates/rustok-channel/admin/src/ui/leptos/` является явным Leptos render adapter directory: `mod.rs` владеет `ChannelAdmin`/shared render glue, а runtime context, policy workbench, policy-set card и channel card изолированы в component files; channel operations вызывают только module-owned transport facade.
-  - `scripts/verify/verify-channel-admin-boundary.mjs` закрепляет split без полной Rust-компиляции: обязательную структуру `ui/leptos/`, отсутствие `api.rs`/legacy `transport.rs`, отсутствие raw transport calls в UI, Leptos-free `core`, и разнесение `#[server]`/`reqwest` по adapter-файлам.
-  - `scripts/verify/verify-channel-admin-boundary.test.mjs` добавляет fixture-based regression coverage для pass path, legacy `api.rs`, legacy flat `transport.rs`, raw adapter calls из UI, inline policy-selection lookup, Leptos-specific core regression, ошибочных `#[server]` endpoints в facade/REST adapter и raw REST calls вне `rest_adapter.rs`.
-  - `npm run verify:ffa:ui:migration` теперь запускает channel admin boundary verifier как часть общего FFA verification pipeline.
-- Compile-evidence note (2026-06-20): по запросу текущей итерации компиляции не запускались. Compile-free gates: `npm run verify:channel:admin-boundary`, `npm run verify:channel:fba` (registry + static matrix + no-compile executable fallback smoke), `npm run verify:channel:resolution-contract` (canonical order + built-in host fast-path docs sync), `npm run verify:channel:proof-points` (pages/blog/commerce/forum proof-point source/docs sync) и `node --test scripts/verify/verify-channel-admin-boundary.test.mjs` прошли; `cargo fmt -p rustok-server -- apps/server/src/middleware/channel.rs` применён только как форматирование без компиляции.
-- Следующий parity step: собрать full Rust evidence (`cargo check`/`cargo test`) перед переводом строки channel admin в `phase_b_ready`.
+  - FBA provider slice: `crates/rustok-channel/src/ports.rs` declares `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projection consumers with shared `rustok_api::PortContext`/`PortError`, tenant-scope preservation, inactive-channel degraded-mode filtering and `PortCallPolicy::read()` deadline semantics; `crates/rustok-channel/contracts/channel-fba-registry.json` plus `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` lock planned contract cases, and `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` locks fallback profiles under `npm run verify:channel:fba` through a dedicated no-compile executable smoke verifier; Rust runtime execution remains the next step before `transport_verified`.
+  - Resolution contract slice: built-in host fast-path remains a separate layer after header/query selectors and before typed policies; `npm run verify:channel:resolution-contract` locks source order and docs sync for canonical order `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`.
+  - Semantic proof-points slice: `npm run verify:channel:proof-points` source-locks `rustok-pages`, `rustok-blog`, `rustok-commerce` and `rustok-forum` as current channel-aware proof points: public REST/GraphQL gates use resolved host `ChannelContext` and `channel_module_bindings`, page/blog publication visibility remains behind metadata `channelSlugs`, commerce preserves channel snapshot in cart/order/pricing flows without a second sales-channel domain, and forum locks topic/reply/SEO filtering through `forum_topic_channel_access` and request channel slug.
+  - FBA provider slice: `crates/rustok-channel/src/ports.rs` declares `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation, inactive-channel degraded-mode filtering and read deadline semantics; `crates/rustok-channel/contracts/channel-fba-registry.json` plus `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` lock planned contract cases, and `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` locks fallback profiles under `npm run verify:channel:fba` through a dedicated no-compile executable smoke verifier; Rust runtime execution remains the next step before `transport_verified`.
+  - `crates/rustok-channel/admin/src/core.rs` contains Leptos-free selection policy for cleaning up URL-owned channel selection.
+  - `ChannelPolicySelectionCleanup` / `channel_policy_selection_cleanup` centralize trim, policy-set lookup and stale rule cleanup; Leptos route effect no longer owns this decision logic.
+  - `PolicyRuleFormState` and create/edit builders own default priority, fallback action channel and predicate-to-form mapping; Leptos applies the prepared state only to signals.
+  - `reorder_policy_rule_ids` owns first/last boundary checking and rule ID reordering; Leptos move-up/move-down handlers only send the prepared order to the transport facade.
+  - `PolicyRuleFormState::{create_payload,update_payload}` and `policy_rule_active_update_payload` own optional-text normalization and transport DTO construction for create/edit/toggle flows.
+  - `crates/rustok-channel/admin/src/transport/mod.rs` contains module-owned transport facade and fallback policy, `native_server_adapter.rs` contains server-function endpoints, and `rest_adapter.rs` contains REST fallback; Leptos adapter no longer imports the pre-FFA module `api`.
+  - `crates/rustok-channel/admin/src/ui/leptos/` is the explicit Leptos render adapter directory: `mod.rs` owns `ChannelAdmin`/shared render glue, and runtime context, policy workbench, policy-set card and channel card are isolated in component files; channel operations call only the module-owned transport facade.
+  - `scripts/verify/verify-channel-admin-boundary.mjs` locks the split without full Rust compilation: required `ui/leptos/` structure, absence of `api.rs`/legacy `transport.rs`, absence of raw transport calls in UI, Leptos-free `core`, and separation of `#[server]`/`reqwest` into adapter files.
+  - `scripts/verify/verify-channel-admin-boundary.test.mjs` adds fixture-based regression coverage for pass path, legacy `api.rs`, legacy flat `transport.rs`, raw adapter calls from UI, inline policy-selection lookup, Leptos-specific core regression, erroneous `#[server]` endpoints in facade/REST adapter and raw REST calls outside `rest_adapter.rs`.
+  - `npm run verify:ffa:ui:migration` now runs the channel admin boundary verifier as part of the common FFA verification pipeline.
+- Compile-evidence note (2026-06-20): compilation was not requested in the current iteration. Compile-free gates: `npm run verify:channel:admin-boundary`, `npm run verify:channel:fba` (registry + static matrix + no-compile executable fallback smoke), `npm run verify:channel:resolution-contract` (canonical order + built-in host fast-path docs sync), `npm run verify:channel:proof-points` (pages/blog/commerce/forum proof-point source/docs sync) and `node --test scripts/verify/verify-channel-admin-boundary.test.mjs` passed; `cargo fmt -p rustok-server -- apps/server/src/middleware/channel.rs` applied only as formatting without compilation.
+- Next parity step: collect full Rust evidence (`cargo check`/`cargo test`) before moving channel admin row to `phase_b_ready`.
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-channel` как domain-owned resolution module, а не host middleware bucket;
-- синхронизировать channel runtime contract, admin UI и manifest metadata;
-- развивать typed resolution policies без возврата к ad-hoc host logic.
+- keep `rustok-channel` as a domain-owned resolution module, not a host middleware bucket;
+- synchronize channel runtime contract, admin UI and manifest metadata;
+- evolve typed resolution policies without returning to ad-hoc host logic.
 
-## Сводка текущего exploration
+## Current exploration summary
 
-- resolver precedence уже закреплён в `crates/rustok-channel/src/resolution.rs`:
+- resolver precedence is already fixed in `crates/rustok-channel/src/resolution.rs`:
   `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`;
-- storage и domain слой для policy уже есть (`channel_resolution_policy_sets` +
+- storage and domain layer for policy already exists (`channel_resolution_policy_sets` +
   `channel_resolution_policy_rules`);
-- server transport (`apps/server/src/controllers/channel.rs`) расширяется вместе с policy lifecycle;
-- admin UI (`crates/rustok-channel/admin/src/ui/leptos/`) уже покрывает базовые operator flows и
+- server transport (`apps/server/src/controllers/channel.rs`) is expanding alongside policy lifecycle;
+- admin UI (`crates/rustok-channel/admin/src/ui/leptos/`) already covers basic operator flows and
   rollout rule-level lifecycle;
-- middleware request facts (`apps/server/src/middleware/channel.rs`) пока передаёт
-  `oauth_app_id = None` и `locale = None`, из-за чего часть typed predicates работает
-  только в synthetic/tests сценариях.
+- middleware request facts (`apps/server/src/middleware/channel.rs`) currently passes
+  `oauth_app_id = None` and `locale = None`, which means some typed predicates work
+  only in synthetic/test scenarios.
 
-## Необходимые изменения
+## Required changes
 
 ### 1) Domain contract (`rustok-channel`)
 
-- добавить DTO для update lifecycle policy set/rule (rename/active-toggle/rule update/reorder);
-- расширить `ChannelService` методами:
+- add DTO for update lifecycle policy set/rule (rename/active-toggle/rule update/reorder);
+- extend `ChannelService` with methods:
   - `update_resolution_policy_set(...)`,
   - `update_resolution_rule(...)`,
-  - `reorder_resolution_rules(...)` (bulk или single move);
-- закрепить partial-update contract для `update_resolution_rule(...)`:
-  - `priority/is_active/action_channel_id` optional: отсутствие в payload => поле не меняется;
+  - `reorder_resolution_rules(...)` (bulk or single move);
+- lock partial-update contract for `update_resolution_rule(...)`:
+  - `priority/is_active/action_channel_id` optional: absence in payload => field unchanged;
   - `host_equals/host_suffix/oauth_app_id/surface/locale` optional patch fields:
-    отсутствие => без изменений, пустая строка => удалить соответствующий predicate, непустое значение => заменить/установить predicate с обычной валидацией/нормализацией;
-- зафиксировать инварианты:
-  - tenant ownership для policy set, rule и action channel,
-  - deterministic order после reorder (без hidden tie-break drift),
-  - inactive rule не участвует в `list_active_resolution_rules`.
+    absence => unchanged, empty string => remove corresponding predicate, non-empty value => replace/set predicate with normal validation/normalization;
+- lock invariants:
+  - tenant ownership for policy set, rule and action channel,
+  - deterministic order after reorder (no hidden tie-break drift),
+  - inactive rule does not participate in `list_active_resolution_rules`.
 
 ### 2) Host transport (`apps/server`)
 
-- расширить REST controller `apps/server/src/controllers/channel.rs` для update/reorder/disable policy flows;
-- оставить текущую cache invalidation contract (`invalidate_tenant_channel_cache`) для всех новых write-paths;
-- при добавлении новых request payload удерживать shared validation semantics
+- extend REST controller `apps/server/src/controllers/channel.rs` for update/reorder/disable policy flows;
+- keep current cache invalidation contract (`invalidate_tenant_channel_cache`) for all new write-paths;
+- when adding new request payloads, maintain shared validation semantics
   (host normalization, locale normalization, surface whitelist).
 
-### 3) Runtime facts и middleware integration
+### 3) Runtime facts and middleware integration
 
-- довести `RequestFacts` в `middleware/channel.rs` до реального runtime:
-  - прокидывать `locale` из resolved request locale,
-  - прокидывать `oauth_app_id` из auth context (`client_id`);
-- при необходимости скорректировать middleware ordering в
-  `apps/server/src/services/app_router.rs`, чтобы channel resolver видел нужные extension-данные;
-- добавить targeted middleware tests на policy predicates `LocaleEquals` и `OAuthAppEquals`
-  в реальном request pipeline, а не только на unit-level resolver.
+- bring `RequestFacts` in `middleware/channel.rs` to real runtime:
+  - pass `locale` from resolved request locale,
+  - pass `oauth_app_id` from auth context (`client_id`);
+- adjust middleware ordering in
+  `apps/server/src/services/app_router.rs` if necessary, so channel resolver sees required extension data;
+- add targeted middleware tests for policy predicates `LocaleEquals` and `OAuthAppEquals`
+  in the real request pipeline, not only at the unit-level resolver.
 
 ### 4) Admin package (`rustok-channel/admin`)
 
-- закрыть native-first parity для policy operations в `admin/src/transport/`
-  (`#[server]` path + REST fallback, как у channel/target/module flows);
-- расширить `PolicyWorkbench` / `PolicySetCard` (`admin/src/ui/leptos/`) до полного operator flow:
+- close native-first parity for policy operations in `admin/src/transport/`
+  (`#[server]` path + REST fallback, like channel/target/module flows);
+- extend `PolicyWorkbench` / `PolicySetCard` (`admin/src/ui/leptos/`) to full operator flow:
   - rule active toggle,
-  - rule reorder (up/down или explicit priority move),
-  - rule edit без удаления/пересоздания;
-- при появлении отдельного selection state для policy-set/rule держать URL-owned contract
-  через `rustok-api` route keys (без package-local state contract).
+  - rule reorder (up/down or explicit priority move),
+  - rule edit without delete/recreate;
+- when a separate selection state for policy-set/rule appears, maintain URL-owned contract
+  through `rustok-api` route keys (no package-local state contract).
 
-### 5) Proof points в доменных модулях
+### 5) Proof points in domain modules
 
-- расширять channel-aware proof points (`pages` / `blog` / `commerce`) только вместе
-  с explicit tests и локальной документацией;
-- для новых channel-aware чтений использовать уже резолвленный host channel context,
-  не создавая второй канал выбора в module-local logic.
+- extend channel-aware proof points (`pages` / `blog` / `commerce`) only together
+  with explicit tests and local documentation;
+- for new channel-aware reads, use already resolved host channel context,
+  not creating a second selection channel in module-local logic.
 
-## Точки интеграции
+## Integration points
 
-| Слой | Компонент | Текущая роль | Планируемое изменение |
+| Layer | Component | Current role | Planned change |
 |---|---|---|---|
 | Domain | `crates/rustok-channel/src/services/channel_service.rs` | create/activate/delete policy lifecycle | update/reorder/disable lifecycle + invariants |
-| Domain | `crates/rustok-channel/src/resolution.rs` | execution pipeline и trace | подтвердить deterministic policy order после reorder |
-| Host REST | `apps/server/src/controllers/channel.rs` | thin channel bootstrap/write API | новые policy update/reorder endpoints |
-| Host middleware | `apps/server/src/middleware/channel.rs` | request -> `RequestFacts` -> `ChannelContext` | locale/oauth facts parity с runtime extensions |
-| Host composition | `apps/server/src/services/app_router.rs` | middleware chaining | при необходимости корректировка порядка middleware |
-| Admin transport | `crates/rustok-channel/admin/src/transport/` | facade + explicit native server-function adapter + REST fallback adapter после FFA split | добавить быстрый boundary verifier для отсутствия raw transport/API calls в UI |
-| Admin UI | `crates/rustok-channel/admin/src/ui/leptos/` | явный каталог Leptos render adapter после FFA split | держать full operator flow за core/transport boundaries |
-| Shared UI routing | `crates/rustok-api/src/route_selection.rs` | channel query keys (`channel_id/target_id/module_slug/oauth_app_id`) + policy edit keys (`policy_set_id/policy_rule_id`) | поддерживать URL-owned selection contract и dependency cleanup (`policy_set_id -> policy_rule_id`) |
+| Domain | `crates/rustok-channel/src/resolution.rs` | execution pipeline and trace | confirm deterministic policy order after reorder |
+| Host REST | `apps/server/src/controllers/channel.rs` | thin channel bootstrap/write API | new policy update/reorder endpoints |
+| Host middleware | `apps/server/src/middleware/channel.rs` | request -> `RequestFacts` -> `ChannelContext` | locale/oauth facts parity with runtime extensions |
+| Host composition | `apps/server/src/services/app_router.rs` | middleware chaining | adjust middleware ordering if necessary |
+| Admin transport | `crates/rustok-channel/admin/src/transport/` | facade + explicit native server-function adapter + REST fallback adapter after FFA split | add fast boundary verifier for absence of raw transport/API calls in UI |
+| Admin UI | `crates/rustok-channel/admin/src/ui/leptos/` | explicit Leptos render adapter directory after FFA split | keep full operator flow behind core/transport boundaries |
+| Shared UI routing | `crates/rustok-api/src/route_selection.rs` | channel query keys (`channel_id/target_id/module_slug/oauth_app_id`) + policy edit keys (`policy_set_id/policy_rule_id`) | maintain URL-owned selection contract and dependency cleanup (`policy_set_id -> policy_rule_id`) |
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] зафиксировать финальную resolution-модель `explicit selectors -> built-in target slice -> typed policies -> explicit default -> unresolved`;
-- [x] удерживать domain-owned resolver внутри `rustok-channel`;
-- [x] удерживать sync между runtime contract, admin UI и server middleware tests.
+- [x] lock final resolution model `explicit selectors -> built-in target slice -> typed policies -> explicit default -> unresolved`;
+- [x] keep domain-owned resolver inside `rustok-channel`;
+- [x] maintain sync between runtime contract, admin UI and server middleware tests.
 
 ### 2. Policy lifecycle parity
 
-- [x] довести policy trace в admin bootstrap/runtime diagnostics;
-- [x] добавить базовые operator flows для policy-set activation и policy-rule authoring/removal;
-- [x] добавить policy rule update/reorder/disable lifecycle на уровне `ChannelService`, REST transport и admin UI controls;
-- [x] добавить targeted tests на deterministic rule order и inactive-rule exclusion;
-- [x] решить, остаётся ли built-in host slice отдельным fast-path после полного policy rollout.
+- [x] bring policy trace to admin bootstrap/runtime diagnostics;
+- [x] add basic operator flows for policy-set activation and policy-rule authoring/removal;
+- [x] add policy rule update/reorder/disable lifecycle at `ChannelService`, REST transport and admin UI control level;
+- [x] add targeted tests for deterministic rule order and inactive-rule exclusion;
+- [x] decide whether built-in host slice remains a separate fast-path after full policy rollout.
 
 ### 3. Admin operator UX parity
 
-- [x] довести `rustok-channel-admin` до operator flow для policy rules (reorder/disable);
-- [x] добавить полноценный rule edit flow (изменение predicates/action без delete+recreate);
-- [x] выровнять native-first `#[server]` transport для policy operations с существующими channel CRUD flows;
-- [x] при добавлении policy edit-selection state закрепить URL query contract через shared `AdminQueryKey`.
+- [x] bring `rustok-channel-admin` to operator flow for policy rules (reorder/disable);
+- [x] add full rule edit flow (changing predicates/action without delete+recreate);
+- [x] align native-first `#[server]` transport for policy operations with existing channel CRUD flows;
+- [x] when adding policy edit-selection state, lock URL query contract through shared `AdminQueryKey`.
 
 ### 4. Runtime integration rollout
 
-- [x] подключить real request locale и OAuth app id в `RequestFacts`;
-- [x] закрепить middleware ordering и source-level runtime facts/policy parity тестами в `apps/server`;
-- [x] принять решение по built-in host slice (`fast-path` vs policy-only mode): оставить built-in host fast-path между explicit selectors и typed policies, зафиксировать docs/source guardrail `verify:channel:resolution-contract`.
+- [x] connect real request locale and OAuth app id in `RequestFacts`;
+- [x] lock middleware ordering and source-level runtime facts/policy parity with tests in `apps/server`;
+- [x] make decision on built-in host slice (`fast-path` vs policy-only mode): keep built-in host fast-path between explicit selectors and typed policies, lock docs/source guardrail `verify:channel:resolution-contract`.
 
 ### 5. Semantic expansion
 
-- [ ] возвращаться к richer target/connector taxonomy только при реальном runtime pressure;
-- [x] закрепить текущие channel-aware proof points (`rustok-pages`, `rustok-blog`, `rustok-commerce`, `rustok-forum`) no-compile verifier-ом `npm run verify:channel:proof-points` вместе с локальной документацией и test markers.
-- [ ] расширять новые channel-aware proof points в доменных модулях только вместе с локальной документацией и tests.
+- [ ] return to richer target/connector taxonomy only when real runtime pressure demands it;
+- [x] lock current channel-aware proof points (`rustok-pages`, `rustok-blog`, `rustok-commerce`, `rustok-forum`) with no-compile verifier `npm run verify:channel:proof-points` together with local documentation and test markers.
+- [ ] extend new channel-aware proof points in domain modules only together with local documentation and tests.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
-- targeted server middleware tests для resolution order, explicit selectors, policy predicates и default semantics
+- targeted server middleware tests for resolution order, explicit selectors, policy predicates and default semantics
 - `npm run verify:channel:resolution-contract`
 - `npm run verify:channel:proof-points`
-- targeted channel service tests для policy lifecycle (`create/update/reorder/disable/delete`)
+- targeted channel service tests for policy lifecycle (`create/update/reorder/disable/delete`)
 
-## Правила обновления
+## Update rules
 
-1. При изменении resolution/policy contract сначала обновлять этот файл.
-2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata и UI wiring синхронизировать `rustok-module.toml`.
-4. При изменении route-selection contract синхронизировать `rustok-api` (`AdminQueryKey`) и UI docs.
+1. When changing resolution/policy contract, update this file first.
+2. When changing public/runtime contract, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata and UI wiring, synchronize `rustok-module.toml`.
+4. When changing route-selection contract, synchronize `rustok-api` (`AdminQueryKey`) and UI docs.
 
 
 ## Quality backlog
 
-- [x] Актуализировать source-level proof-point coverage по текущим channel-aware сценариям pages/blog/commerce/forum через `npm run verify:channel:proof-points`.
-- [x] Проверить полноту и актуальность `README.md` и локальных docs для текущих proof-point guardrails.
-- [x] Зафиксировать/обновить verification gates для текущего состояния модуля: `npm run verify:channel:fba` теперь проверяет static matrix и no-compile executable runtime fallback smoke без компиляции.
-- [ ] Собрать full Rust runtime fallback evidence для повышения FBA выше `in_progress`.
+- [x] Update source-level proof-point coverage for current channel-aware scenarios pages/blog/commerce/forum through `npm run verify:channel:proof-points`.
+- [x] Verify completeness and currency of `README.md` and local docs for current proof-point guardrails.
+- [x] Lock/update verification gates for current module state: `npm run verify:channel:fba` now checks static matrix and no-compile executable runtime fallback smoke without compilation.
+- [ ] Collect full Rust runtime fallback evidence to raise FBA above `in_progress`.

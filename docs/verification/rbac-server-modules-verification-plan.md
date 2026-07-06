@@ -6,101 +6,101 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План верификации платформы: RBAC, сервер и runtime-модули
+# Platform Verification Plan: RBAC, Server and Runtime Modules
 
-- **Статус:** актуальный детальный чеклист
-- **Контур:** server authorization path, typed permissions, runtime module contract, capability boundaries
-- **Companion-план:** [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md)
+- **Status:** current detailed checklist
+- **Scope:** server authorization path, typed permissions, runtime module contract, capability boundaries
+- **Companion plan:** [Main Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md)
 
 ---
 
-## Актуальный контракт RBAC и серверного доступа
+## Current RBAC and Server Access Contract
 
-Этот план подтверждает, что live authorization contract остаётся согласованным
-между `apps/server`, `rustok-rbac`, foundation crates, runtime modules и
+This plan confirms that the live authorization contract remains consistent
+between `apps/server`, `rustok-rbac`, foundation crates, runtime modules and
 capability surfaces.
 
-Источники истины для RBAC/server verification:
+Sources of truth for RBAC/server verification:
 
-- код `apps/server`
-- typed permission vocabulary из `rustok-core`
-- runtime module contracts из `modules.toml`, `rustok-module.toml` и `RusToKModule`
-- локальные docs затронутых модулей и capability crates
+- `apps/server` code
+- typed permission vocabulary from `rustok-core`
+- runtime module contracts from `modules.toml`, `rustok-module.toml` and `RusToKModule`
+- local docs of affected modules and capability crates
 
-## Фаза 1. Server authorization path
+## Phase 1. Server Authorization Path
 
 ### 1.1 Entry points
 
-- [ ] GraphQL, REST, `#[server]` и operational endpoints проходят через актуальный auth/RBAC path.
-- [ ] `SecurityContext` строится из resolved permissions и tenant/user context, а не из role shortcuts.
-- [ ] Server extractors, guards и service entry points не разводят параллельные authorization rules.
+- [ ] GraphQL, REST, `#[server]` and operational endpoints go through the current auth/RBAC path.
+- [ ] `SecurityContext` is built from resolved permissions and tenant/user context, not from role shortcuts.
+- [ ] Server extractors, guards and service entry points do not create parallel authorization rules.
 
 ### 1.2 Antipattern checks
 
-- [ ] В live server path нет ad-hoc проверок вида `UserRole::*` вместо typed permissions.
-- [ ] `infer_user_role_from_permissions()` не подменяет фактическую авторизацию.
-- [ ] Host-level обходы не дублируют `RbacService` и permission-aware guards.
+- [ ] In the live server path, there are no ad-hoc checks like `UserRole::*` instead of typed permissions.
+- [ ] `infer_user_role_from_permissions()` does not replace actual authorization.
+- [ ] Host-level workarounds do not duplicate `RbacService` and permission-aware guards.
 
-## Фаза 2. Typed permission vocabulary
+## Phase 2. Typed Permission Vocabulary
 
 ### 2.1 Foundation contract
 
-- [ ] `Permission`, `Resource`, `Action` из `rustok-core` остаются единым источником permission vocabulary.
-- [ ] Server-side authorization не уходит в stringly-typed permissions или локальные role aliases.
-- [ ] Local docs и central docs не расходятся с текущим permission model.
+- [ ] `Permission`, `Resource`, `Action` from `rustok-core` remain the single source of permission vocabulary.
+- [ ] Server-side authorization does not fall back to stringly-typed permissions or local role aliases.
+- [ ] Local docs and central docs do not diverge from the current permission model.
 
 ### 2.2 Module ownership
 
-- [ ] Runtime modules с RBAC-managed functionality публикуют актуальный permission surface.
-- [ ] Ownership permissions для `auth`, `tenant`, `rbac`, `content`, `commerce`, `blog`, `forum`, `pages`, `media`, `workflow` совпадают между кодом, manifest и docs.
-- [ ] Dependency edges вроде `blog -> content`, `forum -> content`, `pages -> content` не скрывают неописанные authorization expectations.
+- [ ] Runtime modules with RBAC-managed functionality publish the current permission surface.
+- [ ] Ownership permissions for `auth`, `tenant`, `rbac`, `content`, `commerce`, `blog`, `forum`, `pages`, `media`, `workflow` match between code, manifest and docs.
+- [ ] Dependency edges like `blog -> content`, `forum -> content`, `pages -> content` do not hide undocumented authorization expectations.
 
-## Фаза 3. Runtime modules и capability boundaries
+## Phase 3. Runtime Modules and Capability Boundaries
 
 ### 3.1 Runtime module contract
 
-- [ ] `modules.toml`, runtime registry и `RusToKModule::permissions()` согласованы.
-- [ ] Runtime modules не теряют `README.md` / `docs/README.md` / `docs/implementation-plan.md` contract.
-- [ ] `outbox` остаётся `Core` module и не смешивается с tenant-toggled capability semantics.
+- [ ] `modules.toml`, runtime registry and `RusToKModule::permissions()` are consistent.
+- [ ] Runtime modules do not lose the `README.md` / `docs/README.md` / `docs/implementation-plan.md` contract.
+- [ ] `outbox` remains a `Core` module and is not mixed with tenant-toggled capability semantics.
 
 ### 3.2 Capability surfaces
 
-- [ ] `alloy`, `flex`, `rustok-mcp` и другие capability crates не маскируются под runtime modules.
-- [ ] Capability docs явно описывают свои authorization boundaries и зависимости от server/runtime contract.
-- [ ] Capability paths не используют `tenant_modules` как замену явной permission model, если это не часть documented runtime contract.
+- [ ] `alloy`, `flex`, `rustok-mcp` and other capability crates are not disguised as runtime modules.
+- [ ] Capability docs explicitly describe their authorization boundaries and dependencies on the server/runtime contract.
+- [ ] Capability paths do not use `tenant_modules` as a substitute for an explicit permission model, unless this is part of a documented runtime contract.
 
-## Фаза 4. Documentation sync
+## Phase 4. Documentation Sync
 
 ### 4.1 Central docs
 
-- [ ] `docs/modules/registry.md`, `docs/modules/crates-registry.md`, `docs/architecture/api.md`, `docs/architecture/modules.md` отражают текущую RBAC/server картину.
-- [ ] Verification docs остаются checklist-слоем и не превращаются в архив расследований.
+- [ ] `docs/modules/registry.md`, `docs/modules/crates-registry.md`, `docs/architecture/api.md`, `docs/architecture/modules.md` reflect the current RBAC/server picture.
+- [ ] Verification docs remain a checklist layer and do not turn into an archive of investigations.
 
 ### 4.2 Local docs
 
-- [ ] Затронутые runtime modules и capability crates синхронизируют `README.md`, `docs/README.md`, `docs/implementation-plan.md`.
-- [ ] Раздел `## Interactions` в root `README.md` не расходится с server authorization path и runtime dependencies.
+- [ ] Affected runtime modules and capability crates synchronize `README.md`, `docs/README.md`, `docs/implementation-plan.md`.
+- [ ] The `## Interactions` section in the root `README.md` does not diverge from the server authorization path and runtime dependencies.
 
-## Точечные локальные проверки
+## Targeted Local Checks
 
-- [ ] targeted `cargo xtask module validate <slug>` для модулей, затрагивающих auth/RBAC/server boundaries
-- [ ] targeted `cargo xtask module test <slug>` для затронутых модулей
-- [ ] targeted `cargo test -p rustok-server --lib`, если менялся server authorization path
-- [ ] targeted grep/rg по `apps/server/src` на role shortcuts и локальные authorization bypass patterns
-- [ ] `powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1`, если менялись dependency boundaries или server/module ownership
+- [ ] targeted `cargo xtask module validate <slug>` for modules affecting auth/RBAC/server boundaries
+- [ ] targeted `cargo xtask module test <slug>` for affected modules
+- [ ] targeted `cargo test -p rustok-server --lib`, if server authorization path changed
+- [ ] targeted grep/rg on `apps/server/src` for role shortcuts and local authorization bypass patterns
+- [ ] `powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1`, if dependency boundaries or server/module ownership changed
 
-## Stop-the-line conditions
+## Stop-the-line Conditions
 
-- [ ] Live server path авторизует по role shortcuts вместо explicit permissions.
-- [ ] Runtime module с RBAC-managed behavior не публикует актуальный permission surface.
-- [ ] Capability crate внедряется в server/runtime path без ясного authorization contract.
-- [ ] Docs утверждают одну permission/dependency картину, а код реализует другую.
+- [ ] Live server path authorizes by role shortcuts instead of explicit permissions.
+- [ ] Runtime module with RBAC-managed behavior does not publish the current permission surface.
+- [ ] Capability crate is introduced into the server/runtime path without a clear authorization contract.
+- [ ] Docs claim one permission/dependency picture but the code implements another.
 
-## Связанные документы
+## Related Documents
 
-- [Главный README по верификации](./README.md)
-- [Верификация целостности ядра](./platform-core-integrity-verification-plan.md)
-- [Верификация API-поверхностей](./platform-api-surfaces-verification-plan.md)
-- [Архитектура API](../architecture/api.md)
-- [Архитектура модулей](../architecture/modules.md)
-- [Реестр модулей и приложений](../modules/registry.md)
+- [Main Verification README](./README.md)
+- [Core Integrity Verification](./platform-core-integrity-verification-plan.md)
+- [API Surface Verification](./platform-api-surfaces-verification-plan.md)
+- [API Architecture](../architecture/api.md)
+- [Module Architecture](../architecture/modules.md)
+- [Module and Application Registry](../modules/registry.md)

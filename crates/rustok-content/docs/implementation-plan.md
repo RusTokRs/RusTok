@@ -1,74 +1,74 @@
-# План реализации `rustok-content`
+# Implementation plan for `rustok-content`
 
-Статус: content/domain separation завершён; модуль работает как shared
-orchestration и rich-text/locale contract layer.
+Status: content/domain separation is complete; the module works as a shared
+orchestration and rich-text/locale contract layer.
 
 ## Execution checkpoint
 
-- Current phase: владение dashboard post analytics в `rustok-content`
-- Last checkpoint: `ContentCountSnapshot` и `load_post_stats_snapshot` перенесены в `rustok-content`; `apps/server::RootQuery::dashboard_stats` только композирует owner helper за feature `mod-content` и больше не содержит SQL по `nodes`/`kind = post`. Граница закреплена `apps/server/tests/module_surface_boundary_guard.rs` без компиляции.
-- Next step: Закрыть reindex drift evidence и расширить conversion bridge contract coverage без возврата GraphQL resolver/DTO и content analytics SQL в `apps/server`.
+- Current phase: dashboard post analytics ownership in `rustok-content`
+- Last checkpoint: `ContentCountSnapshot` and `load_post_stats_snapshot` moved to `rustok-content`; `apps/server::RootQuery::dashboard_stats` only composes the owner helper behind feature `mod-content` and no longer contains SQL over `nodes`/`kind = post`. The boundary is locked by `apps/server/tests/module_surface_boundary_guard.rs` without compilation.
+- Next step: Close reindex drift evidence and expand conversion bridge contract coverage without returning GraphQL resolver/DTO and content analytics SQL to `apps/server`.
 - Open blockers: Compile/runtime execution evidence still pending because this iteration intentionally avoided compilation.
-- Hand-off notes for next agent: Поддерживать `npm run verify:content:orchestration` вместе с любым изменением `ContentOrchestrationService`, `CanonicalUrlService`, collision tests, local docs или registry row.
+- Hand-off notes for next agent: Maintain `npm run verify:content:orchestration` alongside any change to `ContentOrchestrationService`, `CanonicalUrlService`, collision tests, local docs or registry row.
 - Last updated at (UTC): 2026-07-02T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-content` как shared helper/orchestration модуль, а не product storage owner;
-- синхронизировать conversion semantics, canonical URL policy и local docs;
-- не допускать возврата domain CRUD обратно в shared storage.
+- keep `rustok-content` as a shared helper/orchestration module, not a product storage owner;
+- synchronize conversion semantics, canonical URL policy and local docs;
+- prevent returning domain CRUD back to shared storage.
 
-## Текущее состояние
+## Current state
 
-- blog/forum/pages domain CRUD уже вынесены в собственные модули;
-- `rustok-content` владеет orchestration service, audit/idempotency state и canonical URL mapping;
-- canonical route GraphQL query и content GraphQL dataloaders живут в `rustok-content`, а conversion mutations и DTO — в `rustok-content-orchestration`; host только объединяет roots и регистрирует owner-owned loaders;
-- dashboard post analytics (`ContentCountSnapshot`, `load_post_stats_snapshot`) уже module-owned; server GraphQL не содержит SQL по `nodes`/`kind = post`;
-- shared locale fallback и rich-text validation уже являются каноническим контрактом для publishable content surfaces;
-- module docs и runtime boundary уже отражают post-split роль.
+- blog/forum/pages domain CRUD are already moved to their own modules;
+- `rustok-content` owns orchestration service, audit/idempotency state and canonical URL mapping;
+- canonical route GraphQL query and content GraphQL dataloaders live in `rustok-content`, while conversion mutations and DTO reside in `rustok-content-orchestration`; host only merges roots and registers owner-owned loaders;
+- dashboard post analytics (`ContentCountSnapshot`, `load_post_stats_snapshot`) are already module-owned; server GraphQL does not contain SQL over `nodes`/`kind = post`;
+- shared locale fallback and rich-text validation are already the canonical contract for publishable content surfaces;
+- module docs and runtime boundary already reflect the post-split role.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрыть storage split и убрать product-owned transport surfaces из live runtime;
-- [x] зафиксировать rich-text, locale fallback и conversion contracts;
-- [x] встроить RBAC/idempotency/input-safety в orchestration path;
-- [x] удерживать sync между orchestration contracts, event flows и module metadata через compile-free guardrail `npm run verify:content:orchestration`.
+- [x] close storage split and remove product-owned transport surfaces from live runtime;
+- [x] lock rich-text, locale fallback and conversion contracts;
+- [x] embed RBAC/idempotency/input-safety in orchestration path;
+- [x] maintain sync between orchestration contracts, event flows and module metadata through compile-free guardrail `npm run verify:content:orchestration`.
 
 ### 2. Orchestration hardening
 
-- [x] держать canonical URL и alias semantics атомарными вместе с outbox/reindex flows в статическом contract guardrail-е;
-- [x] явно блокировать canonical URL collision и alias shadowing между разными targets до изменения mapping/outbox state;
-- [x] добавить targeted integration evidence для canonical URL collision и alias shadowing rollback/no-outbox сценариев;
-- [ ] расширять conversion coverage только через явные bridge contracts;
-- [ ] удерживать rich-text и locale invariants синхронизированными с доменными модулями.
+- [x] keep canonical URL and alias semantics atomic together with outbox/reindex flows in static contract guardrail;
+- [x] explicitly block canonical URL collision and alias shadowing between different targets before changing mapping/outbox state;
+- [x] add targeted integration evidence for canonical URL collision and alias shadowing rollback/no-outbox scenarios;
+- [ ] expand conversion coverage only through explicit bridge contracts;
+- [ ] keep rich-text and locale invariants synchronized with domain modules.
 
 ### 3. Operability
 
-- [x] развивать runbooks и observability для orchestration incidents, partial failures и reindex drift: runbook теперь фиксирует verification gate `npm run verify:content:orchestration`;
-- [x] покрыть canonical URL collision/alias shadowing guarantees targeted integration tests (source-locked без компиляции в этой итерации);
-- [ ] покрывать следующие orchestration guarantees targeted integration tests;
-- [ ] документировать изменения conversion policy одновременно с изменением runtime surface.
+- [x] evolve runbooks and observability for orchestration incidents, partial failures and reindex drift: runbook now locks verification gate `npm run verify:content:orchestration`;
+- [x] cover canonical URL collision/alias shadowing guarantees with targeted integration tests (source-locked without compilation in this iteration);
+- [ ] cover the following orchestration guarantees with targeted integration tests;
+- [ ] document conversion policy changes simultaneously with changing runtime surface.
 
-## Проверка
+## Verification
 
-- [x] compile-free guardrail покрывает public orchestration use-case contracts, route resolution, canonical/alias collision guards, rollback/no-outbox evidence markers и docs/registry sync: `npm run verify:content:orchestration`
-- [ ] контрактные тесты покрывают все публичные use-case orchestration и surface contracts
+- [x] compile-free guardrail covers public orchestration use-case contracts, route resolution, canonical/alias collision guards, rollback/no-outbox evidence markers and docs/registry sync: `npm run verify:content:orchestration`
+- [ ] contract tests cover all public use-case orchestration and surface contracts
 - `cargo xtask module validate content`
 - `cargo xtask module test content`
-- targeted tests для orchestration lifecycle, canonical URL policy, fallback chain и sanitize contracts
+- targeted tests for orchestration lifecycle, canonical URL policy, fallback chain and sanitize contracts
 
-## Правила обновления
+## Update rules
 
-1. При изменении content/orchestration contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
-4. При изменении shared rich-text/locale contracts обновлять также central docs и consumer-module references.
+1. When changing content/orchestration contract, update this file first.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
+4. When changing shared rich-text/locale contracts, also update central docs and consumer-module references.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [x] Зафиксировать/обновить verification gates для текущего состояния модуля (`npm run verify:content:orchestration`).
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [x] Lock/update verification gates for current module state (`npm run verify:content:orchestration`).

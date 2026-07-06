@@ -6,70 +6,70 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Планировщик задач (Loco Scheduler)
+# Task Scheduler (Loco Scheduler)
 
-Руководство по работе с планировщиком задач в RusToK.
+Guide for working with the task scheduler in RusToK.
 
-## Обзор
+## Overview
 
-Планировщик — это отдельный процесс Loco, который по расписанию запускает зарегистрированные Loco Tasks.
+The scheduler is a separate Loco process that runs registered Loco Tasks on a schedule.
 
 ```
-cargo loco scheduler    ← запускает сам планировщик
-cargo loco task --name <name>   ← запускает задачу вручную
+cargo loco scheduler    ← starts the scheduler
+cargo loco task --name <name>   ← runs a task manually
 ```
 
-Планировщик **не встроен в сервер** — он запускается как самостоятельный процесс, читает `scheduler.yaml` и по CRON-расписанию выполняет `cargo loco task --name <name>`.
+The scheduler is **not built into the server** — it runs as an independent process, reads `scheduler.yaml`, and executes `cargo loco task --name <name>` on a CRON schedule.
 
-## Конфигурация (`scheduler.yaml`)
+## Configuration (`scheduler.yaml`)
 
-Файл `apps/server/scheduler.yaml`:
+File `apps/server/scheduler.yaml`:
 
 ```yaml
 jobs:
   cleanup_sessions:
     run: "cleanup sessions"
-    schedule: "0 0 * * * *"    # каждый час
+    schedule: "0 0 * * * *"    # every hour
 
   media_cleanup:
     run: "media_cleanup"
-    schedule: "0 0 3 * * *"    # ежедневно в 03:00 UTC
+    schedule: "0 0 3 * * *"    # daily at 03:00 UTC
 
   rebuild_index:
     run: "rebuild index"
-    schedule: "0 0 */6 * * *"  # каждые 6 часов
+    schedule: "0 0 */6 * * *"  # every 6 hours
 ```
 
-### Формат `schedule`
+### `schedule` Format
 
-Расписание задаётся в формате **cron с 6 полями** (секунды, минуты, часы, дни, месяцы, дни недели):
+The schedule is specified in **cron format with 6 fields** (seconds, minutes, hours, days, months, weekdays):
 
 ```
-секунды минуты часы дни_месяца месяцы дни_недели
-  0       0     3    *           *       *        → 03:00:00 UTC каждый день
-  0       0     *    *           *       *        → каждый час в 0 минут
-  0       0    */6   *           *       *        → в 0:00, 6:00, 12:00, 18:00
+seconds minutes hours day_of_month month day_of_week
+   0       0     3    *           *       *        → 03:00:00 UTC every day
+   0       0     *    *           *       *        → every hour at 0 minutes
+   0       0    */6   *           *       *        → at 0:00, 6:00, 12:00, 18:00
 ```
 
-### Поле `run`
+### `run` Field
 
-Значение `run` — это имя Loco Task, которое передаётся в `--name`:
+The `run` value is the Loco Task name passed to `--name`:
 
 ```yaml
 run: "media_cleanup"   # → cargo loco task --name media_cleanup
 ```
 
-## Текущие задачи
+## Current Tasks
 
-| Задача | Расписание | Описание |
-|--------|-----------|----------|
-| `cleanup_sessions` | Каждый час | Удаляет истёкшие сессии из БД |
-| `media_cleanup` | Ежедневно в 03:00 UTC | Удаляет осиротевшие записи медиа |
-| `rebuild_index` | Каждые 6 часов | Перестраивает CQRS read-model индекс |
+| Task | Schedule | Description |
+|------|----------|-------------|
+| `cleanup_sessions` | Every hour | Deletes expired sessions from the DB |
+| `media_cleanup` | Daily at 03:00 UTC | Deletes orphaned media records |
+| `rebuild_index` | Every 6 hours | Rebuilds the CQRS read-model index |
 
-## Как создать новую задачу
+## How to Create a New Task
 
-### 1. Реализуйте `Task`
+### 1. Implement a `Task`
 
 ```rust
 // apps/server/src/tasks/my_task.rs
@@ -88,14 +88,14 @@ impl Task for MyTask {
     }
 
     async fn run(&self, app_context: &AppContext, _vars: &Vars) -> Result<()> {
-        // Логика задачи
+        // Task logic
         tracing::info!("my_task: starting");
         Ok(())
     }
 }
 ```
 
-### 2. Зарегистрируйте задачу в `app.rs`
+### 2. Register the Task in `app.rs`
 
 ```rust
 // apps/server/src/app.rs
@@ -105,18 +105,18 @@ async fn connect_tasks(v: &mut Tasks) {
 }
 ```
 
-### 3. Добавьте в `scheduler.yaml`
+### 3. Add to `scheduler.yaml`
 
 ```yaml
 jobs:
   my_task:
     run: "my_task"
-    schedule: "0 30 2 * * *"   # каждый день в 02:30 UTC
+    schedule: "0 30 2 * * *"   # every day at 02:30 UTC
 ```
 
-### 4. (Опционально) Добавьте feature-флаг
+### 4. (Optional) Add a Feature Flag
 
-Если задача зависит от опционального модуля:
+If the task depends on an optional module:
 
 ```rust
 async fn run(&self, app_context: &AppContext, _vars: &Vars) -> Result<()> {
@@ -130,34 +130,34 @@ async fn run(&self, app_context: &AppContext, _vars: &Vars) -> Result<()> {
 }
 ```
 
-## Запуск вручную
+## Manual Execution
 
 ```bash
-# Запустить конкретную задачу немедленно
+# Run a specific task immediately
 cargo loco task --name media_cleanup
 
-# Запустить с переменными окружения
+# Run with environment variables
 cargo loco task --name media_cleanup VAR_NAME=value
 
-# Просмотреть список задач
+# List available tasks
 cargo loco task
 ```
 
-## Запуск планировщика
+## Running the Scheduler
 
 ```bash
-# В разработке
+# In development
 cargo loco scheduler
 
-# В production (обычно отдельный процесс/контейнер)
+# In production (usually a separate process/container)
 ./server scheduler
 ```
 
-## Паттерны надёжности
+## Reliability Patterns
 
-### Проверка доступности зависимостей
+### Checking Dependency Availability
 
-Перед выполнением длинной операции проверьте, что зависимость (хранилище, внешний сервис) доступна:
+Before executing a long-running operation, check that the dependency (storage, external service) is available:
 
 ```rust
 async fn run(&self, ctx: &AppContext, _vars: &Vars) -> Result<()> {
@@ -169,9 +169,9 @@ async fn run(&self, ctx: &AppContext, _vars: &Vars) -> Result<()> {
 }
 ```
 
-### Консервативная обработка ошибок
+### Conservative Error Handling
 
-Если задача обрабатывает множество записей, **не прерывайте всю задачу** при единичной ошибке — логируйте и продолжайте:
+If a task processes many records, **do not abort the entire task** on a single error — log and continue:
 
 ```rust
 for item in items {
@@ -185,25 +185,25 @@ for item in items {
 tracing::info!(processed, total = items.len(), "Task complete");
 ```
 
-### Идемпотентность
+### Idempotency
 
-Задачи **должны быть идемпотентными** — повторный запуск не должен приводить к дублированию эффектов.
+Tasks **must be idempotent** — running them again should not produce duplicate effects.
 
-## Мониторинг
+## Monitoring
 
-Результат выполнения задачи логируется через `tracing`. Уровни:
-- `INFO` — нормальное завершение с итоговой статистикой
-- `WARN` — некритичные пропуски (запись не обработана, зависимость недоступна)
-- `ERROR` — только при невосстановимых сбоях
+Task execution results are logged via `tracing`. Levels:
+- `INFO` — normal completion with final statistics
+- `WARN` — non-critical skips (record not processed, dependency unavailable)
+- `ERROR` — only for unrecoverable failures
 
-Пример из `media_cleanup`:
+Example from `media_cleanup`:
 
 ```
 INFO rustok: scanned=1024 removed=3 "Media cleanup complete"
 ```
 
-## Связанные документы
+## Related Documents
 
-- [WebSocket-каналы](../architecture/channels.md)
-- [Документация rustok-media](../../crates/rustok-media/docs/README.md)
-- [Наблюдаемость](./observability-quickstart.md)
+- [WebSocket Channels](../architecture/channels.md)
+- [rustok-media Documentation](../../crates/rustok-media/docs/README.md)
+- [Observability](./observability-quickstart.md)

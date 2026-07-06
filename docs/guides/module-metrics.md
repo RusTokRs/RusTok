@@ -6,55 +6,55 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Метрики модулей
+# Module Metrics
 
-Этот документ фиксирует актуальный базовый набор Prometheus-метрик для модулей
-RusToK. Источником истины по именам и labels остаётся
-`crates/rustok-telemetry/src/metrics.rs`; этот guide описывает, как ими
-пользоваться и что считать минимальным operational baseline.
+This document captures the current baseline set of Prometheus metrics for RusToK
+modules. The source of truth for names and labels remains
+`crates/rustok-telemetry/src/metrics.rs`; this guide describes how to use
+them and what constitutes the minimal operational baseline.
 
-## Базовый набор
+## Baseline Set
 
-### Входные точки модулей
+### Module Entry Points
 
 ```
 rustok_module_entrypoint_calls_total{module,entry_point,path}
 ```
 
-- `module` — slug модуля, например `rbac` или `comments`
-- `entry_point` — имя публичной операции
-- `path` — путь интеграции: `library`, `core_runtime`, `bypass`
+- `module` — module slug, e.g. `rbac` or `comments`
+- `entry_point` — public operation name
+- `entry_point` — integration path: `library`, `core_runtime`, `bypass`
 
-Эта метрика нужна, чтобы видеть, через какой контракт реально ходит runtime и
-не вернулся ли legacy bypass.
+This metric is needed to see which contract the runtime actually uses and
+whether a legacy bypass has returned.
 
-### Ошибки модулей
+### Module Errors
 
 ```
 rustok_module_errors_total{module,error_type,severity}
 ```
 
-- `error_type` — короткий стабильный класс ошибки (`database`, `validation`,
+- `error_type` — short stable error class (`database`, `validation`,
   `forbidden`, `not_found`)
-- `severity` — операторская важность (`warning`, `error`)
+- `severity` — operational severity (`warning`, `error`)
 
-Используйте только низкокардинальные значения. Нельзя передавать request id,
-tenant slug, user id или raw error message.
+Use only low-cardinality values. Do not pass request id,
+tenant slug, user id, or raw error message.
 
-### Длительность и ошибки операций
+### Operation Duration and Errors
 
 ```
 rustok_span_duration_seconds{operation}
 rustok_spans_with_errors_total{operation,error_type}
 ```
 
-- `operation` — стабильное имя операции, например `comments.create_comment`
-- `error_type` — тот же низкокардинальный класс ошибки
+- `operation` — stable operation name, e.g. `comments.create_comment`
+- `error_type` — same low-cardinality error class
 
-Это минимальный latency/error слой для write-path и library entry-point
-операций.
+This is the minimum latency/error layer for write-path and library entry-point
+operations.
 
-### Бюджеты read-path
+### Read-path Budgets
 
 ```
 rustok_read_path_requested_limit{surface,path}
@@ -65,41 +65,41 @@ rustok_read_path_query_duration_seconds{surface,path,query}
 rustok_read_path_query_rows{surface,path,query}
 ```
 
-- `surface` — transport или runtime surface (`rest`, `graphql`, `library`)
-- `path` — имя read-path
-- `query` — стабильный шаг внутри read-path, например `comments.page`
+- `surface` — transport or runtime surface (`rest`, `graphql`, `library`)
+- `path` — read-path name
+- `query` — stable step within the read-path, e.g. `comments.page`
 
-Этот набор обязателен для bounded list/read surfaces, где есть `page/per_page`,
-SSR feed или batch read path.
+This set is mandatory for bounded list/read surfaces where `page/per_page`,
+SSR feed or batch read path is present.
 
-## Что уже instrumented
+## What Is Already Instrumented
 
-- `rustok-forum` — public GraphQL/REST read-path для categories, topics и
-  replies пишет read-path budgets и query metrics.
-- `rustok-blog` — public post list/read surfaces пишет read-path budgets и
+- `rustok-forum` — public GraphQL/REST read-path for categories, topics and
+  replies writes read-path budgets and query metrics.
+- `rustok-blog` — public post list/read surfaces writes read-path budgets and
   query metrics.
-- `rustok-pages` — public page read-path пишет read-path budgets и query
+- `rustok-pages` — public page read-path writes read-path budgets and query
   metrics.
-- `rustok-comments` — service entry-points пишут module entrypoint metrics,
-  span duration/error и read-path budget/query metrics для
+- `rustok-comments` — service entry-points write module entrypoint metrics,
+  span duration/error and read-path budget/query metrics for
   `list_comments_for_target`.
-- `rustok-content` — orchestration/helper операции пишут span duration/error,
-  а canonical/orchestration runbooks опираются на них.
+- `rustok-content` — orchestration/helper operations write span duration/error,
+  and canonical/orchestration runbooks rely on them.
 
-## Минимальный contract для нового модуля
+## Minimum Contract for a New Module
 
-Если модуль добавляет новую публичную surface, минимальный baseline такой:
+If a module adds a new public surface, the minimum baseline is:
 
-1. Для каждого service entry-point писать
+1. For each service entry-point, write
    `rustok_module_entrypoint_calls_total`.
-2. Для ошибок писать `rustok_module_errors_total` с коротким классификатором.
-3. Для write-path или orchestration операций писать
-   `rustok_span_duration_seconds` и `rustok_spans_with_errors_total`.
-4. Для bounded list/read path писать весь read-path budget/query набор.
+2. For errors, write `rustok_module_errors_total` with a short classifier.
+3. For write-path or orchestration operations, write
+   `rustok_span_duration_seconds` and `rustok_spans_with_errors_total`.
+4. For bounded list/read path, write the entire read-path budget/query set.
 
-Без этого модуль считается operationally incomplete.
+Without this, the module is considered operationally incomplete.
 
-## Пример
+## Example
 
 ```rust
 use std::time::Instant;
@@ -118,22 +118,22 @@ fn finish(operation: &str, started: Instant, result: &Result<(), MyError>) {
 }
 ```
 
-## Операторские вопросы
+## Operator Questions
 
-При проблемах с модулем сначала отвечайте на три вопроса:
+When troubleshooting a module, first answer three questions:
 
-1. Через какой integration path идёт трафик:
+1. Which integration path is the traffic going through:
    `rate(rustok_module_entrypoint_calls_total{module="comments"}[5m])`
-2. Какой error-class растёт:
+2. Which error-class is growing:
    `sum(rate(rustok_module_errors_total{module="comments"}[5m])) by (error_type,severity)`
-3. Где read-path теряет бюджет или упирается в latency:
+3. Where is the read-path losing budget or hitting latency:
    `histogram_quantile(0.95, rate(rustok_read_path_query_duration_seconds_bucket{path="comments.list_comments_for_target"}[5m]))`
 
-## Правила
+## Rules
 
-1. Не вводить high-cardinality labels.
-2. Не плодить новые метрики, если существующий baseline уже покрывает задачу.
-3. Не оставлять новый public read-path без `read_path_*`.
-4. Не оставлять новый write/orchestration path без `span_*`.
-5. Документация модуля должна перечислять, какие его surfaces уже
-   instrumented и чего ещё не хватает.
+1. Do not introduce high-cardinality labels.
+2. Do not create new metrics if the existing baseline already covers the task.
+3. Do not leave a new public read-path without `read_path_*`.
+4. Do not leave a new write/orchestration path without `span_*`.
+5. Module documentation must list which of its surfaces are already
+   instrumented and what is still missing.

@@ -1,61 +1,61 @@
 # Next Storefront App — Implementation Plan
 
-## Фокус
+## Focus
 
-Развивать `apps/next-frontend` как основную Next.js витрину с четкими API/UI контрактами, наблюдаемой производительностью и безопасной обработкой клиентских сценариев.
+Develop `apps/next-frontend` as the primary Next.js storefront with clear API/UI contracts, observable performance, and safe client-side scenario handling.
 
-## Улучшения
+## Improvements
 
-### Архитектурные долги
+### Architecture debt
 
-- Довести модульную структуру `src/modules`/`src/shared` до строгих границ ответственности.
-- Устранить дубли transport/auth логики между маршрутами за счет shared gateways.
-- Оптимизировать стратегию SSR/ISR и cache invalidation для витринного контента.
+- Harden the modular structure of `src/modules`/`src/shared` with strict responsibility boundaries.
+- Eliminate transport/auth logic duplication across routes via shared gateways.
+- Optimize SSR/ISR strategy and cache invalidation for storefront content.
 
-### API/UI контракты
+### API/UI contracts
 
-- Зафиксировать контракт storefront GraphQL запросов и ошибок для UI-компонентов.
-- Выровнять UX-состояния с `apps/storefront` (loading, empty, partial, failure).
-- Стандартизировать контракты i18n и URL-based locale routing.
+- Stabilize the storefront GraphQL query and error contract for UI components.
+- Align UX states with `apps/storefront` (loading, empty, partial, failure).
+- Standardize i18n and URL-based locale routing contracts.
 
 ### Observability
 
-- Ввести web-vitals + бизнесовые метрики по ключевым воронкам storefront.
-- Добавить распределенную трассировку frontend -> server запросов.
-- Настроить алерты по росту frontend ошибок и просадкам Core Web Vitals.
+- Introduce web-vitals + business metrics for key storefront funnels.
+- Add distributed tracing for frontend -> server requests.
+- Configure alerts for frontend error growth and Core Web Vitals degradation.
 
 ### Security
 
-- Усилить валидацию и sanitization query/input параметров storefront страниц.
-- Зафиксировать политику безопасной работы с cookies/session и third-party scripts.
-- Добавить защиту от abuse-traffic на публичные фильтры/поиск (rate/throttle hints).
+- Strengthen validation and sanitization of query/input parameters on storefront pages.
+- Define a secure cookie/session and third-party scripts policy.
+- Add abuse-traffic protection for public filters/search (rate/throttle hints).
 
 ### Test coverage
 
-- Расширить e2e сценарии по каталогу, поиску, корзине и checkout pre-steps.
-- Добавить contract-тесты i18n маршрутизации и API response mapping.
-- Ввести визуальные/регрессионные проверки для ключевых пользовательских экранов.
+- Expand e2e scenarios for catalog, search, cart, and checkout pre-steps.
+- Add contract tests for i18n routing and API response mapping.
+- Introduce visual/regression checks for key user screens.
 
-## Паритет стеков (Leptos/Next.js)
+## Stack parity (Leptos/Next.js)
 
-- Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
+- Any feature for admin/storefront is planned, decomposed, and tracked for both implementations (Leptos and Next.js) in the same delivery cycle.
 
 ### Storefront search metadata update (2026-07-02)
 
-- [x] `src/features/search` зарегистрирован как host-owned composition для `search` storefront module.
-- [x] Product-owned `packages/rustok-product::fetchCatalogSearchOptions` читает public GraphQL `storefrontCatalogSearchOptions(locale: String!)`.
-- [x] Route locale, tenant slug и enabled modules передаются через registry render context; search package получает только category/attribute option props.
+- [x] `src/features/search` registered as host-owned composition for the `search` storefront module.
+- [x] Product-owned `packages/rustok-product::fetchCatalogSearchOptions` reads public GraphQL `storefrontCatalogSearchOptions(locale: String!)`.
+- [x] Route locale, tenant slug, and enabled modules are passed via registry render context; search package receives only category/attribute option props.
 
-### Checklist готовности фичи
+### Feature readiness checklist
 
-- [ ] Реализовано в Leptos-варианте.
-- [ ] Реализовано в Next.js-варианте.
-- [ ] Контракты API/UI совпадают.
-- [ ] Навигация и RBAC-поведение эквивалентны.
+- [ ] Implemented in Leptos variant.
+- [ ] Implemented in Next.js variant.
+- [ ] API/UI contracts match.
+- [ ] Navigation and RBAC behavior are equivalent.
 
-### Текущий статус rich-text (blog/forum/pages)
+### Current rich-text status (blog/forum/pages)
 
-- **Админка (Leptos, `apps/admin`)**: [ ] Не начато / в процессе синхронизации с Next.js-реализацией.
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (подключены Tiptap/Page Builder маршруты, требуется завершить работу с реальными entity ID и parity-check с Leptos).
-- **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-- **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
+- **Admin (Leptos, `apps/admin`)**: [ ] Not started / in sync process with Next.js implementation.
+- **Admin (Next.js, `apps/next-admin`)**: [~] Partially implemented (Tiptap/Page Builder routes connected, needs real entity ID work and parity-check with Leptos).
+- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).
+- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).

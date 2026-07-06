@@ -6,160 +6,156 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
+
 # FFA/Dioxus Pilot Connectivity Map (Phase A baseline)
 
-Документ фиксирует исполнение шагов **A1 (выбор пилотов)** и **A2 (карта связности)**
-из `docs/research/dioxus-ffa-ui-migration-plan.md`.
+This document captures the execution of steps **A1 (pilot selection)** and **A2 (connectivity map)**
+from `docs/research/dioxus-ffa-ui-migration-plan.md`.
 
-## A1. Выбранные пилоты
+## A1. Selected Pilots
 
-### Pilot 1 (средняя сложность): `rustok-pages`
+### Pilot 1 (medium complexity): `rustok-pages`
 
-Причины выбора:
-- ограниченный storefront read/edit surface;
-- меньшее число cross-module зависимостей по сравнению с commerce/search;
-- хороший кандидат для первого выделения `core -> transport -> ui/leptos`.
+Selection reasons:
+- limited storefront read/edit surface;
+- fewer cross-module dependencies compared to commerce/search;
+- good candidate for first `core -> transport -> ui/leptos` extraction.
 
-### Pilot 2 (высокая сложность): `rustok-search`
+### Pilot 2 (high complexity): `rustok-search`
 
-Причины выбора:
-- выраженная search-state логика (query/filter/pagination/sort);
-- чувствительность к route/query parity и locale/tenant context;
-- наличие fallback ветвей и runtime-ветвления для SSR/GraphQL path.
+Selection reasons:
+- pronounced search-state logic (query/filter/pagination/sort);
+- sensitivity to route/query parity and locale/tenant context;
+- presence of fallback branches and runtime branching for SSR/GraphQL path.
 
-## A2. Карта связности
+## A2. Connectivity Map
 
 ## `rustok-pages`
 
-### Leptos-specific точки
-- `#[component]` поверхности storefront/admin;
-- router/query hooks и навигационные binding-слои;
-- reactive state и signal-производные для page selection/render.
+### Leptos-specific points
+- `#[component]` storefront/admin surfaces;
+- router/query hooks and navigation binding layers;
+- reactive state and signal derivatives for page selection/render.
 
-### Transport binding точки
-- native `#[server]` handlers для SSR/hydrate path;
-- GraphQL fallback через module-owned API adapters;
-- `cfg(feature = "ssr")` ветвление для runtime split.
+### Transport binding points
+- native `#[server]` handlers for SSR/hydrate path;
+- GraphQL fallback through module-owned API adapters;
+- `cfg(feature = "ssr")` branching for runtime split.
 
-### Риски смешения слоёв
-- прямые вызовы transport из UI-компонентов;
-- смешение view-state и domain mapping в Leptos hooks;
-- дублирование error mapping между native и GraphQL path.
+### Layer mixing risks
+- direct transport calls from UI components;
+- mixing view-state and domain mapping in Leptos hooks;
+- error mapping duplication between native and GraphQL path.
 
 ## `rustok-search`
 
-### Leptos-specific точки
-- `#[component]` search surfaces и filters UI;
-- routing/query state binding (включая URL-driven selection state);
-- reactive derived state для paging/sorting/empty/error views.
+### Leptos-specific points
+- `#[component]` search surfaces and filters UI;
+- routing/query state binding (including URL-driven selection state);
+- reactive derived state for paging/sorting/empty/error views.
 
-### Transport binding точки
-- native `#[server]` read/search path в SSR/hydrate;
-- GraphQL fallback adapters для headless/CSR-compatible flow;
-- runtime условные ветви для fallback/degredation режима.
+### Transport binding points
+- native `#[server]` read/search path in SSR/hydrate;
+- GraphQL fallback adapters for headless/CSR-compatible flow;
+- runtime conditional branches for fallback/degradation mode.
 
-### Риски смешения слоёв
-- связывание transport payload формата с UI-моделью напрямую;
-- неявные policy/validation checks в UI слое;
-- расхождение query normalization между native и GraphQL path.
+### Layer mixing risks
+- binding transport payload format directly to UI model;
+- implicit policy/validation checks in UI layer;
+- query normalization divergence between native and GraphQL path.
 
 ## Phase A deliverables status
 
-- [x] A1 pilot selection зафиксирован.
-- [x] A2 connectivity map зафиксирован.
-- [x] A3 contract freeze evidence полностью приложен: parity checklist зафиксирован, verify-команда `npm run verify:ffa:ui:migration` добавлена в обязательный evidence path.
+- [x] A1 pilot selection captured.
+- [x] A2 connectivity map captured.
+- [x] A3 contract freeze evidence fully attached: parity checklist captured, verify command `npm run verify:ffa:ui:migration` added to mandatory evidence path.
 
-## Следующий шаг (one-task-per-iteration)
+## Next step (one-task-per-iteration)
 
-Следующая итерация: для `rustok-blog` выделить **один** целевой use-case и провести
-структурный срез `core/transport/ui` без изменения продуктового dual-path контракта,
-с обязательным evidence по checklist:
+Next iteration: for `rustok-blog` extract **one** target use-case and perform a
+structural slice of `core/transport/ui` without changing the product dual-path contract,
+with mandatory evidence per checklist:
 `docs/verification/ffa-ui-parity-checklist.md`.
 
-## Связанные документы
+## Related documents
 
 - `docs/research/dioxus-ffa-ui-migration-plan.md`
 - `docs/verification/ffa-ui-parity-checklist.md`
 - `docs/UI/graphql-architecture.md`
 
+## Execution status by module (Phase B tracking)
 
-## Статус выполнения по модулям (Phase B tracking)
+- [x] `rustok-pages` — first decomposition slice completed: `core` layer extracted in `storefront`
+  for selected-page presentation logic; Leptos UI delegates this logic to `core`.
+- [x] `rustok-search` — slices #1-#9 completed per storefront/admin core extraction plan.
+- [x] `rustok-blog` — storefront slice #1 completed: formatting/fallback helper logic extracted to `storefront/src/core.rs`, UI uses `core::*` without changing dual-path transport contract.
 
-- [x] `rustok-pages` — выполнен первый slice декомпозиции: в `storefront` выделен `core` слой
-  для selected-page presentation logic; Leptos UI делегирует эту логику в `core`.
-- [x] `rustok-search` — slices #1-#9 выполнены по storefront/admin core extraction plan.
-- [x] `rustok-blog` — storefront slice #1 завершён: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`, UI использует `core::*` без изменения dual-path transport контракта.
+### What has already been done in `rustok-pages`
 
-### Что уже сделано в `rustok-pages`
+- added `crates/rustok-pages/storefront/src/core.rs`;
+- `SelectedPageCard` migrated to `core::*` functions;
+- Leptos storefront render/bind layer moved to `crates/rustok-pages/storefront/src/ui/leptos.rs`, crate root only wires modules/re-exports `PagesView`;
+- dual-path transport contract (`native #[server]` + GraphQL fallback) not changed.
 
-- добавлен `crates/rustok-pages/storefront/src/core.rs`;
-- `SelectedPageCard` переведён на `core::*` функции;
-- Leptos storefront render/bind слой перенесён в `crates/rustok-pages/storefront/src/ui/leptos.rs`, а crate root только wires modules/re-export `PagesView`;
-- dual-path transport контракт (`native #[server]` + GraphQL fallback) не менялся.
+### Double-check after completion
 
+- [x] Pass #1 (code/docs consistency):
+  - `rustok-pages/storefront` actually uses the extracted `core` layer for selected-page logic and explicit `ui/leptos.rs` adapter for render/bind;
+  - dual-path transport (`native #[server]` + GraphQL fallback) preserved without removing fallback surface.
+- [x] Pass #2 (cleanup stale wording):
+  - current central docs for this step contain no wording contradicting the `core` slice in `rustok-pages`.
 
-### Перепроверка после выполненного (double-check)
+### Next module (new iteration)
 
-- [x] Проход №1 (code/docs consistency):
-  - `rustok-pages/storefront` фактически использует выделенный `core` слой для selected-page logic и explicit `ui/leptos.rs` adapter для render/bind;
-  - dual-path transport (`native #[server]` + GraphQL fallback) сохранён без удаления fallback surface.
-- [x] Проход №2 (устранение устаревших формулировок):
-  - в текущих central docs для этого шага не осталось формулировок, противоречащих `core`-срезу в `rustok-pages`.
+- [x] Started and completed the current `rustok-search` pilot slices (#1-#9).
+- [x] Iteration goal achieved: core use-cases sequentially extracted into `crates/rustok-search/storefront` and synchronized with `admin` surface without changing the product transport contract.
 
-### Следующий модуль (новая итерация)
-
-- [x] Стартовали и завершили текущий набор `rustok-search` pilot slices (#1-#9).
-- [x] Цель итерации достигнута: core use-cases последовательно выделены в `crates/rustok-search/storefront` и синхронизированы с `admin` surface без изменения продуктового transport-контракта.
-
-
-### Scope matrix для `rustok-search` (чтобы ничего не пропустить)
+### Scope matrix for `rustok-search` (to avoid omissions)
 
 - [x] `crates/rustok-search/storefront` (Leptos storefront UI package)
-  - [x] выделен первый `core` use-case (query/filter input normalization: `parse_csv`, `optional_text`);
-  - [x] выбранный use-case вынесен в `storefront/src/core.rs` и используется UI-слоем.
+  - [x] first `core` use-case extracted (query/filter input normalization: `parse_csv`, `optional_text`);
+  - [x] selected use-case extracted to `storefront/src/core.rs` and used by UI layer.
 - [x] `crates/rustok-search/admin` (Leptos admin UI package)
-  - [x] impact того же use-case проверен;
-  - [x] тот же `core`-подход применён в `admin/src/core.rs` без расхождения контракта.
+  - [x] impact of the same use-case verified;
+  - [x] same `core` approach applied in `admin/src/core.rs` without contract divergence.
 - [x] Headless parity (Next/mobile/external)
-  - [x] подтверждено, что GraphQL fallback path не деградировал;
-  - [x] route/query/i18n contract не получил drift относительно host expectations.
+  - [x] confirmed that GraphQL fallback path has not degraded;
+  - [x] route/query/i18n contract has no drift relative to host expectations.
 
-### Evidence чек перед закрытием итерации `rustok-search`
+### Evidence check before closing `rustok-search` iteration
 
 - [x] `cargo xtask module validate search`
 - [x] `cargo xtask module test search`
 - [x] docs double-check pass #1 (code/docs consistency)
 - [x] docs double-check pass #2 (cleanup stale wording)
 
+### Completed in current iteration (`rustok-search`, slice #1)
 
-### Выполнено в текущей итерации (`rustok-search`, slice #1)
+- added `crates/rustok-search/storefront/src/core.rs` and `crates/rustok-search/admin/src/core.rs`;
+- removed local duplicates of `parse_csv`/`optional_text` in storefront/admin UI and connected `core::*`;
+- dual-path transport (`native #[server]` + GraphQL fallback) not modified.
 
-- добавлены `crates/rustok-search/storefront/src/core.rs` и `crates/rustok-search/admin/src/core.rs`;
-- в storefront/admin UI удалены локальные дубли `parse_csv`/`optional_text` и подключены `core::*`;
-- dual-path transport (`native #[server]` + GraphQL fallback) не изменялся.
-
-- `rustok-search` slice #2: facet name normalization вынесена в core для storefront/admin (`facet_display_name`).
-- `rustok-search` slice #3: facet bucket label formatting вынесен в core (`facet_bucket_label`) для storefront/admin.
-- `rustok-search` slice #4: snippet fallback rendering вынесен в core (`snippet_or_fallback`) для storefront/admin.
-- `rustok-search` slice #5: score label normalization вынесена в core (`score_label`) для storefront/admin.
-- `rustok-search` slice #6: entity/source/status labels вынесены в core для storefront/admin.
-- `rustok-search` slice #7: score template value extraction переведён на core helper (`score_value`) без string hacks в UI.
-- `rustok-search` slice #8: error message composition (`<context>: <error>`) вынесена в core для storefront/admin.
+- `rustok-search` slice #2: facet name normalization extracted to core for storefront/admin (`facet_display_name`).
+- `rustok-search` slice #3: facet bucket label formatting extracted to core (`facet_bucket_label`) for storefront/admin.
+- `rustok-search` slice #4: snippet fallback rendering extracted to core (`snippet_or_fallback`) for storefront/admin.
+- `rustok-search` slice #5: score label normalization extracted to core (`score_label`) for storefront/admin.
+- `rustok-search` slice #6: entity/source/status labels extracted to core for storefront/admin.
+- `rustok-search` slice #7: score template value extraction migrated to core helper (`score_value`) without string hacks in UI.
+- `rustok-search` slice #8: error message composition (`<context>: <error>`) extracted to core for storefront/admin.
 - `rustok-search` slice #9: score rendering unified across storefront/admin to direct core helpers, removing template/trim coupling in UI.
 
-- `rustok-pages` slice #2: admin form helpers (`slugify`, `parse_channel_slugs`, error composition) вынесены в `admin/src/core.rs`.
-
+- `rustok-pages` slice #2: admin form helpers (`slugify`, `parse_channel_slugs`, error composition) extracted to `admin/src/core.rs`.
 
 ### Pages completion checklist (Phase B pilot)
 
 - [x] `rustok-pages/storefront` core slice #1 (`selected_page_*`, `summarize_page_content`)
 - [x] `rustok-pages/admin` core slice #2 (`slugify`, `parse_channel_slugs`, `error_with_context`)
 - [x] `cargo xtask module validate pages`
-- [x] `cargo xtask module test pages` (долгий прогон завершён, evidence приложен)
+- [x] `cargo xtask module test pages` (long run completed, evidence attached)
 - [x] docs double-check pass #1/#2 for pages
-- `rustok-pages` slice #3: status badge class mapping вынесен в `admin/src/core.rs` (`status_badge_class`).
-- `rustok-pages` slice #4: admin busy-key composition вынесен в core (`busy_key_with_id`, `busy_key_for_save`).
-- `rustok-pages` slice #6: admin page-list load error rendering переведён на core `error_with_context`.
+- `rustok-pages` slice #3: status badge class mapping extracted to `admin/src/core.rs` (`status_badge_class`).
+- `rustok-pages` slice #4: admin busy-key composition extracted to core (`busy_key_with_id`, `busy_key_for_save`).
+- `rustok-pages` slice #6: admin page-list load error rendering migrated to core `error_with_context`.
 - `rustok-pages` slice #7: status badge css composition moved to core (`status_badge_css`).
 - `rustok-pages` slice #8: busy-key action matching moved to core (`busy_key_matches_action`).
 - `rustok-pages` slice #9: raw body summary placeholder rendering moved to storefront core (`raw_body_format_summary`).
@@ -175,22 +171,20 @@ status: verified
 - `rustok-pages` slice #20 evidence: storefront published-page link/status presentation (`page_link_href`, `page_status_label`) moved into `storefront/src/core.rs`; dual-path transport contract unchanged.
 - `rustok-pages` slice #24 evidence: admin page table row action busy/label mapping (`admin_page_row_action_state`, `admin_page_row_action_labels`) moved into `admin/src/core.rs`; Leptos adapter keeps only render/callback wiring and dual-path transport contract unchanged.
 
+### Double-check after slices #2-#8 (rustok-pages/admin)
 
-### Перепроверка после slices #2-#8 (rustok-pages/admin)
+- [x] Pass #1 (code/docs consistency):
+  - form helper logic, status badge and busy-key in `crates/rustok-pages/admin` extracted to `admin/src/core.rs`;
+  - storefront and admin surfaces use `core::*` without changing transport contract.
+- [x] Pass #2 (cleanup stale wording):
+  - central docs updated/removed formulations where these helper responsibilities were described as inline logic in `lib.rs`;
+  - pages tracker synchronized with actual slice #2-#8 state.
 
-- [x] Проход №1 (code/docs consistency):
-  - helper-логика формы, status badge и busy-key в `crates/rustok-pages/admin` вынесена в `admin/src/core.rs`;
-  - storefront и admin surfaces используют `core::*` без изменения transport contract.
-- [x] Проход №2 (cleanup stale wording):
-  - в central docs удалены/обновлены формулировки, где эти helper-обязанности описывались как inline-логика `lib.rs`;
-  - трекер pages синхронизирован с фактическим состоянием slice #2-#8.
+### Which modules were modified in this iteration
 
-### Какие модули поправили в этой итерации
-
-- `rustok-pages/admin` — core helper extraction и выравнивание UI-call sites.
-- `rustok-pages/storefront` — ранее завершённый core slice подтверждён повторной сверкой.
-- `rustok-blog/storefront` — стартован новый slice: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`.
-
+- `rustok-pages/admin` — core helper extraction and UI call-site alignment.
+- `rustok-pages/storefront` — previously completed core slice confirmed by re-verification.
+- `rustok-blog/storefront` — new slice started: formatting/fallback helper logic extracted to `storefront/src/core.rs`.
 
 ### Pages pilot status (current checkpoint)
 
@@ -199,17 +193,16 @@ status: verified
 - [x] Documentation double-check completed and synchronized.
 - [x] Pilot can be treated as baseline reference sample for following module slices.
 
-
 ### Additional iteration evidence
 
-- blog slice #1 evidence: `crates/rustok-blog/storefront/src/core.rs` используется `crates/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
-- `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
-- `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
-- `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
-- `rustok-search` slice #13 evidence: admin analytics/dictionaries error messages and timestamp fallbacks now use existing `admin/src/core.rs` helpers; transport split (`native #[server]` + GraphQL fallback) не менялся.
-- `rustok-search` slice #14 evidence: admin tab and diagnostics/consistency badge CSS class mapping moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
-- `rustok-search` slice #15 evidence: admin navigation href, engine option label and rebuild feedback rendering moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
-- `rustok-search` slice #16 evidence: admin relevance editor merge and JSON-array validation moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- blog slice #1 evidence: `crates/rustok-blog/storefront/src/core.rs` used by `crates/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
+- `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
+- `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
+- `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
+- `rustok-search` slice #13 evidence: admin analytics/dictionaries error messages and timestamp fallbacks now use existing `admin/src/core.rs` helpers; transport split (`native #[server]` + GraphQL fallback) not changed.
+- `rustok-search` slice #14 evidence: admin tab and diagnostics/consistency badge CSS class mapping moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
+- `rustok-search` slice #15 evidence: admin navigation href, engine option label and rebuild feedback rendering moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
+- `rustok-search` slice #16 evidence: admin relevance editor merge and JSON-array validation moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
 - `rustok-search` slice #31 evidence: storefront transport split into `transport/native_server_adapter.rs` and `transport/graphql_adapter.rs`; native-first fallback orchestration moved to `transport/mod.rs`, while raw `api.rs` keeps the existing native server-function and GraphQL endpoints.
 - `rustok-search` slice #32 evidence: storefront suggestions presentation and document-vs-query navigation decision moved into `storefront/src/core.rs`; Leptos adapter renders core-owned suggestion view-models and only executes the prepared navigation target.
 - `rustok-search` slice #33 evidence: storefront filter preset chip state/class/next-selection mapping moved into `storefront/src/core.rs`; Leptos adapter renders core-owned chip view-models and keeps only signal wiring/navigation execution.

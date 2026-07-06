@@ -6,74 +6,74 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Планы верификации
+# Verification Plans
 
-Этот раздел собирает планы верификации по основным контурам платформы и фиксирует минимальный локальный путь проверки для модульной системы.
+This section collects verification plans for the main platform circuits and captures the minimum local verification path for the module system.
 
-## Назначение
+## Purpose
 
-- хранить планы верификации в одном месте;
-- отделять периодическую верификацию от live/remediation documentation;
-- давать единый вход для точечных и широких прогонов;
-- фиксировать обязательные quality gates для платформенных модулей.
+- store verification plans in one place;
+- separate periodic verification from live/remediation documentation;
+- provide a single entry point for targeted and broad runs;
+- capture mandatory quality gates for platform modules.
 
-Планы исполнения и backlog по исправлениям не должны жить в этом разделе как бесконечный список задач. Здесь остаются только правила проверки, целевые команды и ссылки на профильные планы.
+Execution plans and remediation backlogs should not live in this section as an endless task list. Only verification rules, target commands, and links to profile plans remain here.
 
-## Основные документы
+## Main Documents
 
-- [Сводный план верификации](./PLATFORM_VERIFICATION_PLAN.md)
-- [Верификация foundation-слоя](./platform-foundation-verification-plan.md)
-- [Верификация API-поверхностей](./platform-api-surfaces-verification-plan.md)
-- [Верификация frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md)
-- [Верификация качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md)
-  (включая Docs quality gates baseline по DOC-07)
-- [Верификация целостности ядра](./platform-core-integrity-verification-plan.md)
-- [Верификация RBAC, сервера и runtime-модулей](./rbac-server-modules-verification-plan.md)
-- [Верификация Leptos-библиотек](./leptos-libraries-verification-plan.md)
+- [Summary Verification Plan](./PLATFORM_VERIFICATION_PLAN.md)
+- [Foundation Layer Verification](./platform-foundation-verification-plan.md)
+- [API Surface Verification](./platform-api-surfaces-verification-plan.md)
+- [Frontend Surface Verification](./platform-frontend-surfaces-verification-plan.md)
+- [Quality and Operational Readiness Verification](./platform-quality-operations-verification-plan.md)
+  (including Docs quality gates baseline per DOC-07)
+- [Core Integrity Verification](./platform-core-integrity-verification-plan.md)
+- [RBAC, Server and Runtime Module Verification](./rbac-server-modules-verification-plan.md)
+- [Leptos Library Verification](./leptos-libraries-verification-plan.md)
 
-## Минимальный путь проверки для платформенных модулей
+## Minimum Verification Path for Platform Modules
 
-Для scoped модулей платформы канонический локальный путь такой:
+For scoped platform modules, the canonical local path is:
 
 ```powershell
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
 ```
 
-`module validate` проверяет контракт модуля и локальные docs, а `module test` строит точечный test/check plan для самого модуля и его UI-пакетов.
+`module validate` checks the module contract and local docs, while `module test` builds a targeted test/check plan for the module itself and its UI packages.
 
-Если меняется composition contract всей платформы, дополнительно нужен:
+If the composition contract of the entire platform changes, additionally run:
 
 ```powershell
 cargo xtask validate-manifest
 ```
 
 
-## Reference artifacts pipeline (DOC-09 / B11)
+## Reference Artifacts Pipeline (DOC-09 / B11)
 
-Для phase 1 по DOC-09 используем единый cross-platform Node.js exporter reference-артефактов:
+For phase 1 of DOC-09, use a single cross-platform Node.js exporter of reference artifacts:
 
 ```bash
 node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 ```
 
-В CI и Unix-средах `scripts/verify/export-reference-artifacts.sh` остаётся тонкой
-обёрткой над тем же exporter; отдельной реализации на Bash нет.
+In CI and Unix environments, `scripts/verify/export-reference-artifacts.sh` remains a thin
+wrapper over the same exporter; there is no separate Bash implementation.
 
-Что делает скрипт:
+What the script does:
 
-- генерирует rustdoc для `rustok-server` и `rustok-workflow` (если не задан `SKIP_RUSTDOC=1`);
-- сохраняет OpenAPI в `openapi/openapi.json` и `openapi/openapi.yaml`;
-- сохраняет full GraphQL introspection в `graphql/introspection.json`;
-- сохраняет GraphQL SDL из `/api/graphql/schema.graphql` в `graphql/schema.graphql`;
-- пишет `manifest.json` и legacy `manifest.txt` с timestamp/base_url/git commit.
+- generates rustdoc for `rustok-server` and `rustok-workflow` (unless `SKIP_RUSTDOC=1` is set);
+- saves OpenAPI to `openapi/openapi.json` and `openapi/openapi.yaml`;
+- saves full GraphQL introspection to `graphql/introspection.json`;
+- saves GraphQL SDL from `/api/graphql/schema.graphql` to `graphql/schema.graphql`;
+- writes `manifest.json` and legacy `manifest.txt` with timestamp/base_url/git commit.
 
-Переменные окружения:
+Environment variables:
 
-- `RUSTOK_BASE_URL` — базовый URL сервера (по умолчанию `http://127.0.0.1:5150`);
-- `SKIP_RUSTDOC=1` — пропустить `cargo doc` и сделать только API exports.
+- `RUSTOK_BASE_URL` — base URL of the server (default `http://127.0.0.1:5150`);
+- `SKIP_RUSTDOC=1` — skip `cargo doc` and export only API artifacts.
 
-Минимальный verification-набор для PR (B11):
+Minimum verification set for PR (B11):
 
 ```bash
 cargo xtask --help
@@ -82,30 +82,30 @@ node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 rg -n "openapi/|graphql/|manifest.json" artifacts/reference -S
 ```
 
-## Reference artifacts pipeline in CI (DOC-09 / B12)
+## Reference Artifacts Pipeline in CI (DOC-09 / B12)
 
-Phase 2 для DOC-09 выполняется через CI job `reference-artifacts` в
+Phase 2 for DOC-09 is executed via the CI job `reference-artifacts` in
 `.github/workflows/ci.yml`.
 
-Job обязан:
+The job must:
 
-- поднять runtime (`rustok-server`) и дождаться `/api/openapi.json`;
-- выполнить `scripts/verify/export-reference-artifacts.sh artifacts/reference`;
-- проверить layout и полноту экспорта через `node scripts/verify/verify-reference-artifacts.mjs artifacts/reference`;
-- опубликовать `artifacts/reference/**` через `actions/upload-artifact`;
-- быть включённым в aggregate gate `ci-success`.
+- start the runtime (`rustok-server`) and wait for `/api/openapi.json`;
+- run `scripts/verify/export-reference-artifacts.sh artifacts/reference`;
+- verify the layout and export completeness via `node scripts/verify/verify-reference-artifacts.mjs artifacts/reference`;
+- publish `artifacts/reference/**` via `actions/upload-artifact`;
+- be included in the aggregate gate `ci-success`.
 
-Минимальная проверка B12 в PR:
+Minimum check for B12 in PR:
 
 ```bash
 rg -n "reference-artifacts|export-reference-artifacts|upload-artifact|ci-success" .github/workflows/ci.yml
 ```
 
-## Windows hybrid path
+## Windows Hybrid Path
 
-На текущем Windows-окружении обязательный локальный путь верификации не должен зависеть от Bash как hard prerequisite.
+On the current Windows environment, the mandatory local verification path must not depend on Bash as a hard prerequisite.
 
-Минимальный Windows-native набор:
+Minimum Windows-native set:
 
 ```powershell
 cargo xtask module validate <slug>
@@ -116,101 +116,101 @@ npm.cmd run verify:storefront:routes
 powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 ```
 
-Дополнительно:
+Additionally:
 
-- Python-dependent проверки запускаются через установленный Python.
-- Bash-only scripts допускаются как legacy/perimeter checks, но не как единственный способ подтвердить модульный контракт на этой машине.
-- Быстрые source-level проверки runtime-инвариантов, которые не требуют полной Rust-компиляции, могут жить в `scripts/verify/*.mjs`; текущий пример — `node scripts/verify/verify-runtime-context-invariants.mjs` для channel context/cache-key, locale-cache metrics и evidence `pages -> page_builder`.
-- Migration-safety gate закреплён в CI отдельным job `migration-smoke`: он использует PostgreSQL service и запускает `./scripts/verify/verify-migration-smoke.sh` в apply-from-zero и incremental режимах.
+- Python-dependent checks are run via the installed Python.
+- Bash-only scripts are allowed as legacy/perimeter checks, but not as the sole way to confirm a module contract on this machine.
+- Fast source-level runtime invariant checks that do not require full Rust compilation may live in `scripts/verify/*.mjs`; current example is `node scripts/verify/verify-runtime-context-invariants.mjs` for channel context/cache-key, locale-cache metrics and evidence `pages -> page_builder`.
+- Migration-safety gate is enforced in CI as a separate job `migration-smoke`: it uses a PostgreSQL service and runs `./scripts/verify/verify-migration-smoke.sh` in apply-from-zero and incremental modes.
 
-## Runtime/backend regression runbook
+## Runtime/Backend Regression Runbook
 
-Краткая диагностика для постоянных backend/runtime guardrails:
+Quick diagnostics for persistent backend/runtime guardrails:
 
-| Симптом | Быстрая проверка | Что смотреть при падении |
+| Symptom | Quick Check | What to Look at on Failure |
 |---|---|---|
-| Drift module graph / `pages` dependencies | `cargo xtask validate-manifest` + `node scripts/verify/verify-runtime-context-invariants.mjs` | `modules.toml`, `docs/modules/registry.md`, runtime `dependencies()` evidence и registry contract tests должны одинаково держать `pages -> [content, page_builder]`. |
-| Channel resolution без locale/OAuth dimensions | `node scripts/verify/verify-runtime-context-invariants.mjs` + targeted `cargo test -p rustok-server middleware::channel` | Source-order middleware chain должен исполняться как `locale -> auth_context -> channel`; `RequestFacts` должен брать `ResolvedRequestLocale.effective_locale` и `AuthContextExtension.client_id`, а `ChannelCacheKey` — включать оба поля. |
-| Locale DB amplification / cache regression | `cargo test -p rustok-server middleware::locale` и проверка `/metrics` на `rustok_tenant_locale_cache_hits_total`, `rustok_tenant_locale_cache_misses_total`, `rustok_tenant_locale_db_queries_total`, `rustok_tenant_locale_cache_invalidations_total` | Повторные tenant-bound requests внутри TTL должны давать cache hits, disabled locale должен оставаться ограниченным tenant policy, invalidation/TTL должны обновлять snapshot. |
-| Migration dependency failure | `./scripts/verify/verify-migration-smoke.sh` и `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh` | Проверить `migration_dependencies()` в module crate-ах, aggregation в server migrator, duplicate/cycle/missing dependency tests и порядок FK/cross-module migrations. |
+| Drift module graph / `pages` dependencies | `cargo xtask validate-manifest` + `node scripts/verify/verify-runtime-context-invariants.mjs` | `modules.toml`, `docs/modules/registry.md`, runtime `dependencies()` evidence and registry contract tests must all consistently hold `pages -> [content, page_builder]`. |
+| Channel resolution without locale/OAuth dimensions | `node scripts/verify/verify-runtime-context-invariants.mjs` + targeted `cargo test -p rustok-server middleware::channel` | Source-order middleware chain must execute as `locale -> auth_context -> channel`; `RequestFacts` must take `ResolvedRequestLocale.effective_locale` and `AuthContextExtension.client_id`, and `ChannelCacheKey` must include both fields. |
+| Locale DB amplification / cache regression | `cargo test -p rustok-server middleware::locale` and check `/metrics` for `rustok_tenant_locale_cache_hits_total`, `rustok_tenant_locale_cache_misses_total`, `rustok_tenant_locale_db_queries_total`, `rustok_tenant_locale_cache_invalidations_total` | Repeated tenant-bound requests within TTL should produce cache hits, disabled locale should remain limited by tenant policy, invalidation/TTL should update the snapshot. |
+| Migration dependency failure | `./scripts/verify/verify-migration-smoke.sh` and `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh` | Check `migration_dependencies()` in module crates, aggregation in server migrator, duplicate/cycle/missing dependency tests and FK/cross-module migration order. |
 
-Для локальных коротких итераций сначала запускайте быстрые source-level проверки (`node ...` / `rg`), а PostgreSQL smoke оставляйте для migration changes или CI, если сборка начинает занимать слишком много времени.
+For local short iterations, start with fast source-level checks (`node ...` / `rg`), and leave PostgreSQL smoke for migration changes or CI when the build starts taking too long.
 
-## Роли `xtask` и `scripts/*` (актуализация 2026-05)
+## Roles of `xtask` and `scripts/*` (Updated 2026-05)
 
-Чтобы не дублировать tooling и не разъезжаться по контрактам:
+To avoid duplicating tooling and diverging contracts:
 
-- `xtask` (Rust) — **каноничный entrypoint** для платформенных и модульных контрактов, которые должны одинаково запускаться на Linux/macOS/Windows.
-- `scripts/verify/*.sh` и `scripts/verify/*.mjs` — **периметр и специализированные аудит-проверки**, где важнее быстрый grep/smoke и shell orchestration.
-- `scripts/verify/*.ps1` — parity-скрипты для Windows там, где Bash-check обязателен, но должен иметь native fallback.
+- `xtask` (Rust) — **canonical entrypoint** for platform and module contracts that must run identically on Linux/macOS/Windows.
+- `scripts/verify/*.sh` and `scripts/verify/*.mjs` — **perimeter and specialized audit checks** where fast grep/smoke and shell orchestration are more important.
+- `scripts/verify/*.ps1` — parity scripts for Windows where a Bash check is mandatory but must have a native fallback.
 
-Практический критерий выбора реализации:
+Practical criteria for choosing an implementation:
 
-1. **Писать в `xtask` (Rust)**, если:
-   - проверка входит в обязательный модульный acceptance path;
-   - нужна кроссплатформенность без Bash;
-   - есть структурированный парсинг (`modules.toml`, manifests, wiring, registry contracts).
-2. **Оставлять в `sh`/`mjs`**, если:
-   - это perimeter/security smoke с множеством внешних CLI;
-   - проверка носит ad-hoc audit характер и не является модульным gate;
-   - критична скорость правок в CI orchestration.
-3. **Удалять/схлопывать дубли**, если:
-   - один скрипт только проксирует другой без дополнительной логики;
-   - команда уже покрыта `cargo xtask ...` и не добавляет отдельный контракт.
+1. **Write in `xtask` (Rust)** if:
+   - the check is part of the mandatory module acceptance path;
+   - cross-platform support without Bash is required;
+   - structured parsing is needed (`modules.toml`, manifests, wiring, registry contracts).
+2. **Keep in `sh`/`mjs`** if:
+   - it is a perimeter/security smoke with many external CLIs;
+   - the check is ad-hoc audit in nature and not a module gate;
+   - speed of edits in CI orchestration is critical.
+3. **Remove/collapse duplicates** if:
+   - one script only proxies another without added logic;
+   - the command is already covered by `cargo xtask ...` and does not add a separate contract.
 
-## Page Builder FBA verification baseline (Wave 0/Wave 1 gate)
+## Page Builder FBA Verification Baseline (Wave 0/Wave 1 Gate)
 
-Для трека `page_builder -> pages` обязательный минимальный gate перед продвижением между волнами:
+For the `page_builder -> pages` track, the mandatory minimum gate before advancing between waves:
 
 ```bash
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
 ```
 
-Состав baseline gate:
+Baseline gate composition:
 
-1. parity provider/consumer contract versions;
+1. parity of provider/consumer contract versions;
 2. required fallback/toggle profile structure;
 3. toggle profile value consistency (`all_on/publish_off/preview_off/builder_off`).
 
-Этот baseline gate используется как обязательный артефакт для Sprint/Wave evidence в `docs/modules/tiptap-page-builder-implementation-plan.md`.
+This baseline gate is used as a mandatory artifact for Sprint/Wave evidence in `docs/modules/tiptap-page-builder-implementation-plan.md`.
 
-## Что считается обязательным для модульной унификации
+## What Is Considered Mandatory for Module Unification
 
-При изменении module system или локального контракта модуля нужно проверять не только код, но и документационный слой:
+When changing the module system or a module's local contract, verify not only the code but also the documentation layer:
 
-- наличие `README.md`, `docs/README.md`, `docs/implementation-plan.md`;
-- согласованность `modules.toml` и `rustok-module.toml`;
-- корректность admin/storefront manifest wiring;
-- актуальность central docs в `docs/modules/*` и `docs/index.md`.
+- presence of `README.md`, `docs/README.md`, `docs/implementation-plan.md`;
+- consistency of `modules.toml` and `rustok-module.toml`;
+- correctness of admin/storefront manifest wiring;
+- accuracy of central docs in `docs/modules/*` and `docs/index.md`.
 
-Support/capability crates могут участвовать в общей документационной унификации, но scoped `module validate` применяется только к slug из `modules.toml`.
+Support/capability crates may participate in general documentation unification, but scoped `module validate` applies only to slugs from `modules.toml`.
 
-## Как пользоваться набором планов
+## How to Use the Plan Set
 
-1. Начинать со [сводного плана верификации](./PLATFORM_VERIFICATION_PLAN.md), если нужен широкий прогон.
-2. Переходить в профильный план, если меняется конкретный контур: foundation, API, frontend, RBAC, UI libraries.
-3. Для точечной работы по модулю сначала выполнять `cargo xtask module validate <slug>`, а не полный workspace-wide прогон.
-4. Нерешённые блокеры фиксировать в профильном плане или в локальных docs соответствующего компонента, а не превращать `docs/verification/README.md` в backlog.
+1. Start with the [summary verification plan](./PLATFORM_VERIFICATION_PLAN.md) if a broad run is needed.
+2. Switch to the profile plan if a specific circuit is changing: foundation, API, frontend, RBAC, UI libraries.
+3. For targeted module work, first run `cargo xtask module validate <slug>`, not a full workspace-wide run.
+4. Record unresolved blockers in the profile plan or in the local docs of the corresponding component, rather than turning `docs/verification/README.md` into a backlog.
 
-### Принцип для тестов operational scripts
+### Principle for Operational Script Tests
 
-- Тесты в `scripts/tests/*` и `scripts/ci/test_*.py` должны использовать изолированные fixture-каталоги (`mktemp` / `tempfile`) и не зависеть от текущего состояния репозитория.
-- Репозиторий может временно содержать drift/legacy данные; это не должно делать script-tests флаки при локальном запуске и в CI.
+- Tests in `scripts/tests/*` and `scripts/ci/test_*.py` must use isolated fixture directories (`mktemp` / `tempfile`) and not depend on the current state of the repository.
+- The repository may temporarily contain drift/legacy data; this must not make script tests flaky during local runs and in CI.
 
-## Регламент обновления
+## Update Policy
 
-При изменении архитектуры, API, UI-контрактов, module system, observability или quality gates:
+When architecture, API, UI contracts, module system, observability, or quality gates change:
 
-1. Обновить локальные docs затронутого `apps/*` или `crates/*`.
-2. Обновить профильный план верификации в этой папке, если изменился сам порядок проверки.
-3. Обновить связанные central docs в `docs/modules/*`, `docs/architecture/*` и `docs/index.md`.
-4. Если меняется acceptance-контракт модуля, синхронно обновить [контракт manifest-слоя](../modules/manifest.md).
+1. Update local docs of the affected `apps/*` or `crates/*`.
+2. Update the profile verification plan in this folder if the verification procedure itself changed.
+3. Update related central docs in `docs/modules/*`, `docs/architecture/*` and `docs/index.md`.
+4. If a module's acceptance contract changes, synchronously update the [manifest-layer contract](../modules/manifest.md).
 
-## Статусы
+## Statuses
 
-- `Не начато`
-- `В процессе`
-- `Завершено`
-- `Заблокировано`
+- `Not started`
+- `In progress`
+- `Completed`
+- `Blocked`
 
-> Статус документа: актуальный. Для модульной системы этот README должен оставаться синхронизированным с `cargo xtask module validate`, `cargo xtask module test` и central docs в `docs/modules/*`.
+> Document status: current. For the module system, this README must remain synchronized with `cargo xtask module validate`, `cargo xtask module test` and central docs in `docs/modules/*`.

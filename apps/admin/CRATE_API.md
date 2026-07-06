@@ -1,20 +1,20 @@
 # apps/admin / CRATE_API
 
-## Публичные модули
-- Leptos admin UI: страницы управления каталогом, контентом, пользователями.
-- Клиентские слои GraphQL/auth/forms на `leptos-*` crates.
+## Public Modules
+- Leptos admin UI: catalog, content, and user management pages.
+- Client layers for GraphQL/auth/forms on `leptos-*` crates.
 
-## Основные структуры/контракты
-- Публичные UI-маршруты админки.
-- Контракты GraphQL-запросов/мутаций к `apps/server`.
+## Key Structures/Contracts
+- Public admin UI routes.
+- GraphQL query/mutation contracts to `apps/server`.
 
-## События
-- Публикует: пользовательские действия через HTTP/GraphQL (создание/изменение сущностей).
-- Потребляет: ответы API и состояния авторизации.
+## Events
+- Publishes: user actions via HTTP/GraphQL (entity creation/modification).
+- Consumes: API responses and auth states.
 
-## Зависимости от других крейтов
+## Dependencies on Other Crates
 - `leptos-auth`, `leptos-graphql`, `leptos-hook-form`, `leptos-table`, `leptos-ui`.
 
-## Частые ошибки ИИ
-- Неверные импорты between `leptos-*` crates (путает packages/ и crates/ варианты).
-- Ломает RBAC-guard на уровне навигации.
+## Common AI Mistakes
+- Incorrect imports between `leptos-*` crates (confusing packages/ and crates/ variants).
+- Breaking RBAC guard at the navigation level.

@@ -6,49 +6,49 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Схема данных платформы
+# Platform Data Schema
 
-Этот документ даёт верхнеуровневую карту write-side и read-side схем RusToK.
-Он не заменяет migrations, entities и local docs модулей.
+This document provides a top-level map of RusToK write-side and read-side schemas.
+It does not replace migrations, entities and local docs of modules.
 
-## Источники истины
+## Sources of Truth
 
-Канонический источник правды по структуре БД:
+Canonical source of truth for DB structure:
 
-- migrations в `apps/server/migration` и module-owned migration sources
-- SeaORM entities в `apps/server/src/models/_entities` и module crates
-- local docs модулей для module-owned storage contracts
+- migrations in `apps/server/migration` and module-owned migration sources
+- SeaORM entities in `apps/server/src/models/_entities` and module crates
+- local docs of modules for module-owned storage contracts
 
-Этот документ нужен только как central summary layer.
+This document is only needed as a central summary layer.
 
-## Общие инварианты
+## Common Invariants
 
-- `tenant_id` остаётся главным изоляционным boundary для platform и module data
-- write-side таблицы считаются source of truth для доменного состояния
-- denormalized index/read tables не считаются source of truth
-- JSONB допустим для settings, config и гибких payload-ов, но не как конечная
-  canonical форма для локализованного бизнес-текста
+- `tenant_id` remains the main isolation boundary for platform and module data
+- write-side tables are considered source of truth for domain state
+- denormalized index/read tables are not considered source of truth
+- JSONB is allowed for settings, config and flexible payloads, but not as the final
+  canonical form for localized business text
 
-## Мультиязычный storage-контракт
+## Multilingual Storage Contract
 
-Текущий целевой паттерн платформы:
+The current target platform pattern:
 
-- базовые business tables хранят language-agnostic state
-- локализованные короткие тексты живут в `*_translations`
-- тяжёлый локализованный контент может жить в `*_bodies`
-- tenant locale policy управляет effective locale и fallback, но не ownership
-  локализованных полей
-- хранение locale следует единому normalized contract с безопасной шириной
+- base business tables store language-agnostic state
+- localized short texts live in `*_translations`
+- heavy localized content may live in `*_bodies`
+- tenant locale policy manages effective locale and fallback, but not ownership
+  of localized fields
+- locale storage follows a single normalized contract with a safe width of
   `VARCHAR(32)`
-- widening locale-колонок до `VARCHAR(32)` считается safe forward migration:
-  rollback не должен сужать такие колонки обратно и рисковать потерей валидных BCP47-like тегов
+- widening locale columns to `VARCHAR(32)` is considered a safe forward migration:
+  rollback must not narrow such columns back and risk losing valid BCP47-like tags
 
-Если старый модуль использует смешанный storage pattern, это считается
-миграционным target, а не желаемым эталоном.
+If an old module uses a mixed storage pattern, this is considered a
+migration target, not a desired baseline.
 
-## Foundation-таблицы
+## Foundation Tables
 
-Foundation storage включает:
+Foundation storage includes:
 
 - `tenants`
 - `users`
@@ -61,61 +61,61 @@ Foundation storage включает:
 - `oauth_apps`
 - `sys_events`
 
-### Что здесь важно
+### What Matters Here
 
-- `tenants` и `tenant_locales` задают tenant и locale policy layer
-- `sessions` и auth-related tables поддерживают auth/session lifecycle
-- `install_sessions` и `install_step_receipts` фиксируют resumable installer
-  state, checksum-и входов, outcomes и diagnostics; сами секреты там не хранятся
-- `platform_settings` и `tenant_modules` хранят platform/module settings
-- `sys_events` остаётся transactional outbox table, а не generic audit dump
+- `tenants` and `tenant_locales` define the tenant and locale policy layer
+- `sessions` and auth-related tables support the auth/session lifecycle
+- `install_sessions` and `install_step_receipts` capture resumable installer
+  state, input checksums, outcomes and diagnostics; secrets are not stored there
+- `platform_settings` and `tenant_modules` store platform/module settings
+- `sys_events` remains a transactional outbox table, not a generic audit dump
 
-## Installer storage
+## Installer Storage
 
-Гибридный установщик использует `rustok-installer` как support crate для
-typed plan/state/receipt contracts. Его persistence в `apps/server` должна
-следовать таким правилам:
+The hybrid installer uses `rustok-installer` as a support crate for
+typed plan/state/receipt contracts. Its persistence in `apps/server` must
+follow these rules:
 
-- `install_sessions` хранит session-level state, profile, environment,
-  redacted plan snapshot и текущий статус;
-- `install_step_receipts` хранит step outcome, input checksum, installer
-  version, timestamp и diagnostic payload;
-- финальный installed/adopted marker и deployment metadata можно отражать в
-  `platform_settings` под категорией `installer`;
-- plaintext secrets не пишутся в installer tables; допустимы только redacted
-  values или ссылки на secret backend;
-- production installs требуют explicit PostgreSQL engine, а SQLite остаётся
-  local/demo/test режимом.
+- `install_sessions` stores session-level state, profile, environment,
+  redacted plan snapshot and current status;
+- `install_step_receipts` stores step outcome, input checksum, installer
+  version, timestamp and diagnostic payload;
+- final installed/adopted marker and deployment metadata can be reflected in
+  `platform_settings` under the `installer` category;
+- plaintext secrets are not written to installer tables; only redacted
+  values or references to a secret backend are allowed;
+- production installs require explicit PostgreSQL engine, while SQLite remains
+  a local/demo/test mode.
 
-## RBAC-таблицы
+## RBAC Tables
 
-RBAC source of truth живёт в relation tables:
+RBAC source of truth lives in relation tables:
 
 - `roles`
 - `permissions`
 - `user_roles`
 - `role_permissions`
 
-Они поддерживают permission/runtime contract и не должны дублироваться в
-альтернативных ownership tables без явной архитектурной причины.
+They support the permission/runtime contract and must not be duplicated in
+alternative ownership tables without a clear architectural reason.
 
-## Хранение content-family
+## Content-family Storage
 
-Текущий content baseline строится вокруг:
+The current content baseline is built around:
 
 - `nodes`
 - `node_translations`
 - `bodies`
 
-Принцип:
+Principle:
 
-- `nodes` владеет language-agnostic state
-- `node_translations` владеет локализованными короткими полями
-- `bodies` владеет heavy localized content
+- `nodes` owns language-agnostic state
+- `node_translations` owns localized short fields
+- `bodies` owns heavy localized content
 
-## Хранение commerce-family
+## Commerce-family Storage
 
-Commerce storage остаётся split-domain family, но верхнеуровневой базой служат:
+Commerce storage remains a split-domain family, but the top-level base consists of:
 
 - `products`
 - `product_translations`
@@ -127,22 +127,22 @@ Commerce storage остаётся split-domain family, но верхнеуров
 - `cart_line_item_translations`
 - `order_line_item_translations`
 
-Нативные атрибуты продуктового каталога расширяют этот baseline через
-product-owned таблицы:
+Native product catalog attributes extend this baseline through
+product-owned tables:
 
 - `product_attributes`, `product_attribute_translations`, `product_attribute_options`
 - `catalog_categories`, `catalog_category_translations`, `catalog_category_closure`
-- `product_attribute_schemas` и schema/group/binding tables
+- `product_attribute_schemas` and schema/group/binding tables
 - `category_attribute_schema_assignments`, `category_attributes`, `category_attribute_groups`
 - `product_categories`, `virtual_category_product_assignments`
-- `product_attribute_values`, `product_variant_attribute_values` и связанные localized value/option tables
+- `product_attribute_values`, `product_variant_attribute_values` and related localized value/option tables
 
-И здесь действует тот же принцип: base rows language-agnostic, локализованные
-поля вынесены в parallel records.
+And the same principle applies: base rows are language-agnostic, localized
+fields are moved to parallel records.
 
-## Registry / marketplace
+## Registry / Marketplace
 
-Registry storage для publish/governance тоже выровнен под тот же multilingual contract:
+Registry storage for publish/governance is also aligned with the same multilingual contract:
 
 - `registry_publish_requests`
 - `registry_publish_request_translations`
@@ -151,71 +151,70 @@ Registry storage для publish/governance тоже выровнен под то
 - `registry_module_owners`
 - `registry_governance_events`
 
-Принцип:
+Principle:
 
-- base rows publish/release держат language-agnostic state, typed principals, status,
-  artifact storage keys и `default_locale`
-- display metadata модуля (`name`, `description`) живут в dedicated translations tables,
-  а не в base rows
-- ownership и governance audit trail остаются language-agnostic persistence
-- `registry_governance_events.details` считается internal audit payload, а не canonical
+- base rows publish/release hold language-agnostic state, typed principals, status,
+  artifact storage keys and `default_locale`
+- module display metadata (`name`, `description`) lives in dedicated translations tables,
+  not in base rows
+- ownership and governance audit trail remain language-agnostic persistence
+- `registry_governance_events.details` is considered an internal audit payload, not a canonical
   multilingual business copy
 
 ## Flex
 
-`flex` — capability slice, но он подчиняется тому же storage contract.
+`flex` is a capability slice, but it follows the same storage contract.
 
-Текущий live baseline включает:
+The current live baseline includes:
 
 - `flex_schemas`
 - `flex_schema_translations`
 - `flex_entries`
 - `flex_attached_localized_values`
 
-Current-state вывод:
+Current-state conclusion:
 
-- schema-level language-agnostic state живёт в base tables
-- localized schema copy живёт в translations tables
-- attached localized values вынесены в dedicated locale-aware storage
-- cleanup/backfill legacy inline localized payload-ов должен происходить миграциями,
-  а не постоянным runtime fallback на base-row JSON
+- schema-level language-agnostic state lives in base tables
+- localized schema copy lives in translations tables
+- attached localized values are moved to dedicated locale-aware storage
+- cleanup/backfill of legacy inline localized payloads must happen through migrations,
+  not through constant runtime fallback to base-row JSON
 
-## Index/read-side таблицы
+## Index/Read-side Tables
 
-`rustok-index` владеет denormalized read models, например:
+`rustok-index` owns denormalized read models, for example:
 
 - `index_content`
 - `index_products`
 - `index_product_categories`
 - `index_product_attribute_values`
 
-Они существуют для query/index/search paths и не должны использоваться как
-авторитетный write-side storage.
+They exist for query/index/search paths and must not be used as
+authoritative write-side storage.
 
-Product indexer обновляет category и attribute projections по `tenant_id`,
-`product_id` и явной locale. Attribute projection принимает effective schema из
-read-only resolver-а `rustok-product`, раскладывает multiselect по отдельным
-option rows и не индексирует detached values. Локализованные labels не используют
+The product indexer updates category and attribute projections by `tenant_id`,
+`product_id` and explicit locale. Attribute projection takes the effective schema from
+the read-only resolver of `rustok-product`, splits multiselect into individual
+option rows and does not index detached values. Localized labels do not use a
 package-local fallback chain.
 
-Facet/search/sort rows имеют channel scope. Для active channels индексатор создаёт
-отдельный набор строк и вычисляет флаги с приоритетом `attribute defaults <
-schema/category overrides < channel settings`; явный `false` не теряется при
-наследовании. Строка также хранит effective storefront/comparison/admin-grid
-visibility. Если active channel отсутствует, используется единственный global
-scope с `channel_id = null`. Индексы read model включают `channel_id`, поэтому
-поиск не смешивает facet buckets разных каналов.
+Facet/search/sort rows have channel scope. For active channels, the indexer creates
+a separate set of rows and computes flags with priority `attribute defaults <
+schema/category overrides < channel settings`; explicit `false` is not lost during
+inheritance. The row also stores effective storefront/comparison/admin-grid
+visibility. If no active channel exists, a single global scope is used with `channel_id = null`. Read model indexes include `channel_id`, so
+search does not mix facet buckets from different channels.
 
-Перед обновлением category projection индексатор пересчитывает
-`virtual_category_product_assignments` по bounded V1 rules. Материализация
-идемпотентна на уровне `(tenant_id, product_id)`: старые строки товара удаляются,
-после чего в одной транзакции записываются совпавшие virtual categories. Правила
-используют только write-side product facts и effective locale-neutral attributes;
-read model не становится источником истины для rule evaluation.
+Before updating category projection, the indexer recalculates
+`virtual_category_product_assignments` according to bounded V1 rules. Materialization
+is idempotent at the `(tenant_id, product_id)` level: old product rows are deleted,
+then matched virtual categories are written in a single transaction. Rules
+use only write-side product facts and effective locale-neutral attributes;
+the read model does not become the source of truth for rule evaluation.
 
-## Workflow-хранение
+## Workflow Storage
 
-`rustok-workflow` владеет собственным module storage:
+`rustok-workflow` owns its own module storage:
 
 - `workflows`
 - `workflow_steps`
@@ -223,32 +222,32 @@ read model не становится источником истины для ru
 - `workflow_step_executions`
 - `workflow_versions`
 
-Это module-owned schema, а не generic platform queue layer.
+This is a module-owned schema, not a generic platform queue layer.
 
-## Media и storage-слой
+## Media and Storage Layer
 
-Media metadata остаётся module-owned, а file bytes обрабатываются через shared
+Media metadata remains module-owned, while file bytes are handled through a shared
 storage runtime.
 
-Базовые media tables:
+Base media tables:
 
 - `media`
 - `media_translations`
 
-Storage backend configuration при этом живёт не в per-file SQL contract, а в
+Storage backend configuration lives not in per-file SQL contract, but in
 typed runtime settings.
 
-## Что не делать
+## What Not To Do
 
-- не считать summary-документ заменой migrations
-- не использовать read-side tables как write-side authority
-- не хранить локализованный бизнес-текст в base rows, если модуль уже идёт по
+- do not consider a summary document as a replacement for migrations
+- do not use read-side tables as write-side authority
+- do not store localized business text in base rows if the module already follows the
   parallel-localized-record path
-- не размывать ownership module-owned tables между host и module crate
+- do not blur ownership of module-owned tables between host and module crate
 
-## Связанные документы
+## Related Documents
 
-- [Архитектура модулей](./modules.md)
-- [Контракт потока доменных событий](./event-flow-contract.md)
-- [Архитектура i18n](./i18n.md)
-- [Реестр модулей и приложений](../modules/registry.md)
+- [Module Architecture](./modules.md)
+- [Domain Event Flow Contract](./event-flow-contract.md)
+- [i18n Architecture](./i18n.md)
+- [Module and Application Registry](../modules/registry.md)

@@ -8,11 +8,11 @@ status: verified
 ---
 # RusToK Quickstart Guide
 
-Быстрый старт для локальной разработки с двумя админками (Next.js + Leptos) и двумя витринами.
+Quick start for local development with two admin panels (Next.js + Leptos) and two storefronts.
 
-## Матрица профилей запуска (canonical truth table)
+## Launch Profile Matrix (canonical truth table)
 
-| Профиль | Хосты | Порты | Владелец профиля | Canonical source |
+| Profile | Hosts | Ports | Profile Owner | Canonical source |
 |---|---|---|---|---|
 | `dev-start:full` | `apps/server`, `apps/next-admin`, `apps/admin`, `apps/next-frontend`, `apps/storefront`, PostgreSQL | `5150`, `3000`, `3001`, `3100`, `3101`, `5432` | Platform + DevEx | `scripts/dev-start.sh`, `docs/guides/quickstart.md` |
 | `dev-start:admin` | `apps/server`, `apps/next-admin`, `apps/admin`, PostgreSQL | `5150`, `3000`, `3001`, `5432` | Platform + DevEx | `scripts/dev-start.sh start admin`, `docs/guides/quickstart.md` |
@@ -22,92 +22,92 @@ status: verified
 | `headless:next-frontend` | `apps/server` + `apps/next-frontend` | `5150`, `3100` | Frontend storefront owner | `apps/next-frontend`, `docs/UI/storefront.md` |
 | `standalone:leptos-storefront` | `apps/server` + `apps/storefront` | `5150`, `3101` | Frontend storefront owner | `apps/storefront`, `docs/UI/storefront.md` |
 
-Примечания:
-- Источником истины по модульному составу остаётся `modules.toml`; профили запуска
-  не меняют модульный контракт, а задают runtime-топологию и host composition.
-- При конфликте документации приоритет у `scripts/dev-start.sh` (для dev-start профилей)
-  и у install/host entrypoints, перечисленных в колонке `Canonical source`.
+Notes:
+- The source of truth for module composition remains `modules.toml`; launch profiles
+  do not change the module contract, they only define the runtime topology and host composition.
+- In case of documentation conflict, `scripts/dev-start.sh` (for dev-start profiles)
+  and the install/host entrypoints listed in the `Canonical source` column take precedence.
 
-## 🚀 Запуск одной командой
+## 🚀 One-Command Launch
 
 ```bash
-# 1. Клонировать репозиторий (если еще не сделано)
+# 1. Clone the repository (if not already done)
 git clone <repo-url>
 cd RusTok
 
-# 2. Запустить весь стек
+# 2. Start the entire stack
 ./scripts/dev-start.sh
 ```
 
-Скрипт автоматически:
-- создаст `.env.dev` из `.env.dev.example` (если не существует);
-- поднимет PostgreSQL;
-- запустит backend (`apps/server`);
-- запустит обе админки (Next.js на `:3000`, Leptos на `:3001`);
-- запустит обе витрины (Next.js на `:3100`, Leptos на `:3101`).
+The script automatically:
+- creates `.env.dev` from `.env.dev.example` (if it does not exist);
+- starts PostgreSQL;
+- launches the backend (`apps/server`);
+- launches both admin panels (Next.js on `:3000`, Leptos on `:3001`);
+- launches both storefronts (Next.js on `:3100`, Leptos on `:3101`).
 
-Источник: [`scripts/dev-start.sh`](../../scripts/dev-start.sh).
+Source: [`scripts/dev-start.sh`](../../scripts/dev-start.sh).
 
-## 📱 Доступ к сервисам
+## 📱 Service Access
 
 ### Backend
 - **API Server**: <http://localhost:5150>
 - **GraphQL Endpoint**: <http://localhost:5150/api/graphql>
 - **Health Check**: <http://localhost:5150/api/health>
 
-### Админки
+### Admin Panels
 - **Next.js Admin**: <http://localhost:3000>
 - **Leptos Admin**: <http://localhost:3001>
 
-### Витрины
+### Storefronts
 - **Next.js Storefront**: <http://localhost:3100>
 - **Leptos Storefront**: <http://localhost:3101>
 
-### База данных
+### Database
 - **PostgreSQL**: `localhost:5432`
 - **Database**: `rustok_dev`
 - **User**: `rustok`
 - **Password**: `rustok`
 
-## 🔑 Тестовые данные
+## 🔑 Test Data
 
-Для входа в dev-окружение:
+For logging into the dev environment:
 
 ```text
 Email:    admin@local
 Password: admin12345
 ```
 
-## 🛠 Полезные команды
+## 🛠 Useful Commands
 
 ```bash
-# Остановить все сервисы
+# Stop all services
 ./scripts/dev-start.sh stop
 
-# Перезапустить
+# Restart
 ./scripts/dev-start.sh restart
 
-# Логи
+# Logs
 ./scripts/dev-start.sh logs
 ./scripts/dev-start.sh logs server
 
-# Статус
+# Status
 ./scripts/dev-start.sh status
 
-# Запуск только админ-профиля
+# Start admin profile only
 ./scripts/dev-start.sh start admin
 
-# Помощь
+# Help
 ./scripts/dev-start.sh --help
 ```
 
-## 🔧 Ручной запуск без Docker
+## 🔧 Manual Launch Without Docker
 
-### Installer preflight / plan
+### Installer Preflight / Plan
 
-Product installer развивается как гибридный слой поверх `rustok-installer`.
-На текущем этапе доступны безопасные `preflight`/`plan` команды, которые не
-подключаются к БД и не запускают миграции:
+The product installer is evolving as a hybrid layer on top of `rustok-installer`.
+At the current stage, the safe `preflight`/`plan` commands are available, which do not
+connect to the DB or run migrations:
 
 ```bash
 cargo run -p rustok-server --bin rustok-server -- install preflight \
@@ -135,14 +135,14 @@ cargo run -p rustok-server --bin rustok-server -- install plan \
   --secrets-mode external-secret
 ```
 
-`preflight` возвращает JSON report с warning/error issues. `plan` возвращает
-redacted snapshot и никогда не печатает plaintext secrets.
+`preflight` returns a JSON report with warning/error issues. `plan` returns a
+redacted snapshot and never prints plaintext secrets.
 
-`apply` выполняет текущий CLI bootstrap end-to-end: preflight, проверку target DB
-через `SELECT 1`, server `Migrator::up`, tenant/module seed, создание или
-синхронизацию superadmin, verify и finalize. Команда создаёт installer session,
-ставит lock, записывает receipts `Preflight` / `Config` / `Database` /
-`Migrate` / `Seed` / `Admin` / `Verify` / `Finalize` и переводит session в
+`apply` runs the current CLI bootstrap end-to-end: preflight, target DB check
+via `SELECT 1`, server `Migrator::up`, tenant/module seed, creating or
+syncing the superadmin, verify and finalize. The command creates an installer session,
+places a lock, writes `Preflight` / `Config` / `Database` /
+`Migrate` / `Seed` / `Admin` / `Verify` / `Finalize` receipts and transitions the session to
 `completed`.
 
 ```bash
@@ -160,10 +160,10 @@ cargo run -p rustok-server --bin rustok-server -- install apply \
   --lock-owner local-cli
 ```
 
-Если нужно сначала создать PostgreSQL database/role, добавьте `--create-database`.
-По умолчанию installer использует admin URL
-`postgres://postgres:postgres@localhost:5432/postgres`; для другого admin-пользователя
-передайте его явно.
+If you need to create the PostgreSQL database/role first, add `--create-database`.
+By default, the installer uses the admin URL
+`postgres://postgres:postgres@localhost:5432/postgres`; to use a different admin user,
+pass it explicitly.
 
 ```bash
 cargo run -p rustok-server --bin rustok-server -- install apply \
@@ -172,7 +172,7 @@ cargo run -p rustok-server --bin rustok-server -- install apply \
   --pg-admin-url postgres://postgres:<password>@localhost:5432/postgres
 ```
 
-`install apply` резолвит локальные secret refs без вывода plaintext в receipts:
+`install apply` resolves local secret refs without outputting plaintext in receipts:
 
 ```bash
 cargo run -p rustok-server --bin rustok-server -- install apply \
@@ -194,77 +194,77 @@ cargo run -p rustok-server --bin rustok-server -- install apply \
   --secrets-mode mounted-file
 ```
 
-Поддержанные backends для `apply`: `env:<VAR>`, `file:<path>`,
-`mounted-file:<path>`, `dotenv:<path>#<VAR>` и `dotenv:<VAR>` для чтения из
-локального `.env`. External backends вроде `vault:*`, `kubernetes:*` и cloud
-secret managers пока являются contract-level refs для `plan`/`preflight`, но
-`apply` завершится с явной ошибкой до подключения resolver-а.
+Supported backends for `apply`: `env:<VAR>`, `file:<path>`,
+`mounted-file:<path>`, `dotenv:<path>#<VAR>` and `dotenv:<VAR>` for reading from
+a local `.env`. External backends like `vault:*`, `kubernetes:*` and cloud
+secret managers are currently contract-level refs for `plan`/`preflight`, but
+`apply` will fail with an explicit error until the resolver is connected.
 
-### Installer HTTP adapter
+### Installer HTTP Adapter
 
-Leptos wizard должен использовать тонкий HTTP adapter, а не повторять bootstrap
-logic в UI:
+The Leptos wizard should use a thin HTTP adapter rather than duplicating bootstrap
+logic in the UI:
 
 - `GET /api/install/status`
 - `POST /api/install/plan`
 - `POST /api/install/preflight`
-- `POST /api/install/apply` — возвращает `202 Accepted` и `job_id`
-- `GET /api/install/jobs/{job_id}` — polling статуса background job
+- `POST /api/install/apply` — returns `202 Accepted` and `job_id`
+- `GET /api/install/jobs/{job_id}` — polling status of background job
 - `GET /api/install/sessions/{session_id}/receipts` — persisted step receipts
 
-Для mutating HTTP install requests можно задать setup token:
+For mutating HTTP install requests, a setup token can be set:
 
 ```powershell
 $env:RUSTOK_INSTALL_SETUP_TOKEN="local-setup-token"
 ```
 
-Клиент передаёт его через `x-rustok-setup-token` или
-`Authorization: Bearer <token>`. Production HTTP apply без
-`RUSTOK_INSTALL_SETUP_TOKEN` отклоняется; CLI остаётся canonical путь для CI/CD
-и headless installs.
+The client sends it via `x-rustok-setup-token` or
+`Authorization: Bearer <token>`. Production HTTP apply without
+`RUSTOK_INSTALL_SETUP_TOKEN` is rejected; the CLI remains the canonical path for CI/CD
+and headless installs.
 
-Wizard flow: отправить `plan`, затем `preflight`; после успешного preflight
-вызвать `apply`, сохранить `job_id`, poll-ить `/api/install/jobs/{job_id}` до
-`succeeded` или `failed`, а progress-ленту строить из
-`/api/install/sessions/{session_id}/receipts`, когда `session_id` появился в
-job output или `/api/install/status`.
+Wizard flow: send `plan`, then `preflight`; after a successful preflight,
+call `apply`, save `job_id`, poll `/api/install/jobs/{job_id}` until
+`succeeded` or `failed`, and build the progress stream from
+`/api/install/sessions/{session_id}/receipts`, once `session_id` appears in
+the job output or `/api/install/status`.
 
-### Bootstrap без Docker Compose
+### Bootstrap Without Docker Compose
 
-Канонический путь локальной установки без Docker Compose:
+The canonical path for local setup without Docker Compose:
 
 ```bash
 cargo xtask install-dev --create-db
 ```
 
-Если PostgreSQL admin-пользователь отличается от `postgres:postgres`, передайте его явно:
+If the PostgreSQL admin user is different from `postgres:postgres`, pass it explicitly:
 
 ```bash
 cargo xtask install-dev --create-db --pg-admin-url postgres://postgres:<password>@localhost:5432/postgres
 ```
 
-Команда проверяет локальные инструменты, готовит `.env.dev`, `apps/next-admin/.env.local`,
-создаёт `modules.local.toml` для standalone UI и делегирует bootstrap в
-`target/debug/rustok-server install apply`: миграции, dev seed, superadmin,
-verify/finalize и installer receipts проходят через один install pipeline.
-После bootstrap сервер и админки запускаются отдельно, чтобы логи и debug-сессии не смешивались.
-Локальный `development.yaml` при этом оставляет full backend surface, но отключает maintenance workers
-`workflow_cron_enabled` и `seo_bulk_enabled`, чтобы интерактивная отладка админок не конкурировала с cron/bulk loops за DB pool.
+The command checks local tools, prepares `.env.dev`, `apps/next-admin/.env.local`,
+creates `modules.local.toml` for standalone UI and delegates bootstrap to
+`target/debug/rustok-server install apply`: migrations, dev seed, superadmin,
+verify/finalize and installer receipts all go through a single install pipeline.
+After bootstrap, the server and admin panels are started separately so that logs and debug sessions do not mix.
+The local `development.yaml` retains the full backend surface but disables maintenance workers
+`workflow_cron_enabled` and `seo_bulk_enabled`, so that interactive admin debugging does not compete with cron/bulk loops for the DB pool.
 
-Если `target/debug/rustok-server` ещё не собран, сначала выполните:
+If `target/debug/rustok-server` is not yet built, first run:
 
 ```bash
 cargo build -p rustok-server --bin rustok-server
 cargo xtask install-dev
 ```
 
-### Требования
-- Rust toolchain (см. `rust-toolchain.toml`)
-- Node.js/Bun для Next.js приложений
+### Requirements
+- Rust toolchain (see `rust-toolchain.toml`)
+- Node.js/Bun for Next.js applications
 - PostgreSQL
-- Trunk для Leptos приложений (`cargo install trunk`)
+- Trunk for Leptos applications (`cargo install trunk`)
 
-### Запуск
+### Launch
 
 ```bash
 # backend
@@ -281,11 +281,11 @@ cd apps/admin
 trunk serve --port 3001
 ```
 
-`apps/admin/Trunk.toml` проксирует `/api/*` в `http://localhost:5150/api/*`, поэтому standalone
-CSR-debug не должен зависеть от Leptos `#[server]` endpoints. SSR/monolith профили продолжают
-использовать `/api/fn/*` как native transport.
+`apps/admin/Trunk.toml` proxies `/api/*` to `http://localhost:5150/api/*`, so standalone
+CSR-debug should not depend on Leptos `#[server]` endpoints. SSR/monolith profiles continue
+to use `/api/fn/*` as the native transport.
 
-## 📚 Связанные документы
+## 📚 Related Documents
 
 - [Docs index](../index.md)
 - [UI documentation hub](../UI/README.md)

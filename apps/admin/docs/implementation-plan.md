@@ -1,93 +1,93 @@
 # Admin App (Leptos) — Implementation Plan
 
-## Фокус
+## Focus
 
-Довести `apps/admin` до устойчивого production-уровня как Rust/Leptos админку с сильными UI/API контрактами и наблюдаемостью клиентских сценариев.
+Bring `apps/admin` to a stable production level as a Rust/Leptos admin with strong UI/API contracts and observable client scenarios.
 
-## Улучшения
+## Improvements
 
 ### Host composition update (2026-07-02)
 
-- [x] Generated search page использует host-owned `SearchAdminComposition`, который соединяет публичные product metadata DTO/helper и search option props без импорта owner internals.
-- [x] Host передаёт effective locale из `UiRouteContext`, auth token и tenant slug, проверяет tenant enablement модуля `product`; package-local locale fallback отсутствует.
-- [x] Product transport сохраняет native `#[server]` как основной Leptos path и GraphQL как параллельный контракт; быстрый search boundary guardrail фиксирует wiring без долгой Rust-компиляции.
+- [x] Generated search page uses host-owned `SearchAdminComposition`, which connects public product metadata DTO/helper and search option props without importing owner internals.
+- [x] Host passes effective locale from `UiRouteContext`, auth token and tenant slug, checks tenant enablement of the `product` module; no package-local locale fallback.
+- [x] Product transport keeps native `#[server]` as the primary Leptos path and GraphQL as a parallel contract; fast search boundary guardrail fixes wiring without long Rust compilation.
 
-### Архитектурные долги
+### Architecture debt
 
-- Удалить остаточные compatibility paths после верификации сборки (`src/components/`, `src/api/`, `src/providers/`, `src/i18n.rs`, `src/modules/`, `src/app.rs`), чтобы live API совпадал с текущей FSD-структурой.
-- Завершить консолидацию FSD-структуры с минимизацией cross-layer импортов.
-- Устранить дубли бизнес-логики между widgets/features и shared-integration слоем.
-- Сформировать единый набор UI primitives и policy повторного использования.
-- Добавить недостающий агрегатный `widgets/user_table` вместо локальных таблиц/обвязки по страницам.
+- Remove residual compatibility paths after build verification (`src/components/`, `src/api/`, `src/providers/`, `src/i18n.rs`, `src/modules/`, `src/app.rs`) so live API matches current FSD structure.
+- Complete FSD structure consolidation with minimized cross-layer imports.
+- Eliminate business logic duplication between widgets/features and shared-integration layer.
+- Build a unified set of UI primitives and reuse policy.
+- Add the missing aggregate `widgets/user_table` instead of local tables/wrappers per page.
 
-### API/UI контракты
+### API/UI contracts
 
-- Зафиксировать контракт GraphQL-операций и типизацию ошибок в пользовательских формах.
-- Синхронизировать UI-поведение с `apps/next-admin` (loading/error/empty states).
-- Стандартизировать контракт локализации для всех новых экранов и системных сообщений.
+- Stabilize the GraphQL operation contract and error typing in user forms.
+- Synchronize UI behavior with `apps/next-admin` (loading/error/empty states).
+- Standardize the localization contract for all new screens and system messages.
 
 ### Observability
 
-- Добавить клиентские метрики UX-потоков (critical actions, failures, latency).
-- Пробрасывать correlation id в запросах для связки с backend traces.
-- Описать frontend incident checklist для деградации API и auth flows.
+- Add client-side UX flow metrics (critical actions, failures, latency).
+- Propagate correlation id in requests to link with backend traces.
+- Document frontend incident checklist for API degradation and auth flows.
 
 ### Security
 
-- Ввести централизованную проверку permission guards на route и action уровне.
-- Защитить клиентские формы от небезопасных payload-мутаций и XSS-вставок в rich fields.
-- Расширить контроль за токенами с явным policy хранения/обновления сессии.
+- Introduce centralized permission guard checks at route and action level.
+- Protect client forms from unsafe payload mutations and XSS injections in rich fields.
+- Expand token control with explicit session storage/refresh policy.
 
 ### Test coverage
 
-- Увеличить покрытие unit/component тестов для shared UI и критичных форм.
-- Добавить e2e smoke-сценарии для core admin workflows.
-- Ввести contract checks для i18n ключей и API-type drift.
-- Довести `cargo build -p rustok-admin` и `cargo-udeps --package rustok-admin` до зелёного baseline без `cargo-udeps.ignore` для устаревших UI/FSD хвостов.
+- Increase unit/component test coverage for shared UI and critical forms.
+- Add e2e smoke scenarios for core admin workflows.
+- Introduce contract checks for i18n keys and API-type drift.
+- Get `cargo build -p rustok-admin` and `cargo-udeps --package rustok-admin` to green baseline without `cargo-udeps.ignore` for legacy UI/FSD remnants.
 
-## Паритет стеков (Leptos/Next.js)
+## Stack parity (Leptos/Next.js)
 
-- Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
+- Any feature for admin/storefront is planned, decomposed, and tracked for both implementations (Leptos and Next.js) in the same delivery cycle.
 
-### Phase 1 update (2026-05-23): capability-first parity для page builder
+### Phase 1 update (2026-05-23): capability-first parity for page builder
 
-`rustok-pages-admin` в `apps/admin` теперь имеет минимальные page-builder surfaces поверх существующего backend-контракта `grapesjs_v1`:
+`rustok-pages-admin` in `apps/admin` now has minimal page-builder surfaces on top of the existing backend contract `grapesjs_v1`:
 
-- `preview` — contract-safe preview документа из `body.contentJson`;
-- `tree` — дерево projectData + snapshot legacy blocks;
+- `preview` — contract-safe document preview from `body.contentJson`;
+- `tree` — projectData tree + snapshot legacy blocks;
 - `properties` — host-owned metadata (`locale`, `channels`, `template`, `body format`);
-- `publish` — публикация через тот же backend flow, что и таблица страниц.
+- `publish` — publishing via the same backend flow as the pages table.
 
-### Must-have parity (обязательно между `apps/next-admin` и `apps/admin`)
+### Must-have parity (required between `apps/next-admin` and `apps/admin`)
 
-- Канонический write-path: `body.format = grapesjs_v1`, payload в `body.contentJson`.
-- Совместимость с legacy pages: запись `body` не удаляет `blocks` автоматически.
-- Единая capability-модель `preview/tree/properties/publish`.
-- Единый паттерн ошибок write-path для rich/page-builder форм: `validation/sanitize/runtime`.
+- Canonical write-path: `body.format = grapesjs_v1`, payload in `body.contentJson`.
+- Legacy page compatibility: writing `body` does not automatically remove `blocks`.
+- Unified capability model `preview/tree/properties/publish`.
+- Unified write-path error pattern for rich/page-builder forms: `validation/sanitize/runtime`.
 
-### Host-specific UX (допускается)
+### Host-specific UX (allowed)
 
-- Разный layout и визуальные компоненты (React/Leptos/Flutter host-specific).
-- Разный уровень «визуальности» preview/tree при сохранении одинакового capability-контракта.
-- Разная навигационная упаковка экрана, если backend payload и RBAC semantics не меняются.
+- Different layout and visual components (React/Leptos/Flutter host-specific).
+- Different level of preview/tree "visualness" while maintaining the same capability contract.
+- Different screen navigation packaging if backend payload and RBAC semantics remain unchanged.
 
-### Checklist готовности фичи
+### Feature readiness checklist
 
-- [x] Реализовано в Leptos-варианте.
-- [x] Реализовано в Next.js-варианте.
-- [x] Контракты API/UI совпадают на capability-уровне.
-- [x] Навигация и RBAC-поведение эквивалентны для `pages` write/publish surfaces.
+- [x] Implemented in Leptos variant.
+- [x] Implemented in Next.js variant.
+- [x] API/UI contracts match at capability level.
+- [x] Navigation and RBAC behavior are equivalent for `pages` write/publish surfaces.
 
 ## FSD/UI follow-up backlog
 
-- Закрыть все cross-layer импорты, которые нарушают правило `pages -> widgets -> features -> entities -> shared`.
-- Удалить compatibility aliases и старые import paths после подтверждённой сборки и smoke-верификации.
-- Выровнять shared UI/state contracts с `apps/next-admin` для loading, empty, error и permission-gated сценариев.
-- Зафиксировать repeatable verification-runbook для FSD-слоёв и UI-контрактов вместе с RBAC/navigation checks.
+- Close all cross-layer imports that violate the rule `pages -> widgets -> features -> entities -> shared`.
+- Remove compatibility aliases and old import paths after confirmed build and smoke verification.
+- Align shared UI/state contracts with `apps/next-admin` for loading, empty, error, and permission-gated scenarios.
+- Establish a repeatable verification runbook for FSD layers and UI contracts together with RBAC/navigation checks.
 
-### Текущий статус rich-text (blog/forum/pages)
+### Current rich-text status (blog/forum/pages)
 
-- **Админка (Leptos, `apps/admin`)**: [~] Частично реализовано (module-owned `pages` получил capability surfaces `preview/tree/properties/publish`, выровнен UX ошибок `validation/sanitize/runtime` для rich/page builder write-path).
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (blog/forum используют реальный Tiptap, pages переведены на GrapesJS + `grapesjs_v1`, требуется поддерживать parity discipline с Leptos и storefront rendering slice).
-- **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-- **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
+- **Admin (Leptos, `apps/admin`)**: [~] Partially implemented (module-owned `pages` got capability surfaces `preview/tree/properties/publish`, error UX `validation/sanitize/runtime` aligned for rich/page builder write-path).
+- **Admin (Next.js, `apps/next-admin`)**: [~] Partially implemented (blog/forum use real Tiptap, pages migrated to GrapesJS + `grapesjs_v1`, needs parity discipline with Leptos and storefront rendering slice).
+- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).
+- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).

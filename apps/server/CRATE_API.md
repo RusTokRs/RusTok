@@ -1,21 +1,21 @@
 # apps/server / CRATE_API
 
-## Публичные модули
-- Точка входа API-сервера Loco (`src/main.rs`, `src/app.rs`, HTTP/GraphQL handlers).
-- Интеграция `ModuleRegistry` и доменных `rustok-*` модулей.
+## Public Modules
+- Loco API server entry point (`src/main.rs`, `src/app.rs`, HTTP/GraphQL handlers).
+- Integration of `ModuleRegistry` and domain `rustok-*` modules.
 
-## Основные структуры/контракты
-- `AppContext` из `rustok-core` как основной runtime context.
-- Публичный HTTP/GraphQL контракт сервера (эндпоинты, schema, auth middleware).
-- Инициализация event runtime и outbox relay.
+## Key Structures/Contracts
+- `AppContext` from `rustok-core` as the main runtime context.
+- Public HTTP/GraphQL server contract (endpoints, schema, auth middleware).
+- Event runtime and outbox relay initialization.
 
-## События
-- Публикует: интеграционные domain events из подключённых модулей.
-- Потребляет: broker/outbox поток для фоновой обработки и индексации.
+## Events
+- Publishes: integration domain events from connected modules.
+- Consumes: broker/outbox stream for background processing and indexing.
 
-## Зависимости от других крейтов
-- `rustok-core`, `rustok-events`, `rustok-outbox`, доменные `rustok-*` модули.
+## Dependencies on Other Crates
+- `rustok-core`, `rustok-events`, `rustok-outbox`, domain `rustok-*` modules.
 
-## Частые ошибки ИИ
-- Путает `AppContext` сервера с локальными контекстами модулей.
-- Регистрирует модуль без объявления зависимостей в `ModuleRegistry`.
+## Common AI Mistakes
+- Confusing the server `AppContext` with local module contexts.
+- Registering a module without declaring its dependencies in `ModuleRegistry`.

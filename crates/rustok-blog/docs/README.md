@@ -1,64 +1,64 @@
-# Документация `rustok-blog`
+# `rustok-blog` Documentation
 
-`rustok-blog` — доменный модуль публикаций и комментарных сценариев для blog
-surface. Модуль уже работает на blog-owned persistence и использует shared
-платформенные контракты только там, где это оправдано по границе ответственности.
+`rustok-blog` is the domain module for publication and comment scenarios on the blog
+surface. The module already works on blog-owned persistence and uses shared
+platform contracts only where justified by the responsibility boundary.
 
-**Статус contract stability:** полностью достигнут. Channel-aware semantics и
-taxonomy sync подтверждены интеграционными и unit тестами.
+**Contract stability status:** fully achieved. Channel-aware semantics and
+taxonomy sync are confirmed by integration and unit tests.
 
-## Назначение
+## Purpose
 
-- публиковать канонический blog runtime contract для posts, categories и tag relations;
-- держать blog-owned transport surfaces, domain services и UI packages внутри модуля;
-- развивать blog как channel-aware и taxonomy-aware домен без возврата к shared storage.
+- publish the canonical blog runtime contract for posts, categories and tag relations;
+- keep blog-owned transport surfaces, domain services and UI packages inside the module;
+- evolve the blog as a channel-aware and taxonomy-aware domain without returning to shared storage.
 
-## Зона ответственности
+## Area of Responsibility
 
-- `PostService`, `CommentService`, `CategoryService`, `TagService` и blog state machine;
-- blog-owned storage для posts, translations, categories и typed relations;
+- `PostService`, `CommentService`, `CategoryService`, `TagService` and blog state machine;
+- blog-owned storage for posts, translations, categories and typed relations;
 - transport surfaces: GraphQL, REST, Leptos admin/storefront packages;
 - REST post/comment handlers consume narrow `BlogHttpRuntime` state with explicit DB/event bus handles; the current Loco `AppContext` remains only in the route-state adapter until the full Axum route cutover;
-- moderation REST surface: `POST /api/blog/comments/{id}/moderate` для approve/spam/trash transitions c RBAC `blog_posts:manage`;
-- channel visibility для публикаций и интеграция с `rustok-channel`;
-- reuse shared taxonomy dictionary через `blog_post_tags`, не отдавая attachment ownership наружу;
-- observability через `rustok-telemetry`: `metrics::record_read_path_*` на GraphQL/REST read paths,
-  `#[instrument]` на сервисных методах, span-трекинг для post lifecycle и visibility filtering.
+- moderation REST surface: `POST /api/blog/comments/{id}/moderate` for approve/spam/trash transitions with RBAC `blog_posts:manage`;
+- channel visibility for publications and integration with `rustok-channel`;
+- reuse shared taxonomy dictionary via `blog_post_tags`, without giving attachment ownership outward;
+- observability via `rustok-telemetry`: `metrics::record_read_path_*` on GraphQL/REST read paths,
+  `#[instrument]` on service methods, span tracking for post lifecycle and visibility filtering.
 
-## Интеграция
+## Integration
 
-- использует `rustok-taxonomy` как shared vocabulary для tag identity;
-- использует `rustok-comments` как comment runtime contract;
-- использует `rustok-profiles` для author presentation contract;
-- использует `rustok-channel` для module-level и publication-level visibility на public read-path;
-- использует `rustok-telemetry` для observability на read/write paths;
-- `rustok-blog/admin` уже встраивает owner-side post SEO panel через `rustok-seo-admin-support`
-  и shared capability contract модуля `rustok-seo`.
+- uses `rustok-taxonomy` as a shared vocabulary for tag identity;
+- uses `rustok-comments` as a comment runtime contract;
+- uses `rustok-profiles` for author presentation contract;
+- uses `rustok-channel` for module-level and publication-level visibility on public read-path;
+- uses `rustok-telemetry` for observability on read/write paths;
+- `rustok-blog/admin` already embeds owner-side post SEO panel via `rustok-seo-admin-support`
+  and the shared capability contract of the `rustok-seo` module.
 
-## Контрактные тесты
+## Contract Tests
 
-Тесты в `tests/contract_surface.rs` и `tests/integration.rs` покрывают:
+Tests in `tests/contract_surface.rs` and `tests/integration.rs` cover:
 
 - **Post lifecycle**: create → draft → publish → archive → restore
 - **Locale fallback**: normalize → requested → en → first available
 - **Channel visibility**: typed `blog_post_channel_visibility` allowlists, empty = global
 - **Taxonomy sync**: blog tags ↔ `rustok-taxonomy` vocabulary
-- **RBAC enforcement**: customer не может создавать/читать draft posts
+- **RBAC enforcement**: customer cannot create/read draft posts
 - **GraphQL read paths**: public vs authenticated channel gating
 - **Events**: blog.post.created/updated/published/archived/deleted/unpublished
 - **Comments**: thread, locale fallback, status transitions, RBAC
 - **State machine**: BlogPost status transitions, CommentStatus transitions
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate blog`
 - `cargo xtask module test blog`
-- targeted tests для post lifecycle, tag/category sync, channel visibility и public/admin read-path contracts
+- targeted tests for post lifecycle, tag/category sync, channel visibility and public/admin read-path contracts
 
-## Связанные документы
+## Related Documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation Plan](./implementation-plan.md)
 - [CRATE_API](../CRATE_API.md)
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)
@@ -66,4 +66,4 @@ taxonomy sync подтверждены интеграционными и unit т
 
 ## FFA UI split
 
-Leptos render adapters для admin и storefront живут в `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs`; crate roots только подключают module layers и re-export `BlogAdmin` / `BlogView`. Admin operations проходят через `admin/src/transport.rs`, а storefront сохраняет native/GraphQL adapters за facade в `storefront/src/transport/`.
+Leptos render adapters for admin and storefront live in `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs`; crate roots only connect module layers and re-export `BlogAdmin` / `BlogView`. Admin operations go through `admin/src/transport.rs`, while the storefront keeps native/GraphQL adapters behind a facade in `storefront/src/transport/`.

@@ -1,16 +1,16 @@
-# План реализации `rustok-product`
+# Implementation plan for `rustok-product`
 
-Статус: product boundary выделен; модуль владеет каталогом и typed product data,
-а transport и часть orchestration остаются у umbrella `rustok-commerce`.
+Status: product boundary is defined; the module owns the catalog and typed product data,
+while transport and part of orchestration remain with umbrella `rustok-commerce`.
 
 ## Execution checkpoint
 
 - Current phase: product_fba_fixture_locked_no_compile
 - Last checkpoint: product FBA remains `boundary_ready` on no-compile runtime fallback evidence. `product-runtime-fallback-smoke.json` and `verify-product-runtime-fallback-smoke.mjs` now lock read policy ordering, tenant scope, locale fallback, bounded storefront pagination, fallback profiles, typed `PortError` mapping, the prepared `ports::tests` harness, README/docs FBA boundary markers, product verification command docs, `package.json` aggregate wiring, `modules.toml`/`rustok-module.toml` metadata sync and central commerce-domain batch summary without Rust compilation; `verify-product-runtime-fallback-smoke.test.mjs` covers README/docs/source-marker drift, package aggregate drift, module metadata drift, premature `transport_verified` status drift and stale central batch-summary drift before live evidence. Next storefront host composition remains connected through `apps/next-frontend/src/features/search` and product-owned `fetchCatalogSearchOptions`.
 - Dependency evidence: product storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`.
-- Next step: Собрать live provider execution evidence перед повышением product FBA до `transport_verified`.
+- Next step: Gather live provider execution evidence before promoting product FBA to `transport_verified`.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: After each increment, update this block.
 - Last updated at (UTC): 2026-07-05T09:44:03Z
 
 
@@ -20,9 +20,9 @@
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`: read policy выполняется до owner `CatalogService`, затем применяется typed `PortError` mapping; fallback profiles/degraded modes сверяются с registry;
+  - batch no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` and fixture-regression suite check `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`: read policy executes before owner `CatalogService`, then typed `PortError` mapping is applied; fallback profiles/degraded modes are checked against registry;
   - no-compile runtime fallback smoke `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json` + `scripts/verify/verify-product-runtime-fallback-smoke.mjs` source-locks product catalog read fallback behavior, bounded pagination validation, locale fallback, tenant scope, typed `PortError` mapping, `package.json` product/aggregate script wiring, `modules.toml` / `rustok-module.toml` metadata sync, central commerce-domain batch summary and the prepared `crates/rustok-product/src/ports.rs` unit-test harness without Rust compilation. Fixture regression test `scripts/verify/verify-product-runtime-fallback-smoke.test.mjs` is wired into `test:verify:ecommerce:fba` and covers package aggregate drift, module metadata drift, premature `transport_verified` registry/local-plan drift and stale central batch-summary drift. FBA status raised to `boundary_ready`; `transport_verified` still requires live provider execution evidence;
-  - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
+  - module plan synchronized with central FFA/FBA readiness board; UI surface already published and managed in migration/backlog rhythm;
   - FBA slice: `crates/rustok-product/src/ports.rs` declares `ProductCatalogReadPort`/`product.catalog_read.v1` for catalog read projections consumed by commerce checkout/storefront compatibility paths, pricing enrichment and `ai-product` generation context; `crates/rustok-product/contracts/product-fba-registry.json`, `contracts/evidence/product-contract-test-static-matrix.json`, `contracts/evidence/product-runtime-contract-smoke.json` and `contracts/evidence/product-runtime-fallback-smoke.json` lock provider metadata, fallback profiles and no-compile runtime fallback behavior under `npm run verify:ecommerce:fba`; status remains below `transport_verified` until live runtime execution/fallback evidence lands;
   - umbrella facade `rustok_commerce::{services::catalog, CatalogService}` is removed; commerce/server/AI consumers import `CatalogService` from `rustok-product` directly, so product owner service is no longer masked by the ecommerce umbrella;
   - product DTOs are exposed through the owner surface `rustok_product::dto`; `rustok-commerce` no longer publicly re-exports product DTO aliases, and commerce/server/AI/test callers import product DTO contracts from the product owner crate;
@@ -45,7 +45,7 @@
   - FFA/FBA slice: `apps/admin` now composes product-owned catalog metadata into `SearchAdmin` through `SearchAdminComposition`; the product helper resolves the current tenant through its native `#[server]` endpoint first and keeps GraphQL in parallel, while the host supplies locale/auth/tenant context and checks product enablement;
   - FFA/FBA slice: `rustok-product-storefront` exposes a public-safe catalog search option contract through native `#[server]` first and `storefrontCatalogSearchOptions(locale: String!)` GraphQL fallback; `apps/storefront::SearchStorefrontComposition` supplies host locale, checks product enablement and maps only public owner DTOs into search props;
   - FFA/FBA slice: `apps/next-frontend/packages/rustok-product` exposes public-safe `fetchCatalogSearchOptions` over `storefrontCatalogSearchOptions(locale: String!)`; `apps/next-frontend/src/features/search` composes those owner DTOs into `SearchStorefrontPage` with route locale, tenant slug and product enablement from the host registry context, while the search package still imports no product internals;
-  - i18n evidence: `verify-ui-i18n-parity.mjs` больше не исключает `rustok-product`; admin/storefront EN/RU bundles входят в общий `npm run verify:i18n:ui` gate;
+  - i18n evidence: `verify-ui-i18n-parity.mjs` no longer excludes `rustok-product`; admin/storefront EN/RU bundles are part of the common `npm run verify:i18n:ui` gate;
   - FFA slice: product admin Leptos rendering moved under `admin/src/ui/leptos.rs`, and `admin/src/lib.rs` now acts as the module/re-export boundary for `ProductAdmin`;
   - FFA slice: selected product admin summary labels, pricing preview state and pricing deep-link are composed by `SelectedProductSummaryViewModel` in `admin/src/core.rs`, keeping Leptos summary rendering as markup-only;
   - FFA slice: product admin list-card display state (status label/badge, type fallback, meta label, shipping profile chip and published/created timestamp) is composed by `ProductAdminListItemViewModel` in `admin/src/core.rs`, keeping Leptos list rendering as markup/action binding only;
@@ -83,112 +83,88 @@
   - FFA slice: product storefront catalog rail empty-state policy is composed by `ProductCatalogRailViewModel.show_empty_state` in `storefront/src/core.rs`; Leptos `CatalogRail` renders the prepared branch without owning the `items.is_empty()` policy;
   - FFA guardrail: `scripts/verify/verify-product-admin-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-admin-boundary.test.mjs`; it checks product admin core/transport/ui split without long Cargo compilation;
   - FFA guardrail: `scripts/verify/verify-product-storefront-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-storefront-boundary.test.mjs`; it checks product storefront core/transport/ui split plus catalog rail label and selected metadata ownership without long Cargo compilation;
-  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+  - further status promotion is done only together with verification evidence and local+central docs update.
 - Last verified at (UTC): 2026-07-05T09:44:03Z
 - Owner: `rustok-product` module team
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-product` как owner product/variant/catalog domain;
-- закрепить product-owned admin UI как первый UI slice распила ecommerce family;
-- синхронизировать product tags, shipping profile bindings и local docs;
-- не смешивать catalog runtime с pricing/inventory/order orchestration.
+- maintain `rustok-product` as owner of product/variant/catalog domain;
+- lock product-owned admin UI as the first UI slice of the ecommerce family split;
+- synchronize product tags, shipping profile bindings and local docs;
+- do not mix catalog runtime with pricing/inventory/order orchestration.
 
-## Текущее состояние
+## Current state
 
-- product catalog, variants, options, translations и publication contract уже живут в модуле;
-- taxonomy-backed `product_tags` уже служат first-class product tag surface;
-- typed `shipping_profile_slug` уже закреплён в product/variant persistence и DTO;
-- module-owned admin UI пакет `rustok-product/admin` уже поднят и подключён в
-  manifest-driven admin composition как первый шаг UI split; admin list/status/filter,
-  shipping-profile, pricing-preview и pricing deep-link helpers вынесены в
-  framework-agnostic `admin/src/core.rs`, GraphQL операции проходят через
-  `admin/src/transport.rs` и `admin/src/transport/graphql_adapter.rs`, selected-product summary собирается через
-  `SelectedProductSummaryViewModel`, list-card display state собирается через
-  `ProductAdminListItemViewModel`, editor shell state собирается через
-  `ProductAdminEditorViewModel`, а submit command/validation state собирается через
-  `ProductAdminSaveCommand` / `ProductAdminDraftForm`, а editor reset/apply mapping — через
-  `ProductAdminEditorFormState`, а publish/draft/archive command mapping — через
-  `ProductAdminStatusMutationCommand` / `ProductAdminStatusTarget`, status mutation result policy — через `ProductAdminStatusMutationOutcome` / `ProductAdminStatusMutationResultViewModel`, а delete command mapping — через
-  `ProductAdminDeleteCommand`, а delete-result policy — через
-  `ProductAdminDeleteResultViewModel` / `ProductAdminDeleteOutcome`, а list action labels/availability — через
-  `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state — через `ProductAdminListStateViewModel` helpers, а list controls/search/status options — через `ProductAdminListControlsViewModel`, shell/profile-panel copy — через `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, selected-summary panel copy — через `ProductAdminSummaryPanelCopy`, shipping-profile select options — через `ProductAdminShippingProfileOption`, editor field/action copy — через `ProductAdminEditorCopy`, transport/error base copy and failure formatting — через `ProductAdminErrorCopy`, product SEO panel copy — через `ProductAdminSeoPanelCopy`, inventory quantity input normalization — через `parse_product_admin_inventory_quantity_input`, open-product result policy — через `ProductAdminOpenProductViewModel`, pricing preview state mapping — через `product_admin_pricing_preview_state_from_result`, pricing-preview request construction — через `ProductAdminPricingPreviewRequest`, list-state container class policy — через `ProductAdminListStateViewModel.container_class`, row status badge container class policy — через `ProductAdminListItemViewModel.status_badge_class`, row shipping-profile chip display policy — через `ProductAdminListItemViewModel.show_shipping_profile`, product selection route/query writes — через `ProductAdminRouteQueryIntent` helpers, а selected-product query normalization — через `ProductAdminSelectedProductQueryState` helpers в `admin/src/core.rs`; Leptos слой
-  изолирован в `admin/src/ui/leptos.rs` как render/effect adapter;
-- module-owned storefront UI пакет `rustok-product/storefront` уже поднят и
-  подключён в manifest-driven storefront composition для published catalog
-  discovery через native Leptos server functions с GraphQL fallback;
-- storefront UI продолжает FFA-декомпозицию: route/query normalization, typed fetch
-  request shape, shell copy, selected-product view-model composition, selected-card
-  labels/empty state, catalog rail view-model, pricing/seller labels, pricing
-  deep-link state и pricing-context sanitization/defaulting вынесены в
-  framework-agnostic `storefront/src/core.rs`, catalog rail label construction moved into `build_product_catalog_rail_labels`, selected-product metadata row construction moved into `SelectedProductViewModel.metadata_items`, catalog route segment fallback moved into `resolve_product_storefront_route_segment`, catalog rail empty-state branching moved into `ProductCatalogRailViewModel.show_empty_state`, native/GraphQL storefront fetch
-  paths оформлены как `storefront/src/transport/` adapters with serializable
-  fallback error evidence, `ProductTransportErrorDomEvidence` composes host-visible
-  failure attributes в core, а Leptos слой изолирован в `storefront/src/ui/leptos.rs`
-  как thin render/host-context adapter;
-- transport-level validation и public transport по-прежнему публикуются фасадом `rustok-commerce`.
+- product catalog, variants, options, translations and publication contract already live in the module;
+- taxonomy-backed `product_tags` already serve as a first-class product tag surface;
+- typed `shipping_profile_slug` is already locked in product/variant persistence and DTO;
+- module-owned admin UI package `rustok-product/admin` is already up and connected in manifest-driven admin composition as the first UI split step; admin list/status/filter, shipping-profile, pricing-preview and pricing deep-link helpers are extracted to framework-agnostic `admin/src/core.rs`, GraphQL operations pass through `admin/src/transport.rs` and `admin/src/transport/graphql_adapter.rs`, selected-product summary is assembled through `SelectedProductSummaryViewModel`, list-card display state through `ProductAdminListItemViewModel`, editor shell state through `ProductAdminEditorViewModel`, submit command/validation state through `ProductAdminSaveCommand` / `ProductAdminDraftForm`, editor reset/apply mapping through `ProductAdminEditorFormState`, publish/draft/archive command mapping through `ProductAdminStatusMutationCommand` / `ProductAdminStatusTarget`, status mutation result policy through `ProductAdminStatusMutationOutcome` / `ProductAdminStatusMutationResultViewModel`, delete command mapping through `ProductAdminDeleteCommand`, delete-result policy through `ProductAdminDeleteResultViewModel` / `ProductAdminDeleteOutcome`, list action labels/availability through `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state through `ProductAdminListStateViewModel` helpers, list controls/search/status options through `ProductAdminListControlsViewModel`, shell/profile-panel copy through `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, selected-summary panel copy through `ProductAdminSummaryPanelCopy`, shipping-profile select options through `ProductAdminShippingProfileOption`, editor field/action copy through `ProductAdminEditorCopy`, transport/error base copy and failure formatting through `ProductAdminErrorCopy`, product SEO panel copy through `ProductAdminSeoPanelCopy`, inventory quantity input normalization through `parse_product_admin_inventory_quantity_input`, open-product result policy through `ProductAdminOpenProductViewModel`, pricing preview state mapping through `product_admin_pricing_preview_state_from_result`, pricing-preview request construction through `ProductAdminPricingPreviewRequest`, list-state container class policy through `ProductAdminListStateViewModel.container_class`, row status badge container class policy through `ProductAdminListItemViewModel.status_badge_class`, row shipping-profile chip display policy through `ProductAdminListItemViewModel.show_shipping_profile`, product selection route/query writes through `ProductAdminRouteQueryIntent` helpers, and selected-product query normalization through `ProductAdminSelectedProductQueryState` helpers in `admin/src/core.rs`; the Leptos layer is isolated in `admin/src/ui/leptos.rs` as a render/effect adapter;
+- module-owned storefront UI package `rustok-product/storefront` is already up and connected in manifest-driven storefront composition for published catalog discovery through native Leptos server functions with GraphQL fallback;
+- storefront UI continues FFA decomposition: route/query normalization, typed fetch request shape, shell copy, selected-product view-model composition, selected-card labels/empty state, catalog rail view-model, pricing/seller labels, pricing deep-link state and pricing-context sanitization/defaulting are extracted to framework-agnostic `storefront/src/core.rs`, catalog rail label construction moved into `build_product_catalog_rail_labels`, selected-product metadata row construction moved into `SelectedProductViewModel.metadata_items`, catalog route segment fallback moved into `resolve_product_storefront_route_segment`, catalog rail empty-state branching moved into `ProductCatalogRailViewModel.show_empty_state`, native/GraphQL storefront fetch paths are structured as `storefront/src/transport/` adapters with serializable fallback error evidence, `ProductTransportErrorDomEvidence` composes host-visible failure attributes in core, and the Leptos layer is isolated in `storefront/src/ui/leptos.rs` as a thin render/host-context adapter;
+- transport-level validation and public transport are still published through the `rustok-commerce` facade.
 
-## Этапы
+## Stages
 
-### Нативные атрибуты каталога и category-bound формы
+### Native catalog attributes and category-bound forms
 
-- [x] Добавить write-side storage для `product_attributes`, translations, options, channel settings, `catalog_categories`, closure table, reusable `product_attribute_schemas`, category schema assignments, category-local bindings/groups, `product_categories`, virtual category materialization и typed product/variant attribute values.
-- [x] Зафиксировать `products.primary_category_id` как structural category, определяющую effective product form.
-- [x] Добавить framework-independent schema resolver для режимов `inherit`, `use_schema`, `clone_from_category` и `custom`; `clone_from_category` является snapshot, `inherit` является live inheritance.
-- [x] Добавить owner-owned `ProductCatalogSchemaService` для create attribute/category/schema, schema mode assignment, schema/category bindings и загрузки effective form из storage.
-- [x] Добавить product/catalog-specific domain events для attribute/schema/category/value изменений и подключить их к product indexer reindex flow.
-- [x] Добавить read-side projection storage для highload category assignments и normalized attribute facet/search/sort values.
-- [x] Добавить category-bound admin transport DTOs и GraphQL operation contracts для CRUD attributes/categories/schemas, schema/category bindings и effective product form preview; localized operations consume host-provided effective locale without module-local fallback.
-- [x] Подключить server-side GraphQL resolvers к `ProductCatalogSchemaService` для CRUD attributes/categories/schemas, schema/category bindings и effective product form preview.
-- [x] Подключить native Leptos `#[server]` functions к `ProductCatalogSchemaService` как default internal data layer в product admin, оставив GraphQL как parallel contract.
-- [x] Подключить `primary_category_id` к owner DTO/entity/service, GraphQL create/update/read и product admin category-first selector; загружать effective form и detached markers по выбранной structural category.
-- [x] Добавить typed read/patch contract для product attribute values с explicit clear, empty multiselect clear, effective-schema/option validation, localized translation storage, detached read markers, transactional outbox event и native/GraphQL parity.
-- [x] Перевести product admin form с metadata/custom-field ввода на grouped typed effective schema values с dirty patch semantics, локализованными option dictionaries и locale-aware group labels.
-- [x] Добавить owner-owned publish validation для required effective attributes без module-local locale fallback.
-- [x] Добавить detached-value review/clear API и product admin controls с native/GraphQL parity.
-- [x] Материализовать effective category assignments и normalized attribute facet/search/sort rows в runtime indexer.
-- [x] Материализовать bounded V1 virtual category rules в `virtual_category_product_assignments`.
-- [x] Применить schema/category visibility overrides и channel settings в runtime facet/search/sort projections.
-- [x] Подключить `rustok-search` к channel-scoped normalized facets/sorts и materialized virtual category assignments.
-- [x] Закрепить projection-search contract быстрым source/schema guardrail.
-- [ ] Подключить storefront/admin UI controls к optional catalog filters/sorts.
+- [x] Add write-side storage for `product_attributes`, translations, options, channel settings, `catalog_categories`, closure table, reusable `product_attribute_schemas`, category schema assignments, category-local bindings/groups, `product_categories`, virtual category materialization and typed product/variant attribute values.
+- [x] Lock `products.primary_category_id` as the structural category defining the effective product form.
+- [x] Add framework-independent schema resolver for modes `inherit`, `use_schema`, `clone_from_category` and `custom`; `clone_from_category` is a snapshot, `inherit` is live inheritance.
+- [x] Add owner-owned `ProductCatalogSchemaService` for create attribute/category/schema, schema mode assignment, schema/category bindings and effective form loading from storage.
+- [x] Add product/catalog-specific domain events for attribute/schema/category/value changes and connect them to product indexer reindex flow.
+- [x] Add read-side projection storage for highload category assignments and normalized attribute facet/search/sort values.
+- [x] Add category-bound admin transport DTOs and GraphQL operation contracts for CRUD attributes/categories/schemas, schema/category bindings and effective product form preview; localized operations consume host-provided effective locale without module-local fallback.
+- [x] Connect server-side GraphQL resolvers to `ProductCatalogSchemaService` for CRUD attributes/categories/schemas, schema/category bindings and effective product form preview.
+- [x] Connect native Leptos `#[server]` functions to `ProductCatalogSchemaService` as the default internal data layer in product admin, keeping GraphQL as a parallel contract.
+- [x] Connect `primary_category_id` to owner DTO/entity/service, GraphQL create/update/read and product admin category-first selector; load effective form and detached markers by selected structural category.
+- [x] Add typed read/patch contract for product attribute values with explicit clear, empty multiselect clear, effective-schema/option validation, localized translation storage, detached read markers, transactional outbox event and native/GraphQL parity.
+- [x] Transition product admin form from metadata/custom-field input to grouped typed effective schema values with dirty patch semantics, localized option dictionaries and locale-aware group labels.
+- [x] Add owner-owned publish validation for required effective attributes without module-local locale fallback.
+- [x] Add detached-value review/clear API and product admin controls with native/GraphQL parity.
+- [x] Materialize effective category assignments and normalized attribute facet/search/sort rows in runtime indexer.
+- [x] Materialize bounded V1 virtual category rules in `virtual_category_product_assignments`.
+- [x] Apply schema/category visibility overrides and channel settings in runtime facet/search/sort projections.
+- [x] Connect `rustok-search` to channel-scoped normalized facets/sorts and materialized virtual category assignments.
+- [x] Lock projection-search contract with fast source/schema guardrail.
+- [ ] Connect storefront/admin UI controls to optional catalog filters/sorts.
 
 ### 1. Contract stability
 
-- [x] зафиксировать product-owned catalog boundary;
-- [x] перевести tags на taxonomy-backed first-class contract;
-- [x] зафиксировать typed `shipping_profile_slug` для product/variant;
-- [ ] удерживать sync между product runtime contract, commerce transport и module metadata.
+- [x] lock product-owned catalog boundary;
+- [x] transition tags to taxonomy-backed first-class contract;
+- [x] lock typed `shipping_profile_slug` for product/variant;
+- [ ] maintain sync between product runtime contract, commerce transport and module metadata.
 
 ### 2. Catalog hardening
 
-- [ ] покрывать publication, tags и shipping-profile edge-cases targeted tests;
-- [ ] развивать product-specific semantics без возврата к metadata-only contract;
-- [ ] удерживать deliverability-facing bindings совместимыми с fulfillment/pricing flows.
-- [ ] Закрыть DB-level tenant consistency audit для native catalog tables: составные tenant-aware FK/unique guardrails должны исключать cross-tenant связи между attributes/options/categories/schemas/groups/values на уровне БД, а не только сервисной валидацией.
-- [ ] Нормализовать оставшиеся legacy product locale columns до `VARCHAR(32)` по platform i18n contract: `product_translations`, `product_image_translations`, `product_option_translations`, `product_option_value_translations`, `product_variant_translations`.
-- [ ] Зафиксировать detached-value marker contract: текущее поведение вычисляет detached read-time от effective schema и не требует проставлять `detached_at` при смене `primary_category_id`; если нужен persisted marker, добавить отдельную миграцию/обработчик `ProductPrimaryCategoryChanged`.
-- [ ] Добавить быстрый no-compile schema guardrail для product catalog attribute migration и index projection invariants: ключевые таблицы, `VARCHAR(32)` locale в новых tables, closure/materialized virtual tables, typed value/options tables, partial indexes для facet/search/sort.
+- [ ] cover publication, tags and shipping-profile edge-cases with targeted tests;
+- [ ] evolve product-specific semantics without reverting to metadata-only contract;
+- [ ] keep deliverability-facing bindings compatible with fulfillment/pricing flows.
+- [ ] Close DB-level tenant consistency audit for native catalog tables: composite tenant-aware FK/unique guardrails must prevent cross-tenant relationships between attributes/options/categories/schemas/groups/values at DB level, not just service-level validation.
+- [ ] Normalize remaining legacy product locale columns to `VARCHAR(32)` per platform i18n contract: `product_translations`, `product_image_translations`, `product_option_translations`, `product_option_value_translations`, `product_variant_translations`.
+- [ ] Lock detached-value marker contract: current behavior computes detached read-time from effective schema and does not require setting `detached_at` when changing `primary_category_id`; if a persisted marker is needed, add a separate migration/handler `ProductPrimaryCategoryChanged`.
+- [ ] Add fast no-compile schema guardrail for product catalog attribute migration and index projection invariants: key tables, `VARCHAR(32)` locale in new tables, closure/materialized virtual tables, typed value/options tables, partial indexes for facet/search/sort.
 
 ### 3. Operability
 
-- [x] поднять module-owned admin UI пакет для product catalog surface;
-- [x] документировать новые catalog guarantees одновременно с изменением runtime surface;
-- [ ] удерживать local docs и `README.md` синхронизированными;
-- [x] вынести storefront FFA core slice для route/query state, selected-product view-model и pricing/seller helpers;
-- [x] вынести storefront catalog rail presentation в core view-model без Leptos runtime;
-- [x] вынести selected-product card labels и empty state в core view-model без Leptos runtime;
-- [x] вынести storefront shell copy и typed fetch request shape в core без Leptos runtime;
-- [x] выделить storefront native/GraphQL transport adapters и явный Leptos UI adapter поверх core-owned request/policy state;
-- [x] вынести product admin list/status/filter, shipping-profile и pricing-preview helpers в framework-agnostic admin core;
-- [x] выделить product admin GraphQL operations behind a module-owned transport facade and `admin/src/transport/graphql_adapter.rs` without changing `rustok-commerce` GraphQL contract;
-- [x] изолировать product admin Leptos rendering under `admin/src/ui/leptos.rs` with crate-root re-export boundary;
-- [x] вынести selected product admin summary state into `SelectedProductSummaryViewModel` in framework-agnostic admin core;
-- [x] вынести product admin list-card display state into `ProductAdminListItemViewModel` in framework-agnostic admin core;
-- [x] вынести product admin editor shell state into `ProductAdminEditorViewModel` in framework-agnostic admin core;
-- [ ] обновлять consumer-module docs при изменении tag/deliverability integration rules.
+- [x] bring up module-owned admin UI package for product catalog surface;
+- [x] document new catalog guarantees concurrently with runtime surface changes;
+- [ ] keep local docs and `README.md` synchronized;
+- [x] extract storefront FFA core slice for route/query state, selected-product view-model and pricing/seller helpers;
+- [x] extract storefront catalog rail presentation into core view-model without Leptos runtime;
+- [x] extract selected-product card labels and empty state into core view-model without Leptos runtime;
+- [x] extract storefront shell copy and typed fetch request shape into core without Leptos runtime;
+- [x] isolate storefront native/GraphQL transport adapters and explicit Leptos UI adapter over core-owned request/policy state;
+- [x] extract product admin list/status/filter, shipping-profile and pricing-preview helpers into framework-agnostic admin core;
+- [x] isolate product admin GraphQL operations behind a module-owned transport facade and `admin/src/transport/graphql_adapter.rs` without changing `rustok-commerce` GraphQL contract;
+- [x] isolate product admin Leptos rendering under `admin/src/ui/leptos.rs` with crate-root re-export boundary;
+- [x] extract selected product admin summary state into `SelectedProductSummaryViewModel` in framework-agnostic admin core;
+- [x] extract product admin list-card display state into `ProductAdminListItemViewModel` in framework-agnostic admin core;
+- [x] extract product admin editor shell state into `ProductAdminEditorViewModel` in framework-agnostic admin core;
+- [ ] update consumer-module docs when tag/deliverability integration rules change.
 
-## Проверка
+## Verification
 
 - `npm.cmd run verify:product:runtime-fallback-smoke`
 - `npm.cmd run test:verify:product:runtime-fallback-smoke`
@@ -196,19 +172,19 @@
 - `npm.cmd run test:verify:ecommerce:fba`
 - `cargo xtask module validate product`
 - `cargo xtask module test product`
-- targeted tests для catalog CRUD, tags, publication и shipping-profile bindings
-- targeted `cargo test -p rustok-product ports::tests` перед live provider execution evidence и повышением FBA до `transport_verified`
+- targeted tests for catalog CRUD, tags, publication and shipping-profile bindings
+- targeted `cargo test -p rustok-product ports::tests` before live provider execution evidence and FBA promotion to `transport_verified`
 
-## Правила обновления
+## Update rules
 
-1. При изменении product runtime contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata или UI wiring синхронизировать `rustok-module.toml`.
-4. При изменении shipping-profile или taxonomy integration обновлять связанные commerce docs.
+1. When changing product runtime contract, first update this file.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata or UI wiring, synchronize `rustok-module.toml`.
+4. When changing shipping-profile or taxonomy integration, update related commerce docs.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and accuracy of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

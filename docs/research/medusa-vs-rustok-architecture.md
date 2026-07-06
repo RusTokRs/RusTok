@@ -6,56 +6,57 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Сравнение архитектуры RusTok и Medusa
 
-## Зачем нужен этот документ
+# Architecture Comparison: RusTok vs Medusa
 
-Этот документ фиксирует архитектурное сравнение RusTok и Medusa в контексте цели
-`Medusa JS clone` для ecommerce family. Он нужен для трёх практических вопросов:
+## Why This Document Exists
 
-1. насколько Medusa технически ближе к modular monolith, чем к классическим микросервисам;
-2. насколько текущая архитектура RusTok совместима с Medusa-style подходом;
-3. где реалистично добиваться parity, а где нельзя рассчитывать на прямой reuse.
+This document captures an architectural comparison between RusTok and Medusa in the context of the
+`Medusa JS clone` goal for the ecommerce family. It addresses three practical questions:
 
-Состояние Medusa в этом сравнении сверялось по официальной документации Medusa на
+1. how technically close Medusa is to a modular monolith compared to classic microservices;
+2. how compatible the current RusTok architecture is with the Medusa-style approach;
+3. where achieving parity is realistic and where direct reuse cannot be expected.
+
+Medusa's state in this comparison was verified against official Medusa documentation as of
 `2026-04-08`.
 
-## Короткий вывод
+## Short Conclusion
 
-Medusa технически ближе к модульному монолиту с pluggable infrastructure и
-workflow-orchestration, чем к классической microservices architecture.
+Medusa is technically closer to a modular monolith with pluggable infrastructure and
+workflow-orchestration than to classic microservices architecture.
 
-RusTok в своей текущей форме архитектурно ближе к Medusa, чем к service-per-domain
-ландшафту:
+RusTok in its current form is architecturally closer to Medusa than to a service-per-domain
+landscape:
 
-- обе системы строятся вокруг одного application runtime;
-- обе разделяют домены на изолированные модули;
-- обе предпочитают composition через контейнер/module registry, а не сетевые hops между
-  внутренними доменами;
-- обе держат third-party integrations на provider/module seams.
+- both systems are built around a single application runtime;
+- both separate domains into isolated modules;
+- both prefer composition through a container/module registry rather than network hops between
+  internal domains;
+- both keep third-party integrations on provider/module seams.
 
-При этом RusTok и Medusa не идентичны:
+However, RusTok and Medusa are not identical:
 
-- Medusa сильнее завязана на JS/TS container + workflow engine + plugin/module/provider
+- Medusa is more tightly coupled to JS/TS container + workflow engine + plugin/module/provider
   contracts;
-- RusTok сильнее завязан на Rust crate-boundaries, manifest-driven composition и thin-host
-  модель;
-- Medusa проектирует commerce как набор модулей внутри одного приложения;
-- RusTok проектирует платформу шире ecommerce и использует commerce как один из module
+- RusTok is more heavily based on Rust crate boundaries, manifest-driven composition and a thin-host
+  model;
+- Medusa designs commerce as a set of modules within a single application;
+- RusTok designs a platform broader than ecommerce and uses commerce as one of the module
   families.
 
-## Что в Medusa делает её ближе к modular monolith
+## What Makes Medusa Closer to a Modular Monolith
 
-По официальной архитектуре Medusa приложение выглядит как единый runtime, где:
+Per the official architecture, a Medusa application looks like a single runtime where:
 
-- HTTP/API routes запускают workflows;
-- workflows координируют commerce и infrastructure modules;
-- modules регистрируются в application container;
-- модулям передаётся подключение к одной configured PostgreSQL database;
-- integrations подключаются через module/provider seams, а не как обязательные
-  внутренние микросервисы.
+- HTTP/API routes trigger workflows;
+- workflows coordinate commerce and infrastructure modules;
+- modules register in the application container;
+- modules receive a connection to a single configured PostgreSQL database;
+- integrations are connected through module/provider seams, not as mandatory
+  internal microservices.
 
-Это видно в официальных документах:
+This is visible in official documents:
 
 - [Medusa Architecture](https://docs.medusajs.com/learn/introduction/architecture)
 - [Modules](https://docs.medusajs.com/learn/fundamentals/modules)
@@ -63,108 +64,108 @@ RusTok в своей текущей форме архитектурно ближ
 - [Core Workflows Reference](https://docs.medusajs.com/resources/medusa-workflows-reference)
 - [Plugins](https://docs.medusajs.com/learn/fundamentals/plugins)
 
-Из этого следуют важные архитектурные признаки:
+From this, important architectural characteristics follow:
 
 1. `single runtime`
-Medusa по умолчанию не требует отдельного процесса на каждый домен.
+Medusa does not require a separate process per domain by default.
 
 2. `shared container`
-Module services резолвятся из общего контейнера приложения.
+Module services are resolved from a shared application container.
 
 3. `shared database baseline`
-Модули живут в одной application-level database environment, а не в отдельных service
-datastores по умолчанию.
+Modules live in a single application-level database environment, not in separate service
+datastores by default.
 
 4. `internal orchestration instead of network choreography`
-Связи между доменами обычно проходят через workflows/steps внутри процесса, а не через
-HTTP/gRPC между внутренними сервисами.
+Relations between domains typically go through workflows/steps inside the process, not through
+HTTP/gRPC between internal services.
 
 5. `pluggable infrastructure instead of distributed core`
-Redis, file storage, analytics, locking и внешние commerce providers подключаются как
-сменные providers/modules, но core application от этого не превращается в набор
-независимых бизнес-сервисов.
+Redis, file storage, analytics, locking and external commerce providers are connected as
+swappable providers/modules, but the core application does not become a set of
+independent business services.
 
-Поэтому маркетинговая подача про “composable” и “service integrations” у Medusa
-технически не равна классической microservices architecture.
+Therefore, Medusa's marketing narrative of "composable" and "service integrations" is
+technically not equivalent to classic microservices architecture.
 
-## Где RusTok и Medusa реально похожи
+## Where RusTok and Medusa Are Actually Similar
 
-### 1. Оба проекта модульные, а не service-per-domain
+### 1. Both projects are modular, not service-per-domain
 
-В Medusa модули являются базовой единицей business capability. В RusTok базовая единица
-тоже модуль/crate family.
+In Medusa, modules are the basic unit of business capability. In RusTok, the basic unit
+is also a module/crate family.
 
-Практически это означает:
+Practically, this means:
 
-- доменные boundaries выражены кодом и contracts;
-- расширение идёт через module seams;
-- внутренние домены не обязаны быть отдельными deployment units.
+- domain boundaries are expressed by code and contracts;
+- extension goes through module seams;
+- internal domains are not required to be separate deployment units.
 
-### 2. Оба проекта держат orchestration отдельно от доменных сервисов
+### 2. Both projects keep orchestration separate from domain services
 
-У Medusa маршруты обычно вызывают workflows, а workflows используют module services.
+In Medusa, routes typically call workflows, and workflows use module services.
 
-У RusTok host и transport routes вызывают application/domain services в crates, при этом
-`apps/server` остаётся thin host.
+In RusTok, host and transport routes call application/domain services in crates, while
+`apps/server` remains a thin host.
 
-### 3. Оба проекта предпочитают extensibility через providers/adapters
+### 3. Both projects prefer extensibility through providers/adapters
 
-Medusa использует module providers для fulfillment, auth, file, locking, analytics и
-других capabilities.
+Medusa uses module providers for fulfillment, auth, file, locking, analytics and
+other capabilities.
 
-RusTok идёт в ту же сторону через provider SPI, module boundaries и integration seams.
+RusTok moves in the same direction through provider SPI, module boundaries and integration seams.
 
-### 4. Оба проекта допускают platform-level reuse домена
+### 4. Both projects allow platform-level domain reuse
 
-В Medusa core commerce logic доступна не только через API, но и напрямую из custom flows.
+In Medusa, core commerce logic is available not only through API but also directly from custom flows.
 
-В RusTok модульные сервисы тоже предполагаются как reusable building blocks для transport,
-UI и orchestration layers.
+In RusTok, module services are also intended as reusable building blocks for transport,
+UI and orchestration layers.
 
-### 5. Оба проекта допускают marketplace/composability narrative без обязательных микросервисов
+### 5. Both projects support marketplace/composability narrative without mandatory microservices
 
-И Medusa, и RusTok могут быть “компонуемыми” без перехода в distributed system внутри
-ядра.
+Both Medusa and RusTok can be "composable" without transitioning to a distributed system inside
+the core.
 
-## Где RusTok и Medusa принципиально различаются
+## Where RusTok and Medusa Fundamentally Differ
 
-### 1. Medusa module model жёстко завязана на JS/TS runtime
+### 1. Medusa module model is tightly coupled to JS/TS runtime
 
-Medusa ожидает:
+Medusa expects:
 
 - JS/TS modules;
 - container registration names;
 - workflow steps/workflow SDK;
-- plugin packaging через npm;
-- `medusa-config.ts` как точку composition.
+- plugin packaging via npm;
+- `medusa-config.ts` as composition point.
 
-RusTok использует:
+RusTok uses:
 
 - Rust crates;
 - manifest-driven module wiring;
-- host-side composition через platform registry;
-- собственные transport/runtime contracts.
+- host-side composition through platform registry;
+- its own transport/runtime contracts.
 
-Это главное техническое препятствие для прямого reuse.
+This is the main technical obstacle to direct reuse.
 
-### 2. Medusa workflow engine является центральной частью app semantics
+### 2. Medusa workflow engine is a central part of app semantics
 
-В Medusa workflow layer участвует в core flow semantics, rollback и extension hooks.
+In Medusa, the workflow layer participates in core flow semantics, rollback and extension hooks.
 
-В RusTok orchestration выражена application services, state machines, event flow и
-module-owned transport contracts, а не Medusa workflow SDK.
+In RusTok, orchestration is expressed through application services, state machines, event flow and
+module-owned transport contracts, not through a Medusa workflow SDK.
 
-### 3. Medusa modules рассчитаны на Medusa container contracts
+### 3. Medusa modules are designed for Medusa container contracts
 
-Medusa customizations строятся вокруг того, что module service можно резолвить из
-контейнера и использовать в workflows/routes/subscribers/jobs.
+Medusa customizations are built around the ability to resolve a module service from the
+container and use it in workflows/routes/subscribers/jobs.
 
-RusTok сервисы не проектировались как Medusa container resources и не реализуют их
+RusTok services were not designed as Medusa container resources and do not implement their
 interfaces.
 
-### 4. Medusa plugins шире module semantics
+### 4. Medusa plugins are broader than module semantics
 
-Плагин Medusa может одновременно содержать:
+A Medusa plugin can simultaneously contain:
 
 - modules;
 - workflows;
@@ -173,135 +174,135 @@ interfaces.
 - scheduled jobs;
 - admin extensions.
 
-У RusTok это разложено иначе: module crate, host composition, UI package, docs, manifest.
+In RusTok, this is organized differently: module crate, host composition, UI package, docs, manifest.
 
-### 5. Medusa думает commerce-first, RusTok думает platform-first
+### 5. Medusa thinks commerce-first, RusTok thinks platform-first
 
-Medusa архитектурно центрирована вокруг ecommerce.
+Medusa is architecturally centered around ecommerce.
 
-RusTok центрирован вокруг более широкой platform/module system, где ecommerce только один
-из крупных bounded families.
+RusTok is centered around a broader platform/module system, where ecommerce is only one
+of the large bounded families.
 
-### 6. Medusa по умолчанию сильнее унифицирует lifecycle вокруг собственного domain model
+### 6. Medusa by default more strongly unifies lifecycle around its own domain model
 
-Если использовать Medusa как основной runtime, её workflows и modules ожидают определённые
-input/output semantics, provider ids, actor model, lifecycle transitions и data ownership.
+If using Medusa as the primary runtime, its workflows and modules expect certain
+input/output semantics, provider ids, actor model, lifecycle transitions and data ownership.
 
-RusTok может сделать похожую логику, но это не означает автоматической binary/runtime
-совместимости.
+RusTok can implement similar logic, but this does not imply automatic binary/runtime
+compatibility.
 
-## 10 совпадений
+## 10 Similarities
 
-1. Оба проекта архитектурно ближе к modular monolith, чем к классическим микросервисам.
-2. Оба проекта используют модули как primary domain boundary.
-3. Оба проекта допускают third-party integrations через provider/module seams.
-4. Оба проекта держат orchestration поверх доменных сервисов.
-5. Оба проекта позволяют повторно использовать core domain logic вне чистого HTTP layer.
-6. Оба проекта требуют явных contract boundaries между transport и domain.
-7. Оба проекта допускают постепенное расширение commerce через bounded contexts.
-8. Оба проекта могут жить в single database/runtime baseline без потери composability.
-9. Оба проекта требуют parity discipline, чтобы transport не оторвался от доменной модели.
-10. Оба проекта выигрывают от thin host/composition root вместо business logic в routing layer.
+1. Both projects are architecturally closer to a modular monolith than to classic microservices.
+2. Both projects use modules as the primary domain boundary.
+3. Both projects support third-party integrations through provider/module seams.
+4. Both projects keep orchestration above domain services.
+5. Both projects allow reuse of core domain logic outside a pure HTTP layer.
+6. Both projects require explicit contract boundaries between transport and domain.
+7. Both projects allow gradual expansion of commerce through bounded contexts.
+8. Both projects can live in a single database/runtime baseline without losing composability.
+9. Both projects require parity discipline to prevent transport from detaching from the domain model.
+10. Both projects benefit from a thin host/composition root instead of business logic in routing layer.
 
-## 10 различий
+## 10 Differences
 
-1. Medusa реализована как JS/TS application platform, RusTok как Rust module platform.
-2. Medusa container и workflow SDK являются обязательной частью extension model.
-3. RusTok использует manifest-driven composition, Medusa использует plugin/module registration.
-4. Medusa глубже стандартизует provider interfaces вокруг собственного framework.
-5. RusTok сильнее отделяет platform host от module crates и publishable UI packages.
-6. Medusa из коробки больше стандартизует ecommerce actor/provider semantics.
-7. RusTok шире по platform scope и не ограничен commerce.
-8. Medusa extension ecosystem ориентирован на npm packages, RusTok на crate/module workspace.
-9. Medusa workflows являются каноническим orchestration seam, у RusTok это не центральный
+1. Medusa is implemented as a JS/TS application platform, RusTok as a Rust module platform.
+2. Medusa container and workflow SDK are a mandatory part of the extension model.
+3. RusTok uses manifest-driven composition, Medusa uses plugin/module registration.
+4. Medusa standardizes provider interfaces deeper around its own framework.
+5. RusTok more strongly separates the platform host from module crates and publishable UI packages.
+6. Medusa out of the box standardizes more ecommerce actor/provider semantics.
+7. RusTok has a broader platform scope and is not limited to commerce.
+8. Medusa extension ecosystem is oriented toward npm packages, RusTok toward crate/module workspace.
+9. Medusa workflows are the canonical orchestration seam; in RusTok this is not a central
    runtime primitive.
-10. Прямой in-process reuse между системами почти отсутствует из-за несовпадения runtime model.
+10. Direct in-process reuse between the systems is nearly absent due to runtime model mismatch.
 
-## Что это означает для цели `Medusa JS clone`
+## What This Means for the `Medusa JS Clone` Goal
 
-Цель “сделать Medusa JS clone” для RusTok технически реалистична, если понимать её как:
+The goal of "making a Medusa JS clone" for RusTok is technically realistic if understood as:
 
-- повторить bounded contexts;
-- повторить domain semantics;
-- повторить transport surface и operator flows;
-- повторить provider seams;
-- повторить lifecycle expectations;
-- но не пытаться повторить внутренний JS runtime Medusa один-в-один.
+- replicate bounded contexts;
+- replicate domain semantics;
+- replicate transport surface and operator flows;
+- replicate provider seams;
+- replicate lifecycle expectations;
+- but not attempt to replicate Medusa's internal JS runtime one-to-one.
 
-То есть parity должна быть:
+That is, parity should be:
 
 - `semantic parity`;
 - `API/flow parity`;
 - `operator capability parity`;
 - `domain lifecycle parity`.
 
-Необязательной является:
+Not required:
 
 - `runtime implementation parity`;
 - `plugin binary compatibility`;
 - `in-process module compatibility`.
 
-## Можно ли использовать наши модули внутри Medusa
+## Can We Use Our Modules Inside Medusa
 
-### Короткий ответ
+### Short Answer
 
-Прямо “как есть” — почти нет.
+Directly "as-is" — hardly.
 
-Через adapter/plugin/provider layer — да, местами вполне реалистично.
+Through an adapter/plugin/provider layer — yes, partially realistic.
 
-### Что мешает прямому reuse
+### What Prevents Direct Reuse
 
-- наши модули написаны не под Medusa container contracts;
-- они не реализуют Medusa module/provider interfaces;
-- они не встроены в Medusa workflow SDK;
-- они не упакованы как Medusa plugins/modules для `medusa-config.ts`;
-- их domain ownership и transport contracts проектировались под RusTok host.
+- our modules are not written for Medusa container contracts;
+- they do not implement Medusa module/provider interfaces;
+- they are not integrated into the Medusa workflow SDK;
+- they are not packaged as Medusa plugins/modules for `medusa-config.ts`;
+- their domain ownership and transport contracts were designed for RusTok host.
 
-### Где интеграция реалистична
+### Where Integration Is Realistic
 
-Наиболее реалистичные сценарии:
+Most realistic scenarios:
 
 1. `provider-style integration`
-Подключать RusTok capability как внешний backend за Medusa provider/module adapter.
+Connect RusTok capability as an external backend behind a Medusa provider/module adapter.
 
 2. `service-backed custom module`
-Писать Medusa custom module, который ходит в RusTok API и использует RusTok как system of
-record для части capability.
+Write a Medusa custom module that calls RusTok API and uses RusTok as a system of
+record for part of the capability.
 
 3. `headless sidecar integration`
-Использовать Medusa как storefront/admin/runtime ecosystem, а RusTok как отдельный
-headless commerce backend для части доменов.
+Use Medusa as a storefront/admin/runtime ecosystem, and RusTok as a separate
+headless commerce backend for some domains.
 
-### Где интеграция будет самой дорогой
+### Where Integration Will Be Most Expensive
 
-Самые дорогие зоны:
+Most expensive areas:
 
-- cart/order/checkout как core flow;
+- cart/order/checkout as core flows;
 - inventory reservation semantics;
 - pricing/promotions;
 - post-order changes/returns/refunds;
-- любые workflow-heavy lifecycle paths.
+- any workflow-heavy lifecycle paths.
 
-Причина проста: там Medusa опирается не только на похожие сущности, но и на собственную
-оркестрацию, compensation/rollback semantics и data ownership expectations.
+The reason is simple: in those areas, Medusa relies not only on similar entities but also on its own
+orchestration, compensation/rollback semantics and data ownership expectations.
 
-## Рекомендуемая позиция для RusTok
+## Recommended Position for RusTok
 
-Для RusTok полезно смотреть на Medusa как на:
+For RusTok, it is useful to look at Medusa as:
 
-- хороший reference architecture для ecommerce domains;
-- хороший reference transport surface для `/store/*` и `/admin/*`;
-- хороший reference operator/provider seam model;
-- но не как на runtime, с которым нужно добиться прямой модульной совместимости.
+- a good reference architecture for ecommerce domains;
+- a good reference transport surface for `/store/*` and `/admin/*`;
+- a good reference operator/provider seam model;
+- but not as a runtime with which to achieve direct module compatibility.
 
-Практическая рекомендация:
+Practical recommendations:
 
-1. строить Medusa-compatible semantics и API shape там, где это приносит ценность;
-2. не проектировать RusTok crates под in-process reuse внутри Medusa;
-3. если когда-нибудь понадобится интеграция с Medusa, делать её через adapter/plugin/provider
-   layer, а не через попытку “вставить” RusTok modules в Medusa runtime.
+1. build Medusa-compatible semantics and API shape where it brings value;
+2. do not design RusTok crates for in-process reuse inside Medusa;
+3. if integration with Medusa is ever needed, implement it through an adapter/plugin/provider
+   layer rather than attempting to "insert" RusTok modules into the Medusa runtime.
 
-## Источники
+## Sources
 
 - [Medusa Architecture](https://docs.medusajs.com/learn/introduction/architecture)
 - [Medusa Modules](https://docs.medusajs.com/learn/fundamentals/modules)

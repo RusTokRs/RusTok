@@ -1,9 +1,9 @@
 # rustok-mcp / CRATE_API
 
-## Публичные модули
+## Public Modules
 `access`, `alloy_tools`, `runtime`, `server`, `tools`.
 
-## Основные публичные типы и сигнатуры
+## Primary Public Types and Signatures
 - `pub async fn serve_stdio(config: McpServerConfig) -> Result<...>`
 - `pub struct McpServerConfig`
 - `pub struct RusToKMcpServer`
@@ -38,51 +38,51 @@
 - `pub struct StageMcpScaffoldDraftCommand`
 - `pub struct ApplyMcpScaffoldDraftCommand`
 - `pub struct McpScaffoldDraftRecord`
-- Публичные MCP tools из `tools::*` и `alloy_tools::*`.
+- Public MCP tools from `tools::*` and `alloy_tools::*`.
 
-## События
-- Публикует: N/A (RPC/MCP адаптер).
-- Потребляет: команды/запросы MCP клиента.
+## Events
+- Publishes: N/A (RPC/MCP adapter).
+- Consumes: MCP client commands/requests.
 
-## Зависимости от других rustok-крейтов
+## Dependencies on Other RusToK Crates
 - `rustok-core`
 
-## Частые ошибки ИИ
-- Путает MCP runtime и crate `rustok-mcp`.
-- Считает `enabled_tools` полноценной authz-моделью, хотя теперь это только compatibility shim.
-- Документирует MCP spec локально вместо ссылки на официальный upstream.
-- Считает `alloy_scaffold_module` генерацией готового production-модуля, хотя это только staged draft scaffold.
-- Пытается регистрировать scaffold-модуль в runtime без собственного permission surface в `rustok-core`.
+## Common AI Mistakes
+- Confuses MCP runtime and the `rustok-mcp` crate.
+- Considers `enabled_tools` a full authz model, though it is now only a compatibility shim.
+- Documents MCP spec locally instead of referencing the official upstream.
+- Considers `alloy_scaffold_module` as generating a ready production module, though it is only a staged draft scaffold.
+- Tries to register a scaffold module in the runtime without its own permission surface in `rustok-core`.
 
-## Минимальный набор контрактов
+## Minimum Contract Set
 
-### Входные DTO/команды
-- Входной контракт формируется публичными DTO/командами из crate и соответствующими `pub`-экспортами в `src/lib.rs`.
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления transport-адаптеров и MCP-клиентов, которые на них опираются.
-- Для access-layer breaking-change также считаются изменения в `McpIdentity`, `McpAccessContext`, `McpAccessPolicy`, `McpToolRequirement`, `McpWhoAmIResponse`, `McpSessionContext`, `McpRuntimeBinding`, `McpToolCallAuditEvent`.
-- Для Alloy module scaffolding breaking-change считаются изменения в `ScaffoldModuleRequest`, `ScaffoldModulePreview`, `StageModuleScaffoldResponse`, `ReviewModuleScaffoldRequest`, `ReviewModuleScaffoldResponse`, `ApplyModuleScaffoldRequest`, `ApplyModuleScaffoldResponse`, `StagedModuleScaffold` и семантике `TOOL_ALLOY_SCAFFOLD_MODULE` / `TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD` / `TOOL_ALLOY_APPLY_MODULE_SCAFFOLD`.
+### Input DTOs/Commands
+- Input contract is defined by the public DTOs/commands from the crate and corresponding `pub` exports in `src/lib.rs`.
+- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters and MCP clients that depend on them.
+- For the access layer, changes to `McpIdentity`, `McpAccessContext`, `McpAccessPolicy`, `McpToolRequirement`, `McpWhoAmIResponse`, `McpSessionContext`, `McpRuntimeBinding`, `McpToolCallAuditEvent` are also considered breaking.
+- For the Alloy module scaffolding layer, changes to `ScaffoldModuleRequest`, `ScaffoldModulePreview`, `StageModuleScaffoldResponse`, `ReviewModuleScaffoldRequest`, `ReviewModuleScaffoldResponse`, `ApplyModuleScaffoldRequest`, `ApplyModuleScaffoldResponse`, `StagedModuleScaffold` and semantics of `TOOL_ALLOY_SCAFFOLD_MODULE` / `TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD` / `TOOL_ALLOY_APPLY_MODULE_SCAFFOLD` are considered breaking.
 
-### Доменные инварианты
-- Инварианты multi-tenant boundary (tenant/resource isolation, auth context) считаются обязательной частью контракта.
-- Tool authorization в `rustok-mcp` сначала проверяет coarse-grained legacy allow-list, затем MCP access policy/permissions/scopes.
-- Persisted MCP auth bind выполняется на старте сессии через `McpAccessResolver`; `rustok-mcp` не тащит внутрь себя server-specific ORM/runtime код.
-- Persisted Alloy draft flow может быть подключён через `McpScaffoldDraftStore`; crate не должен жёстко зависеть от server-specific DB/ORM реализации.
-- `mcp_health` остаётся операционным introspection tool и не должен ломаться от отсутствия доменных permission mapping.
-- `alloy_scaffold_module` может только stage preview draft crate skeleton и не должен:
-  - перезаписывать существующий crate;
-  - автоматически регистрировать модуль в runtime;
-  - подменять review/apply границу для generated code.
-- `alloy_apply_module_scaffold` должен требовать явное подтверждение `confirm=true` и не должен обходить предшествующий review step.
-- Persisted scaffold draft control plane живёт в `apps/server` (`mcp_scaffold_drafts`, REST `/api/mcp/scaffold-drafts*`, GraphQL `mcpModuleScaffoldDraft*`) и не подменяет локальный crate API `rustok-mcp`.
-- GraphQL и Leptos native adapters обязаны делегировать через `McpManagementPort` в server-owned `McpManagementService`; UI package и owner GraphQL не содержат scaffold persistence, filesystem apply или audit SQL.
+### Domain Invariants
+- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
+- Tool authorization in `rustok-mcp` first checks the coarse-grained legacy allow-list, then MCP access policy/permissions/scopes.
+- Persisted MCP auth binding is performed at session start via `McpAccessResolver`; `rustok-mcp` does not pull server-specific ORM/runtime code into itself.
+- Persisted Alloy draft flow may be connected via `McpScaffoldDraftStore`; the crate must not hard-depend on server-specific DB/ORM implementation.
+- `mcp_health` remains an operational introspection tool and must not break from the absence of domain permission mapping.
+- `alloy_scaffold_module` may only stage a preview draft crate skeleton and must not:
+  - overwrite an existing crate;
+  - automatically register the module in the runtime;
+  - bypass the review/apply boundary for generated code.
+- `alloy_apply_module_scaffold` must require explicit `confirm=true` and must not bypass the preceding review step.
+- The persisted scaffold draft control plane lives in `apps/server` (`mcp_scaffold_drafts`, REST `/api/mcp/scaffold-drafts*`, GraphQL `mcpModuleScaffoldDraft*`) and does not replace the local crate API `rustok-mcp`.
+- GraphQL and Leptos native adapters must delegate via `McpManagementPort` to the server-owned `McpManagementService`; UI packages and owner GraphQL do not contain scaffold persistence, filesystem apply, or audit SQL.
 
-### События / outbox-побочные эффекты
-- Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
-- Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
+### Events / Outbox Side Effects
+- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Event payload and event-type format must remain backward-compatible for cross-module consumers.
 
-### Ошибки / коды отказов
-- Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.
-- Для validation/auth/conflict/not-found сценариев должен сохраняться устойчивый error-class, используемый тестами и адаптерами.
-- Для MCP access-layer стабильными считаются коды `tool_disabled`, `tool_not_allowed`, `tool_denied`, `missing_permissions`, `missing_scopes`.
-- Runtime tool audit contract через `McpToolCallAuditEvent` считает состояния `allowed`/`denied`, но не переопределяет upstream MCP authorization semantics.
-- Для scaffold review/apply слоя стабильными считаются отказы при невалидном slug/name/description, попытке прямой записи во время `alloy_scaffold_module`, отсутствии `confirm=true` на `alloy_apply_module_scaffold` и попытке писать в уже существующий target crate.
+### Errors / Failure Codes
+- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+- For the MCP access layer, the following codes are stable: `tool_disabled`, `tool_not_allowed`, `tool_denied`, `missing_permissions`, `missing_scopes`.
+- The runtime tool audit contract via `McpToolCallAuditEvent` recognizes `allowed`/`denied` states but does not override upstream MCP authorization semantics.
+- For the scaffold review/apply layer, the following failures are stable: invalid slug/name/description, attempt to directly write during `alloy_scaffold_module`, missing `confirm=true` on `alloy_apply_module_scaffold`, and attempt to write to an already existing target crate.

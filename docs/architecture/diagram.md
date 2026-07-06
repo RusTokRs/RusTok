@@ -6,13 +6,13 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Диаграммы платформы
+# Platform Diagrams
 
-Этот документ содержит только актуальные верхнеуровневые диаграммы RusToK.
-Детали ownership, manifests и local docs описаны в `docs/modules/*` и
+This document contains only the current top-level diagrams of RusToK.
+Details of ownership, manifests and local docs are described in `docs/modules/*` and
 `docs/architecture/*`.
 
-## Общая схема платформы
+## Overall Platform Diagram
 
 ```mermaid
 graph TD
@@ -143,7 +143,7 @@ graph TD
     OUTBOX --> IGGY
 ```
 
-## Runtime-композиция
+## Runtime Composition
 
 ```mermaid
 flowchart TD
@@ -164,7 +164,7 @@ flowchart TD
     EVENTS --> INDEX["read-side / indexing"]
 ```
 
-## UI-композиция
+## UI Composition
 
 ```mermaid
 graph LR
@@ -192,7 +192,7 @@ graph LR
     NEXT_FRONT --> STORE_UI
 ```
 
-## Поток write / event / read
+## Write / Event / Read Flow
 
 ```mermaid
 sequenceDiagram
@@ -215,7 +215,7 @@ sequenceDiagram
     Host-->>Client: response
 ```
 
-## Tenant lifecycle
+## Tenant Lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -230,10 +230,10 @@ stateDiagram-v2
     end note
 ```
 
-## Связанные документы
+## Related Documents
 
-- [Обзор архитектуры платформы](./overview.md)
-- [Архитектура модулей](./modules.md)
-- [Обзор модульной платформы](../modules/overview.md)
-- [Реестр модулей и приложений](../modules/registry.md)
-- [Контракт `rustok-module.toml`](../modules/manifest.md)
+- [Platform Architecture Overview](./overview.md)
+- [Module Architecture](./modules.md)
+- [Module Platform Overview](../modules/overview.md)
+- [Module and Application Registry](../modules/registry.md)
+- [`rustok-module.toml` Contract](../modules/manifest.md)

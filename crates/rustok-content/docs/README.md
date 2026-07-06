@@ -1,44 +1,44 @@
-# Документация `rustok-content`
+# Documentation `rustok-content`
 
-`rustok-content` — shared content/orchestration модуль платформы. Он больше не
-владеет product CRUD для blog/forum/pages, а держит общие rich-text, locale и
-conversion contracts, на которые опираются доменные модули.
+`rustok-content` is the shared content/orchestration module of the platform. It no longer
+owns product CRUD for blog/forum/pages, but holds the common rich-text, locale and
+conversion contracts that domain modules rely on.
 
-## Назначение
+## Purpose
 
-- публиковать shared content/orchestration runtime contract;
-- удерживать locale normalization, rich-text validation и conversion semantics внутри модуля;
-- давать доменным модулям стабильный orchestration layer без возврата к shared product storage.
+- publish a shared content/orchestration runtime contract;
+- keep locale normalization, rich-text validation and conversion semantics inside the module;
+- provide domain modules with a stable orchestration layer without reverting to shared product storage.
 
-## Зона ответственности
+## Responsibilities
 
-- `ContentOrchestrationService`, orchestration audit/idempotency и canonical URL state;
-- shared rich-text и locale fallback helpers;
-- conversion flows `topic <-> post`, split/merge topic и canonical URL policy, включая запрет cross-target canonical collisions и alias shadowing;
-- owner-owned GraphQL query `resolveCanonicalRoute` для canonical URL read contract;
-- content-owned GraphQL dataloaders для `nodes`, `node_translations` и `bodies`;
-- owner-owned dashboard helper `load_post_stats_snapshot` и DTO `ContentCountSnapshot` для post-статистики без SQL по `nodes` внутри `apps/server`;
-- orchestration tables, audit trail и domain events;
-- отсутствие product-owned CRUD/runtime adapters для blog/forum/pages.
+- `ContentOrchestrationService`, orchestration audit/idempotency and canonical URL state;
+- shared rich-text and locale fallback helpers;
+- conversion flows `topic <-> post`, split/merge topic and canonical URL policy, including prohibition of cross-target canonical collisions and alias shadowing;
+- owner-owned GraphQL query `resolveCanonicalRoute` for canonical URL read contract;
+- content-owned GraphQL dataloaders for `nodes`, `node_translations` and `bodies`;
+- owner-owned dashboard helper `load_post_stats_snapshot` and DTO `ContentCountSnapshot` for post-statistics without SQL on `nodes` inside `apps/server`;
+- orchestration tables, audit trail and domain events;
+- absence of product-owned CRUD/runtime adapters for blog/forum/pages.
 
-## Интеграция
+## Integration
 
-- используется `rustok-blog`, `rustok-forum`, `rustok-pages` и `rustok-comments` как shared helper/orchestration contract;
-- `rustok-content-orchestration` держит integration bridge и GraphQL mutations conversion path;
-- `apps/server` только собирает GraphQL roots, регистрирует owner-owned dataloaders из owner/support crates и композирует content-owned dashboard post analytics helper;
-- `rustok-index` зависит от canonical URL и reindex semantics, но не становится владельцем orchestration logic;
-- RBAC, idempotency и unsafe-input validation обязаны оставаться частью module-level contract.
+- used by `rustok-blog`, `rustok-forum`, `rustok-pages` and `rustok-comments` as a shared helper/orchestration contract;
+- `rustok-content-orchestration` holds the integration bridge and GraphQL mutations conversion path;
+- `apps/server` only assembles GraphQL roots, registers owner-owned dataloaders from owner/support crates and composes the content-owned dashboard post analytics helper;
+- `rustok-index` depends on canonical URL and reindex semantics, but does not become the owner of orchestration logic;
+- RBAC, idempotency and unsafe-input validation must remain part of the module-level contract.
 
-## Проверка
+## Verification
 
-- `npm run verify:content:orchestration` — compile-free guardrail для orchestration RBAC/idempotency/audit/outbox/canonical URL invariants, targeted collision rollback/no-outbox evidence markers и синхронизации docs/registry.
+- `npm run verify:content:orchestration` — compile-free guardrail for orchestration RBAC/idempotency/audit/outbox/canonical URL invariants, targeted collision rollback/no-outbox evidence markers and docs/registry synchronization.
 - `cargo xtask module validate content`
 - `cargo xtask module test content`
-- targeted tests для orchestration commands, canonical URL collision/alias shadowing rollback, locale fallback и rich-text validation
+- targeted tests for orchestration commands, canonical URL collision/alias shadowing rollback, locale fallback and rich-text validation
 
-## Связанные документы
+## Related documents
 
 - [README crate](../README.md)
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [RT JSON v1](../../../docs/standards/rt-json-v1.md)

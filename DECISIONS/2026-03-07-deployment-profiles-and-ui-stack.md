@@ -1,31 +1,31 @@
-# Deployment Profiles и выбор UI-стека
+# Deployment Profiles and UI Stack Selection
 
 - Date: 2026-03-07
 - Status: Partially superseded by `2026-03-29-leptos-server-functions-as-internal-data-layer.md`
-  (компонуемые профили деплоя остаются в силе; транспорт между Leptos UI и сервером пересмотрен)
+  (composable deployment profiles remain in effect; transport between Leptos UI and server is revised)
 
-> Уточнение после внедрения `#[server]`: для Leptos UI native server functions и GraphQL живут параллельно. `#[server]` стал preferred internal path, но `/api/graphql` не удаляется.
+> Clarification after `#[server]` implementation: for Leptos UI, native server functions and GraphQL live in parallel. `#[server]` became the preferred internal path, but `/api/graphql` is not removed.
 
 ## Context
 
-RusTok поддерживает два UI-стека:
+RusToK supports two UI stacks:
 
 - **Leptos** (Rust) — admin (`apps/admin`) + storefront (`apps/storefront`)
 - **Next.js** (TypeScript) — admin (`apps/next-admin`) + storefront (`apps/next-frontend`)
 
-Первая итерация ADR предлагала 3 жёстких профиля (`monolith | headless-leptos |
-headless-next`), но реальные сценарии гибче:
+The first iteration of the ADR proposed 3 rigid profiles (`monolith | headless-leptos |
+headless-next`), but real-world scenarios are more flexible:
 
-> «Мы были на монолите, но захотели вынести storefront на Next.js для двух
-> сайтов в разных регионах, а бэкенд с админкой оставить вместе»
+> "We were on monolith, but wanted to move the storefront to Next.js for two
+> sites in different regions, while keeping the backend with admin together."
 
-Это невозможно выразить через 3 preset'а — нужна **компонуемая модель**.
+This cannot be expressed through 3 presets — a **composable model** is needed.
 
 ## Decision
 
-### 1. Компонуемые слои вместо жёстких профилей
+### 1. Composable layers instead of rigid profiles
 
-Каждый слой (server, admin, storefront) конфигурируется **независимо**:
+Each layer (server, admin, storefront) is configured **independently**:
 
 ```toml
 # modules.toml
@@ -35,31 +35,31 @@ target = "x86_64-unknown-linux-gnu"
 profile = "release"
 
 # ───────────────────────────────────────────────
-# Server: всегда Axum (Rust). Вопрос — что встроить.
+# Server: always Axum (Rust). The question is what to embed.
 # ───────────────────────────────────────────────
 [build.server]
-embed_admin = true          # Встроить Leptos admin в бинарник?
-embed_storefront = false    # Встроить Leptos storefront в бинарник?
+embed_admin = true          # Embed Leptos admin into the binary?
+embed_storefront = false    # Embed Leptos storefront into the binary?
 
 # ───────────────────────────────────────────────
-# Admin: если embed_admin = false, нужен отдельный процесс
+# Admin: if embed_admin = false, a separate process is needed
 # ───────────────────────────────────────────────
 [build.admin]
 stack = "leptos"            # "leptos" | "next"
-# deploy = "embedded" выводится из embed_admin = true
+# deploy = "embedded" inferred from embed_admin = true
 
 # ───────────────────────────────────────────────
-# Storefronts: один или несколько (мультисайт)
+# Storefronts: one or several (multi-site)
 # ───────────────────────────────────────────────
 [[build.storefront]]
 id = "default"
 stack = "next"              # "leptos" | "next"
-# deploy = "standalone" выводится из embed_storefront = false
+# deploy = "standalone" inferred from embed_storefront = false
 ```
 
-### 2. Типичные конфигурации
+### 2. Typical configurations
 
-#### WordPress-монолит (всё в одном)
+#### WordPress monolith (everything in one)
 
 ```toml
 [build.server]
@@ -74,9 +74,9 @@ id = "default"
 stack = "leptos"
 ```
 
-**Результат**: 1 Rust-бинарник. Admin на `/admin`, storefront на `/`.
+**Result**: 1 Rust binary. Admin at `/admin`, storefront at `/`.
 
-#### Headless Next.js (Strapi-стиль)
+#### Headless Next.js (Strapi-style)
 
 ```toml
 [build.server]
@@ -91,20 +91,20 @@ id = "default"
 stack = "next"
 ```
 
-**Результат**: 1 Rust API + 1 Node.js admin + 1 Node.js storefront.
+**Result**: 1 Rust API + 1 Node.js admin + 1 Node.js storefront.
 
-#### Гибрид: монолит-админка + Next.js мультисайт
+#### Hybrid: monolith admin + Next.js multi-site
 
-Сценарий: бэкенд + админка вместе (один бинарник), а 2 storefront'а на Next.js
-в разных регионах.
+Scenario: backend + admin together (one binary), with 2 Next.js storefronts
+in different regions.
 
 ```toml
 [build.server]
-embed_admin = true           # Админка встроена в сервер
-embed_storefront = false     # Storefront — отдельно
+embed_admin = true           # Admin embedded in the server
+embed_storefront = false     # Storefront — separate
 
 [build.admin]
-stack = "leptos"             # Leptos встроен в Axum
+stack = "leptos"             # Leptos embedded in Axum
 
 [[build.storefront]]
 id = "site-eu"
@@ -115,7 +115,7 @@ id = "site-us"
 stack = "next"
 ```
 
-**Результат**: 1 Rust-бинарник (API + admin) + 2 Node.js storefront'а.
+**Result**: 1 Rust binary (API + admin) + 2 Node.js storefronts.
 
 ```
                    ┌──────────────────────────────┐
@@ -136,7 +136,7 @@ stack = "next"
                └─────────────┘         └─────────────┘
 ```
 
-#### Полный headless Leptos (для max performance)
+#### Full headless Leptos (for max performance)
 
 ```toml
 [build.server]
@@ -151,7 +151,7 @@ id = "default"
 stack = "leptos"
 ```
 
-**Результат**: 3 Rust-бинарника, независимо деплоятся.
+**Result**: 3 Rust binaries, deployed independently.
 
 #### Leptos admin + Leptos storefront EU + Next.js storefront US
 
@@ -172,95 +172,95 @@ id = "us-site"
 stack = "next"
 ```
 
-**Результат**: 1 Rust-бинарник (API + admin) + 1 Rust SSR + 1 Node.js.
-Можно даже миксовать стеки storefront'ов.
+**Result**: 1 Rust binary (API + admin) + 1 Rust SSR + 1 Node.js.
+You can even mix storefront stacks.
 
-### 3. Реализация через Cargo features
+### 3. Implementation via Cargo features
 
 ```toml
 # apps/server/Cargo.toml
 [features]
 default = []
 
-# Встраивает Leptos admin WASM assets в сервер
+# Embeds Leptos admin WASM assets into the server
 embed-admin = ["dep:admin-assets"]
 
-# Встраивает Leptos storefront SSR в сервер
+# Embeds Leptos storefront SSR into the server
 embed-storefront = ["dep:leptos-storefront"]
 ```
 
-Build pipeline читает `[build.server]` и собирает features:
+Build pipeline reads `[build.server]` and assembles features:
 
 ```bash
-# embed_admin=true, embed_storefront=true → монолит
+# embed_admin=true, embed_storefront=true → monolith
 cargo build -p rustok-server --release \
   --features "embed-admin,embed-storefront"
 
-# embed_admin=true, embed_storefront=false → админка встроена, storefront отдельно
+# embed_admin=true, embed_storefront=false → admin embedded, storefront separate
 cargo build -p rustok-server --release \
   --features "embed-admin"
 
-# embed_admin=false, embed_storefront=false → чистый API
+# embed_admin=false, embed_storefront=false → pure API
 cargo build -p rustok-server --release
 ```
 
-Для отдельных storefront'ов:
+For separate storefronts:
 
 ```bash
-# Leptos storefront → отдельный Rust SSR бинарник
+# Leptos storefront → separate Rust SSR binary
 cargo build -p rustok-storefront --release
 
 # Next.js storefront → npm build
 cd apps/next-frontend && npm run build
 ```
 
-### 4. Миграция между конфигурациями
+### 4. Migration between configurations
 
-Переход с монолита на гибрид — это **изменение `modules.toml` + пересборка**.
-Данные (БД, tenant_modules, пользователи) не затрагиваются.
+Transitioning from monolith to hybrid is a **change to `modules.toml` + rebuild**.
+Data (DB, tenant_modules, users) is not affected.
 
 ```bash
-# Было: монолит
-# Хотим: бэкенд+админка вместе, storefront на Next.js
+# Before: monolith
+# Want: backend+admin together, storefront on Next.js
 
-# 1. Обновить modules.toml
+# 1. Update modules.toml
 [build.server]
 embed_admin = true
-embed_storefront = false    # ← было true
+embed_storefront = false    # ← was true
 
 [[build.storefront]]
 id = "default"
-stack = "next"              # ← было leptos
+stack = "next"              # ← was leptos
 
-# 2. Пересборка
+# 2. Rebuild
 rustok rebuild
-# → Собирает server (с админкой, без storefront)
-# → Собирает Next.js storefront
-# → Деплоит оба
+# → Builds server (with admin, without storefront)
+# → Builds Next.js storefront
+# → Deploys both
 
-# 3. Данные — без изменений
-# GraphQL API тот же, tenant_modules те же,
-# storefront просто берёт данные из другого стека
+# 3. Data — unchanged
+# GraphQL API the same, tenant_modules the same,
+# storefront just fetches data from a different stack
 ```
 
-### 5. DeploymentProfile в БД
+### 5. DeploymentProfile in DB
 
-Enum в builds table остаётся для обратной совместимости, но расширяется:
+The enum in the builds table remains for backward compatibility, but is extended:
 
 ```rust
 pub enum DeploymentProfile {
-    /// Всё в одном: server + admin + storefront
+    /// Everything in one: server + admin + storefront
     Monolith,
-    /// Server + embedded admin, storefronts отдельно
+    /// Server + embedded admin, storefronts separate
     ServerWithAdmin,
-    /// Server + embedded storefront, admin отдельно
+    /// Server + embedded storefront, admin separate
     ServerWithStorefront,
-    /// Чистый API, всё остальное отдельно
+    /// Pure API, everything else separate
     HeadlessApi,
 }
 ```
 
-Вычисляется автоматически из `[build.server]`:
+Computed automatically from `[build.server]`:
 
 | `embed_admin` | `embed_storefront` | Profile |
 |---|---|---|
@@ -269,65 +269,65 @@ pub enum DeploymentProfile {
 | `false` | `true` | `ServerWithStorefront` |
 | `false` | `false` | `HeadlessApi` |
 
-### 6. Мультисайт — storefront per tenant
+### 6. Multi-site — storefront per tenant
 
-`[[build.storefront]]` поддерживает массив, что позволяет:
+`[[build.storefront]]` supports an array, which allows:
 
-- **Разные регионы**: site-eu, site-us — один и тот же код, разные инстансы.
-- **Разные стеки**: site-main на Leptos (performance), site-promo на Next.js (команда знает React).
-- **Разные tenant'ы**: каждый storefront может обслуживать подмножество tenant'ов.
+- **Different regions**: site-eu, site-us — same code, different instances.
+- **Different stacks**: site-main on Leptos (performance), site-promo on Next.js (team knows React).
+- **Different tenants**: each storefront can serve a subset of tenants.
 
 ```toml
 [[build.storefront]]
 id = "main"
 stack = "leptos"
-tenants = ["*"]              # Все тенанты по умолчанию
+tenants = ["*"]              # All tenants by default
 
 [[build.storefront]]
 id = "promo-us"
 stack = "next"
-tenants = ["acme-us", "beta-us"]  # Только конкретные тенанты
+tenants = ["acme-us", "beta-us"]  # Only specific tenants
 ```
 
-Маршрутизация (какой storefront обслуживает какой tenant) — через:
-- DNS (tenant.rustok.dev → конкретный storefront)
+Routing (which storefront serves which tenant) — via:
+- DNS (tenant.rustok.dev → specific storefront)
 - Reverse proxy (nginx/traefik routing rules)
-- Или через конфиг в БД (`tenant.storefront_url`).
+- Or via config in DB (`tenant.storefront_url`).
 
-### 7. Маркетплейс — profile-agnostic
+### 7. Marketplace — profile-agnostic
 
-Маркетплейс модулей **не зависит от конфигурации**. Модуль работает в любом
-варианте, потому что:
+The module marketplace **does not depend on the configuration**. A module works in any
+variant because:
 
-- Backend-часть — **всегда одинаковая** (RusToKModule trait).
-- UI-часть — **оба стека в одном crate**, build pipeline берёт нужный.
+- Backend part — **always the same** (RusToKModule trait).
+- UI part — **both stacks in one crate**, build pipeline picks the right one.
 
-Если модуль не имеет UI для конкретного стека — это ОК.
-Backend-функциональность (GraphQL, миграции, events) работает.
-UI просто не показывается в этом storefront'е.
+If a module has no UI for a specific stack — that's OK.
+Backend functionality (GraphQL, migrations, events) still works.
+The UI just doesn't show in that storefront.
 
 ## Consequences
 
-### Позитивные
+### Positive
 
-- **Любая комбинация** — монолит, гибрид, полный headless, мультисайт.
-- **Пример с монолита на Next.js storefront** — просто меняем два поля в TOML.
-- **Мультисайт из коробки** — `[[build.storefront]]` массив.
-- **Миксование стеков** — один storefront на Leptos, другой на Next.js.
-- **Данные не меняются** — переключение стека = только пересборка.
+- **Any combination** — monolith, hybrid, full headless, multi-site.
+- **Example from monolith to Next.js storefront** — just change two fields in TOML.
+- **Multi-site out of the box** — `[[build.storefront]]` array.
+- **Stack mixing** — one storefront on Leptos, another on Next.js.
+- **Data does not change** — switching stacks = only a rebuild.
 
-### Негативные
+### Negative
 
-- **Сложнее для новичков** — больше полей чем один `deployment_profile`.
-  Митигация: preset'ы (шаблоны) через CLI: `rustok init --preset monolith`.
-- **Build pipeline сложнее** — нужно собирать разные артефакты для разных storefront'ов.
-- **Тестирование** — больше комбинаций в CI.
+- **More complex for newcomers** — more fields than a single `deployment_profile`.
+  Mitigation: presets (templates) via CLI: `rustok init --preset monolith`.
+- **Build pipeline is more complex** — different artifacts need to be built for different storefronts.
+- **Testing** — more combinations in CI.
 
 ### Follow-up
 
-1. Обновить `modules.toml` на новый формат `[build.server]` / `[[build.storefront]]`.
-2. Обновить `DeploymentProfile` enum: `Monolith | ServerWithAdmin | ServerWithStorefront | HeadlessApi`.
-3. Добавить Cargo features: `embed-admin`, `embed-storefront`.
-4. CLI preset'ы: `rustok init --preset monolith`, `--preset headless-next`, `--preset hybrid`.
-5. Build pipeline: генерация команд сборки на основе TOML конфигурации.
-6. Документировать типичные конфигурации в README.
+1. Update `modules.toml` to the new `[build.server]` / `[[build.storefront]]` format.
+2. Update `DeploymentProfile` enum: `Monolith | ServerWithAdmin | ServerWithStorefront | HeadlessApi`.
+3. Add Cargo features: `embed-admin`, `embed-storefront`.
+4. CLI presets: `rustok init --preset monolith`, `--preset headless-next`, `--preset hybrid`.
+5. Build pipeline: generate build commands based on TOML configuration.
+6. Document typical configurations in README.

@@ -1,37 +1,36 @@
-# Документация `rustok-payment`
+# `rustok-payment` Documentation
 
-`rustok-payment` — дефолтный payment-подмодуль семейства `ecommerce`.
+`rustok-payment` — default payment submodule of the `ecommerce` family.
 
-## Назначение
+## Purpose
 
-- схема `payment_collections`;
-- схема `payments`;
-- `PaymentModule` и `PaymentService`;
-- payment boundary для checkout-цепочки `cart -> payment -> order`;
-- встроенный manual/default payment flow на текущем этапе;
-- payment-owned provider SPI registry для external provider composition: descriptor/adapter id validation, health/degraded-mode registration guards и side-effect-free runtime-mode checks до invocation adapter-а.
+- `payment_collections` schema;
+- `payments` schema;
+- `PaymentModule` and `PaymentService`;
+- payment boundary for the `cart -> payment -> order` checkout chain;
+- built-in manual/default payment flow at the current stage;
+- payment-owned provider SPI registry for external provider composition: descriptor/adapter id validation, health/degraded-mode registration guards and side-effect-free runtime-mode checks before adapter invocation.
 
-## Зона ответственности
+## Scope
 
-- модуль не зависит от `rustok-commerce` umbrella, чтобы не создавать цикл;
-- модуль не владеет корзиной, заказом или customer-профилем, а только ссылается на них по идентификаторам;
-- provider-specific реализация вроде `stripe` отложена в backlog и должна жить как следующий вложенный подмодуль над payment boundary, а не смешиваться с базовой доменной моделью;
-- GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
+- the module does not depend on `rustok-commerce` umbrella to avoid cycles;
+- the module does not own the cart, order or customer profile, only references them by identifiers;
+- provider-specific implementations like `stripe` are deferred to the backlog and should live as a nested submodule over the payment boundary, not mixed with the base domain model;
+- GraphQL and REST transport remain in the `rustok-commerce` facade for now.
 
-## Интеграция
+## Integration
 
-- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
-- transport, GraphQL и UI-поверхности публикуются через `rustok-commerce`, пока для домена не зафиксирован отдельный module-owned surface;
-- изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
-ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
-- изменения cross-module контракта нужно синхронизировать с ustok-commerce и соседними split-модулями.
+- the module is part of the ecommerce family and must maintain its own storage/runtime boundary without returning responsibility to the umbrella `rustok-commerce`;
+- transport, GraphQL and UI surfaces are published through `rustok-commerce` until a separate module-owned surface is established for the domain;
+- cross-module contract changes must be synchronized with `rustok-commerce` and neighboring split modules.
 
-## Проверка
+## Verification
 
 - cargo xtask module validate payment
 - cargo xtask module test payment
-- targeted commerce tests для payment-домена при изменении runtime wiring
-## Связанные документы
+- targeted commerce tests for the payment domain when changing runtime wiring
+
+## Related documents
 
 - [README crate](../README.md)
-- [План распила commerce](../../rustok-commerce/docs/implementation-plan.md)
+- [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)

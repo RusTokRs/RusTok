@@ -6,23 +6,23 @@
 
 ## Context
 
-RusTok поддерживает два UI стека:
+RusToK supports two UI stacks:
 
-- **Leptos** — primary, компилируется в WASM, авто-деплой при install/uninstall модулей
-- **Next.js** — secondary, для JS-разработчиков, знакомых с React-экосистемой
+- **Leptos** — primary, compiles to WASM, auto-deploy on module install/uninstall
+- **Next.js** — secondary, for JS developers familiar with the React ecosystem
 
-История изменений подхода к структуре UI-пакетов:
-1. *(до 2026-03-17)* Next.js UI хранился как npm-пакеты внутри крейтов (`crates/rustok-blog/ui/admin/`)
-2. *(2026-03-17)* Next.js переведён в «batteries included» — весь UI прямо в `apps/next-admin/src/features/`; Leptos UI через feature flags в `src/admin/` одного крейта
-3. *(2026-03-18)* **Текущее решение**: оба стека получают отдельные publishable пакеты, но структурированы по-разному. Подробно — ниже.
+History of changes to the UI package structure approach:
+1. *(before 2026-03-17)* Next.js UI was stored as npm packages inside crates (`crates/rustok-blog/ui/admin/`)
+2. *(2026-03-17)* Next.js moved to "batteries included" — all UI directly in `apps/next-admin/src/features/`; Leptos UI via feature flags in `src/admin/` of a single crate
+3. *(2026-03-18)* **Current solution**: both stacks get separate publishable packages, but structured differently. Details below.
 
-## Решение
+## Decision
 
-### 1. Leptos UI — живёт внутри модульного крейта через feature flags
+### 1. Leptos UI — lives inside the module crate via feature flags
 
-Leptos UI располагается внутри директории модульного крейта в поддиректориях `admin/` и `storefront/` (которые сами являются publishable крейтами). Активация UI в приложении `apps/admin` происходит через подключение соответствующих крейтов.
+Leptos UI is located inside the module crate's directory in subdirectories `admin/` and `storefront/` (which themselves are publishable crates). Activation of the UI in the `apps/admin` application happens by including the corresponding crates.
 
-В основном коде модуля (backend) могут присутствовать feature flags для логической связи с UI, но физически это отдельные крейты.
+In the main module code (backend), feature flags may exist for logical connection with the UI, but physically they are separate crates.
 
 ```text
 crates/rustok-blog/
@@ -36,34 +36,34 @@ crates/rustok-blog/
     src/
 ```
 
-`apps/admin/Cargo.toml` зависит от `rustok-blog-admin`, `rustok-commerce-admin` и т.д.
-Архитектура позволяет публиковать UI независимо, но в коде модуля они логически связаны через feature flags.
+`apps/admin/Cargo.toml` depends on `rustok-blog-admin`, `rustok-commerce-admin`, etc.
+The architecture allows publishing UI independently, but in the module code they are logically connected via feature flags.
 
-### 2. Режимы деплоя
+### 2. Deployment modes
 
-Каждый бинарник собирается с нужным набором крейтов:
+Each binary is built with the required set of crates:
 
 ```bash
-# чистый API
+# pure API
 cargo build -p rustok-server --release
 
 # API + Leptos Admin WASM
 cargo build -p rustok-admin --release
-# (rustok-admin зависит от rustok-blog-admin, rustok-commerce-admin, ...)
+# (rustok-admin depends on rustok-blog-admin, rustok-commerce-admin, ...)
 
 # API + Leptos Storefront SSR
 cargo build -p rustok-storefront --release
 
-# всё вместе (monolith)
+# everything together (monolith)
 cargo build --workspace --release
 ```
 
-Конкретная топология деплоя — решение оператора: monolith, headless,
-раздельные серверы для API/admin/storefront, мультитенант, edge.
+The specific deployment topology is the operator's decision: monolith, headless,
+separate servers for API/admin/storefront, multi-tenant, edge.
 
-### 3. Next.js UI — модульные пакеты внутри приложения
+### 3. Next.js UI — modular packages inside the application
 
-Next.js UI каждого модуля живёт как **отдельный npm-пакет** внутри папки `packages/` самого приложения:
+Each module's Next.js UI lives as a **separate npm package** inside the `packages/` folder of the application itself:
 
 ```text
 apps/next-admin/
@@ -74,8 +74,8 @@ apps/next-admin/
     commerce/          # @rustok/commerce-admin
       package.json
       src/
-  src/                 # само приложение — импортирует из packages/*
-  package.json         # зависит от всех packages/*
+  src/                 # the application itself — imports from packages/*
+  package.json         # depends on all packages/*
 
 apps/next-frontend/
   packages/
@@ -89,19 +89,19 @@ apps/next-frontend/
   package.json
 ```
 
-`apps/next-admin/package.json` зависит от всех `packages/*` по умолчанию.
+`apps/next-admin/package.json` depends on all `packages/*` by default.
 
-Убрать модуль из Next.js:
+To remove a module from Next.js:
 
-1. Удалить `apps/next-admin/packages/<module>/`
-2. Убрать зависимость из `apps/next-admin/package.json`
+1. Delete `apps/next-admin/packages/<module>/`
+2. Remove the dependency from `apps/next-admin/package.json`
 3. `npm install && npm run build`
 
 > [!IMPORTANT]
-> Авто-установка через marketplace **не предусмотрена** для Next.js.
-> Пересборка выполняется вручную. BuildExecutor управляет только Leptos-стеком.
+> Auto-install via marketplace **is not supported** for Next.js.
+> Rebuild is done manually. BuildExecutor only manages the Leptos stack.
 
-### 4. rustok-module.toml — объявление UI-крейтов/пакетов
+### 4. rustok-module.toml — declaring UI crates/packages
 
 ```toml
 # crates/rustok-blog/rustok-module.toml
@@ -114,39 +114,39 @@ leptos_crate = "rustok-blog-storefront"
 next_package = "@rustok/blog-frontend"
 ```
 
-## Следствия
+## Consequences
 
-### Позитивные
+### Positive
 
-- **Publishable**: оба стека могут публиковаться в реестры (crates.io / npm)
-- **Headless-friendly**: UI деплоится независимо от backend
-- **Granular**: оператор выбирает только нужные модули
-- **Co-located**: UI-пакет рядом с модулем/приложением — удобно разрабатывать
-- **Авто-деплой** для Leptos через BuildExecutor
+- **Publishable**: both stacks can be published to registries (crates.io / npm)
+- **Headless-friendly**: UI deploys independently from backend
+- **Granular**: operator selects only the needed modules
+- **Co-located**: UI package next to the module/application — convenient for development
+- **Auto-deploy** for Leptos via BuildExecutor
 
-### Негативные
+### Negative
 
-- **Больше крейтов/пакетов** — 3 сущности на Leptos-модуль (backend + admin + storefront)
-- **Next.js — ручное управление** — нет авто-деплоя
-- **Дублирование API-клиентов** между стеками
-  Митигация: OpenAPI-сгенерированные типы из `packages/rustok-api-client`
+- **More crates/packages** — 3 entities per Leptos module (backend + admin + storefront)
+- **Next.js — manual management** — no auto-deploy
+- **API client duplication** between stacks
+  Mitigation: OpenAPI-generated types from `packages/rustok-api-client`
 
-## История изменений ADR
+## ADR change history
 
-### 2026-03-18 (текущая правка)
+### 2026-03-18 (current revision)
 
-- Leptos UI: вынесен из `src/admin/` (feature flags) в отдельные sub-crates `admin/` и `storefront/`
-- Next.js UI: вынесен из `apps/next-admin/src/features/` в `apps/next-admin/packages/<module>/`
-- Оба стека теперь publishable (crates.io и npm соответственно)
-- Добавлено поле `rustok-module.toml` для объявления UI-крейтов/пакетов
+- Leptos UI: moved from `src/admin/` (feature flags) to separate sub-crates `admin/` and `storefront/`
+- Next.js UI: moved from `apps/next-admin/src/features/` to `apps/next-admin/packages/<module>/`
+- Both stacks are now publishable (crates.io and npm respectively)
+- Added `rustok-module.toml` field for declaring UI crates/packages
 
-### 2026-03-17 (первая редакция)
+### 2026-03-17 (first revision)
 
-- Next.js переведён в batteries included (`apps/next-admin/src/features/`)
-- Leptos: feature flags внутри одного крейта (`src/admin/`)
-- Авто-установка только для Leptos
+- Next.js moved to batteries included (`apps/next-admin/src/features/`)
+- Leptos: feature flags inside a single crate (`src/admin/`)
+- Auto-install only for Leptos
 
-### до 2026-03-17
+### before 2026-03-17
 
-- Next.js UI как npm-пакеты внутри `crates/rustok-<m>/ui/admin/`
-- Leptos UI в отдельных крейтах `crates/leptos-blog-admin/`
+- Next.js UI as npm packages inside `crates/rustok-<m>/ui/admin/`
+- Leptos UI in separate crates `crates/leptos-blog-admin/`

@@ -1,37 +1,37 @@
-# Авто-регистрация HTTP routes и разделение `core-server` / `module-bundles`
+# Auto-registration of HTTP routes and `core-server` / `module-bundles` split
 
 - Date: 2026-02-19
 - Status: Proposed
 
 ## Context
 
-`apps/server/src/app.rs` содержит централизованную ручную сборку роутов по всем доменным модулям. При подключении нового модуля нужно править центральный серверный слой, что создаёт coupling и ухудшает масштабируемость модульной архитектуры.
+`apps/server/src/app.rs` contains a centralized manual assembly of routes across all domain modules. When connecting a new module, the central server layer must be modified, creating coupling and impairing the scalability of the modular architecture.
 
-В документе архитектурных улучшений этот пункт зафиксирован как стратегический (2.14), но без ADR реализация не должна стартовать.
+In the architecture improvements document, this item is recorded as strategic (2.14), but without an ADR the implementation should not start.
 
 ## Decision
 
-1. Ввести модульный HTTP-контракт (например, `HttpModule`) поверх `RusToKModule`, который отдаёт маршруты модуля.
-2. Перевести `apps/server` в двухуровневую модель:
-   - `core-server`: базовые системные маршруты и инфраструктура;
-   - `module-bundles`: подключаемые HTTP-модули из registry.
-3. Роуты optional-модулей подключать автоматически из registry/bundle-слоя без ручной правки центрального `app.rs`.
-4. Ввести migration guardrails:
-   - feature flag на поэтапный rollout;
-   - parity-тесты на совпадение существующих роутов до/после миграции;
-   - rollback-план на один релиз.
+1. Introduce a modular HTTP contract (e.g., `HttpModule`) on top of `RusToKModule`, which exposes the module's routes.
+2. Convert `apps/server` to a two-tier model:
+   - `core-server`: base system routes and infrastructure;
+   - `module-bundles`: pluggable HTTP modules from the registry.
+3. Routes of optional modules are connected automatically from the registry/bundle layer without manual modification of the central `app.rs`.
+4. Introduce migration guardrails:
+   - feature flag for phased rollout;
+   - parity tests to match existing routes before/after migration;
+   - rollback plan for one release.
 
 ## Consequences
 
-**Плюсы**
-- Новый модуль можно добавить без изменения central routing glue.
-- Чётче разделяются platform foundation и доменные расширения.
-- Улучшается тестируемость и ownership границ.
+**Positives**
+- A new module can be added without changing the central routing glue.
+- Clearer separation between platform foundation and domain extensions.
+- Improved testability and ownership boundaries.
 
-**Риски и минусы**
-- Потребуется миграция текущей route wiring и возможно пересборка bootstrap-последовательности.
-- Усложняется startup orchestration на первом этапе внедрения.
+**Risks and negatives**
+- Migration of the current route wiring is required, and the bootstrap sequence may need restructuring.
+- Startup orchestration becomes more complex during the initial implementation phase.
 
 **Follow-up**
-- Подготовить technical design с примером контракта `HttpModule`.
-- Добавить parity/integration тесты маршрутизации перед миграцией production конфигурации.
+- Prepare a technical design with an example `HttpModule` contract.
+- Add parity/integration routing tests before migrating the production configuration.

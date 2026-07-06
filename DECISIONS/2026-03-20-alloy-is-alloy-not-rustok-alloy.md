@@ -19,9 +19,9 @@ This naming was misleading because:
 
 We rename the transport crate from `rustok-alloy` to `alloy` and keep the naming split:
 
-- `alloy` вЂ” runtime/engine capability;
-- `alloy` вЂ” GraphQL/REST transport shell for Alloy;
-- `rustok-mcp` вЂ” governed AI-to-platform interface that can expose Alloy capabilities.
+- `alloy` — runtime/engine capability;
+- `alloy` — GraphQL/REST transport shell for Alloy;
+- `rustok-mcp` — governed AI-to-platform interface that can expose Alloy capabilities.
 
 ## Consequences
 
@@ -41,4 +41,3 @@ Constraint:
 1. Keep future Alloy capability crates under the `alloy-*` naming family where possible.
 2. Avoid introducing new `rustok-*` names for Alloy-owned layers unless they are truly
    RusToK-specific adapters.
-

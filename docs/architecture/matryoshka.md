@@ -6,62 +6,62 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Matryoshka / модель композиции
+# Matryoshka / Composition Model
 
-Этот документ сохраняет Matryoshka как концептуальную модель слоёв RusToK, но
-фиксирует её в терминах текущего состояния, без отрыва от текущего кода.
+This document preserves Matryoshka as a conceptual model of RusToK layers, but
+captures it in terms of the current state, without detaching from the current code.
 
-## Зачем нужна модель
+## Why the Model Is Needed
 
-Matryoshka помогает не смешивать разные уровни платформы:
+Matryoshka helps avoid mixing different levels of the platform:
 
-- foundation и runtime host
-- платформенные модули
-- shared/support/capability crate-ы
-- UI и interaction-поверхности
-- будущие federation/network layers
+- foundation and runtime host
+- platform modules
+- shared/support/capability crates
+- UI and interaction surfaces
+- future federation/network layers
 
-Это не отдельный runtime-контракт и не замена `modules.toml`. Это архитектурная
-рамка, которая помогает объяснять composition.
+It is not a separate runtime contract and not a replacement for `modules.toml`. It is an architectural
+frame that helps explain composition.
 
-## Слои текущего состояния
+## Current State Layers
 
-### Слой 1. Foundation-платформа
+### Layer 1. Foundation Platform
 
-Foundation-слой включает:
+The foundation layer includes:
 
-- `apps/server` как composition root
+- `apps/server` as composition root
 - `rustok-core`
 - `rustok-api`
 - `rustok-events`
 - `rustok-storage`
 - `rustok-test-utils`
 
-Этот слой даёт базовые контракты, runtime-wiring и host-level policy.
+This layer provides base contracts, runtime wiring and host-level policy.
 
-### Слой 2. Платформенные модули
+### Layer 2. Platform Modules
 
-Платформенные модули объявляются в `modules.toml` и делятся на:
+Platform modules are declared in `modules.toml` and are divided into:
 
 - `Core`
 - `Optional`
 
-Именно этот слой описывает domain/runtime modules, а не любые crates в `crates/`.
+This layer describes domain/runtime modules, not arbitrary crates in `crates/`.
 
-### Слой 3. Shared domain families и support-slices
+### Layer 3. Shared Domain Families and Support Slices
 
-Этот слой покрывает shared family crates и module-adjacent support pieces,
-например:
+This layer covers shared family crates and module-adjacent support pieces,
+for example:
 
 - `rustok-commerce-foundation`
 - shared read/index/event helpers
-- module-specific support-поверхности, которые не являются самостоятельными платформенными модулями
+- module-specific support surfaces that are not standalone platform modules
 
-Смысл слоя — дать reuse без размывания ownership у платформенных модулей.
+The purpose of this layer is to provide reuse without blurring ownership of platform modules.
 
-### Слой 4. Capability crate-ы
+### Layer 4. Capability Crates
 
-Capability crate-ы добавляют отдельные возможности платформы:
+Capability crates add separate platform capabilities:
 
 - `rustok-mcp`
 - `rustok-ai`
@@ -71,70 +71,70 @@ Capability crate-ы добавляют отдельные возможности
 - `rustok-iggy`
 - `rustok-iggy-connector`
 
-Они участвуют в composition, но не входят в taxonomy `Core/Optional`, пока не
-объявлены как платформенные модули.
+They participate in composition, but are not part of the `Core/Optional` taxonomy until
+declared as platform modules.
 
-### Слой 5. Unified UI
+### Layer 5. Unified UI
 
-UI layer объединяет:
+The UI layer combines:
 
 - Leptos hosts
 - Next.js hosts
 - module-owned UI packages
-- общий UI/runtime-контракт
+- common UI/runtime contract
 
-Здесь важно правило: UI остаётся module-owned, а хосты только монтируют и
-композируют surfaces.
+Important rule here: UI remains module-owned, and hosts only mount and
+compose surfaces.
 
-### Слой 6. Interaction / read-layer
+### Layer 6. Interaction / Read Layer
 
-Этот слой описывает:
+This layer describes:
 
 - denormalized read models
 - index/search layer
 - event-driven projections
-- live transport surfaces, если они нужны для interaction
+- live transport surfaces, if needed for interaction
 
-Это не отдельная доменная taxonomy, а слой агрегирования и interaction-потоков.
+It is not a separate domain taxonomy, but a layer of aggregation and interaction flows.
 
-### Слой 7. Federation / future network-layer
+### Layer 7. Federation / Future Network Layer
 
-Этот слой остаётся vision-level направлением:
+This layer remains a vision-level direction:
 
-- межинстансовое взаимодействие
+- inter-instance interaction
 - federation protocols
 - mesh/network scenarios
 
-Он не считается текущим runtime baseline и не должен смешиваться с живым
-контрактным слоем текущей платформы.
+It is not considered a current runtime baseline and must not be mixed with the live
+contract layer of the current platform.
 
-## Что важно в текущем состоянии
+## What Matters in the Current State
 
-- `modules.toml` важнее conceptual-layer names, когда речь идёт об источнике истины для runtime
-- платформенный модуль определяется через manifest и registry, а не через абстрактный
-  слой модели
-- capability crate не становится платформенным модулем только потому, что он важен
-- central docs должны описывать текущий код, а не только vision
+- `modules.toml` is more important than conceptual-layer names when it comes to the source of truth for runtime
+- a platform module is defined through manifest and registry, not through an abstract
+  model layer
+- a capability crate does not become a platform module just because it is important
+- central docs must describe the current code, not just the vision
 
-## Как использовать эту модель
+## How to Use This Model
 
-Используйте Matryoshka, когда нужно:
+Use Matryoshka when you need to:
 
-- объяснить место нового компонента в общей архитектуре
-- не перепутать host, module, support и capability roles
-- понять, на каком уровне должен жить новый контракт
+- explain the place of a new component in the overall architecture
+- avoid confusing host, module, support and capability roles
+- understand at which level a new contract should live
 
-Не используйте Matryoshka как замену:
+Do not use Matryoshka as a replacement for:
 
 - `modules.toml`
 - `rustok-module.toml`
-- local docs компонентов
-- контракт верификации
+- local component docs
+- verification contract
 
-## Связанные документы
+## Related Documents
 
-- [Обзор архитектуры платформы](./overview.md)
-- [Архитектура модулей](./modules.md)
-- [Диаграммы платформы](./diagram.md)
-- [Обзор модульной платформы](../modules/overview.md)
-- [Реестр модулей и приложений](../modules/registry.md)
+- [Platform Architecture Overview](./overview.md)
+- [Module Architecture](./modules.md)
+- [Platform Diagrams](./diagram.md)
+- [Module Platform Overview](../modules/overview.md)
+- [Module and Application Registry](../modules/registry.md)

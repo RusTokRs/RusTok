@@ -6,13 +6,14 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Outbox Reference-пакет (RusToK)
 
-Дата последней актуализации: **2026-02-19**.
+# Outbox Reference Package (RusToK)
 
-> Пакет фиксирует корректный transactional outbox flow (`rustok-outbox`) и предотвращает ложные паттерны из «простого publish после commit».
+Last updated: **2026-02-19**.
 
-## 1) Минимальный рабочий пример: transactional publish
+> This package captures the correct transactional outbox flow (`rustok-outbox`) and prevents incorrect patterns from "simple publish after commit".
+
+## 1) Minimal working example: transactional publish
 
 ```rust
 use rustok_outbox::TransactionalEventBus;
@@ -20,12 +21,12 @@ use rustok_outbox::TransactionalEventBus;
 let bus = TransactionalEventBus::new(transport);
 
 let txn = db.begin().await?;
-// ... доменные изменения
+// ... domain changes
 bus.publish_in_tx(&txn, tenant_id, Some(actor_id), event).await?;
 txn.commit().await?;
 ```
 
-## 2) Минимальный рабочий пример: запуск relay
+## 2) Minimal working example: starting relay
 
 ```rust
 use rustok_outbox::{OutboxRelay, RelayConfig};
@@ -34,7 +35,7 @@ let relay = OutboxRelay::new(db.clone(), target_transport).with_config(RelayConf
 let processed = relay.process_pending_once().await?;
 ```
 
-## 3) Актуальные сигнатуры API (в репозитории)
+## 3) Current API signatures (in repository)
 
 - `pub fn new(transport: Arc<dyn EventTransport>) -> Self` (`TransactionalEventBus`)
 - `pub async fn publish_in_tx<C>(&self, txn: &C, tenant_id: Uuid, actor_id: Option<Uuid>, event: DomainEvent) -> Result<()> where C: ConnectionTrait`
@@ -44,16 +45,16 @@ let processed = relay.process_pending_once().await?;
 - `pub async fn process_pending_once(&self) -> Result<usize>` (`OutboxRelay`)
 - `pub async fn write_to_outbox<C>(&self, txn: &C, envelope: EventEnvelope) -> Result<()> where C: ConnectionTrait` (`OutboxTransport`)
 
-## 4) Чего делать нельзя (типичные ложные паттерны)
+## 4) What not to do (typical incorrect patterns)
 
-1. **Нельзя заменять `publish_in_tx(...)` на `publish(...)` в write-flow с консистентностью.**
-2. **Нельзя запускать relay «когда-нибудь потом» в production.** Outbox без relay = накопление backlog без доставки.
-3. **Нельзя писать в outbox вне той же транзакции, где доменная запись.**
-4. **Нельзя игнорировать валидацию event перед публикацией.**
+1. **Do not replace `publish_in_tx(...)` with `publish(...)` in write-flow with consistency.**
+2. **Do not start the relay "sometime later" in production.** Outbox without relay = backlog accumulation without delivery.
+3. **Do not write to outbox outside the same transaction as the domain record.**
+4. **Do not ignore event validation before publication.**
 
-## 5) Синхронизация с кодом (регламент)
+## 5) Synchronization with code (procedure)
 
-- При изменениях в `crates/rustok-outbox/**` или в runtime-сборке `apps/server/src/services/event_transport_factory.rs`:
-  1) обновить примеры и сигнатуры;
-  2) обновить дату в шапке;
-  3) проверить актуальность anti-patterns.
+- When changes are made to `crates/rustok-outbox/**` or to the runtime assembly in `apps/server/src/services/event_transport_factory.rs`:
+  1) update examples and signatures;
+  2) update the date in the header;
+  3) verify the relevance of anti-patterns.

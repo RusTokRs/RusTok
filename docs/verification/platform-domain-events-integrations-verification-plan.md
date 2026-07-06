@@ -6,90 +6,90 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# План верификации платформы: события, домены и интеграции
+# Platform Verification Plan: Events, Domains and Integrations
 
-- **Статус:** актуальный детальный чеклист
-- **Контур:** domain events, outbox/runtime transport, межмодульные связи, integration boundaries
-- **Примечание:** API и UI surfaces проверяются в отдельных verification-планах, здесь остаётся event/runtime contract
+- **Status:** current detailed checklist
+- **Scope:** domain events, outbox/runtime transport, inter-module connections, integration boundaries
+- **Note:** API and UI surfaces are checked in separate verification plans; event/runtime contract remains here
 
 ---
 
-## Актуальный scoped contract
+## Current Scoped Contract
 
-Event/runtime слой должен оставаться согласованным с current-state моделью:
+The event/runtime layer must remain consistent with the current-state model:
 
-- canonical event contracts живут в `rustok-events`
-- transactional delivery contract живёт в `rustok-outbox`
-- publishers владеют semantic meaning своих событий
-- consumers остаются идемпотентными и replay-safe
+- canonical event contracts live in `rustok-events`
+- transactional delivery contract lives in `rustok-outbox`
+- publishers own the semantic meaning of their events
+- consumers remain idempotent and replay-safe
 
-## Фаза 1. Event runtime
+## Phase 1. Event Runtime
 
 ### 1.1 Runtime bootstrap
 
-**Файлы:**
+**Files:**
 - `apps/server/src/services/event_transport_factory.rs`
 - `apps/server/src/services/event_bus.rs`
 - `crates/rustok-outbox/`
 - `crates/rustok-iggy/`
 
-- [ ] Server bootstrap поднимает актуальный event runtime.
-- [ ] Transport mode согласован с текущими settings и runtime wiring.
-- [ ] `rustok-outbox` остаётся production-first delivery path там, где нужна транзакционная согласованность.
-- [ ] Дополнительные transport layers не подменяют canonical outbox contract.
+- [ ] Server bootstrap raises the current event runtime.
+- [ ] Transport mode is consistent with current settings and runtime wiring.
+- [ ] `rustok-outbox` remains the production-first delivery path where transactional consistency is required.
+- [ ] Additional transport layers do not replace the canonical outbox contract.
 
 ### 1.2 Transactional publish path
 
-- [ ] Domain write path и запись в outbox происходят в одной транзакции там, где это требуется контрактом.
-- [ ] Межмодульные события не публикуются мимо canonical transactional path без явной причины.
-- [ ] Runtime docs и local docs publisher-а совпадают с фактическим publish path.
+- [ ] Domain write path and outbox write happen in the same transaction where the contract requires it.
+- [ ] Inter-module events are not published outside the canonical transactional path without an explicit reason.
+- [ ] Runtime docs and local docs of the publisher match the actual publish path.
 
-## Фаза 2. Domain event ownership
+## Phase 2. Domain Event Ownership
 
 ### 2.1 Publishers
 
-- [ ] Ownership event family совпадает с owning module/service layer.
-- [ ] Host layer не становится скрытым publisher-ом module-owned event family.
-- [ ] Shared helper events не разрастаются в универсальный substitute для typed domain events.
+- [ ] Event family ownership matches owning module/service layer.
+- [ ] Host layer does not become a hidden publisher of a module-owned event family.
+- [ ] Shared helper events do not grow into a universal substitute for typed domain events.
 
 ### 2.2 Consumers
 
-- [ ] Consumers обновляют projections и downstream state идемпотентно.
-- [ ] Replay и recovery path остаются допустимыми.
-- [ ] Consumer path не ломает module boundaries.
+- [ ] Consumers update projections and downstream state idempotently.
+- [ ] Replay and recovery paths remain valid.
+- [ ] Consumer path does not break module boundaries.
 
-## Фаза 3. Межмодульные связи
+## Phase 3. Inter-Module Connections
 
 ### 3.1 Dependency discipline
 
-- [ ] Межмодульные зависимости совпадают с `modules.toml`, local docs и runtime wiring.
-- [ ] Новый integration path не создаёт скрытую прямую связность между модулями там, где нужен event-driven contract.
-- [ ] Capability/support crate-ы не выдаются за платформенные модули в integration graph.
+- [ ] Inter-module dependencies match `modules.toml`, local docs and runtime wiring.
+- [ ] A new integration path does not create hidden direct connectivity between modules where an event-driven contract is needed.
+- [ ] Capability/support crates are not passed off as platform modules in the integration graph.
 
-## Фаза 4. Read-side и интеграции
+## Phase 4. Read-Side and Integrations
 
 ### 4.1 Index/read consumers
 
-- [ ] Read-side consumers согласованы с `rustok-index` и event-flow contract.
-- [ ] External integration path не подменяет canonical internal event flow.
-- [ ] Routing/cache/index updates, завязанные на события, описаны в owning component docs.
+- [ ] Read-side consumers are consistent with `rustok-index` and the event-flow contract.
+- [ ] External integration path does not replace the canonical internal event flow.
+- [ ] Routing/cache/index updates tied to events are described in owning component docs.
 
-## Фаза 5. Точечные локальные проверки
+## Phase 5. Targeted Local Checks
 
-### 5.1 Минимум
+### 5.1 Minimum
 
-- [ ] targeted `cargo check` / `cargo test` для затронутых publishers/consumers
-- [ ] targeted `xtask module test <slug>`, если меняется module-owned event contract
-- [ ] targeted runtime smoke, если меняется transport wiring
+- [ ] targeted `cargo check` / `cargo test` for affected publishers/consumers
+- [ ] targeted `xtask module test <slug>`, if module-owned event contract changes
+- [ ] targeted runtime smoke, if transport wiring changes
 
-## Open blockers
+## Open Blockers
 
-- [ ] Runtime-only blockers фиксировать кратко, отдельно от самого checklist.
-- [ ] Не превращать этот документ в список исторических инцидентов.
+- [ ] Record runtime-only blockers briefly, separate from the checklist itself.
+- [ ] Do not turn this document into a list of historical incidents.
 
-## Связанные документы
+## Related Documents
 
-- [Контракт потока доменных событий](../architecture/event-flow-contract.md)
-- [Каналы и real-time surfaces](../architecture/channels.md)
-- [Архитектура модулей](../architecture/modules.md)
-- [Реестр crate-ов модульной платформы](../modules/crates-registry.md)
+- [Domain Event Flow Contract](../architecture/event-flow-contract.md)
+- [Channels and Real-Time Surfaces](../architecture/channels.md)
+- [Module Architecture](../architecture/modules.md)
+- [Modular Platform Crate Registry](../modules/crates-registry.md)

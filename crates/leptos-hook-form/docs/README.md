@@ -1,3 +1,3 @@
 # leptos-hook-form docs
 
-В этой папке хранится документация модуля `crates/leptos-hook-form`.
+This folder contains documentation for the `crates/leptos-hook-form` module.

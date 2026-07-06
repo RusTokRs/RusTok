@@ -1,22 +1,22 @@
 # RusTok — Verification Scripts
 
-Автоматизированные проверки платформы, встроенные в общий verification workflow. Точка входа для ручного orchestration-прогона: [PLATFORM_VERIFICATION_PLAN.md](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md).
+Automated platform checks integrated into the common verification workflow. Entry point for manual orchestration runs: [PLATFORM_VERIFICATION_PLAN.md](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md).
 
-## Быстрый старт
+## Quick Start
 
 ```bash
-# Запустить ВСЕ проверки (краткий вывод)
+# Run ALL checks (compact output)
 ./scripts/verify/verify-all.sh
 
-# Запустить ВСЕ проверки (полный вывод)
+# Run ALL checks (full output)
 ./scripts/verify/verify-all.sh -v
 
-# Запустить одну категорию
+# Run a single category
 ./scripts/verify/verify-all.sh tenant-isolation
 ./scripts/verify/verify-all.sh api-quality
 ./scripts/verify/verify-all.sh deployment-profiles
 
-# Запустить скрипт напрямую (всегда полный вывод)
+# Run a script directly (always full output)
 ./scripts/verify/verify-tenant-isolation.sh
 ./scripts/verify/verify-deployment-profiles.sh
 ./scripts/verify/verify-migration-smoke.sh
@@ -37,42 +37,42 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-read
 node scripts/verify/verify-ecommerce-fba-registries.mjs
 ```
 
-## Когда запускать
+## When to Run
 
-| Ситуация | Команда |
-|----------|---------|
-| Перед коммитом | `./scripts/verify/verify-all.sh` |
-| После рефакторинга модуля | `./scripts/verify/verify-all.sh -v` |
-| Ревью PR | `./scripts/verify/verify-all.sh -v` |
-| Добавили новый endpoint | `./scripts/verify/verify-all.sh api-quality` + `node scripts/verify/verify-api-surface-contract.mjs` |
-| Трогаете Loco/Axum cutover | `node scripts/verify/verify-loco-inventory.mjs` |
-| Экспорт OpenAPI и GraphQL contracts | `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` |
-| Добавили новый event | `./scripts/verify/verify-all.sh events` |
-| Проверка anti-bypass drift | `./scripts/verify/verify-all.sh anti-bypass` |
-| Добавили миграцию | `./scripts/verify/verify-all.sh tenant-isolation` + `./scripts/verify/verify-migration-smoke.sh`; в CI тот же smoke закреплён отдельным job `migration-smoke` |
-| Подозрение на дыру в RBAC | `./scripts/verify/verify-all.sh rbac-coverage` |
-| Аудит безопасности | `./scripts/verify/verify-security.sh` |
-| Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
-| Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
-| Проверка no-compile guardrails standalone Flex Phase 5 | `node scripts/verify/verify-flex-standalone-contract.mjs` |
-| Проверка runtime-context/cache-key invariants | `node scripts/verify/verify-runtime-context-invariants.mjs` |
-| Большой FFA UI migration gate | `npm run verify:ffa:ui:migration` |
-| Sweep по всем `core_transport_ui` строкам readiness board | `node scripts/verify/verify-ffa-ui-boundary-sweep.mjs` |
-| Sweep transport profiles для FFA surfaces | `node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs` |
-| Проверка inventory admin native/write boundary | `node scripts/verify/verify-inventory-admin-boundary.mjs` |
-| Проверка AI admin FFA boundary | `node scripts/verify/verify-ai-admin-boundary.mjs` |
-| Проверка tenant admin FFA boundary | `node scripts/verify/verify-tenant-admin-boundary.mjs` |
-| Проверка запрета lifecycle bypass helper в production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
-| Проверка parity provider/consumer для page-builder контракта | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
-| Проверка machine-readable registry page-builder против manifests | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs` |
-| Проверка required fallback/toggle профилей page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
-| Проверка консистентности значений в toggle профилях page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
-| Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
-| Проверка drift-а error catalog между provider/consumer manifest, backend и UI adapters | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages` |
-| Проверка readiness consumer-модуля (`pages/forum`) | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
-| Проверка ecommerce FBA provider registries и locked contract-test metadata | `node scripts/verify/verify-ecommerce-fba-registries.mjs` |
+| Situation | Command |
+|-----------|---------|
+| Before commit | `./scripts/verify/verify-all.sh` |
+| After module refactoring | `./scripts/verify/verify-all.sh -v` |
+| PR review | `./scripts/verify/verify-all.sh -v` |
+| Added a new endpoint | `./scripts/verify/verify-all.sh api-quality` + `node scripts/verify/verify-api-surface-contract.mjs` |
+| Touching Loco/Axum cutover | `node scripts/verify/verify-loco-inventory.mjs` |
+| Exporting OpenAPI and GraphQL contracts | `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` |
+| Added a new event | `./scripts/verify/verify-all.sh events` |
+| Anti-bypass drift check | `./scripts/verify/verify-all.sh anti-bypass` |
+| Added a migration | `./scripts/verify/verify-all.sh tenant-isolation` + `./scripts/verify/verify-migration-smoke.sh`; in CI the same smoke is pinned as a separate job `migration-smoke` |
+| Suspected RBAC gap | `./scripts/verify/verify-all.sh rbac-coverage` |
+| Security audit | `./scripts/verify/verify-security.sh` |
+| Deployment profile matrix check | `./scripts/verify/verify-all.sh deployment-profiles` |
+| Flex multilingual contract drift check | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
+| No-compile guardrails check for standalone Flex Phase 5 | `node scripts/verify/verify-flex-standalone-contract.mjs` |
+| Runtime-context/cache-key invariants check | `node scripts/verify/verify-runtime-context-invariants.mjs` |
+| Large FFA UI migration gate | `npm run verify:ffa:ui:migration` |
+| Sweep all `core_transport_ui` rows in readiness board | `node scripts/verify/verify-ffa-ui-boundary-sweep.mjs` |
+| Sweep transport profiles for FFA surfaces | `node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs` |
+| Inventory admin native/write boundary check | `node scripts/verify/verify-inventory-admin-boundary.mjs` |
+| AI admin FFA boundary check | `node scripts/verify/verify-ai-admin-boundary.mjs` |
+| Tenant admin FFA boundary check | `node scripts/verify/verify-tenant-admin-boundary.mjs` |
+| Lifecycle bypass helper prohibition in production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
+| Provider/consumer parity check for page-builder contract | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
+| Machine-readable registry page-builder vs manifests check | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs` |
+| Required fallback/toggle profiles for page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
+| Toggle profile value consistency for page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
+| Full baseline gate page-builder FBA before Wave 0/Wave 1 | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
+| Error catalog drift between provider/consumer manifest, backend and UI adapters | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages` |
+| Consumer module readiness check (`pages/forum`) | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
+| Ecommerce FBA provider registries and locked contract-test metadata | `node scripts/verify/verify-ecommerce-fba-registries.mjs` |
 
-Альтернативно те же проверки доступны через `npm run`:
+Alternatively, the same checks are available via `npm run`:
 
 ```bash
 npm run verify:page-builder:contract-parity
@@ -91,24 +91,24 @@ npm run verify:ecommerce:fba-registries
 npm run test:verify:ecommerce:fba-registries
 ```
 
-## Описание скриптов
+## Script Descriptions
 
 ### `verify:ffa:ui:migration` / `verify-ffa-ui-boundary-sweep.mjs`
-**FFA UI migration gate** — большой source-level gate для module-owned UI перехода на `core/transport/ui`.
+**FFA UI migration gate** — large source-level gate for module-owned UI migration to `core/transport/ui`.
 
-Что делает aggregate `npm run verify:ffa:ui:migration`:
-- проверяет FFA migration contract docs и anti-over-extraction/doc patterns;
-- запускает repository-wide sweep по всем строкам readiness board со `Structural shape: core_transport_ui`;
-- проверяет transport profile каждого FFA surface: multi-adapter по коду или документированный single-adapter/owner-fragment state;
-- запускает module-specific boundary guardrails для модулей, где есть более глубокие локальные правила.
+What the aggregate `npm run verify:ffa:ui:migration` does:
+- checks FFA migration contract docs and anti-over-extraction/doc patterns;
+- runs a repository-wide sweep over all readiness board rows with `Structural shape: core_transport_ui`;
+- checks the transport profile of each FFA surface: multi-adapter by code or documented single-adapter/owner-fragment state;
+- runs module-specific boundary guardrails for modules with deeper local rules.
 
-Что дополнительно фиксирует sweep:
-- central readiness board в `docs/modules/registry.md` совпадает с локальными `docs/implementation-plan.md` по FFA/FBA status и structural shape;
-- каждый `core_transport_ui` surface имеет `core`, `transport` и `ui/leptos` слой;
-- `core` остаётся свободным от Leptos/server-function imports;
-- `ui/leptos` не вызывает raw `api::*` напрямую.
+What the sweep additionally verifies:
+- central readiness board in `docs/modules/registry.md` matches local `docs/implementation-plan.md` by FFA/FBA status and structural shape;
+- each `core_transport_ui` surface has `core`, `transport` and `ui/leptos` layers;
+- `core` remains free of Leptos/server-function imports;
+- `ui/leptos` does not call raw `api::*` directly.
 
-Пример:
+Example:
 
 ```bash
 npm run verify:ffa:ui:migration
@@ -121,30 +121,30 @@ node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs
 ```
 
 ### `verify-ecommerce-fba-registries.mjs`
-**Ecommerce FBA provider/consumer registry gate** — проверяет provider metadata для `payment`, `fulfillment`, `order`, `pricing`, `inventory` и consumer metadata для `commerce`.
+**Ecommerce FBA provider/consumer registry gate** — checks provider metadata for `payment`, `fulfillment`, `order`, `pricing`, `inventory` and consumer metadata for `commerce`.
 
-Что делает:
-- сверяет module-owned `contracts/*-fba-registry.json` с `rustok-module.toml`, `Cargo.toml`, `src/lib.rs`, `src/ports.rs`, local implementation plan, центральным readiness board и evidence path-ами внутри registry;
-- требует нейтральные `PortContext`/`PortError`, per-operation port declarations и in-process provider implementation marker, если он заявлен в registry;
-- фиксирует `contract_tests.status = planned_cases_locked`, наличие `in_process` + `remote_adapter_placeholder` profiles, case на каждую port operation и baseline assertions `typed_port_error_mapping`/`context_deadline_preserved`;
-- проверяет, что planned fallback-smoke profile set покрывает все consumer fallback profiles, чтобы future runtime evidence не расходился с provider/consumer metadata;
-- сверяет `crates/rustok-commerce/contracts/commerce-fba-registry.json` с provider registries, чтобы checkout orchestration не ссылался на устаревшие contract versions, profiles, degraded modes или fallback profiles.
+What it does:
+- verifies module-owned `contracts/*-fba-registry.json` against `rustok-module.toml`, `Cargo.toml`, `src/lib.rs`, `src/ports.rs`, local implementation plan, the central readiness board and evidence paths inside the registry;
+- requires neutral `PortContext`/`PortError`, per-operation port declarations and an in-process provider implementation marker if declared in the registry;
+- checks `contract_tests.status = planned_cases_locked`, presence of `in_process` + `remote_adapter_placeholder` profiles, a case for each port operation and baseline assertions `typed_port_error_mapping`/`context_deadline_preserved`;
+- verifies that the planned fallback-smoke profile set covers all consumer fallback profiles so future runtime evidence does not diverge from provider/consumer metadata;
+- verifies `crates/rustok-commerce/contracts/commerce-fba-registry.json` against provider registries so checkout orchestration does not reference outdated contract versions, profiles, degraded modes or fallback profiles.
 
-Unit guardrail для самого verifier-а: `node scripts/verify/verify-ecommerce-fba-registries.test.mjs` или `npm run test:verify:ecommerce:fba-registries`.
+Unit guardrail for the verifier itself: `node scripts/verify/verify-ecommerce-fba-registries.test.mjs` or `npm run test:verify:ecommerce:fba-registries`.
 
 
 ### `verify-migration-smoke.sh`
-**Wave 4 migration-safety smoke** — PostgreSQL apply-from-zero для server migrator.
+**Wave 4 migration-safety smoke** — PostgreSQL apply-from-zero for server migrator.
 
-Что делает:
-- создаёт временную PostgreSQL database через `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` внутри Rust integration test, без зависимости от локального `psql`;
-- запускает ignored integration test `postgres_zero_migration_smoke_applies_from_empty_database`;
-- применяет `migration::Migrator` с нуля и проверяет, что pending migrations не осталось;
-- при `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1` применяет миграции по одной, чтобы отдельно проверить incremental apply path; shell script и Rust test одинаково принимают только `0`/`1`, поэтому direct test runs не обходят эту валидацию;
-- проверяет наличие representative platform/module tables (`tenants`, `product_variants`, `prices`, `inventory_items`, `channels`, `oauth_apps`, `blog_post_tags`, `forum_topic_tags`, `taxonomy_terms`);
-- удаляет временную database из Rust test, если `RUSTOK_MIGRATION_SMOKE_KEEP_DB=1` не установлен.
+What it does:
+- creates a temporary PostgreSQL database via `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` inside a Rust integration test, without depending on local `psql`;
+- runs the ignored integration test `postgres_zero_migration_smoke_applies_from_empty_database`;
+- applies `migration::Migrator` from scratch and checks that no pending migrations remain;
+- when `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`, applies migrations one by one to separately check the incremental apply path; the shell script and Rust test both accept only `0`/`1`, so direct test runs do not bypass this validation;
+- checks for representative platform/module tables (`tenants`, `product_variants`, `prices`, `inventory_items`, `channels`, `oauth_apps`, `blog_post_tags`, `forum_topic_tags`, `taxonomy_terms`);
+- drops the temporary database from the Rust test, unless `RUSTOK_MIGRATION_SMOKE_KEEP_DB=1` is set.
 
-Пример:
+Example:
 
 ```bash
 RUSTOK_MIGRATION_SMOKE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres \
@@ -159,16 +159,16 @@ RUSTOK_MIGRATION_SMOKE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/pos
 
 
 ### `verify-api-surface-contract.mjs`
-**API surface contract guardrail** — быстрый no-compile gate для плана API-поверхностей.
+**API surface contract guardrail** — fast no-compile gate for the API surface plan.
 
-Что проверяет:
-- GraphQL schema composition использует build-time generated optional module root (`graphql_schema_codegen.rs`) вместо ручного списка optional modules;
-- `apps/server/build.rs` читает `modules.toml` и package-local `rustok-module.toml` declarations для `[provides.graphql]` / `[provides.http]`;
-- package-local manifests синхронизированы со slug-ами `modules.toml` и имеют `[crate].entry_type`;
-- модули, публикующие GraphQL/HTTP transport, представлены в центральном registry;
-- API verification plan и README ссылаются на этот no-compile evidence path.
+What it checks:
+- GraphQL schema composition uses build-time generated optional module root (`graphql_schema_codegen.rs`) instead of a manual list of optional modules;
+- `apps/server/build.rs` reads `modules.toml` and package-local `rustok-module.toml` declarations for `[provides.graphql]` / `[provides.http]`;
+- package-local manifests are synchronized with `modules.toml` slugs and have `[crate].entry_type`;
+- modules publishing GraphQL/HTTP transport are represented in the central registry;
+- API verification plan and README reference this no-compile evidence path.
 
-Пример:
+Example:
 
 ```bash
 node scripts/verify/verify-api-surface-contract.mjs
@@ -176,17 +176,18 @@ node scripts/verify/verify-api-surface-contract.mjs
 
 ---
 
+
 ### `verify-runtime-context-invariants.mjs`
-**Wave 6 runtime-context guardrail** — быстрый source-level gate для уже исправленных P0/P1 invariants без полной Rust-компиляции.
+**Wave 6 runtime-context guardrail** — fast source-level gate for already fixed P0/P1 invariants without full Rust compilation.
 
-Что проверяет:
-- `ChannelCacheKey` содержит OAuth/client и locale dimensions;
-- `RequestFacts` берёт `oauth_app_id` из `AuthContextExtension`, а `locale` — из `ResolvedRequestLocale.effective_locale`;
-- source-order middleware в `compose_application_router` сохраняет фактический порядок выполнения Axum `locale -> auth_context -> channel`;
-- tenant locale cache metrics экспортируют counter names с `_total` и gauge `rustok_tenant_locale_cache_entries`;
-- `modules.toml` и central registry evidence сохраняют `pages -> [content, page_builder]`.
+What it checks:
+- `ChannelCacheKey` contains OAuth/client and locale dimensions;
+- `RequestFacts` gets `oauth_app_id` from `AuthContextExtension`, and `locale` from `ResolvedRequestLocale.effective_locale`;
+- source-order middleware in `compose_application_router` preserves the actual execution order of Axum `locale -> auth_context -> channel`;
+- tenant locale cache metrics export counter names with `_total` and gauge `rustok_tenant_locale_cache_entries`;
+- `modules.toml` and central registry evidence preserve `pages -> [content, page_builder]`.
 
-Пример:
+Example:
 
 ```bash
 node scripts/verify/verify-runtime-context-invariants.mjs
@@ -196,14 +197,14 @@ node scripts/verify/verify-runtime-context-invariants.mjs
 ---
 
 ### `verify-loco-inventory.mjs`
-**Loco RS exit inventory guardrail** — быстрый source-level gate для плана ухода от Loco RS.
+**Loco RS exit inventory guardrail** — fast source-level gate for the Loco RS exit plan.
 
-Что проверяет:
-- сканирует `apps/`, `crates/`, `scripts/`, `docs/`, `Cargo.toml` и `Cargo.lock` на `loco_rs`, `loco-rs`, `cargo loco`, `rustok_outbox::loco`;
-- классифицирует каждое текущее вхождение по категориям roadmap (`host_runtime`, `server_task`, `module_ui_adapter`, `dependency_manifest`, `docs` и т.д.);
-- падает на новом неклассифицированном Loco-вхождении, чтобы Phase 0 inventory не расползался.
+What it checks:
+- scans `apps/`, `crates/`, `scripts/`, `docs/`, `Cargo.toml` and `Cargo.lock` for `loco_rs`, `loco-rs`, `cargo loco`, `rustok_outbox::loco`;
+- classifies each current occurrence by roadmap category (`host_runtime`, `server_task`, `module_ui_adapter`, `dependency_manifest`, `docs`, etc.);
+- fails on any new unclassified Loco occurrence to prevent Phase 0 inventory from spreading.
 
-Пример:
+Example:
 
 ```bash
 node scripts/verify/verify-loco-inventory.mjs
@@ -213,18 +214,18 @@ npm run verify:loco:inventory
 ---
 
 ### `verify-inventory-admin-boundary.mjs`
-**Wave 5/Wave 6 inventory guardrail** — быстрый source-level gate для inventory-owned admin read/write boundary без полной Rust-компиляции.
+**Wave 5/Wave 6 inventory guardrail** — fast source-level gate for inventory-owned admin read/write boundary without full Rust compilation.
 
-Что проверяет:
-- `InventoryQuantityWriteResult` строит `inStock` из committed quantity и backorder policy;
-- native `set_variant_quantity`/`adjust_variant_quantity` используют internal mutation update result и не делают отдельный pre-read variant policy;
+What it checks:
+- `InventoryQuantityWriteResult` builds `inStock` from committed quantity and backorder policy;
+- native `set_variant_quantity`/`adjust_variant_quantity` use internal mutation update result and do not do a separate pre-read variant policy;
 - removed GraphQL fallback stays removed: no `src/transport.rs`, `leptos-graphql`, `CommerceGraphqlInventoryReadAdapter`, GraphQL runtime markers, token/tenant-slug fallback inputs or `mod transport`;
 - admin API read facades fetch-bootstrap/products/product and write facades set/adjust/reserve/release/check-availability go through inventory-owned native facades without GraphQL fallback;
 - native server-function endpoints for inventory read/write/validation surfaces remain declared;
 - commerce storefront/public-channel callers use inventory-owned availability/projection facades instead of direct loaders/backorder branching;
 - admin UI/locales describe the native inventory facade and docs mark current admin stock operations as native/API covered.
 
-Пример:
+Example:
 
 ```bash
 node scripts/verify/verify-inventory-admin-boundary.mjs
@@ -237,15 +238,15 @@ node scripts/verify/verify-inventory-admin-boundary.test.mjs
 
 
 ### `verify-ai-domain-verticals.mjs`
-**AI domain vertical ownership guardrail** — быстрый source-level gate для `rustok-ai-product`, `rustok-ai-content` и `rustok-ai-order` без Rust-компиляции.
+**AI domain vertical ownership guardrail** — fast source-level gate for `rustok-ai-product`, `rustok-ai-content` and `rustok-ai-order` without Rust compilation.
 
-Что проверяет:
-- product/content/order support crates владеют task/tool constants, descriptor registration APIs и generated payload validators;
-- runtime composition в `rustok-ai` consumes domain-owned registration APIs вместо hard-coded slug literals;
-- content moderation sensitive-tool defaults merge-ятся в runtime policy через `content_ai_sensitive_tools`;
-- локальные implementation plans и `rustok-ai` plan фиксируют compile-free evidence gate.
+What it checks:
+- product/content/order support crates own task/tool constants, descriptor registration APIs and generated payload validators;
+- runtime composition in `rustok-ai` consumes domain-owned registration APIs instead of hard-coded slug literals;
+- content moderation sensitive-tool defaults merge into runtime policy via `content_ai_sensitive_tools`;
+- local implementation plans and `rustok-ai` plan document the compile-free evidence gate.
 
-Пример:
+Example:
 
 ```bash
 npm run verify:ai:domain-verticals
@@ -255,16 +256,16 @@ npm run verify:ai:domain-verticals
 ---
 
 ### `verify-ai-admin-boundary.mjs` / `verify-tenant-admin-boundary.mjs`
-**FFA admin guardrails** — быстрые source-level checks для module-owned admin UI splits без полной Rust-компиляции.
+**FFA admin guardrails** — fast source-level checks for module-owned admin UI splits without full Rust compilation.
 
-Что проверяют:
+What they check:
 - crate root wires `core`, `transport` and explicit `ui/leptos.rs` adapters;
 - Leptos adapters consume module-owned transport facades instead of pre-FFA `api::` calls;
 - `core.rs` stays Leptos/server-function/runtime free;
 - native server-function endpoints stay inside `transport/native_server_adapter.rs`;
 - old flat `api.rs` facades do not return for completed slices.
 
-Пример:
+Example:
 
 ```bash
 npm run verify:ai:admin-boundary
@@ -275,176 +276,176 @@ npm run verify:ffa:ui:migration
 ---
 
 ### `verify-tenant-isolation.sh`
-**Фаза 19.1 + 5** — Multi-tenancy safety
+**Phase 19.1 + 5** — Multi-tenancy safety
 
-Что ищет:
-- `.all(&db)` без `.filter(tenant_id)` — загрузка данных чужого tenant
-- `find_by_id` без tenant_id проверки — доступ к чужому ресурсу по ID
-- `DELETE` без tenant_id filter — удаление данных чужого tenant
-- Миграции: каждая domain-таблица имеет `tenant_id` column
-- SeaORM entities: `pub tenant_id` в Model struct
-- Raw SQL строки (SQL injection risk)
-- Hard DELETE без soft-delete (архивации)
+What it looks for:
+- `.all(&db)` without `.filter(tenant_id)` — loading another tenant's data
+- `find_by_id` without tenant_id check — accessing another tenant's resource by ID
+- `DELETE` without tenant_id filter — deleting another tenant's data
+- Migrations: each domain table has a `tenant_id` column
+- SeaORM entities: `pub tenant_id` in Model struct
+- Raw SQL strings (SQL injection risk)
+- Hard DELETE without soft-delete (archival)
 
-**Severity:** CRITICAL. Нарушение = утечка данных между tenant-ами.
+**Severity:** CRITICAL. Violation = data leak between tenants.
 
 ---
 
 ### `verify-unsafe-code.sh`
-**Фаза 19.1 + 19.3** — Runtime safety
+**Phase 19.1 + 19.3** — Runtime safety
 
-Что ищет:
-- `.unwrap()` — паника при None/Err
-- `.expect()` — паника с сообщением (review each)
-- `panic!()` — явная паника
-- `todo!()` / `unimplemented!()` — недописанный код
-- `std::thread::sleep` — блокировка tokio runtime
-- `std::fs::` — блокирующий I/O в async
-- `block_on()` — deadlock в async context
-- `println!` / `eprintln!` — должно быть tracing::
-- `unreachable!()` — оправдан ли?
+What it looks for:
+- `.unwrap()` — panic on None/Err
+- `.expect()` — panic with message (review each)
+- `panic!()` — explicit panic
+- `todo!()` / `unimplemented!()` — incomplete code
+- `std::thread::sleep` — blocking tokio runtime
+- `std::fs::` — blocking I/O in async
+- `block_on()` — deadlock in async context
+- `println!` / `eprintln!` — should be tracing::
+- `unreachable!()` — is it justified?
 - `static` / `lazy_static!` / `once_cell::Lazy` — should use AppContext
-- `unwrap_or("default")` для секретов — unsafe fallback
+- `unwrap_or("default")` for secrets — unsafe fallback
 
-**Severity:** HIGH. Паника крашит весь tokio runtime.
+**Severity:** HIGH. Panic crashes the entire tokio runtime.
 
 ---
 
 ### `verify-rbac-coverage.sh`
-**Фаза 19.2** — Authorization coverage
+**Phase 19.2** — Authorization coverage
 
-Что ищет:
-- REST handlers без RBAC extractors (`Require*`, `Permission`)
-- GraphQL mutations без permission checks
-- GraphQL queries без auth context
-- Auth middleware зарегистрирован в router
+What it looks for:
+- REST handlers without RBAC extractors (`Require*`, `Permission`)
+- GraphQL mutations without permission checks
+- GraphQL queries without auth context
+- Auth middleware registered in the router
 
-**Severity:** CRITICAL. Отсутствие RBAC = privilege escalation.
+**Severity:** CRITICAL. Missing RBAC = privilege escalation.
 
 ---
 
 ### `verify-api-quality.sh`
-**Фаза 19.12–19.14** — API correctness
+**Phase 19.12–19.14** — API correctness
 
-Что ищет:
+What it looks for:
 
 **GraphQL:**
-- N+1 queries — direct DB access в resolvers (должен быть DataLoader)
-- `MergedObject` — модульная schema (не монолитная)
-- String errors — должны быть error extensions
-- `TenantContext` — в каждом resolver
-- Пагинация в list queries
+- N+1 queries — direct DB access in resolvers (should be DataLoader)
+- `MergedObject` — modular schema (not monolithic)
+- String errors — should be error extensions
+- `TenantContext` — in every resolver
+- Pagination in list queries
 
 **REST:**
-- `#[utoipa::path]` — OpenAPI annotation на каждый endpoint
-- HTTP status codes: 201 для POST, 204 для DELETE
-- Input validation через `validator::Validate`
-- Rate limiting на auth endpoints
+- `#[utoipa::path]` — OpenAPI annotation on every endpoint
+- HTTP status codes: 201 for POST, 204 for DELETE
+- Input validation via `validator::Validate`
+- Rate limiting on auth endpoints
 - CORS middleware
 
 **Parity:**
-- Auth операции доступны и через REST, и через GraphQL
-- Единый `AuthLifecycleService` (не дублированная логика)
-- Бизнес-логика не в controllers/resolvers
+- Auth operations available via both REST and GraphQL
+- Single `AuthLifecycleService` (not duplicated logic)
+- Business logic not in controllers/resolvers
 
-**Severity:** HIGH. N+1 = ×50 latency. Missing OpenAPI = нет документации.
+**Severity:** HIGH. N+1 = 50x latency. Missing OpenAPI = no documentation.
 
 ---
 
 ### `verify-events.sh`
-**Фаза 6 + 19.1** — Event system integrity
+**Phase 6 + 19.1** — Event system integrity
 
-Что ищет:
-- `publish()` без `_in_tx` — данные сохранятся, событие потеряется
-- `tenant_id` в каждом DomainEvent struct
-- Event handlers зарегистрированы
-- Outbox pattern реализован
-- DLQ (Dead Letter Queue) существует
+What it looks for:
+- `publish()` without `_in_tx` — data saved, event lost
+- `tenant_id` in every DomainEvent struct
+- Event handlers registered
+- Outbox pattern implemented
+- DLQ (Dead Letter Queue) exists
 - Event versioning
-- Idempotency guards в handlers
-- Transport config (не "memory" в production)
-- `#[derive(Serialize, Deserialize)]` на event structs
+- Idempotency guards in handlers
+- Transport config (not "memory" in production)
+- `#[derive(Serialize, Deserialize)]` on event structs
 
-**Severity:** CRITICAL. publish без _in_tx = потеря событий при rollback.
+**Severity:** CRITICAL. publish without _in_tx = event loss on rollback.
 
 ---
 
 ### `verify-code-quality.sh`
-**Фаза 19.4–19.11** — Code health
+**Phase 19.4–19.11** — Code health
 
-Что ищет:
+What it looks for:
 
 **Security:**
-- PII в логах (password, email, token в tracing)
-- Hardcoded secrets в коде
-- `.env` файлы в git
-- Entities возвращаются напрямую в API (должны быть Response DTOs)
+- PII in logs (password, email, token in tracing)
+- Hardcoded secrets in code
+- `.env` files in git
+- Entities returned directly in API (should be Response DTOs)
 
 **Metrics:**
-- Файлы > 500 строк
-- Функции > 60 строк (top 10)
-- Функции с > 5 аргументами
+- Files > 500 lines
+- Functions > 60 lines (top 10)
+- Functions with > 5 arguments
 
 **Dependencies:**
-- `rustok-core` не зависит от domain crates
-- Domain crates не зависят друг от друга
-- `rustok-test-utils` только в `[dev-dependencies]`
+- `rustok-core` does not depend on domain crates
+- Domain crates do not depend on each other
+- `rustok-test-utils` only in `[dev-dependencies]`
 
 **Error handling:**
-- `thiserror` в domain crates (не `anyhow`)
-- String-based status checks (должны быть enum)
+- `thiserror` in domain crates (not `anyhow`)
+- String-based status checks (should be enum)
 
 **Observability:**
-- `#[instrument]` decorator на service methods
-- Structured logging fields (не string interpolation)
+- `#[instrument]` decorator on service methods
+- Structured logging fields (not string interpolation)
 
 **Type safety:**
-- Newtype IDs (`TenantId`, `UserId`), не bare `Uuid`
+- Newtype IDs (`TenantId`, `UserId`), not bare `Uuid`
 
-**Severity:** HIGH. PII в логах = GDPR violation.
+**Severity:** HIGH. PII in logs = GDPR violation.
 
 ---
 
 ### `verify-security.sh`
-**Фаза 18** — Security audit
+**Phase 18** — Security audit
 
-Что ищет:
-- Argon2 для password hashing (не MD5/SHA256/bcrypt)
-- Security headers (CSP, X-Frame-Options, HSTS) в middleware
-- SSRF protection (allowlist для внешних HTTP запросов)
-- `zeroize` для sensitive data в памяти
-- JWT secret через env var (без fallback defaults)
-- Token invalidation при смене пароля
+What it looks for:
+- Argon2 for password hashing (not MD5/SHA256/bcrypt)
+- Security headers (CSP, X-Frame-Options, HSTS) in middleware
+- SSRF protection (allowlist for external HTTP requests)
+- `zeroize` for sensitive data in memory
+- JWT secret via env var (no fallback defaults)
+- Token invalidation on password change
 
-**Severity:** CRITICAL. Weak hashing = compromise всех паролей.
+**Severity:** CRITICAL. Weak hashing = compromise of all passwords.
 
 ---
 
 ### `verify-architecture.sh`
-**Фаза 1 + 5** — Architectural compliance
+**Phase 1 + 5** — Architectural compliance
 
-Что ищет:
-- Module dependencies: `dependencies()` trait совпадает с `modules.toml`
-- Loco Hooks: все routes через `Hooks::routes()`, не напрямую
-- Module registry: все модули зарегистрированы через `build_registry()`
-- Core-модули не toggleable (`ModuleKind::Core`)
-- MCP tools используют `McpToolResponse` (не raw JSON)
-- Controller return types: `loco_rs::Result` (не custom)
+What it looks for:
+- Module dependencies: `dependencies()` trait matches `modules.toml`
+- Loco Hooks: all routes via `Hooks::routes()`, not directly
+- Module registry: all modules registered via `build_registry()`
+- Core modules not toggleable (`ModuleKind::Core`)
+- MCP tools use `McpToolResponse` (not raw JSON)
+- Controller return types: `loco_rs::Result` (not custom)
 - Dependency guard (`cargo metadata` + allow/deny):
-  - backend apps (в текущей конфигурации: `rustok-server`) → только `rustok-*` crate-зависимости (кроме явных infra-исключений)
-  - deny новых междоменных `rustok-* -> rustok-*` связей вне allow-list
+  - backend apps (current config: `rustok-server`) → only `rustok-*` crate dependencies (except explicit infra exceptions)
+  - deny new cross-domain `rustok-* -> rustok-*` edges outside allow-list
 
 ---
 
 ### `verify-page-builder-contract-parity.mjs`
 **Page Builder FBA baseline** — Provider/consumer version parity
 
-Что проверяет:
-- `builder_contract_version` между `rustok-page-builder` (provider) и `rustok-pages` (consumer);
-- `consumer_min_version` в provider-манифесте и условие `consumer.builder_contract_version >= provider.consumer_min_version`;
-- `contract_version` в consumer-манифесте относительно версии provider.
+What it checks:
+- `builder_contract_version` between `rustok-page-builder` (provider) and `rustok-pages` (consumer);
+- `consumer_min_version` in the provider manifest and the condition `consumer.builder_contract_version >= provider.consumer_min_version`;
+- `contract_version` in the consumer manifest relative to the provider version.
 
-**Severity:** HIGH. Drift версий контракта блокирует безопасный rollout между Wave 0/Wave 1.
+**Severity:** HIGH. Contract version drift blocks safe rollout between Wave 0/Wave 1.
 
 ---
 
@@ -452,112 +453,112 @@ npm run verify:ffa:ui:migration
 ### `verify-page-builder-contract-registry.mjs`
 **Page Builder FBA baseline** — Machine-readable registry anti-drift
 
-Что проверяет:
-- `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` существует и имеет `schema_version = 1`;
-- provider metadata (`contract`, `builder_contract_version`, `consumer_min_version`, capabilities) совпадает с `rustok-page-builder/rustok-module.toml`;
-- выбранный consumer (`pages` или `forum`) совпадает с registry по `contract_version`, `builder_contract_version`, `consumer_min_version` и capabilities;
-- consumer version не ниже provider `consumer_min_version`.
+What it checks:
+- `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` exists and has `schema_version = 1`;
+- provider metadata (`contract`, `builder_contract_version`, `consumer_min_version`, capabilities) matches `rustok-page-builder/rustok-module.toml`;
+- the selected consumer (`pages` or `forum`) matches the registry by `contract_version`, `builder_contract_version`, `consumer_min_version` and capabilities;
+- consumer version is not below provider `consumer_min_version`.
 
-**Severity:** HIGH. Registry drift блокирует Wave 0/Wave 1 promotion, потому что contract freeze становится непроверяемым.
+**Severity:** HIGH. Registry drift blocks Wave 0/Wave 1 promotion because contract freeze becomes unverifiable.
 
 ### `verify-page-builder-fallback-profiles.mjs`
 **Page Builder FBA baseline** — Required fallback/toggle structure
 
-Что проверяет:
-- наличие секций `fba.builder_consumer.degraded_modes` и `fba.builder_consumer.toggle_profiles`;
-- обязательные ключи degraded modes и профилей (`all_on/publish_off/preview_off/builder_off`);
-- наличие обязательных toggle-флагов и typed degraded-mode для publish-disable path.
+What it checks:
+- presence of sections `fba.builder_consumer.degraded_modes` and `fba.builder_consumer.toggle_profiles`;
+- required degraded mode keys and profiles (`all_on/publish_off/preview_off/builder_off`);
+- presence of required toggle flags and typed degraded-mode for publish-disable path.
 
-**Severity:** HIGH. Отсутствие fallback-структуры ведёт к неуправляемой деградации при отключении capability.
+**Severity:** HIGH. Missing fallback structure leads to uncontrollable degradation when capability is disabled.
 
 ---
 
 ### `verify-page-builder-toggle-profiles-consistency.mjs`
 **Page Builder FBA baseline** — Toggle profile value consistency
 
-Что проверяет:
-- что в каждом профиле (`all_on/publish_off/preview_off/builder_off`) флаги имеют ожидаемые boolean-комбинации;
-- что dry-run rollout semantics остаются детерминированными.
+What it checks:
+- that in each profile (`all_on/publish_off/preview_off/builder_off`) flags have the expected boolean combinations;
+- that dry-run rollout semantics remain deterministic.
 
-**Severity:** HIGH. Неконсистентные профили делают tenant-toggle rollout непредсказуемым.
+**Severity:** HIGH. Inconsistent profiles make tenant-toggle rollout unpredictable.
 
 ---
 
 ### `verify-page-builder-fba-baseline.mjs`
 **Page Builder FBA baseline** — Aggregate gate
 
-Что делает:
-- последовательно запускает:
+What it does:
+- sequentially runs:
   1) `verify-page-builder-contract-parity.mjs`,
   2) `verify-page-builder-contract-registry.mjs <module-slug>`,
-  3) `verify-page-builder-consumer-readiness.mjs <module-slug>` (по умолчанию `pages` в агрегаторе),
+  3) `verify-page-builder-consumer-readiness.mjs <module-slug>` (default `pages` in the aggregator),
   4) `verify-page-builder-fallback-profiles.mjs <module-slug>`,
   5) `verify-page-builder-toggle-profiles-consistency.mjs <module-slug>`,
   6) `verify-page-builder-terminology.mjs`.
-- возвращает non-zero exit code при падении любого шага.
+- returns non-zero exit code on any step failure.
 
-**Severity:** GATE. Это канонический baseline-check перед promotion в следующий rollout wave.
+**Severity:** GATE. This is the canonical baseline check before promotion to the next rollout wave.
 
 ---
 
 ### `verify-page-builder-consumer-readiness.mjs`
-**Page Builder FBA baseline** — проверка готовности consumer-модуля
+**Page Builder FBA baseline** — consumer module readiness check
 
-Что проверяет:
-- наличие `rustok-module.toml` и `docs/implementation-plan.md` для модуля-consumer;
-- наличие marker-ов dependency/consumer contract (`page_builder`/`builder_consumer`, `contract_version`, `builder_contract_version`);
-- наличие `Execution checkpoint` и FBA/page-builder readiness notes в implementation-plan;
-- для `pages`: marker-ы rollout policy в manifest/docs для `control_plane_builder_wave_audit`, before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers, pilot smoke `preview -> properties -> publish(dry)` и rollback target <= 10 минут без redeploy;
-- для `forum`: FW-2 fallback matrix, FW-4/Wave 1 rollout evidence, numeric SLO metrics, forum-owned trace keys, approvals/waivers, monthly refresh policy, актуальность по срокам (`created_at`, `next_due_at`, `max_age_days`) и непустую форму обязательных refresh sections перед builder-consumer rollout.
+What it checks:
+- presence of `rustok-module.toml` and `docs/implementation-plan.md` for the consumer module;
+- presence of dependency/consumer contract markers (`page_builder`/`builder_consumer`, `contract_version`, `builder_contract_version`);
+- presence of `Execution checkpoint` and FBA/page-builder readiness notes in the implementation-plan;
+- for `pages`: rollout policy markers in manifest/docs for `control_plane_builder_wave_audit`, before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers, pilot smoke `preview -> properties -> publish(dry)` and rollback target <= 10 minutes without redeploy;
+- for `forum`: FW-2 fallback matrix, FW-4/Wave 1 rollout evidence, numeric SLO metrics, forum-owned trace keys, approvals/waivers, monthly refresh policy, timeliness by dates (`created_at`, `next_due_at`, `max_age_days`) and non-empty form of mandatory refresh sections before builder-consumer rollout.
 
-Поддерживаемые slug:
+Supported slugs:
 - `pages`
 - `forum`
 
-**Severity:** MEDIUM. Скрипт проверяет structural readiness перед включением модуля в rollout wave.
-  - deny nested imports внутренних модулей без явного разрешения
+**Severity:** MEDIUM. The script checks structural readiness before including a module in a rollout wave.
+  - deny nested imports of internal modules without explicit permission
 
-**Severity:** CRITICAL. Модуль вне registry = не проходит health check.
+**Severity:** CRITICAL. Module outside registry = fails health check.
 
 ---
 
 ### `verify-forum-wave-evidence-freshness.mjs`
-**Forum Page Builder consumer freshness** — сфокусированный no-compile gate для live Wave 1 evidence
+**Forum Page Builder consumer freshness** — focused no-compile gate for live Wave 1 evidence
 
-Что проверяет:
-- `forum-wave1-rollout-evidence.json` относится к `forum`, `wave=1`, `mode=live`;
-- monthly refresh policy закрепляет `npm run verify:page-builder:consumer:forum`;
-- stale evidence блокирует rollout до refresh evidence;
-- `next_due_at` позже `created_at`, укладывается в `max_age_days` и не находится в прошлом на момент запуска gate;
-- обязательные refresh sections объявлены в policy, фактически присутствуют в packet и не пустые (`waivers` допускается как пустой массив).
+What it checks:
+- `forum-wave1-rollout-evidence.json` refers to `forum`, `wave=1`, `mode=live`;
+- monthly refresh policy enforces `npm run verify:page-builder:consumer:forum`;
+- stale evidence blocks rollout until evidence is refreshed;
+- `next_due_at` is after `created_at`, fits within `max_age_days` and is not in the past at gate runtime;
+- mandatory refresh sections declared in policy are actually present in the packet and non-empty (`waivers` allowed as an empty array).
 
-**Severity:** GATE для forum builder-consumer rollout. Скрипт не запускает Rust/Leptos компиляцию.
+**Severity:** GATE for forum builder-consumer rollout. The script does not run Rust/Leptos compilation.
 
 ---
 
 ### `verify-deployment-profiles.sh`
-Smoke-check поддерживаемых build surfaces:
+Smoke-check of supported build surfaces:
 
 - `monolith` — default feature set + startup smoke
 - `server+admin` — `--no-default-features --features redis-cache,embed-admin`
 - `headless-api` — `--no-default-features --features redis-cache`
-- `registry-only` — runtime host mode `RUSTOK_RUNTIME_HOST_MODE=registry_only` поверх минимального headless feature-profile (`--no-default-features --features redis-cache`)
+- `registry-only` — runtime host mode `RUSTOK_RUNTIME_HOST_MODE=registry_only` on top of the minimal headless feature-profile (`--no-default-features --features redis-cache`)
 
-Скрипт запускает по каждой конфигурации `cargo check` и профильный smoke-test router/startup. Для
-`registry-only` дополнительно проверяются env override `RUSTOK_RUNTIME_HOST_MODE=registry_only`,
-суженный runtime surface и reduced OpenAPI, чтобы deployment contract для read-only catalog host не
-расползался между docs и фактическим runtime.
-Дополнительно для `registry-only` матрица уже держит `GET /v1/catalog/{slug}` detail-path,
-cache-contract через `ETag` / `If-None-Match` и negative smoke на write-route-ы
+The script runs `cargo check` and profile-specific smoke-test router/startup for each configuration. For
+`registry-only` it additionally checks env override `RUSTOK_RUNTIME_HOST_MODE=registry_only`,
+narrowed runtime surface and reduced OpenAPI so the deployment contract for a read-only catalog host does not
+drift between docs and actual runtime.
+Additionally for `registry-only` the matrix already holds `GET /v1/catalog/{slug}` detail-path,
+cache-contract via `ETag` / `If-None-Match` and negative smoke on write routes
 `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`,
 `POST /v2/catalog/publish/{request_id}/stages`,
 `POST /v2/catalog/publish/{request_id}/request-changes`,
 `POST /v2/catalog/publish/{request_id}/hold`,
 `POST /v2/catalog/publish/{request_id}/resume`,
-`POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer` и
+`POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer` and
 `POST /v2/catalog/yank`.
 
-Для уже развёрнутого dedicated host тот же скрипт теперь умеет optional external smoke:
+For an already deployed dedicated host the same script now supports optional external smoke:
 
 ```bash
 RUSTOK_REGISTRY_BASE_URL=https://modules.rustok.dev \
@@ -566,97 +567,97 @@ RUSTOK_REGISTRY_EVIDENCE_DIR=./tmp/modules-rustok-dev-smoke \
 ./scripts/verify/verify-deployment-profiles.sh
 ```
 
-PowerShell-вариант поддерживает тот же contract через env vars
-`RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` и optional
-`RUSTOK_REGISTRY_EVIDENCE_DIR`. Если evidence dir задан, external smoke сохраняет туда
-`runtime-*`, `catalog-*`, `openapi-*` snapshots и `registry-smoke-metadata.txt`, а negative
-smoke покрывает тот же expanded V2 surface (`publish`, `validate`, `stages`,
+The PowerShell variant supports the same contract via env vars
+`RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` and optional
+`RUSTOK_REGISTRY_EVIDENCE_DIR`. If evidence dir is set, external smoke saves
+`runtime-*`, `catalog-*`, `openapi-*` snapshots and `registry-smoke-metadata.txt` there, and negative
+smoke covers the same expanded V2 surface (`publish`, `validate`, `stages`,
 `request-changes`, `hold`, `resume`, `runner/claim`, `owner-transfer`, `yank`).
 
-Для Windows / PowerShell используйте `./scripts/verify/verify-deployment-profiles.ps1`: он
-покрывает ту же матрицу профилей развёртывания, когда `bash` недоступен в локальном окружении.
+For Windows / PowerShell use `./scripts/verify/verify-deployment-profiles.ps1`: it
+covers the same deployment profile matrix when `bash` is not available in the local environment.
 
-**Severity:** HIGH. Поломка profile matrix = build contract задокументирован, но не воспроизводим.
+**Severity:** HIGH. Broken profile matrix = build contract documented but not reproducible.
 
 ---
 
 
 ### `verify-anti-bypass.sh`
-**Фаза 19.15** — Anti-bypass audit
+**Phase 19.15** — Anti-bypass audit
 
-Что ищет (кандидаты для ручного review):
-- Повтор валидации доменных правил в `apps/server` и frontend-adapter слое
-- Ручная публикация событий в app-слое вместо модульного сервиса
-- Прямые запросы к доменным таблицам мимо crate API
-- Контрольные сигнатуры orchestration-only (вызовы domain service)
+What it looks for (candidates for manual review):
+- Duplication of domain rule validation in `apps/server` and frontend-adapter layer
+- Manual event publishing in app layer instead of module service
+- Direct queries to domain tables bypassing crate API
+- Orchestration-only control signatures (domain service calls)
 
-Режимы:
-- `--manual-review` — расширенный вывод кандидатов
-- `--strict` — найденные кандидаты считаются ошибкой (use in CI gate при необходимости)
+Modes:
+- `--manual-review` — extended candidate output
+- `--strict` — found candidates are treated as errors (use in CI gate when needed)
 
-Важно: anti-bypass аудит не требует «бездумно всё выносить в модули». Разбор кандидатов делается вручную с учётом допустимого platform/core слоя и frontend-library слоя.
+Important: anti-bypass audit does not require "blindly moving everything to modules". Candidate review is done manually, considering the allowed platform/core layer and frontend-library layer.
 
-**Severity:** MEDIUM→HIGH. Цель — системно ловить drift и фиксировать migration-task с корректным target-слоем: доменная логика → `crates/rustok-<domain>`, platform/core orchestration → `apps/server` + `crates/rustok-core`, frontend дублирование → самописные frontend-библиотеки.
+**Severity:** MEDIUM→HIGH. Goal — systematically catch drift and record migration-task with correct target layer: domain logic → `crates/rustok-<domain>`, platform/core orchestration → `apps/server` + `crates/rustok-core`, frontend duplication → custom frontend libraries.
 
 ---
 ### `verify-flex-multilingual-contract.mjs`
 Focused repo-side guardrail for the live Flex multilingual contract.
 
-Что ищет:
-- cleanup migration `m20260410_000001_cleanup_flex_attached_legacy_inline_metadata` подключена в canonical server migrator;
-- standalone runtime не возвращается к inline localized fallback в `flex_entries.data`;
-- attached runtime не возвращается к inline localized fallback в donor `metadata`;
-- `crates/flex` docs продолжают фиксировать migration-based cleanup как канонический путь.
+What it looks for:
+- cleanup migration `m20260410_000001_cleanup_flex_attached_legacy_inline_metadata` is wired into the canonical server migrator;
+- standalone runtime does not revert to inline localized fallback in `flex_entries.data`;
+- attached runtime does not revert to inline localized fallback in donor `metadata`;
+- `crates/flex` docs continue to document migration-based cleanup as the canonical path.
 
-**Severity:** HIGH. Возврат к inline localized fallback снова размажет единый multilingual storage contract.
+**Severity:** HIGH. Reverting to inline localized fallback would again scatter the single multilingual storage contract.
 
 ---
 ### `verify-storefront-module-routes.mjs`
-Repo-side контракт маршрутов storefront для модульных UI-surface.
+Repo-side contract for storefront routes of modular UI surfaces.
 
-Что проверяет:
-- manifest metadata storefront UI модулей синхронизирована с route wiring;
-- route keys не выпадают из ожидаемого contract-surface;
-- drift между module-owned route map и host wiring фиксируется как ошибка.
+What it checks:
+- manifest metadata of storefront UI modules is synchronized with route wiring;
+- route keys do not fall outside the expected contract-surface;
+- drift between module-owned route map and host wiring is recorded as an error.
 
-**Severity:** HIGH. Drift в storefront route contract ломает навигацию и интеграцию модульного UI.
+**Severity:** HIGH. Drift in storefront route contract breaks navigation and modular UI integration.
 
 ---
 ### `verify-i18n-contract.mjs`
-Repo-side guardrail для i18n contract платформы.
+Repo-side guardrail for the platform i18n contract.
 
-Что проверяет:
-- ключевые i18n contract-правила остаются согласованными в исходниках/документации;
-- нет регресса в canonical путях locale handling для server-owned contract.
+What it checks:
+- key i18n contract rules remain consistent in source/documentation;
+- no regression in canonical locale handling paths for server-owned contract.
 
-**Severity:** HIGH. Drift i18n contract быстро приводит к несогласованным locale fallback и UI/Server mismatch.
+**Severity:** HIGH. i18n contract drift quickly leads to inconsistent locale fallback and UI/Server mismatch.
 
 ---
 ### `verify-ui-i18n-parity.mjs`
-Проверка паритета i18n между module-owned UI и host-runtime expectations.
+i18n parity check between module-owned UI and host-runtime expectations.
 
-Что проверяет:
-- module UI wiring не расходится с host-provided locale contract;
-- ключевые surface точки не обходят canonical locale provider.
-- JSON bundles `rustok-product/admin` и `rustok-product/storefront` входят в общий key-parity scan без исключений.
+What it checks:
+- module UI wiring does not diverge from host-provided locale contract;
+- key surface points do not bypass the canonical locale provider.
+- JSON bundles `rustok-product/admin` and `rustok-product/storefront` are included in the common key-parity scan without exceptions.
 
-**Severity:** HIGH. Нарушение parity приводит к фрагментации i18n и различию поведения между surface-ами.
+**Severity:** HIGH. Parity violation leads to i18n fragmentation and behavioral differences between surfaces.
 
 ---
 ### `verify-module-lifecycle-bypass-usage.mjs`
-Guardrail против использования lifecycle bypass helper в production/runtime путях.
+Guardrail against using the lifecycle bypass helper in production/runtime paths.
 
-Что проверяет:
-- helper для lifecycle bypass не просачивается в production-контуры;
-- forbidden usage фиксируется как contract violation.
+What it checks:
+- the lifecycle bypass helper does not leak into production paths;
+- forbidden usage is recorded as a contract violation.
 
-**Severity:** HIGH. Bypass в production нарушает lifecycle governance и publish/runtime safety.
+**Severity:** HIGH. Bypass in production violates lifecycle governance and publish/runtime safety.
 
 ---
 ### `verify-all.sh`
-**Master runner** — запуск всех `verify-*.sh` и ключевых `verify-*.mjs` с итоговым отчётом.
-В non-verbose режиме раннер пытается показывать compact summary, а при падении печатает
-явные `error/failed/violation` строки (с fallback на tail вывода), чтобы ошибки не терялись.
+**Master runner** — runs all `verify-*.sh` and key `verify-*.mjs` with a final report.
+In non-verbose mode the runner tries to show a compact summary, and on failure prints
+explicit `error/failed/violation` lines (with tail output fallback) so errors are not lost.
 
 ```
 ╔══════════════════════════════════════════════╗
@@ -675,46 +676,46 @@ Guardrail против использования lifecycle bypass helper в pro
   Total: 15 suites | 14 passed | 1 failed
 ```
 
-> Примечание: количество suites в примере иллюстративно и должно соответствовать
-> текущему списку `SCRIPTS` в `verify-all.sh`.
+> Note: the number of suites in the example is illustrative and should match
+> the current `SCRIPTS` list in `verify-all.sh`.
 
-## Интерпретация результатов
+## Result Interpretation
 
-| Символ | Значение | Действие |
-|--------|----------|----------|
-| `✓` (зелёный) | Проверка пройдена | Ничего не нужно |
-| `!` (жёлтый) | Warning — manual review | Посмотреть вручную, может быть OK |
-| `✗` (красный) | Error — нарушение | Обязательно исправить |
+| Symbol | Meaning | Action |
+|--------|---------|--------|
+| `✓` (green) | Check passed | Nothing to do |
+| `!` (yellow) | Warning — manual review | Review manually, may be OK |
+| `✗` (red) | Error — violation | Must fix |
 
 **Exit codes:**
-- `0` — все проверки пройдены
-- `N` — агрегированное количество ошибок (errors, не warnings)
-- `255` — ошибок больше 255 (ограничение process exit code)
+- `0` — all checks passed
+- `N` — aggregated error count (errors, not warnings)
+- `255` — more than 255 errors (process exit code limit)
 
-## Расширение скриптов
+## Adding Scripts
 
-Для добавления новой проверки:
+To add a new check:
 
-1. Найти подходящий скрипт по категории
-2. Добавить секцию с header/pass/fail/warn
-3. Обновить этот README
+1. Find the appropriate script by category
+2. Add a section with header/pass/fail/warn
+3. Update this README
 
 ```bash
-# Шаблон новой проверки
-header "N. Описание проверки"
+# New check template
+header "N. Check description"
 count=$(grep -rn 'PATTERN' "${EXISTING[@]}" --include="*.rs" 2>/dev/null | filter_tests | wc -l)
 if [[ $count -eq 0 ]]; then
-    pass "Описание успеха"
+    pass "Success description"
 else
-    fail "$count нарушение(й):"
+    fail "$count violation(s):"
     grep -rn 'PATTERN' "${EXISTING[@]}" --include="*.rs" 2>/dev/null | filter_tests | head -10
 fi
 ```
 
-## Связанные документы
+## Related Documents
 
-- [Platform Verification Plan](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md) — master-plan для периодических прогонов
-- [План верификации качества и эксплуатационной готовности](../../docs/verification/platform-quality-operations-verification-plan.md) — детальный блок тестов, observability, CI/CD, security и quality checks
-- [Forbidden Actions](../../docs/standards/forbidden-actions.md) — запреты с примерами
-- [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — ✅/❌ сравнения
-- [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — частые ошибки AI-агентов
+- [Platform Verification Plan](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md) — master plan for periodic runs
+- [Quality and Operations Verification Plan](../../docs/verification/platform-quality-operations-verification-plan.md) — detailed test block, observability, CI/CD, security and quality checks
+- [Forbidden Actions](../../docs/standards/forbidden-actions.md) — prohibitions with examples
+- [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — comparison
+- [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — common AI agent mistakes

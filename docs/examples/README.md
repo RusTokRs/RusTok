@@ -6,28 +6,28 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Каталог исполняемых примеров
+# Executable Example Catalog
 
-Этот раздел — единая точка discoverability для примеров, smoke-сценариев и
-команд воспроизведения, которые используются в документации платформы.
+This section is the single point of discoverability for examples, smoke scenarios, and
+reproduction commands used in the platform documentation.
 
-## Цель
+## Purpose
 
-- убрать разрозненные «пример-команды» из случайных документов;
-- дать единый вход для операторов, DevEx и module owners;
-- сделать примеры пригодными для постепенного подключения в DOC-07 quality gates.
+- consolidate scattered "example commands" from random documents;
+- provide a single entry point for operators, DevEx, and module owners;
+- make examples suitable for gradual inclusion in DOC-07 quality gates.
 
-## Формат записи примера
+## Example Record Format
 
-Каждый пример в дочерних документах должен содержать:
+Each example in child documents must contain:
 
-1. **Контекст** — где используется (module/app/guide).
-2. **Команду(ы)** — минимальный runnable набор.
-3. **Ожидаемый результат** — что считается успешным выполнением.
-4. **Ограничения окружения** — что может блокировать запуск.
-5. **Владельца** — кто отвечает за актуальность примера.
+1. **Context** — where it is used (module/app/guide).
+2. **Command(s)** — minimum runnable set.
+3. **Expected result** — what constitutes successful execution.
+4. **Environment constraints** — what may block execution.
+5. **Owner** — who is responsible for keeping the example up to date.
 
-## Базовые smoke-сценарии (первый слой)
+## Basic Smoke Scenarios (First Layer)
 
 ### 1) Full local stack (dev-start)
 
@@ -35,14 +35,14 @@ status: verified
 ./scripts/dev-start.sh
 ```
 
-Ожидаемый результат:
+Expected result:
 
-- backend доступен на `http://localhost:5150`;
-- admin/storefront host-поверхности поднимаются в dev-profile.
+- backend is available at `http://localhost:5150`;
+- admin/storefront host surfaces are up in dev-profile.
 
 Source: `docs/guides/quickstart.md`, `scripts/dev-start.sh`.
 
-### 2) Installer preflight (без миграций)
+### 2) Installer preflight (no migrations)
 
 ```bash
 cargo run -p rustok-server --bin rustok-server -- install preflight \
@@ -58,10 +58,10 @@ cargo run -p rustok-server --bin rustok-server -- install preflight \
   --secrets-mode dotenv-file
 ```
 
-Ожидаемый результат:
+Expected result:
 
-- preflight возвращает отчёт;
-- не запускаются миграции и side-effect bootstrap шаги.
+- preflight returns a report;
+- no migrations or side-effect bootstrap steps are triggered.
 
 Source: `docs/guides/quickstart.md`.
 
@@ -71,14 +71,14 @@ Source: `docs/guides/quickstart.md`.
 npx --yes markdownlint-cli <changed-files>
 ```
 
-Ожидаемый результат:
+Expected result:
 
-- корректный `exit code` (`0` для pass, иначе fail).
+- correct `exit code` (`0` for pass, otherwise fail).
 
 Source: `docs/research/fix docs.md`.
 
-## Связанные документы
+## Related Documents
 
-- [Быстрый старт](../guides/quickstart.md)
-- [План исправления документации](../research/fix%20docs.md)
-- [Главный план верификации платформы](../verification/PLATFORM_VERIFICATION_PLAN.md)
+- [Quickstart](../guides/quickstart.md)
+- [Documentation Fix Plan](../research/fix%20docs.md)
+- [Platform Summary Verification Plan](../verification/PLATFORM_VERIFICATION_PLAN.md)

@@ -6,96 +6,96 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# KNOWN_PITFALLS для AI (RusToK)
 
-Короткий список типичных ошибок перед изменениями кода.
+# KNOWN_PITFALLS for AI (RusToK)
+
+Short list of typical mistakes before making code changes.
 
 ## Loco
 
-- Не добавлять новые зависимости на `loco_rs` вне уже классифицированного inventory. Запускайте `node scripts/verify/verify-loco-inventory.mjs` при Loco/Axum cutover.
-- Не проектировать новые server-owned services вокруг `loco_rs::app::AppContext`; используйте `ServerRuntimeContext` или узкие typed contexts.
-- Не переносить maintenance/CLI flows в production server binary. Целевой слой — отдельный `rustok-ops` и module-local `cli/` adapters.
-- Пока legacy controllers ещё не переведены, не смешивайте новые Axum error contracts с Loco controller paths в одном срезе; переводите route/error surface атомарно по плану.
+- Do not add new dependencies on `loco_rs` outside the already classified inventory. Run `node scripts/verify/verify-loco-inventory.mjs` on Loco/Axum cutover.
+- Do not design new server-owned services around `loco_rs::app::AppContext`; use `ServerRuntimeContext` or narrow typed contexts.
+- Do not move maintenance/CLI flows into the production server binary. The target layer is a separate `rustok-ops` and module-local `cli/` adapters.
+- While legacy controllers are not yet migrated, do not mix new Axum error contracts with Loco controller paths in the same slice; translate route/error surface atomically per plan.
 
 ## Iggy / Outbox
 
-- Для write + event не использовать fire-and-forget `publish(...)`; нужен `publish_in_tx(...)`.
-- Не переносить в код Kafka/NATS-специфичные API (offset commits, subject-only routing), которых нет в текущем abstraction.
-- Не выдумывать конфигурацию Iggy: сначала сверяться с актуальными `IggyConfig`, `ConnectorConfig`, `ConnectorMode`.
-
+- For write + event, do not use fire-and-forget `publish(...)`; use `publish_in_tx(...)`.
+- Do not port Kafka/NATS-specific APIs (offset commits, subject-only routing) that don't exist in the current abstraction.
+- Do not invent Iggy configuration: first check the actual `IggyConfig`, `ConnectorConfig`, `ConnectorMode`.
 
 ## MCP
 
-- Не обходить typed tools/response envelope (`McpToolResponse`) ad-hoc JSON-ответами.
-- Не переносить бизнес-логику в MCP адаптер: слой должен оставаться тонким над service/registry.
-- Для ограниченного доступа использовать allow-list инструментов через `McpServerConfig::with_enabled_tools(...)`.
+- Do not bypass typed tools/response envelope (`McpToolResponse`) with ad-hoc JSON responses.
+- Do not move business logic into the MCP adapter: the layer must remain thin over service/registry.
+- For limited access, use an allow-list of tools via `McpServerConfig::with_enabled_tools(...)`.
 
 ## Outbox
 
-- Для write + event, требующих консистентности, использовать `publish_in_tx(...)`, а не `publish(...)`.
-- Не запускать production c outbox без relay-воркера.
+- For write + event that require consistency, use `publish_in_tx(...)`, not `publish(...)`.
+- Do not run production with outbox without a relay worker.
 
 ## Telemetry
 
-- Не делать многократную инициализацию telemetry runtime.
-- Не разносить метрики по разным registry без необходимости.
+- Do not reinitialize telemetry runtime multiple times.
+- Do not spread metrics across different registries unnecessarily.
 
 ## Database / SeaORM
 
-- **Всегда** добавлять `.filter(...::Column::TenantId.eq(tenant_id))` к каждому SELECT/UPDATE/DELETE. Запрос без `tenant_id` — это cross-tenant data leak.
-- Не использовать `find().all(&db)` без фильтра — загрузит ВСЮ таблицу.
-- Не создавать domain-таблицы без поля `tenant_id UUID NOT NULL`.
-- Не использовать string concatenation для SQL — только параметризованные запросы через SeaORM.
-- Не возвращать Entity напрямую из API — создавать отдельные DTO (Input/Response).
-- Не делать hard DELETE для бизнес-сущностей (products, orders, nodes) — использовать soft delete через status = Archived.
-- Миграции именовать строго: `mYYYYMMDD_<module>_<nnn>_<description>`.
+- **Always** add `.filter(...::Column::TenantId.eq(tenant_id))` to every SELECT/UPDATE/DELETE. A query without `tenant_id` is a cross-tenant data leak.
+- Do not use `find().all(&db)` without a filter — it will load the ENTIRE table.
+- Do not create domain tables without a `tenant_id UUID NOT NULL` column.
+- Do not use string concatenation for SQL — only parameterized queries via SeaORM.
+- Do not return Entity directly from API — create separate DTOs (Input/Response).
+- Do not hard DELETE business entities (products, orders, nodes) — use soft delete via status = Archived.
+- Name migrations strictly: `mYYYYMMDD_<module>_<nnn>_<description>`.
 
 ## State Machines
 
-- Не использовать `String` для status полей — использовать enum с type-safe transitions.
-- Не добавлять переходы между состояниями без обновления property tests (`*_proptest.rs`).
-- Не допускать «обратных» переходов без явного ADR (например, Published → Draft).
-- Каждый новый state machine обязан иметь proptest для exhaustive проверки переходов.
+- Do not use `String` for status fields — use enum with type-safe transitions.
+- Do not add state transitions without updating property tests (`*_proptest.rs`).
+- Do not allow "reverse" transitions without an explicit ADR (e.g., Published → Draft).
+- Every new state machine must have a proptest for exhaustive transition checking.
 
 ## Frontend / Leptos
 
-- Не использовать `fetch()` напрямую — использовать `leptos-graphql` для GraphQL queries.
-- Не хранить JWT вручную в localStorage — использовать `leptos-auth`.
-- Не копировать компоненты между admin и storefront — использовать `iu-leptos` design system.
-- Не делать SSR для admin panel (использовать CSR/WASM) и не делать CSR для storefront (использовать SSR для SEO).
-- Не пробрасывать props через 5+ уровней — использовать `leptos-zustand` для глобального состояния.
+- Do not use `fetch()` directly — use `leptos-graphql` for GraphQL queries.
+- Do not store JWT manually in localStorage — use `leptos-auth`.
+- Do not copy components between admin and storefront — use `iu-leptos` design system.
+- Do not use SSR for admin panel (use CSR/WASM) and do not use CSR for storefront (use SSR for SEO).
+- Do not thread props through 5+ levels — use `leptos-zustand` for global state.
 
 ## Frontend / Next.js
 
-- Не дублировать код между `apps/next-admin` и `apps/next-frontend` — выносить в `packages/`.
-- Не использовать `any` типы — строгий TypeScript mode.
-- Не забывать про Clerk ↔ Server JWT интеграцию в `apps/next-admin`.
-- Не использовать `@ts-ignore` / `@ts-expect-error` — исправлять типы.
+- Do not duplicate code between `apps/next-admin` and `apps/next-frontend` — extract to `packages/`.
+- Do not use `any` types — strict TypeScript mode.
+- Do not forget Clerk ↔ Server JWT integration in `apps/next-admin`.
+- Do not use `@ts-ignore` / `@ts-expect-error` — fix the types.
 
 ## Docker / Deployment
 
-- Не запускать production с `transport = "memory"` — использовать `transport = "outbox"`.
-- Не забывать relay worker при deployment с outbox transport.
-- Не использовать default credentials из `.env.dev.example` в production.
-- Не экспонировать `/swagger` и `/metrics` без auth в production.
+- Do not run production with `transport = "memory"` — use `transport = "outbox"`.
+- Do not forget the relay worker when deploying with outbox transport.
+- Do not use default credentials from `.env.dev.example` in production.
+- Do not expose `/swagger` and `/metrics` without auth in production.
 
 ## Migrations
 
-- Не менять уже применённые миграции — создавать новые.
-- Не удалять колонки без предварительного ADR и migration plan.
-- Не создавать миграции вне `RusToKModule::migrations()` — используй стандартный механизм.
-- Не забывать добавить миграцию для каждой новой entity.
+- Do not modify already applied migrations — create new ones.
+- Do not delete columns without prior ADR and migration plan.
+- Do not create migrations outside `RusToKModule::migrations()` — use the standard mechanism.
+- Do not forget to add a migration for every new entity.
 
-## Обязательная проверка перед изменениями
+## Mandatory Check Before Changes
 
-Если задача затрагивает Loco/Iggy/MCP/Outbox/Telemetry/Database/Frontend:
-1. Сначала открыть соответствующий reference-пакет:
+If the task touches Loco/Iggy/MCP/Outbox/Telemetry/Database/Frontend:
+1. First open the corresponding reference package:
    - `docs/architecture/loco-exit-plan.md`
    - `DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md`
    - `docs/references/iggy/README.md`
    - `docs/references/mcp/README.md`
    - `docs/references/outbox/README.md`
    - `docs/references/telemetry/README.md`
-2. Прочитать [Запрещённые действия](../standards/forbidden-actions.md) — жёсткие запреты.
-3. Прочитать [Паттерны vs Антипаттерны](../standards/patterns-vs-antipatterns.md) — сводная таблица.
-4. Только после этого менять код/документацию.
+2. Read [Forbidden Actions](../standards/forbidden-actions.md) — hard prohibitions.
+3. Read [Patterns vs Antipatterns](../standards/patterns-vs-antipatterns.md) — summary table.
+4. Only after that change code/documentation.

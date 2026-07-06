@@ -1,67 +1,67 @@
-# План реализации `rustok-telemetry`
+# Implementation plan for `rustok-telemetry`
 
-Статус: telemetry foundation crate уже есть, но локальная документация и
-контракт границы нужно удерживать так же жёстко, как у остальных shared modules.
+Status: telemetry foundation crate already exists, but local documentation and the
+boundary contract need to be maintained as rigorously as for other shared modules.
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: After each increment, update this block.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-telemetry` как shared observability foundation layer;
-- синхронизировать telemetry helpers, wiring expectations и local docs;
-- не допускать втягивания domain-specific observability logic в foundation crate.
+- maintain `rustok-telemetry` as a shared observability foundation layer;
+- synchronize telemetry helpers, wiring expectations and local docs;
+- do not pull domain-specific observability logic into the foundation crate.
 
-## Текущее состояние
+## Current state
 
-- crate уже является общей зависимостью для observability-related wiring;
-- shared telemetry helpers уже составляют часть platform baseline;
-- host и модульные integrations должны опираться на единый foundation contract;
-- local docs и root `README.md` должны оставаться частью module-standard path.
+- crate is already a shared dependency for observability-related wiring;
+- shared telemetry helpers already form part of the platform baseline;
+- host and module integrations should rely on a single foundation contract;
+- local docs and root `README.md` must remain part of the module-standard path.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрепить `rustok-telemetry` как shared observability foundation;
-- [x] удерживать shared helpers отдельно от domain-specific metrics semantics;
-- [ ] удерживать sync между public surface, host wiring и module metadata.
+- [x] lock `rustok-telemetry` as a shared observability foundation;
+- [x] keep shared helpers separate from domain-specific metrics semantics;
+- [ ] maintain sync between public surface, host wiring and module metadata.
 
 ### 2. Boundary hardening
 
-- [ ] продолжать выносить общие telemetry helpers из host-specific layers, если они реально shared;
-- [ ] не тянуть сюда module-owned metrics/runbook semantics;
-- [ ] покрывать новые foundation contracts targeted tests и compatibility checks;
-- [ ] контрактные тесты покрывают все публичные use-case telemetry foundation.
+- [ ] continue extracting shared telemetry helpers from host-specific layers if they are truly shared;
+- [ ] do not pull module-owned metrics/runbook semantics here;
+- [ ] cover new foundation contracts with targeted tests and compatibility checks;
+- [ ] contract tests cover all public use-cases of the telemetry foundation.
 
 ### 3. Operability
 
-- [ ] документировать изменения observability foundation одновременно с изменением runtime surface;
-- [ ] удерживать local docs и `README.md` синхронизированными;
-- [ ] обновлять host/verification docs, если меняются shared wiring expectations.
+- [ ] document observability foundation changes concurrently with runtime surface changes;
+- [ ] keep local docs and `README.md` synchronized;
+- [ ] update host/verification docs if shared wiring expectations change.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate telemetry`
 - `cargo xtask module test telemetry`
-- targeted tests для telemetry helpers, metrics/tracing wiring и compatibility contracts
+- targeted tests for telemetry helpers, metrics/tracing wiring and compatibility contracts
 
-## Правила обновления
+## Update rules
 
-1. При изменении telemetry foundation contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
-4. При изменении shared observability wiring обновлять связанные host и verification docs.
+1. When changing telemetry foundation contract, first update this file.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
+4. When changing shared observability wiring, update related host and verification docs.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and accuracy of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

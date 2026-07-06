@@ -321,15 +321,15 @@ docker-compose -f docker-compose.observability.yml down -v
 
 ## 📈 Outbox Reliability Metrics & Alerts
 
-Для event reliability трека добавьте наблюдение за outbox/DLQ метриками:
+For the event reliability track, add monitoring for outbox/DLQ metrics:
 
-- `rustok_outbox_backlog_size` (gauge) — размер очереди необработанных событий.
-- `rustok_outbox_retries_total` (counter) — количество retry попыток relay.
-- `rustok_outbox_dlq_total` (counter) — количество событий, попавших в DLQ.
+- `rustok_outbox_backlog_size` (gauge) — the queue size of unprocessed events.
+- `rustok_outbox_retries_total` (counter) — the number of relay retry attempts.
+- `rustok_outbox_dlq_total` (counter) — the number of events that ended up in the DLQ.
 
-Старые имена `outbox_backlog_size`, `outbox_retries_total` и `outbox_dlq_total`
-пока отдаются как compatibility aliases. Новые dashboard/runbook правила должны
-использовать только `rustok_*` имена.
+The old names `outbox_backlog_size`, `outbox_retries_total` and `outbox_dlq_total`
+are currently exposed as compatibility aliases. New dashboard/runbook rules must
+use only `rustok_*` names.
 
 ### Recommended PromQL
 
@@ -346,14 +346,14 @@ increase(rustok_outbox_dlq_total[15m])
 
 ### Alerting policy (baseline)
 
-- **Warning:** `rustok_outbox_backlog_size > 500` в течение 10 минут.
-- **Critical:** `rustok_outbox_backlog_size > 2000` в течение 15 минут.
-- **Warning:** `rate(rustok_outbox_retries_total[5m])` стабильно выше baseline 30 минут.
-- **Critical:** `increase(rustok_outbox_dlq_total[15m]) > 0` для production tenant'ов.
+- **Warning:** `rustok_outbox_backlog_size > 500` for 10 minutes.
+- **Critical:** `rustok_outbox_backlog_size > 2000` for 15 minutes.
+- **Warning:** `rate(rustok_outbox_retries_total[5m])` consistently above baseline for 30 minutes.
+- **Critical:** `increase(rustok_outbox_dlq_total[15m]) > 0` for production tenants.
 
 ### Triage checklist
 
-1. Проверить downstream transport (`iggy`/subscriber availability).
-2. Проверить ошибки сериализации/схемы в relay logs.
-3. Проверить рост DLQ по конкретным `event_type`.
-4. При необходимости запустить контролируемый DLQ replay после устранения root cause.
+1. Check downstream transport (`iggy`/subscriber availability).
+2. Check serialization/schema errors in relay logs.
+3. Check DLQ growth by specific `event_type`.
+4. If necessary, run a controlled DLQ replay after addressing the root cause.

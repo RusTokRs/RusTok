@@ -6,99 +6,99 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# DataLoader и пакетные read-paths
+# DataLoader and Batch Read Paths
 
-Этот документ фиксирует роль DataLoader в RusToK как request-scoped механизма
-для batched read-paths, в первую очередь в GraphQL.
+This document captures the role of DataLoader in RusToK as a request-scoped mechanism
+for batched read paths, primarily in GraphQL.
 
-## Назначение
+## Purpose
 
-DataLoader нужен для решения N+1-проблемы в UI-facing read-paths:
+DataLoader is needed to solve the N+1 problem in UI-facing read paths:
 
 - GraphQL queries
-- связанные batched-loader-ы в host/runtime-слое
-- локальные read helpers, если они живут в request scope
+- related batched loaders in the host/runtime layer
+- local read helpers, if they live in request scope
 
-DataLoader не является местом для бизнес-логики и не должен превращаться в
-скрытый service layer.
+DataLoader is not a place for business logic and must not turn into a
+hidden service layer.
 
-## Основной принцип
+## Main Principle
 
 DataLoader:
 
-- собирает ключи в рамках одного request scope
-- делает batched loading
-- кэширует результат только на время запроса
-- возвращает данные конкретному resolver/call site
+- collects keys within a single request scope
+- performs batched loading
+- caches results only for the duration of the request
+- returns data to a specific resolver/call site
 
-Его задача — оптимизация чтения, а не ownership доменной логики.
+Its job is read optimization, not ownership of domain logic.
 
-## Где допустим DataLoader
+## Where DataLoader Is Allowed
 
-Допустимые сценарии:
+Allowed scenarios:
 
 - GraphQL field resolvers
-- batched lookups связанных сущностей
-- locale-aware/profile-aware read paths, если batching не ломает tenant boundaries
+- batched lookups of related entities
+- locale-aware/profile-aware read paths, if batching does not break tenant boundaries
 
-Недопустимые сценарии:
+Disallowed scenarios:
 
 - write-side operations
-- долгоживущий shared cache между запросами
+- long-lived shared cache across requests
 - domain orchestration
-- скрытая авторизация или tenant resolution внутри loader-а
+- hidden authorization or tenant resolution inside a loader
 
-## Инварианты
+## Invariants
 
-Для любого DataLoader в платформе должны соблюдаться правила:
+For any DataLoader in the platform, the following rules must hold:
 
-- batching не смешивает tenant boundaries
-- batching не смешивает locale-контракт, если locale влияет на результат
-- loader не обходит RBAC/auth assumptions host layer
-- loader можно безопасно повторно вызвать в рамках одного request scope
-- result mapping остаётся детерминированным и идемпотентным
+- batching does not mix tenant boundaries
+- batching does not mix locale contract, if locale affects the result
+- loader does not bypass RBAC/auth assumptions of the host layer
+- loader can be safely invoked multiple times within a single request scope
+- result mapping remains deterministic and idempotent
 
-## Владение
+## Ownership
 
-DataLoader принадлежит host/read-слою:
+DataLoader belongs to the host/read layer:
 
-- module/service-слой поставляет canonical read-контракты
-- GraphQL/runtime layer решает, нужен ли batching
-- loader не становится source of truth для доменной модели
+- the module/service layer provides canonical read contracts
+- the GraphQL/runtime layer decides whether batching is needed
+- loader does not become the source of truth for the domain model
 
-Если batching-логика становится сложной доменной логикой, её нужно выносить в
-module-owned service/read-контракт.
+If batching logic becomes complex domain logic, it must be moved to a
+module-owned service/read contract.
 
-## Performance-контракт
+## Performance Contract
 
-DataLoader используется там, где он:
+DataLoader is used where it:
 
-- сокращает число запросов
-- снижает повторное чтение одних и тех же связей
-- делает UI-facing query-path предсказуемее
+- reduces the number of queries
+- reduces repeated reading of the same relations
+- makes the UI-facing query path more predictable
 
-Но он не должен применяться автоматически в каждом read path без реальной
-проблемы N+1.
+But it must not be applied automatically to every read path without a real
+N+1 problem.
 
-## Что не делать
+## What Not To Do
 
-- не класть в loader бизнес-правила и orchestration
-- не хранить loader-кэш дольше одного запроса
-- не смешивать в одном batched-loader-е разные tenant или locale-contexts
-- не использовать loader как замену нормальному module-owned read service
+- do not put business rules and orchestration in a loader
+- do not keep loader cache longer than one request
+- do not mix different tenant or locale contexts in a single batched loader
+- do not use a loader as a replacement for a proper module-owned read service
 
-## Когда обновлять этот документ
+## When to Update This Document
 
-Этот документ нужно обновлять, если меняется:
+This document needs to be updated if any of the following changes:
 
-- роль DataLoader в GraphQL/runtime-слое
-- request-scope caching-контракт
+- the role of DataLoader in the GraphQL/runtime layer
+- the request-scope caching contract
 - tenant/locale batching rules
-- граница между loader и module-owned read-service
+- the boundary between loader and module-owned read service
 
-## Связанные документы
+## Related Documents
 
-- [Архитектура API](./api.md)
-- [Маршрутизация и границы transport-слоя](./routing.md)
-- [Архитектура модулей](./modules.md)
-- [Обзор архитектуры платформы](./overview.md)
+- [API Architecture](./api.md)
+- [Routing and Transport Layer Boundaries](./routing.md)
+- [Module Architecture](./modules.md)
+- [Platform Architecture Overview](./overview.md)

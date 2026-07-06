@@ -1,15 +1,15 @@
-# План реализации `rustok-outbox`
+# Implementation plan for `rustok-outbox`
 
-Статус: core outbox baseline зафиксирован; модуль приведён к единому
+Status: core outbox baseline is locked; the module has been aligned to a unified
 manifest/doc contract.
 
 ## Execution checkpoint
 
 - Current phase: fba_write_policy_alignment
-- Last checkpoint: `OutboxRelayPort` использует canonical `rustok_api::ports` primitives; outbox-specific Loco helper перенесён в owner crate под feature `loco-adapter`, поэтому dependency graph остаётся направленным и без цикла.
-- Next step: Расширить relay/backlog/DLQ evidence без долгой full-workspace компиляции и затем добавить targeted runtime contract/fallback smoke, когда компиляции снова разрешены.
+- Last checkpoint: `OutboxRelayPort` uses canonical `rustok_api::ports` primitives; outbox-specific Loco helper moved to owner crate under feature `loco-adapter`, so the dependency graph remains directed and without a cycle.
+- Next step: Expand relay/backlog/DLQ evidence without long full-workspace compilation and then add targeted runtime contract/fallback smoke when compilation is allowed again.
 - Open blockers: None.
-- Hand-off notes for next agent: Сохранять read-only admin UI поверх module-owned transport facade; не переносить relay/runtime ownership в host UI.
+- Hand-off notes for next agent: Keep read-only admin UI over the module-owned transport facade; do not move relay/runtime ownership to host UI.
 - Last updated at (UTC): 2026-07-01T00:00:00Z
 
 ## FFA/FBA status block
@@ -19,52 +19,52 @@ manifest/doc contract.
 - Structural shape: `core_transport_ui`
 - Evidence / notes:
   - Admin native server-function transport no longer imports `loco_rs::app::AppContext`; it consumes host-provided `rustok_api::HostRuntimeContext`, and this is guarded by `scripts/verify/verify-api-surface-contract.mjs`;
-  - пакетный owner gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`: canonical `rustok_api::ports` write policy helper, deadline/idempotency error mapping, relay invocation до metrics projection и fallback/degraded parity; registry/manifest metadata переведены со старого `rustok_api::ports::*` на единственный `rustok_api::ports::*` contract, статус остаётся `in_progress` до live relay execution;
-  - admin UI имеет явный FFA split: `admin/src/lib.rs` только wiring/re-export, `admin/src/core.rs` содержит Leptos-free DTO/view-model helpers, `admin/src/transport/` владеет native server-function facade, `admin/src/ui/leptos.rs` владеет Leptos rendering;
-  - GraphQL/REST fallback не добавлялся в этом срезе, потому что legacy outbox admin surface был native-only read-only bootstrap; это temporary single-adapter state до появления headless parity requirement для operator UI;
-  - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build), `node scripts/verify/verify-outbox-admin-boundary.mjs`, `node scripts/verify/verify-outbox-admin-boundary.test.mjs`;
-  - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build);
+  - batch owner gate `scripts/verify/verify-owner-fba-runtime-order.mjs` checks `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`: canonical `rustok_api::ports` write policy helper, deadline/idempotency error mapping, relay invocation before metrics projection and fallback/degraded parity; registry/manifest metadata migrated from old `rustok_api::ports::*` to the single `rustok_api::ports::*` contract, status remains `in_progress` until live relay execution;
+  - admin UI has explicit FFA split: `admin/src/lib.rs` only wiring/re-export, `admin/src/core.rs` contains Leptos-free DTO/view-model helpers, `admin/src/transport/` owns the native server-function facade, `admin/src/ui/leptos.rs` owns Leptos rendering;
+  - GraphQL/REST fallback was not added in this slice because the legacy outbox admin surface was a native-only read-only bootstrap; this is a temporary single-adapter state until a headless parity requirement appears for the operator UI;
+  - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, without full-workspace build), `node scripts/verify/verify-outbox-admin-boundary.mjs`, `node scripts/verify/verify-outbox-admin-boundary.test.mjs`;
+  - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, without full-workspace build);
   - compile-free FFA evidence: `npm run verify:outbox:admin-boundary` validates that UI uses only the module-owned transport facade, `core.rs` remains Leptos/server-function free, generated native server functions stay private to `transport/native_server_adapter.rs`, and host-provided `UiRouteContext.locale` remains the locale source;
   - FBA provider slice: `crates/rustok-outbox/contracts/outbox-fba-registry.json` + `crates/rustok-outbox/src/ports.rs` declare `OutboxRelayPort` / `outbox.relay_control.v1` for relay worker control with canonical `rustok_api::ports::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics and static evidence packet `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` verified by `npm run verify:outbox:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-outbox` как bounded-context модуль transactional publishing;
-- синхронизировать relay/runtime contract, local docs и manifest metadata;
-- развивать operational guarantees без размазывания event runtime contract по host-слою.
+- keep `rustok-outbox` as a bounded-context module for transactional publishing;
+- synchronize relay/runtime contract, local docs and manifest metadata;
+- evolve operational guarantees without spreading event runtime contract across the host layer.
 
-## Текущее состояние
+## Current state
 
-- write-side transactional publishing contract уже реализован;
-- relay/retry/DLQ semantics уже входят в базовый runtime surface;
-- модуль публикует admin visibility через `rustok-outbox-admin`, где UI split выровнен до `core/transport/ui`;
-- root README, local docs и manifest contract входят в scoped audit path.
+- write-side transactional publishing contract is already implemented;
+- relay/retry/DLQ semantics are already part of the base runtime surface;
+- module publishes admin visibility through `rustok-outbox-admin`, where UI split is aligned to `core/transport/ui`;
+- root README, local docs and manifest contract are part of the scoped audit path.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] выровнять root README, local docs и manifest metadata под единый standard path;
-- [x] зафиксировать transactional publishing как основной bounded-context contract;
-- [x] выделить FFA `core/transport/ui` boundary для read-only admin visibility surface;
-- [x] добавить compile-free FFA boundary verifier для read-only admin visibility surface;
-- [ ] удерживать sync между public crate API и server event-runtime tests;
-- [ ] контрактные тесты покрывают все публичные use-case для transactional publishing, relay, retry и DLQ semantics.
+- [x] align root README, local docs and manifest metadata under a unified standard path;
+- [x] lock transactional publishing as the main bounded-context contract;
+- [x] separate FFA `core/transport/ui` boundary for read-only admin visibility surface;
+- [x] add compile-free FFA boundary verifier for read-only admin visibility surface;
+- [ ] maintain sync between public crate API and server event-runtime tests;
+- [ ] contract tests cover all public use-cases for transactional publishing, relay, retry and DLQ semantics.
 
 ### 2. Runtime hardening
 
-- [x] добавить no-compile FFA boundary verifier для read-only admin split и fixture regression suite;
-- [ ] расширить automated tests вокруг relay/backlog/DLQ boundary behavior;
-- [ ] документировать новые runtime guarantees вместе с изменениями event transport contract;
-- [ ] держать observability и operability частью delivery readiness, а не постфактум.
+- [x] add no-compile FFA boundary verifier for read-only admin split and fixture regression suite;
+- [ ] expand automated tests around relay/backlog/DLQ boundary behavior;
+- [ ] document new runtime guarantees together with event transport contract changes;
+- [ ] keep observability and operability as part of delivery readiness, not an afterthought.
 
 ### 3. Productionization
 
-- [ ] уточнить rollout и migration strategy для incremental adoption;
-- [ ] завершить security/tenancy/rbac checks, которые реально относятся к модулю;
-- [ ] удерживать incident runbook в sync с operational semantics.
+- [ ] clarify rollout and migration strategy for incremental adoption;
+- [ ] complete security/tenancy/rbac checks that actually belong to the module;
+- [ ] keep incident runbook in sync with operational semantics.
 
-## Проверка
+## Verification
 
 - `npm run verify:outbox:admin-boundary`
 - `npm run test:verify:outbox:admin-boundary`
@@ -74,17 +74,17 @@ manifest/doc contract.
 - `node scripts/verify/verify-outbox-admin-boundary.mjs`
 - `node scripts/verify/verify-outbox-admin-boundary.test.mjs`
 - `npm run verify:outbox:fba`
-- targeted event-runtime tests для transactional publish, relay, retry и DLQ semantics
+- targeted event-runtime tests for transactional publish, relay, retry and DLQ semantics
 
-## Правила обновления
+## Update rules
 
-1. При изменении transactional publishing или relay contract сначала обновлять этот файл.
-2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata и UI wiring синхронизировать `rustok-module.toml`.
+1. When changing transactional publishing or relay contract, update this file first.
+2. When changing public/runtime contract, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata and UI wiring, synchronize `rustok-module.toml`.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

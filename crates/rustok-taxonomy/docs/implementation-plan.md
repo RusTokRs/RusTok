@@ -1,67 +1,67 @@
-# План реализации `rustok-taxonomy`
+# Implementation plan for `rustok-taxonomy`
 
-Статус: shared dictionary baseline уже работает; модуль используется несколькими
-доменами и удерживается как vocabulary layer без захвата attachment ownership.
+Status: shared dictionary baseline is already working; the module is used by several
+domains and is maintained as a vocabulary layer without capturing attachment ownership.
 
 ## Execution checkpoint
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Hand-off notes for next agent: After each increment, update this block.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-taxonomy` как shared vocabulary module;
-- синхронизировать dictionary contracts, scope rules и local docs;
-- не допускать превращения taxonomy в shared product storage.
+- maintain `rustok-taxonomy` as a shared vocabulary module;
+- synchronize dictionary contracts, scope rules and local docs;
+- do not let taxonomy turn into shared product storage.
 
-## Текущее состояние
+## Current state
 
-- term dictionary, translations и aliases уже реализованы как module-owned storage;
-- term identity остаётся tenant-scoped и locale-independent;
-- blog, forum, product и profiles уже используют taxonomy-backed relations через собственные attachment tables;
-- locale normalization и fallback уже опираются на shared content contract.
+- term dictionary, translations and aliases are already implemented as module-owned storage;
+- term identity remains tenant-scoped and locale-independent;
+- blog, forum, product and profiles already use taxonomy-backed relations through their own attachment tables;
+- locale normalization and fallback already rely on the shared content contract.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] зафиксировать dictionary baseline для `kind = tag`;
-- [x] удерживать scope model `global | module`;
-- [x] внедрить taxonomy-backed relations в первые consumer modules;
-- [ ] удерживать sync между dictionary contracts, consumer integrations и module metadata.
+- [x] lock dictionary baseline for `kind = tag`;
+- [x] maintain scope model `global | module`;
+- [x] introduce taxonomy-backed relations in the first consumer modules;
+- [ ] maintain sync between dictionary contracts, consumer integrations and module metadata.
 
 ### 2. Expansion
 
-- [ ] расширять kinds и lookup semantics только при наличии реального domain pressure;
-- [ ] добавлять новых consumer modules только через explicit module-owned attachment tables;
-- [ ] удерживать alias/slug uniqueness и locale fallback guarantees покрытыми targeted tests.
+- [ ] expand kinds and lookup semantics only when there is real domain pressure;
+- [ ] add new consumer modules only through explicit module-owned attachment tables;
+- [ ] keep alias/slug uniqueness and locale fallback guarantees covered by targeted tests.
 
 ### 3. Operability
 
-- [ ] документировать новые dictionary guarantees одновременно с изменением runtime surface;
-- [ ] развивать runbooks для dictionary drift и integration incidents по мере появления pressure;
-- [ ] синхронизировать local docs, README и central references при изменении module role.
+- [ ] document new dictionary guarantees concurrently with runtime surface changes;
+- [ ] develop runbooks for dictionary drift and integration incidents as pressure arises;
+- [ ] synchronize local docs, README and central references when module role changes.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
-- targeted tests для CRUD, alias lookup, scope restrictions и consumer-module sync
+- targeted tests for CRUD, alias lookup, scope restrictions and consumer-module sync
 
-## Правила обновления
+## Update rules
 
-1. При изменении taxonomy contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении module metadata синхронизировать `rustok-module.toml`.
-4. При изменении consumer-module integration rules обновлять связанные docs у owning modules.
+1. When changing taxonomy contract, first update this file.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing module metadata, synchronize `rustok-module.toml`.
+4. When changing consumer-module integration rules, update related docs of owning modules.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and accuracy of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

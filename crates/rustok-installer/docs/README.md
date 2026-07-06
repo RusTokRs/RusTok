@@ -1,29 +1,29 @@
-# Документация `rustok-installer`
+# Documentation `rustok-installer`
 
-`rustok-installer` — support crate для гибридного установщика RusToK. Он не
-является platform module и не участвует в tenant-level enable/disable.
+`rustok-installer` is a support crate for the RusToK hybrid installer. It is not
+a platform module and does not participate in tenant-level enable/disable.
 
-## Назначение
+## Purpose
 
-Crate фиксирует общий contract установщика, который должны переиспользовать:
+The crate defines the common installer contract that should be reused by:
 
 - CLI `rustok-server install ...`;
 - HTTP surface `/api/install/*`;
-- web wizard первого запуска;
-- dev wrappers вроде `cargo xtask install-dev`.
+- first-run web wizard;
+- dev wrappers like `cargo xtask install-dev`.
 
-## Границы v1
+## v1 Boundaries
 
-- PostgreSQL — production DB по умолчанию и единственный production-ready engine.
-- SQLite допустим только для `local`, `demo` и `test` сценариев.
-- Выбор модулей в v1 управляет tenant enablement и build/profile intent, но не
-  физическим исключением module-owned schema из глобального `Migrator`.
-- Rollback после применения схемы не должен обещать универсальный reverse
-  migration; production restore опирается на backup/snapshot.
+- PostgreSQL is the default production DB and the only production-ready engine.
+- SQLite is allowed only for `local`, `demo` and `test` scenarios.
+- Module selection in v1 controls tenant enablement and build/profile intent, but not
+  physical exclusion of module-owned schema from the global `Migrator`.
+- Rollback after schema application must not promise a universal reverse
+  migration; production restore relies on backup/snapshot.
 
-## Состояния установки
+## Installation states
 
-Основной happy path:
+Main happy path:
 
 ```text
 Draft
@@ -37,7 +37,7 @@ Draft
 -> Completed
 ```
 
-Ошибочные/операционные состояния:
+Error/operational states:
 
 ```text
 Failed
@@ -45,36 +45,36 @@ RolledBackFreshInstall
 RestoreRequired
 ```
 
-## Текущий CLI adapter
+## Current CLI adapter
 
-`apps/server` уже подключает начальный CLI surface:
+`apps/server` already connects an initial CLI surface:
 
-- `rustok-server install preflight ...` строит install plan и возвращает
-  `PreflightReport` без подключения к БД.
-- `rustok-server install plan ...` печатает redacted snapshot install plan.
-- `rustok-server install apply ...` выполняет preflight, проверяет target DB,
-  при `--create-database` создаёт PostgreSQL database/role через admin URL,
-  запускает server `Migrator::up`, применяет tenant/module seed, создаёт или
-  синхронизирует superadmin, выполняет verify/finalize, пишет `Preflight` /
+- `rustok-server install preflight ...` builds an install plan and returns
+  a `PreflightReport` without connecting to the DB.
+- `rustok-server install plan ...` prints a redacted snapshot install plan.
+- `rustok-server install apply ...` performs preflight, checks target DB,
+  with `--create-database` creates PostgreSQL database/role via admin URL,
+  runs server `Migrator::up`, applies tenant/module seed, creates or
+  synchronizes superadmin, executes verify/finalize, writes `Preflight` /
   `Config` / `Database` / `Migrate` / `Seed` / `Admin` / `Verify` / `Finalize`
-  receipts в `install_step_receipts` и переводит session в `completed`.
+  receipts into `install_step_receipts` and transitions the session to `completed`.
 
-`apply` резолвит локальные secret refs `env:<VAR>`, `file:<path>`,
-`mounted-file:<path>`, `dotenv:<path>#<VAR>` и `dotenv:<VAR>`. External
-backends вроде `vault:*`, `kubernetes:*` и cloud secret managers пока остаются
-contract-level refs для `plan`/`preflight` и fail-fast на `apply` до подключения
-внешнего resolver-а.
+`apply` resolves local secret refs `env:<VAR>`, `file:<path>`,
+`mounted-file:<path>`, `dotenv:<path>#<VAR>` and `dotenv:<VAR>`. External
+backends like `vault:*`, `kubernetes:*` and cloud secret managers remain
+contract-level refs for `plan`/`preflight` and fail-fast on `apply` until an
+external resolver is connected.
 
-HTTP adapter в `apps/server` публикует thin surface для Leptos wizard:
+The HTTP adapter in `apps/server` publishes a thin surface for the Leptos wizard:
 `GET /api/install/status`, `POST /api/install/plan`,
 `POST /api/install/preflight`, `POST /api/install/apply`,
-`GET /api/install/jobs/{job_id}` и
-`GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` стартует
-background job и вызывает тот же server-side `apply_plan` pipeline, что и CLI;
-UI не должен дублировать migration/seed/admin logic.
+`GET /api/install/jobs/{job_id}` and
+`GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` starts a
+background job and calls the same server-side `apply_plan` pipeline as the CLI;
+the UI must not duplicate migration/seed/admin logic.
 
-## Связанные документы
+## Related documents
 
-- [ADR гибридного установщика](../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md)
-- [Архитектура модулей](../../../docs/architecture/modules.md)
-- [Схема данных платформы](../../../docs/architecture/database.md)
+- [Hybrid installer ADR](../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md)
+- [Module architecture](../../../docs/architecture/modules.md)
+- [Platform database schema](../../../docs/architecture/database.md)

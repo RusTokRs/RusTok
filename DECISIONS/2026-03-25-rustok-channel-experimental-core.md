@@ -1,71 +1,71 @@
-# `rustok-channel` как experimental core-модуль платформы
+# `rustok-channel` as an experimental core platform module
 
-- Статус: Accepted
-- Дата: 2026-03-25
+- Status: Accepted
+- Date: 2026-03-25
 
-## Контекст
+## Context
 
-Платформе нужен единый platform-level контекст, который отвечает на вопрос, куда публикуется и откуда читается внешний опыт: сайт, приложение, API-клиент или другой внешний target.
+The platform needs a unified platform-level context that answers the question of where external experience is published and read from: website, application, API client, or another external target.
 
-Держать эту логику внутри `apps/server` неудобно:
+Keeping this logic inside `apps/server` is inconvenient:
 
-- server должен оставаться тонким composition root;
-- channel context нужен не только commerce, но и blog/forum/pages и другим модулям;
-- без отдельного platform-level слоя неясно, где хранить channel metadata, target binding и связи с внешними приложениями.
+- the server should remain a thin composition root;
+- channel context is needed not only for commerce, but also for blog/forum/pages and other modules;
+- without a separate platform-level layer, it is unclear where to store channel metadata, target binding, and connections to external applications.
 
-При этом точная целевая модель ещё не устоялась. Мы понимаем направление, но не хотим преждевременно цементировать сложную финальную архитектуру.
+At the same time, the precise target model is not yet settled. We understand the direction, but do not want to prematurely cement a complex final architecture.
 
-## Решение
+## Decision
 
-Вводится новый модуль `rustok-channel` со следующими свойствами:
+A new module `rustok-channel` is introduced with the following properties:
 
-- модуль имеет статус `Core` в platform taxonomy;
-- модуль одновременно помечается как `experimental` по зрелости решения;
-- доменная логика, storage, сервисы и документация живут в `crates/rustok-channel`;
-- `apps/server` знает модуль, регистрирует его и использует для wiring/runtime resolution, но не владеет его доменной логикой;
-- UI, если и когда он появляется, должен жить рядом с модулем по общему правилу module-owned UI.
+- the module has `Core` status in the platform taxonomy;
+- the module is simultaneously marked as `experimental` in terms of solution maturity;
+- domain logic, storage, services, and documentation live in `crates/rustok-channel`;
+- `apps/server` knows the module, registers it, and uses it for wiring/runtime resolution, but does not own its domain logic;
+- UI, if and when it appears, should live alongside the module according to the general module-owned UI rule.
 
-Первый v0 scope ограничивается минимальной моделью:
+The first v0 scope is limited to a minimal model:
 
 - `channels`
 - `channel_targets`
 - `channel_module_bindings`
 - `channel_oauth_apps`
 
-Связь с внешними приложениями строится через существующую OAuth/app subsystem. `rustok-channel` не вводит собственную параллельную token-систему.
+The connection to external applications is built through the existing OAuth/app subsystem. `rustok-channel` does not introduce its own parallel token system.
 
-## Почему это `Core`
+## Why this is `Core`
 
-`Channel` — не прикладная фича уровня blog/forum/commerce. Это platform context layer, который определяет:
+`Channel` is not an application-level feature like blog/forum/commerce. It is a platform context layer that defines:
 
-- внешний target доступа;
-- включённые модульные поверхности;
-- связь канала с внешними приложениями;
-- базовый runtime context для server wiring.
+- the external access target;
+- enabled module surfaces;
+- the channel's connection to external applications;
+- the basic runtime context for server wiring.
 
-По этой причине модуль должен быть всегда присутствующим в составе платформы и не должен tenant-toggle'иться как optional domain module.
+For this reason, the module must always be present in the platform and must not be tenant-toggle'd like an optional domain module.
 
-## Почему это `experimental`
+## Why this is `experimental`
 
-Мы намеренно запускаем этот слой как рабочий прототип:
+We are deliberately launching this layer as a working prototype:
 
-- финальная модель не считается стабилизированной;
-- обратная совместимость структуры v0 не гарантируется;
-- допускаются последующие перестройки storage/service contracts после реальной эксплуатации.
+- the final model is not considered stabilized;
+- backward compatibility of the v0 structure is not guaranteed;
+- subsequent restructuring of storage/service contracts after real-world usage is allowed.
 
-`Experimental` в данном случае описывает зрелость решения, а не optional-статус.
+`Experimental` in this context describes the maturity of the solution, not optional status.
 
-## Последствия
+## Consequences
 
-Положительные:
+Positive:
 
-- появляется единая точка для platform-level channel context;
-- server остаётся тонким;
-- blog/forum/pages/commerce могут постепенно становиться channel-aware без локальных ad-hoc решений;
-- UI policy остаётся консистентной: UI живёт вместе с модулем, если он вообще нужен.
+- a single point for platform-level channel context emerges;
+- the server remains thin;
+- blog/forum/pages/commerce can gradually become channel-aware without local ad-hoc solutions;
+- UI policy remains consistent: UI lives with the module, if it is needed at all.
 
-Отрицательные и ограничения:
+Negative and limitations:
 
-- первая версия может потребовать миграции данных и API после эксплуатации;
-- часть терминологии и связей ещё будет уточняться;
-- v0 сознательно не решает весь scope omnichannel/presence/integration orchestration.
+- the first version may require data and API migrations after real-world usage;
+- some terminology and relationships will still be refined;
+- v0 deliberately does not solve the entire scope of omnichannel/presence/integration orchestration.

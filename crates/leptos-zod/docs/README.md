@@ -1,3 +1,3 @@
 # leptos-zod docs
 
-В этой папке хранится документация модуля `crates/leptos-zod`.
+This folder contains documentation for the `crates/leptos-zod` module.

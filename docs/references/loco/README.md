@@ -6,13 +6,14 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Loco Reference-пакет (RusToK)
 
-Дата последней актуализации: **2026-02-19**.
+# Loco Reference Package (RusToK)
 
-> Этот пакет фиксирует «как правильно» использовать Loco в текущем RusToK и защищает от ложных переносов привычек из чистого Axum.
+Last updated: **2026-02-19**.
 
-## 1) Минимальный рабочий пример: контроллер + маршруты
+> This package captures "how to correctly" use Loco in the current RusToK and protects against incorrect migrations of habits from pure Axum.
+
+## 1) Minimal working example: controller + routes
 
 ```rust
 use axum::{extract::State, Json};
@@ -35,12 +36,12 @@ pub fn routes() -> Routes {
 }
 ```
 
-Почему это «минимум» для RusToK:
-- берём `AppContext` через `State<AppContext>`;
-- сервис создаётся от `ctx.db` + platform event bus;
-- ошибки доменного слоя приводятся к `loco_rs::Error`.
+Why this is "minimum" for RusToK:
+- we take `AppContext` via `State<AppContext>`;
+- the service is created from `ctx.db` + platform event bus;
+- domain layer errors are converted to `loco_rs::Error`.
 
-## 2) Минимальный рабочий пример: hooks приложения
+## 2) Minimal working example: application hooks
 
 ```rust
 impl Hooks for App {
@@ -64,7 +65,7 @@ impl Hooks for App {
 }
 ```
 
-## 3) Актуальные сигнатуры API (в репозитории)
+## 3) Current API signatures (in repository)
 
 - `pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response>`
 - `pub fn routes() -> Routes`
@@ -73,23 +74,23 @@ impl Hooks for App {
 - `async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter>` (Hooks)
 - `async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()>` (Hooks)
 
-## 4) Чего делать нельзя (типичные ложные паттерны из Axum)
+## 4) What not to do (typical incorrect patterns from Axum)
 
-1. **Нельзя собирать «чистый Axum-only» pipeline мимо Loco hooks** для основных серверных маршрутов.
-   - Антипаттерн: отдельный `axum::Router::new()` без интеграции в `Hooks::routes/after_routes`.
-   - Почему плохо: теряется общая инициализация, shared-store, middleware-предпосылки.
+1. **Do not build a "pure Axum-only" pipeline bypassing Loco hooks** for main server routes.
+   - Anti-pattern: a separate `axum::Router::new()` without integration into `Hooks::routes/after_routes`.
+   - Why it is bad: common initialization, shared-store, and middleware prerequisites are lost.
 
-2. **Нельзя тащить глобальные singleton-сервисы вместо `AppContext`**.
-   - Антипаттерн: `lazy_static`/`OnceCell` с БД/transport, когда они уже живут в `ctx.shared_store`.
-   - Почему плохо: рассинхронизация runtime-состояния и lifecycle Loco.
+2. **Do not use global singleton services instead of `AppContext`**.
+   - Anti-pattern: `lazy_static`/`OnceCell` with DB/transport when they already live in `ctx.shared_store`.
+   - Why it is bad: desynchronization of runtime state and Loco lifecycle.
 
-3. **Нельзя возвращать «сырой» axum error contract без выравнивания в `loco_rs::Result`**.
-   - Антипаттерн: ручные нестандартные `IntoResponse` в каждом handler вместо единообразного `Result<...>` + map_err.
+3. **Do not return "raw" axum error contract without aligning to `loco_rs::Result`**.
+   - Anti-pattern: manual non-standard `IntoResponse` in each handler instead of uniform `Result<...>` + map_err.
 
-## 5) Синхронизация с кодом (регламент)
+## 5) Synchronization with code (procedure)
 
-- При изменениях `apps/server/src/app.rs`, `apps/server/src/controllers/**`, `apps/server/src/tasks/**`:
-  1) проверить этот reference-пакет;
-  2) обновить сигнатуры/примеры;
-  3) проставить новую дату в шапке (`Дата последней актуализации`).
-- Если пример больше не совпадает с рабочим кодом, он не должен оставаться без пометки.
+- When changes are made to `apps/server/src/app.rs`, `apps/server/src/controllers/**`, `apps/server/src/tasks/**`:
+  1) check this reference package;
+  2) update signatures/examples;
+  3) set a new date in the header (`Last updated`).
+- If an example no longer matches the working code, it must not remain without annotation.

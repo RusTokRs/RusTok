@@ -1,9 +1,9 @@
-# План реализации `rustok-blog`
+# `rustok-blog` — Implementation Plan
 
-Статус: contract stability полностью достигнут; модуль перешёл в режим product
-hardening и operability rollout. Channel-aware semantics и taxonomy sync подтверждены
-интеграционными и unit тестами. GraphQL/REST adapters, Leptos admin/storefront
-packages и module metadata синхронизированы.
+Status: contract stability fully achieved; module moved into product
+hardening and operability rollout. Channel-aware semantics and taxonomy sync confirmed
+by integration and unit tests. GraphQL/REST adapters, Leptos admin/storefront
+packages and module metadata synchronized.
 
 ## Execution checkpoint
 
@@ -14,9 +14,9 @@ packages и module metadata синхронизированы.
 - Next step: Continue small admin render/input fragments without changing the dual-path contract, or add real runtime contract execution against the comments port when compilation/runtime checks are allowed.
 - Open blockers: None.
 - Hand-off notes for next agent:
-  1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
-  2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
-  3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
+  1. Continue one-task-per-iteration: one helper/use-case -> storefront/admin -> docs double-check.
+  2. Do not change the dual-path contract (`native #[server]` + GraphQL fallback) during FFA decomposition.
+  3. After each slice, update parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
 - Last updated at (UTC): 2026-06-30T00:00:00Z
 
 ## FFA/FBA status
@@ -26,110 +26,110 @@ packages и module metadata синхронизированы.
 - Structural shape: `core_transport_ui`
 - Evidence:
   - public read authority slice: blog GraphQL request security resolves authenticated snapshots through `SecurityContext::from_permission_snapshot(...)` and resolves missing-auth public reads to `SecurityContext::public_read()`; storefront native selected-post reads use the same anonymous authority and keep published/channel visibility filtering in the module service path;
-  - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract; storefront shell copy and selected-post route/query state now use framework-agnostic core view-model/state; storefront native and GraphQL transport paths are separated into explicit adapter modules; transport adapters consume core-owned fetch request state instead of raw UI tuples; admin calls now go through a module-owned `admin/src/transport.rs` facade instead of direct `api::*` calls from the Leptos adapter;
-  - native `#[server]` + GraphQL fallback остаются параллельными путями, GraphQL removal/replacement не выполнялся;
+  - storefront/admin helper slices continue moving UI decision logic to `core` without changing the dual-path transport contract; storefront shell copy and selected-post route/query state now use framework-agnostic core view-model/state; storefront native and GraphQL transport paths are separated into explicit adapter modules; transport adapters consume core-owned fetch request state instead of raw UI tuples; admin calls now go through a module-owned `admin/src/transport.rs` facade instead of direct `api::*` calls from the Leptos adapter;
+  - native `#[server]` + GraphQL fallback remain parallel paths, GraphQL removal/replacement was not performed;
   - FBA consumer metadata and source-smoke evidence now lock the blog -> comments boundary: `crates/rustok-blog/contracts/blog-fba-registry.json` declares the `blog_post_comments` consumer profile for `CommentsThreadPort` / `comments.thread.v1`, `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json` mirrors planned consumer contract cases/fallback degraded modes, `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json` records no-compile source verification for embedded-native fallback/degraded-mode behavior, and `scripts/verify/verify-blog-fba.mjs` checks drift against `crates/rustok-comments/contracts/comments-fba-registry.json` plus service/error mapping source markers without long compilation;
   - consumer runtime-order smoke `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json` and shared gate `scripts/verify/verify-consumer-fba-runtime-order.mjs` additionally lock `ensure_post_exists`/target ownership -> comments provider call -> typed mapping order for create/list/update/delete comment paths, plus typed comments error mapping markers; this is executable no-compile evidence and does not replace real runtime contract execution;
-  - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract, а текущий source-smoke не заменяет real runtime contract execution, поэтому FBA status остаётся `in_progress`;
-  - FFA slice #75 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а crate roots стали тонким module wiring/re-export слоем; storefront native/GraphQL transport теперь полностью живёт под `storefront/src/transport/` (`native_server_adapter.rs`, `graphql_adapter.rs`, `mod.rs`), legacy `storefront/src/api.rs` удалён и закреплён guardrail `scripts/verify/verify-blog-storefront-boundary.mjs`; FFA slice #76 перенесла admin save-command preparation в `admin/src/core.rs`: required-field validation, validation issue construction, create/update operation selection и busy-key policy теперь Leptos-free, поэтому adapter только собирает form state/локализованный текст и вызывает module-owned transport facade; FFA slice #77 закрепила это быстрым source-level guardrail `scripts/verify/verify-blog-admin-boundary.mjs`; FFA slice #78 перенесла admin editor form-state mapping/reset defaults в `BlogPostEditorFormState` внутри `admin/src/core.rs`, оставив Leptos adapter тонким signal-application слоем; FFA slice #79 перенесла admin table-row display/action state в `BlogPostAdminTableRowViewModel`, оставив Leptos table fragment markup/event-binding слоем; FFA slice #80 завершила row action presentation переносом archive/delete labels и archive visibility в этот же core-owned row view-model; FFA slice #81 перенесла issue banner visibility/class/label/message mapping в `BlogPostAdminIssueBannerViewModel`, оставив Leptos adapter без write-path presentation policy; FFA slice #82 перенесла publish/unpublish, archive и delete action command preparation в core-owned `BlogPostStatusCommand`, `BlogPostArchiveCommand` и `BlogPostDeleteCommand`, оставив Leptos adapter только выбирать transport call по подготовленной операции; FFA slice #83 перенесла publish-toggle next-state policy в `BlogPostAdminTableRowViewModel`, чтобы Leptos table adapter отправлял уже подготовленное значение действия без повторного вычисления intent в event binding; FFA slice #84 перенесла delete-result policy в `BlogPostDeleteResultViewModel`, где core решает refresh/reset/route-query clear и typed false-delete issue, а Leptos adapter только применяет готовые инструкции; FFA slice #85 перенесла publish/unpublish и archive returned-post apply/refresh policy в `BlogPostMutationResultViewModel`, убрав повторяющиеся selected-post checks из Leptos handlers; FFA slice #86 перенесла save-result apply/refresh/query-replace policy в `BlogPostSaveResultViewModel`, оставив save handler только применять готовые инструкции; FFA slice #87 перенесла selected-post route/query push/replace/clear intent selection в `BlogPostAdminRouteQueryIntent`, так что Leptos adapter только применяет подготовленные writes через host query writer; FFA slice #88 перенесла admin edit-banner visibility/copy/action-label presentation в `BlogPostAdminEditBannerViewModel`, оставив Leptos adapter только render/signal-binding слоем для prepared payload; FFA slice #89 перенесла admin body-format raw-warning visibility/message envelope в `BlogPostAdminBodyFormatWarningViewModel`, так что Leptos adapter больше не владеет non-markdown warning presentation decision; FFA slice #90 перенесла posts-list load-result branching в `BlogPostAdminPostsLoadViewModel`; FFA slice #92 откатила over-extracted shell-copy helper согласно anti-over-extraction gate и закрепила posts contract-unavailable parity: GraphQL adapter больше не превращает `Unknown type/field` в `Ok(empty)`, поэтому Leptos adapter классифицирует transport error через facade и рендерит core-owned empty-state branch без потери evidence; FFA slice #93 синхронизировала fixture tests для fast boundary guardrail с текущими markers и добавила negative fixture на swallowed contract-unavailable branch; FFA slice #94 перенесла posts-list `BlogPostList` result normalization в `blog_post_admin_posts_load_view_from_list`, оставив в Leptos adapter только transport classifier и render branching; FFA slice #95 перенесла status-badge presentation в `BlogPostAdminStatusBadgeViewModel` / `blog_post_admin_status_badge_view`, а Leptos adapter стал memoized consumer для form и issue-banner view-models вместо повторного построения payloads в render closures; FFA slice #96 перенесла posts-table header/empty-state/row normalization в `BlogPostAdminPostsTableViewModel` / `blog_post_admin_posts_table_view_from_items`, чтобы Leptos table adapter потреблял готовую таблицу и prepared rows без повторного построения row view-models внутри render loop; FFA slice #97 перенесла editor form copy envelope в `BlogPostAdminEditorFormCopyViewModel`; FFA slice #98 перенесла title-input autoslug decision в `BlogPostAdminTitleInputViewModel` / `blog_post_admin_title_input_view`, оставив Leptos adapter только применять подготовленный title и optional slug update; FFA slice #99/#100 перенесли body-format option policy и change normalization в core; FFA slice #101 перенесла edit-banner/raw-body warning CSS class selection в core-owned helpers; FFA slice #102 перенесла editor field CSS class selection в `BlogPostAdminEditorFieldClassesViewModel` / `blog_post_admin_editor_field_classes_view`, так что Leptos form tree больше не владеет text input/textarea/checkbox/submit class policy; FFA slice #103 перенесла posts-table CSS class selection в `BlogPostAdminTableClassesViewModel` / `blog_post_admin_table_classes_view`, чтобы table shell, headers, rows, cells и action buttons получали prepared class payload из core; FFA slice #104 перенесла admin shell/list/form scaffold CSS class selection в `BlogPostAdminShellClassesViewModel` / `blog_post_admin_shell_classes_view`, чтобы page shell, header, posts card, locale filter, loading/error states, sidebar и form-card classes также приходили из core.
+  - backend boundary currently works in in-process model; remote extraction readiness is conducted as an evolutionary track without ownership/contract change, and current source-smoke does not replace real runtime contract execution, therefore FBA status remains `in_progress`;
+  - FFA slice #75 extracted `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs` as explicit Leptos render adapters, and crate roots became a thin module wiring/re-export layer; storefront native/GraphQL transport now fully lives under `storefront/src/transport/` (`native_server_adapter.rs`, `graphql_adapter.rs`, `mod.rs`), legacy `storefront/src/api.rs` removed and locked by guardrail `scripts/verify/verify-blog-storefront-boundary.mjs`; FFA slice #76 moved admin save-command preparation to `admin/src/core.rs`: required-field validation, validation issue construction, create/update operation selection and busy-key policy are now Leptos-free, so the adapter only collects form state/localized text and calls the module-owned transport facade; FFA slice #77 locked this with a fast source-level guardrail `scripts/verify/verify-blog-admin-boundary.mjs`; FFA slice #78 moved admin editor form-state mapping/reset defaults to `BlogPostEditorFormState` inside `admin/src/core.rs`, leaving the Leptos adapter as a thin signal-application layer; FFA slice #79 moved admin table-row display/action state to `BlogPostAdminTableRowViewModel`, leaving the Leptos table fragment as markup/event-binding layer; FFA slice #80 completed row action presentation by moving archive/delete labels and archive visibility into this same core-owned row view-model; FFA slice #81 moved issue banner visibility/class/label/message mapping to `BlogPostAdminIssueBannerViewModel`, leaving the Leptos adapter without write-path presentation policy; FFA slice #82 moved publish/unpublish, archive and delete action command preparation to core-owned `BlogPostStatusCommand`, `BlogPostArchiveCommand` and `BlogPostDeleteCommand`, leaving the Leptos adapter only to select a transport call by the prepared operation; FFA slice #83 moved publish-toggle next-state policy to `BlogPostAdminTableRowViewModel`, so the Leptos table adapter sends the already prepared action value without recalculating intent in the event binding; FFA slice... (line truncated to 2000 chars)
 - Last verified at (UTC): 2026-07-01T00:00:00Z
 - Owner: `rustok-blog` module team
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-blog` как самостоятельный blog domain module;
-- синхронизировать post/category/tag/comment contracts, UI packages и local docs;
-- развивать channel-aware и taxonomy-aware semantics без возврата к shared content storage;
-- обеспечить observability для post lifecycle, visibility filtering и moderation flows.
+- maintain `rustok-blog` as an independent blog domain module;
+- synchronize post/category/tag/comment contracts, UI packages and local docs;
+- evolve channel-aware and taxonomy-aware semantics without returning to shared content storage;
+- ensure observability for post lifecycle, visibility filtering and moderation flows.
 
-## Текущее состояние
+## Current state
 
-- blog posts, translations, categories и typed tag relations уже живут в module-owned storage;
-- GraphQL/REST adapters и Leptos admin/storefront surfaces уже живут внутри модуля;
-- comments runtime contract приходит из `rustok-comments`, а author presentation — из `rustok-profiles`;
-- public read-path уже поддерживает module-level и publication-level channel visibility;
-- `blog_post_channel_visibility` таблица реализует typed channel allowlists;
-- blog services re-validate RBAC локально для posts, categories и tags;
+- blog posts, translations, categories and typed tag relations already live in module-owned storage;
+- GraphQL/REST adapters and Leptos admin/storefront surfaces already live inside the module;
+- comments runtime contract comes from `rustok-comments`, and author presentation from `rustok-profiles`;
+- public read-path already supports module-level and publication-level channel visibility;
+- `blog_post_channel_visibility` table implements typed channel allowlists;
+- blog services re-validate RBAC locally for posts, categories and tags;
 - customer read paths restricted to published posts;
-- observability уже частично реализована: `metrics::record_read_path_*` на GraphQL/REST read paths,
-  `#[instrument]` на всех сервисных методах, span-трекинг для post lifecycle;
-- для storefront UI уже выделен FFA core/transport/ui split: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`, native/GraphQL adapters живут в `storefront/src/transport/`, а Leptos render adapter — в `storefront/src/ui/leptos.rs`; admin UI использует `admin/src/core.rs`, `admin/src/transport/mod.rs` facade и `admin/src/ui/leptos.rs`.
+- observability already partially implemented: `metrics::record_read_path_*` on GraphQL/REST read paths,
+  `#[instrument]` on all service methods, span-tracking for post lifecycle;
+- for storefront UI, the FFA core/transport/ui split is already extracted: formatting/fallback helper logic moved to `storefront/src/core.rs`, native/GraphQL adapters live in `storefront/src/transport/`, and the Leptos render adapter is in `storefront/src/ui/leptos.rs`; admin UI uses `admin/src/core.rs`, `admin/src/transport/mod.rs` facade and `admin/src/ui/leptos.rs`.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] закрыть storage split и blog-owned transport boundary;
-- [x] перенести tag vocabulary на shared `rustok-taxonomy`, сохранив blog-owned attachments;
-- [x] встроить channel-aware public visibility contract;
-- [x] удерживать sync между runtime contracts, UI packages и module metadata.
+- [x] close storage split and blog-owned transport boundary;
+- [x] migrate tag vocabulary to shared `rustok-taxonomy`, keeping blog-owned attachments;
+- [x] embed channel-aware public visibility contract;
+- [x] maintain sync between runtime contracts, UI packages and module metadata.
 
 ### 2. Product hardening
 
-- [ ] довести rate limiting и performance baseline для public/write paths;
+- [ ] bring rate limiting and performance baseline for public/write paths;
   - infrastructure: `rustok-core::security::rate_limit::RateLimiter` exists (token bucket, IP/key-based);
   - task: wire `RateLimiter` into blog REST/GraphQL public endpoints via middleware.
-- [ ] довести search/index integration без размывания blog domain boundary;
-  - blog публикует domain events (`blog.post.created/updated/published/archived/deleted/unpublished`);
-  - events уже помечены `affects_index() = true` — `rustok-index` consumer обрабатывает их;
-  - task: ensure indexer correctly maps events to search schema (проверить маппинг в `rustok-index`).
-- [x] удерживать category/tag/comment semantics покрытыми targeted integration tests.
-- [x] добавить moderation API endpoints для comment status transitions (approve/spam/trash).
-  - добавлен REST endpoint `POST /api/blog/comments/{id}/moderate`;
-  - endpoint маршрутизирован через `controllers/` и вызывает `CommentService::moderate_comment`;
-  - moderation RBAC закреплён на `BLOG_POSTS_MANAGE`, статус маппится в `rustok_comments::CommentsService::set_comment_status`.
+- [ ] bring search/index integration without blurring blog domain boundary;
+  - blog publishes domain events (`blog.post.created/updated/published/archived/deleted/unpublished`);
+  - events already marked `affects_index() = true` — `rustok-index` consumer processes them;
+  - task: ensure indexer correctly maps events to search schema (verify mapping in `rustok-index`).
+- [x] maintain category/tag/comment semantics covered by targeted integration tests.
+- [x] add moderation API endpoints for comment status transitions (approve/spam/trash).
+  - REST endpoint `POST /api/blog/comments/{id}/moderate` added;
+  - endpoint routed through `controllers/` and calls `CommentService::moderate_comment`;
+  - moderation RBAC locked on `BLOG_POSTS_MANAGE`, status maps to `rustok_comments::CommentsService::set_comment_status`.
 
 ### 3. Operability
 
-- [x] развивать observability для post lifecycle, visibility filtering и moderation flows;
-  - `#[instrument]` на всех сервисных методах (`PostService`, `CategoryService`, `TagService`, `CommentService`);
-  - `rustok_comments::CommentsService::set_comment_status` также имеет `#[instrument]` (fields: tenant_id, comment_id, status);
-  - `metrics::record_read_path_*` на GraphQL/REST read paths;
-  - state machine transitions логируются через `tracing::info!` (Draft→Published, etc.);
-  - `CommentStatus` transitions существуют в `state_machine.rs` (`approve`, `mark_spam`, `trash`).
-- [ ] документировать новые public/runtime guarantees одновременно с изменением сервисов;
-- [x] держать локальные docs, README и manifest metadata синхронизированными.
+- [x] evolve observability for post lifecycle, visibility filtering and moderation flows;
+  - `#[instrument]` on all service methods (`PostService`, `CategoryService`, `TagService`, `CommentService`);
+  - `rustok_comments::CommentsService::set_comment_status` also has `#[instrument]` (fields: tenant_id, comment_id, status);
+  - `metrics::record_read_path_*` on GraphQL/REST read paths;
+  - state machine transitions logged via `tracing::info!` (Draft→Published, etc.);
+  - `CommentStatus` transitions exist in `state_machine.rs` (`approve`, `mark_spam`, `trash`).
+- [ ] document new public/runtime guarantees simultaneously with service changes;
+- [x] keep local docs, README and manifest metadata synchronized.
 
-## Проверка
+## Verification
 
 - [x] `cargo xtask module validate blog`
 - [x] `cargo xtask module test blog`
-- [x] targeted tests для lifecycle, taxonomy sync, channel visibility и UI-facing read contracts
-- [x] контрактные тесты покрывают все публичные use-case
+- [x] targeted tests for lifecycle, taxonomy sync, channel visibility and UI-facing read contracts
+- [x] contract tests cover all public use-cases
 
-## Контрактные тесты (contract surface)
+## Contract surface tests
 
-Тесты в `tests/contract_surface.rs` и `tests/integration.rs` покрывают:
+Tests in `tests/contract_surface.rs` and `tests/integration.rs` cover:
 
 - **Post lifecycle**: create → draft → publish → archive → restore
 - **Locale fallback**: normalize → requested → en → first available
 - **Channel visibility**: typed `blog_post_channel_visibility` allowlists, empty = global
 - **Taxonomy sync**: blog tags ↔ `rustok-taxonomy` vocabulary
-- **RBAC enforcement**: customer не может создавать/читать draft posts
+- **RBAC enforcement**: customer cannot create/read draft posts
 - **GraphQL read paths**: public vs authenticated channel gating
 - **Events**: blog.post.created/updated/published/archived/deleted/unpublished
 - **Comments**: thread, locale fallback, status transitions, RBAC
 - **State machine**: BlogPost status transitions, CommentStatus transitions
 
-## Правила обновления
+## Update rules
 
-1. При изменении blog runtime contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении dependency graph, UI wiring или metadata синхронизировать `rustok-module.toml`.
-4. При изменении channel/tag semantics обновлять также связанные module docs и central references.
-5. При добавлении новых public use-case добавлять соответствующий contract test в `tests/contract_surface.rs`.
+1. When changing blog runtime contract, first update this file.
+2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
+3. When changing dependency graph, UI wiring or metadata, synchronize `rustok-module.toml`.
+4. When changing channel/tag semantics, also update related module docs and central references.
+5. When adding new public use-cases, add corresponding contract test in `tests/contract_surface.rs`.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and relevance of `README.md` and local docs.
+- [ ] Lock/update verification gates for the current module state.
 
 ## FFA pilot migration tracker (rustok-blog)
 
 - [x] Slice 1: storefront formatting/fallback helper extraction (`fallback_text`, `count_label`, `open_link_label`, `label_value_pair`, `error_with_context`, `summarize_content`, `module_href`, fallback wrappers).
-- [x] `crates/rustok-blog/storefront/src/lib.rs` переведён на `core::*` helper-слой для выбранного use-case.
+- [x] `crates/rustok-blog/storefront/src/lib.rs` switched to `core::*` helper layer for the selected use-case.
 - [x] Dual-path transport contract preserved (`native #[server]` + GraphQL fallback).
 - [x] Slice 2: admin submit-error banner class fallback moved to core (`issue_banner_class_or_hidden`) without changing transport path.
 - [x] Slice 3: admin required draft-field guard moved to core (`has_required_draft_fields`) without changing transport path.

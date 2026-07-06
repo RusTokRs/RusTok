@@ -1,17 +1,17 @@
-# План реализации `rustok-mcp`
+# Implementation plan for `rustok-mcp`
 
-Статус: governed MCP tool adapter уже работает поверх `rmcp`; следующая работа
-не про переписывание протокола, а про доведение RusToK-specific runtime,
-identity/audit и Alloy-related control plane до platform-grade уровня.
+Status: governed MCP tool adapter already works on top of `rmcp`; the next work
+is not about rewriting the protocol, but about bringing RusToK-specific runtime,
+identity/audit and Alloy-related control plane to platform-grade level.
 
 ## Execution checkpoint
 
-- Текущая фаза: `mcp_leptos_host_composition`; предыдущий owner UI checkpoint: `mcp_admin_owner_ui_slice`.
-- Последняя контрольная точка: MCP GraphQL query/mutation/types перенесены из `apps/server` в `rustok-mcp` и работают через единый owner-defined `McpManagementPort`; server provider делегирует reads/writes каноническому `McpManagementService`. Leptos native `#[server]` mutations используют тот же `McpManagementRuntime`, поэтому GraphQL и FFA сохраняют единые transaction claim/recovery semantics без host-owned resolver/DTO.
-- Следующий шаг: добавить authenticated browser-level parity smoke для Next `/dashboard/mcp` и Leptos `/mcp` management workflows поверх уже усиленного draft stage/apply boundary.
-- Открытые блокеры: нет актуальных локальных блокеров для текущего MCP slice; `cargo check -p rustok-server --offline`, `cargo test -p rustok-mcp --lib --offline`, `cargo fmt -p rustok-server --check` и `npm run verify:mcp:admin-boundary` проходят.
-- Передача следующему агенту: сохранять `rustok-mcp` как MCP protocol/tool adapter, persisted draft storage оставлять в `apps/server`, а UI - в owner surface MCP, не в `rustok-ai`. После изменений tool surface повторять `cargo check -p rustok-mcp-admin --features ssr`, `npm run verify:mcp:admin-boundary`, `cargo check -p rustok-server`, `cargo check -p rustok-mcp` и `cargo test -p rustok-mcp --lib`.
-- Обновлено (UTC): 2026-07-01T00:00:00Z
+- Current phase: `mcp_leptos_host_composition`; previous owner UI checkpoint: `mcp_admin_owner_ui_slice`.
+- Last checkpoint: MCP GraphQL query/mutation/types moved from `apps/server` to `rustok-mcp` and work through a unified owner-defined `McpManagementPort`; server provider delegates reads/writes to canonical `McpManagementService`. Leptos native `#[server]` mutations use the same `McpManagementRuntime`, so GraphQL and FFA maintain unified transaction claim/recovery semantics without host-owned resolver/DTO.
+- Next step: add authenticated browser-level parity smoke for Next `/dashboard/mcp` and Leptos `/mcp` management workflows over the already strengthened draft stage/apply boundary.
+- Open blockers: no active local blockers for the current MCP slice; `cargo check -p rustok-server --offline`, `cargo test -p rustok-mcp --lib --offline`, `cargo fmt -p rustok-server --check` and `npm run verify:mcp:admin-boundary` pass.
+- Hand-off notes for next agent: keep `rustok-mcp` as MCP protocol/tool adapter, leave persisted draft storage in `apps/server`, and UI in owner surface MCP, not in `rustok-ai`. After tool surface changes, repeat `cargo check -p rustok-mcp-admin --features ssr`, `npm run verify:mcp:admin-boundary`, `cargo check -p rustok-server`, `cargo check -p rustok-mcp` and `cargo test -p rustok-mcp --lib`.
+- Last updated at (UTC): 2026-07-01T00:00:00Z
 
 ## FFA/FBA status
 
@@ -19,67 +19,67 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Подтверждения:
-  - Next owner surface `apps/next-admin/packages/rustok-mcp` владеет UI ревью MCP/Alloy scaffold drafts, audit events, clients/policies/tokens и management mutations; host route только монтирует `McpAdminPage`.
-  - Leptos FFA surface `crates/rustok-mcp/admin` содержит Leptos-free `core.rs`, `transport::{native_server_adapter,graphql_adapter}` и явный `ui/leptos.rs` adapter.
-  - Leptos host `apps/admin` подключает owner crate через тонкий маршрут `/mcp`; CSR, hydrate WASM и SSR feature profiles компилируются.
-  - Native `#[server]` functions являются основным внутренним data layer Leptos; mutations и owner GraphQL получают `McpManagementRuntime` из `ModuleRuntimeExtensions`, а server provider делегирует client/policy/token/audit/scaffold reads/writes `McpManagementService`. GraphQL operation documents параллельно остаются в `transport/graphql_adapter.rs`.
-  - Boundary guardrail `scripts/verify/verify-mcp-admin-boundary.mjs` проверяет owner placement, требует stage/apply delegation через mutation port, запрещает scaffold persistence/audit SQL в UI adapter и запрещает MCP draft UI внутри `rustok-ai`.
-- Последняя проверка (UTC): 2026-07-01T00:00:00Z.
-- Владелец: `rustok-mcp`.
+- Evidence:
+  - Next owner surface `apps/next-admin/packages/rustok-mcp` owns UI review of MCP/Alloy scaffold drafts, audit events, clients/policies/tokens and management mutations; host route only mounts `McpAdminPage`.
+  - Leptos FFA surface `crates/rustok-mcp/admin` contains Leptos-free `core.rs`, `transport::{native_server_adapter,graphql_adapter}` and explicit `ui/leptos.rs` adapter.
+  - Leptos host `apps/admin` connects the owner crate through a thin `/mcp` route; CSR, hydrate WASM and SSR feature profiles compile.
+  - Native `#[server]` functions are the primary internal data layer for Leptos; mutations and owner GraphQL receive `McpManagementRuntime` from `ModuleRuntimeExtensions`, and the server provider delegates client/policy/token/audit/scaffold reads/writes to `McpManagementService`. GraphQL operation documents remain in `transport/graphql_adapter.rs` in parallel.
+  - Boundary guardrail `scripts/verify/verify-mcp-admin-boundary.mjs` checks owner placement, requires stage/apply delegation through mutation port, prohibits scaffold persistence/audit SQL in UI adapter and prohibits MCP draft UI inside `rustok-ai`.
+- Last verified at (UTC): 2026-07-01T00:00:00Z.
+- Owner: `rustok-mcp`.
 
-## Область работ
+## Scope of work
 
-- удерживать `rustok-mcp` как thin MCP adapter crate поверх `rmcp`;
-- синхронизировать tool surface, runtime binding, access policy и local docs;
-- не допускать смешивания MCP protocol boundary с AI provider orchestration.
+- keep `rustok-mcp` as a thin MCP adapter crate on top of `rmcp`;
+- synchronize tool surface, runtime binding, access policy and local docs;
+- prevent mixing MCP protocol boundary with AI provider orchestration.
 
-## Текущее состояние
+## Current state
 
-- crate уже интегрирован с `rmcp` и поставляется как library + binary;
-- module discovery tools, health/introspection, Alloy-related tools и scaffold review/apply boundary уже подняты;
-- persisted server-side scaffold drafts и runtime draft-store bridge уже связаны с MCP flow;
-- identity/policy foundation, session-start runtime binding и allow/deny audit уже являются частью live contract.
+- crate is already integrated with `rmcp` and ships as library + binary;
+- module discovery tools, health/introspection, Alloy-related tools and scaffold review/apply boundary are already in place;
+- persisted server-side scaffold drafts and runtime draft-store bridge are already connected to MCP flow;
+- identity/policy foundation, session-start runtime binding and allow/deny audit are already part of the live contract.
 
-## Этапы
+## Stages
 
 ### 1. Contract stability
 
-- [x] зафиксировать `rustok-mcp` как thin adapter поверх `rmcp`;
-- [x] поднять typed tool surface, response envelope и access-policy baseline;
-- [x] встроить Alloy-related scaffold/review/apply vertical и runtime draft-store binding;
-- [ ] удерживать sync между runtime contracts, management/control plane и local docs.
+- [x] lock `rustok-mcp` as a thin adapter on top of `rmcp`;
+- [x] bring up typed tool surface, response envelope and access-policy baseline;
+- [x] embed Alloy-related scaffold/review/apply vertical and runtime draft-store binding;
+- [ ] maintain sync between runtime contracts, management/control plane and local docs.
 
 ### 2. Platform hardening
 
-- [ ] довести server-owned remote MCP transport/session bootstrap beyond текущий stdio path;
-- [ ] расширить audit trail от allow/deny к richer execution telemetry;
-- [ ] удерживать identity/policy layer совместимым с official MCP authorization guidance.
+- [ ] bring server-owned remote MCP transport/session bootstrap beyond the current stdio path;
+- [ ] expand audit trail from allow/deny to richer execution telemetry;
+- [ ] keep identity/policy layer compatible with official MCP authorization guidance.
 
 ### 3. Product surface
 
-- [ ] добавить UI-слой для MCP access management и Alloy draft review;
-- [ ] расширять Alloy/codegen vertical без автоматического размывания review/apply boundary;
-- [ ] добавлять новые MCP capabilities (`resources`, `prompts`, `sampling` и др.) только как explicit staged rollout.
+- [ ] add UI layer for MCP access management and Alloy draft review;
+- [ ] expand Alloy/codegen vertical without automatic blurring of review/apply boundary;
+- [ ] add new MCP capabilities (`resources`, `prompts`, `sampling`, etc.) only as explicit staged rollout.
 
-## Проверка
+## Verification
 
-- structural verification для RusToK-specific MCP docs и boundary;
-- targeted compile/tests при изменении tool surface, access policy, runtime binding или draft-store integration;
-- обязательная сверка с official MCP/rmcp docs при изменении protocol/security assumptions.
+- structural verification for RusToK-specific MCP docs and boundary;
+- targeted compile/tests when tool surface, access policy, runtime binding or draft-store integration changes;
+- mandatory cross-check with official MCP/rmcp docs when changing protocol/security assumptions.
 
-- контрактные тесты покрывают все публичные use-case MCP surface.
+- contract tests cover all public use-case MCP surface.
 
-## Правила обновления
+## Update rules
 
-1. При изменении RusToK-specific MCP contract сначала обновлять этот файл.
-2. Сначала сверять изменения с official MCP/rmcp источниками, потом обновлять local docs.
-3. При изменении public crate behavior синхронизировать `README.md` и `docs/README.md`.
-4. При изменении reference-map обновлять `docs/references/mcp/README.md` и при необходимости `docs/index.md`.
+1. When changing RusToK-specific MCP contract, update this file first.
+2. First cross-check changes with official MCP/rmcp sources, then update local docs.
+3. When changing public crate behavior, synchronize `README.md` and `docs/README.md`.
+4. When changing reference-map, update `docs/references/mcp/README.md` and if necessary `docs/index.md`.
 
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Update test coverage for key module scenarios.
+- [ ] Verify completeness and currency of `README.md` and local docs.
+- [ ] Lock/update verification gates for current module state.

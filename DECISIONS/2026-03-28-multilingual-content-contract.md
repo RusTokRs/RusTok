@@ -1,89 +1,89 @@
-# Многоязычный content contract для `blog` / `pages` / `comments`
+# Multilingual content contract for `blog` / `pages` / `comments`
 
 - Date: 2026-03-28
 - Status: Accepted
 
 ## Context
 
-После разреза `blog`, `pages` и `comments` по своим таблицам оказалось, что сама
-модель многоязычности всё ещё расходится между модулями:
+After splitting `blog`, `pages` and `comments` into their own tables, it turned out that the
+multilingual model itself still diverges between modules:
 
-- locale-коды нормализуются по-разному;
-- fallback locale в read-path ведёт себя не одинаково;
-- `comments` жили на своей самописной locale-резолюции, а не на shared helper;
-- `pages` не делали fallback при slug lookup по локали;
-- slug policy уже различается между доменами:
-  - `blog` использует глобальный canonical slug;
-  - `pages` используют locale-aware slug на уровне перевода;
-  - `forum` пока ещё остаётся на legacy-модели и должен быть приведён к явному контракту до cutover.
+- locale codes are normalized differently;
+- fallback locale in the read-path behaves inconsistently;
+- `comments` lived on its own custom locale resolution, not on the shared helper;
+- `pages` did not perform fallback during slug lookup by locale;
+- slug policy already differs between domains:
+  - `blog` uses a global canonical slug;
+  - `pages` use a locale-aware slug at the translation level;
+  - `forum` still remains on the legacy model and must be brought to an explicit contract before cutover.
 
-Если это не зафиксировать сейчас, новый split просто размножит несовместимые
+If this is not fixed now, the new split will simply proliferate incompatible
 locale/slug semantics.
 
 ## Decision
 
-### 1. Locale normalization едина для всех content-like модулей
+### 1. Locale normalization is unified for all content-like modules
 
-Каноническая normalization rule:
+Canonical normalization rule:
 
-- входной locale trim;
-- `_` заменяется на `-`;
-- значение приводится к lowercase;
-- пустой locale и явно невалидные значения отвергаются.
+- trim the input locale;
+- `_` is replaced with `-`;
+- value is lowercased;
+- empty locale and explicitly invalid values are rejected.
 
-Shared helper живёт в `rustok-content::locale` и переиспользуется всеми
-content-like модулями вместо локальных копий.
+The shared helper lives in `rustok-content::locale` and is reused by all
+content-like modules instead of local copies.
 
-### 2. Locale fallback order фиксирован
+### 2. Locale fallback order is fixed
 
-Канонический порядок locale resolution:
+Canonical locale resolution order:
 
 1. requested locale;
-2. explicit fallback locale, если он передан вызывающим слоем;
+2. explicit fallback locale, if passed by the calling layer;
 3. platform fallback locale `en`;
 4. first available locale.
 
-Это правило считается обязательным для `blog`, `pages`, `comments` и будущего
-forum-owned storage после миграции off `NodeService`.
+This rule is mandatory for `blog`, `pages`, `comments` and any future
+forum-owned storage after migration off `NodeService`.
 
-### 3. `rustok-content` остаётся shared owner для locale helpers
+### 3. `rustok-content` remains the shared owner for locale helpers
 
-`rustok-content` не владеет доменными таблицами `blog/pages/comments`, но остаётся
-каноническим местом для:
+`rustok-content` does not own the domain tables of `blog/pages/comments`, but remains the
+canonical place for:
 
 - locale normalization helpers;
 - locale fallback helpers;
 - shared rich-text body contracts.
 
-### 4. Slug policy должна быть явной на уровне домена
+### 4. Slug policy must be explicit at the domain level
 
-Платформа не навязывает один slug mode для всех сущностей.
+The platform does not impose a single slug mode for all entities.
 
-Разрешены два режима, но каждый домен обязан выбрать его явно:
+Two modes are allowed, but each domain must explicitly choose one:
 
 - `canonical/global slug`
-  - один slug на сущность независимо от locale;
-  - подходит для `blog post` и других canonical publication entities;
+  - one slug per entity regardless of locale;
+  - suitable for `blog post` and other canonical publication entities;
 - `locale-aware slug`
-  - slug живёт на уровне перевода;
-  - подходит для `pages` и других locale-routed surfaces.
+  - slug lives at the translation level;
+  - suitable for `pages` and other locale-routed surfaces.
 
-Смешивать оба режима внутри одной и той же сущности нельзя.
+Mixing both modes within the same entity is not allowed.
 
-### 5. `forum` должен выбрать slug/locale contract до storage cutover
+### 5. `forum` must choose slug/locale contract before storage cutover
 
-Перед переносом `forum` на forum-owned persistence нужно явно решить:
+Before moving `forum` to forum-owned persistence, the following must be explicitly decided:
 
-- останется ли topic slug locale-aware;
-- как forum topic lookup должен использовать tenant fallback locale;
-- будет ли forum разделять page-like или blog-like slug semantics.
+- will the topic slug remain locale-aware;
+- how should forum topic lookup use the tenant fallback locale;
+- will forum share page-like or blog-like slug semantics.
 
-Это решение должно быть принято до завершения forum storage split, а не после него.
+This decision must be made before the forum storage split is completed, not after.
 
 ## Consequences
 
-- `blog`, `pages`, `comments` должны использовать shared locale helpers из `rustok-content`.
-- Любой новый content-like модуль не должен вводить собственную locale normalization logic.
-- `pages` slug lookup должен использовать тот же fallback contract, что и остальные read-path'ы.
-- `comments` не должны иметь отдельную locale resolution policy.
-- В backlog split-плана нужно отдельно держать решение по `forum` slug/locale semantics.
+- `blog`, `pages`, `comments` must use shared locale helpers from `rustok-content`.
+- Any new content-like module must not introduce its own locale normalization logic.
+- `pages` slug lookup must use the same fallback contract as the other read-paths.
+- `comments` must not have a separate locale resolution policy.
+- The split-plan backlog must separately hold the decision on `forum` slug/locale semantics.

@@ -1,180 +1,180 @@
-# Документация `apps/admin`
+# Documentation `apps/admin`
 
-Локальная документация для Leptos-admin host-приложения. Этот файл фиксирует только живой host-level contract; подробные планы, UI-каталоги и rollout-заметки вынесены в отдельные документы.
+Local documentation for the Leptos admin host application. This file captures only the live host-level contract; detailed plans, UI catalogs, and rollout notes are kept in separate documents.
 
-## Назначение
+## Purpose
 
-`apps/admin` является host/composition root для административного интерфейса RusToK. Preferred product runtime для Leptos admin — SSR/hydrate в monolith deployment, при этом standalone CSR сохраняется как debug/compatibility профиль. Приложение:
+`apps/admin` is the host/composition root for the RusToK administrative interface. The preferred product runtime for Leptos admin is SSR/hydrate in monolith deployment, with standalone CSR preserved as a debug/compatibility profile. The application:
 
-- монтирует host-owned экраны и module-owned admin surfaces;
-- держит единый shell, навигацию, RBAC-aware routing и search entrypoint;
-- использует `apps/server` как backend surface для GraphQL, Leptos `#[server]` и связанных runtime APIs.
+- mounts host-owned screens and module-owned admin surfaces;
+- holds a unified shell, navigation, RBAC-aware routing, and search entrypoint;
+- uses `apps/server` as the backend surface for GraphQL, Leptos `#[server]`, and related runtime APIs.
 
-`apps/admin` не должен становиться владельцем бизнес-логики модулей. Если модуль поставляет собственный admin UI, эта поверхность остаётся рядом с модулем и подключается через manifest-driven contract.
+`apps/admin` must not become the owner of module business logic. If a module provides its own admin UI, that surface remains alongside the module and is connected via a manifest-driven contract.
 
-FFA classification: `apps/admin` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять shell/routing/context composition и не переносить module-specific workflows из owner packages в host.
+FFA classification: `apps/admin` is an `FFA-compatible composition host`, not a module-owned UI package. Its FFA responsibility is to maintain shell/routing/context composition and not move module-specific workflows from owner packages into the host.
 
-Первый host-level FFA срез уже применён к app shell navigation: переносимая sidebar policy
-живёт в `src/widgets/app_shell/core.rs` без Leptos-зависимостей, а `sidebar.rs` остаётся
-Leptos render/bind adapter. Этот split закреплён быстрым verifier-ом
+The first host-level FFA slice has already been applied to app shell navigation: a portable sidebar policy
+lives in `src/widgets/app_shell/core.rs` without Leptos dependencies, while `sidebar.rs` remains
+a Leptos render/bind adapter. This split is enforced by a quick verifier
 `npm run verify:frontend:host-ffa-contract`.
 
-## Границы ответственности
+## Boundaries of Responsibility
 
-`apps/admin` отвечает за:
+`apps/admin` is responsible for:
 
-- host routing, layout, navigation shell и глобальные UI capabilities;
-- wiring module-owned admin pages через generated registry;
-- cross-module composition через отдельные host adapters и публичные owner contracts; `SearchAdminComposition` соединяет product-owned catalog option transport с search-owned UI props, передаёт `UiRouteContext.locale` и учитывает tenant module enablement без переноса domain logic в host;
-- host-level locale propagation, auth/session UX и permission-gated navigation;
-- интеграцию host-owned операторских сценариев, которые не принадлежат отдельному модулю.
+- host routing, layout, navigation shell, and global UI capabilities;
+- wiring module-owned admin pages through the generated registry;
+- cross-module composition via separate host adapters and public owner contracts; `SearchAdminComposition` connects product-owned catalog option transport with search-owned UI props, passes `UiRouteContext.locale` and considers tenant module enablement without moving domain logic into the host;
+- host-level locale propagation, auth/session UX, and permission-gated navigation;
+- integration of host-owned operator scenarios that do not belong to a specific module.
 
-`apps/admin` не отвечает за:
+`apps/admin` is not responsible for:
 
-- перенос module-specific CRUD и domain workflows в host-код;
-- собственную locale negotiation цепочку внутри module-owned пакетов;
-- замену GraphQL transport только потому, что появился Leptos `#[server]` path.
+- moving module-specific CRUD and domain workflows into host code;
+- its own locale negotiation chain inside module-owned packages;
+- replacing the GraphQL transport just because a Leptos `#[server]` path exists.
 
 ## Runtime contract
 
-- `apps/admin` поддерживает три разных runtime-профиля, которые нельзя смешивать:
-  `csr` для standalone Trunk/WASM, `hydrate` для клиентской половины SSR и `ssr` для server-side
-  половины/monolith.
-- Preferred product path для Leptos admin — `ssr` + `hydrate` поверх `apps/server` как same-origin backend. В этом профиле native `#[server]` transport является preferred internal data-layer.
-- В `csr` profile базовый transport не должен требовать Leptos `#[server]`: GraphQL, auth и REST идут
-  напрямую в `apps/server` через `/api/graphql`, `/api/auth/*` и module-owned REST endpoints. Локальный
-  `trunk serve` обязан проксировать `/api/*` в `http://localhost:5150/api/*`. Этот профиль нужен для debug/compatibility, а не как production default.
-- В `hydrate`/`ssr` и monolith profile native `#[server]` endpoints `/api/fn/*` считаются доступными
-  на том же backend origin и могут быть preferred path для surfaces, где нужен server-side runtime.
-- Если surface поддерживает dual-path модель, fallback в GraphQL/REST обязан реально работать в `csr`;
-  `#[server]` не может быть единственным critical transport для standalone debug.
-- GraphQL и native Leptos `#[server]` path должны сосуществовать параллельно; `#[server]` не заменяет `/api/graphql`.
-- Причина split-а: monolith admin выигрывает от same-origin SSR/hydrate, server-side auth/session/policy и короткого Rust-пути через `#[server]`, но headless и standalone debug требуют живой GraphQL/REST fallback.
-- Текущий data-layer для admin поддерживает dual-path модель: host сначала использует native `#[server]` surface там, где он уже есть, и только затем откатывается к GraphQL или legacy REST, если это предусмотрено конкретной поверхностью.
-- `rustok-pricing/admin` теперь относится к таким dual-path surfaces: pricing package
-  по умолчанию ходит в native `#[server]` pricing runtime, оставляя GraphQL
-  fallback, и показывает operator-side effective price context для
+- `apps/admin` supports three distinct runtime profiles that must not be mixed:
+  `csr` for standalone Trunk/WASM, `hydrate` for the client half of SSR, and `ssr` for the server-side
+  half/monolith.
+- The preferred product path for Leptos admin is `ssr` + `hydrate` over `apps/server` as a same-origin backend. In this profile, native `#[server]` transport is the preferred internal data-layer.
+- In the `csr` profile, the base transport must not require Leptos `#[server]`: GraphQL, auth, and REST go
+  directly to `apps/server` via `/api/graphql`, `/api/auth/*`, and module-owned REST endpoints. Local
+  `trunk serve` must proxy `/api/*` to `http://localhost:5150/api/*`. This profile is needed for debug/compatibility, not as a production default.
+- In the `hydrate`/`ssr` and monolith profile, native `#[server]` endpoints `/api/fn/*` are considered available
+  on the same backend origin and can be the preferred path for surfaces that need server-side runtime.
+- If a surface supports a dual-path model, the fallback to GraphQL/REST must actually work in `csr`;
+  `#[server]` cannot be the only critical transport for standalone debug.
+- GraphQL and the native Leptos `#[server]` path must coexist in parallel; `#[server]` does not replace `/api/graphql`.
+- The reason for the split: monolith admin benefits from same-origin SSR/hydrate, server-side auth/session/policy, and a short Rust path via `#[server]`, but headless and standalone debug require a live GraphQL/REST fallback.
+- The current data-layer for admin supports a dual-path model: the host first uses the native `#[server]` surface where it already exists, and only then falls back to GraphQL or legacy REST, if that is provided for by the specific surface.
+- `rustok-pricing/admin` is now one of these dual-path surfaces: the pricing package
+  by default uses the native `#[server]` pricing runtime, leaving GraphQL
+  fallback, and shows operator-side effective price context for
   `currency + optional region_id + optional price_list_id + optional quantity`,
-  включая pricing-owned selector активных price lists, а также выполняет base-price
-  variant updates через module-owned server-function transport.
-- `apps/admin` не считается CSR-first host. CSR остаётся обязательным standalone debug профилем, но архитектурный target для Leptos admin — SSR-first host с headless GraphQL/REST parity.
-- WebSocket transport `/api/graphql/ws` остаётся действующим путём для live update сценариев, включая build/progress и subscription-based surfaces.
-- Host-owned `/install` является Leptos wizard-слоем для гибридного установщика.
-  Он не содержит собственной bootstrap-логики: экран собирает `InstallPlan`,
-  вызывает `/api/install/preflight`, запускает `/api/install/apply`, poll-ит
-  `/api/install/jobs/{job_id}` и показывает persisted receipts из
-  `/api/install/sessions/{session_id}/receipts`. CLI `rustok-server install ...`
-  остаётся canonical automation/operator path, а web слой работает как thin
-  facade поверх `apps/server` и `rustok-installer`. Этот route доступен до
-  обычной admin-auth, потому что первый install ещё может не иметь созданного
-  superadmin; mutating install-запросы защищаются setup-token guard на
-  `/api/install/*`. Wizard не подставляет sample admin password и admin
-  PostgreSQL URL по умолчанию: production-like secret values должны приходить
-  через secret refs, а database creation является явным opt-in с обязательным
+  including a pricing-owned selector for active price lists, and also performs base-price
+  variant updates via module-owned server-function transport.
+- `apps/admin` is not considered a CSR-first host. CSR remains a mandatory standalone debug profile, but the architectural target for Leptos admin is an SSR-first host with headless GraphQL/REST parity.
+- WebSocket transport `/api/graphql/ws` remains an active path for live update scenarios, including build/progress and subscription-based surfaces.
+- Host-owned `/install` is a Leptos wizard layer for the hybrid installer.
+  It does not contain its own bootstrap logic: the screen collects an `InstallPlan`,
+  calls `/api/install/preflight`, invokes `/api/install/apply`, polls
+  `/api/install/jobs/{job_id}`, and shows persisted receipts from
+  `/api/install/sessions/{session_id}/receipts`. The CLI `rustok-server install ...`
+  remains the canonical automation/operator path, and the web layer works as a thin
+  facade over `apps/server` and `rustok-installer`. This route is accessible before
+  normal admin-auth, because the first install may not yet have a created
+  superadmin; mutating install requests are protected by a setup-token guard on
+  `/api/install/*`. The wizard does not prefill a sample admin password and admin
+  PostgreSQL URL by default: production-like secret values must come
+  via secret refs, and database creation is an explicit opt-in with a mandatory
   `pg_admin_url`.
-- Для целей `module-system` `/modules` считается закрытым repo-side operator surface: установка, удаление, upgrade/deploy модулей и progress feedback доступны из Admin UI без отдельного ручного backend workflow.
-- Host-owned `/modules` governance UI не держит локальные policy-эвристики: `registryLifecycle` остаётся summary/read-model, но actor-agnostic `governanceActions` там теперь сведены только к release-management hints (`owner-transfer`, `yank`), а authoritative request-level contract для interactive governance читается отдельным bearer-auth fetch к `GET /v2/catalog/publish/{request_id}`; `reason` / `reason_code` и request-level availability берутся только из этого статуса.
-- `/modules` больше не читает legacy registry audit shape: lifecycle/event read-side работает только с typed payload (`stage_key`, nested `owner_transition`, structured principal objects) и не парсит historical `*_actor` keys.
-- Для `apps/admin` это считается конечным repo-side contract: дальше здесь не нужен новый client-owned lifecycle, а только targeted verification mapping и периодическая сверка `/modules` UX с server-driven policy surface.
-- Toggle/install/uninstall/upgrade module composition не должны иметь локальный SSR SQL lifecycle duplicate: host использует canonical server GraphQL/control-plane entrypoints, где CAS-update `platform_state` и build enqueue атомарны, а `manifest_ref`/`manifest_hash` берутся из server-side snapshot contract.
-- Для module toggle `apps/admin` держит GraphQL-only entrypoint contract (без native fallback toggle path): error taxonomy, dependency/core checks и journal semantics (`module_operations`) задаются server lifecycle service, а не локальной Leptos-логикой. Leptos SSR adapter и UI обязаны прокидывать `BAD_USER_INPUT`/`MODULE_HOOK_FAILED`/`INTERNAL_ERROR`, `correlation_id`, `requested_by`, `status`, `retryable_issue` и related recovery fields без client-side remap.
+- For `module-system` purposes, `/modules` is considered a closed repo-side operator surface: installation, removal, upgrade/deploy of modules and progress feedback are available from the Admin UI without a separate manual backend workflow.
+- Host-owned `/modules` governance UI does not hold local policy heuristics: `registryLifecycle` remains a summary/read-model, but actor-agnostic `governanceActions` there are now limited to release-management hints (`owner-transfer`, `yank`), and the authoritative request-level contract for interactive governance is read by a separate bearer-auth fetch to `GET /v2/catalog/publish/{request_id}`; `reason` / `reason_code` and request-level availability are taken only from this status.
+- `/modules` no longer reads the legacy registry audit shape: the lifecycle/event read-side works only with typed payload (`stage_key`, nested `owner_transition`, structured principal objects) and does not parse historical `*_actor` keys.
+- For `apps/admin` this is considered the final repo-side contract: no new client-owned lifecycle is needed here going forward, only targeted verification mapping and periodic reconciliation of `/modules` UX with the server-driven policy surface.
+- Toggle/install/uninstall/upgrade module composition must not have a local SSR SQL lifecycle duplicate: the host uses canonical server GraphQL/control-plane entrypoints, where CAS-update `platform_state` and build enqueue are atomic, and `manifest_ref`/`manifest_hash` are taken from the server-side snapshot contract.
+- For module toggle, `apps/admin` maintains a GraphQL-only entrypoint contract (without a native fallback toggle path): error taxonomy, dependency/core checks, and journal semantics (`module_operations`) are defined by the server lifecycle service, not by local Leptos logic. The Leptos SSR adapter and UI must propagate `BAD_USER_INPUT`/`MODULE_HOOK_FAILED`/`INTERNAL_ERROR`, `correlation_id`, `requested_by`, `status`, `retryable_issue`, and related recovery fields without client-side remap.
 
-## Локальный debug-запуск
+## Local debug launch
 
-Для локальной отладки без Docker используйте `localhost`, а не `127.0.0.1`: на Windows loopback через `127.0.0.1`
-может принимать TCP-соединение и не отдавать HTTP-ответ. Рабочий профиль:
+For local debugging without Docker, use `localhost` instead of `127.0.0.1`: on Windows, a loopback via `127.0.0.1`
+may accept a TCP connection but not return an HTTP response. Working profile:
 
 ```powershell
-# backend уже должен слушать http://localhost:5150
+# backend already listens on http://localhost:5150
 $env:RUSTOK_MODULES_MANIFEST = (Resolve-Path ..\..\modules.local.toml)
 $env:PATH="$env:USERPROFILE\.rustok\tools\trunk;$env:PATH"
 trunk serve --address ::1 --port 3001
 ```
 
-Для этого профиля backend запускается с `modules.local.toml`, где embedded admin/storefront отключены. Корневой
-`modules.toml` описывает monolith/release composition и требует `embed-admin`; в текущем Windows debug-окружении
-SSR-сборка embedded `apps/admin` падает по памяти (`rustc-LLVM ERROR: out of memory`), поэтому локальный debug
-разделяет backend и внешний Trunk host.
+For this profile, the backend starts with `modules.local.toml`, where embedded admin/storefront are disabled. The root
+`modules.toml` describes monolith/release composition and requires `embed-admin`; in the current Windows debug environment
+the SSR build of embedded `apps/admin` crashes due to memory (`rustc-LLVM ERROR: out of memory`), so local debug
+splits the backend and the external Trunk host.
 
-`apps/admin` в standalone debug работает как CSR host, поэтому Trunk должен собирать именно binary artifact
-`rustok-admin`, а не library artifact `rustok_admin`. Это зафиксировано в `index.html` через
-`data-target-name="rustok-admin"`: binary запускает `main()` и монтирует shell в `body`.
+`apps/admin` in standalone debug runs as a CSR host, so Trunk must build the binary artifact
+`rustok-admin`, not the library artifact `rustok_admin`. This is specified in `index.html` via
+`data-target-name="rustok-admin"`: the binary runs `main()` and mounts the shell in `body`.
 
-Tailwind CSS для этого debug-профиля собирается Trunk post-build hook-ом `scripts\tailwind-build.cmd`.
-Hook пишет `output.css` в `TRUNK_STAGING_DIR`, поэтому CSS переживает очистку `dist` внутри Trunk pipeline.
-Локально команду можно прогнать отдельно только для быстрой проверки CSS:
+Tailwind CSS for this debug profile is built by the Trunk post-build hook `scripts\tailwind-build.cmd`.
+The hook writes `output.css` to `TRUNK_STAGING_DIR`, so CSS survives the `dist` cleanup inside the Trunk pipeline.
+Locally, the command can be run separately just for a quick CSS check:
 
 ```powershell
 npm.cmd install
 npm.cmd run tw:build
 ```
 
-`apps/admin/input.css` использует Tailwind v4 `@import "tailwindcss"` и явные `@source` entries. `tailwind.config.js`
-должен включать `apps/admin/src`, shared Leptos UI crates и module-owned admin UI packages
-`crates/**/admin/src/**/*.rs`. Если `dist/output.css` отсутствует или source globs не покрывают модульные UI-пакеты,
-shell загрузится частично или без стилей. Это не меняет production target: архитектурный путь для Leptos admin остаётся
-SSR/hydrate поверх `apps/server`, а CSR нужен для standalone debug и проверки module-owned UI packages.
+`apps/admin/input.css` uses Tailwind v4 `@import "tailwindcss"` and explicit `@source` entries. `tailwind.config.js`
+must include `apps/admin/src`, shared Leptos UI crates and module-owned admin UI packages
+`crates/**/admin/src/**/*.rs`. If `dist/output.css` is missing or the source globs do not cover module UI packages,
+the shell will load partially or without styles. This does not change the production target: the architectural path for Leptos admin remains
+SSR/hydrate over `apps/server`, and CSR is needed for standalone debug and testing module-owned UI packages.
 
-Leptos admin не должен визуально расходиться с Next admin как отдельный продукт. Auth shell, navigation shell,
-route-selection UX и контейнеры module-owned UI должны следовать общему admin UI contract. Next admin остаётся
-параллельным React/Next host, а Leptos admin — canonical operator surface для SSR/monolith пути; найденные
-расхождения оформляются как parity debt и чинятся точечно.
+Leptos admin must not visually diverge from Next admin as a separate product. Auth shell, navigation shell,
+route-selection UX, and module-owned UI containers must follow the common admin UI contract. Next admin remains
+a parallel React/Next host, while Leptos admin is the canonical operator surface for the SSR/monolith path; any
+discrepancies found are filed as parity debt and fixed on a case-by-case basis.
 
-## Contract для module-owned admin UI
+## Contract for module-owned admin UI
 
-- Источник правды для подключения UI-модулей: `modules.toml` плюс `rustok-module.toml`.
-- `apps/admin/build.rs` читает manifest-слой и генерирует wiring в `OUT_DIR`.
-- Publishable Leptos admin surface обязан объявлять `[provides.admin_ui].leptos_crate`; наличие `admin/Cargo.toml` само по себе не считается интеграцией.
-- Host монтирует module-owned страницы через `/modules/:module_slug` и nested variant `/modules/:module_slug/*module_path`.
-- Sidebar строится из manifest-driven navigation metadata. `[provides.admin_ui].nav_group` и `nav_order` являются optional overrides; если они не заданы, host группирует first-party modules по стандартным buckets `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
-- Canonical source для подменю модуля — `[[provides.admin_ui.child_pages]]`. Legacy `[[provides.admin_ui.pages]]` пока читается только как compatibility alias, новые manifests должны использовать `child_pages`.
-- Каждый module-owned admin surface получает корневой пункт `Overview`; declared child pages становятся nested links под контейнером модуля. Host скрывает disabled tenant modules и пустые containers.
-- Tenant/module settings остаются в host-owned `/modules` governance UI. Если `rustok-module.toml` содержит `[settings]`, sidebar добавляет контекстный link `/modules?module_slug=<slug>`; module-owned packages не дублируют этот editor.
-- Recovery для failed module lifecycle post-hook операций остаётся host/control-plane сценарием: Leptos admin показывает host-owned блок `Lifecycle recovery`, читает `failedModuleOperationRecoveryPlans` и вызывает `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` через canonical GraphQL helpers в `features/modules/api.rs`; локальный SQL, локальный rollback и собственная lifecycle taxonomy запрещены.
-- Host прокидывает effective locale через `UiRouteContext.locale`; module-owned Leptos packages обязаны использовать это значение и не должны вводить собственную query/header/cookie fallback-цепочку.
-- Module-owned admin packages обязаны поддерживать тот же runtime split: `#[server]` preferred в SSR/hydrate, GraphQL/REST fallback для standalone CSR/debug. Пакет не должен становиться ни GraphQL-only для monolith, ни `#[server]`-only для headless/debug.
-- Core modules с UI подчиняются тому же ownership rule, что и optional modules: наличие UI не делает host владельцем модульной поверхности.
-- Capability-owned MCP surface подключается host-маршрутом `/mcp`, который монтирует только `rustok_mcp_admin::McpAdmin`; persisted scaffold writes и transport logic остаются в owner port/server provider, а не в `apps/admin`.
-- Route-selection contract тоже host-owned: `apps/admin` санитизирует query по typed schema из
-  `rustok-api`, отдаёт модульным пакетам уже canonical route context и предоставляет generic
-  Leptos query plumbing через `leptos-ui-routing`.
-- `rustok-seo-admin` после cutover уже не держит entity selection/state вообще: route `seo`
-  использует только `tab` для control-plane navigation, а page/product/blog/forum SEO authoring
-  живёт в owner-module пакетах.
-- Тот же `rustok-seo-admin` держит route/query orchestration в shell-компоненте, а bulk/redirects и
-  sitemaps/robots/defaults/diagnostics рендерит через отдельные section components внутри пакета,
-  не перенося этот UI split в host.
-- Canonical ownership при этом зафиксирован отдельно: entity SEO authoring должно жить в owner-module
-  admin packages (`pages`, `product`, `blog`, `forum`), а `rustok-seo-admin` после cutover остаётся
-  только cross-cutting SEO infrastructure surface.
-- Этот cutover уже начат в коде: `rustok-pages/admin`, `rustok-product/admin` и `rustok-blog/admin`
-  встраивают owner-side SEO panels через `rustok-seo-admin-support`, а `rustok-forum/admin`
-  держит capability slot до появления forum targets в shared runtime.
-- Для module-owned admin pages selection state живёт только в URL; отсутствие валидного key ведёт к
-  empty state, а invalid/missing entity не должен оставлять stale detail/form state.
+- Source of truth for connecting UI modules: `modules.toml` plus `rustok-module.toml`.
+- `apps/admin/build.rs` reads the manifest layer and generates wiring into `OUT_DIR`.
+- A publishable Leptos admin surface must declare `[provides.admin_ui].leptos_crate`; the presence of `admin/Cargo.toml` alone is not considered integration.
+- The host mounts module-owned pages via `/modules/:module_slug` and nested variant `/modules/:module_slug/*module_path`.
+- The sidebar is built from manifest-driven navigation metadata. `[provides.admin_ui].nav_group` and `nav_order` are optional overrides; if they are not set, the host groups first-party modules into standard buckets `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
+- The canonical source for module submenu is `[[provides.admin_ui.child_pages]]`. Legacy `[[provides.admin_ui.pages]]` is currently read only as a compatibility alias; new manifests must use `child_pages`.
+- Each module-owned admin surface gets a root `Overview` item; declared child pages become nested links under the module container. The host hides disabled tenant modules and empty containers.
+- Tenant/module settings remain in the host-owned `/modules` governance UI. If `rustok-module.toml` contains `[settings]`, the sidebar adds a contextual link `/modules?module_slug=<slug>`; module-owned packages do not duplicate this editor.
+- Recovery for failed module lifecycle post-hook operations remains a host/control-plane scenario: Leptos admin shows a host-owned `Lifecycle recovery` block, reads `failedModuleOperationRecoveryPlans`, and calls `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` via canonical GraphQL helpers in `features/modules/api.rs`; local SQL, local rollback, and custom lifecycle taxonomy are prohibited.
+- The host passes the effective locale via `UiRouteContext.locale`; module-owned Leptos packages must use this value and must not introduce their own query/header/cookie fallback chain.
+- Module-owned admin packages must support the same runtime split: `#[server]` preferred in SSR/hydrate, GraphQL/REST fallback for standalone CSR/debug. The package must become neither GraphQL-only for monolith nor `#[server]`-only for headless/debug.
+- Core modules with UI are subject to the same ownership rule as optional modules: the presence of UI does not make the host the owner of the module surface.
+- The capability-owned MCP surface is connected via the host route `/mcp`, which mounts only `rustok_mcp_admin::McpAdmin`; persisted scaffold writes and transport logic remain in the owner port/server provider, not in `apps/admin`.
+- The route-selection contract is also host-owned: `apps/admin` sanitizes the query against a typed schema from
+  `rustok-api`, gives module packages an already canonical route context, and provides generic
+  Leptos query plumbing via `leptos-ui-routing`.
+- `rustok-seo-admin` after cutover no longer holds entity selection/state at all: the `seo` route
+  uses only `tab` for control-plane navigation, and page/product/blog/forum SEO authoring
+  lives in owner-module packages.
+- The same `rustok-seo-admin` holds route/query orchestration in a shell component, and renders bulk/redirects and
+  sitemaps/robots/defaults/diagnostics via separate section components inside the package,
+  without moving this UI split into the host.
+- Canonical ownership is separately established: entity SEO authoring must live in owner-module
+  admin packages (`pages`, `product`, `blog`, `forum`), while `rustok-seo-admin` after cutover remains
+  only a cross-cutting SEO infrastructure surface.
+- This cutover has already begun in code: `rustok-pages/admin`, `rustok-product/admin`, and `rustok-blog/admin`
+  embed owner-side SEO panels via `rustok-seo-admin-support`, while `rustok-forum/admin`
+  holds a capability slot until forum targets appear in the shared runtime.
+- For module-owned admin pages, selection state lives only in the URL; absence of a valid key leads to an
+  empty state, and an invalid/missing entity must not leave stale detail/form state.
 
-## Взаимодействия
+## Interactions
 
-- С [документацией `apps/server`](../../server/docs/README.md): backend runtime, GraphQL, `#[server]`, auth/session, registry и health surfaces.
-- С [ADR гибридного установщика](../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md): installer-core, canonical CLI, HTTP adapter и thin Leptos wizard layering.
-- С [контрактом manifest-слоя](../../../docs/modules/manifest.md): module registration, UI ownership и settings schema.
-- С [реестром модулей и приложений](../../../docs/modules/registry.md): карта platform modules, support crates и host applications.
-- С module-owned admin packages: host знает только registration contract, route context и secondary nav metadata; внутренний sub-routing и domain UI остаются внутри пакета.
+- With [`apps/server` documentation](../../server/docs/README.md): backend runtime, GraphQL, `#[server]`, auth/session, registry, and health surfaces.
+- With [hybrid installer ADR](../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md): installer-core, canonical CLI, HTTP adapter, and thin Leptos wizard layering.
+- With [manifest layer contract](../../../docs/modules/manifest.md): module registration, UI ownership, and settings schema.
+- With [module and application registry](../../../docs/modules/registry.md): map of platform modules, support crates, and host applications.
+- With module-owned admin packages: the host knows only the registration contract, route context, and secondary nav metadata; internal sub-routing and domain UI remain inside the package.
 
-## Проверка
+## Verification
 
-Минимальный локальный путь для изменения `apps/admin`:
+Minimal local path for changing `apps/admin`:
 
-- `cargo xtask module validate <slug>` для модулей, чьи admin surfaces затронуты;
-- точечные `cargo check` или `cargo test` для затронутых Leptos crates;
-- `npm run verify:i18n:ui` и related contract checks, если затронуты locale bundles или host-provided translations;
-- точечная проверка host routing и permission-aware navigation для затронутых экранов.
+- `cargo xtask module validate <slug>` for modules whose admin surfaces are affected;
+- targeted `cargo check` or `cargo test` for affected Leptos crates;
+- `npm run verify:i18n:ui` and related contract checks, if locale bundles or host-provided translations are affected;
+- targeted check of host routing and permission-aware navigation for affected screens.
 
-## Связанные документы
+## Related documents
 
-- [План реализации](./implementation-plan.md)
-- [Контракты manifest-слоя](../../../docs/modules/manifest.md)
-- [Реестр модулей и приложений](../../../docs/modules/registry.md)
-- [Каталог Rust UI-компонентов](../../../docs/UI/rust-ui-component-catalog.md)
+- [Implementation plan](./implementation-plan.md)
+- [Manifest layer contracts](../../../docs/modules/manifest.md)
+- [Module and application registry](../../../docs/modules/registry.md)
+- [Rust UI component catalog](../../../docs/UI/rust-ui-component-catalog.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
-- [Карта документации](../../../docs/index.md)
+- [Documentation map](../../../docs/index.md)

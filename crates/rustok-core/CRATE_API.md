@@ -1,52 +1,52 @@
 # rustok-core / CRATE_API
 
-## Публичные модули
+## Public Modules
 `async_utils`, `cache`, `config`, `content_format`, `context`, `error`, `events`, `field_schema`, `grapesjs`, `health`, `i18n`, `id`, `locale`, `metrics`, `migrations`, `module`, `permissions`, `rbac`, `registry`, `resilience`, `rt_json`, `security`, `state_machine`, `tenant_validation`, `tracing`, `typed_error`, `types`, `utils`.
 
-## Основные публичные типы и сигнатуры
-- `pub trait RusToKModule` — базовый контракт модуля платформы.
-- `pub struct AppContext` — общий runtime-контекст приложения.
-- `pub enum DomainEvent`, `pub struct EventEnvelope` — события домена и обёртка для транспорта.
-- `pub struct EventBus`, `pub struct EventBusStats`, `pub struct MemoryTransport` — foundation-surface событий для in-memory транспорта и observability-счётчиков.
-- `pub struct BackpressureController`, `pub struct BackpressureMetrics`, `pub enum BackpressureState` — guardrails глубины очереди и observability backpressure для событий.
-- `pub trait EventTransport` — транспорт событий.
+## Primary Public Types and Signatures
+- `pub trait RusToKModule` — base contract for platform modules.
+- `pub struct AppContext` — shared application runtime context.
+- `pub enum DomainEvent`, `pub struct EventEnvelope` — domain events and transport wrapper.
+- `pub struct EventBus`, `pub struct EventBusStats`, `pub struct MemoryTransport` — event foundation-surface for in-memory transport and observability counters.
+- `pub struct BackpressureController`, `pub struct BackpressureMetrics`, `pub enum BackpressureState` — queue depth guardrails and backpressure observability for events.
+- `pub trait EventTransport` — event transport.
 - `pub enum Error`, `pub type Result<T>` — unified error model.
-- `pub struct ModuleRegistry` — реестр модулей и зависимостей.
+- `pub struct ModuleRegistry` — module and dependency registry.
 - `pub enum UserRole`, `pub enum UserStatus` — shared identity primitives.
 - `pub struct CustomFieldsSchema`, `pub struct FieldDefinition` — flex/custom-fields contract.
 - `pub fn generate_id()` — canonical ID generation.
 
-## События
-- Публикует: базовые доменные события через `DomainEvent` (определяет контракт, не бизнес-эмиттер).
-- Потребляет: N/A (инфраструктурный контрактный слой).
+## Events
+- Publishes: base domain events via `DomainEvent` (defines the contract, not a business emitter).
+- Consumes: N/A (infrastructure contract layer).
 
-## Зависимости от других rustok-крейтов
+## Dependencies on Other RusToK Crates
 - `rustok-telemetry`
 - `rustok-events`
 
-`rustok-outbox` используется только в dev-dependencies для integration tests.
-Neutral `Port*` contracts принадлежат `rustok-api` и не входят в public surface core.
+`rustok-outbox` is used only in dev-dependencies for integration tests.
+Neutral `Port*` contracts belong to `rustok-api` and are not part of the core public surface.
 
-## Частые ошибки ИИ
-- Путает `AppContext` из `rustok_core::context` с локальными контекстами сервисов.
-- Импортирует `DomainEvent` из старых путей вместо `rustok_core`/`rustok-events`.
-- Считает `rustok-core` доменным модулем (`RusToKModule`) — это инфраструктурный core.
+## Common AI Mistakes
+- Confuses `AppContext` from `rustok_core::context` with local service contexts.
+- Imports `DomainEvent` from old paths instead of `rustok_core`/`rustok-events`.
+- Considers `rustok-core` a domain module (`RusToKModule`) — it is infrastructure core.
 
-## Минимальный набор контрактов
+## Minimum Contract Set
 
-### Входные DTO/команды
-- Входной контракт формируется публичными DTO/командами из crate (см. разделы с `Create*Input`/`Update*Input`/query/filter выше и соответствующие `pub`-экспорты в `src/lib.rs`).
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления transport-адаптеров `apps/server`.
+### Input DTOs/Commands
+- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
+- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters in `apps/server`.
 
-### Доменные инварианты
-- Инварианты модуля фиксируются в сервисах/стейт-машинах и валидации DTO; недопустимые переходы/параметры должны завершаться доменной ошибкой.
-- Инварианты multi-tenant boundary (tenant/resource isolation, auth context) считаются обязательной частью контракта.
+### Domain Invariants
+- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
+- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
 
-### События / outbox-побочные эффекты
-- Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
-- Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
-- EventBus/backpressure metrics являются observability contract: счётчики publish/drop/accepted/rejected и depth/state не должны ломаться без обновления тестов и документации.
+### Events / Outbox Side Effects
+- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Event payload and event-type format must remain backward-compatible for cross-module consumers.
+- EventBus/backpressure metrics are an observability contract: publish/drop/accepted/rejected counters and depth/state must not break without updating tests and documentation.
 
-### Ошибки / коды отказов
-- Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.
-- Для validation/auth/conflict/not-found сценариев должен сохраняться устойчивый error-class, используемый тестами и адаптерами.
+### Errors / Failure Codes
+- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.

@@ -1,108 +1,108 @@
-# Документация модуля `rustok-comments`
+# Documentation of the `rustok-comments` module
 
-`rustok-comments` — доменный модуль для классических комментариев вне форума.
+`rustok-comments` is a domain module for classic comments outside the forum.
 
-## Назначение
+## Purpose
 
-- дать отдельную storage-boundary для комментариев к blog post и другим opt-in non-forum сущностям;
-- убрать комментарии из shared `content`-storage модели;
-- зафиксировать, что `comments` и `forum replies` — разные доменные сущности;
-- подготовить модульную основу для будущих conversion flow между `blog` и `forum` через orchestration.
+- provide a separate storage boundary for comments on blog posts and other opt-in non-forum entities;
+- remove comments from the shared `content` storage model;
+- establish that `comments` and `forum replies` are different domain entities;
+- prepare a modular foundation for future conversion flows between `blog` and `forum` via orchestration.
 
-## Зона ответственности
+## Responsibilities
 
-- `rustok-comments` владеет только generic comments domain, его schema и service-level контрактами;
-- `rustok-forum` продолжает владеть `forum_topics` и `forum_replies`;
-- `rustok-content` остаётся shared library + orchestration слоем и не должен снова стать storage owner для комментариев;
-- conversion flow `post + comments -> topic + replies` и обратно должен жить в orchestration, а не через общую таблицу или live sync.
+- `rustok-comments` owns only the generic comments domain, its schema and service-level contracts;
+- `rustok-forum` continues to own `forum_topics` and `forum_replies`;
+- `rustok-content` remains a shared library + orchestration layer and should not become the storage owner for comments again;
+- conversion flow `post + comments -> topic + replies` and vice versa must live in orchestration, not through a shared table or live sync.
 
-## Текущий статус
+## Current status
 
-- модуль зарегистрирован в workspace, `modules.toml` и optional server wiring;
-- module-owned schema `comment_threads`, `comments`, `comment_bodies` реализована;
-- `rustok-blog` уже переведён на `rustok-comments` для comment read/write path;
-- shared rich-text/body-format и locale fallback contract выровнены с `rustok-content`;
-- thread status contract больше не декоративный: `closed` реально блокирует новый
-  create-path, а terminal comment statuses (`spam`, `trash`) требуют moderation scope;
-- модуль теперь публикует `rustok-comments-admin` как module-owned Leptos moderation UI;
-- для operator-facing read/write path добавлены service-level методы `list_threads`,
-  `get_thread_detail`, `set_thread_status` и `set_comment_status`;
-- product decision по `pages <-> comments` зафиксирован: у `rustok-pages` нет default
-  integration с `rustok-comments`, а будущие page-like discussion surfaces возможны только
-  как explicit opt-in.
+- the module is registered in the workspace, `modules.toml` and optional server wiring;
+- module-owned schema `comment_threads`, `comments`, `comment_bodies` is implemented;
+- `rustok-blog` has already been migrated to `rustok-comments` for the comment read/write path;
+- shared rich-text/body-format and locale fallback contract are aligned with `rustok-content`;
+- thread status contract is no longer decorative: `closed` actually blocks new
+  create-path, and terminal comment statuses (`spam`, `trash`) require moderation scope;
+- the module now publishes `rustok-comments-admin` as a module-owned Leptos moderation UI;
+- for operator-facing read/write path, service-level methods `list_threads`,
+  `get_thread_detail`, `set_thread_status` and `set_comment_status` have been added;
+- the product decision on `pages <-> comments` is finalized: `rustok-pages` has no default
+  integration with `rustok-comments`, and future page-like discussion surfaces are only possible
+  as explicit opt-in.
 
-## Интеграция
+## Integration
 
-- `rustok-blog` уже переведён на `rustok-comments` для live comment read/write path;
-- moderation UI публикуется как module-owned Leptos surface `rustok-comments-admin`;
-- runtime transport adapters и host wiring остаются в `apps/server`, а module-owned admin moderation UI ходит через собственный `admin/src/transport/` facade; доменная логика и moderation contract принадлежат модулю;
-- future integrations для page-like surfaces должны оформляться как явный opt-in contract.
+- `rustok-blog` has already been migrated to `rustok-comments` for the live comment read/write path;
+- moderation UI is published as a module-owned Leptos surface `rustok-comments-admin`;
+- runtime transport adapters and host wiring remain in `apps/server`, while module-owned admin moderation UI goes through its own `admin/src/transport/` facade; domain logic and moderation contract belong to the module;
+- future integrations for page-like surfaces must be formalized as an explicit opt-in contract.
 
-## Module-owned admin UI и transport rule
+## Module-owned admin UI and transport rule
 
-- `rustok-comments-admin` монтируется в Leptos Admin как module-owned UI на `/modules/comments`.
-- Внутренний data-layer для moderation surface строится через `admin/src/transport/mod.rs` facade и `admin/src/transport/native_server_adapter.rs` native `#[server]` calls поверх `CommentsService`.
-- Selected-thread и locale route/query policy принадлежит `admin/src/core.rs` и использует shared `UiRouteQueryUpdate`; Leptos adapter только применяет готовый host writer update.
-- Fast boundary guardrail: `npm run verify:comments:admin-boundary` проверяет FFA split и documented native-only transport exception.
-- Отдельный GraphQL/REST fallback для этого UI не добавляется: у `rustok-comments` не было собственного legacy transport surface, и это зафиксированное исключение из общего dual-path правила.
-- Существующая интеграция `rustok-blog -> rustok-comments` при этом не меняется.
+- `rustok-comments-admin` is mounted in Leptos Admin as a module-owned UI at `/modules/comments`.
+- The internal data-layer for the moderation surface is built through `admin/src/transport/mod.rs` facade and `admin/src/transport/native_server_adapter.rs` native `#[server]` calls over `CommentsService`.
+- Selected-thread and locale route/query policy belongs to `admin/src/core.rs` and uses shared `UiRouteQueryUpdate`; the Leptos adapter only applies the ready host writer update.
+- Fast boundary guardrail: `npm run verify:comments:admin-boundary` checks the FFA split and documented native-only transport exception.
+- A separate GraphQL/REST fallback for this UI is not added: `rustok-comments` did not have its own legacy transport surface, and this is a documented exception from the general dual-path rule.
+- The existing integration `rustok-blog -> rustok-comments` is not changed by this.
 
 ## Status contract
 
-- `comment_threads.status = open|closed` управляет только приёмом новых
-  комментариев; закрытый thread остаётся читаемым, но не принимает новые записи;
-- обычный create-path допускает только `pending|approved`;
-- `spam|trash` считаются moderation statuses и требуют `comments:moderate`
-  или `comments:manage`;
-- смена статуса thread делается через service-level
-  `set_thread_status_for_target`, а не прямой записью в БД из transport слоя.
+- `comment_threads.status = open|closed` only controls the acceptance of new
+  comments; a closed thread remains readable but does not accept new entries;
+- the normal create-path only allows `pending|approved`;
+- `spam|trash` are considered moderation statuses and require `comments:moderate`
+  or `comments:manage`;
+- thread status changes are made through the service-level
+  `set_thread_status_for_target`, not by direct DB write from the transport layer.
 
-## Наблюдаемость
+## Observability
 
 - service entry-points `create_comment`, `get_comment`, `update_comment`,
-  `delete_comment`, `list_comments_for_target` пишут
+  `delete_comment`, `list_comments_for_target` write
   `rustok_module_entrypoint_calls_total{module="comments",path="library"}`;
-- ошибки сервиса классифицируются в низкокардинальные `database`,
-  `not_found`, `forbidden`, `validation` и пишутся в
+- service errors are classified into low-cardinality `database`,
+  `not_found`, `forbidden`, `validation` and written to
   `rustok_module_errors_total`;
-- latency/error по операциям пишутся через
-  `rustok_span_duration_seconds{operation="comments.*"}` и
+- latency/error per operation is written through
+  `rustok_span_duration_seconds{operation="comments.*"}` and
   `rustok_spans_with_errors_total`;
-- bounded read-path `list_comments_for_target` пишет
+- the bounded read-path `list_comments_for_target` writes
   `read_path_requested_limit/effective_limit/returned_items/query_duration/query_rows`
-  с `surface="library"` и `path="comments.list_comments_for_target"`.
+  with `surface="library"` and `path="comments.list_comments_for_target"`.
 
-## Дальнейшие шаги
+## Next steps
 
-- если позже появятся commentable page-like surfaces, описать их отдельным spec/ADR, а не
-  расширять текущий pages contract по умолчанию.
+- if commentable page-like surfaces appear later, describe them with a separate spec/ADR, rather than
+  extending the current pages contract by default.
 
 
-## Операционные алерты и operator playbook
+## Operational alerts and operator playbook
 
-- `rustok_module_errors_total{module="comments",kind="database"}` — page-now alert: это runtime/storage incident, а не нормальный moderation rejection.
-- `rustok_module_errors_total{module="comments",kind="conflict"}` на `comments.create_comment` в норме должен объясняться только `CommentThreadClosed`; если всплеск идёт без осознанного close-thread действия, сначала проверяйте target binding и transport/client drift.
-- `rustok_module_errors_total{module="comments",kind="forbidden"}` на create/update/delete и `set_thread_status_for_target` — warning-level сигнал на RBAC/moderation drift; сначала сверяйте effective permissions caller-а.
-- `rustok_module_errors_total{module="comments",kind="validation"}` для обычных bad payload допустим, но повторяющиеся попытки писать `spam|trash` без moderation scope надо трактовать как client/moderation UX regression.
-- Для `comments.list_comments_for_target` смотрите вместе stage-level `query_duration/query_rows` (`comment_threads.lookup`, `comments.page`, `comment_bodies.batch`) и budget-метрики `requested_limit/effective_limit/returned_items`, чтобы отделять DB latency от over-requesting caller-ов.
+- `rustok_module_errors_total{module="comments",kind="database"}` — page-now alert: this is a runtime/storage incident, not a normal moderation rejection.
+- `rustok_module_errors_total{module="comments",kind="conflict"}` on `comments.create_comment` should normally only be explained by `CommentThreadClosed`; if a spike occurs without a conscious close-thread action, first check target binding and transport/client drift.
+- `rustok_module_errors_total{module="comments",kind="forbidden"}` on create/update/delete and `set_thread_status_for_target` is a warning-level signal for RBAC/moderation drift; first verify the caller's effective permissions.
+- `rustok_module_errors_total{module="comments",kind="validation"}` is acceptable for normal bad payloads, but repeated attempts to write `spam|trash` without moderation scope should be treated as a client/moderation UX regression.
+- For `comments.list_comments_for_target`, check stage-level `query_duration/query_rows` (`comment_threads.lookup`, `comments.page`, `comment_bodies.batch`) and budget-metrics `requested_limit/effective_limit/returned_items` together to separate DB latency from over-requesting callers.
 
-Порядок действий оператора:
+Operator action plan:
 
-1. Сначала классифицируйте всплеск по `kind`: `database`, `conflict`, `forbidden` или `validation`.
-2. Для `conflict` сверяйте состояние target thread в `comment_threads` и последние вызовы `set_thread_status_for_target`; закрытый thread должен полностью объяснять reject pattern.
-3. Для `forbidden` проверяйте недавние RBAC-изменения и caller scopes: `spam|trash` и смена thread status должны идти только от moderation-capable caller-ов.
-4. Для latency без error spike сначала разбирайте read-path stages, а не эскалируйте сразу общий DB incident.
-5. Для sustained `database` errors переключайтесь на общий DB/runtime incident flow: connections, recent deploy, migration drift, query pressure.
+1. First classify the spike by `kind`: `database`, `conflict`, `forbidden` or `validation`.
+2. For `conflict`, check the target thread state in `comment_threads` and recent `set_thread_status_for_target` calls; a closed thread should fully explain the reject pattern.
+3. For `forbidden`, check recent RBAC changes and caller scopes: `spam|trash` and thread status changes should only come from moderation-capable callers.
+4. For latency without an error spike, first analyze read-path stages rather than immediately escalating a general DB incident.
+5. For sustained `database` errors, switch to the general DB/runtime incident flow: connections, recent deploy, migration drift, query pressure.
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
-- targeted tests для moderation/status contract, module-owned admin UI и blog integration path
+- targeted tests for moderation/status contract, module-owned admin UI and blog integration path
 
-## Связанные документы
+## Related documents
 
-- [План реализации](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)
 - [README crate](../README.md)
-- [ADR: `rustok-pages` не получает default-интеграцию с `rustok-comments`](../../../DECISIONS/2026-03-29-pages-comments-no-default-integration.md)
-- [Карта документации](../../../docs/index.md)
+- [ADR: `rustok-pages` does not get default integration with `rustok-comments`](../../../DECISIONS/2026-03-29-pages-comments-no-default-integration.md)
+- [Documentation map](../../../docs/index.md)

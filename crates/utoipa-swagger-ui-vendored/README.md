@@ -1,26 +1,25 @@
 # utoipa-swagger-ui-vendored
 
-## Назначение
-`crates/utoipa-swagger-ui-vendored` — модуль/приложение RusToK. Здесь находится его код и корневая документация.
+## Purpose
+`crates/utoipa-swagger-ui-vendored` — module/application of RusToK. This is where its code and root documentation live.
 
-## Взаимодействие
+## Interactions
 - apps/server
 - OpenAPI/Swagger UI endpoints
-- tooling для API документации
+- tooling for API documentation
 
-## Документация
-- Локальная документация: `./docs/`
-- Общая документация платформы: `/docs`
+## Documentation
+- Local documentation: `./docs/`
+- General platform documentation: `/docs`
 
-## Паспорт компонента
-- **Роль в системе:** Вендорный crate Swagger UI для публикации OpenAPI документации API.
-- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
-- **Взаимодействует с:**
+## Component passport
+- **Role in the system:** Vendored Swagger UI crate for publishing OpenAPI API documentation.
+- **Main data/responsibility:** business logic and API of this component; code and documentation structure at the component root.
+- **Interacts with:**
   - apps/server
   - utoipa/OpenAPI pipeline
-  - инструменты dev/documentation
-- **Точки входа:**
+  - dev/documentation tools
+- **Entry points:**
   - `crates/utoipa-swagger-ui-vendored/src/lib.rs`
-- **Локальная документация:** `./docs/`
-- **Глобальная документация платформы:** `/docs/`
-
+- **Local documentation:** `./docs/`
+- **Global platform documentation:** `/docs/`

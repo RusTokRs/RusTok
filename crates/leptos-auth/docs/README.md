@@ -1,3 +1,3 @@
 # leptos-auth docs
 
-В этой папке хранится документация модуля `crates/leptos-auth`.
+This folder contains documentation for the `crates/leptos-auth` module.
