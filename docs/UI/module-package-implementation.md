@@ -17,8 +17,8 @@ For verification commands, see [Module UI Package Verification](./module-package
 
 ## Required File Structure
 
-Every module-owned Leptos UI package (`admin/` or `storefront/` sub-crate) must follow
-this layout:
+Every module-owned Leptos UI package (`admin/` or `storefront/` sub-crate) should follow
+this target layout when it has enough DTO and transport surface to justify separate files:
 
 ```
 admin/                            (or storefront/)
@@ -30,12 +30,12 @@ admin/                            (or storefront/)
 └── src/
     ├── lib.rs                    ← wiring only: mod declarations + root re-export
     ├── core.rs                   ← NO leptos::* imports — CI enforces this
-    ├── model.rs                  ← transport-neutral DTOs shared by both adapters
-    ├── i18n.rs                   ← written manually using rustok_api helpers
+    ├── model.rs                  ← transport-neutral DTOs shared by adapters when needed
+    ├── i18n.rs                   ← written manually using rustok-ui-i18n helpers
     ├── transport/
     │   ├── mod.rs                ← public facade; only entry point for ui/leptos.rs
-    │   └── graphql_adapter.rs    ← mandatory parallel transport; uses leptos-graphql
-    │  (└── native_server_adapter.rs)  ← optional #[server] path when dual-path is ready
+    │   └── graphql_adapter.rs    ← mandatory for dual-path/headless parity; uses leptos-graphql
+    │  (└── native_server_adapter.rs)  ← #[server] path for SSR/hydrate profiles
     └── ui/
         ├── mod.rs
         └── leptos.rs             ← #[component], view!, signals — nothing else
@@ -49,11 +49,14 @@ admin/                            (or storefront/)
 [dependencies]
 leptos.workspace = true
 rustok-api = { workspace = true, default-features = false }
+rustok-ui-i18n.workspace = true
 leptos-ui.workspace = true
 leptos-ui-routing.workspace = true
-leptos-graphql.workspace = true
 serde.workspace = true
 ```
+
+Declare `leptos-graphql.workspace = true` only when the package has a GraphQL adapter.
+Documented native-only operator/bootstrap exceptions do not need `leptos-graphql`.
 
 **Why?** In Rust workspace:
 - `workspace = true` means "use version from root Cargo.toml"
@@ -77,9 +80,23 @@ subdomains (`view_model`, `policy`, `error`, `ports`, `identifiers`).
 
 Use `ui/leptos/` subdirectory instead of `ui/leptos.rs` when page components multiply.
 
-If the package currently has only one transport adapter (GraphQL-only), this is a valid
-temporary state. Capture it in the module's `docs/implementation-plan.md` as
-"single-adapter state, GraphQL, parity plan pending" — do not leave it undocumented.
+Use `transport.rs` instead of `transport/mod.rs` only for small facades. Once the package
+has multiple adapters or subdomains, split it into `transport/`.
+
+Use `model.rs` when request/response DTOs are shared by adapters or reused outside one
+facade. Small native/bootstrap packages may keep transport-neutral DTOs in `core.rs` or
+`transport.rs`; do not create a mechanical `model.rs` that only moves one local type.
+
+If the package currently has only one transport adapter, this is a valid current-state
+exception only when it is documented. Capture it in the module's
+`docs/implementation-plan.md` as one of:
+
+- "single-adapter state, GraphQL, native parity plan pending";
+- "single-adapter state, native-only internal operator/bootstrap surface, no GraphQL/REST
+  contract yet, parity or exemption plan pending".
+
+Do not leave a single-adapter state undocumented, and do not copy native-only exceptions
+into new public/headless surfaces.
 
 ---
 
@@ -88,7 +105,8 @@ temporary state. Capture it in the module's `docs/implementation-plan.md` as
 ```rust
 mod core;
 mod i18n;
-mod model;
+// Include when shared request/response DTOs exist.
+// mod model;
 mod transport;
 mod ui;
 
@@ -114,7 +132,7 @@ Put here:
   `UiRouteQueryUpdate`
 
 Do **not** put here:
-- i18n label bindings that don't affect policy (`t!(i18n, key)` stays in `ui/leptos.rs`)
+- i18n label bindings that don't affect policy (`crate::i18n::t(locale, key, fallback)` stays in `ui/leptos.rs`)
 - DOM layout, event binding, Leptos signals/resources/effects
 - reset/refresh side effects that depend on adapter state
 - mechanical wrappers with no reuse value that only add DTO boilerplate
@@ -129,10 +147,11 @@ The rule: move something to `core` only if at least one of these is true:
 
 ## `transport/mod.rs` — Public Facade
 
-The only file that `ui/leptos.rs` imports from the transport layer. It delegates to the
-active adapter and returns domain types from `model.rs`.
+The only transport facade that `ui/leptos.rs` imports from the transport layer. It delegates
+to the active adapter and returns transport-neutral domain types, usually from `model.rs`
+when those types are shared.
 
-**GraphQL-only package (current single-adapter state, most modules):**
+**GraphQL-only package (current single-adapter state for headless-compatible work):**
 
 ```rust
 // transport/mod.rs — single GraphQL adapter
@@ -163,12 +182,12 @@ pub async fn fetch_posts(req: PostListRequest) -> Result<PostListResponse, Trans
 }
 ```
 
-If the package currently has only one adapter, this is a valid temporary state. Document it
-in the module's `docs/implementation-plan.md` as "single-adapter state, GraphQL, parity plan
-pending" — do not leave it undocumented.
+If the package currently has only one adapter, this is a valid current-state exception only
+when the missing counterpart and parity/exemption plan are documented in the module's
+`docs/implementation-plan.md`.
 
 Never expose raw `GraphqlHttpError`, `#[server]` types, or adapter internals through this
-facade — only domain types from `model.rs` and a package-owned error type.
+facade — only transport-neutral domain types and a package-owned error type.
 
 ---
 
@@ -176,8 +195,9 @@ facade — only domain types from `model.rs` and a package-owned error type.
 
 - Gate everything with `#[cfg(feature = "ssr")]` or the `#[server]` macro
 - Call the service layer directly: `BlogService::list_posts(...).await`
-- Return types from `model.rs` only
-- Never the only transport — `graphql_adapter.rs` must exist in parallel
+- Return transport-neutral package types only, usually from `model.rs` when shared
+- Not the target baseline as the only transport. A native-only adapter is allowed only for a
+  documented internal operator/bootstrap exception with no GraphQL/REST contract yet.
 
 ```rust
 #[cfg(feature = "ssr")]
@@ -191,7 +211,9 @@ pub async fn fetch_posts(req: PostListRequest) -> Result<PostListResponse, Trans
 
 ## `transport/graphql_adapter.rs` — GraphQL Adapter
 
-- Mandatory. Never removed because a native path was added.
+- Mandatory for packages that participate in dual-path/headless parity. Documented native-only
+  operator/bootstrap exceptions do not need this file until a GraphQL/REST contract exists.
+- Never remove an existing GraphQL adapter just because a native path was added.
 - Active in CSR/Trunk debug profile and used by Next.js/mobile/headless hosts.
 - Currently uses `leptos-graphql` crate (Leptos-specific wrapper). **Future FFA evolution:** when Dioxus migration happens, a framework-agnostic GraphQL client will be introduced, and this adapter will switch to it while keeping the same facade contract in `transport/mod.rs`.
 - Never write raw HTTP calls — always use the platform-provided GraphQL client.
@@ -269,7 +291,7 @@ pub fn BlogAdmin() -> impl IntoView {
 |---|---|---|
 | `leptos-ui` | `Button`, `Input`, `Badge`, `Alert`, `Card`, `CardHeader`, `CardContent`, `CardFooter`, `Label`, `Separator`, `Spinner`, `Checkbox`, `Switch`, `Textarea`, `Select`, `LanguageToggle` | Always — check before writing any primitive component |
 | `leptos-ui-routing` | `UiRouteContext`, `module_route_base()`, `query_value()`, `UiRouteQueryUpdate` | All route/query state; never invent a local helper |
-| `leptos-graphql` | GraphQL client for Leptos (Leptos-specific wrapper) | All `graphql_adapter.rs` files (current state; will be replaced by framework-agnostic client during Dioxus migration) |
+| `leptos-graphql` | GraphQL client for Leptos (Leptos-specific wrapper) | Current `graphql_adapter.rs` files; documented native-only exceptions do not need it |
 | `leptos-auth` | Auth hooks and session context | Auth-gated operations |
 | `leptos-forms` | Form state management | Multi-field forms |
 | `leptos-hook-form` | Hook-form validation pattern | Complex validation flows |
@@ -282,7 +304,8 @@ pub fn BlogAdmin() -> impl IntoView {
 
 | Crate | What it provides |
 |---|---|
-| `rustok-api` | **Core helpers:** `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate` (use in `core.rs`)<br>**i18n helpers:** `build_ui_message_catalog`, `resolve_ui_message_or_fallback`, `UiMessageCatalog` (use in `i18n.rs`) |
+| `rustok-api` | **Core helpers:** `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate` (use in `core.rs`). It temporarily re-exports UI i18n helpers for compatibility, but new code should import them from `rustok-ui-i18n`. |
+| `rustok-ui-i18n` | **i18n helpers:** `build_ui_message_catalog`, `resolve_ui_message_or_fallback`, `UiMessageCatalog` (use in `i18n.rs`) |
 | `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
 
 ### Shared UI primitives (`UI/leptos/`)
@@ -310,7 +333,8 @@ Cross-framework component API (props, variants, CSS variables):
 | Auth/session hooks | `crates/leptos-auth/` | Auth state, session context |
 | Form state management | `crates/leptos-forms/` | Multi-field form state |
 | Table/pagination UI | `crates/leptos-table/` | Reusable table component |
-| Framework-agnostic contracts | `crates/rustok-api/` | i18n helpers, locale, permissions, ports |
+| Framework-agnostic UI i18n | `crates/rustok-ui-i18n/` | Message catalog and key resolution |
+| Framework-agnostic contracts | `crates/rustok-api/` | UI input/query helpers, locale, permissions, ports |
 | Domain-specific cross-module UI | `crates/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
 
 ### Extraction checklist
@@ -343,7 +367,7 @@ When creating a new shared library, decide upfront:
 **Framework-agnostic (FFA-compatible, permanent):**
 - Name: `crates/rustok-<name>/` or `crates/<name>/` (if truly generic)
 - **NO** `leptos::*` or `dioxus::*` imports
-- Example: `rustok-api`, future `rustok-graphql`, future `rustok-ui-i18n`
+- Example: `rustok-api`, `rustok-ui-i18n`, future `rustok-graphql`
 - Works with both Leptos and Dioxus UI adapters
 
 ### Current extraction opportunities (examples)
@@ -352,7 +376,7 @@ If you see these patterns duplicated across modules, extract them:
 
 - **Locale negotiation helpers** → Already in `rustok-api::locale`
 - **Route query parsing** → Already in `rustok-api::ui` (`UiRouteQueryUpdate`)
-- **i18n message resolution** → Already in `rustok-api::ui` (`build_ui_message_catalog`)
+- **i18n message resolution** → Already in `rustok-ui-i18n` (`build_ui_message_catalog`)
 - **GraphQL error mapping** → Currently in `leptos-graphql` (Leptos-specific; needs FFA version)
 - **Form validation patterns** → Extract to `leptos-forms` or framework-agnostic `rustok-forms`
 - **Table pagination logic** → Already in `leptos-table`
@@ -380,7 +404,7 @@ Full contract: [`docs/architecture/i18n.md`](../architecture/i18n.md)
 - ✅ Module-owned UI packages (`crates/rustok-*/admin`) — already use `rustok_api` pattern
 - ⚠️ Host apps (`apps/admin`, `apps/storefront`) — still use `leptos_i18n` (will migrate to `rustok_api` pattern)
 
-**Solution:** `rustok_api` provides a simple framework-agnostic i18n pattern:
+**Solution:** `rustok-ui-i18n` provides a simple framework-agnostic i18n pattern:
 - `build_ui_message_catalog()` — parses nested JSON into flat BTreeMap
 - `resolve_ui_message_or_fallback()` — resolves keys with locale fallback chain
 - No macros, no framework dependencies, works in `core/` and future Dioxus
@@ -391,14 +415,15 @@ This is **not a full-featured i18n library** (no pluralization, ICU MessageForma
 - ✅ Can be used in `core/` without violating Dioxus-readiness
 - ✅ **Future hosts evolution:** When hosts migrate to FFA, they'll also switch from `leptos_i18n` to this pattern
 
-**When hosts migrate to FFA, a framework-agnostic UI library (Leptos/Dioxus compatible) will likely be needed** for i18n. The `rustok_api` pattern is the foundation, but may be extracted into a dedicated crate (e.g., `rustok-ui-i18n`) if more features (pluralization, ICU) are required.
+`rustok-api` re-exports these helpers during the migration from the previous import path,
+but new code should depend on and import `rustok-ui-i18n` directly.
 
-`i18n.rs` is **written manually** using `rustok_api` helpers. The pattern used across all existing admin packages:
+`i18n.rs` is **written manually** using `rustok-ui-i18n` helpers. The pattern used across module UI packages:
 
 ```rust
 // src/i18n.rs — write once per package, this is the standard boilerplate
 use std::sync::OnceLock;
-use rustok_api::{build_ui_message_catalog, resolve_ui_message_or_fallback, UiMessageCatalog};
+use rustok_ui_i18n::{build_ui_message_catalog, resolve_ui_message_or_fallback, UiMessageCatalog};
 
 static CATALOG: OnceLock<UiMessageCatalog> = OnceLock::new();
 
@@ -440,8 +465,9 @@ let locale = use_cookie("lang").unwrap_or("en");
 ```
 
 - Locale files: `locales/en.json` and `locales/ru.json` — **nested JSON** format.
-- The key structure must be **identical** to the matching namespace in
-  `apps/next-admin/messages/` so both stacks share the same keys.
+- The key structure must be **identical** to the matching host namespace
+  (`apps/next-admin/messages/` for admin surfaces, `apps/next-frontend/messages/`
+  for storefront surfaces) so stacks share the same keys.
 - Locale files must be declared in `rustok-module.toml`:
 
 ```toml
@@ -498,8 +524,8 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 |---|---|
 | `use leptos::*` in `core.rs` | Blocks Dioxus migration; CI rejects |
 | `transport::graphql_adapter::fetch_x()` called from `ui/leptos.rs` | Bypasses facade; transport leaks into UI |
-| `#[server]` as the only transport path | Breaks CSR/headless parity |
-| Removing `graphql_adapter.rs` after adding native path | Breaks Next.js/mobile/debug |
+| `#[server]` as the only transport path without a documented native-only exception | Breaks CSR/headless parity |
+| Removing `graphql_adapter.rs` after adding native path without documenting an approved native-only exception | Breaks Next.js/mobile/debug |
 | `use_cookie("lang")` or local `Accept-Language` parsing | Violates platform i18n contract |
 | `auto_select_first` as selection source of truth | Causes stale state bugs |
 | Raw HTTP client instead of platform GraphQL client | Unmanaged transport; bypasses platform patterns (use `leptos-graphql` now, framework-agnostic client in future) |
@@ -507,5 +533,5 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 | Domain business UI placed inside `apps/admin/src/` | Host becomes domain owner |
 | Duplicating code across 2+ modules | Violates DRY; extract to shared library instead (see extraction decision matrix above) |
 | New locale files without `rustok-module.toml` declaration | Breaks i18n verification |
-| `t!(i18n, key)` macro usage | Wrong i18n pattern — `leptos_i18n` is Leptos-specific, breaks FFA; use `i18n::t(locale, "key", "fallback")` with `rustok_api` instead |
-| Writing `i18n.rs` from scratch without `rustok_api` | Wrong i18n pattern — follow the standard `build_ui_message_catalog` boilerplate; this is framework-agnostic and Dioxus-compatible |
+| `t!(i18n, key)` macro usage | Wrong i18n pattern — `leptos_i18n` is Leptos-specific, breaks FFA; use `i18n::t(locale, "key", "fallback")` with `rustok-ui-i18n` instead |
+| Writing `i18n.rs` from scratch without `rustok-ui-i18n` | Wrong i18n pattern — follow the standard `build_ui_message_catalog` boilerplate; this is framework-agnostic and Dioxus-compatible |

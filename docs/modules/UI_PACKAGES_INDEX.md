@@ -42,7 +42,8 @@ integration. The canonical source of truth here is only manifest wiring.
 - Leptos module-owned UI uses the host-provided locale contract and does not
   invent its own locale fallback chain;
 - For internal Leptos data layer, `#[server]` functions are used by default,
-  while GraphQL remains a parallel transport contract;
+  while GraphQL remains the target parallel transport contract. Current single-adapter
+  packages are valid only as documented module-local exceptions;
 - Next.js hosts work through server/API contracts and do not duplicate module-owned
   domain logic in the application;
 - Host applications are responsible only for mount/wiring/navigation, not for
@@ -138,6 +139,10 @@ integration. The canonical source of truth here is only manifest wiring.
   `rustok-seo-admin-support`, not in host application code.
 
 ### Large Capability/Admin Surfaces
+
+These entries are visibility/scaffold references for large capability work. They are not
+manifest-backed integration proof unless the capability crate also has `rustok-module.toml`
+with `[provides.admin_ui]`; the manifest remains the canonical source for mounted UI.
 
 - `rustok-ai` Leptos operator/admin UI: [README](../../crates/rustok-ai/admin/README.md)
 - `rustok-ai` Next.js operator/admin UI: `apps/next-admin/packages/rustok-ai/`

@@ -16,4 +16,3 @@ utoipa = { workspace = true, features = ["uuid", "chrono", "decimal"] }
 chrono.workspace = true
 rust_decimal.workspace = true
 validator.workspace = true
-

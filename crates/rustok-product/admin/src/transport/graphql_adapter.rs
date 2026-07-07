@@ -1,4 +1,6 @@
-﻿#[cfg(target_arch = "wasm32")]
+#![allow(dead_code)]
+
+#[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
@@ -1057,4 +1059,3 @@ fn optional_text(value: &str) -> Option<String> {
         Some(trimmed.to_string())
     }
 }
-

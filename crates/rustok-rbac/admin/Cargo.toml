@@ -24,6 +24,7 @@ leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 rustok-api = { workspace = true, default-features = false }
+rustok-ui-i18n-leptos.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-rbac = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

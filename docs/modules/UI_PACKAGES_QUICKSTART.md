@@ -80,10 +80,11 @@ If a UI sub-crate is declared in the manifest, `admin/Cargo.toml` or
 For Leptos module-owned UI, the following baseline applies:
 
 - Product runtime for Leptos hosts is considered SSR-first: the internal data layer is built on `#[server]` functions in `ssr`/`hydrate` profiles by default;
-- GraphQL is not removed and remains a parallel transport contract;
-- CSR/WASM standalone remains a mandatory debug/compatibility profile for the UI package, so the package must have a GraphQL/REST fallback and must not require `/api/fn/*` in `csr`;
+- GraphQL is not removed and remains the target parallel transport contract;
+- CSR/WASM standalone remains a mandatory debug/compatibility profile for public/headless-capable UI packages, so those packages must have a GraphQL/REST fallback and must not require `/api/fn/*` in `csr`;
 - Locale comes from the host/runtime contract, not from local cookie/header/query
   fallback chains;
+- UI message resolution uses `rustok-ui-i18n`, not framework-specific i18n macros;
 - The UI package does not pull in ownership of domain logic that should live in
   the module itself.
 - For admin packages, selection state is considered URL-owned: use only typed
@@ -93,7 +94,7 @@ For Leptos module-owned UI, the following baseline applies:
   read route query through `leptos-ui-routing`, do not invent a package-local helper over
   `UiRouteContext.query_value(...)` and do not diverge the storefront contract from host-level route semantics.
 
-Why this split: a module-owned UI package must live in two modes simultaneously. In a product monolith, the host mounts it through SSR/hydrate and prefers `#[server]`, while for standalone debug/headless parity the same package must have a GraphQL/REST fallback and not depend on `/api/fn/*` in CSR.
+Why this split: a module-owned UI package normally lives in two modes simultaneously. In a product monolith, the host mounts it through SSR/hydrate and prefers `#[server]`, while for standalone debug/headless parity the same package must have a GraphQL/REST fallback and not depend on `/api/fn/*` in CSR. Native-only internal operator/bootstrap surfaces are allowed only as explicit module-local exceptions with no current GraphQL/REST contract.
 
 For Next.js host integration:
 
@@ -143,7 +144,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 - Do not invent a package-local route-selection contract over the host schema;
 - Do not describe standalone CSR/Trunk as a production default for Leptos hosts;
 - Do not consider old installation and deployment instructions as canonical source of truth;
-- Do not replace GraphQL with `#[server]` or replace `#[server]` with GraphQL where
+- Do not remove GraphQL in favor of `#[server]` or remove `#[server]` in favor of GraphQL where
   a parallel transport contract is needed.
 
 ## Where to Go Next

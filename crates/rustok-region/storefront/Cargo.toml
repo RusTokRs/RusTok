@@ -23,5 +23,6 @@ leptos-graphql.workspace = true
 leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
+rustok-ui-i18n-leptos.workspace = true
 rustok-region = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

@@ -14,6 +14,7 @@ use rustok_server::{
     common::settings::{RustokSettings, SharedRustokSettings},
     extractors::tenant::CurrentTenant,
     middleware::tenant,
+    services::server_runtime_context::ServerRuntimeContext,
 };
 use sea_orm::{ActiveModelTrait, Set};
 use sea_orm_migration::MigratorTrait;
@@ -29,7 +30,9 @@ async fn tenant_probe(CurrentTenant(tenant): CurrentTenant) -> Json<serde_json::
     }))
 }
 
-async fn setup_tenant_router(settings: RustokSettings) -> (AppContext, Router) {
+async fn setup_tenant_router(
+    settings: RustokSettings,
+) -> (AppContext, ServerRuntimeContext, Router) {
     let ctx = get_app_context().await;
     Migrator::up(&ctx.db, None)
         .await
@@ -38,15 +41,19 @@ async fn setup_tenant_router(settings: RustokSettings) -> (AppContext, Router) {
     ctx.shared_store
         .insert(SharedRustokSettings(Arc::new(settings)));
 
+    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
     let cache_service = CacheService::from_url(None);
-    tenant::init_tenant_cache_infrastructure(&ctx, &cache_service).await;
+    tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await;
 
     let app = Router::new()
         .route("/tenant-probe", get(tenant_probe))
-        .route_layer(middleware::from_fn_with_state(ctx.clone(), tenant::resolve))
-        .with_state(ctx.clone());
+        .route_layer(middleware::from_fn_with_state(
+            runtime_ctx.clone(),
+            tenant::resolve,
+        ))
+        .with_state(runtime_ctx.clone());
 
-    (ctx, app)
+    (ctx, runtime_ctx, app)
 }
 
 async fn request_tenant_slug(app: &Router, tenant_header: &str) -> (StatusCode, Option<String>) {
@@ -130,7 +137,7 @@ async fn header_resolution_resolves_active_tenant_context() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(&ctx, "resolver-header", None, true).await;
 
     let response = app
@@ -161,7 +168,7 @@ async fn host_resolution_resolves_tenant_by_domain() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "host".to_string();
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(
         &ctx,
         "resolver-host",
@@ -199,7 +206,7 @@ async fn subdomain_resolution_extracts_slug_and_resolves_tenant() {
     settings.tenant.resolution = "subdomain".to_string();
     settings.tenant.base_domains = vec!["example.test".to_string()];
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(&ctx, "resolver-subdomain", None, true).await;
 
     let response = app
@@ -230,7 +237,7 @@ async fn resolver_returns_not_found_for_unknown_tenant() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (_ctx, app) = setup_tenant_router(settings).await;
+    let (_ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
 
     let response = app
         .oneshot(
@@ -253,7 +260,7 @@ async fn resolver_returns_forbidden_for_inactive_tenant() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(&ctx, "resolver-disabled", None, false).await;
 
     let response = app
@@ -277,7 +284,7 @@ async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
     let tenant_model = insert_tenant(&ctx, "resolver-deactivate-cache", None, true).await;
 
     let (status, slug) = request_tenant_slug(&app, "resolver-deactivate-cache").await;
@@ -296,7 +303,7 @@ async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
     assert_eq!(stale_status, StatusCode::OK);
     assert_eq!(stale_slug.as_deref(), Some("resolver-deactivate-cache"));
 
-    tenant::invalidate_tenant_cache_by_slug(&ctx, "resolver-deactivate-cache").await;
+    tenant::invalidate_tenant_cache_by_slug(&runtime_ctx, "resolver-deactivate-cache").await;
 
     let (refreshed_status, refreshed_slug) =
         request_tenant_slug(&app, "resolver-deactivate-cache").await;
@@ -311,7 +318,7 @@ async fn slug_negative_cache_invalidation_allows_created_tenant_to_resolve() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
 
     let (missing_status, _) = request_tenant_slug(&app, "resolver-created-after-miss").await;
     assert_eq!(missing_status, StatusCode::NOT_FOUND);
@@ -323,7 +330,7 @@ async fn slug_negative_cache_invalidation_allows_created_tenant_to_resolve() {
     assert_eq!(cached_miss_status, StatusCode::NOT_FOUND);
     assert_eq!(cached_miss_slug, None);
 
-    tenant::invalidate_tenant_cache_by_slug(&ctx, "resolver-created-after-miss").await;
+    tenant::invalidate_tenant_cache_by_slug(&runtime_ctx, "resolver-created-after-miss").await;
 
     let (refreshed_status, refreshed_slug) =
         request_tenant_slug(&app, "resolver-created-after-miss").await;
@@ -341,7 +348,7 @@ async fn host_cache_invalidation_refreshes_domain_change() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "host".to_string();
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
     let tenant_model = insert_tenant(
         &ctx,
         "resolver-domain-change",
@@ -367,8 +374,8 @@ async fn host_cache_invalidation_refreshes_domain_change() {
     assert_eq!(stale_old_status, StatusCode::OK);
     assert_eq!(stale_old_slug.as_deref(), Some("resolver-domain-change"));
 
-    tenant::invalidate_tenant_cache_by_host(&ctx, "old-domain.example.test").await;
-    tenant::invalidate_tenant_cache_by_host(&ctx, "new-domain.example.test").await;
+    tenant::invalidate_tenant_cache_by_host(&runtime_ctx, "old-domain.example.test").await;
+    tenant::invalidate_tenant_cache_by_host(&runtime_ctx, "new-domain.example.test").await;
 
     let (old_refreshed_status, old_refreshed_slug) =
         request_host_tenant_slug(&app, "old-domain.example.test").await;
@@ -391,7 +398,7 @@ async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, app) = setup_tenant_router(settings).await;
+    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
     let tenant_model = insert_tenant(&ctx, "resolver-uuid-cache", None, true).await;
     let tenant_id = tenant_model.id;
 
@@ -407,7 +414,7 @@ async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
         .await
         .expect("tenant update should persist");
 
-    tenant::invalidate_tenant_cache_by_uuid(&ctx, tenant_id).await;
+    tenant::invalidate_tenant_cache_by_uuid(&runtime_ctx, tenant_id).await;
 
     let (refreshed_status, refreshed_slug) =
         request_tenant_slug(&app, &tenant_id.to_string()).await;

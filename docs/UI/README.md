@@ -69,10 +69,15 @@ Current host-level FFA slices are enforced by the fast gate
 - For module-owned Leptos storefront UI, query/state plumbing must also go through the shared layer:
   `leptos-ui-routing` is reused in both admin and storefront, and direct package-local access
   to `UiRouteContext.query_value(...)` is not considered a canonical pattern.
+- Framework-agnostic UI i18n lives in `rustok-ui-i18n`; module packages consume the
+  host-provided effective locale and resolve message keys through that crate instead of
+  `leptos_i18n` macros.
 
 ## Transport and Runtime Contract
 
-- For Leptos hosts, GraphQL and native `#[server]` functions coexist in parallel; adding `#[server]` does not replace `/api/graphql`.
+- For Leptos hosts, GraphQL and native `#[server]` functions are the target parallel contract;
+  adding `#[server]` does not replace `/api/graphql`. Current native-only or GraphQL-only
+  single-adapter packages must be documented as explicit module-local exceptions.
 - Backend source of truth for UI hosts is `apps/server`.
 - For headless/admin hosts, registry-backed capability descriptors must also be read from the backend contract:
   for SEO, that means GraphQL `seoTargets` or REST `/api/seo/targets`, not host-local mappings of target slugs.

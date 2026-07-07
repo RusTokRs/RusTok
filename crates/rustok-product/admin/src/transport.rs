@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod graphql_adapter;
 mod native_server_adapter;
 

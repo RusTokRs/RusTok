@@ -49,7 +49,9 @@ profiles.
 
 **`transport/` hides adapter selection** so that `ui/leptos.rs` calls
 `transport::fetch_something()` without knowing whether the current runtime is SSR/hydrate
-(uses native `#[server]`) or CSR/headless (uses GraphQL). The UI layer is transport-blind.
+(uses native `#[server]`) or CSR/headless (uses GraphQL). In small packages this may be a
+single `transport.rs`; in larger packages it should be a `transport/` directory. The UI
+layer is transport-blind either way.
 
 **`ui/leptos.rs` contains only binding code** — `#[component]`, `view!`, signals, resources,
 effects. It has no business logic, no request construction, no CSS class policy. This keeps
@@ -89,12 +91,14 @@ and must not depend on Leptos runtime.
 ## Dioxus-Readiness
 
 The three-layer structure is designed so that a Dioxus migration never touches `core` or
-`transport/`. Only `ui/leptos.rs` is replaced.
+`transport/` or the `transport.rs` facade. Only `ui/leptos.rs` is replaced.
 
 Rules that keep a package Dioxus-ready:
 
 1. `core.rs` / `core/` must contain **zero `leptos::*` imports**. CI enforces this.
-2. `transport/mod.rs` public API uses only domain types from `model.rs`, never Leptos types.
+2. The transport facade public API uses transport-neutral domain types, never Leptos types.
+   These types usually live in `model.rs`, but small/bootstrap packages may keep them in
+   `core.rs` or `transport.rs` when no shared DTO module is needed.
 3. `ui/leptos.rs` contains only Leptos binding — no business logic, no request building.
 
 When Dioxus is introduced, a new `ui/dioxus.rs` is added alongside `ui/leptos.rs`. The
@@ -140,7 +144,7 @@ They are **not** responsible for:
 - knowing about module-internal transport or core
 
 **Current state:** Host apps still use `leptos_i18n` for their shell/navigation i18n.
-**Future FFA migration:** When hosts adopt the `core/transport/ui` split, they will also migrate from `leptos_i18n` to the framework-agnostic `rustok_api` pattern (or a dedicated `rustok-ui-i18n` crate if extended features are needed). This ensures hosts can support both Leptos and Dioxus UI adapters.
+**Future FFA migration:** When hosts adopt the `core/transport/ui` split, they will also migrate from `leptos_i18n` to `rustok-ui-i18n`, the framework-agnostic UI message catalog crate. This ensures hosts can support both Leptos and Dioxus UI adapters.
 
 If module business UI ends up inside `apps/admin/src/` (outside of
 `src/widgets/app_shell/` or `src/shared/`), that is an ownership violation.
@@ -164,10 +168,13 @@ Host-level FFA slices (navigation policy, header route/link policy) are enforced
 A module UI package is considered correctly structured when:
 
 - `core.rs` / `core/` has no `leptos::*` imports
-- `transport/mod.rs` is the only facade consumed by `ui/leptos.rs`
+- `transport/mod.rs` or `transport.rs` is the only facade consumed by `ui/leptos.rs`
 - `ui/leptos.rs` calls only `transport::*` functions, never raw adapter internals
-- Both `native_server_adapter` and `graphql_adapter` exist (or a single GraphQL adapter with
-  an explicit parity plan in the implementation doc)
+- Both `native_server_adapter` and `graphql_adapter` exist for target dual-path packages.
+  A single-adapter package must be documented as a current exception in the module
+  implementation plan: GraphQL-only means native parity is pending; native-only is allowed
+  only for internal operator/bootstrap surfaces with no GraphQL/REST contract yet and must
+  carry an explicit parity or exemption note.
 - Effective locale comes from `UiRouteContext.locale` passed by the host — no package-local
   fallback chain
 - Selection state uses typed `snake_case` URL query keys via `leptos-ui-routing`

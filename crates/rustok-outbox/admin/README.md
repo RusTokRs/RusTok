@@ -1,5 +1,10 @@
 # rustok-outbox-admin
 
+> **For contributors and AI agents — choose the relevant guide before modifying this package:**
+> [Architecture](../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../docs/UI/module-package-verification.md)
+
 Leptos admin UI package for the `rustok-outbox` module.
 
 ## Responsibilities
@@ -21,4 +26,4 @@ Leptos admin UI package for the `rustok-outbox` module.
 
 ## Documentation
 
-- See [platform docs](../../../../docs/index.md).
+- See [platform docs](../../../docs/index.md).

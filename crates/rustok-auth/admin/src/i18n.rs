@@ -1,22 +1,17 @@
-use std::sync::OnceLock;
-
-use rustok_api::{build_ui_message_catalog, resolve_ui_message_or_fallback, UiMessageCatalog};
+use rustok_ui_i18n_leptos::LeptosUiMessages;
 
 use crate::core::{classify_auth_transport_error, AuthTransportErrorKind};
 
-static CATALOG: OnceLock<UiMessageCatalog> = OnceLock::new();
-
-fn catalog() -> &'static UiMessageCatalog {
-    CATALOG.get_or_init(|| {
-        build_ui_message_catalog(&[
-            ("en", include_str!("../locales/en.json")),
-            ("ru", include_str!("../locales/ru.json")),
-        ])
-    })
-}
+static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+    "en",
+    &[
+        ("en", include_str!("../locales/en.json")),
+        ("ru", include_str!("../locales/ru.json")),
+    ],
+);
 
 pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
-    resolve_ui_message_or_fallback(catalog(), locale, "en", key, fallback)
+    MESSAGES.t_for_locale(locale, key, fallback)
 }
 
 pub fn auth_transport_error_message(locale: Option<&str>, error: &str) -> String {

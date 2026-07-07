@@ -9525,6 +9525,7 @@ dependencies = [
  "rustok-core",
  "rustok-outbox",
  "rustok-storage",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9645,6 +9646,7 @@ dependencies = [
  "rustok-api",
  "rustok-auth",
  "rustok-core",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9719,6 +9721,7 @@ dependencies = [
  "rustok-api",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
 ]
@@ -9738,6 +9741,7 @@ dependencies = [
  "rustok-core",
  "rustok-outbox",
  "rustok-tenant",
+ "rustok-ui-i18n-leptos",
  "serde",
 ]
 
@@ -9796,6 +9800,7 @@ dependencies = [
  "rustok-customer",
  "rustok-outbox",
  "rustok-pricing",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9835,6 +9840,7 @@ dependencies = [
  "rustok-api",
  "rustok-channel",
  "rustok-core",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9873,6 +9879,7 @@ dependencies = [
  "rustok-api",
  "rustok-comments",
  "rustok-core",
+ "rustok-ui-i18n-leptos",
  "serde",
  "uuid",
 ]
@@ -9950,6 +9957,7 @@ dependencies = [
  "rustok-taxonomy",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9993,6 +10001,7 @@ dependencies = [
  "rustok-payment-storefront",
  "rustok-pricing",
  "rustok-region",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -10121,6 +10130,7 @@ dependencies = [
  "rustok-core",
  "rustok-customer",
  "rustok-profiles",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
  "uuid",
@@ -10213,6 +10223,7 @@ dependencies = [
  "rustok-api",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
 ]
@@ -10225,6 +10236,7 @@ dependencies = [
  "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-ui-i18n-leptos",
  "serde",
 ]
 
@@ -10259,6 +10271,7 @@ dependencies = [
  "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
 ]
@@ -10274,6 +10287,7 @@ dependencies = [
  "rustok-api",
  "rustok-commerce",
  "rustok-outbox",
+ "rustok-ui-i18n-leptos",
  "serde",
  "uuid",
  "web-sys",
@@ -10342,6 +10356,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-index",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "uuid",
@@ -10391,6 +10406,7 @@ dependencies = [
  "rustok-core",
  "rustok-inventory",
  "rustok-outbox",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
  "uuid",
@@ -10477,6 +10493,7 @@ dependencies = [
  "rustok-core",
  "rustok-media",
  "rustok-storage",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "uuid",
@@ -10519,6 +10536,7 @@ dependencies = [
  "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
 ]
@@ -10534,6 +10552,7 @@ dependencies = [
  "rustok-api",
  "rustok-commerce",
  "rustok-outbox",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
  "uuid",
@@ -10569,6 +10588,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-outbox",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
 ]
@@ -10634,6 +10654,7 @@ dependencies = [
  "rustok-api",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
 ]
@@ -10654,6 +10675,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-pages",
  "rustok-tenant",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
 ]
@@ -10694,6 +10716,7 @@ dependencies = [
  "rustok-commerce",
  "rustok-outbox",
  "rustok-payment",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
  "uuid",
@@ -10749,6 +10772,7 @@ dependencies = [
  "rustok-taxonomy",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -10769,6 +10793,7 @@ dependencies = [
  "rustok-channel",
  "rustok-outbox",
  "rustok-pricing",
+ "rustok-ui-i18n-leptos",
  "serde",
  "uuid",
 ]
@@ -10818,6 +10843,7 @@ dependencies = [
  "rustok-product",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
  "uuid",
@@ -10837,6 +10863,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-pricing",
  "rustok-product",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
  "uuid",
@@ -10891,6 +10918,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-rbac",
+ "rustok-ui-i18n-leptos",
  "serde",
 ]
 
@@ -10928,6 +10956,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-region",
+ "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
  "uuid",
@@ -10944,6 +10973,7 @@ dependencies = [
  "loco-rs",
  "rustok-api",
  "rustok-region",
+ "rustok-ui-i18n-leptos",
  "serde",
 ]
 
@@ -10985,6 +11015,7 @@ dependencies = [
  "rustok-events",
  "rustok-outbox",
  "rustok-search",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -10999,6 +11030,7 @@ dependencies = [
  "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-ui-i18n-leptos",
  "serde",
 ]
 
@@ -11055,6 +11087,7 @@ dependencies = [
  "rustok-seo",
  "rustok-seo-targets",
  "rustok-tenant",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -11352,6 +11385,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-tenant",
+ "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
  "serde_json",
@@ -11377,6 +11411,22 @@ dependencies = [
  "tokio",
  "tokio-test",
  "uuid",
+]
+
+[[package]]
+name = "rustok-ui-i18n"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "rustok-ui-i18n-leptos"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "rustok-api",
+ "rustok-ui-i18n",
 ]
 
 [[package]]
@@ -11414,9 +11464,9 @@ dependencies = [
  "leptos-graphql",
  "leptos_axum",
  "leptos_router",
- "loco-rs",
  "rustok-api",
  "rustok-core",
+ "rustok-ui-i18n-leptos",
  "rustok-workflow",
  "serde",
  "serde_json",

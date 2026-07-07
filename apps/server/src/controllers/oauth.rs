@@ -15,8 +15,8 @@ use axum::{
 use loco_rs::controller::Routes;
 use reqwest::Url;
 use rustok_auth::{
-    AuthorizeRequest, BrowserAuthorizeRequest, BrowserSessionResponse, ConsentRequest,
-    RevokeRequest, TokenErrorResponse, TokenRequest, TokenResponse,
+    AuthorizeRequest, BrowserAuthorizeRequest, ConsentRequest, RevokeRequest, TokenErrorResponse,
+    TokenRequest, TokenResponse,
 };
 use std::net::SocketAddr;
 use uuid::Uuid;

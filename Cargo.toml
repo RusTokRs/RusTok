@@ -215,6 +215,8 @@ rustok-seo-render = { path = "crates/rustok-seo/render" }
 rustok-seo-admin-support = { path = "crates/rustok-seo-admin-support" }
 rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api", default-features = false }
+rustok-ui-i18n = { path = "crates/rustok-ui-i18n" }
+rustok-ui-i18n-leptos = { path = "crates/rustok-ui-i18n-leptos" }
 leptos-ui-routing = { path = "crates/leptos-ui-routing" }
 rustok-cache = { path = "crates/rustok-cache" }
 rustok-channel = { path = "crates/rustok-channel" }

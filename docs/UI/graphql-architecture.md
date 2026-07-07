@@ -17,7 +17,7 @@ For Leptos UI, the platform uses a dual-path model on top of the SSR-first runti
 - native `#[server]` functions — preferred internal data layer for `apps/admin`, `apps/storefront` and module-owned Leptos UI packages in `ssr`/`hydrate`/monolith profiles;
 - GraphQL `/api/graphql` — mandatory parallel transport contract for Next.js hosts, Flutter hosts, headless clients, and fallback branches in Leptos.
 
-`#[server]` does not replace GraphQL at the platform level. It adds a shorter internal path for Leptos hosts when the host actually runs via SSR/hydrate runtime.
+`#[server]` does not supersede GraphQL at the platform level. It adds a shorter internal path for Leptos hosts when the host actually runs via SSR/hydrate runtime.
 
 CSR remains a mandatory compatibility/debug profile for standalone Trunk/WASM and checking module-owned UI packages, but is not considered a production runtime default.
 

@@ -29,6 +29,7 @@ serde = { workspace = true, features = ["derive"] }
 rustok-core = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
+rustok-ui-i18n-leptos.workspace = true
 rustok-channel = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 rustok-tenant = { workspace = true, optional = true }

@@ -15,6 +15,7 @@ module transport adapters, but which should not live in `rustok-core`.
 
 - request context types, transport-agnostic port context/error/policy primitives and auth/tenant/channel host contracts;
 - `UiRouteContext`, `UiRouteQueryUpdate`, `normalize_ui_text`, `parse_ui_csv` and other module-agnostic UI host contracts;
+- compatibility re-exports for `rustok-ui-i18n` message catalog helpers while consumers migrate to the direct crate;
 - GraphQL helper types and error helpers shared across modules;
 - reusable read/write/event-replay/best-effort port enforcement without module-specific business logic; consumer migration is anchored in `rustok-region` and continued for tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay and page-builder publish paths;
 - request-level locale/tenant/channel resolution primitives not belonging to domain crates;
@@ -35,6 +36,7 @@ module transport adapters, but which should not live in `rustok-core`.
 - targeted compile/tests run when shared request/auth/channel/GraphQL/UI contracts change;
 - `cargo tree -p rustok-api --no-default-features` must not contain `rustok-core` or `rustok-outbox`;
 - changes to the host/API layer must be accompanied by synchronization of consumer docs.
+- UI message catalog changes should be made in `rustok-ui-i18n` and verified there.
 
 ## Related Documents
 

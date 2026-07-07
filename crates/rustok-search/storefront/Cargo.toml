@@ -11,6 +11,7 @@ hydrate = ["leptos/hydrate"]
 ssr = ["leptos/ssr"]
 
 [dependencies]
+rustok-ui-i18n-leptos.workspace = true
 leptos.workspace = true
 leptos-graphql.workspace = true
 leptos-ui-routing.workspace = true

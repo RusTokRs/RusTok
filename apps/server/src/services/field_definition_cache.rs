@@ -128,7 +128,7 @@ mod tests {
     use flex::FieldDefinitionView;
     use rustok_core::EventBus;
     use rustok_events::{DomainEvent, EventEnvelope};
-    use sea_orm::{Database, DatabaseConnection};
+    use sea_orm::Database;
     use serde_json::json;
     use std::time::Duration;
     use tokio::time::sleep;

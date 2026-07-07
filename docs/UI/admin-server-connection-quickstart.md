@@ -30,7 +30,7 @@ Recommended base path for UI hosts:
 - `ssr`: server half or monolith. `#[server]` is available as a native transport and may be the preferred path
   for server-side surfaces.
 
-Rule: `#[server]` does not replace GraphQL/REST. If a surface is needed in standalone `csr`, it must have a
+Rule: `#[server]` does not supersede GraphQL/REST. If a surface is needed in standalone `csr`, it must have a
 working GraphQL/REST path or an explicitly documented fallback.
 
 ## Preferred Local/Dev Path

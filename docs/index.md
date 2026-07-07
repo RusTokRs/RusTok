@@ -148,7 +148,6 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [FFA UI Refactoring Plan and Dioxus Preparation](./research/dioxus-ffa-ui-migration-plan.md)
 - [FFA/Dioxus Pilot Connectivity Map (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
 - [FFA UI Migration Parity Checklist](./verification/ffa-ui-parity-checklist.md)
-- [Research and ADR Drafts](./research/ADR-xxxx-grpc-adoption.md)
 
 ## Application Documentation
 

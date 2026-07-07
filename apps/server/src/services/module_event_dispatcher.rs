@@ -136,8 +136,7 @@ mod tests {
     use rustok_core::{EventBus, ModuleRegistry};
     use rustok_index::IndexModule;
     use rustok_search::SearchModule;
-    use sea_orm::{Database, DatabaseConnection};
-    use std::sync::Arc;
+    use sea_orm::Database;
 
     #[tokio::test]
     async fn build_module_event_dispatcher_collects_registry_owned_handlers() {

@@ -54,8 +54,7 @@ pub use route_selection::{
 #[cfg(feature = "server")]
 pub use runtime::HostRuntimeContext;
 pub use ui::{
-    build_ui_message_catalog, normalize_ui_text, parse_ui_csv, resolve_ui_message,
-    resolve_ui_message_or_fallback, route_query_update_for_text, UiMessageCatalog, UiRouteContext,
+    normalize_ui_text, parse_ui_csv, route_query_update_for_text, UiRouteContext,
     UiRouteQueryUpdate,
 };
 pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};

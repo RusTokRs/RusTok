@@ -1,9 +1,9 @@
 # rustok-workflow-admin
 
-> **For contributors and AI agents — read before modifying this package:**
-> [Architecture](../../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../../docs/UI/module-package-verification.md)
+> **For contributors and AI agents - read before modifying this package:**
+> [Architecture](../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../docs/UI/module-package-verification.md)
 
 Leptos admin UI package for the `rustok-workflow` module.
 
@@ -16,11 +16,11 @@ Leptos admin UI package for the `rustok-workflow` module.
 
 ## Entry Points
 
-- `WorkflowAdmin` — root admin page component re-exported from `src/ui/leptos.rs`.
-- `src/core.rs` — framework-agnostic FFA slice for workflow row view-models, status presentation, template category styling, and template-name normalization.
-- `src/transport/mod.rs` — thin module-owned native-first transport facade with GraphQL fallback.
-- `src/transport/native_server_adapter.rs` — native server-function adapter that consumes host-provided `rustok_api::HostRuntimeContext`, not Loco `AppContext`.
-- `src/ui/leptos.rs` — Leptos-only render adapter; crate root only wires modules and re-exports `WorkflowAdmin`.
+- `WorkflowAdmin` - root admin page component re-exported from `src/ui/leptos.rs`.
+- `src/core.rs` - framework-agnostic FFA slice for workflow row view-models, status presentation, template category styling, and template-name normalization.
+- `src/transport/mod.rs` - thin module-owned native-first transport facade with GraphQL fallback.
+- `src/transport/native_server_adapter.rs` - native server-function adapter that consumes host-provided `rustok_api::HostRuntimeContext`, not Loco `AppContext`.
+- `src/ui/leptos.rs` - Leptos-only render adapter; crate root only wires modules and re-exports `WorkflowAdmin`.
 - `rustok-module.toml [provides.admin_ui]` advertises `leptos_crate`, `route_segment`, `nav_label`, and manifest-driven nested subpages such as `templates`.
 
 ## Interactions

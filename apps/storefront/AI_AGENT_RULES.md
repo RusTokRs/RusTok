@@ -26,28 +26,29 @@ Available internal libraries:
 - `leptos-zustand` — Cross-component state
 
 ### 2. DO NOT Invent Custom i18n
-✅ **ALWAYS use:** `rustok_api::build_ui_message_catalog` pattern
-❌ **NEVER use:** `leptos_i18n`, `t!(i18n, key)` macro, or custom locale negotiation
+ALWAYS use `rustok-ui-i18n-leptos` for Leptos module-owned UI packages.
+NEVER use `rustok-api` for UI i18n helpers, `leptos_i18n`, `t!(i18n, key)` macros, or custom locale negotiation.
 
-**Why not `leptos_i18n`?** It's Leptos-specific and breaks FFA (won't work with Dioxus).
-
-**Current state:**
-- ✅ Module UI packages — already use `rustok_api` pattern
-- ⚠️ Host apps (`apps/admin`, `apps/storefront`) — still use `leptos_i18n` (will migrate)
-
-**Future:** When hosts migrate to FFA, a framework-agnostic UI library (Leptos/Dioxus compatible) will be created. The `rustok_api` pattern is the foundation.
+`rustok-ui-i18n` is the framework-agnostic core. `rustok-ui-i18n-leptos` is the shared Leptos adapter. A sibling `rustok-ui-i18n-dioxus` adapter must be added when Dioxus enters the workspace.
 
 Pattern:
 ```rust
-use rustok_api::{build_ui_message_catalog, resolve_ui_message_or_fallback};
+use rustok_ui_i18n_leptos::LeptosUiMessages;
+
+static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+    "en",
+    &[
+        ("en", include_str!("../locales/en.json")),
+        ("ru", include_str!("../locales/ru.json")),
+    ],
+);
 
 pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
-    resolve_ui_message_or_fallback(catalog(), locale, "en", key, fallback)
+    MESSAGES.t_for_locale(locale, key, fallback)
 }
 ```
 
-Locale comes from `UiRouteContext.locale` (host-provided), NEVER from cookies/headers/query.
-
+Locale comes from `UiRouteContext.locale` or another host-provided effective locale, NEVER from package-local cookies, headers, query parameters or browser storage.
 ### 3. DO NOT Remove GraphQL When Adding `#[server]`
 ✅ **ALWAYS keep both:** native `#[server]` (SSR/hydrate) + GraphQL (CSR/headless)
 ❌ **NEVER make `#[server]` the only path** — CSR/Trunk debug requires GraphQL

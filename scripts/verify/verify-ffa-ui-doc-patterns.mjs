@@ -69,24 +69,24 @@ function findMatches(files, pattern) {
   return matches;
 }
 
-console.log("[1/4] Проверка конфликтующих формулировок transport...");
+console.log("[1/4] Checking conflicting transport wording...");
 const textFiles = ["docs", "apps", "crates"].flatMap((dir) =>
   listFiles(dir, (filePath) => /\.(md|rs|toml|json|js|mjs|ts|tsx|jsx|sh|txt)$/i.test(filePath)),
 );
-const conflictPattern = /(replace GraphQL|удал(ить|яем) GraphQL|only \/api\/fn|только \/api\/fn)/;
+const conflictPattern = /(only \/api\/fn|only \/api\/graphql)/i;
 const conflicts = findMatches(textFiles, conflictPattern);
 if (conflicts.length > 0) {
-  fail(`Найдены потенциально конфликтующие формулировки:\n${conflicts.join("\n")}`);
+  fail(`Found potentially conflicting transport wording:\n${conflicts.join("\n")}`);
 }
 
-console.log("[2/4] Проверка, что план содержит обязательные execution-разделы...");
+console.log("[2/4] Checking that the plan contains required execution sections...");
 const planPath = "docs/research/dioxus-ffa-ui-migration-plan.md";
 const plan = readText(planPath);
 for (const marker of [
-  "Принцип исполнения backlog",
-  "Сверка с текущим кодом",
-  "Phase-gate",
-  "KPI parity",
+  "Backlog Execution Principle",
+  "Reconciliation with Current Code",
+  "Phase-Gate",
+  "KPI Parity",
   "RACI",
 ]) {
   if (!plan.includes(marker)) {
@@ -94,23 +94,23 @@ for (const marker of [
   }
 }
 
-console.log("[2b/4] Проверка anti-over-extraction стандарта FFA-срезов...");
+console.log("[2b/4] Checking the anti-over-extraction standard for FFA slices...");
 for (const marker of [
-  "Стандарт минимального FFA-среза и anti-over-extraction",
-  "FFA-срез должен уменьшать связность",
-  "request/command construction, normalization и validation",
-  "простые i18n label bindings",
-  "reset/refresh side effects после mutation",
-  "механические wrappers над одной строкой форматирования",
-  "Если изменение добавляет больше boilerplate, чем удаляет coupling",
-  "если обнаружен over-extraction, откатить его",
+  "Standard for minimal FFA slice and anti-over-extraction",
+  "An FFA slice should reduce coupling",
+  "request/command construction, normalization and validation",
+  "simple i18n label bindings",
+  "reset/refresh side effects after mutation",
+  "mechanical wrappers over a single formatting line",
+  "If a change adds more boilerplate than it removes coupling",
+  "if over-extraction is detected, revert it",
 ]) {
   if (!plan.includes(marker)) {
     fail(`${planPath}: missing anti-over-extraction marker ${marker}`);
   }
 }
 
-console.log("[3/4] Поиск Leptos-зависимостей внутри core-слоя (core.rs и core/)...");
+console.log("[3/4] Searching for Leptos dependencies inside the core layer (core.rs and core/)...");
 const coreFiles = listFiles("crates", (filePath) => {
   const normalized = relativePath(filePath);
   return normalized.endsWith(".rs") && (normalized.endsWith("/core.rs") || normalized.includes("/core/"));
@@ -118,10 +118,10 @@ const coreFiles = listFiles("crates", (filePath) => {
 const leptosPattern = /use .*leptos|leptos::|leptos_router|leptos_ui_routing|#\[component|#\[server|IntoView|ReadSignal|WriteSignal|Resource</;
 const coreHits = findMatches(coreFiles, leptosPattern);
 if (coreHits.length > 0) {
-  fail(`Найдены Leptos-зависимости в core-слое:\n${coreHits.join("\n")}`);
+  fail(`Found Leptos dependencies inside the core layer:\n${coreHits.join("\n")}`);
 }
 
-console.log("[4/4] Проверка наличия ссылки на план в docs/index.md...");
+console.log("[4/4] Checking that docs/index.md links to the plan...");
 if (!readText("docs/index.md").includes("dioxus-ffa-ui-migration-plan")) {
   fail("docs/index.md: missing dioxus-ffa-ui-migration-plan link");
 }

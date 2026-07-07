@@ -62,7 +62,7 @@ const nextFrontendDocs = readRepo("apps/next-frontend/docs/README.md");
 
 assertContains(
   uiReadme,
-  "## FFA status для frontend-hosts",
+  "## FFA Status for Frontend Hosts",
   "docs/UI/README.md: must explicitly document frontend host FFA status",
 );
 assertContains(
@@ -72,7 +72,7 @@ assertContains(
 );
 assertContains(
   uiReadme,
-  "не получают module FFA status",
+  "do not receive a module FFA status",
   "docs/UI/README.md: must state host apps do not receive module FFA status",
 );
 
