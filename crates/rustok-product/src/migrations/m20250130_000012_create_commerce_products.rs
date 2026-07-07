@@ -88,7 +88,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(ProductTranslations::Locale)
-                            .string_len(5)
+                            .string_len(32)
                             .not_null(),
                     )
                     .col(
@@ -184,7 +184,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(ProductImageTranslations::Locale)
-                            .string_len(5)
+                            .string_len(32)
                             .not_null(),
                     )
                     .col(ColumnDef::new(ProductImageTranslations::AltText).string_len(255))

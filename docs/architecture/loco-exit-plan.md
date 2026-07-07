@@ -8,16 +8,16 @@ status: draft
 
 This document captures the single repo-level plan for migrating `apps/server` from Loco RS to a pure Axum runtime and own CLI/maintenance entrypoints.
 
-The plan replaces the previous direction of "integrate Loco deeper". Old documents `apps/server/docs/loco-core-integration-plan.md` and `apps/server/docs/LOCO_FEATURE_SUPPORT.md` remain as historical context and inventory, but are not the target roadmap.
+The plan replaces the previous direction of "integrate Loco deeper". The old `apps/server/docs/loco-core-integration-plan.md` roadmap has been removed. `apps/server/docs/LOCO_FEATURE_SUPPORT.md` remains as historical inventory only and is not the target roadmap.
 
 ## Execution Checkpoint
 
 - Current phase: `phase_1_runtime_context_and_request_extractors`
 - Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin` and `rustok-outbox-admin` no longer import `loco_rs::app::AppContext`; `rustok-content-orchestration` no longer imports Loco and receives DB/event bus/GraphQL data handles explicitly; Alloy runtime core is built from explicit `DatabaseConnection`, does not import Loco, registers through `ServerRuntimeContext`, Alloy GraphQL reads `SharedAlloyRuntime` from schema data, and Alloy HTTP handlers use `AlloyHttpRuntime`; `rustok-ai` no longer depends on Loco and uses its own `AiHostRuntime` for GraphQL/service/direct/MCP execution; `rustok-commerce` storefront checkout orchestration uses `StorefrontCheckoutRuntime` with explicit DB/event bus handles, and shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping and admin payment HTTP handlers use `CommerceHttpRuntime`; remaining commerce transport adapters are still Loco-boundary until next slices; `rustok-blog` HTTP post/comment handlers use a narrow `BlogHttpRuntime`, `rustok-pages` HTTP handlers use `PagesHttpRuntime`, `rustok-forum` REST handlers use `ForumHttpRuntime`, `rustok-media` HTTP handlers use `MediaHttpRuntime`, `rustok-workflow` HTTP/webhook handlers use `WorkflowHttpRuntime`, and `rustok-seo` HTTP handlers use `SeoHttpRuntime`; Loco `AppContext` in these modules remains only in controller state adapters until full Axum route cutover; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted; `SettingsService`, event bus, event transport, module dispatcher/runtime extensions, email, app runtime helpers, rate-limit bootstrap, GraphQL schema service, worker lifecycle orchestration, auth lifecycle providers, build/release/runtime guardrail services migrated to `Serve... (line truncated to 2000 chars)
-- Next step: select the next production slice for replacing `loco_rs::app::AppContext` with `ServerRuntimeContext` or narrow typed contexts.
+- Next step: prioritize the largest remaining non-core surface first: migrate module UI/native adapters from `loco_rs::app::AppContext` to `HostRuntimeContext`/narrow owner runtimes, while keeping server-core bootstrap/routing cutover as the next major phase.
 - Open blockers: none for Phase 1 planning; before Phase 4, targeted integration smoke for pure Axum startup will be needed.
 - Hand-off notes for next agent: do not add compatibility wrappers and dual execution paths; each cutover must migrate all internal callers to the target contract and remove the replaced Loco path in the same change set.
-- Last updated at (UTC): 2026-07-02T00:00:00Z
+- Last updated at (UTC): 2026-07-07T00:00:00Z
 
 ## Goal
 
@@ -66,6 +66,62 @@ Target state:
 | Loco mailer option | `EmailProvider::Loco`, `ctx.mailer` | remove provider or replace with native SMTP/provider adapter |
 | Outbox Loco adapter | `rustok-outbox/loco-adapter`, `rustok_outbox::loco` | host-neutral event bus factory |
 | Docs/verification | Loco integration plans and Loco-specific guards | Axum/ops CLI cutover guards and archived Loco docs |
+
+## Remaining Scope Estimate
+
+The July 2026 inventory is a size signal, not a task counter: many occurrences are guardrails, docs, lockfile entries, tests or transitional route adapters. The remaining work should be planned as architectural slices, not individual text matches.
+
+Current classified inventory baseline:
+
+| Category | Count | Practical Meaning |
+|---|---:|---|
+| `host_runtime` | 62 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
+| `module_ui_adapter` | 192 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
+| `module_controller` | 35 | Mostly controller route/state adapters and remaining Loco controller API usage after handler runtime narrowing. |
+| `server_task` / `server_seed` / `server_schedule` | 22 | Maintenance flows that belong in `rustok-ops`, not the HTTP server binary. |
+| `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
+| `dependency_manifest` / `lockfile` | 113 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
+| `verification_guard` / `docs` / `scaffold_template` | 197 | Guardrails, historical docs and generated templates to update/archive last. |
+
+Approximate remaining effort:
+
+| Workstream | Share of Remaining Work | Notes |
+|---|---:|---|
+| Server core bootstrap/routing/tasks/config | 40-50% | `apps/server/src/app.rs`, `main.rs`, hooks, initializers, tasks, seeds, Loco `Routes`, error/response contracts. |
+| Module UI/native adapters | 30-35% | Broad but repetitive; should be handled package-by-package with guardrails. |
+| Module controller route adapters | 10-15% | Many handlers already use narrow runtimes; remaining work is mostly Axum route/error cutover. |
+| Dependency cleanup, tests, docs, scaffolds | 10-15% | Runs after production code paths are no longer Loco-bound. |
+
+Expected execution size: roughly 25-40 focused cutover slices if each slice migrates one coherent runtime or package boundary and updates guardrails/docs in the same change.
+
+## Loco Integration Documents Policy
+
+There is no longer a target "Loco integration" plan. Historical Loco integration documents are inventory/context only and must not be used as implementation guidance.
+
+Policy:
+
+- replace active Loco integration plans with this exit plan and the Axum/ops CLI ADR;
+- mark remaining Loco-specific docs as `deprecated` or `archived` when touched;
+- keep only short historical notes that explain what Loco surface was replaced and by which RusToK-owned contract;
+- do not add new Loco compatibility docs, aliases or dual internal execution paths;
+- remove Loco docs/scaffold references in the final dependency cleanup phase after code no longer imports Loco.
+
+## Extraction Targets
+
+Some replacement code should not accumulate in `apps/server`. The target architecture is a small server composition root plus owned foundation crates and module adapters.
+
+| Target | Proposed Home | Why It Is Separate |
+|---|---|---|
+| Ops capability contract | `crates/rustok-ops-api` | Stable command/provider descriptions without depending on CLI, server or domain internals. |
+| Ops runner binary | `crates/rustok-ops-cli` | Maintenance process, argument parsing, help/search UX and ops runtime construction outside the HTTP server. |
+| Ops registry | generated crate or `crates/rustok-ops-registry` | Distribution-specific aggregation of selected module command providers. |
+| Module ops adapters | `crates/rustok-<module>/cli` or external module `cli/` package | Keeps commands beside their owner while keeping executable maintenance code out of domain core and server runtime. |
+| Server runtime foundation | keep in `apps/server` until stable, then consider `crates/rustok-server-runtime` | Shared settings/runtime/event/cache/email/bootstrap contracts may become useful to ops/tests/tools, but should not be extracted before the contract settles. |
+| Axum adapter utilities | `crates/rustok-http` or `crates/rustok-axum` | Replacement for Loco `Routes`, response formatting and error mapping that modules can use without depending on `apps/server`. |
+| Test runtime fixtures | `crates/rustok-test-utils` | Replaces `loco_rs::tests_cfg` and gives modules/server a shared neutral runtime fixture. |
+| Outbox Loco adapter | temporary `rustok-outbox` feature only | Kept only as a bridge until the final imports are gone; it must not grow new responsibilities. |
+
+Extraction rule: extract only stable cross-boundary contracts or executable adapters. Do not move domain logic to server/foundation crates, and do not make module domain crates depend on CLI concerns.
 
 ## Target Runtime Contract
 
@@ -310,7 +366,7 @@ In the final state, the first `rg` must return only archived/deprecated docs, if
 
 - [x] Add this central plan to `docs/index.md`.
 - [x] Update `apps/server/docs/README.md` so that Loco docs are historical context, not an active target.
-- [x] Mark `apps/server/docs/loco-core-integration-plan.md` as deprecated.
+- [x] Remove old `apps/server/docs/loco-core-integration-plan.md` integration roadmap.
 - [x] Mark `apps/server/docs/LOCO_FEATURE_SUPPORT.md` as deprecated inventory.
 - [x] Update `docs/AI_CONTEXT.md` after Phase 0 inventory so agents no longer follow old Loco rules.
 - [x] Update `docs/ai/KNOWN_PITFALLS.md` after Axum/ops CLI guardrails appear.

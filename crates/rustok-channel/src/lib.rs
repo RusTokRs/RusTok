@@ -9,13 +9,16 @@ pub mod services;
 pub mod target_type;
 
 pub use dto::{
-    BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
+    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
+    AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
+    BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelDetailResponse,
     ChannelModuleBindingResponse, ChannelOauthAppResponse,
     ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
     ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
     CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
-    CreateChannelTargetInput, ReorderChannelResolutionRulesInput, UpdateChannelResolutionRuleInput,
-    UpdateChannelTargetInput,
+    CreateChannelTargetInput, CreateResolutionPolicySetRequest, CreateResolutionRuleRequest,
+    ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest,
+    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput, UpdateResolutionRuleRequest,
 };
 pub use error::{ChannelError, ChannelResult};
 pub use policy::{

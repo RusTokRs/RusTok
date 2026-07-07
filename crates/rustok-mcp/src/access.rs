@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::str::FromStr;
 
 use rustok_api::Permission;
 use schemars::JsonSchema;
@@ -22,6 +23,19 @@ pub enum McpActorType {
     HumanUser,
     ServiceClient,
     ModelAgent,
+}
+
+impl FromStr for McpActorType {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "human_user" => Ok(Self::HumanUser),
+            "service_client" => Ok(Self::ServiceClient),
+            "model_agent" => Ok(Self::ModelAgent),
+            _ => Err(format!("Unknown MCP actor type: {value}")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

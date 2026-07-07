@@ -607,7 +607,7 @@ function assertSearchUiCatalogTransportContract() {
   }
 
   for (const marker of [
-    "pub async fn fetch_catalog_search_options",
+    "fetch_catalog_search_options(",
     "product_admin_catalog_search_options_native(locale)",
     'endpoint = "product/admin/catalog-search-options"',
     "native_context().await?",

@@ -2858,8 +2858,8 @@ where
     for option_id in option_ids {
         conn.execute(Statement::from_sql_and_values(
             conn.get_database_backend(),
-            "INSERT INTO product_attribute_value_options (value_id, option_id) VALUES ($1, $2)",
-            vec![value_id.into(), option_id.into()],
+            "INSERT INTO product_attribute_value_options (tenant_id, value_id, option_id) VALUES ($1, $2, $3)",
+            vec![tenant_id.into(), value_id.into(), option_id.into()],
         ))
         .await?;
     }

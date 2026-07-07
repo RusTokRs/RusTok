@@ -1032,3 +1032,114 @@ fn mcp_graphql_surface_is_owned_by_mcp_crate() {
         .expect("server GraphQL schema should read");
     assert!(schema.contains("rustok_mcp::graphql::{McpMutation, McpQuery}"));
 }
+
+#[test]
+fn mcp_rest_control_plane_dto_is_owned_by_mcp_crate() {
+    let repo = repo_root();
+    let management = std::fs::read_to_string(repo.join("crates/rustok-mcp/src/management.rs"))
+        .expect("rustok-mcp management contract should read");
+    let access = std::fs::read_to_string(repo.join("crates/rustok-mcp/src/access.rs"))
+        .expect("rustok-mcp access contract should read");
+    let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/mcp.rs"))
+        .expect("server MCP controller should read");
+
+    let dto_markers = [
+        "pub struct BootstrapMcpRemoteSessionRequest",
+        "pub struct McpRemoteToolCallRequest",
+        "pub struct McpRemoteToolCallResponse",
+        "pub struct CreateMcpClientRequest",
+        "pub struct RotateMcpTokenRequest",
+        "pub struct UpdateMcpPolicyRequest",
+        "pub struct McpAuditQuery",
+        "pub struct StageMcpModuleScaffoldDraftRequest",
+        "pub struct ApplyMcpModuleScaffoldDraftRequest",
+        "pub struct McpClientSummaryResponse",
+        "pub struct McpClientDetailsResponse",
+        "pub struct McpAuditEventResponse",
+        "pub struct McpModuleScaffoldDraftResponse",
+    ];
+    for marker in dto_markers {
+        assert!(
+            management.contains(marker),
+            "rustok-mcp must own MCP REST/control-plane DTO marker {marker}"
+        );
+        assert!(
+            !controller.contains(marker),
+            "apps/server MCP controller must not define owner DTO marker {marker}"
+        );
+    }
+
+    assert!(
+        access.contains("impl FromStr for McpActorType"),
+        "MCP actor type parsing must stay in rustok-mcp"
+    );
+    assert!(
+        controller.contains("McpActorType::from_str"),
+        "server MCP controller must delegate actor type parsing to rustok-mcp"
+    );
+    assert!(
+        !controller.contains("\"human_user\" => Ok(McpActorType::HumanUser)"),
+        "server MCP controller must not duplicate MCP actor parsing"
+    );
+}
+
+#[test]
+fn channel_rest_control_plane_dto_is_owned_by_channel_crate() {
+    let repo = repo_root();
+    let dto = std::fs::read_to_string(repo.join("crates/rustok-channel/src/dto/mod.rs"))
+        .expect("rustok-channel DTO contract should read");
+    let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/channel.rs"))
+        .expect("server channel controller should read");
+
+    let owner_markers = [
+        "pub struct ChannelBootstrapResponse",
+        "pub struct CreateResolutionPolicySetRequest",
+        "pub struct CreateResolutionRuleRequest",
+        "pub struct UpdateResolutionRuleRequest",
+        "pub struct ReorderResolutionRulesRequest",
+        "pub struct AvailableChannelModuleItem",
+        "pub struct AvailableChannelOauthAppItem",
+        "pub fn create_resolution_policy_set_input",
+        "pub fn create_resolution_rule_input",
+        "pub fn update_resolution_rule_input",
+    ];
+    for marker in owner_markers {
+        assert!(
+            dto.contains(marker),
+            "rustok-channel must own channel REST/control-plane marker {marker}"
+        );
+    }
+
+    let forbidden_controller_markers = [
+        "struct ChannelBootstrapResponse",
+        "struct CreateResolutionPolicySetRequest",
+        "struct CreateResolutionRuleRequest",
+        "struct UpdateResolutionRuleRequest",
+        "struct ReorderResolutionRulesRequest",
+        "struct AvailableModuleItem",
+        "struct AvailableOauthAppItem",
+        "fn build_rule_definition",
+        "fn build_update_rule_input",
+        "fn normalize_optional_string",
+        "ResolutionAction::ResolveToChannel",
+        "ResolutionPredicate::HostEquals",
+    ];
+    for marker in forbidden_controller_markers {
+        assert!(
+            !controller.contains(marker),
+            "apps/server channel controller must not own channel REST/control-plane marker {marker}"
+        );
+    }
+
+    for marker in [
+        "ChannelBootstrapResponse::<crate::context::ChannelContext>",
+        "create_resolution_policy_set_input(tenant.id, input)",
+        "create_resolution_rule_input(input)",
+        "update_resolution_rule_input(input)",
+    ] {
+        assert!(
+            controller.contains(marker),
+            "apps/server channel controller must consume owner channel contract marker {marker}"
+        );
+    }
+}

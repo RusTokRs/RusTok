@@ -149,7 +149,65 @@ function assertChannelAdminBoundary() {
   assertNotContains(restAdapter, "#[server", `${restAdapterPath}: REST adapter must not contain server-function endpoints`);
 }
 
+function assertChannelServerBoundary() {
+  const dtoPath = "crates/rustok-channel/src/dto/mod.rs";
+  const controllerPath = "apps/server/src/controllers/channel.rs";
+  assertExists(dtoPath, `${dtoPath}: expected channel owner DTO contract`);
+  assertExists(controllerPath, `${controllerPath}: expected server channel controller adapter`);
+
+  const dto = readRepo(dtoPath);
+  const controller = readRepo(controllerPath);
+
+  for (const marker of [
+    "pub struct ChannelBootstrapResponse",
+    "pub struct CreateResolutionPolicySetRequest",
+    "pub struct CreateResolutionRuleRequest",
+    "pub struct UpdateResolutionRuleRequest",
+    "pub struct ReorderResolutionRulesRequest",
+    "pub struct AvailableChannelModuleItem",
+    "pub struct AvailableChannelOauthAppItem",
+    "pub fn create_resolution_policy_set_input",
+    "pub fn create_resolution_rule_input",
+    "pub fn update_resolution_rule_input",
+  ]) {
+    assertContains(dto, marker, `${dtoPath}: channel owner DTO/helper contract must include ${marker}`);
+  }
+
+  for (const marker of [
+    "struct ChannelBootstrapResponse",
+    "struct CreateResolutionPolicySetRequest",
+    "struct CreateResolutionRuleRequest",
+    "struct UpdateResolutionRuleRequest",
+    "struct ReorderResolutionRulesRequest",
+    "struct AvailableModuleItem",
+    "struct AvailableOauthAppItem",
+    "fn build_rule_definition",
+    "fn build_update_rule_input",
+    "fn normalize_optional_string",
+    "ResolutionAction::ResolveToChannel",
+    "ResolutionPredicate::HostEquals",
+  ]) {
+    assertNotContains(
+      controller,
+      marker,
+      `${controllerPath}: channel REST/control-plane shape must stay in rustok-channel (${marker})`,
+    );
+  }
+
+  for (const marker of [
+    "ChannelBootstrapResponse::<crate::context::ChannelContext>",
+    "create_resolution_policy_set_input(tenant.id, input)",
+    "create_resolution_rule_input(input)",
+    "update_resolution_rule_input(input)",
+    "AvailableChannelModuleItem",
+    "AvailableChannelOauthAppItem",
+  ]) {
+    assertContains(controller, marker, `${controllerPath}: controller must consume owner channel contract ${marker}`);
+  }
+}
+
 assertChannelAdminBoundary();
+assertChannelServerBoundary();
 
 if (failures.length > 0) {
   console.error("channel admin boundary verification failed:");

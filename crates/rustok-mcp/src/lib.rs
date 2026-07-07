@@ -41,11 +41,16 @@ pub use alloy_tools::{
     TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
 };
 pub use management::{
-    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpAuditEventRecord,
-    McpClientDetailsRecord, McpClientRecord, McpManagementContext, McpManagementMutationError,
-    McpManagementPort, McpManagementRuntime, McpPolicyRecord, McpScaffoldDraftRecord,
-    McpTokenRecord, McpTokenSecretResult, RotateMcpTokenCommand, StageMcpScaffoldDraftCommand,
-    UpdateMcpPolicyCommand,
+    ApplyMcpModuleScaffoldDraftRequest, ApplyMcpScaffoldDraftCommand,
+    BootstrapMcpRemoteSessionRequest, CreateMcpClientCommand, CreateMcpClientRequest,
+    CreateMcpClientResponse, McpAuditEventRecord, McpAuditEventResponse, McpAuditQuery,
+    McpClientDetailsRecord, McpClientDetailsResponse, McpClientRecord, McpClientSummaryResponse,
+    McpManagementContext, McpManagementMutationError, McpManagementPort, McpManagementRuntime,
+    McpModuleScaffoldDraftResponse, McpPolicyRecord, McpPolicyResponse, McpRemoteToolCallRequest,
+    McpRemoteToolCallResponse, McpScaffoldDraftRecord, McpTokenRecord, McpTokenResponse,
+    McpTokenSecretResult, RotateMcpTokenCommand, RotateMcpTokenRequest, RotateMcpTokenResponse,
+    StageMcpModuleScaffoldDraftRequest, StageMcpScaffoldDraftCommand, UpdateMcpPolicyCommand,
+    UpdateMcpPolicyRequest,
 };
 pub use runtime::{
     McpAccessResolver, McpAuditSink, McpRuntimeBinding, McpScaffoldDraftRuntimeContext,

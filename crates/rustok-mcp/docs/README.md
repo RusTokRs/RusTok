@@ -21,6 +21,9 @@ spec or turning into a provider/model host.
   `apps/next-admin/packages/rustok-mcp` and Leptos FFA crate `crates/rustok-mcp/admin`;
 - typed `McpManagementPort` in the owner crate and DB-provider in `apps/server`, which
   delegates management reads/writes to the canonical transactional `McpManagementService`;
+- owner-owned REST/control-plane request and response DTOs for MCP remote transport,
+  clients, policy, tokens, audit and scaffold drafts; `apps/server` only maps persisted rows
+  and Axum/Loco request boundaries to those owner contracts;
 - owner-owned GraphQL query/mutation/types behind feature `graphql`; server only connects roots and implements the DB-provider;
 - no ownership over provider-specific AI orchestration and over the MCP spec itself.
 
@@ -29,6 +32,8 @@ spec or turning into a provider/model host.
 - protocol, security and authorization semantics come from official MCP/rmcp documents, not from the local docs folder;
 - `rustok-ai` uses `rustok-mcp` as the MCP tool boundary, without extending it to a model host;
 - `apps/server` holds the persisted MCP management/control plane and runtime bridges for tokens, policy and scaffold drafts;
+- HTTP handlers in `apps/server` import MCP DTOs and actor parsing from `rustok-mcp`
+  instead of defining package-local REST contracts;
 - Alloy connects as a capability via runtime state, not as a separate MCP transport stack.
 - `rustok-ai` does not own the UI review of MCP/Alloy drafts; the cross-module admin workflow separately
   mounts the MCP-module-owned package.

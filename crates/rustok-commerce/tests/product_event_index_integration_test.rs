@@ -2,26 +2,40 @@
 // This test verifies the complete workflow from product creation to indexing
 
 use rust_decimal::Decimal;
-use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
 use rustok_product::entities::product::ProductStatus;
 use rustok_product::CatalogService;
-use rustok_test_utils::{db::setup_test_db, MockEventTransport};
+use rustok_test_utils::db::setup_test_db;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm_migration::prelude::SchemaManager;
+use sea_orm_migration::MigrationTrait;
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
 mod support;
 
-async fn setup_service() -> (CatalogService, Arc<MockEventTransport>) {
+async fn setup_service() -> (DatabaseConnection, CatalogService) {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
-    let transport = Arc::new(MockEventTransport::new());
-    let event_bus = TransactionalEventBus::new(transport.clone());
-    (CatalogService::new(db, event_bus), transport)
+    let schema_manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&schema_manager)
+        .await
+        .expect("outbox schema should be available for product event tests");
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    (db.clone(), CatalogService::new(db, event_bus))
+}
+
+async fn event_count(db: &DatabaseConnection, event_type: &str) -> u64 {
+    SysEvents::find()
+        .filter(rustok_outbox::entity::Column::EventType.eq(event_type))
+        .count(db)
+        .await
+        .expect("event count should load")
 }
 
 fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductInput {
@@ -67,7 +81,7 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
 
 #[tokio::test]
 async fn test_product_creation_triggers_event() {
-    let (service, transport) = setup_service().await;
+    let (db, service) = setup_service().await;
 
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -78,22 +92,13 @@ async fn test_product_creation_triggers_event() {
         .await
         .unwrap();
 
-    assert_eq!(transport.event_count(), 1);
-    assert!(transport.has_event_of_type("ProductCreated"));
-
-    let events = transport.events_of_type("ProductCreated");
-    assert_eq!(events.len(), 1);
-
-    if let DomainEvent::ProductCreated { product_id, .. } = events[0] {
-        assert_eq!(product_id, product.id);
-    } else {
-        panic!("Expected ProductCreated event");
-    }
+    assert_eq!(event_count(&db, "product.created").await, 1);
+    assert_eq!(product.translations[0].handle, "test-product");
 }
 
 #[tokio::test]
 async fn test_product_update_triggers_event() {
-    let (service, transport) = setup_service().await;
+    let (db, service) = setup_service().await;
 
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -106,8 +111,6 @@ async fn test_product_update_triggers_event() {
         )
         .await
         .unwrap();
-
-    transport.clear();
 
     let update_input = UpdateProductInput {
         translations: Some(vec![ProductTranslationInput {
@@ -133,20 +136,13 @@ async fn test_product_update_triggers_event() {
         .await
         .unwrap();
 
-    assert_eq!(transport.event_count(), 1);
-    assert!(transport.has_event_of_type("ProductUpdated"));
-
-    let events = transport.events_of_type("ProductUpdated");
-    if let DomainEvent::ProductUpdated { product_id, .. } = events[0] {
-        assert_eq!(product_id, product.id);
-    } else {
-        panic!("Expected ProductUpdated event");
-    }
+    assert_eq!(event_count(&db, "product.created").await, 1);
+    assert_eq!(event_count(&db, "product.updated").await, 1);
 }
 
 #[tokio::test]
 async fn test_product_publishing_triggers_event() {
-    let (service, transport) = setup_service().await;
+    let (db, service) = setup_service().await;
 
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -160,27 +156,18 @@ async fn test_product_publishing_triggers_event() {
         .await
         .unwrap();
 
-    transport.clear();
-
     service
         .publish_product(tenant_id, actor_id, product.id)
         .await
         .unwrap();
 
-    assert_eq!(transport.event_count(), 1);
-    assert!(transport.has_event_of_type("ProductPublished"));
-
-    let events = transport.events_of_type("ProductPublished");
-    if let DomainEvent::ProductPublished { product_id, .. } = events[0] {
-        assert_eq!(product_id, product.id);
-    } else {
-        panic!("Expected ProductPublished event");
-    }
+    assert_eq!(event_count(&db, "product.created").await, 1);
+    assert_eq!(event_count(&db, "product.published").await, 1);
 }
 
 #[tokio::test]
 async fn test_product_deletion_triggers_event() {
-    let (service, transport) = setup_service().await;
+    let (db, service) = setup_service().await;
 
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -194,27 +181,18 @@ async fn test_product_deletion_triggers_event() {
         .await
         .unwrap();
 
-    transport.clear();
-
     service
         .delete_product(tenant_id, actor_id, product.id)
         .await
         .unwrap();
 
-    assert_eq!(transport.event_count(), 1);
-    assert!(transport.has_event_of_type("ProductDeleted"));
-
-    let events = transport.events_of_type("ProductDeleted");
-    if let DomainEvent::ProductDeleted { product_id, .. } = events[0] {
-        assert_eq!(product_id, product.id);
-    } else {
-        panic!("Expected ProductDeleted event");
-    }
+    assert_eq!(event_count(&db, "product.created").await, 1);
+    assert_eq!(event_count(&db, "product.deleted").await, 1);
 }
 
 #[tokio::test]
 async fn test_variant_creation_triggers_event() {
-    let (service, transport) = setup_service().await;
+    let (db, service) = setup_service().await;
 
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -249,16 +227,7 @@ async fn test_variant_creation_triggers_event() {
         .await
         .unwrap();
 
-    assert_eq!(transport.event_count(), 1);
-    assert!(transport.has_event_of_type("ProductCreated"));
-
-    let product_events = transport.events_of_type("ProductCreated");
-    if let DomainEvent::ProductCreated { product_id, .. } = product_events[0] {
-        assert_eq!(product_id, product.id);
-    } else {
-        panic!("Expected ProductCreated event");
-    }
-
-    let variant_events = transport.events_of_type("VariantCreated");
-    assert_eq!(variant_events.len(), 0);
+    assert_eq!(event_count(&db, "product.created").await, 1);
+    assert_eq!(event_count(&db, "variant.created").await, 0);
+    assert_eq!(product.variants.len(), 2);
 }

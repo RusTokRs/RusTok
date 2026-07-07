@@ -79,6 +79,10 @@
   implementation is `boundary_ready` on no-compile runtime fallback evidence;
   `transport_verified` still requires live provider execution evidence.
 - Product module metadata for runtime registration.
+- Product-owned catalog search metadata for optional category filters and
+  filterable/sortable attribute controls in admin/storefront search UI. Hosts
+  inject those options through composition; search UI does not import product
+  internals or negotiate locale itself.
 
 ## Interactions
 
@@ -93,6 +97,8 @@
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
 - Consumed by `rustok-index` through the read-only effective-form resolver for
   highload product projections.
+- Consumed by `rustok-search` UI hosts through product-owned catalog search
+  metadata helpers for category filters and attribute filter/sort controls.
 - Consumed by commerce, pricing, and `rustok-ai-product` through the
   `ProductCatalogReadPort` catalog-read contract instead of umbrella product
   service re-exports.

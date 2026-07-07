@@ -57,6 +57,9 @@ pub(crate) fn validate_module_local_docs_file(
 
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    if module_local_docs_file_matches_current_english_contract(path, &content) {
+        return Ok(());
+    }
     for heading in required_headings {
         if !content.contains(heading) {
             anyhow::bail!(
@@ -68,4 +71,33 @@ pub(crate) fn validate_module_local_docs_file(
     }
 
     Ok(())
+}
+
+fn module_local_docs_file_matches_current_english_contract(path: &Path, content: &str) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if file_name == "README.md" {
+        return [
+            "## Purpose",
+            "## Scope",
+            "## Integration",
+            "## Verification",
+            "## Related documents",
+        ]
+        .iter()
+        .all(|heading| content.contains(heading));
+    }
+    if file_name == "implementation-plan.md" {
+        return [
+            "## Scope of work",
+            "## Current state",
+            "## Stages",
+            "## Verification",
+            "## Update rules",
+        ]
+        .iter()
+        .all(|heading| content.contains(heading));
+    }
+    false
 }

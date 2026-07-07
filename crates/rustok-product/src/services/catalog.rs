@@ -1108,6 +1108,10 @@ impl CatalogService {
     ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Publishing product");
 
+        ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+            .validate_product_publish_requirements(tenant_id, product_id)
+            .await?;
+
         let txn = self.db.begin().await?;
 
         let product = entities::product::Entity::find_by_id(product_id)
@@ -1118,9 +1122,6 @@ impl CatalogService {
                 warn!(product_id = %product_id, "Product not found for publishing");
                 CommerceError::ProductNotFound(product_id)
             })?;
-        ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-            .validate_product_publish_requirements(tenant_id, product_id)
-            .await?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.status = Set(entities::product::ProductStatus::Active);

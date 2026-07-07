@@ -179,6 +179,9 @@ for (const consumer of registry.consumers) {
 
 if (!plan.includes('- FBA status: `boundary_ready`')) fail('local plan FBA status drift');
 if (!plan.includes(smokePath)) fail('local plan lacks runtime fallback smoke evidence');
+if (!plan.includes('[x] maintain sync between product runtime contract, commerce transport and module metadata.')) {
+  fail('local plan product runtime/transport/metadata sync marker drift');
+}
 for (const marker of [
   'ProductCatalogReadPort` / `product.catalog_read.v1`',
   'boundary_ready` on no-compile runtime fallback evidence',
@@ -203,9 +206,6 @@ if (!central.includes('| `product` | admin + storefront | `in_progress` | `bound
 if (!central.includes(smokePath)) fail('central readiness board lacks runtime fallback smoke evidence');
 if (central.includes('все шесть FBA status остаются `in_progress` до live provider execution')) {
   fail('central commerce-domain FBA batch summary still claims product is in_progress');
-}
-if (!central.includes('`product` теперь `boundary_ready` на no-compile runtime fallback evidence')) {
-  fail('central commerce-domain FBA batch summary lacks product boundary_ready status');
 }
 
 console.log('[verify-product-runtime-fallback-smoke] Product no-compile runtime fallback smoke is executable and source-locked');

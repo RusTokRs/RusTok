@@ -8,15 +8,13 @@ use axum::{
 use loco_rs::controller::{format, ErrorDetail, Routes};
 use rustok_api::Permission;
 use rustok_channel::{
-    BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
-    ChannelResolutionPolicySetDetailResponse, ChannelResponse, ChannelService,
-    ChannelTargetResponse, CreateChannelInput, CreateChannelResolutionPolicySetInput,
-    CreateChannelResolutionRuleInput, CreateChannelTargetInput, ReorderChannelResolutionRulesInput,
-    ResolutionAction, ResolutionPredicate, TargetSurface, UpdateChannelResolutionRuleInput,
-    UpdateChannelTargetInput,
+    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
+    AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
+    BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelResponse, ChannelService,
+    ChannelTargetResponse, CreateChannelInput, CreateChannelTargetInput,
+    ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, UpdateChannelTargetInput,
 };
 use rustok_core::ModuleRegistry;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::context::OptionalChannel;
@@ -26,67 +24,6 @@ use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-
-#[derive(Debug, Serialize)]
-struct ChannelBootstrapResponse {
-    current_channel: Option<crate::context::ChannelContext>,
-    channels: Vec<ChannelDetailResponse>,
-    policy_sets: Vec<ChannelResolutionPolicySetDetailResponse>,
-    available_modules: Vec<AvailableModuleItem>,
-    oauth_apps: Vec<AvailableOauthAppItem>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CreateResolutionPolicySetRequest {
-    slug: String,
-    name: String,
-    is_active: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct CreateResolutionRuleRequest {
-    priority: i32,
-    is_active: bool,
-    action_channel_id: Uuid,
-    host_equals: Option<String>,
-    host_suffix: Option<String>,
-    oauth_app_id: Option<Uuid>,
-    surface: Option<String>,
-    locale: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpdateResolutionRuleRequest {
-    priority: Option<i32>,
-    is_active: Option<bool>,
-    action_channel_id: Option<Uuid>,
-    host_equals: Option<String>,
-    host_suffix: Option<String>,
-    oauth_app_id: Option<String>,
-    surface: Option<String>,
-    locale: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReorderResolutionRulesRequest {
-    rule_ids: Vec<Uuid>,
-}
-
-#[derive(Debug, Serialize)]
-struct AvailableModuleItem {
-    slug: String,
-    name: String,
-    kind: String,
-}
-
-#[derive(Debug, Serialize)]
-struct AvailableOauthAppItem {
-    id: Uuid,
-    name: String,
-    slug: String,
-    app_type: String,
-    is_active: bool,
-}
 
 async fn bootstrap(
     State(ctx): State<ServerRuntimeContext>,
@@ -110,7 +47,7 @@ async fn bootstrap(
     let mut available_modules = registry
         .list()
         .into_iter()
-        .map(|module| AvailableModuleItem {
+        .map(|module| AvailableChannelModuleItem {
             slug: module.slug().to_string(),
             name: module.name().to_string(),
             kind: if registry.is_core(module.slug()) {
@@ -126,7 +63,7 @@ async fn bootstrap(
         .await
         .map_err(internal_error)?
         .into_iter()
-        .map(|app| AvailableOauthAppItem {
+        .map(|app| AvailableChannelOauthAppItem {
             id: app.id,
             name: app.name.clone(),
             slug: app.slug.clone(),
@@ -136,7 +73,7 @@ async fn bootstrap(
         .collect::<Vec<_>>();
     oauth_apps.sort_by(|left, right| left.slug.cmp(&right.slug));
 
-    format::json(ChannelBootstrapResponse {
+    format::json(ChannelBootstrapResponse::<crate::context::ChannelContext> {
         current_channel,
         channels,
         policy_sets,
@@ -337,18 +274,13 @@ async fn create_resolution_policy_set(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
-    Json(input): Json<CreateResolutionPolicySetRequest>,
+    Json(input): Json<rustok_channel::CreateResolutionPolicySetRequest>,
 ) -> Result<Response> {
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
     let policy_set = service
-        .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
-            tenant_id: tenant.id,
-            slug: input.slug,
-            name: input.name,
-            is_active: input.is_active,
-        })
+        .create_resolution_policy_set(create_resolution_policy_set_input(tenant.id, input))
         .await
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
@@ -361,23 +293,17 @@ async fn create_resolution_rule(
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(policy_set_id): Path<Uuid>,
-    Json(input): Json<CreateResolutionRuleRequest>,
+    Json(input): Json<rustok_channel::CreateResolutionRuleRequest>,
 ) -> Result<Response> {
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, input.action_channel_id).await?;
 
-    let (priority, is_active, definition) =
-        build_rule_definition(input).map_err(Error::BadRequest)?;
     let service = ChannelService::new(ctx.db_clone());
     let rule = service
         .create_resolution_rule(
             policy_set_id,
-            CreateChannelResolutionRuleInput {
-                priority,
-                is_active,
-                definition,
-            },
+            create_resolution_rule_input(input).map_err(Error::BadRequest)?,
         )
         .await
         .map_err(internal_error)?;
@@ -391,7 +317,7 @@ async fn update_resolution_rule(
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((policy_set_id, rule_id)): Path<(Uuid, Uuid)>,
-    Json(input): Json<UpdateResolutionRuleRequest>,
+    Json(input): Json<rustok_channel::UpdateResolutionRuleRequest>,
 ) -> Result<Response> {
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
@@ -402,7 +328,7 @@ async fn update_resolution_rule(
 
     let service = ChannelService::new(ctx.db_clone());
     let rule = service
-        .update_resolution_rule(policy_set_id, rule_id, build_update_rule_input(input))
+        .update_resolution_rule(policy_set_id, rule_id, update_resolution_rule_input(input))
         .await
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
@@ -536,80 +462,6 @@ async fn ensure_policy_set_belongs_to_tenant(
     Ok(())
 }
 
-fn build_rule_definition(
-    input: CreateResolutionRuleRequest,
-) -> std::result::Result<(i32, bool, rustok_channel::ChannelResolutionRuleDefinition), String> {
-    let CreateResolutionRuleRequest {
-        priority,
-        is_active,
-        action_channel_id,
-        host_equals,
-        host_suffix,
-        oauth_app_id,
-        surface,
-        locale,
-    } = input;
-    let mut predicates = Vec::new();
-
-    if let Some(host_equals) = host_equals.filter(|value| !value.trim().is_empty()) {
-        predicates.push(ResolutionPredicate::HostEquals(host_equals));
-    }
-    if let Some(host_suffix) = host_suffix.filter(|value| !value.trim().is_empty()) {
-        predicates.push(ResolutionPredicate::HostSuffix(host_suffix));
-    }
-    if let Some(oauth_app_id) = oauth_app_id {
-        predicates.push(ResolutionPredicate::OAuthAppEquals(oauth_app_id));
-    }
-    if let Some(surface) = surface
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        let surface = match surface {
-            "http" => TargetSurface::Http,
-            other => {
-                return Err(format!(
-                    "Unsupported surface `{other}`; only `http` is currently supported"
-                ));
-            }
-        };
-        predicates.push(ResolutionPredicate::SurfaceIs(surface));
-    }
-    if let Some(locale) = locale.filter(|value| !value.trim().is_empty()) {
-        predicates.push(ResolutionPredicate::LocaleEquals(locale));
-    }
-
-    Ok((
-        priority,
-        is_active,
-        rustok_channel::ChannelResolutionRuleDefinition {
-            predicates,
-            action: ResolutionAction::ResolveToChannel {
-                channel_id: action_channel_id,
-            },
-        },
-    ))
-}
-
-fn normalize_optional_string(value: Option<String>) -> Option<String> {
-    value
-        .map(|v| v.trim().to_lowercase())
-        .filter(|v| !v.is_empty())
-}
-
-fn build_update_rule_input(input: UpdateResolutionRuleRequest) -> UpdateChannelResolutionRuleInput {
-    UpdateChannelResolutionRuleInput {
-        priority: input.priority,
-        is_active: input.is_active,
-        action_channel_id: input.action_channel_id,
-        host_equals: normalize_optional_string(input.host_equals),
-        host_suffix: normalize_optional_string(input.host_suffix),
-        oauth_app_id: input.oauth_app_id,
-        surface: normalize_optional_string(input.surface),
-        locale: normalize_optional_string(input.locale),
-    }
-}
-
 fn internal_error(error: impl std::fmt::Display) -> Error {
     Error::Message(error.to_string())
 }
@@ -666,84 +518,4 @@ pub fn routes() -> Routes {
             "/policies/{policy_set_id}/rules/{rule_id}",
             delete(delete_resolution_rule),
         )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        build_rule_definition, build_update_rule_input, CreateResolutionRuleRequest,
-        UpdateResolutionRuleRequest,
-    };
-    use rustok_channel::{ResolutionPredicate, TargetSurface};
-    use uuid::Uuid;
-
-    #[test]
-    fn build_rule_definition_returns_normalized_predicates() {
-        let channel_id = Uuid::new_v4();
-        let (priority, is_active, definition) =
-            build_rule_definition(CreateResolutionRuleRequest {
-                priority: 30,
-                is_active: true,
-                action_channel_id: channel_id,
-                host_equals: Some(" SHOP.EXAMPLE.TEST ".to_string()),
-                host_suffix: None,
-                oauth_app_id: None,
-                surface: Some("http".to_string()),
-                locale: Some(" RU_BY ".to_string()),
-            })
-            .expect("definition should be valid");
-
-        assert_eq!(priority, 30);
-        assert!(is_active);
-        assert_eq!(
-            definition.predicates,
-            vec![
-                ResolutionPredicate::HostEquals("shop.example.test".to_string()),
-                ResolutionPredicate::SurfaceIs(TargetSurface::Http),
-                ResolutionPredicate::LocaleEquals("ru-by".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn build_rule_definition_rejects_unsupported_surface() {
-        let error = build_rule_definition(CreateResolutionRuleRequest {
-            priority: 10,
-            is_active: true,
-            action_channel_id: Uuid::new_v4(),
-            host_equals: Some("shop.example.test".to_string()),
-            host_suffix: None,
-            oauth_app_id: None,
-            surface: Some("grpc".to_string()),
-            locale: None,
-        })
-        .expect_err("unsupported surface should be rejected");
-
-        assert!(error.contains("Unsupported surface"));
-    }
-
-    #[test]
-    fn build_update_rule_input_trims_patch_fields() {
-        let payload = build_update_rule_input(UpdateResolutionRuleRequest {
-            priority: Some(40),
-            is_active: Some(false),
-            action_channel_id: Some(Uuid::new_v4()),
-            host_equals: Some(" SHOP.EXAMPLE.TEST ".to_string()),
-            host_suffix: Some("   ".to_string()),
-            oauth_app_id: Some(" 550e8400-e29b-41d4-a716-446655440000 ".to_string()),
-            surface: Some(" HTTP ".to_string()),
-            locale: Some(" EN_US ".to_string()),
-        });
-
-        assert_eq!(payload.priority, Some(40));
-        assert_eq!(payload.is_active, Some(false));
-        assert_eq!(payload.host_equals.as_deref(), Some("shop.example.test"));
-        assert_eq!(payload.host_suffix.as_deref(), None);
-        assert_eq!(
-            payload.oauth_app_id.as_deref(),
-            Some("550e8400-e29b-41d4-a716-446655440000")
-        );
-        assert_eq!(payload.surface.as_deref(), Some("http"));
-        assert_eq!(payload.locale.as_deref(), Some("en_us"));
-    }
 }

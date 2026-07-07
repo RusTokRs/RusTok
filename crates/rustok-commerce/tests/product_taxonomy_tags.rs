@@ -1,4 +1,5 @@
 use rust_decimal::Decimal;
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
@@ -8,9 +9,12 @@ use rustok_taxonomy::{
     entities::taxonomy_term, CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService,
     TaxonomyTermKind,
 };
-use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
+use rustok_test_utils::{db::setup_test_db, helpers::unique_slug};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm_migration::prelude::SchemaManager;
+use sea_orm_migration::MigrationTrait;
 use std::str::FromStr;
+use std::sync::Arc;
 use uuid::Uuid;
 
 mod support;
@@ -18,7 +22,12 @@ mod support;
 async fn setup() -> (DatabaseConnection, CatalogService) {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
-    let event_bus = mock_transactional_event_bus();
+    let schema_manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&schema_manager)
+        .await
+        .expect("outbox schema should be available for product tag tests");
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let service = CatalogService::new(db.clone(), event_bus);
     (db, service)
 }

@@ -288,6 +288,7 @@ CREATE TABLE IF NOT EXISTS product_attribute_value_translations (
 );
 
 CREATE TABLE IF NOT EXISTS product_attribute_value_options (
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     value_id UUID NOT NULL REFERENCES product_attribute_values(id) ON DELETE CASCADE,
     option_id UUID NOT NULL REFERENCES product_attribute_options(id) ON DELETE RESTRICT,
     PRIMARY KEY (value_id, option_id)
@@ -320,6 +321,7 @@ CREATE TABLE IF NOT EXISTS product_variant_attribute_value_translations (
 );
 
 CREATE TABLE IF NOT EXISTS product_variant_attribute_value_options (
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     value_id UUID NOT NULL REFERENCES product_variant_attribute_values(id) ON DELETE CASCADE,
     option_id UUID NOT NULL REFERENCES product_attribute_options(id) ON DELETE RESTRICT,
     PRIMARY KEY (value_id, option_id)

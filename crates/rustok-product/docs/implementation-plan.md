@@ -127,30 +127,31 @@ while transport and part of orchestration remain with umbrella `rustok-commerce`
 - [x] Apply schema/category visibility overrides and channel settings in runtime facet/search/sort projections.
 - [x] Connect `rustok-search` to channel-scoped normalized facets/sorts and materialized virtual category assignments.
 - [x] Lock projection-search contract with fast source/schema guardrail.
-- [ ] Connect storefront/admin UI controls to optional catalog filters/sorts.
+- [x] Connect storefront/admin UI controls to optional catalog filters/sorts. Evidence: product-owned admin/storefront search metadata helpers expose category options plus filterable/sortable attribute options, Leptos/Next hosts pass them into search UI composition, and `verify-search-ui-boundary` source-locks both host-provided controls and the no module-local locale fallback rule.
 
 ### 1. Contract stability
 
 - [x] lock product-owned catalog boundary;
 - [x] transition tags to taxonomy-backed first-class contract;
 - [x] lock typed `shipping_profile_slug` for product/variant;
-- [ ] maintain sync between product runtime contract, commerce transport and module metadata.
+- [x] maintain sync between product runtime contract, commerce transport and module metadata. Evidence: `verify-product-runtime-fallback-smoke` locks `ProductCatalogReadPort` / `product.catalog_read.v1` across `product-fba-registry.json`, `rustok-module.toml`, `modules.toml`, README/docs, central FFA/FBA board and ecommerce aggregate package scripts without promoting the provider beyond `boundary_ready`.
 
 ### 2. Catalog hardening
 
-- [ ] cover publication, tags and shipping-profile edge-cases with targeted tests;
-- [ ] evolve product-specific semantics without reverting to metadata-only contract;
-- [ ] keep deliverability-facing bindings compatible with fulfillment/pricing flows.
-- [ ] Close DB-level tenant consistency audit for native catalog tables: composite tenant-aware FK/unique guardrails must prevent cross-tenant relationships between attributes/options/categories/schemas/groups/values at DB level, not just service-level validation.
-- [ ] Normalize remaining legacy product locale columns to `VARCHAR(32)` per platform i18n contract: `product_translations`, `product_image_translations`, `product_option_translations`, `product_option_value_translations`, `product_variant_translations`.
-- [ ] Lock detached-value marker contract: current behavior computes detached read-time from effective schema and does not require setting `detached_at` when changing `primary_category_id`; if a persisted marker is needed, add a separate migration/handler `ProductPrimaryCategoryChanged`.
-- [ ] Add fast no-compile schema guardrail for product catalog attribute migration and index projection invariants: key tables, `VARCHAR(32)` locale in new tables, closure/materialized virtual tables, typed value/options tables, partial indexes for facet/search/sort.
+- [x] cover publication, tags and shipping-profile edge-cases with targeted tests. Evidence: existing targeted Rust tests cover taxonomy-backed product tags without `metadata.tags` mirrors, legacy metadata read fallback, unknown shipping profile rejection, incompatible storefront shipping profile filtering/rejection and `ProductPublished` event emission; `verify-product-catalog-schema` now source-locks those test cases and the publish/shipping helper call sites without Cargo compilation.
+- [x] evolve product-specific semantics without reverting to metadata-only contract. Evidence: product docs and `rustok-commerce/CRATE_API.md` describe first-class `tags`, `product_tags`, typed `shipping_profile_slug`, nullable `seller_id`, native typed attribute values and the pricing-authoritative split; `verify-product-catalog-schema` source-locks these docs plus tag/shipping helper call sites.
+- [x] keep deliverability-facing bindings compatible with fulfillment/pricing flows. Evidence: commerce docs lock `variant -> product -> default` effective shipping profile resolution, cart/order line-item snapshots, seller-aware delivery groups, active shipping-profile validation and the catalog-vs-pricing authority split; `verify-product-catalog-schema` source-locks those markers and the helper call sites used by storefront cart/shipping flows.
+- [x] Close DB-level tenant consistency audit for native catalog tables: composite tenant-aware FK/unique guardrails must prevent cross-tenant relationships between attributes/options/categories/schemas/groups/values at DB level, not just service-level validation. Evidence: `m20260701_000002_add_product_catalog_tenant_consistency_constraints` backfills variant/join tenant ids, adds tenant-aware uniqueness/FKs for product/category/attribute/schema/value relationships, and `verify-product-catalog-schema` source-locks the constraints and tenant-aware value-option writes.
+- [x] Normalize remaining legacy product locale columns to `VARCHAR(32)` per platform i18n contract: `product_translations`, `product_image_translations`, `product_option_translations`, `product_option_value_translations`, `product_variant_translations`. Fresh create-table migrations now use `string_len(32)`, and `m20260405_000007_expand_product_locale_storage_columns` widens existing Postgres columns without a destructive down migration.
+- [x] Lock detached-value marker contract: current behavior computes detached read-time from effective schema and does not require setting `detached_at` when changing `primary_category_id`; if a persisted marker is needed, add a separate migration/handler `ProductPrimaryCategoryChanged`. Evidence: `verify-product-catalog-schema` source-locks resolver-side `detached_attribute_ids`, read-side `record.detached = detached_attribute_ids.contains(...)`, and write-side `detached_at = NULL` only when an effective value is saved.
+- [x] Add fast no-compile schema guardrail for product catalog attribute migration and index projection invariants: key tables, `VARCHAR(32)` locale in new tables, closure/materialized virtual tables, typed value/options tables, partial indexes for facet/search/sort. Guardrail: `scripts/verify/verify-product-catalog-schema.mjs` + fixture coverage `scripts/verify/verify-product-catalog-schema.test.mjs`, wired into `verify:ecommerce:fba` / `test:verify:ecommerce:fba`.
+- [x] Lock product-owned catalog search metadata and UI composition guardrails: admin/storefront product packages publish category and filterable/sortable attribute options, Leptos and Next hosts inject them into search controls, and `verify-search-ui-boundary` covers GraphQL/native parity, public-safe storefront metadata and host effective locale usage.
 
 ### 3. Operability
 
 - [x] bring up module-owned admin UI package for product catalog surface;
 - [x] document new catalog guarantees concurrently with runtime surface changes;
-- [ ] keep local docs and `README.md` synchronized;
+- [x] keep local docs and `README.md` synchronized for native catalog attributes, search metadata, detached values, highload projections and the current no-compile verification gates.
 - [x] extract storefront FFA core slice for route/query state, selected-product view-model and pricing/seller helpers;
 - [x] extract storefront catalog rail presentation into core view-model without Leptos runtime;
 - [x] extract selected-product card labels and empty state into core view-model without Leptos runtime;
@@ -162,12 +163,14 @@ while transport and part of orchestration remain with umbrella `rustok-commerce`
 - [x] extract selected product admin summary state into `SelectedProductSummaryViewModel` in framework-agnostic admin core;
 - [x] extract product admin list-card display state into `ProductAdminListItemViewModel` in framework-agnostic admin core;
 - [x] extract product admin editor shell state into `ProductAdminEditorViewModel` in framework-agnostic admin core;
-- [ ] update consumer-module docs when tag/deliverability integration rules change.
+- [x] update consumer-module docs when tag/deliverability integration rules change. Evidence: `crates/rustok-commerce/README.md`, `crates/rustok-commerce/docs/README.md` and `crates/rustok-commerce/CRATE_API.md` are synchronized with first-class product tags, typed shipping profiles, seller-aware delivery groups and the pricing split, and `verify-product-catalog-schema` now checks those consumer-facing markers.
 
 ## Verification
 
 - `npm.cmd run verify:product:runtime-fallback-smoke`
 - `npm.cmd run test:verify:product:runtime-fallback-smoke`
+- `npm.cmd run verify:product:catalog-schema`
+- `npm.cmd run test:verify:product:catalog-schema`
 - `npm.cmd run verify:ecommerce:fba`
 - `npm.cmd run test:verify:ecommerce:fba`
 - `cargo xtask module validate product`
@@ -185,6 +188,6 @@ while transport and part of orchestration remain with umbrella `rustok-commerce`
 
 ## Quality backlog
 
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and accuracy of `README.md` and local docs.
-- [ ] Lock/update verification gates for current module state.
+- [x] Update test coverage for key module scenarios. Evidence: targeted Rust tests for tags, publication and shipping-profile compatibility are source-locked by the no-compile product catalog verifier; Cargo execution remains the live evidence step.
+- [x] Verify completeness and accuracy of `README.md` and local docs. Evidence: root README, local docs README, implementation plan and commerce consumer docs are cross-checked by `verify-product-catalog-schema` / `verify-product-runtime-fallback-smoke`.
+- [x] Lock/update verification gates for current module state. Evidence: expanded `verify-product-catalog-schema` and `verify-product-runtime-fallback-smoke` fixture suites cover schema/tenant/i18n/search UI metadata, detached markers, runtime metadata sync, targeted edge-case tests and consumer docs without large compilation.

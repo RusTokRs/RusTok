@@ -155,6 +155,24 @@ const planResult = run(prematurePlanTransportVerified);
 assert(planResult.status !== 0, 'expected premature local plan transport_verified to fail');
 assert(planResult.stderr.includes('local plan FBA status drift'), `expected local plan status failure, got ${planResult.stderr}`);
 
+const missingSyncMarker = copyFixture();
+const syncPlanPath = path.join(missingSyncMarker, 'crates/rustok-product/docs/implementation-plan.md');
+fs.writeFileSync(
+  syncPlanPath,
+  fs
+    .readFileSync(syncPlanPath, 'utf8')
+    .replace(
+      '[x] maintain sync between product runtime contract, commerce transport and module metadata.',
+      '[ ] maintain sync between product runtime contract, commerce transport and module metadata.',
+    ),
+);
+const syncMarkerResult = run(missingSyncMarker);
+assert(syncMarkerResult.status !== 0, 'expected missing product runtime/transport/metadata sync marker to fail');
+assert(
+  syncMarkerResult.stderr.includes('local plan product runtime/transport/metadata sync marker drift'),
+  `expected sync marker failure, got ${syncMarkerResult.stderr}`,
+);
+
 const staleCentralBatchSummary = copyFixture();
 const centralPath = path.join(staleCentralBatchSummary, 'docs/modules/registry.md');
 fs.writeFileSync(
@@ -162,15 +180,15 @@ fs.writeFileSync(
   fs
     .readFileSync(centralPath, 'utf8')
     .replace(
-      '`product` теперь `boundary_ready` на no-compile runtime fallback evidence, а `pricing`, `inventory`, `customer`, `cart` и `tax` остаются ниже `boundary_ready` до live provider execution',
-      'все шесть FBA status остаются `in_progress` до live provider execution',
+      '| `product` | admin + storefront | `in_progress` | `boundary_ready`',
+      '| `product` | admin + storefront | `in_progress` | `in_progress`',
     ),
 );
 const centralResult = run(staleCentralBatchSummary);
-assert(centralResult.status !== 0, 'expected stale central commerce-domain batch summary to fail');
+assert(centralResult.status !== 0, 'expected stale central product status to fail');
 assert(
-  centralResult.stderr.includes('central commerce-domain FBA batch summary still claims product is in_progress'),
-  `expected central batch summary failure, got ${centralResult.stderr}`,
+  centralResult.stderr.includes('central readiness board product status drift'),
+  `expected central product status failure, got ${centralResult.stderr}`,
 );
 
 console.log('[verify-product-runtime-fallback-smoke.test] fixture coverage passed');

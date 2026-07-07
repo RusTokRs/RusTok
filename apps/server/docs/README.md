@@ -60,7 +60,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   not through Loco `AppContext`.
 - Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; the server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services and registers the corresponding runtimes in shared runtime extensions. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`, without Loco compatibility entrypoints. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`; the full Loco `AppContext` remains only in bootstrap/REST boundary adapters that assemble these dependencies.
 - AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, and Alloy runtime handles. `rustok-ai` does not read Loco `AppContext`; the Leptos admin adapter remains a host-boundary point that assembles this runtime from the current app context.
-- MCP GraphQL query/mutation/types belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService` and registers `McpManagementRuntime`.
+- MCP GraphQL query/mutation/types and REST/control-plane DTOs belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService`, registers `McpManagementRuntime`, and keeps HTTP controllers as Axum/Loco adapters that import owner DTOs and actor parsing.
 - Content GraphQL dataloaders for `nodes`, `node_translations`, and `bodies` live in
   `rustok-content`; `apps/server` only registers owner-owned loader types in the schema builder.
 - System GraphQL may publish media usage, but reads it through `rustok-media::load_media_usage_snapshot`,
@@ -104,7 +104,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Swagger document filtering, installer persistence reads, admin DLQ, MCP management/remote tools
   and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on Loco state.
-- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline itself lives in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, auth context receives `ServerAuthRuntime`; Loco `AppContext` remains only in router/controller boundary adapters for the current host.
+- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, auth context receives `ServerAuthRuntime`; Loco `AppContext` remains only in router/controller boundary adapters for the current host.
 - Module-owned event listeners are assembled from `ModuleRegistry` into a common `EventDispatcher`; `apps/server` no longer holds separate host-owned index/search/workflow listener paths.
 - Server migrator is the backend composition root for module-owned schema: content-family modules (`blog`, `pages`, `comments`) and search must connect here via `crates/rustok-*/src/migrations`, otherwise external Next/Leptos admin surfaces get a working route shell without the needed tables.
 - `apps/server` can run as a `full` host or as `registry_only`, but `host_mode` does not replace the deployment profile and does not change build/deploy semantics.
@@ -233,7 +233,7 @@ Minimum local verification path for changes in `apps/server`:
 - [Plan to migrate from Loco RS to pure Axum and custom CLI](../../../docs/architecture/loco-exit-plan.md)
 - [Event transport contract](./event-transport.md)
 - [Core verification plan](./CORE_VERIFICATION_PLAN.md)
-- [Loco integration](./loco-core-integration-plan.md) — historical/deprecated context; active roadmap is the Loco exit plan above
+- [Loco feature support inventory](./LOCO_FEATURE_SUPPORT.md) - historical inventory only; active roadmap is the Loco exit plan above
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Manifest layer contracts](../../../docs/modules/manifest.md)
 - [Runbook retry/compensation lifecycle hook failures](./module-lifecycle-retry-compensation-runbook.md)

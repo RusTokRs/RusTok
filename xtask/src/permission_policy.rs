@@ -8,7 +8,18 @@ pub(crate) struct CorePermissionContract {
 }
 
 pub(crate) fn load_core_permission_contract(core_root: &Path) -> Result<CorePermissionContract> {
-    let permissions_path = core_root.join("src").join("permissions.rs");
+    let mut permissions_path = core_root.join("src").join("permissions.rs");
+    if !permissions_path.exists() {
+        if let Some(crates_root) = core_root.parent() {
+            let api_permissions_path = crates_root
+                .join("rustok-api")
+                .join("src")
+                .join("permissions.rs");
+            if api_permissions_path.exists() {
+                permissions_path = api_permissions_path;
+            }
+        }
+    }
     let content = fs::read_to_string(&permissions_path)
         .with_context(|| format!("Failed to read {}", permissions_path.display()))?;
 

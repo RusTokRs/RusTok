@@ -16,6 +16,7 @@ use rustok_fulfillment::dto::{
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::OrderService;
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_payment::dto::{
     AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput, CreateRefundInput,
 };
@@ -29,8 +30,10 @@ use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm_migration::{prelude::SchemaManager, MigrationTrait};
 use serde_json::Value;
 use std::str::FromStr;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[path = "../support.rs"]
@@ -50,10 +53,18 @@ query {
 }
 "#;
 
+async fn outbox_event_bus(db: &DatabaseConnection) -> TransactionalEventBus {
+    SysEventsMigration
+        .up(&SchemaManager::new(db))
+        .await
+        .expect("sys events migration should run");
+    TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())))
+}
+
 async fn setup() -> (DatabaseConnection, CatalogService, CartService) {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
-    let event_bus = mock_transactional_event_bus();
+    let event_bus = outbox_event_bus(&db).await;
     (
         db.clone(),
         CatalogService::new(db.clone(), event_bus),
@@ -70,7 +81,7 @@ async fn setup_checkout() -> (
 ) {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
-    let event_bus = mock_transactional_event_bus();
+    let event_bus = outbox_event_bus(&db).await;
     (
         db.clone(),
         CatalogService::new(db.clone(), event_bus.clone()),

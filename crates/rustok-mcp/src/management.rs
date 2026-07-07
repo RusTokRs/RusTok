@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -59,6 +60,201 @@ pub struct ApplyMcpScaffoldDraftCommand {
     pub draft_id: Uuid,
     pub workspace_root: String,
     pub confirm: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BootstrapMcpRemoteSessionRequest {
+    pub transport: Option<String>,
+    pub plaintext_token: Option<String>,
+    pub correlation_id: Option<String>,
+    #[serde(default = "default_metadata")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct McpRemoteToolCallRequest {
+    pub tool_name: String,
+    pub arguments: Option<serde_json::Value>,
+    pub plaintext_token: Option<String>,
+    pub correlation_id: Option<String>,
+    #[serde(default = "default_metadata")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpRemoteToolCallResponse {
+    pub transport: String,
+    pub correlation_id: String,
+    pub tenant_id: Option<String>,
+    pub client_id: Option<String>,
+    pub token_id: Option<String>,
+    pub tool_name: String,
+    pub result: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateMcpClientRequest {
+    pub slug: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub actor_type: String,
+    pub delegated_user_id: Option<Uuid>,
+    pub token_name: Option<String>,
+    pub token_expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
+    #[serde(default)]
+    pub granted_permissions: Vec<String>,
+    #[serde(default)]
+    pub granted_scopes: Vec<String>,
+    #[serde(default = "default_metadata")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RotateMcpTokenRequest {
+    pub token_name: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoke_existing_tokens: Option<bool>,
+    #[serde(default = "default_metadata")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateMcpPolicyRequest {
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
+    #[serde(default)]
+    pub granted_permissions: Vec<String>,
+    #[serde(default)]
+    pub granted_scopes: Vec<String>,
+    #[serde(default = "default_metadata")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct McpAuditQuery {
+    pub client_id: Option<Uuid>,
+    pub outcome: Option<String>,
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StageMcpModuleScaffoldDraftRequest {
+    pub client_id: Option<Uuid>,
+    pub slug: String,
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+    pub with_graphql: Option<bool>,
+    pub with_rest: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApplyMcpModuleScaffoldDraftRequest {
+    pub workspace_root: String,
+    pub confirm: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpClientSummaryResponse {
+    pub id: Uuid,
+    pub client_key: Uuid,
+    pub slug: String,
+    pub display_name: String,
+    pub actor_type: String,
+    pub is_active: bool,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpPolicyResponse {
+    pub allowed_tools: Vec<String>,
+    pub denied_tools: Vec<String>,
+    pub granted_permissions: Vec<String>,
+    pub granted_scopes: Vec<String>,
+    pub metadata: serde_json::Value,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpTokenResponse {
+    pub id: Uuid,
+    pub token_name: String,
+    pub token_preview: String,
+    pub is_active: bool,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpClientDetailsResponse {
+    pub client: McpClientSummaryResponse,
+    pub description: Option<String>,
+    pub delegated_user_id: Option<Uuid>,
+    pub metadata: serde_json::Value,
+    pub policy: Option<McpPolicyResponse>,
+    pub tokens: Vec<McpTokenResponse>,
+    pub effective_access_context: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateMcpClientResponse {
+    pub client: McpClientSummaryResponse,
+    pub policy: McpPolicyResponse,
+    pub token: McpTokenResponse,
+    pub plaintext_token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RotateMcpTokenResponse {
+    pub client: McpClientSummaryResponse,
+    pub token: McpTokenResponse,
+    pub plaintext_token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpAuditEventResponse {
+    pub id: Uuid,
+    pub client_id: Option<Uuid>,
+    pub token_id: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
+    pub action: String,
+    pub outcome: String,
+    pub tool_name: Option<String>,
+    pub reason: Option<String>,
+    pub correlation_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpModuleScaffoldDraftResponse {
+    pub id: Uuid,
+    pub client_id: Option<Uuid>,
+    pub slug: String,
+    pub crate_name: String,
+    pub status: String,
+    pub request_payload: serde_json::Value,
+    pub preview_payload: serde_json::Value,
+    pub workspace_root: Option<String>,
+    pub applied_at: Option<DateTime<Utc>>,
+    pub created_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+fn default_metadata() -> serde_json::Value {
+    serde_json::json!({})
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

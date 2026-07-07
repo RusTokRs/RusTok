@@ -47,6 +47,8 @@ const transportModPath = "crates/rustok-mcp/admin/src/transport/mod.rs";
 const nativeAdapterPath = "crates/rustok-mcp/admin/src/transport/native_server_adapter.rs";
 const graphqlAdapterPath = "crates/rustok-mcp/admin/src/transport/graphql_adapter.rs";
 const managementContractPath = "crates/rustok-mcp/src/management.rs";
+const mcpAccessContractPath = "crates/rustok-mcp/src/access.rs";
+const serverMcpControllerPath = "apps/server/src/controllers/mcp.rs";
 const managementProviderPath = "apps/server/src/services/mcp_management_mutation_provider.rs";
 const runtimeRegistrationPath = "apps/server/src/services/module_event_dispatcher.rs";
 const aiNextPackagePath = "apps/next-admin/packages/rustok-ai/src/index.tsx";
@@ -65,6 +67,8 @@ for (const [file, description] of [
   [nativeAdapterPath, "expected MCP native server-function adapter"],
   [graphqlAdapterPath, "expected MCP GraphQL adapter"],
   [managementContractPath, "expected MCP management port contract"],
+  [mcpAccessContractPath, "expected MCP access contract"],
+  [serverMcpControllerPath, "expected server MCP controller adapter"],
   [managementProviderPath, "expected server MCP management provider"],
   [runtimeRegistrationPath, "expected host runtime provider registration"],
   [mcpPlanPath, "expected MCP implementation plan"],
@@ -83,6 +87,8 @@ const transportMod = readRepo(transportModPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const managementContract = readRepo(managementContractPath);
+const mcpAccessContract = readRepo(mcpAccessContractPath);
+const serverMcpController = readRepo(serverMcpControllerPath);
 const managementProvider = readRepo(managementProviderPath);
 const runtimeRegistration = readRepo(runtimeRegistrationPath);
 const aiNextPackage = readRepo(aiNextPackagePath);
@@ -209,10 +215,50 @@ for (const marker of [
   "StageMcpScaffoldDraftCommand",
   "ApplyMcpScaffoldDraftCommand",
   "McpScaffoldDraftRecord",
+  "pub struct BootstrapMcpRemoteSessionRequest",
+  "pub struct McpRemoteToolCallRequest",
+  "pub struct McpRemoteToolCallResponse",
+  "pub struct CreateMcpClientRequest",
+  "pub struct RotateMcpTokenRequest",
+  "pub struct UpdateMcpPolicyRequest",
+  "pub struct McpAuditQuery",
+  "pub struct StageMcpModuleScaffoldDraftRequest",
+  "pub struct ApplyMcpModuleScaffoldDraftRequest",
+  "pub struct McpClientSummaryResponse",
+  "pub struct McpClientDetailsResponse",
+  "pub struct McpAuditEventResponse",
+  "pub struct McpModuleScaffoldDraftResponse",
 ]) {
   assertContains(managementContract, marker, `${managementContractPath}: expected owner management contract ${marker}`);
 }
 assertNotContains(managementContract, "sea_orm", `${managementContractPath}: owner port contract must remain persistence-free`);
+assertContains(mcpAccessContract, "impl FromStr for McpActorType", `${mcpAccessContractPath}: actor parsing must stay owner-owned`);
+for (const marker of [
+  "pub struct BootstrapMcpRemoteSessionRequest",
+  "pub struct McpRemoteToolCallRequest",
+  "pub struct McpRemoteToolCallResponse",
+  "pub struct CreateMcpClientRequest",
+  "pub struct RotateMcpTokenRequest",
+  "pub struct UpdateMcpPolicyRequest",
+  "pub struct McpAuditQuery",
+  "pub struct StageMcpModuleScaffoldDraftRequest",
+  "pub struct ApplyMcpModuleScaffoldDraftRequest",
+  "pub struct McpClientSummaryResponse",
+  "pub struct McpClientDetailsResponse",
+  "pub struct McpAuditEventResponse",
+  "pub struct McpModuleScaffoldDraftResponse",
+]) {
+  assertNotContains(
+    serverMcpController,
+    marker,
+    `${serverMcpControllerPath}: REST/control-plane DTO ownership must stay in rustok-mcp (${marker})`,
+  );
+}
+assertContains(serverMcpController, "use rustok_mcp::{", `${serverMcpControllerPath}: controller must import owner MCP contracts`);
+assertContains(serverMcpController, "CreateMcpClientRequest", `${serverMcpControllerPath}: controller must consume owner request DTOs`);
+assertContains(serverMcpController, "McpClientSummaryResponse", `${serverMcpControllerPath}: controller must consume owner response DTOs`);
+assertContains(serverMcpController, "McpActorType::from_str", `${serverMcpControllerPath}: controller must delegate actor parsing to rustok-mcp`);
+assertNotContains(serverMcpController, '"human_user" => Ok(McpActorType::HumanUser)', `${serverMcpControllerPath}: actor parsing must not be duplicated in server`);
 assertContains(managementProvider, "impl McpManagementPort", `${managementProviderPath}: server must implement MCP management port`);
 assertContains(managementProvider, "McpManagementService::create_client", `${managementProviderPath}: provider must delegate to canonical management service`);
 assertContains(managementProvider, "McpManagementService::rotate_token", `${managementProviderPath}: provider must preserve canonical token security logic`);

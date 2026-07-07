@@ -18,6 +18,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(ProductVariants::ProductId).uuid().not_null())
+                    .col(ColumnDef::new(ProductVariants::TenantId).uuid().not_null())
                     .col(ColumnDef::new(ProductVariants::Sku).string_len(100))
                     .col(ColumnDef::new(ProductVariants::Barcode).string_len(100))
                     .col(ColumnDef::new(ProductVariants::Ean).string_len(20))
@@ -94,7 +95,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(ProductVariantTranslations::Locale)
-                            .string_len(5)
+                            .string_len(32)
                             .not_null(),
                     )
                     .col(ColumnDef::new(ProductVariantTranslations::Title).string_len(255))
@@ -215,6 +216,7 @@ enum ProductVariants {
     Table,
     Id,
     ProductId,
+    TenantId,
     Sku,
     Barcode,
     Ean,
