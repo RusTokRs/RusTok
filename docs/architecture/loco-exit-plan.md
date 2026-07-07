@@ -81,7 +81,7 @@ Current classified inventory baseline after the `rustok-fulfillment-storefront` 
 | `server_task` / `server_seed` / `server_schedule` | 22 | Maintenance flows that belong in `rustok-ops`, not the HTTP server binary. |
 | `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
 | `dependency_manifest` / `lockfile` | 80 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
-| `verification_guard` / `docs` / `scaffold_template` | 278 | Guardrails, historical docs and generated templates to update/archive last. |
+| `verification_guard` / `docs` / `scaffold_template` | 282 | Guardrails, historical docs and generated templates to update/archive last. |
 
 Approximate remaining effort:
 

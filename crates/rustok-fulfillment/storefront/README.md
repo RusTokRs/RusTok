@@ -20,6 +20,7 @@ Module-owned storefront UI package for `rustok-fulfillment`.
 - `src/model.rs` — serializable storefront delivery-group and shipping-option DTOs.
 - `src/core/mod.rs` — Leptos-free selection request helpers and labels.
 - `src/transport.rs` — serializable selection command DTOs, selection-plan validation, typed transport errors, and owner selected-path policy for native + GraphQL-compatible command execution.
+- `src/transport/native_server_adapter/raw_adapter.rs` — native server-function adapter backed by `HostRuntimeContext` DB/event-bus handles; it has no Loco runtime or outbox Loco-adapter dependency.
 - `src/ui/leptos.rs` — Leptos render adapter for fulfillment-owned shipping handoff and selection UI.
 
 See the platform documentation map in [`../../../docs/index.md`](../../../docs/index.md).
