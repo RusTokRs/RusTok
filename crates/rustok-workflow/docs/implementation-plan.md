@@ -7,8 +7,8 @@ capability integrations without drift and broken documentation.
 ## Execution checkpoint
 
 - Current phase: phase_b_ready + fba_provider_static_evidence + compile_free_runtime_smoke
-- Last checkpoint: REST workflow/step/execution handlers and webhook ingress now accept a narrow `WorkflowHttpRuntime` with explicit DB handle; the current Loco `AppContext` is isolated in the route-state adapter until the full Axum cutover. Workflow admin FFA Phase B is considered closed; FBA slice #1 added `WorkflowReadPort` / `workflow.read_projection.v1`, provider registry `crates/rustok-workflow/contracts/workflow-fba-registry.json`, static matrix `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`, compile-free runtime/fallback smoke packet `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json` and fast gate `npm run verify:workflow:fba` without long compilation.
-- Next step: Replace compile-free runtime/fallback smoke with live backend evidence: native server-function list_workflows, forced GraphQL fallback and typed PortError mapping; do not promote FBA above `in_progress` until live evidence.
+- Last checkpoint: workflow admin native server-function transport now consumes host-provided `rustok_api::HostRuntimeContext` for DB access and `rustok-workflow-admin` no longer depends on `loco-rs`; REST workflow/step/execution handlers and webhook ingress already accept a narrow `WorkflowHttpRuntime` with explicit DB handle, with the current Loco `AppContext` isolated in the route-state adapter until the full Axum cutover. Workflow admin FFA Phase B is considered closed; FBA slice #1 added `WorkflowReadPort` / `workflow.read_projection.v1`, provider registry `crates/rustok-workflow/contracts/workflow-fba-registry.json`, static matrix `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`, compile-free runtime/fallback smoke packet `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json` and fast gate `npm run verify:workflow:fba` without long compilation.
+- Next step: Replace compile-free runtime/fallback smoke with live backend evidence: native server-function list_workflows over `HostRuntimeContext`, forced GraphQL fallback and typed PortError mapping; do not promote FBA above `in_progress` until live evidence.
 - Open blockers: None.
 - Hand-off notes for next agent: After each increment, update this block; avoid long full-workspace compilations, use targeted checks/timeouts.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
@@ -24,6 +24,7 @@ capability integrations without drift and broken documentation.
   - module plan synchronized with central FFA/FBA readiness board; UI surface already published and managed in migration/backlog rhythm;
   - FFA admin slice: status badge presentation, workflow table row mapping, template category styling, template-name normalization, module route toggle/legacy href policy, transport request context, transport error presentation and template create command/name policy now live in framework-agnostic `admin/src/core/` with unit tests;
   - transport slice: current GraphQL adapter lives in `admin/src/transport/graphql_adapter.rs`, native server-function adapter added in `admin/src/transport/native_server_adapter.rs`, and `admin/src/transport/mod.rs` became a native-first facade with GraphQL fallback; Leptos UI no longer depends on raw adapter modules directly;
+  - Loco-free native admin transport evidence: `admin/src/transport/native_server_adapter.rs` consumes `HostRuntimeContext`, `admin/Cargo.toml` no longer declares `loco-rs`, and `scripts/verify/verify-workflow-admin-boundary.mjs` plus `scripts/verify/verify-api-surface-contract.mjs` guard the boundary;
   - UI adapter slice: Leptos-only render code moved to `admin/src/ui/leptos.rs`, and crate root left as composition/re-export layer for future addition of other host adapters;
   - fast boundary guardrail: `scripts/verify/verify-workflow-admin-boundary.mjs` and fixture tests lock absence of legacy `api.rs`/flat `transport.rs`, Leptos-free `core/`, raw-adapter-free UI and split native/GraphQL transport adapters;
   - Phase B closure decision: workflow admin FFA will not be expanded further without a new workflow-owned UI/transport surface; further promotion to `parity_verified` requires runtime parity evidence for native/server-function + GraphQL fallback and local+central docs update in the same change.
@@ -74,6 +75,7 @@ capability integrations without drift and broken documentation.
 
 - `cargo xtask module validate workflow`
 - `cargo xtask module test workflow`
+- `node scripts/verify/verify-workflow-admin-boundary.mjs`
 - targeted tests for triggers, steps, execution journal, tenant isolation and admin/runtime contracts
 
 ## Update rules
