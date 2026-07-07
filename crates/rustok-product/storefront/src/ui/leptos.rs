@@ -1,9 +1,7 @@
 use crate::core::{
-    build_product_catalog_rail_labels, build_product_catalog_rail_view_model,
-    build_product_storefront_shell_view_model, build_product_transport_error_dom_evidence,
-    build_selected_product_empty_view_model, build_selected_product_view_model,
-    build_storefront_fetch_request, build_storefront_route_input,
-    resolve_product_storefront_route_segment,
+    build_catalog_rail_view_model, build_fetch_request, build_product_catalog_rail_labels,
+    build_route_input, build_selected_product_empty_view_model, build_selected_product_view_model,
+    build_shell_view_model, build_transport_error_dom_evidence, resolve_route_segment,
 };
 use crate::model::{
     ProductDetail, ProductListItem, ProductPricingContext, ProductPricingDetail,
@@ -12,12 +10,12 @@ use crate::model::{
 use crate::transport;
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 #[component]
 pub fn ProductView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let route_input = build_storefront_route_input(
+    let route_input = build_route_input(
         read_route_query_value(&route_context, "handle"),
         route_context.locale.clone(),
         read_route_query_value(&route_context, "currency"),
@@ -27,8 +25,8 @@ pub fn ProductView() -> impl IntoView {
         read_route_query_value(&route_context, "channel_slug"),
         read_route_query_value(&route_context, "quantity"),
     );
-    let shell = build_product_storefront_shell_view_model(route_input.locale.as_deref());
-    let fetch_request = build_storefront_fetch_request(&route_input);
+    let shell = build_shell_view_model(route_input.locale.as_deref());
+    let fetch_request = build_fetch_request(&route_input);
 
     let resource = Resource::new_blocking(
         move || fetch_request.clone(),
@@ -65,7 +63,7 @@ fn ProductTransportErrorMessage(
     context: String,
     error: transport::ProductTransportError,
 ) -> impl IntoView {
-    let evidence = build_product_transport_error_dom_evidence(
+    let evidence = build_transport_error_dom_evidence(
         &context,
         error.failed_path.as_str(),
         error.fallback_attempted,
@@ -178,10 +176,9 @@ fn SelectedProductCard(
 fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
-    let route_segment =
-        resolve_product_storefront_route_segment(route_context.route_segment.as_deref());
+    let route_segment = resolve_route_segment(route_context.route_segment.as_deref());
     let module_route_base = route_context.module_route_base(route_segment.as_str());
-    let view_model = build_product_catalog_rail_view_model(
+    let view_model = build_catalog_rail_view_model(
         module_route_base.as_str(),
         &items,
         total,

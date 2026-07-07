@@ -53,6 +53,7 @@ ssr = [
 ]
 
 [dependencies]
+rustok-ui-core.workspace = true
 axum = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 leptos = { workspace = true }

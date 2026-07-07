@@ -8,7 +8,7 @@ use crate::ui::leptos::{
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_api::AdminQueryKey;
+use rustok_ui_core::AdminQueryKey;
 
 #[component]
 pub fn AiChatSessionPanel(

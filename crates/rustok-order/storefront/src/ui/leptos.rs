@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     build_order_checkout_result_view_model, order_checkout_action_label, OrderCheckoutActionLabels,

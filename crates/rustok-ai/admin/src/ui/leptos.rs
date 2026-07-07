@@ -19,7 +19,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]

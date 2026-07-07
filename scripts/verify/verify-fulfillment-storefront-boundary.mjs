@@ -47,13 +47,14 @@ const manifestPath = "crates/rustok-fulfillment/rustok-module.toml";
 const transportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
 const graphqlPath = "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs";
 const nativeRawPath = "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const cargoPath = "crates/rustok-fulfillment/storefront/Cargo.toml";
 const commerceTransportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const planPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, modelPath, corePath, uiPath, i18nPath, manifestPath, transportPath, graphqlPath, nativeRawPath, commerceTransportPath, commerceUiPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, modelPath, corePath, uiPath, i18nPath, manifestPath, transportPath, graphqlPath, nativeRawPath, cargoPath, commerceTransportPath, commerceUiPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected fulfillment storefront FFA file`);
 }
 
@@ -66,6 +67,7 @@ const manifest = readRepo(manifestPath);
 const transport = readRepo(transportPath);
 const graphql = readRepo(graphqlPath);
 const nativeRaw = readRepo(nativeRawPath);
+const cargo = readRepo(cargoPath);
 const commerceTransport = readRepo(commerceTransportPath);
 const commerceUi = readRepo(commerceUiPath);
 const plan = readRepo(planPath);
@@ -111,7 +113,7 @@ for (const marker of [
 ]) {
   assertContains(ui, marker, `${uiPath}: expected fulfillment-owned selection UI marker ${marker}`);
 }
-for (const marker of ["include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "resolve_ui_message_or_fallback"]) {
+for (const marker of ["LeptosUiMessages", "include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "t_for_locale"]) {
   assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
 }
 for (const marker of ["slot = \"checkout_shipping_handoff\"", "[provides.storefront_ui.i18n]", "leptos_locales_path = \"storefront/locales\""]) {
@@ -124,7 +126,9 @@ for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[se
 for (const marker of [
   "ShippingSelectionTransportError",
   "select_shipping_option",
-  "should_fallback_to_graphql",
+  "execute_selected_transport",
+  "selected_transport_path",
+  "UiTransportError",
   "build_shipping_selection_updates",
   "impl ShippingSelectionError",
   "mod graphql_adapter;",
@@ -149,8 +153,15 @@ assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: fulfillment Gra
 assertContains(nativeRaw, "#[server", `${nativeRawPath}: fulfillment native adapter must own a server-function endpoint shell`);
 assertContains(nativeRaw, "endpoint = \"fulfillment/select-shipping-option\"", `${nativeRawPath}: fulfillment native adapter must expose the owner endpoint path`);
 assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: fulfillment native adapter must call the explicit commerce checkout runtime API`);
+assertContains(nativeRaw, "expect_context::<HostRuntimeContext>()", `${nativeRawPath}: fulfillment native adapter must use the host runtime context`);
+assertContains(nativeRaw, "shared_get::<TransactionalEventBus>()", `${nativeRawPath}: fulfillment native adapter must receive the event bus through the host runtime context`);
+assertContains(nativeRaw, "runtime_ctx.db_clone()", `${nativeRawPath}: fulfillment native adapter must receive DB through the host runtime context`);
+assertNotContains(nativeRaw, "loco_rs", `${nativeRawPath}: fulfillment native adapter must not depend on Loco AppContext`);
+assertNotContains(nativeRaw, "rustok_outbox::loco", `${nativeRawPath}: fulfillment native adapter must not use the outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${cargoPath}: fulfillment storefront package must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${cargoPath}: fulfillment storefront package must not enable the outbox Loco adapter`);
 assertContains(commerceTransport, "select_shipping_option(", `${commerceTransportPath}: commerce SSR adapter must delegate shipping selection fallback policy to fulfillment owner facade`);
-assertContains(commerceTransport, "ShippingSelectionTransportError", `${commerceTransportPath}: commerce compatibility adapter must map errors through owner transport DTO`);
+assertContains(commerceTransport, "rustok_fulfillment_storefront::transport::select_shipping_option", `${commerceTransportPath}: commerce compatibility adapter must delegate to owner transport facade`);
 
 assertContains(commerceUi, "FulfillmentShippingSelectionPanel", `${commerceUiPath}: commerce host must render fulfillment-owned selection UI`);
 assertContains(commerceUi, "transport::select_storefront_shipping_option", `${commerceUiPath}: commerce host may keep transitional aggregate transport callback`);

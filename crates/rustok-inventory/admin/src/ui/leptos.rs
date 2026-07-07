@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{locale_tags_match, AdminQueryKey, UiRouteContext};
+use rustok_api::locale_tags_match;
+use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteContext};
 
 use crate::core::{
     apply_variant_quantity_update, apply_variant_reservation_release_update,
@@ -1249,12 +1250,7 @@ fn bool_label(locale: Option<&str>, value: bool) -> String {
 }
 
 fn text_or_none(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value.as_str())
 }
 
 fn status_badge(status: &str) -> &'static str {

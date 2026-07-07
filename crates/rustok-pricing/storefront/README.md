@@ -33,7 +33,7 @@ public pricing discovery.
   channel-aware selector state stays aligned when native server functions are not
   available, and uses `storefrontPricingProduct` to keep variant-level
   `effective_price` parity for explicit pricing context.
-- Validate pricing resolution context consistently before GraphQL fallback and
+- Validate pricing resolution context consistently before GraphQL selected-path execution and
   across native `#[server]` handlers: `currency_code` must be a three-letter
   ASCII code, `quantity` must be at least `1`, and `region_id`,
   `price_list_id`, or `quantity` require explicit currency; malformed explicit

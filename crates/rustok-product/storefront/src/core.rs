@@ -1,4 +1,5 @@
 use rustok_api::locale_tags_match;
+use rustok_ui_core::normalize_optional_ui_text;
 
 use crate::i18n::t;
 use crate::model::{
@@ -6,7 +7,7 @@ use crate::model::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProductStorefrontRouteInput {
+pub struct RouteInput {
     pub handle: Option<String>,
     pub locale: Option<String>,
     pub currency_code: Option<String>,
@@ -18,7 +19,7 @@ pub struct ProductStorefrontRouteInput {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProductStorefrontFetchRequest {
+pub struct FetchRequest {
     pub selected_handle: Option<String>,
     pub locale: Option<String>,
     pub currency_code: Option<String>,
@@ -30,14 +31,14 @@ pub struct ProductStorefrontFetchRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProductStorefrontShellViewModel {
+pub struct ShellViewModel {
     pub badge: String,
     pub title: String,
     pub subtitle: String,
     pub load_error: String,
 }
 
-pub const PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT: &str = "products";
+pub const DEFAULT_ROUTE_SEGMENT: &str = "products";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductTransportErrorDomEvidence {
@@ -48,7 +49,7 @@ pub struct ProductTransportErrorDomEvidence {
     pub message: String,
 }
 
-pub fn build_product_transport_error_dom_evidence(
+pub fn build_transport_error_dom_evidence(
     context: &str,
     failed_path: &str,
     fallback_attempted: bool,
@@ -66,7 +67,7 @@ pub fn build_product_transport_error_dom_evidence(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn build_storefront_route_input(
+pub fn build_route_input(
     handle: Option<String>,
     locale: Option<String>,
     currency_code: Option<String>,
@@ -75,8 +76,8 @@ pub fn build_storefront_route_input(
     channel_id: Option<String>,
     channel_slug: Option<String>,
     quantity: Option<String>,
-) -> ProductStorefrontRouteInput {
-    ProductStorefrontRouteInput {
+) -> RouteInput {
+    RouteInput {
         handle,
         locale,
         currency_code,
@@ -84,14 +85,12 @@ pub fn build_storefront_route_input(
         price_list_id,
         channel_id,
         channel_slug,
-        quantity: parse_storefront_quantity(quantity.as_deref()),
+        quantity: parse_quantity(quantity.as_deref()),
     }
 }
 
-pub fn build_storefront_fetch_request(
-    input: &ProductStorefrontRouteInput,
-) -> ProductStorefrontFetchRequest {
-    ProductStorefrontFetchRequest {
+pub fn build_fetch_request(input: &RouteInput) -> FetchRequest {
+    FetchRequest {
         selected_handle: input.handle.clone(),
         locale: input.locale.clone(),
         currency_code: input.currency_code.clone(),
@@ -103,11 +102,11 @@ pub fn build_storefront_fetch_request(
     }
 }
 
-pub fn resolve_product_storefront_route_segment(route_segment: Option<&str>) -> String {
+pub fn resolve_route_segment(route_segment: Option<&str>) -> String {
     route_segment
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or(PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT)
+        .unwrap_or(DEFAULT_ROUTE_SEGMENT)
         .to_string()
 }
 
@@ -130,28 +129,17 @@ pub(crate) fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<Stri
 }
 
 #[cfg_attr(not(feature = "ssr"), allow(dead_code))]
-fn normalize_optional(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-#[cfg_attr(not(feature = "ssr"), allow(dead_code))]
 pub fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,
     tenant_default_locale: &str,
 ) -> String {
-    normalize_optional(requested)
+    normalize_optional_ui_text(requested)
         .or_else(|| {
-            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
+            request_context_locale
+                .and_then(|value| normalize_optional_ui_text(Some(value.to_string())))
         })
-        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
+        .or_else(|| normalize_optional_ui_text(Some(tenant_default_locale.to_string())))
         .unwrap_or_default()
 }
 
@@ -195,10 +183,8 @@ pub fn build_pricing_context(
     })
 }
 
-pub fn build_product_storefront_shell_view_model(
-    locale: Option<&str>,
-) -> ProductStorefrontShellViewModel {
-    ProductStorefrontShellViewModel {
+pub fn build_shell_view_model(locale: Option<&str>) -> ShellViewModel {
+    ShellViewModel {
         badge: t(locale, "product.badge", "product"),
         title: t(
             locale,
@@ -218,7 +204,7 @@ pub fn build_product_storefront_shell_view_model(
     }
 }
 
-pub fn parse_storefront_quantity(value: Option<&str>) -> Option<i32> {
+pub fn parse_quantity(value: Option<&str>) -> Option<i32> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -351,7 +337,7 @@ pub fn build_selected_product_view_model(
         .unwrap_or_else(|| t(locale, "product.selected.noPrice", "No pricing yet"));
     let pricing_preview = format_pricing_preview(locale, pricing);
     let pricing_context = resolution_context.map(|context| format_pricing_context(locale, context));
-    let pricing_href = build_storefront_pricing_href(
+    let pricing_href = build_pricing_href(
         pricing_route_base,
         selected_handle.or_else(|| translation.map(|item| item.handle.as_str())),
         resolution_context,
@@ -596,7 +582,7 @@ pub fn count_label(template: &str, total: u64) -> String {
     template.replace("{count}", &total.to_string())
 }
 
-pub fn build_product_catalog_rail_view_model(
+pub fn build_catalog_rail_view_model(
     module_route_base: &str,
     items: &[crate::model::ProductListItem],
     total: u64,
@@ -634,7 +620,7 @@ pub fn build_product_catalog_rail_view_model(
     }
 }
 
-pub fn build_storefront_pricing_href(
+pub fn build_pricing_href(
     module_route_base: &str,
     handle: Option<&str>,
     resolution_context: Option<&ProductPricingContext>,
@@ -706,7 +692,7 @@ mod tests {
 
     #[test]
     fn route_input_parses_quantity_without_ui_runtime() {
-        let input = build_storefront_route_input(
+        let input = build_route_input(
             Some("boot".to_string()),
             Some("en".to_string()),
             Some("USD".to_string()),
@@ -719,10 +705,10 @@ mod tests {
 
         assert_eq!(input.handle.as_deref(), Some("boot"));
         assert_eq!(input.quantity, Some(3));
-        assert_eq!(parse_storefront_quantity(Some("bad")), None);
-        assert_eq!(parse_storefront_quantity(Some("   ")), None);
+        assert_eq!(parse_quantity(Some("bad")), None);
+        assert_eq!(parse_quantity(Some("   ")), None);
 
-        let request = build_storefront_fetch_request(&input);
+        let request = build_fetch_request(&input);
         assert_eq!(request.selected_handle.as_deref(), Some("boot"));
         assert_eq!(request.locale.as_deref(), Some("en"));
         assert_eq!(request.currency_code.as_deref(), Some("USD"));
@@ -731,27 +717,15 @@ mod tests {
 
     #[test]
     fn storefront_route_segment_fallback_is_core_owned() {
-        assert_eq!(
-            resolve_product_storefront_route_segment(Some("catalog")),
-            "catalog"
-        );
-        assert_eq!(
-            resolve_product_storefront_route_segment(Some(" products ")),
-            "products"
-        );
-        assert_eq!(
-            resolve_product_storefront_route_segment(Some("   ")),
-            PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT
-        );
-        assert_eq!(
-            resolve_product_storefront_route_segment(None),
-            PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT
-        );
+        assert_eq!(resolve_route_segment(Some("catalog")), "catalog");
+        assert_eq!(resolve_route_segment(Some(" products ")), "products");
+        assert_eq!(resolve_route_segment(Some("   ")), DEFAULT_ROUTE_SEGMENT);
+        assert_eq!(resolve_route_segment(None), DEFAULT_ROUTE_SEGMENT);
     }
 
     #[test]
     fn storefront_shell_view_model_is_built_without_ui_runtime() {
-        let view_model = build_product_storefront_shell_view_model(Some("en"));
+        let view_model = build_shell_view_model(Some("en"));
 
         assert_eq!(view_model.badge, "product");
         assert_eq!(
@@ -797,7 +771,7 @@ mod tests {
         };
 
         assert_eq!(
-            build_storefront_pricing_href("/products", Some(" boot "), Some(&context), None),
+            build_pricing_href("/products", Some(" boot "), Some(&context), None),
             "/products?handle=boot&currency=EUR&region_id=region-1&price_list_id=list-1&channel_id=channel-1&channel_slug=web&quantity=2".to_string(),
         );
     }
@@ -819,7 +793,7 @@ mod tests {
         };
 
         assert_eq!(
-            build_storefront_pricing_href("/products", Some("boot"), None, Some(&variant)),
+            build_pricing_href("/products", Some("boot"), None, Some(&variant)),
             "/products?handle=boot&currency=USD".to_string(),
         );
     }
@@ -854,7 +828,7 @@ mod tests {
             created_at: "2026-05-29T00:00:00Z".to_string(),
         };
 
-        let view_model = build_product_catalog_rail_view_model(
+        let view_model = build_catalog_rail_view_model(
             "/products",
             &[item],
             3,
@@ -885,7 +859,7 @@ mod tests {
 
     #[test]
     fn catalog_rail_empty_state_policy_is_built_without_ui_runtime() {
-        let view_model = build_product_catalog_rail_view_model(
+        let view_model = build_catalog_rail_view_model(
             "/products",
             &[],
             0,
@@ -1000,7 +974,7 @@ mod tests {
     }
     #[test]
     fn transport_error_dom_evidence_is_built_without_ui_runtime() {
-        let evidence = build_product_transport_error_dom_evidence(
+        let evidence = build_transport_error_dom_evidence(
             "Failed to load storefront product data",
             "graphql",
             true,

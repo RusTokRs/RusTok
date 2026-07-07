@@ -3,9 +3,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext, WritePathIssue};
+use rustok_api::WritePathIssue;
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostListItem};
@@ -21,21 +22,6 @@ where
     T: 'static,
 {
     LocalResource::new(move || fetcher(source()))
-}
-
-fn apply_blog_post_admin_route_query_intent(
-    query_writer: &leptos_ui_routing::RouteQueryWriter,
-    intent: core::BlogPostAdminRouteQueryIntent,
-) {
-    match intent {
-        core::BlogPostAdminRouteQueryIntent::Push { key, value } => {
-            query_writer.push_value(key, value)
-        }
-        core::BlogPostAdminRouteQueryIntent::Replace { key, value } => {
-            query_writer.replace_value(key, value)
-        }
-        core::BlogPostAdminRouteQueryIntent::Clear { key } => query_writer.clear_key(key),
-    }
 }
 
 #[component]
@@ -135,10 +121,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
         move |_| {
-            apply_blog_post_admin_route_query_intent(
-                &query_writer,
-                core::blog_post_admin_clear_post_query_intent(),
-            );
+            query_writer.apply_query_intent(core::blog_post_admin_clear_post_query_intent());
             reset_form_action.run(());
         }
     });
@@ -319,7 +302,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     if let Some(intent) = result_view.selected_post_query_intent {
-                        apply_blog_post_admin_route_query_intent(&submit_query_writer, intent);
+                        submit_query_writer.apply_query_intent(intent);
                     }
                 }
                 Err(err) => {
@@ -499,10 +482,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     match delete_result {
                         Ok(view_model) => {
                             if let Some(intent) = view_model.selected_post_query_intent {
-                                apply_blog_post_admin_route_query_intent(
-                                    &delete_query_writer,
-                                    intent,
-                                );
+                                delete_query_writer.apply_query_intent(intent);
                             }
                             if view_model.reset_form {
                                 reset_form_to_defaults.run(());
@@ -533,10 +513,7 @@ pub fn BlogAdmin() -> impl IntoView {
     });
     let open_query_writer = query_writer.clone();
     let open_post = Callback::new(move |(post_id, _requested_locale): (String, String)| {
-        apply_blog_post_admin_route_query_intent(
-            &open_query_writer,
-            core::blog_post_admin_open_post_query_intent(post_id),
-        );
+        open_query_writer.apply_query_intent(core::blog_post_admin_open_post_query_intent(post_id));
     });
 
     view! {

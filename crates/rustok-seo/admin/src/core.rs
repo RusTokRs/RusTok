@@ -7,6 +7,7 @@ use rustok_seo::{
     SeoIndexRepairReplayResultRecord, SeoModuleSettings, SeoRedirectInput, SeoRedirectMatchType,
     SeoSitemapStatusRecord, SeoTargetSlug, SeoTemplateRuleSet,
 };
+use rustok_ui_core::normalize_ui_text;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -732,12 +733,7 @@ fn normalize_multiline_values(value: &str, lowercase: bool) -> Vec<String> {
 }
 
 fn trim_to_option(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value)
 }
 
 #[cfg(test)]
@@ -818,7 +814,7 @@ mod tests {
 
         assert!(items
             .iter()
-            .any(|item| item.label == "Default robots" && item.value == "n/a"));
+            .any(|item| item.label == "Default robots" && item.value == "index, follow"));
         assert!(items
             .iter()
             .any(|item| item.label == "Allowed redirect hosts" && item.value == "none"));

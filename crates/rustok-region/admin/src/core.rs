@@ -1,4 +1,4 @@
-use rustok_api::{normalize_ui_text, AdminQueryKey};
+use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteQueryIntent};
 
 use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionList};
 
@@ -56,20 +56,7 @@ pub enum RegionAdminRouteQueryIntent {
     Clear,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RegionAdminRouteQueryUpdate {
-    PushSelected {
-        key: &'static str,
-        region_id: String,
-    },
-    ReplaceSelected {
-        key: &'static str,
-        region_id: String,
-    },
-    ClearSelected {
-        key: &'static str,
-    },
-}
+pub type RegionAdminRouteQueryUpdate = UiRouteQueryIntent;
 
 pub fn region_admin_route_query_intent(
     selected_region_query: Option<&str>,
@@ -80,58 +67,17 @@ pub fn region_admin_route_query_intent(
 }
 
 pub fn region_admin_open_query_update(region_id: &str) -> Option<RegionAdminRouteQueryUpdate> {
-    optional_ui_text(region_id).map(|region_id| RegionAdminRouteQueryUpdate::PushSelected {
-        key: REGION_ADMIN_SELECTED_QUERY_KEY,
-        region_id,
-    })
+    optional_ui_text(region_id)
+        .map(|region_id| UiRouteQueryIntent::push(REGION_ADMIN_SELECTED_QUERY_KEY, region_id))
 }
 
 pub fn region_admin_saved_query_update(region_id: &str) -> Option<RegionAdminRouteQueryUpdate> {
-    optional_ui_text(region_id).map(|region_id| RegionAdminRouteQueryUpdate::ReplaceSelected {
-        key: REGION_ADMIN_SELECTED_QUERY_KEY,
-        region_id,
-    })
+    optional_ui_text(region_id)
+        .map(|region_id| UiRouteQueryIntent::replace(REGION_ADMIN_SELECTED_QUERY_KEY, region_id))
 }
 
 pub fn region_admin_new_query_update() -> RegionAdminRouteQueryUpdate {
-    RegionAdminRouteQueryUpdate::ClearSelected {
-        key: REGION_ADMIN_SELECTED_QUERY_KEY,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RegionAdminRouteQueryWrite {
-    pub updates: Vec<(&'static str, Option<String>)>,
-    pub replace: bool,
-}
-
-pub fn region_admin_route_query_write(
-    update: RegionAdminRouteQueryUpdate,
-) -> RegionAdminRouteQueryWrite {
-    match update {
-        RegionAdminRouteQueryUpdate::PushSelected { key, region_id } => {
-            RegionAdminRouteQueryWrite {
-                updates: vec![(key, Some(region_id))],
-                replace: false,
-            }
-        }
-        RegionAdminRouteQueryUpdate::ReplaceSelected { key, region_id } => {
-            RegionAdminRouteQueryWrite {
-                updates: vec![(key, Some(region_id))],
-                replace: true,
-            }
-        }
-        RegionAdminRouteQueryUpdate::ClearSelected { key } => RegionAdminRouteQueryWrite {
-            updates: vec![(key, None)],
-            replace: true,
-        },
-    }
-}
-
-pub fn optional_region_admin_route_query_write(
-    update: Option<RegionAdminRouteQueryUpdate>,
-) -> Option<RegionAdminRouteQueryWrite> {
-    update.map(region_admin_route_query_write)
+    UiRouteQueryIntent::clear(REGION_ADMIN_SELECTED_QUERY_KEY)
 }
 
 pub fn build_region_draft(input: RegionFormInput<'_>) -> RegionDraft {
@@ -1512,9 +1458,9 @@ mod tests {
         assert_eq!(view_model.form_state.countries, "DE, FR");
         assert_eq!(
             view_model.route_update,
-            Some(RegionAdminRouteQueryUpdate::ReplaceSelected {
+            Some(RegionAdminRouteQueryUpdate::Replace {
                 key: "region_id",
-                region_id: "region-eu".to_string(),
+                value: "region-eu".to_string(),
             })
         );
         assert!(view_model.refresh_list);
@@ -1583,41 +1529,41 @@ mod tests {
         assert_eq!(REGION_ADMIN_SELECTED_QUERY_KEY, "region_id");
         assert_eq!(
             region_admin_open_query_update("  region-eu  "),
-            Some(RegionAdminRouteQueryUpdate::PushSelected {
+            Some(RegionAdminRouteQueryUpdate::Push {
                 key: "region_id",
-                region_id: "region-eu".to_string(),
+                value: "region-eu".to_string(),
             })
         );
         assert_eq!(region_admin_open_query_update(" "), None);
         assert_eq!(
             region_admin_saved_query_update("region-us"),
-            Some(RegionAdminRouteQueryUpdate::ReplaceSelected {
+            Some(RegionAdminRouteQueryUpdate::Replace {
                 key: "region_id",
-                region_id: "region-us".to_string(),
+                value: "region-us".to_string(),
             })
         );
         assert_eq!(
             region_admin_new_query_update(),
-            RegionAdminRouteQueryUpdate::ClearSelected { key: "region_id" }
+            RegionAdminRouteQueryUpdate::Clear { key: "region_id" }
         );
         assert_eq!(
-            region_admin_route_query_write(RegionAdminRouteQueryUpdate::PushSelected {
+            RegionAdminRouteQueryUpdate::Push {
                 key: REGION_ADMIN_SELECTED_QUERY_KEY,
-                region_id: "region-eu".to_string(),
-            }),
-            RegionAdminRouteQueryWrite {
+                value: "region-eu".to_string(),
+            }
+            .into_write(),
+            rustok_ui_core::UiRouteQueryWrite {
                 updates: vec![("region_id", Some("region-eu".to_string()))],
                 replace: false,
             }
         );
         assert_eq!(
-            region_admin_route_query_write(region_admin_new_query_update()),
-            RegionAdminRouteQueryWrite {
+            region_admin_new_query_update().into_write(),
+            rustok_ui_core::UiRouteQueryWrite {
                 updates: vec![("region_id", None)],
                 replace: true,
             }
         );
-        assert_eq!(optional_region_admin_route_query_write(None), None);
     }
 
     #[test]

@@ -1,4 +1,5 @@
-use rustok_api::{locale_tags_match, AdminQueryKey};
+use rustok_api::locale_tags_match;
+use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteQueryIntent};
 use std::collections::HashMap;
 
 use crate::i18n::t;
@@ -175,7 +176,7 @@ pub(crate) fn build_admin_pricing_href(module_route_base: &str, product: &Produc
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ProductAdminPricingPreviewState<'a> {
+pub(crate) enum PricingPreviewState<'a> {
     Loading,
     Error(&'a str),
     Unavailable,
@@ -183,15 +184,15 @@ pub(crate) enum ProductAdminPricingPreviewState<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminPricingPreviewRequest {
+pub(crate) struct PricingPreviewRequest {
     pub product_id: String,
     pub currency_code: String,
 }
 
-pub(crate) fn product_admin_pricing_preview_request_from_product(
+pub(crate) fn pricing_preview_request_from_product(
     product: &ProductDetail,
-) -> ProductAdminPricingPreviewRequest {
-    ProductAdminPricingPreviewRequest {
+) -> PricingPreviewRequest {
+    PricingPreviewRequest {
         product_id: product.id.clone(),
         currency_code: primary_catalog_currency(Some(product))
             .filter(|currency_code| !currency_code.trim().is_empty())
@@ -199,14 +200,14 @@ pub(crate) fn product_admin_pricing_preview_request_from_product(
     }
 }
 
-pub(crate) fn product_admin_pricing_preview_state_from_result<'a>(
+pub(crate) fn pricing_preview_state_from_result<'a>(
     pricing_state: Option<&'a Result<Option<ProductPricingDetail>, String>>,
-) -> ProductAdminPricingPreviewState<'a> {
+) -> PricingPreviewState<'a> {
     match pricing_state {
-        None => ProductAdminPricingPreviewState::Loading,
-        Some(Err(err)) => ProductAdminPricingPreviewState::Error(err.as_str()),
-        Some(Ok(None)) => ProductAdminPricingPreviewState::Unavailable,
-        Some(Ok(Some(pricing))) => ProductAdminPricingPreviewState::Ready(pricing),
+        None => PricingPreviewState::Loading,
+        Some(Err(err)) => PricingPreviewState::Error(err.as_str()),
+        Some(Ok(None)) => PricingPreviewState::Unavailable,
+        Some(Ok(Some(pricing))) => PricingPreviewState::Ready(pricing),
     }
 }
 
@@ -228,7 +229,7 @@ pub(crate) enum SelectedProductSummaryViewModel {
 pub(crate) fn build_selected_product_summary_view_model(
     locale: Option<&str>,
     product: Option<&ProductDetail>,
-    pricing_state: ProductAdminPricingPreviewState<'_>,
+    pricing_state: PricingPreviewState<'_>,
     pricing_route_base: &str,
 ) -> SelectedProductSummaryViewModel {
     let Some(product) = product else {
@@ -255,12 +256,12 @@ pub(crate) fn build_selected_product_summary_view_model(
         .clone()
         .unwrap_or_else(|| t(locale, "product.summary.unassigned", "unassigned"));
     let pricing_preview = match pricing_state {
-        ProductAdminPricingPreviewState::Loading => t(
+        PricingPreviewState::Loading => t(
             locale,
             "product.summary.pricingLoading",
             "Loading pricing module preview...",
         ),
-        ProductAdminPricingPreviewState::Error(err) => format!(
+        PricingPreviewState::Error(err) => format!(
             "{}: {err}",
             t(
                 locale,
@@ -268,14 +269,12 @@ pub(crate) fn build_selected_product_summary_view_model(
                 "Pricing module preview failed",
             )
         ),
-        ProductAdminPricingPreviewState::Unavailable => t(
+        PricingPreviewState::Unavailable => t(
             locale,
             "product.summary.pricingUnavailable",
             "Pricing module preview is unavailable.",
         ),
-        ProductAdminPricingPreviewState::Ready(pricing) => {
-            format_pricing_preview(locale, Some(pricing))
-        }
+        PricingPreviewState::Ready(pricing) => format_pricing_preview(locale, Some(pricing)),
     };
 
     SelectedProductSummaryViewModel::Ready {
@@ -878,7 +877,7 @@ pub(crate) fn build_product_admin_editor_view_model(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminDraftForm {
+pub(crate) struct DraftForm {
     pub locale: Option<String>,
     pub title: String,
     pub handle: String,
@@ -898,27 +897,27 @@ pub(crate) struct ProductAdminDraftForm {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminSaveMode {
+pub(crate) enum SaveMode {
     Create,
     Update { product_id: String },
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ProductAdminSaveCommand {
-    pub mode: ProductAdminSaveMode,
+pub(crate) struct SaveCommand {
+    pub mode: SaveMode,
     pub tenant_id: String,
     pub actor_id: String,
     pub draft: ProductDraft,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminSaveValidationError {
+pub(crate) enum SaveValidationError {
     TitleRequired,
     LocaleUnavailable,
     BootstrapUnavailable,
 }
 
-impl ProductAdminSaveValidationError {
+impl SaveValidationError {
     pub(crate) fn message(&self, locale: Option<&str>) -> String {
         match self {
             Self::TitleRequired => t(locale, "product.error.titleRequired", "Title is required."),
@@ -1064,13 +1063,13 @@ pub(crate) fn build_product_admin_editor_form_state(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminStatusTarget {
+pub(crate) enum StatusTarget {
     Active,
     Draft,
     Archived,
 }
 
-impl ProductAdminStatusTarget {
+impl StatusTarget {
     pub(crate) fn as_graphql_status(self) -> &'static str {
         match self {
             Self::Active => "ACTIVE",
@@ -1081,19 +1080,19 @@ impl ProductAdminStatusTarget {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminStatusMutationCommand {
+pub(crate) struct StatusCommand {
     pub tenant_id: String,
     pub actor_id: String,
     pub product_id: String,
-    pub status: ProductAdminStatusTarget,
+    pub status: StatusTarget,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminStatusMutationValidationError {
+pub(crate) enum StatusValidationError {
     BootstrapUnavailable,
 }
 
-impl ProductAdminStatusMutationValidationError {
+impl StatusValidationError {
     pub(crate) fn message(&self, locale: Option<&str>) -> String {
         match self {
             Self::BootstrapUnavailable => t(
@@ -1105,15 +1104,14 @@ impl ProductAdminStatusMutationValidationError {
     }
 }
 
-pub(crate) fn build_product_admin_status_mutation_command(
+pub(crate) fn build_status_command(
     bootstrap: Option<&ProductAdminBootstrap>,
     product_id: String,
-    status: ProductAdminStatusTarget,
-) -> Result<ProductAdminStatusMutationCommand, ProductAdminStatusMutationValidationError> {
-    let bootstrap =
-        bootstrap.ok_or(ProductAdminStatusMutationValidationError::BootstrapUnavailable)?;
+    status: StatusTarget,
+) -> Result<StatusCommand, StatusValidationError> {
+    let bootstrap = bootstrap.ok_or(StatusValidationError::BootstrapUnavailable)?;
 
-    Ok(ProductAdminStatusMutationCommand {
+    Ok(StatusCommand {
         tenant_id: bootstrap.current_tenant.id.clone(),
         actor_id: bootstrap.me.id.clone(),
         product_id,
@@ -1122,29 +1120,29 @@ pub(crate) fn build_product_admin_status_mutation_command(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminStatusMutationOutcome {
+pub(crate) enum StatusOutcome {
     Changed,
     TransportError(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminStatusMutationResultViewModel {
+pub(crate) struct StatusResultViewModel {
     pub refresh: bool,
     pub error_message: Option<String>,
 }
 
-pub(crate) fn build_product_admin_status_mutation_result_view_model(
+pub(crate) fn build_status_result_view_model(
     locale: Option<&str>,
-    outcome: ProductAdminStatusMutationOutcome,
-) -> ProductAdminStatusMutationResultViewModel {
+    outcome: StatusOutcome,
+) -> StatusResultViewModel {
     match outcome {
-        ProductAdminStatusMutationOutcome::Changed => ProductAdminStatusMutationResultViewModel {
+        StatusOutcome::Changed => StatusResultViewModel {
             refresh: true,
             error_message: None,
         },
-        ProductAdminStatusMutationOutcome::TransportError(err) => {
+        StatusOutcome::TransportError(err) => {
             let error_copy = build_product_admin_error_copy(locale);
-            ProductAdminStatusMutationResultViewModel {
+            StatusResultViewModel {
                 refresh: false,
                 error_message: Some(error_copy.change_status_failure(err)),
             }
@@ -1153,18 +1151,18 @@ pub(crate) fn build_product_admin_status_mutation_result_view_model(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminDeleteCommand {
+pub(crate) struct DeleteCommand {
     pub tenant_id: String,
     pub actor_id: String,
     pub product_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminDeleteValidationError {
+pub(crate) enum DeleteValidationError {
     BootstrapUnavailable,
 }
 
-impl ProductAdminDeleteValidationError {
+impl DeleteValidationError {
     pub(crate) fn message(&self, locale: Option<&str>) -> String {
         match self {
             Self::BootstrapUnavailable => t(
@@ -1176,13 +1174,13 @@ impl ProductAdminDeleteValidationError {
     }
 }
 
-pub(crate) fn build_product_admin_delete_command(
+pub(crate) fn build_delete_command(
     bootstrap: Option<&ProductAdminBootstrap>,
     product_id: String,
-) -> Result<ProductAdminDeleteCommand, ProductAdminDeleteValidationError> {
-    let bootstrap = bootstrap.ok_or(ProductAdminDeleteValidationError::BootstrapUnavailable)?;
+) -> Result<DeleteCommand, DeleteValidationError> {
+    let bootstrap = bootstrap.ok_or(DeleteValidationError::BootstrapUnavailable)?;
 
-    Ok(ProductAdminDeleteCommand {
+    Ok(DeleteCommand {
         tenant_id: bootstrap.current_tenant.id.clone(),
         actor_id: bootstrap.me.id.clone(),
         product_id,
@@ -1190,32 +1188,32 @@ pub(crate) fn build_product_admin_delete_command(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminDeleteOutcome {
+pub(crate) enum DeleteOutcome {
     Deleted,
     NotDeleted,
     TransportError(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminDeleteResultViewModel {
+pub(crate) struct DeleteResultViewModel {
     pub clear_selection: bool,
     pub refresh: bool,
     pub error_message: Option<String>,
 }
 
-pub(crate) fn build_product_admin_delete_result_view_model(
+pub(crate) fn build_delete_result_view_model(
     locale: Option<&str>,
     deleted_product_id: &str,
     open_product_id: Option<&str>,
-    outcome: ProductAdminDeleteOutcome,
-) -> ProductAdminDeleteResultViewModel {
+    outcome: DeleteOutcome,
+) -> DeleteResultViewModel {
     match outcome {
-        ProductAdminDeleteOutcome::Deleted => ProductAdminDeleteResultViewModel {
+        DeleteOutcome::Deleted => DeleteResultViewModel {
             clear_selection: open_product_id == Some(deleted_product_id),
             refresh: true,
             error_message: None,
         },
-        ProductAdminDeleteOutcome::NotDeleted => ProductAdminDeleteResultViewModel {
+        DeleteOutcome::NotDeleted => DeleteResultViewModel {
             clear_selection: false,
             refresh: false,
             error_message: Some(t(
@@ -1224,7 +1222,7 @@ pub(crate) fn build_product_admin_delete_result_view_model(
                 "Delete returned false.",
             )),
         },
-        ProductAdminDeleteOutcome::TransportError(err) => ProductAdminDeleteResultViewModel {
+        DeleteOutcome::TransportError(err) => DeleteResultViewModel {
             clear_selection: false,
             refresh: false,
             error_message: Some(format!(
@@ -1239,27 +1237,27 @@ pub(crate) fn build_product_admin_delete_result_view_model(
     }
 }
 
-pub(crate) fn build_product_admin_save_command(
-    form: ProductAdminDraftForm,
+pub(crate) fn build_save_command(
+    form: DraftForm,
     editing_product_id: Option<String>,
     bootstrap: Option<&ProductAdminBootstrap>,
-) -> Result<ProductAdminSaveCommand, ProductAdminSaveValidationError> {
+) -> Result<SaveCommand, SaveValidationError> {
     if form.title.trim().is_empty() {
-        return Err(ProductAdminSaveValidationError::TitleRequired);
+        return Err(SaveValidationError::TitleRequired);
     }
 
     let locale = form
         .locale
         .filter(|value| !value.trim().is_empty())
-        .ok_or(ProductAdminSaveValidationError::LocaleUnavailable)?;
+        .ok_or(SaveValidationError::LocaleUnavailable)?;
 
-    let bootstrap = bootstrap.ok_or(ProductAdminSaveValidationError::BootstrapUnavailable)?;
+    let bootstrap = bootstrap.ok_or(SaveValidationError::BootstrapUnavailable)?;
 
-    Ok(ProductAdminSaveCommand {
+    Ok(SaveCommand {
         mode: editing_product_id
             .filter(|id| !id.trim().is_empty())
-            .map(|product_id| ProductAdminSaveMode::Update { product_id })
-            .unwrap_or(ProductAdminSaveMode::Create),
+            .map(|product_id| SaveMode::Update { product_id })
+            .unwrap_or(SaveMode::Create),
         tenant_id: bootstrap.current_tenant.id.clone(),
         actor_id: bootstrap.me.id.clone(),
         draft: ProductDraft {
@@ -1419,18 +1417,18 @@ pub(crate) fn format_known_shipping_profiles(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminShippingProfileOption {
+pub(crate) struct ShippingProfileOption {
     pub value: String,
     pub label: String,
 }
 
-pub(crate) fn build_product_admin_shipping_profile_options(
+pub(crate) fn build_shipping_profile_options(
     locale: Option<&str>,
     profiles: &[ShippingProfile],
-) -> Vec<ProductAdminShippingProfileOption> {
+) -> Vec<ShippingProfileOption> {
     profiles
         .iter()
-        .map(|profile| ProductAdminShippingProfileOption {
+        .map(|profile| ShippingProfileOption {
             value: profile.slug.clone(),
             label: shipping_profile_choice_label(locale, profile),
         })
@@ -1438,26 +1436,26 @@ pub(crate) fn build_product_admin_shipping_profile_options(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductAdminShippingProfilesLoadViewModel {
-    pub options: Vec<ProductAdminShippingProfileOption>,
+pub(crate) struct ShippingProfilesLoadViewModel {
+    pub options: Vec<ShippingProfileOption>,
     pub panel: ProductAdminProfilePanelViewModel,
 }
 
-pub(crate) fn product_admin_shipping_profiles_load_view_from_result<E: std::fmt::Display>(
+pub(crate) fn shipping_profiles_load_view_from_result<E: std::fmt::Display>(
     locale: Option<&str>,
     result: Option<Result<ShippingProfileList, E>>,
-) -> ProductAdminShippingProfilesLoadViewModel {
+) -> ShippingProfilesLoadViewModel {
     match result {
-        None => ProductAdminShippingProfilesLoadViewModel {
+        None => ShippingProfilesLoadViewModel {
             options: Vec::new(),
             panel: build_product_admin_profile_panel_loading_view_model(locale),
         },
-        Some(Err(error)) => ProductAdminShippingProfilesLoadViewModel {
+        Some(Err(error)) => ShippingProfilesLoadViewModel {
             options: Vec::new(),
             panel: build_product_admin_profile_panel_error_view_model(locale, error),
         },
-        Some(Ok(list)) => ProductAdminShippingProfilesLoadViewModel {
-            options: build_product_admin_shipping_profile_options(locale, &list.items),
+        Some(Ok(list)) => ShippingProfilesLoadViewModel {
+            options: build_shipping_profile_options(locale, &list.items),
             panel: build_product_admin_profile_panel_ready_view_model(locale, &list.items),
         },
     }
@@ -1529,35 +1527,22 @@ pub(crate) fn product_admin_list_actions_disabled(is_busy: bool) -> bool {
     is_busy
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProductAdminRouteQueryIntent {
-    Push { key: &'static str, value: String },
-    Replace { key: &'static str, value: String },
-    Clear { key: &'static str },
-}
+pub(crate) type ProductAdminRouteQueryIntent = UiRouteQueryIntent;
 
 pub(crate) fn product_admin_open_product_query_intent(
     product_id: String,
 ) -> ProductAdminRouteQueryIntent {
-    ProductAdminRouteQueryIntent::Push {
-        key: AdminQueryKey::ProductId.as_str(),
-        value: product_id,
-    }
+    UiRouteQueryIntent::push(AdminQueryKey::ProductId.as_str(), product_id)
 }
 
 pub(crate) fn product_admin_saved_product_query_intent(
     product_id: String,
 ) -> ProductAdminRouteQueryIntent {
-    ProductAdminRouteQueryIntent::Replace {
-        key: AdminQueryKey::ProductId.as_str(),
-        value: product_id,
-    }
+    UiRouteQueryIntent::replace(AdminQueryKey::ProductId.as_str(), product_id)
 }
 
 pub(crate) fn product_admin_clear_product_query_intent() -> ProductAdminRouteQueryIntent {
-    ProductAdminRouteQueryIntent::Clear {
-        key: AdminQueryKey::ProductId.as_str(),
-    }
+    UiRouteQueryIntent::clear(AdminQueryKey::ProductId.as_str())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1761,12 +1746,7 @@ pub(crate) fn build_product_admin_list_item_view_model(
 }
 
 pub(crate) fn text_or_none(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value.as_str())
 }
 
 pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 {
@@ -1801,8 +1781,8 @@ mod tests {
         }
     }
 
-    fn draft_form() -> ProductAdminDraftForm {
-        ProductAdminDraftForm {
+    fn draft_form() -> DraftForm {
+        DraftForm {
             locale: Some("en".to_string()),
             title: "Winter coat".to_string(),
             handle: "winter-coat".to_string(),
@@ -1882,7 +1862,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_route_query_intents_keep_product_selection_policy_in_core() {
+    fn route_query_intents_keep_selection_policy_in_core() {
         assert_eq!(
             product_admin_open_product_query_intent("product-1".to_string()),
             ProductAdminRouteQueryIntent::Push {
@@ -1923,7 +1903,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_list_state_view_models_keep_copy_in_core() {
+    fn list_state_views_keep_copy_in_core() {
         let loading = build_product_admin_list_loading_view_model(Some("en"));
         assert_eq!(loading.kind, ProductAdminListStateKind::Loading);
         assert_eq!(loading.message, "Loading products...");
@@ -1941,7 +1921,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_products_load_result_normalization_stays_in_core() {
+    fn products_load_normalization_stays_in_core() {
         let loading = product_admin_products_load_view_from_result::<&str>(Some("en"), None);
         assert!(matches!(
             loading,
@@ -1983,7 +1963,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_list_controls_view_model_keeps_filter_copy_in_core() {
+    fn list_controls_keep_filter_copy_in_core() {
         let controls = build_product_admin_list_controls_view_model(Some("en"));
 
         assert_eq!(controls.title, "Catalog Feed");
@@ -1996,35 +1976,35 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_delete_result_view_model_tracks_success_and_open_selection() {
-        let open = build_product_admin_delete_result_view_model(
+    fn delete_result_tracks_success_and_open_selection() {
+        let open = build_delete_result_view_model(
             Some("en"),
             "product-1",
             Some("product-1"),
-            ProductAdminDeleteOutcome::Deleted,
+            DeleteOutcome::Deleted,
         );
 
         assert!(open.clear_selection);
         assert!(open.refresh);
         assert_eq!(open.error_message, None);
 
-        let other = build_product_admin_delete_result_view_model(
+        let other = build_delete_result_view_model(
             Some("en"),
             "product-1",
             Some("product-2"),
-            ProductAdminDeleteOutcome::Deleted,
+            DeleteOutcome::Deleted,
         );
         assert!(!other.clear_selection);
         assert!(other.refresh);
     }
 
     #[test]
-    fn product_admin_delete_result_view_model_formats_failures() {
-        let not_deleted = build_product_admin_delete_result_view_model(
+    fn delete_result_formats_failures() {
+        let not_deleted = build_delete_result_view_model(
             Some("en"),
             "product-1",
             Some("product-1"),
-            ProductAdminDeleteOutcome::NotDeleted,
+            DeleteOutcome::NotDeleted,
         );
         assert_eq!(
             not_deleted.error_message,
@@ -2033,11 +2013,11 @@ mod tests {
         assert!(!not_deleted.refresh);
         assert!(!not_deleted.clear_selection);
 
-        let failed = build_product_admin_delete_result_view_model(
+        let failed = build_delete_result_view_model(
             Some("en"),
             "product-1",
             Some("product-1"),
-            ProductAdminDeleteOutcome::TransportError("network".to_string()),
+            DeleteOutcome::TransportError("network".to_string()),
         );
         assert_eq!(
             failed.error_message,
@@ -2047,10 +2027,9 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_delete_command_prepares_transport_payload() {
-        let command =
-            build_product_admin_delete_command(Some(&admin_bootstrap()), "product-1".to_string())
-                .expect("delete command");
+    fn delete_command_prepares_transport_payload() {
+        let command = build_delete_command(Some(&admin_bootstrap()), "product-1".to_string())
+            .expect("delete command");
 
         assert_eq!(command.tenant_id, "tenant-1");
         assert_eq!(command.actor_id, "user-1");
@@ -2058,31 +2037,28 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_delete_command_validates_bootstrap() {
+    fn delete_command_validates_bootstrap() {
         assert_eq!(
-            build_product_admin_delete_command(None, "product-1".to_string()).unwrap_err(),
-            ProductAdminDeleteValidationError::BootstrapUnavailable
+            build_delete_command(None, "product-1".to_string()).unwrap_err(),
+            DeleteValidationError::BootstrapUnavailable
         );
     }
 
     #[test]
-    fn product_admin_status_mutation_result_view_model_maps_outcomes() {
+    fn status_result_maps_outcomes() {
         assert_eq!(
-            build_product_admin_status_mutation_result_view_model(
-                Some("en"),
-                ProductAdminStatusMutationOutcome::Changed,
-            ),
-            ProductAdminStatusMutationResultViewModel {
+            build_status_result_view_model(Some("en"), StatusOutcome::Changed,),
+            StatusResultViewModel {
                 refresh: true,
                 error_message: None,
             },
         );
         assert_eq!(
-            build_product_admin_status_mutation_result_view_model(
+            build_status_result_view_model(
                 Some("en"),
-                ProductAdminStatusMutationOutcome::TransportError("network".to_string()),
+                StatusOutcome::TransportError("network".to_string()),
             ),
-            ProductAdminStatusMutationResultViewModel {
+            StatusResultViewModel {
                 refresh: false,
                 error_message: Some("Failed to change status: network".to_string()),
             },
@@ -2090,11 +2066,11 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_status_mutation_command_prepares_transport_payload() {
-        let command = build_product_admin_status_mutation_command(
+    fn status_command_prepares_transport_payload() {
+        let command = build_status_command(
             Some(&admin_bootstrap()),
             "product-1".to_string(),
-            ProductAdminStatusTarget::Archived,
+            StatusTarget::Archived,
         )
         .expect("status command");
 
@@ -2105,30 +2081,21 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_status_mutation_command_validates_bootstrap() {
+    fn status_command_validates_bootstrap() {
         assert_eq!(
-            build_product_admin_status_mutation_command(
-                None,
-                "product-1".to_string(),
-                ProductAdminStatusTarget::Draft,
-            )
-            .unwrap_err(),
-            ProductAdminStatusMutationValidationError::BootstrapUnavailable
+            build_status_command(None, "product-1".to_string(), StatusTarget::Draft,).unwrap_err(),
+            StatusValidationError::BootstrapUnavailable
         );
-        assert_eq!(
-            ProductAdminStatusTarget::Active.as_graphql_status(),
-            "ACTIVE"
-        );
-        assert_eq!(ProductAdminStatusTarget::Draft.as_graphql_status(), "DRAFT");
+        assert_eq!(StatusTarget::Active.as_graphql_status(), "ACTIVE");
+        assert_eq!(StatusTarget::Draft.as_graphql_status(), "DRAFT");
     }
 
     #[test]
-    fn product_admin_save_command_prepares_create_draft_in_core() {
+    fn save_command_prepares_create_draft_in_core() {
         let command =
-            build_product_admin_save_command(draft_form(), None, Some(&admin_bootstrap()))
-                .expect("save command");
+            build_save_command(draft_form(), None, Some(&admin_bootstrap())).expect("save command");
 
-        assert!(matches!(command.mode, ProductAdminSaveMode::Create));
+        assert!(matches!(command.mode, SaveMode::Create));
         assert_eq!(command.tenant_id, "tenant-1");
         assert_eq!(command.actor_id, "user-1");
         assert_eq!(command.draft.locale, "en");
@@ -2141,8 +2108,8 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_save_command_prepares_update_mode_and_validation() {
-        let command = build_product_admin_save_command(
+    fn save_command_prepares_update_mode_and_validation() {
+        let command = build_save_command(
             draft_form(),
             Some("product-1".to_string()),
             Some(&admin_bootstrap()),
@@ -2151,33 +2118,31 @@ mod tests {
 
         assert!(matches!(
             command.mode,
-            ProductAdminSaveMode::Update { ref product_id } if product_id == "product-1"
+            SaveMode::Update { ref product_id } if product_id == "product-1"
         ));
 
         let mut missing_title = draft_form();
         missing_title.title = "  ".to_string();
         assert_eq!(
-            build_product_admin_save_command(missing_title, None, Some(&admin_bootstrap()))
-                .unwrap_err(),
-            ProductAdminSaveValidationError::TitleRequired
+            build_save_command(missing_title, None, Some(&admin_bootstrap())).unwrap_err(),
+            SaveValidationError::TitleRequired
         );
 
         let mut missing_locale = draft_form();
         missing_locale.locale = None;
         assert_eq!(
-            build_product_admin_save_command(missing_locale, None, Some(&admin_bootstrap()))
-                .unwrap_err(),
-            ProductAdminSaveValidationError::LocaleUnavailable
+            build_save_command(missing_locale, None, Some(&admin_bootstrap())).unwrap_err(),
+            SaveValidationError::LocaleUnavailable
         );
 
         assert_eq!(
-            build_product_admin_save_command(draft_form(), None, None).unwrap_err(),
-            ProductAdminSaveValidationError::BootstrapUnavailable
+            build_save_command(draft_form(), None, None).unwrap_err(),
+            SaveValidationError::BootstrapUnavailable
         );
     }
 
     #[test]
-    fn product_admin_editor_form_state_maps_empty_defaults() {
+    fn editor_form_state_maps_empty_defaults() {
         let state = empty_product_admin_editor_form_state();
 
         assert_eq!(state.editing_id, None);
@@ -2188,7 +2153,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_editor_form_state_maps_product_detail() {
+    fn editor_form_state_maps_product_detail() {
         let product = ProductDetail {
             id: "product-1".to_string(),
             status: "ACTIVE".to_string(),
@@ -2252,7 +2217,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_editor_view_model_tracks_create_and_edit_modes() {
+    fn editor_view_tracks_create_and_edit_modes() {
         let create = build_product_admin_editor_view_model(Some("en"), None);
         assert_eq!(create.mode, ProductAdminEditorMode::Create);
         assert_eq!(create.title, "Create Product");
@@ -2304,7 +2269,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_list_action_labels_and_availability_are_core_owned() {
+    fn list_action_labels_and_availability_are_core_owned() {
         let labels = build_product_admin_list_action_labels(Some("en"));
 
         assert_eq!(labels.edit, "Edit");
@@ -2317,7 +2282,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_list_item_view_model_formats_render_state() {
+    fn list_item_formats_render_state() {
         let product = ProductListItem {
             id: "product-1".to_string(),
             status: "ACTIVE".to_string(),
@@ -2353,7 +2318,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_shell_view_model_is_core_owned() {
+    fn shell_view_model_is_core_owned() {
         let view_model = build_product_admin_shell_view_model(Some("en"));
 
         assert_eq!(view_model.badge, "product");
@@ -2365,7 +2330,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_summary_panel_copy_is_core_owned() {
+    fn summary_panel_copy_is_core_owned() {
         let copy = build_product_admin_summary_panel_copy(Some("en"));
 
         assert_eq!(copy.title, "Selected product");
@@ -2387,7 +2352,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_profile_panel_view_models_are_core_owned() {
+    fn profile_panel_views_are_core_owned() {
         let active = ShippingProfile {
             id: "profile-1".to_string(),
             tenant_id: "tenant-1".to_string(),
@@ -2432,18 +2397,18 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_shipping_profile_options_are_core_owned() {
+    fn shipping_profile_options_are_core_owned() {
         let active = shipping_profile("standard", true);
         let inactive = shipping_profile("legacy", false);
 
         assert_eq!(
-            build_product_admin_shipping_profile_options(Some("en"), &[active, inactive]),
+            build_shipping_profile_options(Some("en"), &[active, inactive]),
             vec![
-                ProductAdminShippingProfileOption {
+                ShippingProfileOption {
                     value: "standard".to_string(),
                     label: "Standard (standard)".to_string(),
                 },
-                ProductAdminShippingProfileOption {
+                ShippingProfileOption {
                     value: "legacy".to_string(),
                     label: "Standard (legacy, inactive)".to_string(),
                 },
@@ -2452,16 +2417,15 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_shipping_profiles_load_result_is_normalized_once() {
-        let loading =
-            product_admin_shipping_profiles_load_view_from_result::<&str>(Some("en"), None);
+    fn shipping_profiles_load_is_normalized_once() {
+        let loading = shipping_profiles_load_view_from_result::<&str>(Some("en"), None);
         assert!(loading.options.is_empty());
         assert!(matches!(
             loading.panel,
             ProductAdminProfilePanelViewModel::Loading { .. }
         ));
 
-        let error = product_admin_shipping_profiles_load_view_from_result(
+        let error = shipping_profiles_load_view_from_result(
             Some("en"),
             Some(Err::<ShippingProfileList, _>("network")),
         );
@@ -2471,7 +2435,7 @@ mod tests {
             "Failed to load shipping profiles: network"
         );
 
-        let ready = product_admin_shipping_profiles_load_view_from_result::<&str>(
+        let ready = shipping_profiles_load_view_from_result::<&str>(
             Some("en"),
             Some(Ok(ShippingProfileList {
                 items: vec![shipping_profile("standard", true)],
@@ -2496,7 +2460,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_inventory_quantity_input_parsing_is_core_owned() {
+    fn inventory_quantity_parsing_is_core_owned() {
         assert_eq!(parse_product_admin_inventory_quantity_input(" 42 "), 42);
         assert_eq!(parse_product_admin_inventory_quantity_input(""), 0);
         assert_eq!(
@@ -2506,7 +2470,7 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_open_product_view_model_handles_missing_and_failed_loads() {
+    fn open_product_view_handles_missing_and_failed_loads() {
         let error_copy = build_product_admin_error_copy(Some("en"));
 
         match build_product_admin_open_product_view_model::<&str>(Some("en"), &error_copy, Ok(None))
@@ -2558,14 +2522,14 @@ mod tests {
     }
 
     #[test]
-    fn product_admin_pricing_preview_request_uses_primary_catalog_currency_or_default() {
+    fn pricing_preview_request_uses_primary_currency_or_default() {
         let mut product = product_detail();
         product.id = "product-preview".to_string();
         product.variants[0].prices[0].currency_code = "EUR".to_string();
 
         assert_eq!(
-            product_admin_pricing_preview_request_from_product(&product),
-            ProductAdminPricingPreviewRequest {
+            pricing_preview_request_from_product(&product),
+            PricingPreviewRequest {
                 product_id: "product-preview".to_string(),
                 currency_code: "EUR".to_string(),
             },
@@ -2573,28 +2537,28 @@ mod tests {
 
         product.variants.clear();
         assert_eq!(
-            product_admin_pricing_preview_request_from_product(&product).currency_code,
+            pricing_preview_request_from_product(&product).currency_code,
             "USD",
         );
     }
 
     #[test]
-    fn product_admin_pricing_preview_state_maps_async_resource_results() {
+    fn pricing_preview_state_maps_async_results() {
         assert!(matches!(
-            product_admin_pricing_preview_state_from_result(None),
-            ProductAdminPricingPreviewState::Loading
+            pricing_preview_state_from_result(None),
+            PricingPreviewState::Loading
         ));
 
         let unavailable = Ok(None);
         assert!(matches!(
-            product_admin_pricing_preview_state_from_result(Some(&unavailable)),
-            ProductAdminPricingPreviewState::Unavailable
+            pricing_preview_state_from_result(Some(&unavailable)),
+            PricingPreviewState::Unavailable
         ));
 
         let failed = Err("pricing timeout".to_string());
         assert!(matches!(
-            product_admin_pricing_preview_state_from_result(Some(&failed)),
-            ProductAdminPricingPreviewState::Error("pricing timeout")
+            pricing_preview_state_from_result(Some(&failed)),
+            PricingPreviewState::Error("pricing timeout")
         ));
     }
 
@@ -2604,7 +2568,7 @@ mod tests {
             build_selected_product_summary_view_model(
                 Some("en"),
                 None,
-                ProductAdminPricingPreviewState::Loading,
+                PricingPreviewState::Loading,
                 "/admin/pricing",
             ),
             SelectedProductSummaryViewModel::Empty {
@@ -2662,7 +2626,7 @@ mod tests {
         match build_selected_product_summary_view_model(
             Some("en"),
             Some(&product),
-            ProductAdminPricingPreviewState::Unavailable,
+            PricingPreviewState::Unavailable,
             "/admin/pricing",
         ) {
             SelectedProductSummaryViewModel::Ready {

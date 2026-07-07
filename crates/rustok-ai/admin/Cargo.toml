@@ -24,6 +24,7 @@ ssr = [
 ]
 
 [dependencies]
+rustok-ui-core.workspace = true
 alloy = { workspace = true, optional = true }
 leptos.workspace = true
 leptos_router.workspace = true
@@ -32,6 +33,11 @@ leptos-auth.workspace = true
 chrono.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
+
+
+
+
+
 rustok-ui-i18n-leptos.workspace = true
 leptos-ui-routing.workspace = true
 rustok-ai = { workspace = true, optional = true, features = ["server"] }

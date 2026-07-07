@@ -96,7 +96,7 @@ For module-owned admin UI, a single platform contract applies:
 
 Ownership split:
 
-- `rustok-api` owns the typed query schema, invariant rules and sanitization contract;
+- `rustok-ui-core` owns the typed UI query schema, invariant rules and sanitization contract;
 - `leptos-ui-routing` remains a generic Leptos route/query helper without an admin-specific key registry;
 - host applications (`apps/admin`, `apps/next-admin`) own the route writers/adapters and must
   maintain parity on the same query contract.

@@ -1,4 +1,5 @@
 use crate::model::StorefrontDeliveryGroup;
+use rustok_ui_core::{normalize_optional_ui_text, normalize_required_ui_text};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SelectShippingOptionRequest {
@@ -27,9 +28,9 @@ pub fn build_select_shipping_option_request(
     shipping_option_id: Option<String>,
 ) -> SelectShippingOptionRequest {
     SelectShippingOptionRequest {
-        shipping_profile_slug: normalize_required(group.shipping_profile_slug.clone()),
-        seller_id: normalize_optional(group.seller_id.clone()),
-        shipping_option_id: normalize_optional(shipping_option_id),
+        shipping_profile_slug: normalize_required_ui_text(group.shipping_profile_slug.clone()),
+        seller_id: normalize_optional_ui_text(group.seller_id.clone()),
+        shipping_option_id: normalize_optional_ui_text(shipping_option_id),
     }
 }
 
@@ -43,17 +44,6 @@ pub fn format_shipping_option_price(amount: &str, currency_code: &str) -> String
         (false, true) => amount.to_string(),
         (false, false) => format!("{amount} {currency_code}"),
     }
-}
-
-fn normalize_optional(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    })
-}
-
-fn normalize_required(value: String) -> String {
-    value.trim().to_string()
 }
 
 #[cfg(test)]

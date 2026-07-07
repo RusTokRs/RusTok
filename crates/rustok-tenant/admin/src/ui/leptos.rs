@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::{core, i18n::t, transport};
 

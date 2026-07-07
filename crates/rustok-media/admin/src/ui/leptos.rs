@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
     is_busy_key, media_admin_context_error, media_detail_lines, media_list_card_view_model,

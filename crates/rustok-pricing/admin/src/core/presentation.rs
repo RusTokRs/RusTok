@@ -694,7 +694,7 @@ mod tests {
         tiered_price.max_quantity = Some(5);
         let editor_title = format_variant_price_editor_title(Some("en-US"), &tiered_price);
 
-        assert_eq!(editor_title, "Update price (2-5)");
+        assert_eq!(editor_title, "Update price (tier 2-5)");
         assert_eq!(format_variant_count_label(Some("en-US"), 3), "3 items");
         assert_eq!(
             default_variant_price_editor_currency(&variant(vec![tiered_price], None), None),

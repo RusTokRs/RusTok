@@ -1,4 +1,6 @@
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
+use rustok_ui_core::normalize_optional_ui_text;
 
 #[cfg(feature = "ssr")]
 use crate::core::resolve_storefront_regions;
@@ -31,28 +33,17 @@ fn map_region(value: rustok_region::RegionResponse) -> StorefrontRegion {
 }
 
 #[cfg(feature = "ssr")]
-fn normalize_optional(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-#[cfg(feature = "ssr")]
 fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,
     tenant_default_locale: &str,
 ) -> String {
-    normalize_optional(requested)
+    normalize_optional_ui_text(requested)
         .or_else(|| {
-            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
+            request_context_locale
+                .and_then(|value| normalize_optional_ui_text(Some(value.to_string())))
         })
-        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
+        .or_else(|| normalize_optional_ui_text(Some(tenant_default_locale.to_string())))
         .unwrap_or_default()
 }
 

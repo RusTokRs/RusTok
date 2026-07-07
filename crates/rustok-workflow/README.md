@@ -11,7 +11,7 @@
 - Own workflow GraphQL and REST transport adapters for module-facing APIs.
 - Keep REST and webhook handlers on narrow `WorkflowHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
 - Publish the module-owned Leptos admin root page through `crates/rustok-workflow/admin`.
-- Keep workflow admin native server functions on `rustok_api::HostRuntimeContext`, not Loco `AppContext`, while preserving GraphQL fallback.
+- Keep workflow admin native server functions on `rustok_api::HostRuntimeContext`, not Loco `AppContext`, while preserving the parallel GraphQL selected path.
 - Publish the typed `workflows:*` and `workflow_executions:*` RBAC surface.
 
 ## Interactions

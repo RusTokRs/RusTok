@@ -1,38 +1,24 @@
-use rustok_api::{
-    normalize_ui_text, parse_ui_csv, AdminQueryKey, WritePathIssue, WritePathIssueKind,
+use rustok_api::{WritePathIssue, WritePathIssueKind};
+pub use rustok_ui_core::normalize_ui_text as optional_text;
+use rustok_ui_core::{
+    parse_ui_csv, ui_busy_key, ui_busy_key_last_segment_matches, ui_busy_key_matches_action,
+    ui_busy_key_with_id, AdminQueryKey, UiRouteQueryIntent,
 };
 
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList, BlogPostListItem};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BlogPostAdminRouteQueryIntent {
-    Push { key: &'static str, value: String },
-    Replace { key: &'static str, value: String },
-    Clear { key: &'static str },
-}
+pub type BlogPostAdminRouteQueryIntent = UiRouteQueryIntent;
 
 pub fn blog_post_admin_open_post_query_intent(post_id: String) -> BlogPostAdminRouteQueryIntent {
-    BlogPostAdminRouteQueryIntent::Push {
-        key: AdminQueryKey::PostId.as_str(),
-        value: post_id,
-    }
+    UiRouteQueryIntent::push(AdminQueryKey::PostId.as_str(), post_id)
 }
 
 pub fn blog_post_admin_saved_post_query_intent(post_id: String) -> BlogPostAdminRouteQueryIntent {
-    BlogPostAdminRouteQueryIntent::Replace {
-        key: AdminQueryKey::PostId.as_str(),
-        value: post_id,
-    }
+    UiRouteQueryIntent::replace(AdminQueryKey::PostId.as_str(), post_id)
 }
 
 pub fn blog_post_admin_clear_post_query_intent() -> BlogPostAdminRouteQueryIntent {
-    BlogPostAdminRouteQueryIntent::Clear {
-        key: AdminQueryKey::PostId.as_str(),
-    }
-}
-
-pub fn optional_text(value: &str) -> Option<String> {
-    normalize_ui_text(value)
+    UiRouteQueryIntent::clear(AdminQueryKey::PostId.as_str())
 }
 
 pub fn parse_tags(raw: &str) -> Vec<String> {
@@ -71,33 +57,29 @@ pub fn error_with_context(context: &str, error: &str) -> String {
 }
 
 pub fn busy_key_for_edit(post_id: &str) -> String {
-    format!("edit:{post_id}")
+    ui_busy_key_with_id("edit", post_id)
 }
 
 pub fn busy_key_for_save(post_id: Option<&str>) -> String {
-    match post_id {
-        Some(id) => format!("save:{id}"),
-        None => "create".to_string(),
-    }
+    post_id
+        .map(|id| ui_busy_key_with_id("save", id))
+        .unwrap_or_else(|| ui_busy_key("create"))
 }
 
 pub fn busy_key_for_publish(post_id: &str) -> String {
-    format!("publish:{post_id}")
+    ui_busy_key_with_id("publish", post_id)
 }
 
 pub fn busy_key_for_archive(post_id: &str) -> String {
-    format!("archive:{post_id}")
+    ui_busy_key_with_id("archive", post_id)
 }
 
 pub fn busy_key_for_delete(post_id: &str) -> String {
-    format!("delete:{post_id}")
+    ui_busy_key_with_id("delete", post_id)
 }
 
 pub fn is_save_busy(busy_key: Option<&str>) -> bool {
-    busy_key == Some("create")
-        || busy_key
-            .map(|key| key.starts_with("save:"))
-            .unwrap_or(false)
+    busy_key == Some("create") || ui_busy_key_matches_action(busy_key, "save")
 }
 
 pub fn label_with_id(template: &str, id: &str) -> String {
@@ -180,7 +162,7 @@ pub fn selected_post_request(
 }
 
 pub fn trimmed_text(value: &str) -> String {
-    normalize_ui_text(value).unwrap_or_default()
+    optional_text(value).unwrap_or_default()
 }
 
 pub fn fallback_post_slug(value: Option<String>, fallback: &str) -> String {
@@ -200,7 +182,7 @@ pub fn tags_input_value(tags: &[String]) -> String {
 }
 
 pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
-    busy_key.map(|key| key.contains(post_id)).unwrap_or(false)
+    ui_busy_key_last_segment_matches(busy_key, post_id)
 }
 
 pub fn is_editing_post(editing_post_id: Option<&str>, post_id: &str) -> bool {

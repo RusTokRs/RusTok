@@ -5,7 +5,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     graphql_user_view, prepare_create_user_input, user_list_page, user_list_pagination,

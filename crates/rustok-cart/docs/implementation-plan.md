@@ -7,7 +7,7 @@ context snapshot, while orchestration over checkout lives in umbrella `rustok-co
 
 - Current phase: phase_b_ready
 - Last checkpoint: Cart storefront read ownership now includes full shipping option summaries and storefront repricing in `cart/storefront-data`; `rustok-commerce-storefront` consumes cart workspace data through `rustok-cart-storefront::transport::fetch_cart` instead of keeping its own checkout cart GraphQL/native read mapping.
-- Next step: Continue only with owner-module checkout handoff slices that remove real umbrella presentation/read leakage, or return to parity/evidence hardening for SSR native path, GraphQL fallback, headless cart mutation contracts and DOM evidence.
+- Next step: Continue only with owner-module checkout handoff slices that remove real umbrella presentation/read leakage, or return to parity/evidence hardening for SSR native path, GraphQL selected path, headless cart mutation contracts and DOM evidence.
 - Open blockers: None.
 - Hand-off notes for next agent: Update this block and the central readiness board after each increment.
 - Last updated at (UTC): 2026-06-30T08:39:56Z
@@ -50,7 +50,7 @@ context snapshot, while orchestration over checkout lives in umbrella `rustok-co
   so that unit_price remains consistent with the pricing resolver;
 - transport adapters are still published through the `rustok-commerce` facade, without dependency cycles;
 - storefront cart inspection, safe decrement/remove write-side and seller-aware delivery-group snapshot already moved to `rustok-cart/storefront`;
-- storefront package continued FFA decomposition: pure cart UI policy, typed request construction, GraphQL command dispatch, stable transport error evidence, Leptos DOM evidence adapter and display/view-model mapping organized under `storefront/src/core/{identifiers,policy,request,view_model,error}.rs`, Leptos layer lives in `storefront/src/ui/leptos.rs` and uses the facade in `storefront/src/transport/mod.rs`, native-first/GraphQL fallback orchestration lives in `storefront/src/transport/`, legacy `storefront/src/api.rs` removed, and fast guardrail `scripts/verify/verify-cart-storefront-boundary.mjs` locks the boundary and docs sync;
+- storefront package continued FFA decomposition: pure cart UI policy, typed request construction, GraphQL command dispatch, stable transport error evidence, Leptos DOM evidence adapter and display/view-model mapping organized under `storefront/src/core/{identifiers,policy,request,view_model,error}.rs`, Leptos layer lives in `storefront/src/ui/leptos.rs` and uses the facade in `storefront/src/transport/mod.rs`, build-profile-selected native/GraphQL orchestration lives in `storefront/src/transport/`, legacy `storefront/src/api.rs` removed, and fast guardrail `scripts/verify/verify-cart-storefront-boundary.mjs` locks the boundary and docs sync;
 - channel/context/deliverability orchestration over cart is still performed at the umbrella-module level.
 - targeted tests now explicitly verify that cart mutation paths `set_adjustments` and typed promotion apply-path are rejected when `checking_out`, so no concurrent pricing snapshot mutation occurs during checkout.
 

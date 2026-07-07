@@ -2,7 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminDetailPanelLabels,
@@ -10,9 +10,9 @@ use crate::core::{
     RegionAdminEditorLabels, RegionAdminListHeaderLabels, RegionAdminListLabels,
     RegionAdminListStateLabels, RegionAdminListStateViewModel, RegionAdminOpenDetailViewModel,
     RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminRouteQueryIntent,
-    RegionAdminRouteQueryUpdate, RegionAdminSaveMode, RegionAdminSaveSuccessViewModel,
-    RegionAdminShellLabels, RegionAdminSubmitErrorLabels, RegionAdminSubmitInput,
-    RegionAdminTransportErrorLabels, RegionRequiredFieldLabels, REGION_ADMIN_SELECTED_QUERY_KEY,
+    RegionAdminSaveMode, RegionAdminSaveSuccessViewModel, RegionAdminShellLabels,
+    RegionAdminSubmitErrorLabels, RegionAdminSubmitInput, RegionAdminTransportErrorLabels,
+    RegionRequiredFieldLabels, REGION_ADMIN_SELECTED_QUERY_KEY,
 };
 use crate::i18n::t;
 use crate::model::RegionDetail;
@@ -519,7 +519,11 @@ pub fn RegionAdmin() -> impl IntoView {
                                                             type="button"
                                                             class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                                             disabled=move || busy.get()
-                                                            on:click=move |_| apply_region_route_query_update(&item_query_writer, crate::core::region_admin_open_query_update(&region_id))
+                                                            on:click=move |_| {
+                                                                if let Some(intent) = crate::core::region_admin_open_query_update(&region_id) {
+                                                                    item_query_writer.apply_query_intent(intent);
+                                                                }
+                                                            }
                                                         >
                                                             {open_action.clone()}
                                                         </button>
@@ -550,10 +554,7 @@ pub fn RegionAdmin() -> impl IntoView {
                                 class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                 disabled=move || busy.get()
                             on:click=move |_| {
-                                apply_region_route_query_update(
-                                    &reset_query_writer,
-                                    Some(crate::core::region_admin_new_query_update()),
-                                );
+                                reset_query_writer.apply_query_intent(crate::core::region_admin_new_query_update());
                                 reset_form();
                             }
                             >
@@ -657,22 +658,6 @@ pub fn RegionAdmin() -> impl IntoView {
     }
 }
 
-fn apply_region_route_query_update(
-    query_writer: &leptos_ui_routing::RouteQueryWriter,
-    update: Option<RegionAdminRouteQueryUpdate>,
-) {
-    if let Some(write) = crate::core::optional_region_admin_route_query_write(update) {
-        query_writer.update(
-            write
-                .updates
-                .into_iter()
-                .map(|(key, value)| (key.to_string(), value))
-                .collect(),
-            write.replace,
-        );
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn apply_region_save_success_view_model(
     view_model: RegionAdminSaveSuccessViewModel,
@@ -705,7 +690,9 @@ fn apply_region_save_success_view_model(
     if view_model.refresh_list {
         set_refresh_nonce.update(|value| *value += 1);
     }
-    apply_region_route_query_update(query_writer, view_model.route_update);
+    if let Some(intent) = view_model.route_update {
+        query_writer.apply_query_intent(intent);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

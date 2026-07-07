@@ -1,4 +1,7 @@
-use rustok_api::AdminQueryKey;
+use rustok_ui_core::{
+    normalize_optional_ui_text, ui_busy_key_last_segment_matches, ui_scoped_busy_key,
+    AdminQueryKey, UiRouteQueryIntent,
+};
 
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
@@ -682,17 +685,7 @@ pub fn forum_admin_busy_key(
     action: ForumAdminBusyAction,
     item_id: Option<&str>,
 ) -> String {
-    match item_id {
-        Some(item_id) if !item_id.trim().is_empty() => {
-            format!(
-                "{}:{}:{}",
-                surface.as_str(),
-                action.as_str(),
-                item_id.trim()
-            )
-        }
-        _ => format!("{}:{}", surface.as_str(), action.as_str()),
-    }
+    ui_scoped_busy_key(surface.as_str(), action.as_str(), item_id)
 }
 
 fn render_count_label(template: &str, value: i32) -> String {
@@ -700,10 +693,7 @@ fn render_count_label(template: &str, value: i32) -> String {
 }
 
 fn item_busy(busy_key: Option<&str>, item_id: &str) -> bool {
-    busy_key
-        .and_then(|value| value.rsplit(':').next())
-        .map(|busy_item_id| busy_item_id == item_id)
-        .unwrap_or(false)
+    ui_busy_key_last_segment_matches(busy_key, item_id)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -863,19 +853,7 @@ impl ForumAdminQuerySurface {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ForumAdminRouteQueryOperation {
-    Push,
-    Replace,
-    Clear,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ForumAdminRouteQueryIntent {
-    pub operation: ForumAdminRouteQueryOperation,
-    pub key: &'static str,
-    pub value: Option<String>,
-}
+pub type ForumAdminRouteQueryIntent = UiRouteQueryIntent;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForumAdminDeleteOutcome {
@@ -888,39 +866,24 @@ pub fn forum_admin_open_query_intent(
     surface: ForumAdminQuerySurface,
     id: impl Into<String>,
 ) -> ForumAdminRouteQueryIntent {
-    ForumAdminRouteQueryIntent {
-        operation: ForumAdminRouteQueryOperation::Push,
-        key: surface.query_key(),
-        value: Some(id.into()),
-    }
+    UiRouteQueryIntent::push(surface.query_key(), id)
 }
 
 pub fn forum_admin_saved_query_intent(
     surface: ForumAdminQuerySurface,
     id: impl Into<String>,
 ) -> ForumAdminRouteQueryIntent {
-    ForumAdminRouteQueryIntent {
-        operation: ForumAdminRouteQueryOperation::Replace,
-        key: surface.query_key(),
-        value: Some(id.into()),
-    }
+    UiRouteQueryIntent::replace(surface.query_key(), id)
 }
 
 pub fn forum_admin_reset_query_intent(
     surface: ForumAdminQuerySurface,
 ) -> ForumAdminRouteQueryIntent {
-    ForumAdminRouteQueryIntent {
-        operation: ForumAdminRouteQueryOperation::Clear,
-        key: surface.query_key(),
-        value: None,
-    }
+    UiRouteQueryIntent::clear(surface.query_key())
 }
 
 pub fn selected_query_id(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    })
+    normalize_optional_ui_text(value)
 }
 
 pub fn deleted_selection_matches(current_id: Option<&str>, deleted_id: &str) -> bool {
@@ -1070,26 +1033,22 @@ mod tests {
     fn builds_route_query_intents_for_admin_surfaces() {
         assert_eq!(
             forum_admin_open_query_intent(ForumAdminQuerySurface::Category, "category-1"),
-            ForumAdminRouteQueryIntent {
-                operation: ForumAdminRouteQueryOperation::Push,
+            ForumAdminRouteQueryIntent::Push {
                 key: AdminQueryKey::CategoryId.as_str(),
-                value: Some("category-1".to_string()),
+                value: "category-1".to_string(),
             }
         );
         assert_eq!(
             forum_admin_saved_query_intent(ForumAdminQuerySurface::Topic, "topic-1"),
-            ForumAdminRouteQueryIntent {
-                operation: ForumAdminRouteQueryOperation::Replace,
+            ForumAdminRouteQueryIntent::Replace {
                 key: AdminQueryKey::TopicId.as_str(),
-                value: Some("topic-1".to_string()),
+                value: "topic-1".to_string(),
             }
         );
         assert_eq!(
             forum_admin_reset_query_intent(ForumAdminQuerySurface::Category),
-            ForumAdminRouteQueryIntent {
-                operation: ForumAdminRouteQueryOperation::Clear,
+            ForumAdminRouteQueryIntent::Clear {
                 key: AdminQueryKey::CategoryId.as_str(),
-                value: None,
             }
         );
     }

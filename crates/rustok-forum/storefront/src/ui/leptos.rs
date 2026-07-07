@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     forum_storefront_category_card_view_model, forum_storefront_count_label,

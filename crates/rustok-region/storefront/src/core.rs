@@ -1,4 +1,4 @@
-use rustok_api::{normalize_ui_text, UiRouteQueryUpdate};
+use rustok_ui_core::{normalize_ui_text, UiRouteQueryUpdate};
 
 use crate::model::{StorefrontRegion, StorefrontRegionCountryTaxPolicy, StorefrontRegionsData};
 
@@ -13,13 +13,13 @@ pub const REGION_ROUTE_QUERY_VALUE_DOM_ATTRIBUTE: &str = "data-region-route-quer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionStorefrontErrorPath {
     NativeServer,
-    GraphqlFallback,
+    Graphql,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionErrorStatusCode {
     NativeUnavailable,
-    FallbackUnavailable,
+    GraphqlUnavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,9 +36,9 @@ const REGION_ERROR_STATUS_DESCRIPTORS: [RegionErrorStatusDescriptor; 2] = [
         locale_key: "region.error.status.nativeUnavailable",
     },
     RegionErrorStatusDescriptor {
-        code: RegionErrorStatusCode::FallbackUnavailable,
-        stable_code: "fallback_unavailable",
-        locale_key: "region.error.status.fallbackUnavailable",
+        code: RegionErrorStatusCode::GraphqlUnavailable,
+        stable_code: "graphql_unavailable",
+        locale_key: "region.error.status.graphqlUnavailable",
     },
 ];
 
@@ -87,7 +87,7 @@ pub fn region_error_view_model(
     evidence: RegionErrorEvidence,
     title: String,
     native_unavailable_body: String,
-    fallback_unavailable_body: String,
+    graphql_unavailable_body: String,
     native_status_label: String,
     fallback_status_label: String,
     native_label: String,
@@ -97,8 +97,8 @@ pub fn region_error_view_model(
     let status_locale_key = region_error_status_descriptor(status_code).locale_key;
     let (status_label, body) = match status_code {
         RegionErrorStatusCode::NativeUnavailable => (native_status_label, native_unavailable_body),
-        RegionErrorStatusCode::FallbackUnavailable => {
-            (fallback_status_label, fallback_unavailable_body)
+        RegionErrorStatusCode::GraphqlUnavailable => {
+            (fallback_status_label, graphql_unavailable_body)
         }
     };
     let technical_detail = region_error_technical_detail(&evidence, &native_label, &graphql_label);
@@ -123,10 +123,8 @@ pub fn region_error_dom_evidence(error: &RegionErrorViewModel) -> RegionErrorDom
 }
 
 pub fn region_error_status_code(evidence: &RegionErrorEvidence) -> RegionErrorStatusCode {
-    if evidence.fallback_attempted
-        || evidence.failed_path == RegionStorefrontErrorPath::GraphqlFallback
-    {
-        RegionErrorStatusCode::FallbackUnavailable
+    if evidence.fallback_attempted || evidence.failed_path == RegionStorefrontErrorPath::Graphql {
+        RegionErrorStatusCode::GraphqlUnavailable
     } else {
         RegionErrorStatusCode::NativeUnavailable
     }
@@ -509,13 +507,13 @@ mod tests {
         assert_eq!(descriptors.len(), 2);
         assert_eq!(
             descriptors.map(|descriptor| descriptor.stable_code),
-            ["native_unavailable", "fallback_unavailable"]
+            ["native_unavailable", "graphql_unavailable"]
         );
         assert_eq!(
             descriptors.map(|descriptor| descriptor.locale_key),
             [
                 "region.error.status.nativeUnavailable",
-                "region.error.status.fallbackUnavailable",
+                "region.error.status.graphqlUnavailable",
             ]
         );
         assert_eq!(
@@ -528,7 +526,7 @@ mod tests {
     fn region_error_dom_evidence_uses_stable_attribute_contract() {
         let view_model = region_error_view_model(
             RegionErrorEvidence {
-                failed_path: RegionStorefrontErrorPath::GraphqlFallback,
+                failed_path: RegionStorefrontErrorPath::Graphql,
                 fallback_attempted: true,
                 native_error: Some("native failed".to_string()),
                 graphql_error: Some("graphql failed".to_string()),
@@ -537,21 +535,21 @@ mod tests {
             "Native path is unavailable.".to_string(),
             "Native and GraphQL paths are unavailable.".to_string(),
             "Native unavailable".to_string(),
-            "Fallback unavailable".to_string(),
+            "GraphQL unavailable".to_string(),
             "native".to_string(),
             "graphql".to_string(),
         );
         let evidence = region_error_dom_evidence(&view_model);
 
         assert_eq!(evidence.status_attribute, REGION_ERROR_STATUS_DOM_ATTRIBUTE);
-        assert_eq!(evidence.status_value, "fallback_unavailable");
+        assert_eq!(evidence.status_value, "graphql_unavailable");
         assert_eq!(
             evidence.locale_key_attribute,
             REGION_ERROR_LOCALE_KEY_DOM_ATTRIBUTE
         );
         assert_eq!(
             evidence.locale_key_value,
-            "region.error.status.fallbackUnavailable"
+            "region.error.status.graphqlUnavailable"
         );
     }
 
@@ -559,7 +557,7 @@ mod tests {
     fn region_error_view_model_preserves_fallback_evidence_for_ui() {
         let view_model = region_error_view_model(
             RegionErrorEvidence {
-                failed_path: RegionStorefrontErrorPath::GraphqlFallback,
+                failed_path: RegionStorefrontErrorPath::Graphql,
                 fallback_attempted: true,
                 native_error: Some("tenant context missing".to_string()),
                 graphql_error: Some("network unavailable".to_string()),
@@ -568,21 +566,21 @@ mod tests {
             "Native path is unavailable.".to_string(),
             "Native and GraphQL paths are unavailable.".to_string(),
             "Native unavailable".to_string(),
-            "Fallback unavailable".to_string(),
+            "GraphQL unavailable".to_string(),
             "native".to_string(),
             "graphql".to_string(),
         );
 
         assert_eq!(
             view_model.status_code,
-            RegionErrorStatusCode::FallbackUnavailable
+            RegionErrorStatusCode::GraphqlUnavailable
         );
-        assert_eq!(view_model.status_code.as_str(), "fallback_unavailable");
+        assert_eq!(view_model.status_code.as_str(), "graphql_unavailable");
         assert_eq!(
             view_model.status_locale_key,
-            "region.error.status.fallbackUnavailable"
+            "region.error.status.graphqlUnavailable"
         );
-        assert_eq!(view_model.status_label, "Fallback unavailable");
+        assert_eq!(view_model.status_label, "GraphQL unavailable");
         assert_eq!(view_model.title, "Failed to load");
         assert_eq!(view_model.body, "Native and GraphQL paths are unavailable.");
         assert_eq!(
@@ -604,7 +602,7 @@ mod tests {
             "Native path is unavailable.".to_string(),
             "Native and GraphQL paths are unavailable.".to_string(),
             "Native unavailable".to_string(),
-            "Fallback unavailable".to_string(),
+            "GraphQL unavailable".to_string(),
             "native".to_string(),
             "graphql".to_string(),
         );

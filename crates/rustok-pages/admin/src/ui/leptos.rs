@@ -3,9 +3,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext, WritePathIssue};
+use rustok_api::WritePathIssue;
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core;
 use crate::i18n::t;

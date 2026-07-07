@@ -18,10 +18,8 @@ pub mod permissions;
 pub mod ports;
 #[cfg(feature = "server")]
 pub mod request;
-pub mod route_selection;
 #[cfg(feature = "server")]
 pub mod runtime;
-pub mod ui;
 pub mod write_path_feedback;
 
 #[cfg(feature = "server")]
@@ -47,14 +45,6 @@ pub use ports::{
 };
 #[cfg(feature = "server")]
 pub use request::RequestContext;
-pub use route_selection::{
-    admin_route_query_schema, is_legacy_admin_query_key, sanitize_admin_route_query,
-    AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema,
-};
 #[cfg(feature = "server")]
 pub use runtime::HostRuntimeContext;
-pub use ui::{
-    normalize_ui_text, parse_ui_csv, route_query_update_for_text, UiRouteContext,
-    UiRouteQueryUpdate,
-};
 pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};

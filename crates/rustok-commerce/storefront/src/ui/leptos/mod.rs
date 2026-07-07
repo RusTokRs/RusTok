@@ -1,7 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::read_route_query_value;
-use rustok_api::UiRouteContext;
 use rustok_cart_storefront::CartCheckoutHandoffCard;
 use rustok_fulfillment_storefront::core::SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest;
 use rustok_fulfillment_storefront::{
@@ -11,6 +10,7 @@ use rustok_order_storefront::transport::CompleteCheckoutRequest;
 use rustok_order_storefront::{OrderCheckoutCompleteButton, OrderCheckoutResultCard};
 use rustok_payment_storefront::transport::PaymentCollectionCreateRequest;
 use rustok_payment_storefront::{PaymentCollectionActionButton, PaymentCollectionCard};
+use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{

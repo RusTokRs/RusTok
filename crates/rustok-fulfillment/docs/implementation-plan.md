@@ -7,12 +7,12 @@ SPI and post-order delivery changes still remain in the active backlog of umbrel
 
 ## Execution checkpoint
 
-- Current phase: storefront selection transport ownership and provider SPI live-adapter evidence
-- Last checkpoint: Fulfillment storefront now owns both shipping-selection transports. `storefront/src/transport/native_server_adapter/raw_adapter.rs` exposes `fulfillment/select-shipping-option`, validates/materializes owner selection updates and calls `rustok_commerce::storefront_checkout_runtime`, while `storefront/src/transport/graphql_adapter.rs` keeps the parallel public GraphQL mutation fallback. `storefront/src/transport.rs` exposes the MissingServer-gated `select_shipping_option` facade without a commerce callback, and commerce no longer contains fulfillment GraphQL or native owner-operation wrappers.
+- Current phase: storefront native Loco-free transport ownership and provider SPI live-adapter evidence
+- Last checkpoint: Fulfillment storefront owns both shipping-selection transports. `storefront/src/transport/native_server_adapter/raw_adapter.rs` exposes `fulfillment/select-shipping-option`, validates/materializes owner selection updates and calls `rustok_commerce::storefront_checkout_runtime` with `HostRuntimeContext` DB/event-bus handles, while `storefront/src/transport/graphql_adapter.rs` keeps the parallel public GraphQL mutation fallback. `storefront/src/transport.rs` exposes the MissingServer-gated `select_shipping_option` facade without a commerce callback, and commerce no longer contains fulfillment GraphQL or native owner-operation wrappers. The storefront package no longer depends on `loco-rs` or `rustok-outbox/loco-adapter`.
 - Next step: Continue production carrier adapter wiring separately; keep seller-aware shipping-selection parity locked by the owner storefront guardrail and commerce handoff guardrail.
 - Open blockers: None.
-- Hand-off notes for next agent: Without compilation: maintain fast source guardrails; at the next transport cutover, synchronize commerce plan and the central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-30T08:04:31Z
+- Hand-off notes for next agent: Keep the storefront Loco-free guardrails with the owner boundary checks; at the next transport cutover, synchronize commerce plan and the central FFA/FBA readiness board.
+- Last updated at (UTC): 2026-07-08T00:00:00Z
 
 ## FFA/FBA status
 
@@ -36,9 +36,10 @@ SPI and post-order delivery changes still remain in the active backlog of umbrel
   - any UI/transport boundary changes must be locked with parity/boundary evidence in the same increment;
   - admin FFA slice added framework-agnostic `admin/src/core.rs` request policy for list and filters, module-owned `admin/src/transport.rs` facade, GraphQL adapter `admin/src/transport/graphql_adapter.rs` and explicit Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` now only wires modules and re-exports `FulfillmentAdmin`, legacy `admin/src/api.rs` removed, and Leptos adapter no longer calls raw adapter directly for covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` locks boundary and docs sync without full-workspace compile;
   - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs`, `storefront/src/transport.rs`, `storefront/src/transport/graphql_adapter.rs`, `storefront/src/transport/native_server_adapter/raw_adapter.rs` and `storefront/src/ui/leptos.rs`; fulfillment owns seller-aware presentation/normalization, update materialization, typed errors, GraphQL mutation payload/mapping, the `fulfillment/select-shipping-option` server-function shell and MissingServer fallback over the explicit commerce checkout runtime API.
+  - `storefront/src/transport/native_server_adapter/raw_adapter.rs` is Loco-free: it reads `HostRuntimeContext`, obtains `TransactionalEventBus` from the neutral typed host-handle snapshot, passes `runtime_ctx.db_clone()` into `StorefrontCheckoutRuntime`, and the storefront package has no `loco-rs` or `rustok-outbox/loco-adapter` dependency.
   - `storefront/src/transport.rs` owns shipping-selection update materialization via `build_shipping_selection_updates`; the owner GraphQL and native adapters consume those updates directly, and commerce no longer maps fulfillment selection updates inside its storefront raw adapter.
   - manifest-driven storefront composition now registers `rustok-fulfillment-storefront` in `checkout_shipping_handoff`; `FulfillmentView` is the zero-prop host entry adapter, reads the effective locale from `UiRouteContext.locale`, and resolves copy through the module-owned `en`/`ru` catalog declared by `[provides.storefront_ui.i18n]`.
-- Last verified at (UTC): 2026-06-30T08:04:31Z
+- Last verified at (UTC): 2026-07-08T00:00:00Z
 - Owner: `rustok-fulfillment` module team
 
 ## Scope of work

@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     build_select_shipping_option_request, format_shipping_option_price,

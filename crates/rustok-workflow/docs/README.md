@@ -14,7 +14,7 @@ events and must not become a second event bus or transport runtime.
 
 - `WorkflowService`, `WorkflowEngine`, trigger handlers and execution lifecycle;
 - REST/webhook handlers on narrow `WorkflowHttpRuntime` with an explicit DB handle; the current Loco `AppContext` remains only in the route-state adapter until the full Axum cutover;
-- module-owned admin native server-function transport on `rustok_api::HostRuntimeContext`, with GraphQL fallback kept in parallel;
+- module-owned admin native server-function transport on `rustok_api::HostRuntimeContext`, with GraphQL kept as the parallel selected path;
 - workflow storage: definitions, versions, steps, executions and step executions;
 - transport surfaces: GraphQL, REST/webhook ingress and module-owned admin UI package;
 - step taxonomy (`action`, `emit_event`, `condition`, `delay`, `http`, `alloy_script`, `notify`);

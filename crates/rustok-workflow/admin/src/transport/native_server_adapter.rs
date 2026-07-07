@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 
-use crate::model::{WorkflowStatus, WorkflowSummary, WorkflowTemplateDto};
+#[cfg(feature = "ssr")]
+use crate::model::WorkflowStatus;
+use crate::model::{WorkflowSummary, WorkflowTemplateDto};
 
 #[server(prefix = "/api/fn", endpoint = "workflow-admin/list-workflows")]
 pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnError> {

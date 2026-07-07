@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{build_rbac_admin_overview_view_model, format_rbac_admin_bootstrap_error};
 use crate::i18n::t;

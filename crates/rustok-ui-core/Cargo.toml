@@ -1,0 +1,8 @@
+[package]
+name = "rustok-ui-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Framework-agnostic UI contracts and helpers for RusTok module surfaces"
+
+[dependencies]

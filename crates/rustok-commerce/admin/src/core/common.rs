@@ -1,3 +1,5 @@
+use rustok_ui_core::normalize_ui_text;
+
 pub const DEFAULT_PROMOTION_KIND: &str = "fixed_discount";
 pub const DEFAULT_PROMOTION_SCOPE: &str = "shipping";
 pub const DEFAULT_PROMOTION_SOURCE_ID: &str = "promo-operator";
@@ -9,12 +11,7 @@ pub fn error_with_context(context: &str, error: &str) -> String {
 }
 
 pub fn trimmed_non_empty(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value)
 }
 
 pub fn optional_value(value: Option<&str>) -> String {

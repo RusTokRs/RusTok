@@ -2,7 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
     build_customer_admin_submit_command, customer_admin_detail_empty_view_model,

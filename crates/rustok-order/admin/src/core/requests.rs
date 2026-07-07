@@ -1,3 +1,5 @@
+use rustok_ui_core::normalize_ui_text;
+
 pub const DEFAULT_ORDER_PAGE: u64 = 1;
 pub const DEFAULT_ORDER_PER_PAGE: u64 = 24;
 
@@ -9,12 +11,7 @@ pub struct OrderListRequest {
 }
 
 pub fn text_or_none(value: impl AsRef<str>) -> Option<String> {
-    let trimmed = value.as_ref().trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value.as_ref())
 }
 
 pub fn order_list_request(status: impl AsRef<str>) -> OrderListRequest {

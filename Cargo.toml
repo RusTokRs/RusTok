@@ -216,8 +216,10 @@ rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api", default-features = false }
 rustok-graphql = { path = "crates/rustok-graphql" }
 rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
+rustok-ui-core = { path = "crates/rustok-ui-core" }
 rustok-ui-i18n = { path = "crates/rustok-ui-i18n" }
 rustok-ui-i18n-leptos = { path = "crates/rustok-ui-i18n-leptos" }
+rustok-ui-transport = { path = "crates/rustok-ui-transport" }
 leptos-ui-routing = { path = "crates/leptos-ui-routing" }
 rustok-cache = { path = "crates/rustok-cache" }
 rustok-channel = { path = "crates/rustok-channel" }

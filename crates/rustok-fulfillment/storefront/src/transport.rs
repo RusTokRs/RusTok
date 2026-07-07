@@ -1,6 +1,10 @@
 mod graphql_adapter;
 mod native_server_adapter;
 
+use std::fmt::{Display, Formatter};
+
+use rustok_ui_core::{normalize_optional_ui_text, normalize_required_ui_text};
+use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,18 +44,15 @@ impl ShippingSelectionTransportError {
             Self::Graphql(message) | Self::ServerFn(message) | Self::Validation(message) => message,
         }
     }
+}
 
-    pub fn should_fallback_to_graphql(&self) -> bool {
-        match self {
-            Self::ServerFn(server_error) => {
-                server_error.contains("MissingServer")
-                    || server_error.contains("missing server")
-                    || server_error.contains("not available on this target")
-            }
-            _ => false,
-        }
+impl Display for ShippingSelectionTransportError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
     }
 }
+
+impl std::error::Error for ShippingSelectionTransportError {}
 
 impl ShippingSelectionError {
     pub fn message(&self) -> String {
@@ -74,13 +75,25 @@ impl ShippingSelectionError {
 
 pub async fn select_shipping_option(
     request: SelectShippingOptionRequest,
-) -> Result<(), ShippingSelectionTransportError> {
-    match native_server_adapter::select_shipping_option(request.clone()).await {
-        Ok(()) => Ok(()),
-        Err(error) if error.should_fallback_to_graphql() => {
-            graphql_adapter::select_shipping_option(request).await
-        }
-        Err(error) => Err(error),
+) -> Result<(), UiTransportError> {
+    let native_request = request.clone();
+    execute_selected_transport(
+        "fulfillment",
+        selected_transport_path(),
+        move || native_server_adapter::select_shipping_option(native_request),
+        move || graphql_adapter::select_shipping_option(request),
+    )
+    .await
+}
+
+fn selected_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
     }
 }
 
@@ -104,11 +117,11 @@ pub fn build_select_shipping_option_request(
     shipping_option_id: Option<String>,
 ) -> SelectShippingOptionRequest {
     SelectShippingOptionRequest {
-        cart_id: normalize_required(cart_id),
+        cart_id: normalize_required_ui_text(cart_id),
         delivery_groups,
-        shipping_profile_slug: normalize_required(shipping_profile_slug),
-        seller_id: normalize_optional(seller_id),
-        shipping_option_id: normalize_optional(shipping_option_id),
+        shipping_profile_slug: normalize_required_ui_text(shipping_profile_slug),
+        seller_id: normalize_optional_ui_text(seller_id),
+        shipping_option_id: normalize_optional_ui_text(shipping_option_id),
     }
 }
 
@@ -168,17 +181,6 @@ pub fn build_shipping_selection_updates(
         .map_err(|error| ShippingSelectionTransportError::Validation(error.message()))
 }
 
-fn normalize_optional(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    })
-}
-
-fn normalize_required(value: String) -> String {
-    value.trim().to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,21 +234,8 @@ mod tests {
     }
 
     #[test]
-    fn server_function_missing_error_can_fallback_to_graphql() {
-        assert!(
-            ShippingSelectionTransportError::ServerFn("MissingServerFunction".into())
-                .should_fallback_to_graphql()
-        );
-        assert!(ShippingSelectionTransportError::ServerFn(
-            "server function is not available on this target".into()
-        )
-        .should_fallback_to_graphql());
-        assert!(
-            !ShippingSelectionTransportError::Validation("bad cart".into())
-                .should_fallback_to_graphql()
-        );
-        assert!(!ShippingSelectionTransportError::Graphql("network".into())
-            .should_fallback_to_graphql());
+    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
     }
 
     #[test]

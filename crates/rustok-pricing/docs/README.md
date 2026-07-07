@@ -36,8 +36,8 @@
   lists disappear from other channels and return after scope removal;
 - module-owned admin UI package `rustok-pricing/admin` for price visibility,
   sale markers, currency coverage inspection and operator-side effective price preview by
-  `currency + optional region_id + optional quantity` via native-first `#[server]`
-  transport with GraphQL fallback, as well as for authoring base variant price rows and
+  `currency + optional region_id + optional quantity` via build-profile-selected native `#[server]`
+  transport with a GraphQL selected path, as well as for authoring base variant price rows and
   active `price_list_id` override rows, including quantity tiers by `min_quantity` /
   `max_quantity`, and now also for typed percentage-discount preview/apply over
   canonical base row or selected active `price_list` override, plus for editing
@@ -53,7 +53,7 @@
   `channel_slug`, `quantity`) via native server functions;
   the effective context for channel-aware pricing is not constructed from a package-local
   fallback chain: locale remains host-owned, and channel override arrives only as an
-  explicit route/server-function input or from the host `RequestContext`; the GraphQL fallback
+  explicit route/server-function input or from the host `RequestContext`; the GraphQL selected path
   meanwhile also receives `available_channels` and channel-aware active
   `price_lists` via the storefront facade fields `storefrontPricingChannels` and
   `storefrontActivePriceLists(channelId, channelSlug)`, rather than degrading to an empty
@@ -94,8 +94,8 @@
   without returning responsibility to the umbrella `rustok-commerce`;
 - transport and GraphQL are still published through `rustok-commerce`, while the pricing-owned admin/storefront
   UX is already published through `rustok-pricing/admin` and `rustok-pricing/storefront`,
-  and the admin surface has already switched to native-first `#[server]`
-  data layer with GraphQL fallback;
+  and the admin surface has already switched to build-profile-selected native `#[server]`
+  data layer with a GraphQL selected path;
 - cross-module contract changes must be synchronized with `rustok-commerce`
   and neighboring split modules.
 
@@ -116,4 +116,4 @@
 
 ## FFA separation for admin and storefront
 
-The admin package now uses the `admin/src/transport.rs` facade and an explicit Leptos rendering adapter `admin/src/ui/leptos.rs`; the crate root only connects module layers and re-exports `PricingAdmin`. The storefront package already maintains the separation of `storefront/src/core.rs`, `storefront/src/transport/` and `storefront/src/ui/leptos.rs` with parity between native-first and GraphQL fallback.
+The admin package now uses the `admin/src/transport.rs` facade and an explicit Leptos rendering adapter `admin/src/ui/leptos.rs`; the crate root only connects module layers and re-exports `PricingAdmin`. The storefront package already maintains the separation of `storefront/src/core.rs`, `storefront/src/transport/` and `storefront/src/ui/leptos.rs` with parity between native and GraphQL selected paths.

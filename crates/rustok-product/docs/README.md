@@ -104,7 +104,7 @@ When reindexing a product, `rustok-index` first completely replaces its rows in 
 
 ## Search metadata
 
-- The Leptos product admin package exports `fetch_catalog_search_options` and neutral option DTOs. The helper requires the host effective locale, uses a current-tenant native `#[server]` endpoint with parallel GraphQL fallback and is already connected in `apps/admin` through host-owned `SearchAdminComposition` without a direct dependency from search UI on `rustok-product`.
+- The Leptos product admin package exports `fetch_catalog_search_options` and neutral option DTOs. The helper requires the host effective locale, uses a current-tenant native `#[server]` endpoint with a parallel GraphQL selected path and is already connected in `apps/admin` through host-owned `SearchAdminComposition` without a direct dependency from search UI on `rustok-product`.
 - The Leptos product storefront package publishes a separate public-safe `fetch_catalog_search_options`: native `product/storefront/catalog-search-options` is the primary path, GraphQL `storefrontCatalogSearchOptions(locale: String!)` remains parallel. The payload contains only category ids/labels and filterable/sortable attribute codes/labels; `apps/storefront` connects it through `SearchStorefrontComposition` with host effective locale.
 - The Next storefront has a mirror product-owned helper `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions` which reads the same public GraphQL contract and returns safe DTOs to the host search composition without a direct product dependency inside the search package.
 

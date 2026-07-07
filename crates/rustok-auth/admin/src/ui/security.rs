@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_auth, use_tenant, use_token};
 use leptos_hook_form::FormState;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{prepare_change_password_request, ChangePasswordInputError};
 use crate::i18n::{auth_transport_error_message, t};

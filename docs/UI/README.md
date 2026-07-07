@@ -69,9 +69,15 @@ Current host-level FFA slices are enforced by the fast gate
 - For module-owned Leptos storefront UI, query/state plumbing must also go through the shared layer:
   `leptos-ui-routing` is reused in both admin and storefront, and direct package-local access
   to `UiRouteContext.query_value(...)` is not considered a canonical pattern.
+- Framework-agnostic UI route/query/input/busy contracts live in `rustok-ui-core`. Module packages
+  import `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `normalize_ui_text`,
+  `parse_ui_csv` and `ui_busy_key*` helpers from this crate, not from `rustok-api`.
 - Framework-agnostic UI i18n resolution lives in `rustok-ui-i18n`. Leptos module
   packages use `rustok-ui-i18n-leptos` for shared adapter boilerplate, consume the
   host-provided effective locale and never use `leptos_i18n` macros for module UI.
+- Framework-agnostic UI transport path/error/result evidence lives in `rustok-ui-transport`.
+  Module packages keep owner-specific native/GraphQL facades locally and use this crate only
+  for shared selected-path evidence types and build-profile transport selection helpers.
 
 ## Transport and Runtime Contract
 

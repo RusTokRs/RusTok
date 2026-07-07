@@ -3,6 +3,7 @@ mod native_server_adapter;
 
 use leptos::prelude::ServerFnError;
 use rustok_graphql::GraphqlHttpError;
+use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -37,20 +38,38 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
+pub type PagesTransportError = UiTransportError;
+
+fn selected_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
+    }
+}
+
 pub async fn fetch_pages(
     page_slug: String,
     locale: Option<String>,
-) -> Result<StorefrontPagesData, ApiError> {
-    match native_server_adapter::fetch_storefront_pages_server(
-        configured_tenant_slug(),
-        page_slug.clone(),
-        locale.clone(),
+) -> Result<StorefrontPagesData, PagesTransportError> {
+    let native_page_slug = page_slug.clone();
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "pages",
+        selected_transport_path(),
+        move || {
+            native_server_adapter::fetch_storefront_pages_server(
+                configured_tenant_slug(),
+                native_page_slug,
+                native_locale,
+            )
+        },
+        move || graphql_adapter::fetch_storefront_pages(page_slug, locale),
     )
     .await
-    {
-        Ok(data) => Ok(data),
-        Err(_) => graphql_adapter::fetch_storefront_pages(page_slug, locale).await,
-    }
 }
 
 fn configured_tenant_slug() -> Option<String> {
@@ -70,4 +89,14 @@ fn configured_tenant_slug() -> Option<String> {
             }
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+    }
 }

@@ -150,7 +150,7 @@ must not know which adapter was selected.
 `[provides.admin_ui]` from `rustok-module.toml` if the UI is not ready yet.
 
 **CSR build fails with `server function not available`**
-— A `#[server]` call is being made without a GraphQL fallback in the CSR profile. Wrap
+— A `#[server]` call is being made in the CSR/headless profile instead of the GraphQL selected path. Wrap
 the native call in `#[cfg(feature = "ssr")]` and implement `graphql_adapter.rs` for the
 same operation.
 

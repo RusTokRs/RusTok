@@ -46,6 +46,9 @@ ui/leptos         — thin Leptos render/bind adapter
 only `ui/leptos.rs` needs to be replaced with `ui/dioxus.rs`. View-models, state transitions,
 validation, and display policy are reused unchanged across frameworks and across transport
 profiles.
+Framework-agnostic UI route/query contracts (`UiRouteContext`, `UiRouteQueryUpdate`,
+`UiRouteQueryIntent`), input normalization, and busy-key helpers live in `rustok-ui-core`,
+not in `rustok-api`.
 
 **`transport/` hides adapter selection** so that `ui/leptos.rs` calls
 `transport::fetch_something()` without knowing whether the current runtime is SSR/hydrate
@@ -85,6 +88,11 @@ The reason for both paths: in monolith deployment `apps/admin` and `apps/storefr
 same-origin with `apps/server`, so native server functions provide a short internal Rust
 path. But headless clients (Next.js, mobile, external integrations) always use GraphQL/REST
 and must not depend on Leptos runtime.
+
+Shared transport path/error evidence and build-profile selected transport orchestration for module facades belongs
+in `rustok-ui-transport`. Module packages may keep domain-specific transport policy locally,
+but should not duplicate generic transport path, result, native/GraphQL error evidence types
+or `execute_selected_transport` selected-path wiring.
 
 ---
 
@@ -141,6 +149,7 @@ They are **not** responsible for:
 **Current state:** Host apps still use `leptos_i18n` for their shell/navigation i18n.
 Module-owned Leptos UI packages use `rustok-ui-i18n-leptos`, which adapts the
 framework-agnostic `rustok-ui-i18n` catalog core to host-provided `UiRouteContext.locale`.
+`UiRouteContext` itself is a framework-agnostic UI contract from `rustok-ui-core`.
 When Dioxus enters the workspace, add a sibling `rustok-ui-i18n-dioxus` adapter instead
 of adding Dioxus dependencies to the core crate.
 

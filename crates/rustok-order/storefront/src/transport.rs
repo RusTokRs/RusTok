@@ -1,6 +1,10 @@
 mod graphql_adapter;
 mod native_server_adapter;
 
+use std::fmt::{Display, Formatter};
+
+use rustok_ui_core::normalize_required_ui_text;
+use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,40 +75,45 @@ impl CheckoutCompletionTransportError {
             Self::Graphql(message) | Self::ServerFn(message) | Self::Validation(message) => message,
         }
     }
+}
 
-    pub fn should_fallback_to_graphql(&self) -> bool {
-        match self {
-            Self::ServerFn(server_error) => {
-                server_error.contains("MissingServer")
-                    || server_error.contains("missing server")
-                    || server_error.contains("not available on this target")
-            }
-            _ => false,
-        }
+impl Display for CheckoutCompletionTransportError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
     }
 }
 
+impl std::error::Error for CheckoutCompletionTransportError {}
+
 pub async fn complete_checkout(
     request: CompleteCheckoutRequest,
-) -> Result<CheckoutCompletion, CheckoutCompletionTransportError> {
-    match native_server_adapter::complete_checkout(request.clone()).await {
-        Ok(completion) => Ok(completion),
-        Err(error) if error.should_fallback_to_graphql() => {
-            graphql_adapter::complete_checkout(request).await
-        }
-        Err(error) => Err(error),
+) -> Result<CheckoutCompletion, UiTransportError> {
+    let native_request = request.clone();
+    execute_selected_transport(
+        "order",
+        selected_transport_path(),
+        move || native_server_adapter::complete_checkout(native_request),
+        move || graphql_adapter::complete_checkout(request),
+    )
+    .await
+}
+
+fn selected_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
     }
 }
 
 pub fn build_complete_checkout_request(cart_id: String) -> CompleteCheckoutRequest {
     CompleteCheckoutRequest {
-        cart_id: normalize_required(cart_id),
+        cart_id: normalize_required_ui_text(cart_id),
         metadata: CheckoutCompletionCommandMetadata::storefront_complete(),
     }
-}
-
-fn normalize_required(value: String) -> String {
-    value.trim().to_string()
 }
 
 #[cfg(test)]
@@ -126,20 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn server_function_missing_error_can_fallback_to_graphql() {
-        assert!(
-            CheckoutCompletionTransportError::ServerFn("MissingServerFunction".into())
-                .should_fallback_to_graphql()
-        );
-        assert!(CheckoutCompletionTransportError::ServerFn(
-            "server function is not available on this target".into()
-        )
-        .should_fallback_to_graphql());
-        assert!(
-            !CheckoutCompletionTransportError::Validation("bad cart".into())
-                .should_fallback_to_graphql()
-        );
-        assert!(!CheckoutCompletionTransportError::Graphql("network".into())
-            .should_fallback_to_graphql());
+    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
     }
 }

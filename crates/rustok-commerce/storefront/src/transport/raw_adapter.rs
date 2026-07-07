@@ -1,6 +1,8 @@
 use leptos::prelude::*;
+use rustok_ui_core::normalize_optional_ui_text;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+#[cfg(feature = "ssr")]
 use uuid::Uuid;
 
 use crate::model::{
@@ -52,33 +54,23 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
-fn normalize_optional(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
 #[allow(dead_code)]
 fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,
     tenant_default_locale: &str,
 ) -> String {
-    normalize_optional(requested)
+    normalize_optional_ui_text(requested)
         .or_else(|| {
-            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
+            request_context_locale
+                .and_then(|value| normalize_optional_ui_text(Some(value.to_string())))
         })
-        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
+        .or_else(|| normalize_optional_ui_text(Some(tenant_default_locale.to_string())))
         .unwrap_or_default()
 }
 
 fn normalize_cart_id(value: Option<String>) -> Option<String> {
-    normalize_optional(value)
+    normalize_optional_ui_text(value)
 }
 
 #[cfg(feature = "ssr")]
@@ -97,7 +89,7 @@ fn fallback_storefront_commerce(
     selected_cart_id: Option<String>,
     locale: Option<String>,
 ) -> StorefrontCommerceData {
-    let effective_locale = normalize_optional(locale).unwrap_or_default();
+    let effective_locale = normalize_optional_ui_text(locale).unwrap_or_default();
     let normalized_cart_id = normalize_cart_id(selected_cart_id);
 
     StorefrontCommerceData {
@@ -125,19 +117,10 @@ fn map_cart_transport_error(
     }
 }
 
-fn map_payment_transport_error(
-    error: rustok_payment_storefront::transport::PaymentTransportError,
-) -> ApiError {
-    match error {
-        rustok_payment_storefront::transport::PaymentTransportError::Graphql(message) => {
-            ApiError::Graphql(message)
-        }
-        rustok_payment_storefront::transport::PaymentTransportError::ServerFn(message) => {
-            ApiError::ServerFn(message)
-        }
-        rustok_payment_storefront::transport::PaymentTransportError::Validation(message) => {
-            ApiError::Validation(message)
-        }
+fn map_payment_transport_error(error: rustok_ui_transport::UiTransportError) -> ApiError {
+    match error.failed_path {
+        rustok_ui_transport::UiTransportPath::NativeServer => ApiError::ServerFn(error.to_string()),
+        rustok_ui_transport::UiTransportPath::Graphql => ApiError::Graphql(error.to_string()),
     }
 }
 

@@ -1,16 +1,17 @@
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
+use rustok_seo::SeoBulkApplyMode;
+#[cfg(feature = "ssr")]
 use rustok_seo::SeoService;
 #[cfg(feature = "ssr")]
 use rustok_seo::SeoTargetCapabilityKind;
 use rustok_seo::{
-    SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord,
-    SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoBulkSelectionInput,
-    SeoBulkSelectionPreviewRecord, SeoDiagnosticsSummaryRecord, SeoIndexDeliveryStatusRecord,
-    SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord, SeoModuleSettings,
-    SeoRedirectInput, SeoRedirectRecord, SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
-    SeoTargetRegistryEntry,
+    SeoBulkApplyInput, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord, SeoBulkJobStatus,
+    SeoBulkListInput, SeoBulkPage, SeoBulkSelectionInput, SeoBulkSelectionPreviewRecord,
+    SeoDiagnosticsSummaryRecord, SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayInput,
+    SeoIndexRepairReplayResultRecord, SeoModuleSettings, SeoRedirectInput, SeoRedirectRecord,
+    SeoRobotsPreviewRecord, SeoSitemapStatusRecord, SeoTargetRegistryEntry,
 };
 
 #[cfg(feature = "ssr")]

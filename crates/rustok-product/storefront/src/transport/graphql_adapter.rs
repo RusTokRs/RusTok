@@ -1,5 +1,5 @@
 use super::native_server_adapter::{self, ApiError};
-use crate::core::ProductStorefrontFetchRequest;
+use crate::core::FetchRequest;
 use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
 
 const STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY: &str = "query StorefrontCatalogSearchOptions($locale: String!) { storefrontCatalogSearchOptions(locale: $locale) { categoryOptions { value label } attributeOptions { value label } } }";
@@ -15,9 +15,7 @@ struct CatalogSearchOptionsResponse {
     options: ProductCatalogSearchOptions,
 }
 
-pub async fn fetch_products(
-    request: ProductStorefrontFetchRequest,
-) -> Result<StorefrontProductsData, ApiError> {
+pub async fn fetch_products(request: FetchRequest) -> Result<StorefrontProductsData, ApiError> {
     native_server_adapter::fetch_storefront_products_graphql(
         request.selected_handle,
         request.locale,

@@ -1,5 +1,6 @@
 use crate::i18n::t;
 use crate::model::PricingChannelOption;
+use rustok_ui_core::normalize_ui_text;
 
 pub(crate) fn format_channel_scope_text(
     locale: Option<&str>,
@@ -34,12 +35,7 @@ pub(crate) const GLOBAL_CHANNEL_KEY: &str = "__global__";
 pub(crate) const LEGACY_CHANNEL_KEY: &str = "__legacy__";
 
 pub(crate) fn normalize_channel_value(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value)
 }
 
 pub(crate) fn selected_channel_key(

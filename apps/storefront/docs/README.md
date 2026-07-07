@@ -41,7 +41,7 @@ render adapter. This split is enforced by the fast verifier `npm run verify:fron
 - Native Leptos `#[server]` functions are used as the preferred internal data-layer path in the SSR/hydrate runtime in parallel with GraphQL.
 - CSR/WASM for Leptos storefront packages is a compatibility/debug profile. If a package must run standalone, it must have a GraphQL/REST fallback and not require `/api/fn/*`.
 - Generic storefront routes live under the `/modules/{route_segment}` and `/{locale}/modules/{route_segment}` families.
-- The host first tries to use the native `#[server]` path where available in the SSR/hydrate runtime, and only falls back to GraphQL.
+- The host selects the transport path by build/runtime profile: native `#[server]` for SSR/hydrate and GraphQL for headless/CSR.
 - Generated search mount uses host-owned `SearchStorefrontComposition`: the adapter checks tenant enablement of the `product` module, passes `UiRouteContext.locale` to a public-safe product metadata helper, and maps owner DTO to search props without moving product/search domain logic into the host.
 - Module-owned storefront packages must build internal links through `UiRouteContext::module_route_base()`, not through hardcoded route strings.
 - Module-owned storefront packages do not define their own locale negotiation policy; the effective locale comes from the host/runtime contract.
@@ -97,13 +97,13 @@ Direct storefront server functions currently cover:
 - `search/storefront-suggestions`
 - `search/storefront-track-click`
 
-The GraphQL path remains a working and supported fallback contract for module-owned storefront surfaces, `cart/storefront-data` now serves the cart-owned cart workspace with a seller-aware delivery-group snapshot, `cart/decrement-line-item` and `cart/remove-line-item` provide a safe line-item write-side within the cart boundary, and `commerce/storefront-data`, `commerce/select-shipping-option`, `commerce/create-payment-collection`, and `commerce/complete-checkout` serve the aggregate checkout workspace in `rustok-commerce/storefront`, maintaining the seller-aware shipping selection contract end-to-end.
+The GraphQL path remains a working and supported headless contract for module-owned storefront surfaces, `cart/storefront-data` now serves the cart-owned cart workspace with a seller-aware delivery-group snapshot, `cart/decrement-line-item` and `cart/remove-line-item` provide a safe line-item write-side within the cart boundary, and `commerce/storefront-data`, `commerce/select-shipping-option`, `commerce/create-payment-collection`, and `commerce/complete-checkout` serve the aggregate checkout workspace in `rustok-commerce/storefront`, maintaining the seller-aware shipping selection contract end-to-end.
 
 ## Canonical routing and locale
 
 - Canonical and alias state is stored in backend/domain layers, not in the storefront host.
 - Storefront uses SEO preflight before rendering a page: it first reads `SeoPageContext`, and the canonical-only path remains a fallback branch.
-- Consume policy is fixed as deterministic `#[server]` first + GraphQL fallback; on transport errors the host preserves the SSR render path without breaking the route contract.
+- Consume policy is build-profile-selected: Leptos monolith/hydrate uses native `#[server]`, headless/CSR uses GraphQL, and transport errors do not automatically switch from native execution to GraphQL.
 - `SeoPageContext` is split into `route` and `document`: the route part handles redirect/canonical/hreflang, the document part handles typed SSR head metadata.
 - `SeoPageContext.document.structured_data_blocks` contains typed JSON-LD blocks (`schema_kind`, `schema_type`, `source`, payload), not host-local raw schema mapping.
 - `storefront/seo-page-context` on SSR now also passes the host `RequestContext.channel_slug` to `rustok-seo`, so channel-restricted forum topics receive SEO head only in the matching public channel.

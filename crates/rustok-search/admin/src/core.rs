@@ -1,6 +1,5 @@
-use rustok_api::{
-    normalize_ui_text, parse_ui_csv, route_query_update_for_text, UiRouteQueryUpdate,
-};
+pub use rustok_ui_core::{normalize_ui_text as optional_text, parse_ui_csv as parse_csv};
+use rustok_ui_core::{route_query_update_for_text, UiRouteQueryUpdate};
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAnalyticsInsightRowPayload, SearchAnalyticsQueryRowPayload,
@@ -8,14 +7,6 @@ use crate::model::{
     SearchDiagnosticsPayload, SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload,
     SearchQueryRulePayload, SearchStopWordPayload, SearchSynonymPayload,
 };
-
-pub fn parse_csv(value: &str) -> Vec<String> {
-    parse_ui_csv(value)
-}
-
-pub fn optional_text(value: &str) -> Option<String> {
-    normalize_ui_text(value)
-}
 
 pub fn facet_display_name(raw_name: &str) -> String {
     raw_name.replace('_', " ")

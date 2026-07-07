@@ -1,6 +1,7 @@
 use super::{
     decrement_quantity_command, identifiers::normalize_cart_id, CartLineItemQuantityCommand,
 };
+use rustok_ui_core::{normalize_optional_ui_text, normalize_required_ui_text};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CartFetchRequest {
@@ -14,7 +15,7 @@ pub fn build_cart_fetch_request(
 ) -> CartFetchRequest {
     CartFetchRequest {
         selected_cart_id: normalize_cart_id(selected_cart_id),
-        locale: normalize_optional_text(locale),
+        locale: normalize_optional_ui_text(locale),
     }
 }
 
@@ -29,8 +30,8 @@ pub fn build_remove_line_item_request(
     line_item_id: String,
 ) -> CartLineItemMutationRequest {
     CartLineItemMutationRequest {
-        cart_id: normalize_required_text(cart_id),
-        line_item_id: normalize_required_text(line_item_id),
+        cart_id: normalize_required_ui_text(cart_id),
+        line_item_id: normalize_required_ui_text(line_item_id),
     }
 }
 
@@ -48,21 +49,11 @@ pub fn build_decrement_line_item_request(
     current_quantity: i32,
 ) -> CartLineItemDecrementRequest {
     CartLineItemDecrementRequest {
-        cart_id: normalize_required_text(cart_id),
-        line_item_id: normalize_required_text(line_item_id),
+        cart_id: normalize_required_ui_text(cart_id),
+        line_item_id: normalize_required_ui_text(line_item_id),
         current_quantity,
         command: decrement_quantity_command(current_quantity),
     }
-}
-
-fn normalize_optional_text(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn normalize_required_text(value: String) -> String {
-    value.trim().to_string()
 }
 
 #[cfg(test)]

@@ -6,8 +6,8 @@ license.workspace = true
 description = "Leptos adapter hooks for RusToK GraphQL client contracts"
 
 [dependencies]
+rustok-ui-core.workspace = true
 leptos.workspace = true
-rustok-api = { workspace = true, default-features = false }
 rustok-graphql.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

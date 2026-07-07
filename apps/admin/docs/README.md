@@ -61,11 +61,11 @@ a Leptos render/bind adapter. This split is enforced by a quick verifier
   `trunk serve` must proxy `/api/*` to `http://localhost:5150/api/*`. This profile is needed for debug/compatibility, not as a production default.
 - In the `hydrate`/`ssr` and monolith profile, native `#[server]` endpoints `/api/fn/*` are considered available
   on the same backend origin and can be the preferred path for surfaces that need server-side runtime.
-- If a surface supports a dual-path model, the fallback to GraphQL/REST must actually work in `csr`;
+- If a surface supports a dual-path model, the GraphQL/REST selected path must actually work in `csr`;
   `#[server]` cannot be the only critical transport for standalone debug.
 - GraphQL and the native Leptos `#[server]` path must coexist in parallel; `#[server]` does not replace `/api/graphql`.
 - The reason for the split: monolith admin benefits from same-origin SSR/hydrate, server-side auth/session/policy, and a short Rust path via `#[server]`, but headless and standalone debug require a live GraphQL/REST fallback.
-- The current data-layer for admin supports a dual-path model: the host first uses the native `#[server]` surface where it already exists, and only then falls back to GraphQL or legacy REST, if that is provided for by the specific surface.
+- The current data-layer for admin supports a dual-path model: the host selects native `#[server]` or GraphQL/REST by build/runtime profile, when that is provided for by the specific surface.
 - `rustok-pricing/admin` is now one of these dual-path surfaces: the pricing package
   by default uses the native `#[server]` pricing runtime, leaving GraphQL
   fallback, and shows operator-side effective price context for

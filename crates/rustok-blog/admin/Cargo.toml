@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+rustok-ui-core.workspace = true
 leptos.workspace = true
 leptos_router.workspace = true
 leptos-auth.workspace = true
@@ -13,6 +14,7 @@ leptos-ui.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rustok-api = { workspace = true, default-features = false }
+
 rustok-ui-i18n-leptos.workspace = true
 leptos-ui-routing.workspace = true
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }

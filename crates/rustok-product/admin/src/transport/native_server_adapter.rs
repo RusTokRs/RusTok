@@ -6,13 +6,15 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
-    CatalogCategoryList, CatalogCategorySummary, CategoryAttributeGroupDraft,
-    ProductAttributeDraft, ProductAttributeList, ProductAttributeOptionDraft,
-    ProductAttributeOptionSummary, ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft,
-    ProductAttributeSchemaList, ProductAttributeSchemaSummary, ProductAttributeSummary,
-    ProductAttributeValueItem, ProductAttributeValuePatchDraft, ProductCatalogSearchOption,
-    ProductCatalogSearchOptions, ProductEffectiveForm, ProductEffectiveFormAttribute,
-    SetCategorySchemaModeDraft,
+    CatalogCategoryList, CategoryAttributeGroupDraft, ProductAttributeDraft, ProductAttributeList,
+    ProductAttributeOptionDraft, ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft,
+    ProductAttributeSchemaList, ProductAttributeValueItem, ProductAttributeValuePatchDraft,
+    ProductCatalogSearchOptions, ProductEffectiveForm, SetCategorySchemaModeDraft,
+};
+#[cfg(feature = "ssr")]
+use crate::model::{
+    CatalogCategorySummary, ProductAttributeOptionSummary, ProductAttributeSchemaSummary,
+    ProductAttributeSummary, ProductCatalogSearchOption, ProductEffectiveFormAttribute,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -5,6 +5,7 @@ use crate::core::BlogStorefrontFetchRequest;
 use crate::model::StorefrontBlogData;
 use leptos::prelude::ServerFnError;
 use rustok_graphql::GraphqlHttpError;
+use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -37,6 +38,19 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
+pub type BlogTransportError = UiTransportError;
+
+fn selected_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
+    }
+}
+
 pub(crate) fn configured_tenant_slug() -> Option<String> {
     [
         "RUSTOK_TENANT_SLUG",
@@ -58,9 +72,23 @@ pub(crate) fn configured_tenant_slug() -> Option<String> {
 
 pub async fn fetch_blog(
     request: BlogStorefrontFetchRequest,
-) -> Result<StorefrontBlogData, ApiError> {
-    match native_server_adapter::fetch_blog(request.clone()).await {
-        Ok(data) => Ok(data),
-        Err(_) => graphql_adapter::fetch_blog(request).await,
+) -> Result<StorefrontBlogData, BlogTransportError> {
+    let native_request = request.clone();
+    execute_selected_transport(
+        "blog",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_blog(native_request),
+        move || graphql_adapter::fetch_blog(request),
+    )
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
     }
 }

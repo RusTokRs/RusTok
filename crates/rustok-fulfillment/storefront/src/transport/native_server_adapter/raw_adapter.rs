@@ -21,15 +21,23 @@ async fn storefront_fulfillment_select_shipping_option_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_commerce::storefront_checkout_runtime::{
             self, StorefrontShippingSelectionCommand, StorefrontShippingSelectionUpdateInput,
         };
+        use rustok_outbox::TransactionalEventBus;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "fulfillment/select-shipping-option requires TransactionalEventBus in host runtime context",
+                )
+            })?;
         let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+            runtime_ctx.db_clone(),
+            event_bus,
         );
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await

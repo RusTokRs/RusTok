@@ -8,6 +8,7 @@ const files = {
   transport: "crates/rustok-blog/storefront/src/transport/mod.rs",
   native: "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
   graphql: "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+  cargo: "crates/rustok-blog/storefront/Cargo.toml",
   legacyApi: "crates/rustok-blog/storefront/src/api.rs",
   plan: "crates/rustok-blog/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -43,6 +44,7 @@ const ui = text(files.ui);
 const transport = text(files.transport);
 const native = text(files.native);
 const graphql = text(files.graphql);
+const cargo = text(files.cargo);
 const plan = text(files.plan);
 const registry = text(files.registry);
 const verifierTest = text(files.verifierTest);
@@ -80,6 +82,13 @@ for (const marker of [
   assertContains(native, marker, `${files.native}: missing channel-aware native marker ${marker}`);
 }
 assertContains(native, "#[server(prefix = \"/api/fn\", endpoint = \"blog/storefront-data\")]", `${files.native}: native adapter must own server function endpoint`);
+assertContains(native, "expect_context::<HostRuntimeContext>()", `${files.native}: native adapter must use the host runtime context`);
+assertContains(native, "shared_get::<TransactionalEventBus>()", `${files.native}: native adapter must receive the event bus through the host runtime context`);
+assertContains(native, "runtime_ctx.db_clone()", `${files.native}: native adapter must receive DB through the host runtime context`);
+assertNotContains(native, "loco_rs", `${files.native}: native adapter must not depend on Loco AppContext`);
+assertNotContains(native, "rustok_outbox::loco", `${files.native}: native adapter must not use the outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${files.cargo}: storefront package must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${files.cargo}: storefront package must not enable the outbox Loco adapter`);
 assertContains(graphql, "GraphqlRequest", `${files.graphql}: GraphQL adapter must keep GraphQL request contract`);
 assertContains(graphql, "STOREFRONT_BLOG_QUERY", `${files.graphql}: GraphQL adapter must own storefront blog query`);
 

@@ -1,5 +1,7 @@
 use crate::model::{CreatePageDraft, PageBlock, PageDetail, PageListItem};
-use rustok_api::{normalize_ui_text, parse_ui_csv, WritePathIssue, WritePathIssueKind};
+use rustok_api::{WritePathIssue, WritePathIssueKind};
+use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
+use rustok_ui_core::{ui_busy_key, ui_busy_key_matches_action, ui_busy_key_with_id};
 use serde_json::{json, Value};
 
 pub const GRAPESJS_FORMAT: &str = "grapesjs_v1";
@@ -251,13 +253,13 @@ pub fn status_badge_class(status: &str) -> &'static str {
 }
 
 pub fn busy_key_with_id(action: &str, page_id: &str) -> String {
-    format!("{}:{}", action, page_id)
+    ui_busy_key_with_id(action, page_id)
 }
 
 pub fn busy_key_for_save(page_id: Option<&str>) -> String {
     page_id
         .map(|id| busy_key_with_id("save", id))
-        .unwrap_or_else(|| "create".to_string())
+        .unwrap_or_else(|| ui_busy_key("create"))
 }
 
 #[derive(Debug, Clone)]
@@ -589,10 +591,7 @@ pub fn status_badge_css(status: &str) -> String {
 }
 
 pub fn busy_key_matches_action(busy_key: Option<&str>, action: &str) -> bool {
-    let prefix = format!("{}:", action);
-    busy_key
-        .map(|key| key.starts_with(prefix.as_str()))
-        .unwrap_or(false)
+    ui_busy_key_matches_action(busy_key, action)
 }
 
 pub fn is_save_action_busy(busy_key: Option<&str>) -> bool {

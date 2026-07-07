@@ -5,7 +5,7 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::context::{
     ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
 };
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteContext};
 
 use crate::core::{
     channel_policy_selection_cleanup, channel_selection_exists, policy_rule_active_update_payload,
@@ -375,12 +375,7 @@ fn short_id(value: &str) -> String {
 }
 
 fn optional_text(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value.as_str())
 }
 
 fn resolution_source_label(source: &ChannelResolutionSource, locale: Option<&str>) -> String {

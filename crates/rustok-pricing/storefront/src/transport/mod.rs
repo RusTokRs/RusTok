@@ -1,44 +1,43 @@
 mod graphql_adapter;
 mod native_server_adapter;
 
-use std::future::Future;
-
 use crate::core::StorefrontPricingQuery;
 use crate::model::StorefrontPricingData;
-use native_server_adapter::ApiError;
+use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
+
+pub(crate) type TransportResult<T> = UiTransportResult<T>;
+
+fn selected_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
+    }
+}
 
 pub(crate) async fn fetch_storefront_pricing(
     query: StorefrontPricingQuery,
-) -> Result<StorefrontPricingData, ApiError> {
-    fetch_with_native_first_fallback(
-        query,
-        native_server_adapter::fetch_storefront_pricing,
-        graphql_adapter::fetch_storefront_pricing,
+) -> TransportResult<StorefrontPricingData> {
+    let native_query = query.clone();
+    execute_selected_transport(
+        "pricing",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_storefront_pricing(native_query),
+        move || graphql_adapter::fetch_storefront_pricing(query),
     )
     .await
-}
-
-async fn fetch_with_native_first_fallback<N, NFut, G, GFut>(
-    query: StorefrontPricingQuery,
-    native_fetch: N,
-    graphql_fetch: G,
-) -> Result<StorefrontPricingData, ApiError>
-where
-    N: FnOnce(StorefrontPricingQuery) -> NFut,
-    NFut: Future<Output = Result<StorefrontPricingData, ApiError>>,
-    G: FnOnce(StorefrontPricingQuery) -> GFut,
-    GFut: Future<Output = Result<StorefrontPricingData, ApiError>>,
-{
-    match native_fetch(query.clone()).await {
-        Ok(data) => Ok(data),
-        Err(_) => graphql_fetch(query).await,
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::PricingProductList;
+    use native_server_adapter::ApiError;
+    use rustok_ui_transport::UiTransportPath;
+    use std::future::Future;
     use std::pin::Pin;
     use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
@@ -96,11 +95,27 @@ mod tests {
     }
 
     #[test]
-    fn native_first_facade_returns_native_success_without_graphql() {
-        let result = block_on(fetch_with_native_first_fallback(
-            sample_query(),
-            |_| async { Ok(sample_data("native")) },
-            |_| async { panic!("GraphQL fallback must not run after native success") },
+    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+    }
+
+    #[test]
+    fn shared_selected_transport_helper_returns_native_success_without_graphql() {
+        let query = sample_query();
+        let native_query = query.clone();
+        let result = block_on(execute_selected_transport(
+            "pricing",
+            UiTransportPath::NativeServer,
+            move || async move {
+                assert_eq!(native_query.selected_handle.as_deref(), Some("sample"));
+                Ok::<_, ApiError>(sample_data("native"))
+            },
+            move || async move {
+                let _ = query;
+                panic!("GraphQL transport must not run in native mode");
+                #[allow(unreachable_code)]
+                Err::<StorefrontPricingData, ApiError>(ApiError::Graphql("unreachable".into()))
+            },
         ))
         .expect("native success should be returned");
 
@@ -108,18 +123,50 @@ mod tests {
     }
 
     #[test]
-    fn native_first_facade_falls_back_to_graphql_with_original_query() {
-        let result = block_on(fetch_with_native_first_fallback(
-            sample_query(),
-            |_| async { Err(ApiError::ServerFn("native unavailable".to_string())) },
-            |query| async move {
+    fn shared_selected_transport_helper_keeps_selected_path_error_evidence() {
+        let error = block_on(execute_selected_transport(
+            "pricing",
+            UiTransportPath::NativeServer,
+            || async {
+                Err::<StorefrontPricingData, _>(ApiError::ServerFn(
+                    "native unavailable".to_string(),
+                ))
+            },
+            || async {
+                Err::<StorefrontPricingData, _>(ApiError::Graphql(
+                    "graphql unavailable".to_string(),
+                ))
+            },
+        ))
+        .expect_err("both paths should fail");
+
+        assert_eq!(error.failed_path, UiTransportPath::NativeServer);
+        assert!(!error.fallback_attempted);
+        assert_eq!(error.native_error.as_deref(), Some("native unavailable"));
+        assert_eq!(error.graphql_error, None);
+    }
+
+    #[test]
+    fn shared_selected_transport_helper_uses_graphql_with_original_query() {
+        let query = sample_query();
+        let native_query = query.clone();
+        let result = block_on(execute_selected_transport(
+            "pricing",
+            UiTransportPath::Graphql,
+            move || async move {
+                assert_eq!(native_query.selected_handle.as_deref(), Some("sample"));
+                Err::<StorefrontPricingData, _>(ApiError::ServerFn(
+                    "native unavailable".to_string(),
+                ))
+            },
+            move || async move {
                 assert_eq!(query.selected_handle.as_deref(), Some("sample"));
                 assert_eq!(query.locale.as_deref(), Some("en"));
                 assert_eq!(query.currency_code.as_deref(), Some("EUR"));
-                Ok(sample_data("graphql"))
+                Ok::<_, ApiError>(sample_data("graphql"))
             },
         ))
-        .expect("graphql fallback should recover native errors");
+        .expect("graphql transport should return data in graphql mode");
 
         assert_eq!(result.selected_handle.as_deref(), Some("graphql"));
     }

@@ -49,6 +49,7 @@ admin/                            (or storefront/)
 [dependencies]
 leptos.workspace = true
 rustok-api = { workspace = true, default-features = false }
+rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
 leptos-ui.workspace = true
 leptos-ui-routing.workspace = true
@@ -128,8 +129,10 @@ Put here:
 - transport-agnostic error envelopes and policy results
 - state transitions (busy, selected, empty, error)
 - pagination/filter/sort state
-- route/query intent helpers — use `rustok_api::normalize_ui_text`, `parse_ui_csv`,
-  `UiRouteQueryUpdate`
+- route/query intent helpers — use `rustok_ui_core::normalize_ui_text`, `parse_ui_csv`,
+  `UiRouteQueryUpdate`, and `UiRouteQueryIntent`
+- busy-key helpers — use `rustok_ui_core::ui_busy_key*` helpers for reusable action/id
+  key encoding and matching; keep only module-specific enum names locally
 
 Do **not** put here:
 - i18n label bindings that don't affect policy (`crate::i18n::t(locale, key, fallback)` stays in `ui/leptos.rs`)
@@ -167,7 +170,7 @@ pub async fn fetch_posts(
 }
 ```
 
-**Dual-path package (native `#[server]` + GraphQL fallback):**
+**Dual-path package (native `#[server]` + GraphQL selected path):**
 
 ```rust
 // transport/mod.rs — dual-path with profile selection
@@ -290,7 +293,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | Crate | What it provides | When to use |
 |---|---|---|
 | `leptos-ui` | `Button`, `Input`, `Badge`, `Alert`, `Card`, `CardHeader`, `CardContent`, `CardFooter`, `Label`, `Separator`, `Spinner`, `Checkbox`, `Switch`, `Textarea`, `Select`, `LanguageToggle` | Always — check before writing any primitive component |
-| `leptos-ui-routing` | `UiRouteContext`, `module_route_base()`, `query_value()`, `UiRouteQueryUpdate` | All route/query state; never invent a local helper |
+| `leptos-ui-routing` | Leptos query readers/writers and route query policy integration on top of `rustok-ui-core` | All Leptos route/query state binding, including `RouteQueryWriter::apply_query_intent`; never invent a local helper |
 | `leptos-auth` | Auth hooks and session context | Auth-gated operations |
 | `leptos-forms` | Form state management | Multi-field forms |
 | `leptos-hook-form` | Hook-form validation pattern | Complex validation flows |
@@ -303,11 +306,13 @@ pub fn BlogAdmin() -> impl IntoView {
 
 | Crate | What it provides |
 |---|---|
-| `rustok-api` | **Core helpers:** `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate` (use in `core.rs`). It does not own or re-export UI i18n helpers. |
+| `rustok-api` | Host/API contracts, permissions, locale primitives, ports and server/runtime context. It does not own UI route/query helpers or UI i18n helpers. |
+| `rustok-ui-core` | **Framework-agnostic UI contracts:** `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, admin query sanitization, `normalize_ui_text`, `parse_ui_csv`, `ui_busy_key*` helpers (use in `core.rs` and host UI context wiring). |
 | `rustok-graphql` | **GraphQL core client:** `GraphqlRequest`, `GraphqlHttpError`, `execute`, `persisted_query_extension` (use in `graphql_adapter.rs`) |
 | `rustok-graphql-leptos` | **Leptos GraphQL hooks:** `use_query`, `use_mutation`, `use_lazy_query` for Leptos UI code that needs reactive GraphQL hooks |
 | `rustok-ui-i18n` | **i18n core:** `UiMessageCatalog`, `UiTranslator`, catalog parsing and fallback resolution. Do not import it through `rustok-api`. |
 | `rustok-ui-i18n-leptos` | **Leptos i18n adapter:** `LeptosUiMessages` for module-owned Leptos `i18n.rs` files. |
+| `rustok-ui-transport` | **Framework-agnostic FFA transport evidence:** shared transport path, selected-path error/result types and build-profile transport selection helpers for native server + GraphQL facades. |
 | `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
 
 ### Shared UI primitives (`UI/leptos/`)
@@ -330,7 +335,9 @@ Cross-framework component API (props, variants, CSS variables):
 | Reuse pattern | Where to extract | Example |
 |---|---|---|
 | UI primitives (buttons, inputs, cards) | `crates/leptos-ui/` | `Button`, `Input`, `Card` |
-| Routing/query helpers | `crates/leptos-ui-routing/` | `UiRouteContext`, `module_route_base()` |
+| Framework-agnostic UI route/query/input/busy contracts | `crates/rustok-ui-core/` | `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, `normalize_ui_text`, `ui_busy_key_with_id` |
+| Leptos routing/query adapter helpers | `crates/leptos-ui-routing/` | `use_route_query_value`, `use_route_query_writer` |
+| Framework-agnostic FFA transport result evidence and build-profile transport selection | `crates/rustok-ui-transport/` | `UiTransportError`, `UiTransportPath`, `UiTransportResult`, `execute_selected_transport` |
 | Framework-agnostic GraphQL transport client | `crates/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
 | Leptos GraphQL hooks adapter | `crates/rustok-graphql-leptos/` | Reactive Leptos query/mutation hooks |
 | Auth/session hooks | `crates/leptos-auth/` | Auth state, session context |
@@ -338,7 +345,7 @@ Cross-framework component API (props, variants, CSS variables):
 | Table/pagination UI | `crates/leptos-table/` | Reusable table component |
 | Framework-agnostic UI i18n | `crates/rustok-ui-i18n/` | Message catalog and key resolution |
 | Leptos UI i18n adapter | `crates/rustok-ui-i18n-leptos/` | Static bundle storage and `UiRouteContext.locale` adapter |
-| Framework-agnostic contracts | `crates/rustok-api/` | UI input/query helpers, locale, permissions, ports |
+| Host/API/backend contracts | `crates/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
 | Domain-specific cross-module UI | `crates/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
 
 ### Extraction checklist
@@ -355,7 +362,7 @@ Before duplicating code, check:
 
 ❌ **Single-use helpers** — Keep in module if only one consumer exists
 ❌ **Over-abstraction** — Don't extract just for the sake of extraction
-❌ **Wrong boundary** — Leptos-specific code in `rustok-api` breaks FFA
+❌ **Wrong boundary** - UI route/query or framework-specific code in `rustok-api` breaks FFA
 ❌ **Premature extraction** — Wait until pattern is proven in 2+ places
 
 ### FFA considerations for new libraries
@@ -379,9 +386,10 @@ When creating a new shared library, decide upfront:
 If you see these patterns duplicated across modules, extract them:
 
 - **Locale negotiation helpers** → Already in `rustok-api::locale`
-- **Route query parsing** → Already in `rustok-api::ui` (`UiRouteQueryUpdate`)
-- **i18n message resolution** → Already in `rustok-ui-i18n` (`build_ui_message_catalog`)
+- **Route query parsing** → Already in `rustok-ui-core` (`UiRouteQueryUpdate`)
+- **i18n message resolution** → Already in `rustok-ui-i18n` (`LeptosUiMessages`)
 - **GraphQL error mapping** → Already in `rustok-graphql`
+- **Native/GraphQL transport evidence and build-profile transport selection** -> Already in `rustok-ui-transport`
 - **Form validation patterns** → Extract to `leptos-forms` or framework-agnostic `rustok-forms`
 - **Table pagination logic** → Already in `leptos-table`
 - **Selection state URL sync** → Already in `leptos-ui-routing`
@@ -529,4 +537,4 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 | Duplicating code across 2+ modules | Violates DRY; extract to shared library instead (see extraction decision matrix above) |
 | New locale files without `rustok-module.toml` declaration | Breaks i18n verification |
 | `t!(i18n, key)` macro usage | Wrong i18n pattern — `leptos_i18n` is Leptos-specific, breaks FFA; use `i18n::t(locale, "key", "fallback")` with `rustok-ui-i18n` instead |
-| Writing `i18n.rs` from scratch without `rustok-ui-i18n` | Wrong i18n pattern — follow the standard `build_ui_message_catalog` boilerplate; this is framework-agnostic and Dioxus-compatible |
+| Writing `i18n.rs` from scratch without `rustok-ui-i18n` | Wrong i18n pattern — follow the standard `LeptosUiMessages` boilerplate; this is framework-agnostic and Dioxus-compatible |

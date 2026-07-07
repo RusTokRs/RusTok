@@ -3,32 +3,29 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer, RouteQueryWriter};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    build_product_admin_delete_command, build_product_admin_delete_result_view_model,
-    build_product_admin_editor_copy, build_product_admin_editor_form_state,
-    build_product_admin_editor_view_model, build_product_admin_error_copy,
-    build_product_admin_list_action_labels, build_product_admin_list_controls_view_model,
-    build_product_admin_list_item_view_model, build_product_admin_open_product_view_model,
-    build_product_admin_save_command, build_product_admin_seo_panel_copy,
-    build_product_admin_shell_view_model, build_product_admin_status_mutation_command,
-    build_product_admin_status_mutation_result_view_model, build_product_admin_summary_panel_copy,
+    build_delete_command, build_delete_result_view_model, build_product_admin_editor_copy,
+    build_product_admin_editor_form_state, build_product_admin_editor_view_model,
+    build_product_admin_error_copy, build_product_admin_list_action_labels,
+    build_product_admin_list_controls_view_model, build_product_admin_list_item_view_model,
+    build_product_admin_open_product_view_model, build_product_admin_seo_panel_copy,
+    build_product_admin_shell_view_model, build_product_admin_summary_panel_copy,
     build_product_attribute_form_copy, build_product_detached_attribute_value_view_models,
-    build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
-    parse_product_admin_inventory_quantity_input, product_admin_clear_product_query_intent,
+    build_save_command, build_selected_product_summary_view_model, build_status_command,
+    build_status_result_view_model, empty_product_admin_editor_form_state,
+    parse_product_admin_inventory_quantity_input, pricing_preview_request_from_product,
+    pricing_preview_state_from_result, product_admin_clear_product_query_intent,
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
-    product_admin_pricing_preview_request_from_product,
-    product_admin_pricing_preview_state_from_result, product_admin_products_load_view_from_result,
-    product_admin_saved_product_query_intent, product_admin_selected_product_query_state,
-    product_admin_shipping_profiles_load_view_from_result, text_or_none, ProductAdminDeleteOutcome,
-    ProductAdminDraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
+    product_admin_products_load_view_from_result, product_admin_saved_product_query_intent,
+    product_admin_selected_product_query_state, shipping_profiles_load_view_from_result,
+    text_or_none, DeleteOutcome, DraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
     ProductAdminOpenProductViewModel, ProductAdminProductsLoadViewModel,
-    ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminSelectedProductQueryState,
-    ProductAdminStatusMutationOutcome, ProductAdminStatusTarget, ProductAttributeEditorState,
-    SelectedProductSummaryViewModel,
+    ProductAdminSelectedProductQueryState, ProductAttributeEditorState, SaveMode,
+    SelectedProductSummaryViewModel, StatusOutcome, StatusTarget,
 };
 use crate::model::{
     ProductAdminBootstrap, ProductDetail, ProductEffectiveFormAttribute, ProductPricingDetail,
@@ -151,19 +148,6 @@ fn TypedProductAttributeField(
             </span>
             {input}
         </label>
-    }
-}
-
-fn apply_product_admin_route_query_intent(
-    query_writer: &RouteQueryWriter,
-    intent: ProductAdminRouteQueryIntent,
-) {
-    match intent {
-        ProductAdminRouteQueryIntent::Push { key, value } => query_writer.push_value(key, value),
-        ProductAdminRouteQueryIntent::Replace { key, value } => {
-            query_writer.replace_value(key, value);
-        }
-        ProductAdminRouteQueryIntent::Clear { key } => query_writer.clear_key(key),
     }
 }
 
@@ -357,7 +341,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 effective_locale_for_selected_pricing.clone(),
                 selected
                     .get()
-                    .map(|product| product_admin_pricing_preview_request_from_product(&product)),
+                    .map(|product| pricing_preview_request_from_product(&product)),
             )
         },
         move |(token_value, tenant_value, _, locale_value, selected_product)| async move {
@@ -469,8 +453,8 @@ pub fn ProductAdmin() -> impl IntoView {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
         let submit_locale = submit_ui_locale.clone();
-        let command = build_product_admin_save_command(
-            ProductAdminDraftForm {
+        let command = build_save_command(
+            DraftForm {
                 locale: submit_locale.clone(),
                 title: title.get_untracked(),
                 handle: handle.get_untracked(),
@@ -533,7 +517,7 @@ pub fn ProductAdmin() -> impl IntoView {
         spawn_local(async move {
             let submit_locale = command.draft.locale.clone();
             let result = match command.mode {
-                ProductAdminSaveMode::Update { product_id } => {
+                SaveMode::Update { product_id } => {
                     transport::update_product(
                         token_value.clone(),
                         tenant_value.clone(),
@@ -544,7 +528,7 @@ pub fn ProductAdmin() -> impl IntoView {
                     )
                     .await
                 }
-                ProductAdminSaveMode::Create => {
+                SaveMode::Create => {
                     transport::create_product(
                         token_value.clone(),
                         tenant_value.clone(),
@@ -604,10 +588,8 @@ pub fn ProductAdmin() -> impl IntoView {
                         }
                     }
                     set_refresh_nonce.update(|value| *value += 1);
-                    apply_product_admin_route_query_intent(
-                        &submit_query_writer,
-                        product_admin_saved_product_query_intent(product_id),
-                    );
+                    submit_query_writer
+                        .apply_query_intent(product_admin_saved_product_query_intent(product_id));
                 }
                 Err(err) => set_error.set(Some(error_copy_for_submit.save_product_failure(err))),
             }
@@ -665,10 +647,7 @@ pub fn ProductAdmin() -> impl IntoView {
     let reset_query_writer = query_writer.clone();
     let delete_query_writer = query_writer.clone();
     let reset_current_product = Callback::new(move |_| {
-        apply_product_admin_route_query_intent(
-            &reset_query_writer,
-            product_admin_clear_product_query_intent(),
-        );
+        reset_query_writer.apply_query_intent(product_admin_clear_product_query_intent());
         reset_form();
     });
 
@@ -810,10 +789,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                         </p>
                                                     </div>
                                                     <div class="flex flex-wrap gap-2">
-                                                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || product_admin_list_actions_disabled(busy.get()) on:click=move |_| apply_product_admin_route_query_intent(
-                                                            &item_query_writer,
-                                                            product_admin_open_product_query_intent(edit_id.clone()),
-                                                        )>
+                                                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || product_admin_list_actions_disabled(busy.get()) on:click=move |_| item_query_writer.apply_query_intent(product_admin_open_product_query_intent(edit_id.clone()))>
                                                             {edit_label.clone()}
                                                         </button>
                                                         <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || product_admin_list_actions_disabled(busy.get()) on:click=move |_| mutate_status(
@@ -821,7 +797,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             token.get_untracked(),
                                                             tenant.get_untracked(),
                                                             publish_id.clone(),
-                                                            ProductAdminStatusTarget::Active,
+                                                            StatusTarget::Active,
                                                             item_locale_for_publish.clone(),
                                                             set_busy,
                                                             set_error,
@@ -834,7 +810,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             token.get_untracked(),
                                                             tenant.get_untracked(),
                                                             draft_id.clone(),
-                                                            ProductAdminStatusTarget::Draft,
+                                                            StatusTarget::Draft,
                                                             item_locale_for_draft.clone(),
                                                             set_busy,
                                                             set_error,
@@ -847,7 +823,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             token.get_untracked(),
                                                             tenant.get_untracked(),
                                                             archive_id.clone(),
-                                                            ProductAdminStatusTarget::Archived,
+                                                            StatusTarget::Archived,
                                                             item_locale_for_archive.clone(),
                                                             set_busy,
                                                             set_error,
@@ -1121,7 +1097,7 @@ pub fn ProductAdmin() -> impl IntoView {
                             <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_140px]">
                                 <select class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || shipping_profile_slug.get() on:change=move |ev| set_shipping_profile_slug.set(event_target_value(&ev))>
                                     <option value="">{editor_copy.no_shipping_profile_label.clone()}</option>
-                                    {move || product_admin_shipping_profiles_load_view_from_result(
+                                    {move || shipping_profiles_load_view_from_result(
                                         ui_locale_for_profiles.as_deref(),
                                         shipping_profiles.get(),
                                     )
@@ -1148,7 +1124,7 @@ pub fn ProductAdmin() -> impl IntoView {
                         </form>
 
                         <div class="mt-4 rounded-2xl border border-border bg-background p-4 text-xs text-muted-foreground">
-                            {move || product_admin_shipping_profiles_load_view_from_result(
+                            {move || shipping_profiles_load_view_from_result(
                                 ui_locale_for_profile_panel.as_deref(),
                                 shipping_profiles.get(),
                             ).panel.into_message()}
@@ -1423,20 +1399,19 @@ fn mutate_status(
     token: Option<String>,
     tenant: Option<String>,
     product_id: String,
-    status: ProductAdminStatusTarget,
+    status: StatusTarget,
     locale: Option<String>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     set_refresh_nonce: WriteSignal<u64>,
 ) {
-    let command =
-        match build_product_admin_status_mutation_command(bootstrap.as_ref(), product_id, status) {
-            Ok(command) => command,
-            Err(err) => {
-                set_error.set(Some(err.message(locale.as_deref())));
-                return;
-            }
-        };
+    let command = match build_status_command(bootstrap.as_ref(), product_id, status) {
+        Ok(command) => command,
+        Err(err) => {
+            set_error.set(Some(err.message(locale.as_deref())));
+            return;
+        }
+    };
 
     set_busy.set(true);
     set_error.set(None);
@@ -1451,11 +1426,10 @@ fn mutate_status(
         )
         .await
         {
-            Ok(_) => ProductAdminStatusMutationOutcome::Changed,
-            Err(err) => ProductAdminStatusMutationOutcome::TransportError(err.to_string()),
+            Ok(_) => StatusOutcome::Changed,
+            Err(err) => StatusOutcome::TransportError(err.to_string()),
         };
-        let view_model =
-            build_product_admin_status_mutation_result_view_model(locale.as_deref(), outcome);
+        let view_model = build_status_result_view_model(locale.as_deref(), outcome);
 
         if view_model.refresh {
             set_refresh_nonce.update(|value| *value += 1);
@@ -1497,7 +1471,7 @@ fn mutate_delete(
     set_error: WriteSignal<Option<String>>,
     set_refresh_nonce: WriteSignal<u64>,
 ) {
-    let command = match build_product_admin_delete_command(bootstrap.as_ref(), product_id) {
+    let command = match build_delete_command(bootstrap.as_ref(), product_id) {
         Ok(command) => command,
         Err(err) => {
             set_error.set(Some(err.message(locale.as_deref())));
@@ -1518,11 +1492,11 @@ fn mutate_delete(
         )
         .await
         {
-            Ok(true) => ProductAdminDeleteOutcome::Deleted,
-            Ok(false) => ProductAdminDeleteOutcome::NotDeleted,
-            Err(err) => ProductAdminDeleteOutcome::TransportError(err.to_string()),
+            Ok(true) => DeleteOutcome::Deleted,
+            Ok(false) => DeleteOutcome::NotDeleted,
+            Err(err) => DeleteOutcome::TransportError(err.to_string()),
         };
-        let view_model = build_product_admin_delete_result_view_model(
+        let view_model = build_delete_result_view_model(
             locale.as_deref(),
             deleted_product_id.as_str(),
             editing_id.get_untracked().as_deref(),
@@ -1530,10 +1504,7 @@ fn mutate_delete(
         );
 
         if view_model.clear_selection {
-            apply_product_admin_route_query_intent(
-                &query_writer,
-                product_admin_clear_product_query_intent(),
-            );
+            query_writer.apply_query_intent(product_admin_clear_product_query_intent());
             clear_product_form(
                 set_editing_id,
                 set_selected,
@@ -1573,7 +1544,7 @@ fn SelectedProductSummary(
     pricing_state: Option<Result<Option<ProductPricingDetail>, String>>,
     pricing_route_base: String,
 ) -> impl IntoView {
-    let pricing_state = product_admin_pricing_preview_state_from_result(pricing_state.as_ref());
+    let pricing_state = pricing_preview_state_from_result(pricing_state.as_ref());
 
     match build_selected_product_summary_view_model(
         locale.as_deref(),

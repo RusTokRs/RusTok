@@ -3,7 +3,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_hook_form::FormState;
 use leptos_ui::{Select, SelectOption};
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{initial_profile_preferred_locale, prepare_profile_name};
 use crate::i18n::{auth_transport_error_message, t};

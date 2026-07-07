@@ -3,7 +3,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::use_auth;
 use leptos_hook_form::FormState;
 use leptos_router::hooks::use_navigate;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{prepare_login_request, AuthFormInputError};
 use crate::i18n::t;

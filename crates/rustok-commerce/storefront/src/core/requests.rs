@@ -6,6 +6,7 @@ use rustok_fulfillment_storefront::transport::{
 };
 use rustok_order_storefront::transport::CompleteCheckoutRequest;
 use rustok_payment_storefront::transport::PaymentCollectionCreateRequest;
+use rustok_ui_core::{normalize_optional_ui_text, normalize_required_ui_text};
 
 pub const SELECTED_CART_QUERY_KEY: &str = "cart_id";
 
@@ -33,7 +34,7 @@ pub fn build_storefront_route_state(
     selected_cart_id: Option<String>,
 ) -> CommerceStorefrontRouteState {
     CommerceStorefrontRouteState {
-        selected_cart_id: normalize_optional(selected_cart_id),
+        selected_cart_id: normalize_optional_ui_text(selected_cart_id),
         selected_cart_query_key: SELECTED_CART_QUERY_KEY,
     }
 }
@@ -43,8 +44,8 @@ pub fn build_fetch_commerce_request(
     locale: Option<String>,
 ) -> FetchCommerceRequest {
     FetchCommerceRequest {
-        selected_cart_id: normalize_optional(selected_cart_id),
-        locale: normalize_optional(locale),
+        selected_cart_id: normalize_optional_ui_text(selected_cart_id),
+        locale: normalize_optional_ui_text(locale),
     }
 }
 
@@ -55,9 +56,9 @@ pub fn build_select_shipping_option_request(
     seller_id: Option<String>,
     shipping_option_id: Option<String>,
 ) -> SelectShippingOptionRequest {
-    let shipping_profile_slug = normalize_required(shipping_profile_slug);
-    let seller_id = normalize_optional(seller_id);
-    let shipping_option_id = normalize_optional(shipping_option_id);
+    let shipping_profile_slug = normalize_required_ui_text(shipping_profile_slug);
+    let seller_id = normalize_optional_ui_text(seller_id);
+    let shipping_option_id = normalize_optional_ui_text(shipping_option_id);
     let owner_request = build_fulfillment_select_shipping_option_request(
         cart.id.clone(),
         cart.delivery_groups
@@ -80,17 +81,6 @@ pub fn build_select_shipping_option_request(
 
     let _ = cart;
     SelectShippingOptionRequest { owner_request }
-}
-
-fn normalize_optional(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    })
-}
-
-fn normalize_required(value: String) -> String {
-    value.trim().to_string()
 }
 
 #[cfg(test)]

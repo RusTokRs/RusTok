@@ -1,0 +1,10 @@
+[package]
+name = "rustok-ui-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Framework-agnostic transport result helpers for RusTok FFA UI packages"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

@@ -14,7 +14,9 @@ hydrate = ["leptos/hydrate"]
 ssr = ["leptos/ssr"]
 
 [dependencies]
+rustok-ui-core.workspace = true
 leptos = { workspace = true, features = ["csr"] }
 leptos_router.workspace = true
 rustok-api = { workspace = true, default-features = false }
+
 serde_urlencoded.workspace = true

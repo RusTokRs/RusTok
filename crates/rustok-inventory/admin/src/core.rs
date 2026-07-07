@@ -2,6 +2,7 @@ use crate::model::{
     InventoryProductDetail, InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
     InventoryReservationWriteResult, InventoryVariant,
 };
+use rustok_ui_core::normalize_optional_ui_text;
 
 #[allow(dead_code)]
 pub(crate) const DEFAULT_PRODUCT_PAGE: u64 = 1;
@@ -303,27 +304,16 @@ fn parse_non_negative_quantity(value: &str, label: &str) -> Result<i32, String> 
     Ok(quantity)
 }
 
-pub(crate) fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
 pub(crate) fn normalize_locale_filter(locale: Option<String>) -> Option<String> {
-    normalize_optional_trimmed(locale)
+    normalize_optional_ui_text(locale)
 }
 
 pub(crate) fn normalize_search_filter(search: Option<String>) -> Option<String> {
-    normalize_optional_trimmed(search)
+    normalize_optional_ui_text(search)
 }
 
 pub(crate) fn normalize_status_filter(status: Option<String>) -> Option<String> {
-    normalize_optional_trimmed(status).map(|value| value.to_ascii_uppercase())
+    normalize_optional_ui_text(status).map(|value| value.to_ascii_uppercase())
 }
 
 pub(crate) fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
@@ -616,13 +606,13 @@ mod tests {
     }
 
     #[test]
-    fn normalize_optional_trimmed_keeps_non_blank_and_drops_blank_values() {
+    fn normalize_filters_keep_non_blank_and_drop_blank_values() {
         assert_eq!(
-            normalize_optional_trimmed(Some("  value  ".to_string())),
+            normalize_locale_filter(Some("  value  ".to_string())),
             Some("value".to_string())
         );
-        assert_eq!(normalize_optional_trimmed(Some("   ".to_string())), None);
-        assert_eq!(normalize_optional_trimmed(None), None);
+        assert_eq!(normalize_search_filter(Some("   ".to_string())), None);
+        assert_eq!(normalize_status_filter(None), None);
     }
 
     #[test]

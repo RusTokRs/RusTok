@@ -1,6 +1,7 @@
 use crate::model::{
     MediaListItem, MediaTranslationPayload, MediaUsageSnapshot, UpsertTranslationPayload,
 };
+use rustok_ui_core::{normalize_ui_text, ui_busy_key, ui_busy_key_with_id};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MediaAdminBusyKey {
@@ -12,9 +13,9 @@ pub enum MediaAdminBusyKey {
 impl MediaAdminBusyKey {
     pub fn as_storage_key(&self) -> String {
         match self {
-            Self::Upload => "upload".to_string(),
-            Self::Translation => "translation".to_string(),
-            Self::Delete(media_id) => format!("delete:{media_id}"),
+            Self::Upload => ui_busy_key("upload"),
+            Self::Translation => ui_busy_key("translation"),
+            Self::Delete(media_id) => ui_busy_key_with_id("delete", media_id),
         }
     }
 }
@@ -144,8 +145,7 @@ pub fn media_detail_lines(
 /// empty strings. This helper is framework-agnostic so future FFA adapters can
 /// reuse the same form-to-command policy without depending on framework-specific signals.
 pub fn non_empty_option(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
+    normalize_ui_text(value)
 }
 
 /// Builds the asset dimensions label used by UI adapters. Missing partial

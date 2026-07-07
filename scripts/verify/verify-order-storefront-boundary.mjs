@@ -43,6 +43,7 @@ const corePath = "crates/rustok-order/storefront/src/core.rs";
 const transportPath = "crates/rustok-order/storefront/src/transport.rs";
 const graphqlPath = "crates/rustok-order/storefront/src/transport/graphql_adapter.rs";
 const nativeRawPath = "crates/rustok-order/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const cargoPath = "crates/rustok-order/storefront/Cargo.toml";
 const uiPath = "crates/rustok-order/storefront/src/ui/leptos.rs";
 const i18nPath = "crates/rustok-order/storefront/src/i18n.rs";
 const manifestPath = "crates/rustok-order/rustok-module.toml";
@@ -52,7 +53,7 @@ const planPath = "crates/rustok-order/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected order storefront FFA file`);
 }
 
@@ -61,6 +62,7 @@ const core = readRepo(corePath);
 const transport = readRepo(transportPath);
 const graphql = readRepo(graphqlPath);
 const nativeRaw = readRepo(nativeRawPath);
+const cargo = readRepo(cargoPath);
 const ui = readRepo(uiPath);
 const i18n = readRepo(i18nPath);
 const manifest = readRepo(manifestPath);
@@ -101,6 +103,13 @@ assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: order GraphQL a
 assertContains(nativeRaw, "#[server", `${nativeRawPath}: order native adapter must own a server-function endpoint shell`);
 assertContains(nativeRaw, "endpoint = \"order/complete-checkout\"", `${nativeRawPath}: order native adapter must expose the owner endpoint path`);
 assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: order native adapter must call the explicit commerce checkout runtime API`);
+assertContains(nativeRaw, "expect_context::<HostRuntimeContext>()", `${nativeRawPath}: order native adapter must use the host runtime context`);
+assertContains(nativeRaw, "shared_get::<TransactionalEventBus>()", `${nativeRawPath}: order native adapter must receive the event bus through the host runtime context`);
+assertContains(nativeRaw, "runtime_ctx.db_clone()", `${nativeRawPath}: order native adapter must receive DB through the host runtime context`);
+assertNotContains(nativeRaw, "loco_rs", `${nativeRawPath}: order native adapter must not depend on Loco AppContext`);
+assertNotContains(nativeRaw, "rustok_outbox::loco", `${nativeRawPath}: order native adapter must not use the outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${cargoPath}: order storefront package must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${cargoPath}: order storefront package must not enable the outbox Loco adapter`);
 
 for (const marker of [
   "OrderView",
@@ -114,7 +123,7 @@ for (const marker of [
 ]) {
   assertContains(ui, marker, `${uiPath}: expected order-owned UI/request marker ${marker}`);
 }
-for (const marker of ["include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "resolve_ui_message_or_fallback"]) {
+for (const marker of ["LeptosUiMessages", "include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "t_for_locale"]) {
   assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
 }
 for (const marker of ["slot = \"checkout_result_handoff\"", "[provides.storefront_ui.i18n]", "leptos_locales_path = \"storefront/locales\""]) {

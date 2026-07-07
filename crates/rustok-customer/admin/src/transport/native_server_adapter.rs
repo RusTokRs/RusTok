@@ -1,4 +1,6 @@
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
+use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -82,12 +84,11 @@ fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError
 
 #[cfg(feature = "ssr")]
 fn parse_optional_uuid(value: &str, field_name: &str) -> Result<Option<uuid::Uuid>, ServerFnError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(parse_uuid(trimmed, field_name)?))
-    }
+    let Some(value) = normalize_ui_text(value) else {
+        return Ok(None);
+    };
+
+    Ok(Some(parse_uuid(value.as_str(), field_name)?))
 }
 
 #[cfg(feature = "ssr")]
@@ -486,10 +487,5 @@ async fn customer_update_native(
 
 #[cfg(feature = "ssr")]
 fn optional_text(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value.as_str())
 }

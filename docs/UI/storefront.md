@@ -30,7 +30,7 @@ All implementations must maintain a unified backend, routing, locale, and module
 
 - For Leptos storefront, the default path in production runtime is: `UI -> local API -> #[server] -> service layer`.
 - The external GraphQL contract `/api/graphql` remains mandatory and is a supported parallel path.
-- The host first uses the native `#[server]` surface where it already exists, and only falls back to GraphQL if the runtime contract requires it.
+- The host selects native `#[server]` or GraphQL by build/runtime profile; it does not automatically switch from native execution to GraphQL after a native error.
 - New module-owned storefront UI should not be designed as GraphQL-only if it can work via `#[server]`.
 - Standalone CSR for a Leptos storefront package is considered a debug/compatibility profile: such a package must have a GraphQL/REST fallback and must not require `/api/fn/*`.
 - Module-owned storefront packages must not collapse typed business snapshots into summary-only UI state:

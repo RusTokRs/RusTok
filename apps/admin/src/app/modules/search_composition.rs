@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
 use rustok_product_admin::fetch_catalog_search_options;
 use rustok_search_admin::{SearchAdmin, SearchCatalogFilterOption};
+use rustok_ui_core::UiRouteContext;
 
 use crate::app::providers::enabled_modules::use_is_module_enabled;
 

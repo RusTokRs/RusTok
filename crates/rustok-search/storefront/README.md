@@ -26,7 +26,7 @@ Leptos storefront UI package for the `rustok-search` module.
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
 - Uses the shared `UiRouteContext` to read query-string state without leaking host-specific routing details, including locale-aware generic module routes.
-- Runtime data access is native-first with GraphQL fallback; GraphQL is retained and not removed.
+- Runtime data access is build-profile-selected: native `#[server]` for monolith/hydrate builds and GraphQL for headless/CSR builds. GraphQL is retained and not removed.
 - Will remain aligned with the future Next storefront package on the same API/query model.
 - Reads the effective locale from `UiRouteContext.locale` for visible chrome, empty states, and result helper copy.
 

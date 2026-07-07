@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     build_pricing_route_href, build_product_storefront_href, format_channel_option_label,

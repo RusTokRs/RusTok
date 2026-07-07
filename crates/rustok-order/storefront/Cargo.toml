@@ -11,21 +11,21 @@ hydrate = ["leptos/hydrate"]
 ssr = [
     "leptos/ssr",
     "dep:leptos_axum",
-    "dep:loco-rs",
     "dep:rustok-commerce",
     "dep:rustok-outbox",
     "rustok-api/server",
 ]
 
 [dependencies]
+rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
+rustok-ui-transport.workspace = true
 leptos.workspace = true
 rustok-graphql.workspace = true
 leptos_axum = { workspace = true, optional = true }
-loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
 rustok-commerce = { workspace = true, optional = true }
-rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
+rustok-outbox = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid.workspace = true

@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::UiRouteContext;
 use rustok_comments::{CommentStatus, CommentThreadStatus};
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    comments_admin_locale_query_write, comments_admin_select_thread_query_write,
+    comments_admin_locale_query_intent, comments_admin_select_thread_query_intent,
     CommentRowViewModel, CommentThreadDetailRequest, CommentThreadDetailViewModel,
     CommentThreadListItemViewModel, CommentThreadsRequest, SetCommentStatusCommand,
     SetThreadStatusCommand, COMMENTS_ADMIN_LOCALE_QUERY_KEY, COMMENTS_ADMIN_THREAD_QUERY_KEY,
@@ -265,9 +265,8 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 on:input=move |ev| {
                                     let next_value = event_target_value(&ev);
                                     set_locale.set(next_value.clone());
-                                    apply_comments_route_query_update(
-                                        &locale_query_writer,
-                                        comments_admin_locale_query_write(&next_value),
+                                    locale_query_writer.apply_query_intent(
+                                        comments_admin_locale_query_intent(&next_value),
                                     );
                                 }
                             />
@@ -326,8 +325,8 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                         type="button"
                                                         class="w-full rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-accent/40"
                                                         on:click=move |_| {
-                                                            if let Some(update) = comments_admin_select_thread_query_write(&thread_id) {
-                                                                apply_comments_route_query_update(&thread_query_writer, update);
+                                                            if let Some(intent) = comments_admin_select_thread_query_intent(&thread_id) {
+                                                                thread_query_writer.apply_query_intent(intent);
                                                             }
                                                         }
                                                     >
@@ -494,12 +493,4 @@ fn StatusButton(label: String, on_click: Callback<()>) -> impl IntoView {
             {label}
         </button>
     }
-}
-
-fn apply_comments_route_query_update(
-    query_writer: &leptos_ui_routing::RouteQueryWriter,
-    update: crate::core::CommentsAdminRouteQueryWrite,
-) {
-    let (key, value, replace) = update.into_writer_update();
-    query_writer.update(vec![(key, value)], replace);
 }

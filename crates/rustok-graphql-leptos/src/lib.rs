@@ -12,11 +12,11 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_api::UiRouteContext;
 pub use rustok_graphql::{
     execute, persisted_query_extension, GraphqlError, GraphqlHttpError, GraphqlRequest,
     GraphqlResponse, ACCEPT_LANGUAGE_HEADER, AUTH_HEADER, GRAPHQL_ENDPOINT, TENANT_HEADER,
 };
+use rustok_ui_core::UiRouteContext;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 

@@ -3,7 +3,7 @@ use crate::model::AiTaskProfilePayload;
 use crate::ui::leptos::{task_profile_summary, Card, TextField};
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
-use rustok_api::AdminQueryKey;
+use rustok_ui_core::AdminQueryKey;
 
 #[component]
 pub fn AiTaskPanel(

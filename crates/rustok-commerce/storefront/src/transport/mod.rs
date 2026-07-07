@@ -10,22 +10,23 @@ use crate::model::{
     StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCommerceData,
 };
 use raw_adapter::ApiError;
-use rustok_fulfillment_storefront::transport::{
-    select_shipping_option, ShippingSelectionTransportError,
-};
-use rustok_order_storefront::transport::{complete_checkout, CheckoutCompletionTransportError};
-use rustok_payment_storefront::transport::{create_payment_collection, PaymentTransportError};
+use rustok_fulfillment_storefront::transport::select_shipping_option;
+use rustok_order_storefront::transport::complete_checkout;
+use rustok_payment_storefront::transport::create_payment_collection;
+use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
 
 pub async fn fetch_storefront_commerce(
     request: FetchCommerceRequest,
 ) -> Result<StorefrontCommerceData, ApiError> {
-    match native_server_adapter::fetch_storefront_commerce(request.clone()).await {
-        Ok(data) => Ok(data),
-        Err(error) if should_fallback_to_graphql(&error) => {
-            graphql_adapter::fetch_storefront_commerce(request).await
-        }
-        Err(error) => Err(error),
-    }
+    let native_request = request.clone();
+    execute_selected_transport(
+        "commerce",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_storefront_commerce(native_request),
+        move || graphql_adapter::fetch_storefront_commerce(request),
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 pub async fn create_storefront_payment_collection(
@@ -51,42 +52,22 @@ pub async fn complete_storefront_checkout(
     complete_checkout(request).await.map_err(ApiError::from)
 }
 
-fn should_fallback_to_graphql(error: &ApiError) -> bool {
-    matches!(
-        error,
-        ApiError::ServerFn(server_error)
-            if server_error.contains("MissingServer")
-                || server_error.contains("missing server")
-                || server_error.contains("not available on this target")
-    )
-}
-
-impl From<PaymentTransportError> for ApiError {
-    fn from(value: PaymentTransportError) -> Self {
-        match value {
-            PaymentTransportError::Graphql(message) => Self::Graphql(message),
-            PaymentTransportError::ServerFn(message) => Self::ServerFn(message),
-            PaymentTransportError::Validation(message) => Self::Validation(message),
-        }
+fn selected_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
     }
 }
 
-impl From<CheckoutCompletionTransportError> for ApiError {
-    fn from(value: CheckoutCompletionTransportError) -> Self {
-        match value {
-            CheckoutCompletionTransportError::Graphql(message) => Self::Graphql(message),
-            CheckoutCompletionTransportError::ServerFn(message) => Self::ServerFn(message),
-            CheckoutCompletionTransportError::Validation(message) => Self::Validation(message),
-        }
-    }
-}
-
-impl From<ShippingSelectionTransportError> for ApiError {
-    fn from(value: ShippingSelectionTransportError) -> Self {
-        match value {
-            ShippingSelectionTransportError::Graphql(message) => Self::Graphql(message),
-            ShippingSelectionTransportError::ServerFn(message) => Self::ServerFn(message),
-            ShippingSelectionTransportError::Validation(message) => Self::Validation(message),
+impl From<UiTransportError> for ApiError {
+    fn from(value: UiTransportError) -> Self {
+        match value.failed_path {
+            UiTransportPath::NativeServer => Self::ServerFn(value.to_string()),
+            UiTransportPath::Graphql => Self::Graphql(value.to_string()),
         }
     }
 }
@@ -96,22 +77,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_missing_server_errors_can_fallback_to_graphql() {
-        assert!(should_fallback_to_graphql(&ApiError::ServerFn(
-            "MissingServerFunction".into()
-        )));
-        assert!(should_fallback_to_graphql(&ApiError::ServerFn(
-            "server function is not available on this target".into()
-        )));
-    }
-
-    #[test]
-    fn validation_and_graphql_errors_do_not_trigger_compatibility_fallback() {
-        assert!(!should_fallback_to_graphql(&ApiError::Validation(
-            "cart_id must be a valid UUID".into()
-        )));
-        assert!(!should_fallback_to_graphql(&ApiError::Graphql(
-            "network unavailable".into()
-        )));
+    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
     }
 }

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
-use rustok_api::UiRouteContext;
 use rustok_product_storefront::fetch_catalog_search_options;
 use rustok_search_storefront::{SearchCatalogFilterOption, SearchView};
+use rustok_ui_core::UiRouteContext;
 
 use crate::shared::context::enabled_modules::use_is_module_enabled;
 

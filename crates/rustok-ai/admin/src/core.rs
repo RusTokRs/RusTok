@@ -1,18 +1,11 @@
+use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
+
 pub fn parse_csv(value: String) -> Vec<String> {
-    value
-        .split(',')
-        .map(|item| item.trim().to_string())
-        .filter(|item| !item.is_empty())
-        .collect()
+    parse_ui_csv(value.as_str())
 }
 
 pub fn optional_text(value: String) -> Option<String> {
-    let value = value.trim().to_string();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    normalize_ui_text(value.as_str())
 }
 
 pub fn alloy_task_payload(

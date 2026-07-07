@@ -1,6 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -547,10 +548,5 @@ fn update_topic_input(draft: TopicDraft) -> UpdateTopicInput {
 }
 
 fn optional_text(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value.as_str())
 }

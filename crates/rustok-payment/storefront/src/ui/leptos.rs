@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     build_payment_collection_card_view_model, payment_collection_action_label,

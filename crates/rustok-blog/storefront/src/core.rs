@@ -1,4 +1,4 @@
-use rustok_api::normalize_ui_text;
+use rustok_ui_core::normalize_ui_text;
 
 use crate::i18n::t;
 

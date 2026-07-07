@@ -2,10 +2,10 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer, RouteQueryWriter};
-use rustok_api::UiRouteContext;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     category_card_view_model, category_select_options, category_sidebar_total_count,
@@ -24,32 +24,12 @@ use crate::core::{
     topic_card_view_model, topic_category_filter, CategoryFormSnapshot, ForumAdminActionButtonKind,
     ForumAdminBusyAction, ForumAdminBusySurface, ForumAdminCategoryRenderLabels,
     ForumAdminCollectionState, ForumAdminFormError, ForumAdminFormErrorLabels,
-    ForumAdminHeaderLabels, ForumAdminMetricSurface, ForumAdminQuerySurface,
-    ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation, ForumAdminSeoSurface,
+    ForumAdminHeaderLabels, ForumAdminMetricSurface, ForumAdminQuerySurface, ForumAdminSeoSurface,
     ForumAdminTitleEnvelopeLabels, ForumAdminTopicRenderLabels, TopicFormSnapshot,
 };
 use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
 use crate::transport;
-
-fn apply_forum_admin_route_query_intent(
-    query_writer: &RouteQueryWriter,
-    intent: ForumAdminRouteQueryIntent,
-) {
-    match intent.operation {
-        ForumAdminRouteQueryOperation::Push => {
-            if let Some(value) = intent.value {
-                query_writer.push_value(intent.key, value);
-            }
-        }
-        ForumAdminRouteQueryOperation::Replace => {
-            if let Some(value) = intent.value {
-                query_writer.replace_value(intent.key, value);
-            }
-        }
-        ForumAdminRouteQueryOperation::Clear => query_writer.clear_key(intent.key),
-    }
-}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -421,13 +401,10 @@ pub fn ForumAdmin() -> impl IntoView {
                         CategoryFormSnapshot::from_detail(&category),
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    apply_forum_admin_route_query_intent(
-                        &category_query_writer,
-                        forum_admin_saved_query_intent(
-                            ForumAdminQuerySurface::Category,
-                            category_id,
-                        ),
-                    );
+                    category_query_writer.apply_query_intent(forum_admin_saved_query_intent(
+                        ForumAdminQuerySurface::Category,
+                        category_id,
+                    ));
                 }
                 Err(err) => set_error.set(Some(forum_admin_transport_error_message(
                     save_category_error.as_str(),
@@ -494,10 +471,10 @@ pub fn ForumAdmin() -> impl IntoView {
                         TopicFormSnapshot::from_detail(&topic),
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    apply_forum_admin_route_query_intent(
-                        &topic_query_writer,
-                        forum_admin_saved_query_intent(ForumAdminQuerySurface::Topic, topic_id),
-                    );
+                    topic_query_writer.apply_query_intent(forum_admin_saved_query_intent(
+                        ForumAdminQuerySurface::Topic,
+                        topic_id,
+                    ));
                 }
                 Err(err) => set_error.set(Some(forum_admin_transport_error_message(
                     save_topic_error.as_str(),
@@ -529,7 +506,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         category_id.as_str(),
                     );
                     if let Some(intent) = outcome.route_query_intent {
-                        apply_forum_admin_route_query_intent(&delete_category_query_writer, intent);
+                        delete_category_query_writer.apply_query_intent(intent);
                     }
                     if outcome.should_clear_form {
                         clear_category_form(
@@ -577,7 +554,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         topic_id.as_str(),
                     );
                     if let Some(intent) = outcome.route_query_intent {
-                        apply_forum_admin_route_query_intent(&delete_topic_query_writer, intent);
+                        delete_topic_query_writer.apply_query_intent(intent);
                     }
                     if outcome.should_clear_form {
                         clear_topic_form(
@@ -611,22 +588,21 @@ pub fn ForumAdmin() -> impl IntoView {
     let reset_category_query_writer = query_writer.clone();
     let reset_topic_query_writer = query_writer.clone();
     let open_category = Callback::new(move |category_id: String| {
-        apply_forum_admin_route_query_intent(
-            &open_category_query_writer,
-            forum_admin_open_query_intent(ForumAdminQuerySurface::Category, category_id),
-        );
+        open_category_query_writer.apply_query_intent(forum_admin_open_query_intent(
+            ForumAdminQuerySurface::Category,
+            category_id,
+        ));
     });
     let open_topic = Callback::new(move |topic_id: String| {
-        apply_forum_admin_route_query_intent(
-            &open_topic_query_writer,
-            forum_admin_open_query_intent(ForumAdminQuerySurface::Topic, topic_id),
-        );
+        open_topic_query_writer.apply_query_intent(forum_admin_open_query_intent(
+            ForumAdminQuerySurface::Topic,
+            topic_id,
+        ));
     });
     let reset_category = Callback::new(move |_| {
-        apply_forum_admin_route_query_intent(
-            &reset_category_query_writer,
-            forum_admin_reset_query_intent(ForumAdminQuerySurface::Category),
-        );
+        reset_category_query_writer.apply_query_intent(forum_admin_reset_query_intent(
+            ForumAdminQuerySurface::Category,
+        ));
         clear_category_form(
             set_editing_category_id,
             set_category_name,
@@ -639,10 +615,9 @@ pub fn ForumAdmin() -> impl IntoView {
         );
     });
     let reset_topic = Callback::new(move |_| {
-        apply_forum_admin_route_query_intent(
-            &reset_topic_query_writer,
-            forum_admin_reset_query_intent(ForumAdminQuerySurface::Topic),
-        );
+        reset_topic_query_writer.apply_query_intent(forum_admin_reset_query_intent(
+            ForumAdminQuerySurface::Topic,
+        ));
         clear_topic_form(
             set_editing_topic_id,
             set_topic_category_id,

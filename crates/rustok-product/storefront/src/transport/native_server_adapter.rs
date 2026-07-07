@@ -189,7 +189,7 @@ pub async fn fetch_storefront_products_server(
 }
 
 pub async fn fetch_products(
-    request: crate::core::ProductStorefrontFetchRequest,
+    request: crate::core::FetchRequest,
 ) -> Result<StorefrontProductsData, ApiError> {
     fetch_storefront_products_server(
         request.selected_handle,
@@ -440,6 +440,7 @@ fn map_effective_price(value: rustok_pricing::ResolvedPrice) -> ProductEffective
     }
 }
 
+#[cfg(feature = "ssr")]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()

@@ -11,12 +11,15 @@ hydrate = ["leptos/hydrate"]
 ssr = ["leptos/ssr", "dep:leptos_axum", "dep:loco-rs", "dep:rustok-cart", "dep:rustok-commerce", "dep:rustok-customer", "dep:rustok-inventory", "dep:rustok-pricing", "dep:rustok-region", "rustok-api/server"]
 
 [dependencies]
+rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
+
 rustok-ui-i18n-leptos.workspace = true
 rustok-cart-storefront.workspace = true
 rustok-cart = { workspace = true, optional = true }

@@ -10,7 +10,7 @@ stay in the active backlog umbrella `rustok-commerce`.
 - Current phase: ffa_admin_variant_editor_copy_defaults_slice
 - Last checkpoint: Admin variant price editor copy/count/default-currency policy extracted from Leptos adapter into Leptos-free `admin/src/core/presentation.rs`: `format_variant_price_editor_title`, `format_variant_count_label` and `default_variant_price_editor_currency` now centralize repeatable labels/defaults for variant price editor with pure-core unit-test evidence.
 - Dependency evidence: pricing storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`.
-- Next step: Continue small FFA slices only where they reduce Leptos-owned presentation/state policy; do not change transport/native-first + GraphQL fallback contract.
+- Next step: Continue small FFA slices only where they reduce Leptos-owned presentation/state policy; do not change the build-profile-selected native/GraphQL transport contract.
 - Open blockers: None.
 - Hand-off notes for next agent: After each increment, update this block.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
@@ -31,9 +31,9 @@ stay in the active backlog umbrella `rustok-commerce`.
   - storefront pricing route now uses framework-agnostic `storefront/src/core.rs` for summary/label/effective context formatting, query href building and shared `StorefrontPricingQuery`; Leptos `lib.rs` no longer owns this presentation/request policy;
   - storefront transport split into thin facade + explicit `native_server_adapter` and `graphql_adapter`, with fallback order (`native #[server]` first, GraphQL second) preserved; legacy `storefront/src/api.rs` removed, raw operations live in `storefront/src/transport/`, and `scripts/verify/verify-pricing-storefront-boundary.mjs` blocks legacy API return;
   - Leptos render/bind adapter extracted into `storefront/src/ui/leptos.rs`, and `storefront/src/lib.rs` became crate-level composition/re-export boundary;
-  - targeted facade tests confirm both orchestration branches: native success does not call GraphQL, native error passes the original `StorefrontPricingQuery` to GraphQL fallback;
+  - targeted facade tests confirm both selected paths: native success does not call GraphQL, and GraphQL selected-path execution receives the original `StorefrontPricingQuery`;
   - request normalization/validation moved to `storefront/src/core.rs`, including typed `StorefrontPricingQueryError`; API layer converts core validation errors into the existing transport envelope without changing public behavior;
-  - parity evidence: `cargo test -p rustok-pricing-storefront --lib` confirms existing transport validation tests, pure-core route/channel formatting tests, core request validation tests and transport facade fallback tests without changing native/GraphQL fallback contract;
+  - parity evidence: `cargo test -p rustok-pricing-storefront --lib` confirms existing transport validation tests, pure-core route/channel formatting tests, core request validation tests and selected-path transport facade tests without changing the native/GraphQL contract;
   - admin FFA slice added module-owned `admin/src/transport.rs` facade and explicit Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` now only wires modules and re-exports `PricingAdmin`, and Leptos adapter no longer calls raw `api::*` directly for covered flows; legacy `admin/src/api.rs` removed, raw native/GraphQL operations live in `admin/src/transport/native_server_adapter.rs`, and `scripts/verify/verify-pricing-admin-boundary.mjs` blocks legacy API return;
   - admin pricing presentation/request policy continues FFA decomposition into `admin/src/core/`: `presentation.rs` owns summary/labels/formatters, `routing.rs` — channel scope/query helpers, `requests.rs` — resolution context normalization and write draft builders; targeted pure-core tests cover pricing summary, resolution context normalization, channel-key policy and DTO builders;
   - admin write request construction for variant price, percentage discount and price-list rule/scope remains in core-owned draft builders; Leptos adapter uses explicit core imports instead of wildcard and does not construct covered write DTO inline;
@@ -67,7 +67,7 @@ stay in the active backlog umbrella `rustok-commerce`.
   `core`, transport orchestration extracted to `storefront/src/transport/`, and
   Leptos render/bind layer lives in `storefront/src/ui/leptos.rs`;
 - storefront package remains a read-side surface, but admin package already
-  uses `admin/src/transport.rs` facade over native-first `#[server]` transport not only for read-side, but also for
+  uses `admin/src/transport.rs` facade over build-profile-selected native `#[server]` transport not only for read-side, but also for
   base-row writes, active `price_list` overrides, typed percentage adjustments and
   `price_list` rule/scope editing, keeping product GraphQL contract as fallback
   for reads; admin presentation/request policy for summary, status/price/channel
@@ -93,7 +93,7 @@ stay in the active backlog umbrella `rustok-commerce`.
 - [x] add pure-core tests for query href/channel-scope formatting alongside existing
   transport validation suite;
 - [x] introduce storefront `transport/` facade with explicit `native_server_adapter` and
-  `graphql_adapter`, preserving native-first + GraphQL fallback contract;
+  `graphql_adapter`, preserving the build-profile-selected native/GraphQL contract;
 - [x] extract Leptos render/bind adapter into `storefront/src/ui/leptos.rs`, leaving
   crate root as composition/re-export boundary;
 - [x] add targeted tests for `transport` facade: native-success path and GraphQL
@@ -128,7 +128,7 @@ stay in the active backlog umbrella `rustok-commerce`.
   a selector over `rustok-channel` read model with global fallback and legacy-scope
   compatibility option;
 - [x] extend effective price context into module-owned storefront/admin read-side surfaces
-  through native-first `#[server]` transport with GraphQL fallback;
+  through build-profile-selected native `#[server]` transport with a GraphQL selected path;
 - [x] align validation contract for `PriceResolutionContext` between runtime,
   dedicated GraphQL facade roots and native `#[server]` transport: `currency_code`
   must be a three-letter ASCII business code, `quantity < 1` is rejected,
@@ -136,18 +136,18 @@ stay in the active backlog umbrella `rustok-commerce`.
   silently ignored; malformed explicit `channel_id` is also rejected rather than
   falling back to host channel context;
 - [x] extract the same validation step into pricing UI fetch wrappers before attempting
-  native-first `#[server]` transport, so invalid input does not fall through to
-  meaningless GraphQL fallback and does not blur the transport contract;
+  native `#[server]` transport, so invalid input does not enter a meaningless
+  GraphQL selected path and does not blur the transport contract;
 - [x] add explicit channel selector in storefront/admin effective-context controls
   so channel-aware resolution can be switched without raw query editing and without
   reverting to package-local fallback chain;
 - [x] switch admin active `price_list` selector to context-aware read path so the
   overlay list and rule editor recalculate based on explicitly selected `channel` rather than
   only bootstrap host context;
-- [x] extend the same selector metadata contract to GraphQL fallback for
+- [x] extend the same selector metadata contract to the GraphQL selected path for
   `rustok-pricing/admin` and `rustok-pricing/storefront` so the degraded path does not
   lose `available_channels` and channel-aware active `price_lists`;
-- [x] switch GraphQL fallback detail contract to dedicated pricing-facing facade
+- [x] switch the GraphQL selected-path detail contract to dedicated pricing-facing facade
   roots `adminPricingProduct` / `storefrontPricingProduct` so the degraded path
   preserves variant-level `effective_price` parity for explicit resolution context;
 - [x] deliver active tenant-scoped price lists as pricing-owned read contract

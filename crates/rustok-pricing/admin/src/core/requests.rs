@@ -5,6 +5,7 @@ use crate::model::{
     PricingDiscountDraft, PricingPrice, PricingPriceDraft, PricingPriceListRuleDraft,
     PricingPriceListScopeDraft, PricingResolutionContext,
 };
+use rustok_ui_core::normalize_ui_text;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PricingAdminRequestError {
@@ -28,39 +29,26 @@ impl std::fmt::Display for PricingAdminRequestError {
 impl std::error::Error for PricingAdminRequestError {}
 
 pub(crate) fn text_or_none(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value.as_str())
 }
 
 pub(crate) fn normalized_currency_code(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.len() == 3 {
-        Some(trimmed.to_ascii_uppercase())
+    let value = text_or_none(value)?;
+    if value.len() == 3 {
+        Some(value.to_ascii_uppercase())
     } else {
         None
     }
 }
 
 pub(crate) fn normalized_region_id(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Uuid::parse_str(trimmed).ok().map(|_| trimmed.to_string())
-    }
+    let value = text_or_none(value)?;
+    Uuid::parse_str(value.as_str()).ok().map(|_| value)
 }
 
 pub(crate) fn normalized_price_list_id(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Uuid::parse_str(trimmed).ok().map(|_| trimmed.to_string())
-    }
+    let value = text_or_none(value)?;
+    Uuid::parse_str(value.as_str()).ok().map(|_| value)
 }
 
 pub(crate) fn normalized_quantity(value: String) -> Option<i32> {

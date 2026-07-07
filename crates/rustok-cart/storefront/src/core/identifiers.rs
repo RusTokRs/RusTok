@@ -1,17 +1,11 @@
+use rustok_ui_core::normalize_optional_ui_text;
 use serde_json::Value;
 use uuid::Uuid;
 
 use super::CartCoreError;
 
 pub fn normalize_cart_id(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
+    normalize_optional_ui_text(value)
 }
 
 pub fn parse_cart_id(value: Option<String>) -> Result<Option<(String, Uuid)>, CartCoreError> {

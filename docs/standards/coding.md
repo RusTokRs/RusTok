@@ -18,8 +18,10 @@ This section defines the mandatory governance baseline for code and documentatio
   - `README.ru.md` is the only file allowed in Russian (localized translation of the main README);
   - one file = one language, mixed language within a single file is not allowed.
 - **Naming:**
+  - names must optimize for stable ownership, quick recognition, refactorability and search, not for minimum length or for encoding every detail;
   - query-keys and URL state in module-owned admin UI must use typed `snake_case` keys;
-  - new module/crate/document names must match `modules.toml` and `docs/modules/registry.md`.
+  - new module/crate/document names must match `modules.toml` and `docs/modules/registry.md`;
+  - new names must follow the naming contract below.
 - **Ownership-review path (mandatory for cross-cutting changes):**
   1. first update the component's local docs (`apps/*/docs` or `crates/*/docs`);
   2. then synchronize central documents in `docs/`;
@@ -27,6 +29,141 @@ This section defines the mandatory governance baseline for code and documentatio
   4. get review from the affected module's owner (or platform team for cross-cutting changes).
 
 Violation of these rules is considered a documentation/contract quality defect and must block merge until fixed.
+
+### Naming Contract
+
+Use the most useful name for day-to-day work: clear at the call site, stable
+under refactoring, searchable, and no longer than needed. Minimum-length names
+are not the goal. Names that repeat obvious path context or encode a full
+implementation story are a design smell; put the explanation in the local
+`README.md`, `docs/README.md`, manifest or registry instead of the filename or
+identifier.
+
+Mandatory formats:
+
+| Surface | Format | Examples |
+|---|---|---|
+| Module slug | short `snake_case` | `product`, `order`, `page_builder` |
+| Cargo crate/package directory | `kebab-case` | `rustok-product`, `rustok-page-builder` |
+| Rust source file/module | `snake_case.rs` | `service.rs`, `graphql_adapter.rs` |
+| Rust type/trait/enum | `PascalCase` | `ProductModule`, `CatalogService` |
+| Rust function/variable/field | `snake_case` | `load_products`, `tenant_id` |
+| JSON/TOML keys, URL query keys | `snake_case` | `tenant_id`, `page_builder` |
+| Next/React component file | local frontend convention | `ProductTable.tsx` or existing app pattern |
+| Documentation file | `kebab-case.md` | `module-authoring.md`, `runtime-contract.md` |
+| ADR file | `YYYY-MM-DD-kebab-case.md` | `2026-07-01-runtime-boundary.md` |
+
+Rules:
+
+1. Do not repeat the domain name when the parent path already provides it.
+   Use `crates/rustok-product/src/service.rs`, not
+   `crates/rustok-product/src/product_service.rs`, unless the crate contains
+   multiple peer services and the qualifier removes real ambiguity.
+2. Prefer role names for internal files: `service.rs`, `ports.rs`, `dto.rs`,
+   `entities.rs`, `graphql.rs`, `controllers.rs`, `permissions.rs`,
+   `migrations/`, `transport/`, `ui/`.
+3. Use underscores only where the language or data format expects them:
+   Rust files/items, JSON/TOML/query keys, database names and generated
+   migration identifiers. Use hyphens for package, crate directory and
+   documentation filenames.
+4. Treat names with more than three semantic parts as requiring justification.
+   They are allowed when they improve call-site clarity or public API search,
+   but they should not be caused by repeating path context. If a name needs four
+   or more parts because unrelated concepts share one scope, split by directory
+   or type boundary.
+   Prefer `transport/graphql_adapter.rs` over
+   `product_admin_transport_graphql_adapter.rs`.
+5. Do not encode implementation status, architecture wave, temporary state or
+   history in names. Use docs and plans for that. Avoid suffixes such as
+   `new`, `old`, `legacy`, `v2`, `final`, `temp`, `experimental` unless the
+   suffix is part of a public protocol version.
+6. Do not introduce compatibility aliases with shorter or longer names just to
+   preserve an old path. Rename atomically when the target architecture changes.
+7. Keep module slugs domain-level and singular unless the business domain is
+   inherently plural in platform vocabulary. Prefer `product`, `order`,
+   `payment`, `page_builder`; avoid `product_catalog_management`.
+8. Support crates may use an extra qualifier only for a real boundary:
+   `rustok-commerce-foundation`, `rustok-seo-admin-support`,
+   `rustok-graphql-leptos`.
+9. A longer name is acceptable when it is the optimal working name: it improves
+   call-site clarity, distinguishes peer concepts, supports public API search,
+   or preserves necessary protocol meaning. Generated migration files, evidence
+   packet fixtures and public API compatibility identifiers commonly need this.
+
+#### Code Identifier Rules
+
+Rust `snake_case` and `PascalCase` are mandatory style rules, but they do not
+justify long or repetitive names. Code identifiers must follow the
+optimal-working-name rule: expressive enough to read without guessing, compact
+enough to scan, and free of context already supplied by the path, module or
+receiver type.
+
+Case style is not a semantic difference. The same concept should keep the same
+stem across identifier kinds:
+
+| Concept | Type name | Builder/function | Variable |
+|---|---|---|---|
+| publish command | `PublishCommand` | `build_publish_command` | `publish_command` |
+| pricing preview request | `PricingPreviewRequest` | `pricing_preview_request_from_product` | `pricing_preview_request` |
+| route segment | `RouteSegment` | `resolve_route_segment` | `route_segment` |
+
+Do not use different stems for the same concept in the same scope, such as
+`PublishCommand`, `publish_status_command` and `status_publish_payload` for one
+prepared publish command.
+
+1. Do not repeat path context in internal code identifiers.
+   In `crates/rustok-product/admin/src/core.rs`, prefer
+   `StatusResultViewModel`, `build_status_result_view_model` and
+   `parse_inventory_quantity` over
+   `ProductAdminStatusMutationResultViewModel`,
+   `build_product_admin_status_mutation_result_view_model` and
+   `parse_product_admin_inventory_quantity_input`.
+2. Repeat the domain in public API only when the caller cannot infer the owner
+   from the type, trait or module path. `ProductModule`, `ProductReadPort` and
+   `create_product` are acceptable at crate boundaries. Repeating `product` in
+   every private helper inside `rustok-product` is not.
+3. Repeat a surface qualifier only at the boundary between surfaces. `AdminView`
+   and `StorefrontView` are acceptable in a shared host or shared support crate.
+   Inside `admin/src/*`, the `admin` qualifier is normally redundant.
+4. Prefer role-first helper names inside a scoped file, but keep enough
+   information to distinguish peer operations:
+   `build_editor_view_model`, `selected_query_state`, `build_list_controls`,
+   `build_save_command`, `build_delete_result`, `shipping_profiles_load_view`.
+   Do not collapse to vague names such as `build_view`, `handle`, `run` or
+   `process`.
+5. Use standard function verbs consistently:
+   - `build_*` creates a new view model, command, copy bundle or prepared value
+     from inputs without side effects;
+   - `parse_*` converts text or untrusted input into typed local state;
+   - `resolve_*` chooses one value from precedence/fallback rules;
+   - `format_*` returns display text;
+   - `map_*` converts between transport/domain shapes;
+   - `load_*` / `fetch_*` perform IO or call transport.
+   Do not alternate `make_*`, `create_*`, `prepare_*`, `compose_*` and `build_*`
+   for the same kind of pure view-model construction in one module.
+6. Public DTO/type names may be longer than helper names, but should still avoid
+   duplicated concepts. `StatusMutationResultViewModel` can be optimal if the
+   same scope also contains non-mutation status result types. If mutation is the
+   only status operation in that scope, prefer `StatusResultViewModel`.
+7. Adapter functions should name the transport only when multiple transports are
+   visible from the same scope. Inside `transport/native_server_adapter.rs`,
+   prefer `clear_detached_values` over
+   `product_admin_clear_detached_attribute_values_native`. The filename already
+   carries `native`.
+8. Test names may be descriptive, but should assert one behavior and avoid
+   repeating the module/surface prefix. Prefer
+   `delete_result_formats_failures` over
+   `product_admin_delete_result_view_model_formats_failures`.
+9. Avoid names ending in generic filler when a shorter role is enough:
+   `data`, `info`, `manager`, `handler`, `helper`, `util`, `processor`.
+   Use these only when the role is genuinely generic at that boundary.
+10. File splitting is not a substitute for naming discipline. If a name grows
+   only because one file contains too many peer concepts, split the file. If a
+   name remains long after the split, keep the longer name only when it improves
+   call-site clarity or distinguishes real peer concepts.
+11. Before adding a new long identifier, ask which part is already expressed by
+    the path, module, type or trait. Remove that part from the identifier unless
+    it is required for public API clarity.
 
 ## 1. Architectural Principles
 

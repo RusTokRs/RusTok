@@ -168,7 +168,9 @@ Local documents for applications and crates live in `apps/*/docs/`,
   and the corresponding `README.md`.
 - For infrastructure/capability crates see `crates/*`
   and `docs/modules/crates-registry.md`.
-- For UI libraries use `crates/leptos-*`, `crates/leptos-ui`.
+- For UI libraries use `crates/leptos-*`, `crates/leptos-ui`,
+  `crates/rustok-ui-*`, `crates/rustok-graphql`
+  and `crates/rustok-graphql-leptos`.
 - Every crate must have an up-to-date `README.md`,
   and `docs/` if needed.
 

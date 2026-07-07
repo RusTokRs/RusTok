@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::read_route_query_value;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     build_cart_fetch_request, build_decrement_line_item_request, build_remove_line_item_request,

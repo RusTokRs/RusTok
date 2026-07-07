@@ -15,7 +15,8 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Owns dual-path read access for published posts and selected `?slug=` rendering.
 - Keeps storefront shell copy, selected-post route/query state, fetch request state, and presentation view-model helpers in framework-agnostic `core` so Leptos remains a thin render/host-context adapter.
 - Keeps Leptos render/bind code in `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` only wires modules and re-exports `BlogView`.
-- Native Leptos `#[server]` calls are isolated in `transport/native_server_adapter.rs`, with GraphQL kept as a required parallel fallback in `transport/graphql_adapter.rs` behind the native-first facade.
+- Native Leptos `#[server]` calls are isolated in `transport/native_server_adapter.rs`, with GraphQL kept as the required parallel selected path in `transport/graphql_adapter.rs` behind the build-profile-selected facade.
+- Native SSR transport receives DB and `TransactionalEventBus` through `HostRuntimeContext`; this package does not depend on Loco runtime context.
 
 ## Entry Points
 
@@ -24,7 +25,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 ## Interactions
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
-- Uses native `#[server] -> PostService -> DB` on the SSR path through the native adapter and falls back to the `rustok-blog` GraphQL adapter when native transport is unavailable.
+- Uses native `#[server] -> HostRuntimeContext -> PostService -> DB/event bus` on the SSR/hydrate path through the native adapter and uses the `rustok-blog` GraphQL adapter on the headless/CSR path.
 - Consumes the host-provided effective locale from `UiRouteContext` for shell copy, reads the stable selected-post query key `slug` through core-owned route state, and passes `BlogStorefrontFetchRequest` into transport adapters.
 - Should remain compatible with the host storefront slot and generic module page contract, including locale-prefixed routes via `UiRouteContext::module_route_base()`.
 

@@ -1,6 +1,6 @@
 use crate::i18n::t;
 use leptos::prelude::*;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 #[component]
 pub fn AuthAdmin() -> impl IntoView {

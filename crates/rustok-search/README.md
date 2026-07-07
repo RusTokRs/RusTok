@@ -165,7 +165,7 @@
 - The Next storefront package now mirrors the same live search and
   suggestions/autocomplete contract for parallel UI development.
 - The product-owned Leptos admin package now exposes neutral catalog search
-  option DTOs and a locale-required native-first/GraphQL-parallel metadata
+  option DTOs and a locale-required build-profile-selected native/GraphQL metadata
   helper. The Leptos admin host composes that public contract into `SearchAdmin`
   while checking product module enablement; search UI remains product-independent.
 - The Leptos storefront host now composes the public-safe product catalog option

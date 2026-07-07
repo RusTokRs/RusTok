@@ -5,6 +5,7 @@ This file defines rules and ownership for all contributors and AI agents working
 ## How to engage
 
 - Always start by reading [`docs/index.md`](docs/index.md) — the canonical documentation map.
+- Before creating or renaming modules, crates, packages, folders, files, public types, query keys, config keys, or documentation, follow the [`Naming Contract`](docs/standards/coding.md#naming-contract).
 - For new modules or major module refactors, use [`docs/modules/module-authoring.md`](docs/modules/module-authoring.md) as the primary entry guide before diving into local component docs.
 - Review domain module documentation before making changes.
 - Use module owners (or the platform team) for approvals when cross-cutting concerns are involved.
@@ -69,10 +70,12 @@ Rules mandatory for all automated agents operating in this repository:
 16. All repository artifacts, including code, documentation, commit messages, comments, examples, and generated files, must be written in **English only**. The sole exception is `README.ru.md` (localized Russian translation of the main README). Direct conversation with the user should follow the user's preferred language.
 17. **DO NOT duplicate code across modules.** If a pattern appears in 2+ modules or 2+ hosts, extract it into a shared library:
     - UI primitives → `crates/leptos-ui/`
+    - Framework-agnostic UI route/query/input/busy contracts -> `crates/rustok-ui-core/`
     - Routing/query helpers → `crates/leptos-ui-routing/`
     - Framework-agnostic UI i18n → `crates/rustok-ui-i18n/`
     - Framework-agnostic GraphQL client → `crates/rustok-graphql/`
     - Leptos GraphQL hooks adapter → `crates/rustok-graphql-leptos/`
+    - Framework-agnostic UI transport path/error/result evidence -> `crates/rustok-ui-transport/`
     - Framework-agnostic contracts → `crates/rustok-api/`
     - Domain-specific cross-module UI → `crates/rustok-<capability>-<surface>-support/`
     - Before writing reusable code, check existing libraries in `crates/leptos-*` and `crates/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.

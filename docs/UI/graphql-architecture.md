@@ -14,8 +14,8 @@ This document captures the current transport contract for RusToK UI circuits.
 
 For Leptos UI, the platform uses a dual-path model on top of the SSR-first runtime:
 
-- native `#[server]` functions — preferred internal data layer for `apps/admin`, `apps/storefront` and module-owned Leptos UI packages in `ssr`/`hydrate`/monolith profiles;
-- GraphQL `/api/graphql` — mandatory parallel transport contract for Next.js hosts, Flutter hosts, headless clients, and fallback branches in Leptos.
+- native `#[server]` functions — selected internal data layer for `apps/admin`, `apps/storefront` and module-owned Leptos UI packages in `ssr`/`hydrate`/monolith profiles;
+- GraphQL `/api/graphql` — mandatory parallel transport contract for Next.js hosts, Flutter hosts, headless clients and standalone CSR/debug profiles.
 
 `#[server]` does not supersede GraphQL at the platform level. It adds a shorter internal path for Leptos hosts when the host actually runs via SSR/hydrate runtime.
 
@@ -45,7 +45,7 @@ CSR remains a mandatory compatibility/debug profile for standalone Trunk/WASM an
 ## Contract for Leptos UI
 
 - A Leptos host or module-owned package should first design a local API layer for the SSR/hydrate `#[server]` path if the surface is an internal Leptos runtime surface.
-- If a native path does not yet cover the required scenario or the surface must work in standalone `csr`, a fallback to GraphQL/REST is required.
+- If a native path does not yet cover the required scenario, document the module-local exception instead of silently falling back to GraphQL in the monolith path. If the surface must work in standalone `csr`, provide a GraphQL/REST path selected by that profile.
 - New Leptos UI should not be designed as GraphQL-only for monolith runtime if a `#[server]` path is realistic.
 - New Leptos UI should not be designed as `#[server]`-only if the surface is needed for standalone CSR debug or headless parity.
 - GraphQL queries and mutations must not be removed just because a native path has been introduced.
@@ -55,8 +55,8 @@ Basic pattern:
 ```text
 UI component
   -> local API function
-  -> in SSR/hydrate: try native #[server]
-  -> in CSR/headless-compatible path: use GraphQL/REST fallback
+  -> in SSR/hydrate: use native #[server]
+  -> in CSR/headless-compatible path: use GraphQL/REST
   -> service layer
 ```
 
@@ -71,7 +71,7 @@ GraphQL remains:
 
 - the public backend contract;
 - the primary transport layer for Next.js and Flutter hosts;
-- a fallback path for Leptos hosts;
+- the selected transport for standalone CSR/debug and headless hosts;
 - a transport surface for websocket subscriptions and headless client compatibility.
 
 Security and allow/deny policies for sensitive admin operations must be determined by the server-side runtime layer, not by client-supplied `operationName` or app-local heuristics.
@@ -81,7 +81,7 @@ Security and allow/deny policies for sensitive admin operations must be determin
 ### `apps/admin`
 
 - consider SSR/hydrate the preferred production runtime for monolith;
-- use the native-first pattern for Leptos data access in SSR/hydrate;
+- use the native `#[server]` path for Leptos data access in SSR/hydrate;
 - maintain GraphQL path as a live parallel contract;
 - support CSR compatibility for standalone debug via GraphQL/REST, without mandatory `/api/fn/*`;
 - do not push transport policy into app-local ad hoc code.
@@ -89,8 +89,8 @@ Security and allow/deny policies for sensitive admin operations must be determin
 ### `apps/storefront`
 
 - consider SSR/hydrate the preferred production runtime for monolith;
-- use the native-first pattern for host shell and module-owned storefront packages in SSR/hydrate;
-- maintain GraphQL path for fallback and parity with headless storefront clients.
+- use the native `#[server]` path for host shell and module-owned storefront packages in SSR/hydrate;
+- maintain GraphQL path for headless/CSR parity without automatically invoking it after native monolith failures.
 
 ### `apps/server`
 

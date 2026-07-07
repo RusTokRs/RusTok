@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
-use rustok_api::UiRouteContext;
+use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{StorefrontRegion, StorefrontRegionsData};
@@ -69,8 +69,8 @@ pub fn RegionView() -> impl IntoView {
                                         ),
                                         t(
                                             error_locale.as_deref(),
-                                            "region.error.fallbackUnavailable",
-                                            "Both native and GraphQL region data paths are unavailable for this request.",
+                                            "region.error.graphqlUnavailable",
+                                            "GraphQL region data path is unavailable for this request.",
                                         ),
                                         t(
                                             error_locale.as_deref(),
@@ -79,8 +79,8 @@ pub fn RegionView() -> impl IntoView {
                                         ),
                                         t(
                                             error_locale.as_deref(),
-                                            "region.error.status.fallbackUnavailable",
-                                            "Fallback unavailable",
+                                            "region.error.status.graphqlUnavailable",
+                                            "GraphQL unavailable",
                                         ),
                                         t(error_locale.as_deref(), "region.error.nativeLabel", "native"),
                                         t(error_locale.as_deref(), "region.error.graphqlLabel", "graphql"),
@@ -328,7 +328,7 @@ mod ssr_tests {
     fn region_error_message_ssr_exposes_host_visible_dom_evidence() {
         let error = core::region_error_view_model(
             core::RegionErrorEvidence {
-                failed_path: core::RegionStorefrontErrorPath::GraphqlFallback,
+                failed_path: core::RegionStorefrontErrorPath::Graphql,
                 fallback_attempted: true,
                 native_error: Some("native failed".to_string()),
                 graphql_error: Some("graphql failed".to_string()),
@@ -338,7 +338,7 @@ mod ssr_tests {
             "Both native and GraphQL region data paths are unavailable for this request."
                 .to_string(),
             "Native unavailable".to_string(),
-            "Fallback unavailable".to_string(),
+            "GraphQL unavailable".to_string(),
             "native".to_string(),
             "graphql".to_string(),
         );
@@ -346,12 +346,12 @@ mod ssr_tests {
         let html = region_error_message_view(error).into_view().to_html();
 
         assert!(
-            html.contains(r#"data-region-error-status="fallback_unavailable""#),
+            html.contains(r#"data-region-error-status="graphql_unavailable""#),
             "rendered error message should expose stable status code: {html}"
         );
         assert!(
             html.contains(
-                r#"data-region-error-locale-key="region.error.status.fallbackUnavailable""#
+                r#"data-region-error-locale-key="region.error.status.graphqlUnavailable""#
             ),
             "rendered error message should expose status locale key: {html}"
         );

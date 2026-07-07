@@ -1,6 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -398,15 +399,6 @@ fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShipp
     }
 }
 
-fn optional_text(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
 fn vec_or_none(value: Vec<String>) -> Option<Vec<String>> {
     let items = vec_or_empty(value);
     if items.is_empty() {
@@ -443,10 +435,5 @@ fn normalize_amount(value: &str) -> String {
 }
 
 fn optional_json_text(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    optional_text(value)
 }

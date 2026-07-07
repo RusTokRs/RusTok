@@ -405,6 +405,9 @@ for (const rel of [
   'crates/rustok-customer/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-region/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-pages/storefront/src/transport/native_server_adapter.rs',
+  'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs',
+  'crates/rustok-order/storefront/src/transport/native_server_adapter/raw_adapter.rs',
+  'crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/raw_adapter.rs',
 ]) {
   requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
   requireNotContains(rel, 'rustok_outbox::loco', `${rel} does not consume the outbox Loco adapter`);
@@ -419,6 +422,12 @@ requireNotContains('crates/rustok-customer/admin/Cargo.toml', 'loco-rs', 'custom
 requireNotContains('crates/rustok-region/storefront/Cargo.toml', 'loco-rs', 'region storefront crate does not depend on Loco');
 requireNotContains('crates/rustok-pages/storefront/Cargo.toml', 'loco-rs', 'pages storefront crate does not depend on Loco');
 requireNotContains('crates/rustok-pages/storefront/Cargo.toml', 'loco-adapter', 'pages storefront crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-blog/storefront/Cargo.toml', 'loco-rs', 'blog storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-blog/storefront/Cargo.toml', 'loco-adapter', 'blog storefront crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-order/storefront/Cargo.toml', 'loco-rs', 'order storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-order/storefront/Cargo.toml', 'loco-adapter', 'order storefront crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-fulfillment/storefront/Cargo.toml', 'loco-rs', 'fulfillment storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-fulfillment/storefront/Cargo.toml', 'loco-adapter', 'fulfillment storefront crate does not enable the outbox Loco adapter feature');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub struct Permission', 'rustok-api owns Permission');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Action', 'rustok-api owns Action');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Resource', 'rustok-api owns Resource');
@@ -463,7 +472,9 @@ for (const rel of rustSources) {
   if (!isTestRel(rel) && /[A-Za-z0-9_]+_or_system\b/.test(source)) {
     fail(`${rel} exposes an *_or_system authority helper`);
   }
-  if (rel !== path.join('crates', 'rustok-api', 'src', 'locale.rs')) {
+  const ownsApiLocaleContract = rel === path.join('crates', 'rustok-api', 'src', 'locale.rs');
+  const isUiI18nInternal = rel.startsWith(path.join('crates', 'rustok-ui-i18n', 'src'));
+  if (!ownsApiLocaleContract && !isUiI18nInternal) {
     if (/(?:^|\n)\s*(?:pub(?:\([^)]*\))?\s+)?fn\s+locale_tags_match\s*\(/.test(source)) {
       fail(`${rel} defines a package-local locale_tags_match helper`);
     }
@@ -472,7 +483,8 @@ for (const rel of rustSources) {
     }
   }
 }
-requireNotContains('crates/rustok-api/src/ui.rs', 'fn normalize_locale_tag(', 'rustok-api UI consumes canonical locale helpers');
+requireNotContains('crates/rustok-api/src/lib.rs', 'pub mod ui;', 'rustok-api does not own UI route/query/input contracts');
+requireNotContains('crates/rustok-api/src/lib.rs', 'pub mod route_selection;', 'rustok-api does not own UI route selection contracts');
 if (exists('crates/rustok-seo-admin-support/src/locale.rs')) fail('SEO admin support locale duplicate must be deleted');
 else pass('SEO admin support locale duplicate is absent');
 requireContains('crates/rustok-outbox/src/ports.rs', 'use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};', 'outbox consumes canonical rustok-api Port contracts');

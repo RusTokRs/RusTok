@@ -3,6 +3,7 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -1048,14 +1049,5 @@ fn build_translation_input(draft: &ProductDraft) -> ProductTranslationInput {
         description: optional_text(draft.description.as_str()),
         meta_title: None,
         meta_description: None,
-    }
-}
-
-fn optional_text(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
     }
 }

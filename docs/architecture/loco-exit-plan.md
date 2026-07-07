@@ -71,17 +71,17 @@ Target state:
 
 The July 2026 inventory is a size signal, not a task counter: many occurrences are guardrails, docs, lockfile entries, tests or transitional route adapters. The remaining work should be planned as architectural slices, not individual text matches.
 
-Current classified inventory baseline after the `rustok-region-storefront` native transport cutover:
+Current classified inventory baseline after the `rustok-fulfillment-storefront` native transport cutover:
 
 | Category | Count | Practical Meaning |
 |---|---:|---|
 | `host_runtime` | 62 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
-| `module_ui_adapter` | 170 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
+| `module_ui_adapter` | 162 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
 | `module_controller` | 35 | Mostly controller route/state adapters and remaining Loco controller API usage after handler runtime narrowing. |
 | `server_task` / `server_seed` / `server_schedule` | 22 | Maintenance flows that belong in `rustok-ops`, not the HTTP server binary. |
 | `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
-| `dependency_manifest` / `lockfile` | 92 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
-| `verification_guard` / `docs` / `scaffold_template` | 248 | Guardrails, historical docs and generated templates to update/archive last. |
+| `dependency_manifest` / `lockfile` | 80 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
+| `verification_guard` / `docs` / `scaffold_template` | 278 | Guardrails, historical docs and generated templates to update/archive last. |
 
 Approximate remaining effort:
 
@@ -298,6 +298,10 @@ Exit gate: inventory script passes, allowlist is fixed, new Loco imports without
 - [x] Migrate `rustok-media-admin` native media server functions to `HostRuntimeContext`, provide `StorageService` through the neutral typed host-handle snapshot, and remove its `loco-rs` dependency.
 - [x] Migrate `rustok-customer-admin` native customer CRUD server functions to `HostRuntimeContext` and remove its `loco-rs` dependency.
 - [x] Migrate `rustok-region-storefront` native region discovery server function to `HostRuntimeContext` and remove its `loco-rs` dependency while preserving GraphQL fallback.
+- [x] Migrate `rustok-pages-storefront` native page-read server function to `HostRuntimeContext`, provide `TransactionalEventBus` through the neutral typed host-handle snapshot, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL fallback.
+- [x] Migrate `rustok-blog-storefront` native post-read server function to `HostRuntimeContext`, provide `TransactionalEventBus` through the neutral typed host-handle snapshot, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL fallback.
+- [x] Migrate `rustok-order-storefront` native checkout-completion server function to `HostRuntimeContext`, provide `TransactionalEventBus` through the neutral typed host-handle snapshot, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL fallback.
+- [x] Migrate `rustok-fulfillment-storefront` native shipping-selection server function to `HostRuntimeContext`, provide `TransactionalEventBus` through the neutral typed host-handle snapshot, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL fallback.
 - [ ] Migrate module/capability crates where `loco_rs::app::AppContext` is currently used as a service locator.
 
 Exit gate: module-owned crates and UI packages do not import `loco_rs::app::AppContext`; Loco context remains only in server bootstrap/tests allowlist.

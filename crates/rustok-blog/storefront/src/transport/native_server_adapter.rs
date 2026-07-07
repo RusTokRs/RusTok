@@ -38,14 +38,21 @@ async fn storefront_blog_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_blog::{BlogPostStatus, PostListQuery, PostService};
         use rustok_channel::ChannelService;
         use rustok_core::SecurityContext;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
+        use rustok_outbox::TransactionalEventBus;
         use rustok_tenant::TenantService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "blog/storefront-data requires TransactionalEventBus in host runtime context",
+                )
+            })?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
@@ -65,7 +72,7 @@ async fn storefront_blog_native(
                         "blog/storefront-data requires tenant context or tenant slug",
                     )
                 })?;
-            let tenant = TenantService::new(app_ctx.db.clone())
+            let tenant = TenantService::new(runtime_ctx.db_clone())
                 .get_tenant_by_slug(slug)
                 .await
                 .map_err(ServerFnError::new)?;
@@ -79,7 +86,7 @@ async fn storefront_blog_native(
 
         if let Some(request_context) = request_context.as_ref() {
             if let Some(channel_id) = request_context.channel_id {
-                let enabled = ChannelService::new(app_ctx.db.clone())
+                let enabled = ChannelService::new(runtime_ctx.db_clone())
                     .is_module_enabled(channel_id, MODULE_SLUG)
                     .await
                     .map_err(ServerFnError::new)?;
@@ -103,10 +110,7 @@ async fn storefront_blog_native(
             .as_ref()
             .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));
 
-        let service = PostService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(&app_ctx),
-        );
+        let service = PostService::new(runtime_ctx.db_clone(), event_bus);
 
         let selected_post = service
             .get_post_by_slug_with_locale_fallback(

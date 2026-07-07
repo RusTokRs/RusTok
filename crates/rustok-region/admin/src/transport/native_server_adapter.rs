@@ -1,4 +1,6 @@
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
+use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -80,12 +82,7 @@ fn parse_tax_rate(value: &str) -> Result<rust_decimal::Decimal, ServerFnError> {
 
 #[cfg(feature = "ssr")]
 fn parse_optional_tax_provider_id(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value)
 }
 
 #[cfg(feature = "ssr")]

@@ -21,9 +21,11 @@ ssr = [
 ]
 
 [dependencies]
+rustok-ui-core.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
+rustok-ui-transport.workspace = true
 leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
