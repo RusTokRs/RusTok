@@ -86,6 +86,13 @@ assertNotContains(transportMod, "#[server", `${transportModPath}: server-functio
 
 assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must contain server-function endpoint`);
 assertContains(nativeAdapter, "tenant_bootstrap_native", `${nativeAdapterPath}: native adapter must own bootstrap server-function endpoint`);
+assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
+assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
+assertNotContains(
+  readRepo("crates/rustok-tenant/admin/Cargo.toml"),
+  "loco-rs",
+  "crates/rustok-tenant/admin/Cargo.toml: tenant admin must not depend on Loco",
+);
 
 if (failures.length > 0) {
   console.error("tenant admin boundary verification failed:");

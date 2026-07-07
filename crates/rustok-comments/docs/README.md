@@ -9,6 +9,13 @@
 - establish that `comments` and `forum replies` are different domain entities;
 - prepare a modular foundation for future conversion flows between `blog` and `forum` via orchestration.
 
+## Scope
+
+- own generic comment thread/comment/body storage and moderation status policy;
+- expose module-owned service and admin moderation UI contracts;
+- support `rustok-blog` and future explicit opt-in commentable surfaces through public contracts;
+- exclude forum replies and default pages integration from the comments storage boundary.
+
 ## Responsibilities
 
 - `rustok-comments` owns only the generic comments domain, its schema and service-level contracts;
@@ -42,6 +49,7 @@
 
 - `rustok-comments-admin` is mounted in Leptos Admin as a module-owned UI at `/modules/comments`.
 - The internal data-layer for the moderation surface is built through `admin/src/transport/mod.rs` facade and `admin/src/transport/native_server_adapter.rs` native `#[server]` calls over `CommentsService`.
+- The native admin transport consumes host-provided `rustok_api::HostRuntimeContext` for DB access and must not depend on Loco `AppContext`.
 - Selected-thread and locale route/query policy belongs to `admin/src/core.rs` and uses shared `UiRouteQueryUpdate`; the Leptos adapter only applies the ready host writer update.
 - Fast boundary guardrail: `npm run verify:comments:admin-boundary` checks the FFA split and documented native-only transport exception.
 - A separate GraphQL/REST fallback for this UI is not added: `rustok-comments` did not have its own legacy transport surface, and this is a documented exception from the general dual-path rule.
@@ -98,6 +106,7 @@ Operator action plan:
 
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
+- `node scripts/verify/verify-comments-admin-boundary.mjs`
 - targeted tests for moderation/status contract, module-owned admin UI and blog integration path
 
 ## Related documents

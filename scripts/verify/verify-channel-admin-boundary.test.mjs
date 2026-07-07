@@ -114,8 +114,40 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 `;
 }
 
+function channelDtoSource() {
+  return `
+pub struct ChannelBootstrapResponse<C> {}
+pub struct CreateResolutionPolicySetRequest {}
+pub struct CreateResolutionRuleRequest {}
+pub struct UpdateResolutionRuleRequest {}
+pub struct ReorderResolutionRulesRequest {}
+pub struct AvailableChannelModuleItem {}
+pub struct AvailableChannelOauthAppItem {}
+pub fn create_resolution_policy_set_input() {}
+pub fn create_resolution_rule_input() {}
+pub fn update_resolution_rule_input() {}
+`;
+}
+
+function channelControllerSource({ includeServerOwnedDto = false } = {}) {
+  return `
+use rustok_channel::{AvailableChannelModuleItem, AvailableChannelOauthAppItem, ChannelBootstrapResponse};
+pub fn controller() {
+    let _ = "ChannelBootstrapResponse::<crate::context::ChannelContext>";
+    let _ = "create_resolution_policy_set_input(tenant.id, input)";
+    let _ = "create_resolution_rule_input(input)";
+    let _ = "update_resolution_rule_input(input)";
+    let _ = "AvailableChannelModuleItem";
+    let _ = "AvailableChannelOauthAppItem";
+}
+${includeServerOwnedDto ? "struct CreateResolutionRuleRequest; fn build_rule_definition() {}" : ""}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-channel-boundary-"));
+  writeFixtureFile(root, "crates/rustok-channel/src/dto/mod.rs", channelDtoSource());
+  writeFixtureFile(root, "apps/server/src/controllers/channel.rs", channelControllerSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/lib.rs", libSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/mod.rs", `
@@ -288,6 +320,17 @@ test("channel admin boundary verifier rejects server functions in REST adapter",
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected REST adapter server-function fixture to fail");
     assert.match(result.stderr, /REST adapter must not contain server-function endpoints/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects server-owned channel DTO", () => {
+  const root = withFixture({ includeServerOwnedDto: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected server-owned channel DTO fixture to fail");
+    assert.match(result.stderr, /channel REST\/control-plane shape must stay in rustok-channel/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -35,6 +35,10 @@ function assertNotContains(text, marker, description) {
 
 const corePath = "crates/rustok-auth/admin/src/core.rs";
 const mutationPortPath = "crates/rustok-auth/src/admin_mutations.rs";
+const restContractPath = "crates/rustok-auth/src/rest.rs";
+const serverAuthControllerPath = "apps/server/src/controllers/auth.rs";
+const serverOauthControllerPath = "apps/server/src/controllers/oauth.rs";
+const serverUsersControllerPath = "apps/server/src/controllers/users.rs";
 const authProviderPath = "apps/server/src/services/auth_admin_mutation_provider.rs";
 const lifecycleProviderPath = "apps/server/src/services/auth_lifecycle_provider.rs";
 const runtimeExtensionsPath = "apps/server/src/services/module_event_dispatcher.rs";
@@ -59,12 +63,16 @@ const planPath = "crates/rustok-auth/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [corePath, mutationPortPath, authProviderPath, lifecycleProviderPath, runtimeExtensionsPath, authGraphqlPath, oauthGraphqlPath, authGraphqlModPath, userGraphqlPath, transportPath, nativeTransportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
+for (const filePath of [corePath, mutationPortPath, restContractPath, serverAuthControllerPath, serverOauthControllerPath, serverUsersControllerPath, authProviderPath, lifecycleProviderPath, runtimeExtensionsPath, authGraphqlPath, oauthGraphqlPath, authGraphqlModPath, userGraphqlPath, transportPath, nativeTransportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
   assertExists(filePath);
 }
 
 const core = readRepo(corePath);
 const mutationPort = readRepo(mutationPortPath);
+const restContract = readRepo(restContractPath);
+const serverAuthController = readRepo(serverAuthControllerPath);
+const serverOauthController = readRepo(serverOauthControllerPath);
+const serverUsersController = readRepo(serverUsersControllerPath);
 const authProvider = readRepo(authProviderPath);
 const lifecycleProvider = readRepo(lifecycleProviderPath);
 const runtimeExtensions = readRepo(runtimeExtensionsPath);
@@ -98,6 +106,65 @@ for (const marker of ["leptos::", "#[component]", "spawn_local", "GraphqlRequest
 for (const marker of ["pub trait UserAdminMutationPort", "pub struct UserAdminMutationRuntime", "pub trait OAuthAdminPort", "pub struct OAuthAdminRuntime", "pub struct AuthAdminMutationContext", "async fn create_user", "async fn update_user", "async fn delete_user", "async fn create_oauth_app", "async fn update_oauth_app", "async fn rotate_oauth_app_secret", "async fn revoke_oauth_app"]) {
   assertContains(mutationPort, marker, `${mutationPortPath}: missing auth-owned mutation boundary marker ${marker}`);
 }
+for (const marker of [
+  "pub struct LoginParams",
+  "pub struct RefreshRequest",
+  "pub struct RegisterParams",
+  "pub struct AcceptInviteParams",
+  "pub struct InviteAcceptResponse",
+  "pub struct RequestResetParams",
+  "pub struct ConfirmResetParams",
+  "pub struct RequestVerificationParams",
+  "pub struct ConfirmVerificationParams",
+  "pub struct ChangePasswordParams",
+  "pub struct UpdateProfileParams",
+  "pub struct ResetRequestResponse",
+  "pub struct VerificationRequestResponse",
+  "pub struct GenericStatusResponse",
+  "pub struct SessionItem",
+  "pub struct SessionsResponse",
+  "pub struct SessionListParams",
+  "pub struct UserResponse",
+  "pub struct UserInfo",
+  "pub struct AuthResponse",
+  "pub struct LogoutResponse",
+]) {
+  assertContains(restContract, marker, `${restContractPath}: missing auth-owned REST DTO marker ${marker}`);
+  assertNotContains(serverAuthController, marker, `${serverAuthControllerPath}: auth REST DTO ownership must stay in rustok-auth (${marker})`);
+}
+assertContains(restContract, "utoipa::ToSchema", `${restContractPath}: auth owner REST DTOs must preserve OpenAPI schema derives`);
+assertContains(serverAuthController, "pub use rustok_auth::{", `${serverAuthControllerPath}: server controller should re-export owner REST DTOs for Swagger compatibility`);
+assertContains(serverAuthController, "user_response_from_model", `${serverAuthControllerPath}: server controller may map persisted users into owner REST DTOs`);
+assertNotContains(serverAuthController, "utoipa::ToSchema", `${serverAuthControllerPath}: server controller must not own auth OpenAPI DTO derives`);
+assertNotContains(serverAuthController, "UserResponse::from_user_and_role", `${serverAuthControllerPath}: server controller must not rely on a host-owned UserResponse constructor`);
+for (const marker of [
+  "pub struct TokenRequest",
+  "pub struct AuthorizeRequest",
+  "pub struct BrowserAuthorizeRequest",
+  "pub struct ConsentRequest",
+  "pub struct BrowserSessionResponse",
+  "pub struct TokenResponse",
+  "pub struct TokenErrorResponse",
+  "pub struct RevokeRequest",
+]) {
+  assertContains(restContract, marker, `${restContractPath}: missing auth-owned OAuth REST DTO marker ${marker}`);
+  assertNotContains(serverOauthController, marker, `${serverOauthControllerPath}: OAuth REST DTO ownership must stay in rustok-auth (${marker})`);
+}
+assertContains(serverOauthController, "use rustok_auth::{", `${serverOauthControllerPath}: OAuth HTTP adapter must import owner REST DTOs`);
+assertContains(serverOauthController, "fn oauth_error_response(error: TokenErrorResponse)", `${serverOauthControllerPath}: server may keep HTTP status mapping for owner OAuth error DTO`);
+assertNotContains(serverOauthController, "impl axum::response::IntoResponse for TokenErrorResponse", `${serverOauthControllerPath}: server must not implement external HTTP traits for owner OAuth DTOs`);
+assertNotContains(serverOauthController, "use serde::{Deserialize, Serialize}", `${serverOauthControllerPath}: OAuth controller must not own serde DTO definitions`);
+for (const marker of [
+  "pub struct UserItem",
+  "pub struct UsersResponse",
+  "pub struct UsersListParams",
+]) {
+  assertContains(restContract, marker, `${restContractPath}: missing auth-owned users REST DTO marker ${marker}`);
+  assertNotContains(serverUsersController, marker, `${serverUsersControllerPath}: users REST DTO ownership must stay in rustok-auth (${marker})`);
+}
+assertContains(serverUsersController, "use rustok_auth::{UserItem, UsersListParams, UsersResponse};", `${serverUsersControllerPath}: users HTTP adapter must import owner REST DTOs`);
+assertNotContains(serverUsersController, "use serde::{Deserialize, Serialize}", `${serverUsersControllerPath}: users controller must not own serde DTO definitions`);
+assertNotContains(serverUsersController, "use utoipa::ToSchema", `${serverUsersControllerPath}: users controller must not own OpenAPI DTO derives`);
 for (const marker of ["impl OAuthAdminPort for ServerAuthAdminMutationProvider", "impl UserAdminMutationPort for ServerAuthAdminMutationProvider", "OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app", "AuthLifecycleService::create_user_in_tx", "RbacService::has_any_permission", "FlexAttachedValuesService::prepare_update"]) {
   assertContains(authProvider, marker, `${authProviderPath}: missing shared server auth mutation provider marker ${marker}`);
 }

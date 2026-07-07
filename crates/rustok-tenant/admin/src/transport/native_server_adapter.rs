@@ -34,13 +34,14 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
         use rustok_core::ModuleRegistry;
         use rustok_tenant::TenantService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -71,7 +72,7 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
             ));
         }
 
-        let service = TenantService::new(app_ctx.db.clone());
+        let service = TenantService::new(runtime_ctx.db_clone());
         let tenant_record = service
             .get_tenant(tenant.id)
             .await

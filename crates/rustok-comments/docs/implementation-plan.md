@@ -5,8 +5,8 @@ This document captures the local roadmap of the `rustok-comments` module.
 ## Execution checkpoint
 
 - Current phase: FBA provider baseline for generic comment threads
-- Last checkpoint: comments port applies canonical `PortCallPolicy`, then builds `SecurityContext` through strict `try_from_port_context`; system authority is accessible only to `PortActorKind::System`, while user/service actors require valid UUIDs, roles and permission claims.
-- Next step: Close runtime contract execution/fallback smoke for `CommentsThreadPort` and confirm blog embedded/native compatibility snapshots; for FFA — do not extend native-only admin transport without new legacy/headless contract, but maintain parity/evidence guardrails.
+- Last checkpoint: Loco-free native admin transport now consumes host-provided `rustok_api::HostRuntimeContext` for DB access, and `rustok-comments-admin` no longer depends on `loco-rs`; comments port already applies canonical `PortCallPolicy`, then builds `SecurityContext` through strict `try_from_port_context`.
+- Next step: Close runtime contract execution/fallback smoke for `CommentsThreadPort` and confirm blog embedded/native compatibility snapshots; for FFA, keep the native-only admin exception without new legacy/headless contract while maintaining Loco-free parity/evidence guardrails.
 - Open blockers: none; native-only comments admin exception is locked because the module had no legacy GraphQL/REST admin surface.
 - Hand-off notes for next agent: After each FFA/FBA increment, update this block, local FFA/FBA status block and central readiness board in the same PR.
 - Last updated at (UTC): 2026-06-19T00:00:00Z
@@ -23,7 +23,8 @@ This document captures the local roadmap of the `rustok-comments` module.
   - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping and transport request/command DTO construction are moved to Leptos-free core and covered by unit tests;
   - selected-thread and locale route/query key ownership, normalization and host write intent now live in Leptos-free core on shared `UiRouteQueryUpdate`, while Leptos adapter only applies the prepared `CommentsAdminRouteQueryWrite` through host writer;
   - fast boundary guardrail `scripts/verify/verify-comments-admin-boundary.mjs` is included in aggregate `verify:ffa:ui:migration` and locks the native-only comments admin exception without package-local GraphQL fallback; fixture suite `scripts/verify/verify-comments-admin-boundary.test.mjs` is included in aggregate `test:verify:ffa:ui:migration` and checks canonical split, legacy `api.rs`, Leptos-free core, route/query ownership, transport facade isolation, GraphQL-fallback prohibition and server-function adapter placement;
-  - current admin transport remains native-only single-adapter server-function path, path is locked with typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, and a separate GraphQL/REST fallback is not added as a module-documented exception without legacy admin transport surface;
+  - current admin transport remains native-only single-adapter server-function path, path is locked with typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, consumes host-provided `HostRuntimeContext` instead of Loco `AppContext`, and a separate GraphQL/REST fallback is not added as a module-documented exception without legacy admin transport surface;
+  - Loco-free native admin transport evidence: `admin/src/transport/native_server_adapter.rs` uses `HostRuntimeContext`, `admin/Cargo.toml` no longer declares `loco-rs`, and `scripts/verify/verify-comments-admin-boundary.mjs` plus `scripts/verify/verify-api-surface-contract.mjs` guard the boundary;
   - FBA provider registry `crates/rustok-comments/contracts/comments-fba-registry.json`, neutral `CommentsThreadPort`/`comments.thread.v1` and static contract evidence `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json` are locked for blog and future commentable-surface consumers; write operations require shared `PortCallPolicy::write()`, read operations require shared `PortCallPolicy::read()`, and typed `PortError` mapping remains owned by `rustok-comments`;
   - fast FBA guardrail `scripts/verify/verify-comments-fba.mjs` / `npm run verify:comments:fba` checks manifest metadata, port source markers, static evidence drift and central readiness-board sync; status remains below `boundary_ready` until runtime contract execution and fallback smoke evidence land;
 - Owner: `rustok-comments` module team
@@ -39,6 +40,7 @@ This document captures the local roadmap of the `rustok-comments` module.
 - `rustok-comments` is already a live storage-owner for generic comments;
 - `rustok-blog` uses the module in production read/write path;
 - `rustok-comments-admin` is published as module-owned moderation UI;
+- `rustok-comments-admin` native transport reads DB access through `rustok_api::HostRuntimeContext` and does not depend on `loco-rs`;
 - observability baseline and thread status contract are already locked in runtime.
 
 ## Stages
@@ -102,6 +104,7 @@ This document captures the local roadmap of the `rustok-comments` module.
 
 - `cargo xtask module validate comments`
 - `cargo xtask module test comments`
+- `node scripts/verify/verify-comments-admin-boundary.mjs`
 - targeted tests for moderation/status contract, blog integration and admin UI runtime wiring
 
 ## Update rules

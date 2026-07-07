@@ -6,40 +6,14 @@ use axum::{
 use axum::{http::StatusCode, response::Response};
 use loco_rs::controller::Routes;
 use loco_rs::controller::{format, ErrorDetail};
+use rustok_auth::{UserItem, UsersListParams, UsersResponse};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::users::{self, Column as UserColumn};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct UserItem {
-    pub id: Uuid,
-    pub email: String,
-    pub name: Option<String>,
-    pub status: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct UsersResponse {
-    pub users: Vec<UserItem>,
-    pub total: u64,
-    pub page: u64,
-    pub page_size: u64,
-}
-
-#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
-pub struct UsersListParams {
-    pub page: Option<u64>,
-    pub page_size: Option<u64>,
-    pub search: Option<String>,
-    pub status: Option<String>,
-}
 
 fn map_user(m: users::Model) -> UserItem {
     UserItem {

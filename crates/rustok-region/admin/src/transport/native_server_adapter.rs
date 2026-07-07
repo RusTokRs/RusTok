@@ -231,12 +231,11 @@ async fn region_list_native() -> Result<RegionList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, RequestContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, RequestContext, TenantContext};
         use rustok_region::RegionService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -253,7 +252,7 @@ async fn region_list_native() -> Result<RegionList, ServerFnError> {
             "regions:list required",
         )?;
 
-        let service = RegionService::new(app_ctx.db.clone());
+        let service = RegionService::new(runtime_ctx.db_clone());
         let items = service
             .list_regions(
                 tenant.id,
@@ -279,12 +278,11 @@ async fn region_detail_native(region_id: String) -> Result<RegionDetail, ServerF
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, RequestContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, RequestContext, TenantContext};
         use rustok_region::RegionService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -302,7 +300,7 @@ async fn region_detail_native(region_id: String) -> Result<RegionDetail, ServerF
         )?;
 
         let region_id = parse_uuid(&region_id, "region_id")?;
-        let service = RegionService::new(app_ctx.db.clone());
+        let service = RegionService::new(runtime_ctx.db_clone());
 
         load_region_detail(
             &service,
@@ -326,12 +324,11 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_region::{CreateRegionInput, RegionService, RegionTranslationInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -345,7 +342,7 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
             "regions:create required",
         )?;
 
-        let service = RegionService::new(app_ctx.db.clone());
+        let service = RegionService::new(runtime_ctx.db_clone());
         let requested_locale = payload.locale.trim().to_string();
         let created = service
             .create_region(
@@ -394,12 +391,11 @@ async fn region_update_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_region::{RegionService, RegionTranslationInput, UpdateRegionInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -414,7 +410,7 @@ async fn region_update_native(
         )?;
 
         let region_id = parse_uuid(&region_id, "region_id")?;
-        let service = RegionService::new(app_ctx.db.clone());
+        let service = RegionService::new(runtime_ctx.db_clone());
         let requested_locale = payload.locale.trim().to_string();
         service
             .update_region(

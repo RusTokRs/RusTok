@@ -17,7 +17,6 @@ ssr = [
   "leptos-auth/ssr",
   "rustok-api/server",
   "dep:leptos_axum",
-  "dep:loco-rs",
   "dep:rustok-core",
   "dep:rustok-workflow",
 ]
@@ -28,7 +27,6 @@ leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 leptos-graphql.workspace = true
 leptos_router.workspace = true
-loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }

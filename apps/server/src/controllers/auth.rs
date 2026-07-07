@@ -16,9 +16,7 @@ use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
 };
-use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use utoipa::ToSchema;
 
 use crate::auth::{
     decode_email_verification_token, decode_invite_token, encode_email_verification_token,
@@ -35,153 +33,16 @@ use crate::services::email::{
     email_service_from_ctx, password_reset_url, EmailVerificationEmail, PasswordResetEmail,
 };
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerEmailRuntime};
+pub use rustok_auth::{
+    AcceptInviteParams, AuthResponse, ChangePasswordParams, ConfirmResetParams,
+    ConfirmVerificationParams, GenericStatusResponse, InviteAcceptResponse, LoginParams,
+    LogoutResponse, RefreshRequest, RegisterParams, RequestResetParams, RequestVerificationParams,
+    ResetRequestResponse, SessionItem, SessionListParams, SessionsResponse, UpdateProfileParams,
+    UserInfo, UserResponse, VerificationRequestResponse,
+};
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 const DEFAULT_VERIFY_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
-
-#[derive(Deserialize, ToSchema)]
-pub struct LoginParams {
-    pub email: String,
-    pub password: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct RefreshRequest {
-    pub refresh_token: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct RegisterParams {
-    pub email: String,
-    pub password: String,
-    pub name: Option<String>,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct AcceptInviteParams {
-    pub token: String,
-    pub password: String,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct InviteAcceptResponse {
-    pub status: &'static str,
-    pub email: String,
-    pub role: rustok_core::UserRole,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct RequestResetParams {
-    pub email: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct ConfirmResetParams {
-    pub token: String,
-    pub password: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct RequestVerificationParams {
-    pub email: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct ConfirmVerificationParams {
-    pub token: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct ChangePasswordParams {
-    pub current_password: String,
-    pub new_password: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct UpdateProfileParams {
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ResetRequestResponse {
-    pub status: &'static str,
-    pub reset_token: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct VerificationRequestResponse {
-    pub status: &'static str,
-    pub verification_token: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct GenericStatusResponse {
-    pub status: &'static str,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct SessionItem {
-    pub id: uuid::Uuid,
-    pub ip_address: Option<String>,
-    pub user_agent: Option<String>,
-    pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub expires_at: chrono::DateTime<chrono::Utc>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub current: bool,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct SessionsResponse {
-    pub sessions: Vec<SessionItem>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
-pub struct SessionListParams {
-    pub limit: Option<u64>,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct UserResponse {
-    pub id: uuid::Uuid,
-    pub email: String,
-    pub name: Option<String>,
-    pub role: String,
-}
-
-impl UserResponse {
-    fn from_user_and_role(m: users::Model, role: rustok_core::UserRole) -> Self {
-        Self {
-            id: m.id,
-            email: m.email,
-            name: m.name,
-            role: role.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct UserInfo {
-    pub id: uuid::Uuid,
-    pub email: String,
-    pub name: Option<String>,
-    pub role: rustok_core::UserRole,
-    pub status: rustok_core::UserStatus,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AuthResponse {
-    pub access_token: String,
-    pub refresh_token: String,
-    pub token_type: &'static str,
-    pub expires_in: u64,
-    pub user: UserInfo,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct LogoutResponse {
-    pub status: &'static str,
-}
 
 fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> UserInfo {
     UserInfo {
@@ -190,6 +51,15 @@ fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> User
         name: user.name,
         role,
         status: user.status,
+    }
+}
+
+fn user_response_from_model(user: users::Model, role: rustok_core::UserRole) -> UserResponse {
+    UserResponse {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: role.to_string(),
     }
 }
 
@@ -329,7 +199,7 @@ async fn me(
         ..
     }: CurrentUser,
 ) -> Result<Response> {
-    format::json(UserResponse::from_user_and_role(user, inferred_role))
+    format::json(user_response_from_model(user, inferred_role))
 }
 
 #[utoipa::path(post, path = "/api/auth/invite/accept", tag = "auth", request_body = AcceptInviteParams,
@@ -676,10 +546,7 @@ async fn update_profile(
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
-    format::json(UserResponse::from_user_and_role(
-        user,
-        current.inferred_role,
-    ))
+    format::json(user_response_from_model(user, current.inferred_role))
 }
 
 #[utoipa::path(get, path = "/api/auth/history", tag = "auth", security(("bearer_auth" = [])),

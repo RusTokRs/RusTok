@@ -83,6 +83,9 @@
   filterable/sortable attribute controls in admin/storefront search UI. Hosts
   inject those options through composition; search UI does not import product
   internals or negotiate locale itself.
+- Product translation title search predicates are not owned by `apps/server`;
+  shared ecommerce readers use the owner/foundation search helper instead of a
+  host-local `product_search` service.
 
 ## Interactions
 

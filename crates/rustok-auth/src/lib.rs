@@ -17,6 +17,7 @@ pub mod graphql;
 pub mod jwt;
 pub mod lifecycle;
 pub mod migrations;
+pub mod rest;
 
 // Re-exports for convenience
 pub use admin_mutations::{
@@ -40,6 +41,15 @@ pub use jwt::{
 pub use lifecycle::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,
     AuthLifecycleRuntime, AuthSessionRecord, AuthTokenRecord, AuthUserRecord,
+};
+pub use rest::{
+    AcceptInviteParams, AuthResponse, AuthorizeRequest, BrowserAuthorizeRequest,
+    BrowserSessionResponse, ChangePasswordParams, ConfirmResetParams, ConfirmVerificationParams,
+    ConsentRequest, GenericStatusResponse, InviteAcceptResponse, LoginParams, LogoutResponse,
+    RefreshRequest, RegisterParams, RequestResetParams, RequestVerificationParams,
+    ResetRequestResponse, RevokeRequest, SessionItem, SessionListParams, SessionsResponse,
+    TokenErrorResponse, TokenRequest, TokenResponse, UpdateProfileParams, UserInfo, UserItem,
+    UserResponse, UsersListParams, UsersResponse, VerificationRequestResponse,
 };
 
 use async_trait::async_trait;

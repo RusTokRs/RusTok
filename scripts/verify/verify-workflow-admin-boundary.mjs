@@ -69,6 +69,7 @@ function assertWorkflowAdminBoundary() {
   const transportModPath = "crates/rustok-workflow/admin/src/transport/mod.rs";
   const nativeAdapterPath = "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs";
   const graphqlAdapterPath = "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs";
+  const cargoPath = "crates/rustok-workflow/admin/Cargo.toml";
 
   for (const checkedPath of [
     libPath,
@@ -82,6 +83,7 @@ function assertWorkflowAdminBoundary() {
     transportModPath,
     nativeAdapterPath,
     graphqlAdapterPath,
+    cargoPath,
   ]) {
     assertExists(checkedPath, `${checkedPath}: expected workflow admin FFA boundary file`);
   }
@@ -100,6 +102,7 @@ function assertWorkflowAdminBoundary() {
   const transportMod = readRepo(transportModPath);
   const nativeAdapter = readRepo(nativeAdapterPath);
   const graphqlAdapter = readRepo(graphqlAdapterPath);
+  const cargoToml = readRepo(cargoPath);
 
   assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
   assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
@@ -144,10 +147,13 @@ function assertWorkflowAdminBoundary() {
   assertNotContains(transportMod, "execute_graphql", `${transportModPath}: raw GraphQL execution belongs in graphql_adapter.rs`);
 
   assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must contain server-function endpoints`);
+  assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
   assertContains(nativeAdapter, "fetch_workflows_native", `${nativeAdapterPath}: native adapter must own workflow list endpoint`);
   assertContains(nativeAdapter, "fetch_templates_native", `${nativeAdapterPath}: native adapter must own template list endpoint`);
   assertContains(nativeAdapter, "create_from_template_native", `${nativeAdapterPath}: native adapter must own create-from-template endpoint`);
+  assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
   assertNotContains(nativeAdapter, "execute_graphql", `${nativeAdapterPath}: native adapter must not own GraphQL fallback calls`);
+  assertNotContains(cargoToml, "loco-rs", `${cargoPath}: workflow admin must not depend on Loco`);
 
   assertContains(graphqlAdapter, "leptos_graphql", `${graphqlAdapterPath}: GraphQL adapter must own GraphQL client dependency`);
   assertContains(graphqlAdapter, "fetch_workflows", `${graphqlAdapterPath}: GraphQL adapter must expose workflow list fallback`);

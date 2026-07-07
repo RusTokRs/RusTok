@@ -80,6 +80,18 @@ function apiSource({ omitServer = false, omitService = false } = {}) {
 ${omitServer ? "" : '#[server(prefix = "/api/fn", endpoint = "region/list")]'}
 async fn region_list_native() {}
 ${omitService ? "" : "fn load() { let _service = RegionService; }"}
+fn runtime() { let _runtime = HostRuntimeContext; }
+`;
+}
+
+function cargoSource({ includeLoco = false } = {}) {
+  return `
+[features]
+ssr = ["leptos/ssr", "rustok-api/server"]
+
+[dependencies]
+${includeLoco ? 'loco-rs = { workspace = true, optional = true }' : ""}
+rustok-api = { workspace = true, default-features = false }
 `;
 }
 
@@ -88,6 +100,7 @@ function implementationPlanSource({ omitGuardrail = false } = {}) {
 # План реализации rustok-region
 - FFA slice #31 добавила admin submit command preparation.
 - FFA slice #36 добавила route/query writer operation.
+- Loco-free native admin transport now consumes HostRuntimeContext.
 ${omitGuardrail ? "" : "- Fast guardrail: scripts/verify/verify-region-admin-boundary.mjs."}
 `;
 }
@@ -95,7 +108,7 @@ ${omitGuardrail ? "" : "- Fast guardrail: scripts/verify/verify-region-admin-bou
 function registrySource({ staleSlice = false, omitGuardrail = false } = {}) {
   return `
 | Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |
-| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "slice #41" : "slice #42"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
+| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "slice #42" : "slice #43"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
 `;
 }
 
@@ -126,6 +139,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-region/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-region/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/rustok-region/admin/src/transport/native_server_adapter.rs", apiSource(options));
+  writeFixtureFile(root, "crates/rustok-region/admin/Cargo.toml", cargoSource(options));
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-region/admin/src/api.rs", apiSource(options));
   writeFixtureFile(root, "crates/rustok-region/docs/implementation-plan.md", implementationPlanSource(options));
   writeFixtureFile(root, "docs/modules/registry.md", registrySource(options));
@@ -189,7 +203,7 @@ test("region admin boundary verifier rejects missing route writer core helper", 
 test("region admin boundary verifier rejects stale central readiness board", () => {
   withTempFixture({ staleSlice: true }, (result) => {
     assert.notEqual(result.status, 0, "Expected stale registry fixture to fail");
-    assert.match(result.stderr, /central readiness board must record slice #42/);
+    assert.match(result.stderr, /central readiness board must record slice #43/);
   });
 });
 

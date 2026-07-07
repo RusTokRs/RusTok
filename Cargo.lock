@@ -9621,6 +9621,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "utoipa",
  "uuid",
 ]
 
@@ -9869,7 +9870,6 @@ dependencies = [
  "leptos-auth",
  "leptos-ui-routing",
  "leptos_axum",
- "loco-rs",
  "rustok-api",
  "rustok-comments",
  "rustok-core",
@@ -10924,7 +10924,6 @@ dependencies = [
  "leptos 0.8.20",
  "leptos-ui-routing",
  "leptos_axum",
- "loco-rs",
  "rust_decimal",
  "rustok-api",
  "rustok-core",
@@ -11350,7 +11349,6 @@ dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
  "leptos_axum",
- "loco-rs",
  "rustok-api",
  "rustok-core",
  "rustok-tenant",

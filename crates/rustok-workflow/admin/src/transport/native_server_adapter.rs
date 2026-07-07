@@ -7,9 +7,10 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -22,8 +23,8 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
             return Err(ServerFnError::new("workflows:list required"));
         }
 
-        let app_ctx = expect_context::<AppContext>();
-        rustok_workflow::WorkflowService::new(app_ctx.db.clone())
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
             .list(tenant.id)
             .await
             .map(|items| items.into_iter().map(map_workflow_summary).collect())
@@ -68,9 +69,10 @@ pub async fn create_from_template_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -83,8 +85,8 @@ pub async fn create_from_template_native(
             return Err(ServerFnError::new("workflows:create required"));
         }
 
-        let app_ctx = expect_context::<AppContext>();
-        rustok_workflow::WorkflowService::new(app_ctx.db.clone())
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
             .create_from_template(tenant.id, Some(auth.user_id), &template_id, name)
             .await
             .map(|id| id.to_string())

@@ -44,6 +44,7 @@ const uiPath = "crates/rustok-region/admin/src/ui/leptos.rs";
 const transportPath = "crates/rustok-region/admin/src/transport/mod.rs";
 const legacyApiPath = "crates/rustok-region/admin/src/api.rs";
 const nativeServerAdapterPath = "crates/rustok-region/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/rustok-region/admin/Cargo.toml";
 const implementationPlanPath = "crates/rustok-region/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
@@ -55,6 +56,7 @@ for (const filePath of [
   uiPath,
   transportPath,
   nativeServerAdapterPath,
+  cargoPath,
   implementationPlanPath,
   registryPath,
   packagePath,
@@ -71,6 +73,7 @@ const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const nativeServerAdapter = readRepo(nativeServerAdapterPath);
+const cargoToml = readRepo(cargoPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
@@ -131,10 +134,14 @@ assertContains(transport, "native_server_adapter::fetch_regions", `${transportPa
 assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 assertContains(nativeServerAdapter, "#[server", `${nativeServerAdapterPath}: native server-function adapter must keep native endpoints`);
 assertContains(nativeServerAdapter, "RegionService", `${nativeServerAdapterPath}: native adapter must own service calls, not the UI layer`);
+assertContains(nativeServerAdapter, "HostRuntimeContext", `${nativeServerAdapterPath}: native adapter must consume neutral host runtime context`);
+assertNotContains(nativeServerAdapter, "loco_rs", `${nativeServerAdapterPath}: native adapter must not depend on Loco runtime context`);
+assertNotContains(cargoToml, "loco-rs", `${cargoPath}: region admin must not depend on Loco`);
 
 assertContains(implementationPlan, "FFA slice #31", `${implementationPlanPath}: local plan must record slice #31`);
+assertContains(implementationPlan, "Loco-free native admin transport", `${implementationPlanPath}: local plan must record Loco-free native transport evidence`);
 assertContains(implementationPlan, "verify-region-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the fast boundary guardrail`);
-assertContains(registry, "slice #42", `${registryPath}: central readiness board must record slice #42`);
+assertContains(registry, "slice #43", `${registryPath}: central readiness board must record slice #43`);
 assertContains(registry, "verify-region-admin-boundary.mjs", `${registryPath}: central readiness board must mention the fast boundary guardrail`);
 assertContains(packageJson, "test:verify:region:admin-boundary", `${packagePath}: package scripts must expose region boundary fixture tests`);
 assertContains(packageJson, "test:verify:ffa:ui:migration", `${packagePath}: package scripts must expose aggregate FFA fixture tests`);

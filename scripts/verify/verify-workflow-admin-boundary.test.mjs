@@ -76,12 +76,23 @@ ${includeRawGraphql ? "fn bad_graphql() { execute_graphql(); }" : ""}
 
 function nativeAdapterSource() {
   return `
+struct HostRuntimeContext;
 #[server(prefix = "/api/fn", endpoint = "workflow/list")]
-pub(super) async fn fetch_workflows_native() {}
+pub(super) async fn fetch_workflows_native() { let _runtime = HostRuntimeContext; }
 #[server(prefix = "/api/fn", endpoint = "workflow/templates")]
 pub(super) async fn fetch_templates_native() {}
 #[server(prefix = "/api/fn", endpoint = "workflow/create-from-template")]
-pub(super) async fn create_from_template_native() {}
+pub(super) async fn create_from_template_native() { let _runtime = HostRuntimeContext; }
+`;
+}
+
+function cargoSource() {
+  return `
+[features]
+ssr = ["leptos/ssr", "rustok-api/server"]
+
+[dependencies]
+rustok-api = { workspace = true, default-features = false }
 `;
 }
 
@@ -106,6 +117,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/mod.rs", transportModSource(options));
   writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
   writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-workflow/admin/Cargo.toml", cargoSource());
   if (options.includeLegacyApiFile) {
     writeFixtureFile(root, "crates/rustok-workflow/admin/src/api.rs", "pub async fn fetch_workflows() {}");
   }

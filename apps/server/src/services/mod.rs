@@ -26,7 +26,6 @@ pub mod build_service;
 pub mod event_transport_factory;
 pub mod order_field_service;
 pub mod product_field_service;
-pub mod product_search;
 pub mod rbac_consistency;
 pub mod rbac_persistence;
 pub mod rbac_runtime;

@@ -14,7 +14,10 @@ use axum::{
 };
 use loco_rs::controller::Routes;
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
+use rustok_auth::{
+    AuthorizeRequest, BrowserAuthorizeRequest, BrowserSessionResponse, ConsentRequest,
+    RevokeRequest, TokenErrorResponse, TokenRequest, TokenResponse,
+};
 use std::net::SocketAddr;
 use uuid::Uuid;
 
@@ -27,94 +30,14 @@ use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeCo
 const OAUTH_BROWSER_SESSION_COOKIE: &str = "rustok_oauth_browser_session";
 const OAUTH_BROWSER_SESSION_TTL_SECS: u64 = 10 * 60;
 
-/// OAuth2 Token Request (application/json or application/x-www-form-urlencoded)
-#[derive(Debug, Deserialize)]
-pub struct TokenRequest {
-    pub grant_type: String,
-
-    // For client_credentials
-    pub client_id: Option<String>,
-    pub client_secret: Option<String>,
-    pub scope: Option<String>,
-
-    // For authorization_code
-    pub code: Option<String>,
-    pub redirect_uri: Option<String>,
-    pub code_verifier: Option<String>,
-
-    // For refresh_token
-    pub refresh_token: Option<String>,
-}
-
-/// OAuth2 Authorization Request
-#[derive(Debug, Deserialize)]
-pub struct AuthorizeRequest {
-    pub response_type: String, // Must be "code"
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub scope: Option<String>,
-    pub state: Option<String>,
-    pub code_challenge: String,
-    pub code_challenge_method: Option<String>, // Should be "S256"
-}
-
-/// Browser OAuth2 Authorization Request.
-#[derive(Debug, Deserialize, Clone)]
-pub struct BrowserAuthorizeRequest {
-    pub response_type: String,
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub scope: Option<String>,
-    pub state: Option<String>,
-    pub code_challenge: String,
-    pub code_challenge_method: Option<String>,
-}
-
-/// Server-hosted consent form submission.
-#[derive(Debug, Deserialize)]
-pub struct ConsentRequest {
-    pub action: String,
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub scope: Option<String>,
-    pub state: Option<String>,
-    pub code_challenge: String,
-    pub code_challenge_method: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BrowserSessionResponse {
-    pub status: &'static str,
-}
-
-/// OAuth2 Token Response (RFC 6749 §5.1)
-#[derive(Debug, Serialize)]
-pub struct TokenResponse {
-    pub access_token: String,
-    pub token_type: String,
-    pub expires_in: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
-    pub scope: String,
-}
-
-/// OAuth2 Error Response (RFC 6749 §5.2)
-#[derive(Debug, Serialize)]
-pub struct TokenErrorResponse {
-    pub error: String,
-    pub error_description: String,
-}
-
-impl axum::response::IntoResponse for TokenErrorResponse {
-    fn into_response(self) -> axum::response::Response {
-        let status = match self.error.as_str() {
-            "invalid_client" => StatusCode::UNAUTHORIZED,
-            "invalid_grant" | "unsupported_grant_type" => StatusCode::BAD_REQUEST,
-            "invalid_scope" => StatusCode::BAD_REQUEST,
-            _ => StatusCode::BAD_REQUEST,
-        };
-        (status, Json(self)).into_response()
-    }
+fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
+    let status = match error.error.as_str() {
+        "invalid_client" => StatusCode::UNAUTHORIZED,
+        "invalid_grant" | "unsupported_grant_type" => StatusCode::BAD_REQUEST,
+        "invalid_scope" => StatusCode::BAD_REQUEST,
+        _ => StatusCode::BAD_REQUEST,
+    };
+    (status, Json(error)).into_response()
 }
 
 #[derive(Debug, Clone)]
@@ -133,28 +56,30 @@ async fn token_handler(
 ) -> axum::response::Response {
     match req.grant_type.as_str() {
         "client_credentials" => {
-            handle_client_credentials(&ctx, &tenant_ctx, &req)
-                .await
-                .into_response()
+            match handle_client_credentials(&ctx, &tenant_ctx, &req).await {
+                Ok(response) => response.into_response(),
+                Err(error) => oauth_error_response(error),
+            }
         }
         "authorization_code" => {
-            handle_authorization_code(&ctx, &tenant_ctx, &req)
-                .await
-                .into_response()
+            match handle_authorization_code(&ctx, &tenant_ctx, &req).await {
+                Ok(response) => response.into_response(),
+                Err(error) => oauth_error_response(error),
+            }
         }
         "refresh_token" => {
-            handle_refresh_token(&ctx, &tenant_ctx, &req)
-                .await
-                .into_response()
+            match handle_refresh_token(&ctx, &tenant_ctx, &req).await {
+                Ok(response) => response.into_response(),
+                Err(error) => oauth_error_response(error),
+            }
         }
-        _ => TokenErrorResponse {
+        _ => oauth_error_response(TokenErrorResponse {
             error: "unsupported_grant_type".to_string(),
             error_description: format!(
                 "Grant type '{}' is not supported. Supported: client_credentials, authorization_code, refresh_token",
                 req.grant_type
             ),
-        }
-        .into_response(),
+        }),
     }
 }
 
@@ -456,6 +381,18 @@ async fn authorize_handler(
     tenant_ctx: TenantContext,
     current_user: CurrentUser,
     Json(req): Json<AuthorizeRequest>,
+) -> axum::response::Response {
+    match authorize_handler_inner(ctx, tenant_ctx, current_user, req).await {
+        Ok(response) => response.into_response(),
+        Err(error) => oauth_error_response(error),
+    }
+}
+
+async fn authorize_handler_inner(
+    ctx: ServerRuntimeContext,
+    tenant_ctx: TenantContext,
+    current_user: CurrentUser,
+    req: AuthorizeRequest,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
     let validated = validate_authorize_request(
         &ctx,
@@ -528,7 +465,7 @@ async fn authorize_browser_handler(
     .await
     {
         Ok(validated) => validated,
-        Err(error) => return error.into_response(),
+        Err(error) => return oauth_error_response(error),
     };
 
     let access_token = extract_browser_access_token(&headers);
@@ -564,7 +501,7 @@ async fn authorize_browser_handler(
                 redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
                     .into_response()
             }
-            Err(error) => error.into_response(),
+            Err(error) => oauth_error_response(error),
         };
     }
 
@@ -578,11 +515,10 @@ async fn authorize_browser_handler(
     {
         Ok(has_consent) => has_consent,
         Err(_) => {
-            return TokenErrorResponse {
+            return oauth_error_response(TokenErrorResponse {
                 error: "server_error".to_string(),
                 error_description: "Failed to verify consent".to_string(),
-            }
-            .into_response();
+            });
         }
     };
 
@@ -599,7 +535,7 @@ async fn authorize_browser_handler(
                 redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
                     .into_response()
             }
-            Err(error) => error.into_response(),
+            Err(error) => oauth_error_response(error),
         };
     }
 
@@ -632,7 +568,7 @@ async fn consent_handler(
     .await
     {
         Ok(validated) => validated,
-        Err(error) => return error.into_response(),
+        Err(error) => return oauth_error_response(error),
     };
 
     let access_token = extract_browser_access_token(&headers);
@@ -666,11 +602,10 @@ async fn consent_handler(
     }
 
     if req.action != "approve" {
-        return TokenErrorResponse {
+        return oauth_error_response(TokenErrorResponse {
             error: "invalid_request".to_string(),
             error_description: "Unknown consent action".to_string(),
-        }
-        .into_response();
+        });
     }
 
     if let Err(error) = OAuthAppService::grant_consent(
@@ -682,11 +617,10 @@ async fn consent_handler(
     )
     .await
     {
-        return TokenErrorResponse {
+        return oauth_error_response(TokenErrorResponse {
             error: "server_error".to_string(),
             error_description: format!("Failed to grant consent: {error}"),
-        }
-        .into_response();
+        });
     }
 
     match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, current_user.user.id)
@@ -694,7 +628,7 @@ async fn consent_handler(
     {
         Ok(code) => redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
             .into_response(),
-        Err(error) => error.into_response(),
+        Err(error) => oauth_error_response(error),
     }
 }
 
@@ -705,11 +639,10 @@ async fn create_browser_session_handler(
     _current_user: CurrentUser,
 ) -> axum::response::Response {
     let Some(access_token) = extract_bearer_token(&headers) else {
-        return TokenErrorResponse {
+        return oauth_error_response(TokenErrorResponse {
             error: "invalid_request".to_string(),
             error_description: "Missing bearer token for OAuth browser session".to_string(),
-        }
-        .into_response();
+        });
     };
 
     (
@@ -1046,22 +979,23 @@ fn escape_attr(value: &str) -> String {
     escape_html(value)
 }
 
-/// OAuth2 Token Revocation Request (RFC 7009)
-#[derive(Debug, Deserialize)]
-pub struct RevokeRequest {
-    pub token: String,
-    /// Optional hint: "access_token" or "refresh_token"
-    pub token_type_hint: Option<String>,
-    pub client_id: Option<String>,
-    pub client_secret: Option<String>,
-}
-
 /// Token Revocation Endpoint (RFC 7009)
 /// Revokes a refresh token (access tokens are stateless JWTs and expire naturally).
 async fn revoke_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
     Json(req): Json<RevokeRequest>,
+) -> axum::response::Response {
+    match revoke_handler_inner(ctx, tenant_ctx, req).await {
+        Ok(status) => status.into_response(),
+        Err(error) => oauth_error_response(error),
+    }
+}
+
+async fn revoke_handler_inner(
+    ctx: ServerRuntimeContext,
+    tenant_ctx: TenantContext,
+    req: RevokeRequest,
 ) -> Result<axum::http::StatusCode, TokenErrorResponse> {
     // 1. Authenticate the client
     let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
@@ -1136,6 +1070,15 @@ async fn revoke_handler(
 /// Allows clients with `openid` or `profile` scopes to fetch user details.
 async fn userinfo_handler(
     current_user: CurrentUser, // Automatically extracts and validates Bearer token
+) -> axum::response::Response {
+    match userinfo_handler_inner(current_user).await {
+        Ok(response) => response.into_response(),
+        Err(error) => oauth_error_response(error),
+    }
+}
+
+async fn userinfo_handler_inner(
+    current_user: CurrentUser,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
     // We already know the token is valid, active, and belongs to a user because
     // the CurrentUser extractor succeeds only if these conditions are met.

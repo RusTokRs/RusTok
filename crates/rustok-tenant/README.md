@@ -11,6 +11,7 @@
 - Publish tenant lifecycle events (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) via transactional outbox when `TenantService` is wired with `TransactionalEventBus`.
 - Publish the typed `tenants:*` and `modules:*` RBAC surface.
 - Keep tenant admin read flows aligned with tenant-scoped RBAC checks for both tenant and module permissions.
+- Keep tenant admin native transport on `rustok_api::HostRuntimeContext`, not Loco `AppContext`.
 
 ## Interactions
 

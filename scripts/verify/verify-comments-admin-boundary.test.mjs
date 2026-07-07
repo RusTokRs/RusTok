@@ -62,22 +62,33 @@ ${options.serverInFacade ? "#[server] async fn bad() {}" : ""}
 `);
   writeFixtureFile(root, "crates/rustok-comments/admin/src/transport/native_server_adapter.rs", `
 use leptos::prelude::*;
+struct HostRuntimeContext;
 struct CommentsService;
 impl CommentsService { fn new() -> Self { Self } }
 #[server]
 pub async fn comments_threads_native() -> Result<(), ServerFnError> {
+    let _runtime = HostRuntimeContext;
     let _ = CommentsService::new();
     Ok(())
 }
 #[server]
 pub async fn comments_set_comment_status_native() -> Result<(), ServerFnError> {
+    let _runtime = HostRuntimeContext;
     let _ = CommentsService::new();
     Ok(())
 }
 pub async fn fetch_threads() { let _ = comments_threads_native; }
 `);
+  writeFixtureFile(root, "crates/rustok-comments/admin/Cargo.toml", `
+[features]
+ssr = ["leptos/ssr", "rustok-api/server"]
+
+[dependencies]
+rustok-api = { workspace = true, default-features = false }
+`);
   writeFixtureFile(root, "crates/rustok-comments/docs/implementation-plan.md", `
 native-only comments admin exception
+Loco-free native admin transport
 UiRouteQueryUpdate
 verify-comments-admin-boundary.mjs
 `);

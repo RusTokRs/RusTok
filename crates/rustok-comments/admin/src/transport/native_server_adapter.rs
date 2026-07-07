@@ -58,16 +58,16 @@ async fn comments_threads_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
+        let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
         let security = rustok_core::SecurityContext::from_permission_snapshot(
             Some(auth.user_id),
             &auth.permissions,
@@ -105,16 +105,16 @@ async fn comments_thread_detail_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
+        let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
         let security = rustok_core::SecurityContext::from_permission_snapshot(
             Some(auth.user_id),
             &auth.permissions,
@@ -150,16 +150,16 @@ async fn comments_set_thread_status_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
+        let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
         let security = rustok_core::SecurityContext::from_permission_snapshot(
             Some(auth.user_id),
             &auth.permissions,
@@ -188,16 +188,16 @@ async fn comments_set_comment_status_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
+        let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
         let security = rustok_core::SecurityContext::from_permission_snapshot(
             Some(auth.user_id),
             &auth.permissions,

@@ -992,6 +992,154 @@ fn auth_graphql_surface_is_owned_by_auth_crate() {
 }
 
 #[test]
+fn auth_rest_dto_surface_is_owned_by_auth_crate() {
+    let repo = repo_root();
+    let rest = std::fs::read_to_string(repo.join("crates/rustok-auth/src/rest.rs"))
+        .expect("rustok-auth REST contract should read");
+    let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/auth.rs"))
+        .expect("server auth controller should read");
+
+    let dto_markers = [
+        "pub struct LoginParams",
+        "pub struct RefreshRequest",
+        "pub struct RegisterParams",
+        "pub struct AcceptInviteParams",
+        "pub struct InviteAcceptResponse",
+        "pub struct RequestResetParams",
+        "pub struct ConfirmResetParams",
+        "pub struct RequestVerificationParams",
+        "pub struct ConfirmVerificationParams",
+        "pub struct ChangePasswordParams",
+        "pub struct UpdateProfileParams",
+        "pub struct ResetRequestResponse",
+        "pub struct VerificationRequestResponse",
+        "pub struct GenericStatusResponse",
+        "pub struct SessionItem",
+        "pub struct SessionsResponse",
+        "pub struct SessionListParams",
+        "pub struct UserResponse",
+        "pub struct UserInfo",
+        "pub struct AuthResponse",
+        "pub struct LogoutResponse",
+    ];
+
+    for marker in dto_markers {
+        assert!(
+            rest.contains(marker),
+            "rustok-auth must own auth REST DTO marker {marker}"
+        );
+        assert!(
+            !controller.contains(marker),
+            "apps/server auth controller must not define owner DTO marker {marker}"
+        );
+    }
+
+    assert!(
+        rest.contains("utoipa::ToSchema"),
+        "rustok-auth REST DTOs must preserve OpenAPI schema derives"
+    );
+    assert!(
+        controller.contains("pub use rustok_auth::{"),
+        "server auth controller should re-export owner DTOs for existing Swagger paths"
+    );
+    assert!(
+        !controller.contains("utoipa::ToSchema"),
+        "server auth controller must not own auth OpenAPI DTO derives"
+    );
+    assert!(
+        !controller.contains("UserResponse::from_user_and_role"),
+        "server auth controller must not rely on a host-owned UserResponse constructor"
+    );
+}
+
+#[test]
+fn oauth_rest_dto_surface_is_owned_by_auth_crate() {
+    let repo = repo_root();
+    let rest = std::fs::read_to_string(repo.join("crates/rustok-auth/src/rest.rs"))
+        .expect("rustok-auth REST contract should read");
+    let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/oauth.rs"))
+        .expect("server OAuth controller should read");
+
+    let dto_markers = [
+        "pub struct TokenRequest",
+        "pub struct AuthorizeRequest",
+        "pub struct BrowserAuthorizeRequest",
+        "pub struct ConsentRequest",
+        "pub struct BrowserSessionResponse",
+        "pub struct TokenResponse",
+        "pub struct TokenErrorResponse",
+        "pub struct RevokeRequest",
+    ];
+
+    for marker in dto_markers {
+        assert!(
+            rest.contains(marker),
+            "rustok-auth must own OAuth REST DTO marker {marker}"
+        );
+        assert!(
+            !controller.contains(marker),
+            "apps/server OAuth controller must not define owner DTO marker {marker}"
+        );
+    }
+
+    assert!(
+        controller.contains("use rustok_auth::{"),
+        "server OAuth controller should import owner DTOs from rustok-auth"
+    );
+    assert!(
+        controller.contains("fn oauth_error_response(error: TokenErrorResponse)"),
+        "server OAuth controller may keep HTTP status mapping for the owner error DTO"
+    );
+    assert!(
+        !controller.contains("impl axum::response::IntoResponse for TokenErrorResponse"),
+        "server OAuth controller must not implement external HTTP traits for owner DTOs"
+    );
+    assert!(
+        !controller.contains("use serde::{Deserialize, Serialize}"),
+        "server OAuth controller must not own serde DTO definitions"
+    );
+}
+
+#[test]
+fn users_rest_dto_surface_is_owned_by_auth_crate() {
+    let repo = repo_root();
+    let rest = std::fs::read_to_string(repo.join("crates/rustok-auth/src/rest.rs"))
+        .expect("rustok-auth REST contract should read");
+    let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/users.rs"))
+        .expect("server users controller should read");
+
+    let dto_markers = [
+        "pub struct UserItem",
+        "pub struct UsersResponse",
+        "pub struct UsersListParams",
+    ];
+
+    for marker in dto_markers {
+        assert!(
+            rest.contains(marker),
+            "rustok-auth must own users REST DTO marker {marker}"
+        );
+        assert!(
+            !controller.contains(marker),
+            "apps/server users controller must not define owner DTO marker {marker}"
+        );
+    }
+
+    assert!(
+        controller.contains("use rustok_auth::{UserItem, UsersListParams, UsersResponse};"),
+        "server users controller should import owner DTOs from rustok-auth"
+    );
+    assert!(
+        !controller.contains("use serde::{Deserialize, Serialize}"),
+        "server users controller must not own serde DTO definitions"
+    );
+    assert!(
+        !controller.contains("use utoipa::ToSchema"),
+        "server users controller must not own OpenAPI DTO derives"
+    );
+}
+
+#[test]
 fn mcp_graphql_surface_is_owned_by_mcp_crate() {
     let repo = repo_root();
     let graphql_dir = repo.join("crates/rustok-mcp/src/graphql");
@@ -1142,4 +1290,29 @@ fn channel_rest_control_plane_dto_is_owned_by_channel_crate() {
             "apps/server channel controller must consume owner channel contract marker {marker}"
         );
     }
+}
+
+#[test]
+fn product_translation_search_helper_is_not_server_owned() {
+    let repo = repo_root();
+    let server_helper = repo.join("apps/server/src/services/product_search.rs");
+    assert!(
+        !server_helper.exists(),
+        "product translation search helper must not live in apps/server"
+    );
+
+    let services_mod = std::fs::read_to_string(repo.join("apps/server/src/services/mod.rs"))
+        .expect("server services module should read");
+    assert!(
+        !services_mod.contains("pub mod product_search;"),
+        "apps/server must not re-export a product_search service"
+    );
+
+    let foundation_search =
+        std::fs::read_to_string(repo.join("crates/rustok-commerce-foundation/src/search.rs"))
+            .expect("commerce foundation search helper should read");
+    assert!(
+        foundation_search.contains("pub fn product_translation_title_search_condition"),
+        "product translation title search condition must remain owner/foundation-owned"
+    );
 }

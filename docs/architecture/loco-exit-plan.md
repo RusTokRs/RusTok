@@ -49,7 +49,7 @@ Target state:
 | Queue/event delivery | Transactional outbox and relay are the source of truth; Loco Queue is not used | `rustok-outbox`, `rustok-events`, server workers |
 | WebSocket channels | Custom Axum WS path is used, not Loco channels | `apps/server` + channel/auth modules |
 | Module-owned API composition | GraphQL/REST are increasingly assembled through manifests and owner-owned roots | module crates + generated server composition |
-| Leptos server-function context | Migration to `rustok_api::HostRuntimeContext` started; `index/outbox` admin already migrated | `rustok-api` + server context provider |
+| Leptos server-function context | Migration to `rustok_api::HostRuntimeContext` started; `index/outbox/tenant/region/comments` admin already migrated | `rustok-api` + server context provider |
 | Installer CLI | `rustok-server install ...` already exists as its own CLI slice; target state is migration to a separate ops binary | `rustok-installer` + ops CLI adapter |
 
 ## What Still Holds Loco
@@ -71,17 +71,17 @@ Target state:
 
 The July 2026 inventory is a size signal, not a task counter: many occurrences are guardrails, docs, lockfile entries, tests or transitional route adapters. The remaining work should be planned as architectural slices, not individual text matches.
 
-Current classified inventory baseline:
+Current classified inventory baseline after the `rustok-comments-admin` native transport cutover:
 
 | Category | Count | Practical Meaning |
 |---|---:|---|
 | `host_runtime` | 62 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
-| `module_ui_adapter` | 192 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
+| `module_ui_adapter` | 183 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
 | `module_controller` | 35 | Mostly controller route/state adapters and remaining Loco controller API usage after handler runtime narrowing. |
 | `server_task` / `server_seed` / `server_schedule` | 22 | Maintenance flows that belong in `rustok-ops`, not the HTTP server binary. |
 | `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
-| `dependency_manifest` / `lockfile` | 113 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
-| `verification_guard` / `docs` / `scaffold_template` | 197 | Guardrails, historical docs and generated templates to update/archive last. |
+| `dependency_manifest` / `lockfile` | 104 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
+| `verification_guard` / `docs` / `scaffold_template` | 222 | Guardrails, historical docs and generated templates to update/archive last. |
 
 Approximate remaining effort:
 
@@ -227,7 +227,7 @@ Target commands:
 ### Phase 0. Inventory and Prohibition of New Loco Surface
 
 - [x] Introduce `rustok_api::HostRuntimeContext`.
-- [x] Migrate first module UI adapters (`rustok-index-admin`, `rustok-outbox-admin`) from Loco context.
+- [x] Migrate first module UI adapters (`rustok-index-admin`, `rustok-outbox-admin`, `rustok-tenant-admin`, `rustok-region-admin`, `rustok-comments-admin`) from Loco context.
 - [x] Add guardrail in `scripts/verify/verify-api-surface-contract.mjs` for these adapters.
 - [x] Add a general inventory script: all `loco_rs`, `loco-rs`, `cargo loco`, `rustok_outbox::loco` with categorization of current host/runtime/task/test/module/docs/dependency points.
 - [x] Prohibit new `loco_rs` imports outside the allowlist.
@@ -291,6 +291,9 @@ Exit gate: inventory script passes, allowlist is fixed, new Loco imports without
 - [x] Migrate marketplace registry/governance REST handlers to `ServerRuntimeContext`; artifact storage and remote executor settings are read through neutral runtime state.
 - [x] Migrate swagger, installer status/receipts, admin DLQ, MCP management/remote tools and build WebSocket handlers to `ServerRuntimeContext`; Loco `Routes` remains only a routing adapter until Phase 2.
 - [ ] Migrate Leptos server functions to `HostRuntimeContext`/typed narrow contexts.
+- [x] Migrate `rustok-tenant-admin` native bootstrap server function to `HostRuntimeContext` and remove its `loco-rs` dependency.
+- [x] Migrate `rustok-region-admin` native CRUD server functions to `HostRuntimeContext` and remove its `loco-rs` dependency.
+- [x] Migrate `rustok-comments-admin` native moderation server functions to `HostRuntimeContext` and remove its `loco-rs` dependency.
 - [ ] Migrate module/capability crates where `loco_rs::app::AppContext` is currently used as a service locator.
 
 Exit gate: module-owned crates and UI packages do not import `loco_rs::app::AppContext`; Loco context remains only in server bootstrap/tests allowlist.

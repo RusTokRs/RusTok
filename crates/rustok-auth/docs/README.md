@@ -8,6 +8,10 @@ Auth lifecycle GraphQL (`AuthQuery`, `AuthMutation`) and OAuth GraphQL (`OAuthQu
 `OAuthMutation`) are owner-owned by `rustok-auth` behind the `graphql` feature. `apps/server`
 only implements `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` providers over
 the persisted lifecycle/OAuth/email services and registers the corresponding runtimes.
+Auth, OAuth and users REST request/response DTOs for login, registration, refresh/logout,
+invite/reset, email verification, profile/password, sessions, user list/detail, token,
+authorize/consent, browser-session and revocation flows live in `rustok-auth::rest`; the server
+controller modules re-export or import those owner DTOs only for OpenAPI/route compatibility.
 
 ## Purpose
 
@@ -21,6 +25,8 @@ the persisted lifecycle/OAuth/email services and registers the corresponding run
 - encode/decode helpers for access/reset/invite/email-verification token flows;
 - password hashing, verify and refresh-token helpers;
 - auth-owned migrations;
+- auth-owned auth/OAuth/users REST DTO/OpenAPI schema surface in `rest.rs`, with host controllers
+  limited to transport extraction, persistence adapters and response mapping;
 - publication of permission surface `users:*` via `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
 - typed application boundaries `UserAdminMutationPort` and `OAuthAdminPort` for admin commands, OAuth reads and consent lifecycle without module crate dependency on host transport;
 - owner-owned OAuth GraphQL query/mutation/types behind `graphql` feature; `apps/server` only implements the runtime port over the DB and connects roots into the common schema.
@@ -29,6 +35,7 @@ the persisted lifecycle/OAuth/email services and registers the corresponding run
 
 - depends only on `rustok-core` and common libraries, without dependency on `rustok-rbac`;
 - used by `apps/server` for REST, GraphQL, session lifecycle and user-management flow;
+- `apps/server/src/controllers/auth.rs` remains an HTTP adapter over auth-owned DTOs and lifecycle ports;
 - `apps/server` checks registry wiring and GraphQL security hints against `AUTH_USER_PERMISSIONS`, so the host layer does not diverge from the auth-owned permission surface;
 - `apps/server` implements ports on top of existing auth lifecycle/OAuth services and registers providers in shared runtime extensions; GraphQL and native `#[server]` adapters must consume one provider per boundary;
 - publishes its own UI via the sub-package `crates/rustok-auth/admin` with `ui_classification = "admin_only"`;
