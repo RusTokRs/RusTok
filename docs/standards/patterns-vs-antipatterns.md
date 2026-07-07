@@ -147,7 +147,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 
 | # | ✅ Correct | ❌ Incorrect | Why | Details |
 |---|-------------|---------------|--------|--------|
-| 8.1.1 | `leptos-graphql` for GraphQL queries | Manual fetch + manual JSON parsing | No typing, manual error handling | — |
+| 8.1.1 | `rustok-graphql` for Rust FFA GraphQL adapters; host-injected Apollo executor for Next UI packages | Manual fetch + manual JSON parsing | No typing, manual error handling | — |
 | 8.1.2 | `leptos-auth` for auth state management | Manual JWT management in localStorage | Race conditions, no refresh logic | — |
 | 8.1.3 | `leptos-zustand` for global state | Props drilling through 5+ levels | Unreadable code, component recreation | — |
 | 8.1.4 | `leptos-hook-form` for forms | Manual form state + onChange handlers | Boilerplate, no validation | — |
@@ -159,7 +159,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 
 | # | ✅ Correct | ❌ Incorrect | Why | Details |
 |---|-------------|---------------|--------|--------|
-| 8.2.1 | Packages from `packages/` (leptos-auth, leptos-graphql, etc.) | Code duplication between next-admin and next-frontend | Copy-paste, desync | — |
+| 8.2.1 | Packages from `packages/` consume host-provided contracts | Importing host internals from package code | Tight coupling, package/host desync | — |
 | 8.2.2 | TypeScript strict mode | `any` types and `@ts-ignore` | Loss of type safety, runtime errors | — |
 | 8.2.3 | Server Components for data fetching (Next.js 13+) | `useEffect` + fetch in every component | Waterfalls, no streaming | — |
 | 8.2.4 | Clerk auth (next-admin) integrated with server JWT | Separate auth systems on frontend and backend | Session desync | — |

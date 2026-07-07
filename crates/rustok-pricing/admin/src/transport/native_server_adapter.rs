@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 
 #[cfg(feature = "ssr")]
 use crate::core::{parse_optional_currency_code, text_or_none};

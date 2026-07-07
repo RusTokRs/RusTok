@@ -1,7 +1,5 @@
-/**
- * Simple GraphQL client for RusTok backend.
- * Uses fetch API, works in both browser and Node.js environments.
- */
+import { ApolloClient, gql, HttpLink, InMemoryCache } from '@apollo/client/core';
+import type { OperationVariables } from '@apollo/client/core';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
 const SERVER_GRAPHQL_URL = `${API_BASE_URL}/api/graphql`;
@@ -17,6 +15,19 @@ interface GraphqlResponse<T> {
   data?: T;
   errors?: Array<{ message: string; extensions?: { code?: string } }>;
 }
+
+type ApolloGraphqlError = {
+  message: string;
+  extensions?: { code?: string };
+};
+
+type ApolloExecutionResult<T> = {
+  data?: T | null;
+  error?: {
+    message?: string;
+    graphQLErrors?: ReadonlyArray<ApolloGraphqlError>;
+  };
+};
 
 interface GraphqlRequestOptions {
   graphqlUrl?: string;
@@ -43,6 +54,31 @@ function resolveGraphqlUrl(explicit?: string): string {
   return typeof window === 'undefined'
     ? SERVER_GRAPHQL_URL
     : CLIENT_GRAPHQL_URL;
+}
+
+const apolloClients = new Map<string, ApolloClient>();
+
+function apolloClientFor(url: string): ApolloClient {
+  const existing = apolloClients.get(url);
+  if (existing) return existing;
+
+  const client = new ApolloClient({
+    cache: new InMemoryCache(),
+    link: new HttpLink({
+      uri: url,
+      fetch
+    }),
+    defaultOptions: {
+      query: {
+        fetchPolicy: 'no-cache'
+      },
+      mutate: {
+        fetchPolicy: 'no-cache'
+      }
+    }
+  });
+  apolloClients.set(url, client);
+  return client;
 }
 
 function decodeBase64UrlJson(value: string): Record<string, unknown> | null {
@@ -78,6 +114,11 @@ function resolveTenantIdFromVariables(variables: unknown): string | null {
   return typeof tenantId === 'string' && tenantId.length > 0 ? tenantId : null;
 }
 
+function toApolloVariables<V>(variables: V | undefined): OperationVariables | undefined {
+  if (variables === undefined) return undefined;
+  return variables as OperationVariables;
+}
+
 export async function graphqlRequest<V, T>(
   query: string,
   variables?: V,
@@ -111,26 +152,39 @@ export async function graphqlRequest<V, T>(
     headers['Accept-Language'] = locale;
   }
 
-  const body: GraphqlRequest<V> = { query };
-  if (variables !== undefined) {
-    body.variables = variables;
-  }
-
-  const response = await fetch(resolveGraphqlUrl(options?.graphqlUrl), {
-    method: 'POST',
+  const document = gql(query);
+  const context = {
     headers,
-    body: JSON.stringify(body),
-    cache: 'no-store'
-  });
+    fetchOptions: {
+      cache: 'no-store'
+    } as RequestInit
+  };
+  const client = apolloClientFor(resolveGraphqlUrl(options?.graphqlUrl));
+  const isMutation = query.trimStart().toLowerCase().startsWith('mutation');
+  const apolloVariables = toApolloVariables(variables);
+  const result = (isMutation
+    ? await client.mutate<T>({
+        mutation: document,
+        variables: apolloVariables,
+        context
+      })
+    : await client.query<T>({
+        query: document,
+        variables: apolloVariables,
+        context
+      })) as ApolloExecutionResult<T>;
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new GraphqlError('Unauthorized', 'UNAUTHORIZED');
-    }
-    throw new GraphqlError(`HTTP error ${response.status}`, 'HTTP_ERROR');
+  const json: GraphqlResponse<T> = {
+    data: result.data ?? undefined,
+    errors: result.error?.graphQLErrors?.map((error) => ({
+      message: error.message,
+      extensions: error.extensions
+    }))
+  };
+
+  if (result.error && (!json.errors || json.errors.length === 0)) {
+    throw new GraphqlError(result.error.message ?? 'GraphQL request failed');
   }
-
-  const json: GraphqlResponse<T> = await response.json();
 
   if (json.errors && json.errors.length > 0) {
     const err = json.errors[0];

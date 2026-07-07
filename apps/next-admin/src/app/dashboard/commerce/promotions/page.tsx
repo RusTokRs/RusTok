@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { CartPromotionsTemplate } from '@rustok/commerce-admin';
+import { CartPromotionsClient } from '@/modules/commerce-admin-client';
 
 export const metadata = {
   title: 'Dashboard: Cart Promotions'
@@ -13,5 +13,5 @@ export default async function Page() {
     tenantId: session?.user?.tenantId ?? null
   };
 
-  return <CartPromotionsTemplate opts={opts} />;
+  return <CartPromotionsClient opts={opts} />;
 }

@@ -34,7 +34,7 @@ Verification relies on the current-state contract:
 - [ ] `crates/leptos-auth`
 - [ ] `crates/leptos-forms`
 - [ ] `crates/leptos-zustand`
-- [ ] `crates/leptos-graphql`
+- [ ] `crates/rustok-graphql`
 - [ ] `crates/leptos-shadcn-pagination`
 - [ ] `crates/leptos-ui`
 - [ ] `crates/leptos-zod`

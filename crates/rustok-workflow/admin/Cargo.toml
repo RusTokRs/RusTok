@@ -25,7 +25,7 @@ ssr = [
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
-leptos-graphql.workspace = true
+rustok-graphql.workspace = true
 leptos_router.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n-leptos.workspace = true

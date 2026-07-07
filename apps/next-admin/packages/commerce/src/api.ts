@@ -1,4 +1,3 @@
-import { graphqlRequest } from '../../../src/shared/api/graphql';
 import type {
   ShippingProfile,
   ShippingProfileList,
@@ -15,10 +14,19 @@ import type {
 } from './types';
 
 export type GqlOpts = {
+  graphql: AdminGraphqlExecutor;
   token?: string | null;
   tenantSlug?: string | null;
   tenantId?: string | null;
 };
+
+export type AdminGraphqlExecutor = <V, T>(
+  query: string,
+  variables?: V,
+  token?: string | null,
+  tenantSlug?: string | null,
+  options?: { graphqlUrl?: string; tenantId?: string | null }
+) => Promise<T>;
 
 // GRAPHQL QUERIES & MUTATIONS
 
@@ -257,7 +265,7 @@ export async function listShippingProfiles(
     throw new Error('Sign in again to manage shipping profiles.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; filter: typeof filter },
     { shippingProfiles: ShippingProfileList }
   >(
@@ -278,7 +286,7 @@ export async function getShippingProfile(
     throw new Error('Sign in again to manage shipping profiles.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; id: string },
     { shippingProfile: ShippingProfile | null }
   >(
@@ -299,7 +307,7 @@ export async function createShippingProfile(
     throw new Error('Sign in again to manage shipping profiles.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; input: CreateShippingProfileInput },
     { createShippingProfile: ShippingProfile }
   >(
@@ -321,7 +329,7 @@ export async function updateShippingProfile(
     throw new Error('Sign in again to manage shipping profiles.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; id: string; input: UpdateShippingProfileInput },
     { updateShippingProfile: ShippingProfile }
   >(
@@ -342,7 +350,7 @@ export async function deactivateShippingProfile(
     throw new Error('Sign in again to manage shipping profiles.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; id: string },
     { deactivateShippingProfile: ShippingProfile }
   >(
@@ -363,7 +371,7 @@ export async function reactivateShippingProfile(
     throw new Error('Sign in again to manage shipping profiles.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; id: string },
     { reactivateShippingProfile: ShippingProfile }
   >(
@@ -385,7 +393,7 @@ export async function previewCartPromotion(
     throw new Error('Sign in again to manage promotions.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; cartId: string; input: AdminCartPromotionInput },
     { previewAdminCartPromotion: CartPromotionPreview }
   >(
@@ -407,7 +415,7 @@ export async function applyCartPromotion(
     throw new Error('Sign in again to manage promotions.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; cartId: string; input: AdminCartPromotionInput },
     { applyAdminCartPromotion: CartSnapshot }
   >(
@@ -434,7 +442,7 @@ export async function listOrderChanges(
     throw new Error('Sign in again to manage order changes.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; filter: typeof filter },
     { orderChanges: OrderChangeList }
   >(
@@ -455,7 +463,7 @@ export async function getOrderChange(
     throw new Error('Sign in again to manage order changes.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; id: string },
     { orderChange: OrderChange | null }
   >(
@@ -478,7 +486,7 @@ export async function applyOrderChange(
     throw new Error('Sign in again to manage order changes.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     {
       tenantId: string;
       id: string;
@@ -508,7 +516,7 @@ export async function cancelOrderChange(
     throw new Error('Sign in again to manage order changes.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     {
       tenantId: string;
       id: string;
@@ -534,7 +542,7 @@ export async function createOrderReturnDecision(
     throw new Error('Sign in again to manage return decisions.');
   }
 
-  const response = await graphqlRequest<
+  const response = await opts.graphql<
     { tenantId: string; orderId: string; input: CreateReturnDecisionInput },
     { createOrderReturnDecision: ReturnDecisionResponse }
   >(

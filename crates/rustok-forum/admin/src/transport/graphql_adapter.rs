@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use leptos_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{

@@ -129,7 +129,7 @@ pub async fn check_variant_availability() { crate::native::check_variant_availab
 
 function transportSource() {
   return `
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 pub struct CommerceGraphqlInventoryReadAdapter;
 const BOOTSTRAP_QUERY: &str = "query Bootstrap /api/graphql RUSTOK_GRAPHQL_URL";
 `;

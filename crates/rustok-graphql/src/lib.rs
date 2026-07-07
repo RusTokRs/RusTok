@@ -1,10 +1,16 @@
-pub mod hooks;
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
-
-pub use hooks::{use_lazy_query, use_mutation, use_query, MutationResult, QueryResult};
 
 pub const GRAPHQL_ENDPOINT: &str = "/api/graphql";
 pub const TENANT_HEADER: &str = "X-Tenant-Slug";
@@ -105,36 +111,83 @@ where
     let client = reqwest::Client::new();
     let mut req = client.post(endpoint).json(&request);
 
-    if let Some(t) = token {
-        req = req.header(AUTH_HEADER, format!("Bearer {}", t));
+    if let Some(token) = token {
+        req = req.header(AUTH_HEADER, format!("Bearer {token}"));
     }
 
-    if let Some(slug) = tenant_slug {
-        req = req.header(TENANT_HEADER, slug);
+    if let Some(tenant_slug) = tenant_slug {
+        req = req.header(TENANT_HEADER, tenant_slug);
     }
 
     if let Some(locale) = locale {
         req = req.header(ACCEPT_LANGUAGE_HEADER, locale);
     }
 
-    let res = req.send().await.map_err(|_| GraphqlHttpError::Network)?;
+    let response = req.send().await.map_err(|_| GraphqlHttpError::Network)?;
 
-    if res.status() == 401 {
+    if response.status() == 401 {
         return Err(GraphqlHttpError::Unauthorized);
     }
 
-    if !res.status().is_success() {
-        return Err(GraphqlHttpError::Http(res.status().to_string()));
+    if !response.status().is_success() {
+        return Err(GraphqlHttpError::Http(response.status().to_string()));
     }
 
-    let body: GraphqlResponse<T> = res.json().await.map_err(|_| GraphqlHttpError::Network)?;
+    let body: GraphqlResponse<T> = response
+        .json()
+        .await
+        .map_err(|_| GraphqlHttpError::Network)?;
 
     if let Some(errors) = body.errors {
-        if let Some(err) = errors.first() {
-            return Err(GraphqlHttpError::Graphql(err.message.clone()));
+        if let Some(error) = errors.first() {
+            return Err(GraphqlHttpError::Graphql(error.message.clone()));
         }
     }
 
     body.data
         .ok_or_else(|| GraphqlHttpError::Graphql("No data".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{persisted_query_extension, GraphqlHttpError, GraphqlRequest};
+    use serde_json::json;
+    use std::str::FromStr;
+
+    #[test]
+    fn request_omits_empty_optional_fields() {
+        let request = GraphqlRequest::<serde_json::Value>::new("query Test { ok }", None);
+        let value = serde_json::to_value(request).expect("request serializes");
+
+        assert_eq!(value, json!({ "query": "query Test { ok }" }));
+    }
+
+    #[test]
+    fn persisted_query_extension_uses_apq_shape() {
+        assert_eq!(
+            persisted_query_extension("abc"),
+            json!({
+                "persistedQuery": {
+                    "version": 1,
+                    "sha256Hash": "abc"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn graphql_http_error_round_trips_display_strings() {
+        assert_eq!(
+            GraphqlHttpError::from_str("GraphQL error: denied"),
+            Ok(GraphqlHttpError::Graphql("denied".to_string()))
+        );
+        assert_eq!(
+            GraphqlHttpError::from_str("Http error: 500"),
+            Ok(GraphqlHttpError::Http("500".to_string()))
+        );
+        assert_eq!(
+            GraphqlHttpError::from_str("Unauthorized"),
+            Ok(GraphqlHttpError::Unauthorized)
+        );
+    }
 }

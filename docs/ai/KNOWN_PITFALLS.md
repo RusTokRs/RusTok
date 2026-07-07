@@ -59,7 +59,7 @@ Short list of typical mistakes before making code changes.
 
 ## Frontend / Leptos
 
-- Do not use `fetch()` directly — use `leptos-graphql` for GraphQL queries.
+- Do not use raw `fetch()` in Rust FFA GraphQL adapters; use `rustok-graphql`.
 - Do not store JWT manually in localStorage — use `leptos-auth`.
 - Do not copy components between admin and storefront — use `iu-leptos` design system.
 - Do not use SSR for admin panel (use CSR/WASM) and do not use CSR for storefront (use SSR for SEO).
@@ -68,6 +68,7 @@ Short list of typical mistakes before making code changes.
 ## Frontend / Next.js
 
 - Do not duplicate code between `apps/next-admin` and `apps/next-frontend` — extract to `packages/`.
+- Do not add custom GraphQL clients in Next.js code; use the host Apollo wrapper.
 - Do not use `any` types — strict TypeScript mode.
 - Do not forget Clerk ↔ Server JWT integration in `apps/next-admin`.
 - Do not use `@ts-ignore` / `@ts-expect-error` — fix the types.

@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { OrderChangesTemplate } from '@rustok/commerce-admin';
+import { OrderChangesClient } from '@/modules/commerce-admin-client';
 
 export const metadata = {
   title: 'Dashboard: Order Changes'
@@ -13,5 +13,5 @@ export default async function Page() {
     tenantId: session?.user?.tenantId ?? null
   };
 
-  return <OrderChangesTemplate opts={opts} />;
+  return <OrderChangesClient opts={opts} />;
 }

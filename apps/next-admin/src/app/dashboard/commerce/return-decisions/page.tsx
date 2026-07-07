@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { ReturnDecisionsTemplate } from '@rustok/commerce-admin';
+import { ReturnDecisionsClient } from '@/modules/commerce-admin-client';
 
 export const metadata = {
   title: 'Dashboard: Return Decisions'
@@ -13,5 +13,5 @@ export default async function Page() {
     tenantId: session?.user?.tenantId ?? null
   };
 
-  return <ReturnDecisionsTemplate opts={opts} />;
+  return <ReturnDecisionsClient opts={opts} />;
 }

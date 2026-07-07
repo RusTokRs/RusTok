@@ -34,7 +34,7 @@ function fixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-blog/storefront/src/ui/leptos.rs", "pub fn render() { let _ = transport::fetch_blog; }");
   writeFixtureFile(root, "crates/rustok-blog/storefront/src/transport/mod.rs", "pub mod graphql_adapter;\npub mod native_server_adapter;\npub async fn fetch_blog() { native_server_adapter::fetch_blog().await; graphql_adapter::fetch_blog().await; }");
   writeFixtureFile(root, "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs", "#[server(prefix = \"/api/fn\", endpoint = \"blog/storefront-data\")]\nasync fn endpoint() {}\nChannelService::new\n.is_module_enabled(channel_id, MODULE_SLUG)\nnormalize_channel_slug\nis_visible_for_public_channel\nrequest_context.channel_slug\nModule '{MODULE_SLUG}' is not enabled for channel\n");
-  writeFixtureFile(root, "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs", "use leptos_graphql::GraphqlRequest;\nconst STOREFRONT_BLOG_QUERY: &str = \"\";");
+  writeFixtureFile(root, "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\nconst STOREFRONT_BLOG_QUERY: &str = \"\";");
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-blog/storefront/src/api.rs", "legacy api");
   writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", "verify-blog-storefront-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-blog-storefront-boundary.mjs");

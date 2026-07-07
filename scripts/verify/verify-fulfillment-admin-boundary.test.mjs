@@ -79,7 +79,7 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 
 function apiSource() {
   return `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 pub async fn fetch_bootstrap() {}
 pub async fn fetch_shipping_options() {}
 pub async fn fetch_shipping_option() {}

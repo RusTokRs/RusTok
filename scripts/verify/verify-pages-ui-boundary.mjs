@@ -52,6 +52,7 @@ const files = {
   storefrontLegacyApi: "crates/rustok-pages/storefront/src/api.rs",
   storefrontGraphqlAdapter: "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs",
   storefrontNativeServerAdapter: "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  storefrontCargo: "crates/rustok-pages/storefront/Cargo.toml",
   implementationPlan: "crates/rustok-pages/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
 };
@@ -78,6 +79,7 @@ const storefrontUi = readRepo(files.storefrontUi);
 const storefrontTransport = readRepo(files.storefrontTransport);
 const storefrontGraphqlAdapter = readRepo(files.storefrontGraphqlAdapter);
 const storefrontNativeServerAdapter = readRepo(files.storefrontNativeServerAdapter);
+const storefrontCargo = readRepo(files.storefrontCargo);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 
@@ -201,6 +203,13 @@ for (const [source, label] of [
   assertContains(source, "GraphqlRequest", `${label}: api adapter must keep the GraphQL transport contract`);
 }
 assertContains(storefrontNativeServerAdapter, "#[server", `${files.storefrontNativeServerAdapter}: storefront native server adapter must keep the native server-function path`);
+assertContains(storefrontNativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must use the host runtime context`);
+assertContains(storefrontNativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must receive the event bus through the host runtime context`);
+assertContains(storefrontNativeServerAdapter, "runtime_ctx.db_clone()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must receive DB through the host runtime context`);
+assertNotContains(storefrontNativeServerAdapter, "loco_rs", `${files.storefrontNativeServerAdapter}: storefront native server adapter must not depend on Loco AppContext`);
+assertNotContains(storefrontNativeServerAdapter, "rustok_outbox::loco", `${files.storefrontNativeServerAdapter}: storefront native server adapter must not use the outbox Loco adapter`);
+assertNotContains(storefrontCargo, "loco-rs", `${files.storefrontCargo}: pages storefront must not depend on Loco`);
+assertNotContains(storefrontCargo, "loco-adapter", `${files.storefrontCargo}: pages storefront must not enable the outbox Loco adapter feature`);
 
 assertContains(implementationPlan, "verify-pages-ui-boundary.mjs", `${files.implementationPlan}: local plan must mention the pages fast boundary guardrail`);
 assertContains(registry, "verify-pages-ui-boundary.mjs", `${files.registry}: central readiness board must mention the pages fast boundary guardrail`);

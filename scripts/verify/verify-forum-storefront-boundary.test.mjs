@@ -54,7 +54,7 @@ function fixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter;\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use leptos_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
+  writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
   writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-storefront-boundary.mjs\n");

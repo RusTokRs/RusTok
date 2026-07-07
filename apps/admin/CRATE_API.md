@@ -13,7 +13,7 @@
 - Consumes: API responses and auth states.
 
 ## Dependencies on Other Crates
-- `leptos-auth`, `leptos-graphql`, `leptos-hook-form`, `leptos-table`, `leptos-ui`.
+- `leptos-auth`, `rustok-graphql`, `leptos-hook-form`, `leptos-table`, `leptos-ui`.
 
 ## Common AI Mistakes
 - Incorrect imports between `leptos-*` crates (confusing packages/ and crates/ variants).

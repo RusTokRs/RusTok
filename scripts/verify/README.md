@@ -219,7 +219,7 @@ npm run verify:loco:inventory
 What it checks:
 - `InventoryQuantityWriteResult` builds `inStock` from committed quantity and backorder policy;
 - native `set_variant_quantity`/`adjust_variant_quantity` use internal mutation update result and do not do a separate pre-read variant policy;
-- removed GraphQL fallback stays removed: no `src/transport.rs`, `leptos-graphql`, `CommerceGraphqlInventoryReadAdapter`, GraphQL runtime markers, token/tenant-slug fallback inputs or `mod transport`;
+- removed GraphQL fallback stays removed: no `src/transport.rs`, `rustok-graphql`, `CommerceGraphqlInventoryReadAdapter`, GraphQL runtime markers, token/tenant-slug fallback inputs or `mod transport`;
 - admin API read facades fetch-bootstrap/products/product and write facades set/adjust/reserve/release/check-availability go through inventory-owned native facades without GraphQL fallback;
 - native server-function endpoints for inventory read/write/validation surfaces remain declared;
 - commerce storefront/public-channel callers use inventory-owned availability/projection facades instead of direct loaders/backorder branching;

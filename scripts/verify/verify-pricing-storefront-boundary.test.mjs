@@ -40,7 +40,7 @@ pub async fn fetch_storefront_pricing() {}
 `);
   writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs", "pub async fn fetch_storefront_pricing_graphql() {}\n");
   writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs", `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 #[server(prefix = "/api/fn", endpoint = "pricing/storefront-data")]
 async fn storefront_pricing_native() {}
 `);

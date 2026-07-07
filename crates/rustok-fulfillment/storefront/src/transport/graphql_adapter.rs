@@ -1,4 +1,4 @@
-use leptos_graphql::{execute, GraphqlRequest};
+use rustok_graphql::{execute, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

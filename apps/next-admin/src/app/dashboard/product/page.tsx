@@ -1,4 +1,5 @@
 import { auth } from '@/auth';
+import { graphqlRequest } from '@/shared/api/graphql';
 import { listProducts } from '../../../../packages/rustok-product/src';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
@@ -48,6 +49,7 @@ export default async function ProductPage({ searchParams }: PageProps) {
   const perPage = toPositiveInt(pickParam(params.perPage), 20);
   const search = pickParam(params.search)?.trim() || undefined;
   const opts = {
+    graphql: graphqlRequest,
     token: session?.user?.rustokToken ?? null,
     tenantSlug: session?.user?.tenantSlug ?? null,
     tenantId: session?.user?.tenantId ?? null

@@ -18,7 +18,8 @@ Before making ANY changes to Leptos storefront code or module-owned UI packages:
 Available internal libraries:
 - `leptos-ui` — Button, Input, Badge, Alert, Card, Label, Spinner, Checkbox, Switch, Textarea, Select
 - `leptos-ui-routing` — UiRouteContext, module_route_base(), query_value()
-- `leptos-graphql` — GraphQL client for Leptos (temporary Leptos-specific; will become framework-agnostic during Dioxus migration)
+- `rustok-graphql` — framework-agnostic GraphQL HTTP client
+- `rustok-graphql-leptos` — Leptos GraphQL hooks adapter
 - `leptos-auth` — Auth hooks and session
 - `leptos-forms` — Form state management
 - `leptos-table` — Table with pagination
@@ -93,16 +94,15 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 ```
 core/             — NO Leptos imports, framework-agnostic logic
 transport/        — adapters (native_server_adapter.rs + graphql_adapter.rs)
-                    graphql_adapter currently uses leptos-graphql (Leptos-specific)
-                    → will use framework-agnostic client during Dioxus migration
+                    graphql_adapter uses rustok-graphql (framework-agnostic core client)
 ui/leptos.rs      — ONLY Leptos binding (#[component], view!, signals)
 ```
 
 **Goal:** When migrating to Dioxus:
 1. Only `ui/leptos.rs` → `ui/dioxus.rs` changes
 2. Core and transport stay unchanged
-3. GraphQL adapter switches to framework-agnostic client (transparent to UI layer)
-4. Both Leptos and Dioxus adapters coexist during migration
+3. GraphQL transport stays on the framework-agnostic `rustok-graphql` client
+4. Leptos and Dioxus UI adapters coexist during migration
 
 Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-frontend-architecture.md)
 
@@ -116,7 +116,7 @@ Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-fronte
 | Removing `graphql_adapter.rs` | Keep it forever, even after adding native path |
 | `use_cookie("lang")` in package | Use `UiRouteContext.locale` from host |
 | Writing `Button` component locally | Use `leptos-ui::Button` |
-| Raw HTTP client in graphql_adapter | Use platform GraphQL client (`leptos-graphql` now, framework-agnostic later) |
+| Raw HTTP client in graphql_adapter | Use platform GraphQL client (`rustok-graphql`) |
 | `t!(i18n, key)` macro | Use `i18n::t(locale, "key", "fallback")` |
 | Module UI in `apps/storefront/src/` | Use `crates/rustok-<module>/storefront/` |
 | Building routes with hardcoded strings | Use `UiRouteContext::module_route_base()` |

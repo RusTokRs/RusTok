@@ -26,8 +26,8 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<leptos_graphql::GraphqlHttpError> for ApiError {
-    fn from(value: leptos_graphql::GraphqlHttpError) -> Self {
+impl From<rustok_graphql::GraphqlHttpError> for ApiError {
+    fn from(value: rustok_graphql::GraphqlHttpError) -> Self {
         Self::Graphql(value.to_string())
     }
 }

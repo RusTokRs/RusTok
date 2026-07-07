@@ -68,16 +68,16 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
 ))]
 async fn execute_server_graphql(
     request: ServerGraphqlRequest,
-) -> Result<Value, leptos_graphql::GraphqlHttpError> {
+) -> Result<Value, rustok_graphql::GraphqlHttpError> {
     let mut graphql_request =
-        leptos_graphql::GraphqlRequest::new(request.query, Some(request.variables));
+        rustok_graphql::GraphqlRequest::new(request.query, Some(request.variables));
 
     if let Some(sha256_hash) = request.persisted_query_sha256.as_deref() {
         graphql_request =
-            graphql_request.with_extensions(leptos_graphql::persisted_query_extension(sha256_hash));
+            graphql_request.with_extensions(rustok_graphql::persisted_query_extension(sha256_hash));
     }
 
-    leptos_graphql::execute(
+    rustok_graphql::execute(
         &get_graphql_url(),
         graphql_request,
         request.context.token,
@@ -106,7 +106,7 @@ async fn auth_graphql(request: ServerGraphqlRequest) -> Result<Value, ServerFnEr
 
 async fn execute_auth_graphql(
     request: ServerGraphqlRequest,
-) -> Result<Value, leptos_graphql::GraphqlHttpError> {
+) -> Result<Value, rustok_graphql::GraphqlHttpError> {
     #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
     {
         execute_server_graphql(request).await
@@ -117,15 +117,15 @@ async fn execute_auth_graphql(
         auth_graphql(request).await.map_err(|err| {
             let message = err.to_string();
             if message == "Unauthorized" {
-                leptos_graphql::GraphqlHttpError::Unauthorized
+                rustok_graphql::GraphqlHttpError::Unauthorized
             } else if message == "Network error" {
-                leptos_graphql::GraphqlHttpError::Network
+                rustok_graphql::GraphqlHttpError::Network
             } else if let Some(value) = message.strip_prefix("Http error: ") {
-                leptos_graphql::GraphqlHttpError::Http(value.to_string())
+                rustok_graphql::GraphqlHttpError::Http(value.to_string())
             } else if let Some(value) = message.strip_prefix("GraphQL error: ") {
-                leptos_graphql::GraphqlHttpError::Graphql(value.to_string())
+                rustok_graphql::GraphqlHttpError::Graphql(value.to_string())
             } else {
-                leptos_graphql::GraphqlHttpError::Graphql(message)
+                rustok_graphql::GraphqlHttpError::Graphql(message)
             }
         })
     }
@@ -136,7 +136,7 @@ pub async fn request<V, T>(
     variables: V,
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<T, leptos_graphql::GraphqlHttpError>
+) -> Result<T, rustok_graphql::GraphqlHttpError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
@@ -144,14 +144,14 @@ where
     let response = execute_auth_graphql(ServerGraphqlRequest {
         query: query.to_string(),
         variables: serde_json::to_value(variables)
-            .map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))?,
+            .map_err(|err| rustok_graphql::GraphqlHttpError::Graphql(err.to_string()))?,
         persisted_query_sha256: None,
         context: build_request_context(token, tenant_slug),
     })
     .await?;
 
     serde_json::from_value(response)
-        .map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))
+        .map_err(|err| rustok_graphql::GraphqlHttpError::Graphql(err.to_string()))
 }
 
 pub async fn request_with_persisted<V, T>(
@@ -160,7 +160,7 @@ pub async fn request_with_persisted<V, T>(
     sha256_hash: &str,
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<T, leptos_graphql::GraphqlHttpError>
+) -> Result<T, rustok_graphql::GraphqlHttpError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
@@ -168,14 +168,14 @@ where
     let response = execute_auth_graphql(ServerGraphqlRequest {
         query: query.to_string(),
         variables: serde_json::to_value(variables)
-            .map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))?,
+            .map_err(|err| rustok_graphql::GraphqlHttpError::Graphql(err.to_string()))?,
         persisted_query_sha256: Some(sha256_hash.to_string()),
         context: build_request_context(token, tenant_slug),
     })
     .await?;
 
     serde_json::from_value(response)
-        .map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))
+        .map_err(|err| rustok_graphql::GraphqlHttpError::Graphql(err.to_string()))
 }
 
 use crate::model::{GraphqlUserResponse, GraphqlUsersResponse, OAuthApp};

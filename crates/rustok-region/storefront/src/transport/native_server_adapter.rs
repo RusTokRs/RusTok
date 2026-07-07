@@ -73,10 +73,10 @@ async fn fetch_storefront_regions_server(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_region::RegionService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -90,7 +90,7 @@ async fn fetch_storefront_regions_server(
                 .map(|context| context.locale.as_str()),
             tenant.default_locale.as_str(),
         );
-        let regions = RegionService::new(app_ctx.db.clone())
+        let regions = RegionService::new(runtime_ctx.db_clone())
             .list_regions(
                 tenant.id,
                 Some(requested_locale.as_str()),

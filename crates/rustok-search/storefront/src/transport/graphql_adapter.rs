@@ -2,7 +2,7 @@ use crate::model::{
     SearchAttributeFilter, SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload,
     SearchSuggestion, TrackSearchClickPayload,
 };
-use leptos_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
 use super::{configured_tenant_slug, ApiError};

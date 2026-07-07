@@ -1,5 +1,5 @@
 use leptos::prelude::ServerFnError;
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::{Display, Formatter};
 

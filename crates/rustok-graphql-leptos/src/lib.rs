@@ -1,14 +1,24 @@
-// GraphQL Hooks для Leptos
-// Reactive hooks для удобной работы с GraphQL queries и mutations
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_api::UiRouteContext;
+pub use rustok_graphql::{
+    execute, persisted_query_extension, GraphqlError, GraphqlHttpError, GraphqlRequest,
+    GraphqlResponse, ACCEPT_LANGUAGE_HEADER, AUTH_HEADER, GRAPHQL_ENDPOINT, TENANT_HEADER,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
-use std::sync::Arc;
-
-use crate::{execute, GraphqlHttpError, GraphqlRequest};
 
 fn get_locale() -> Option<String> {
     use_context::<UiRouteContext>()
@@ -17,7 +27,6 @@ fn get_locale() -> Option<String> {
         .filter(|locale| !locale.is_empty())
 }
 
-/// Result структура для use_query hook
 #[derive(Clone)]
 pub struct QueryResult<T> {
     pub data: ReadSignal<Option<T>>,
@@ -28,33 +37,10 @@ pub struct QueryResult<T> {
 
 impl<T> QueryResult<T> {
     pub fn refetch(&self) {
-        self.refetch_trigger.update(|v| *v += 1);
+        self.refetch_trigger.update(|value| *value += 1);
     }
 }
 
-/// Hook для выполнения GraphQL query с reactive state
-///
-/// # Example
-/// ```rust,no_run
-/// use leptos::prelude::Get;
-/// use leptos_graphql::use_query;
-/// use serde_json::{json, Value};
-///
-/// const USERS_QUERY: &str = "query Users($limit: Int!) { users(limit: $limit) { id email } }";
-///
-/// let token = "demo-token".to_string();
-/// let tenant = "demo-tenant".to_string();
-///
-/// let result = use_query::<Value, Value>(
-///     "/api/graphql".to_string(),
-///     USERS_QUERY.to_string(),
-///     Some(json!({ "limit": 10 })),
-///     Some(token),
-///     Some(tenant),
-/// );
-///
-/// let _is_loading = result.loading.get();
-/// ```
 pub fn use_query<V, T>(
     endpoint: String,
     query: String,
@@ -72,7 +58,6 @@ where
     let (refetch_trigger, set_refetch_trigger) = signal(0u32);
 
     Effect::new(move |_| {
-        // Trigger refetch when refetch_trigger changes
         let _ = refetch_trigger.get();
 
         set_loading.set(true);
@@ -92,8 +77,8 @@ where
                     set_data.set(Some(response));
                     set_loading.set(false);
                 }
-                Err(err) => {
-                    set_error.set(Some(err));
+                Err(error) => {
+                    set_error.set(Some(error));
                     set_loading.set(false);
                 }
             }
@@ -108,7 +93,6 @@ where
     }
 }
 
-/// Result структура для use_mutation hook
 #[derive(Clone)]
 pub struct MutationResult<T> {
     pub data: ReadSignal<Option<T>>,
@@ -121,37 +105,10 @@ pub type LazyQueryFetchFn<V> = Box<dyn Fn(Option<V>) + Send + Sync>;
 
 impl<T> MutationResult<T> {
     pub fn mutate(&self, variables: Value) {
-        self.mutate_fn.with_value(|f| f(variables));
+        self.mutate_fn.with_value(|mutation| mutation(variables));
     }
 }
 
-/// Hook для выполнения GraphQL mutation
-///
-/// # Example
-/// ```rust,no_run
-/// use leptos_graphql::use_mutation;
-/// use serde_json::{json, Value};
-///
-/// const CREATE_USER_MUTATION: &str =
-///     "mutation CreateUser($input: CreateUserInput!) { createUser(input: $input) { id } }";
-///
-/// let token = "demo-token".to_string();
-/// let tenant = "demo-tenant".to_string();
-///
-/// let create_user = use_mutation::<Value>(
-///     "/api/graphql".to_string(),
-///     CREATE_USER_MUTATION.to_string(),
-///     Some(token),
-///     Some(tenant),
-/// );
-///
-/// create_user.mutate(json!({
-///     "input": {
-///         "email": "user@example.com",
-///         "name": "Demo User"
-///     }
-/// }));
-/// ```
 pub fn use_mutation<T>(
     endpoint: String,
     mutation: String,
@@ -182,8 +139,8 @@ where
                     set_data.set(Some(response));
                     set_loading.set(false);
                 }
-                Err(err) => {
-                    set_error.set(Some(err));
+                Err(error) => {
+                    set_error.set(Some(error));
                     set_loading.set(false);
                 }
             }
@@ -198,9 +155,6 @@ where
     }
 }
 
-/// Lazy query hook - query не выполняется автоматически
-///
-/// Используйте когда нужно выполнить query по клику или другому event
 pub fn use_lazy_query<V, T>(
     endpoint: String,
     query: String,
@@ -233,8 +187,8 @@ where
                     set_data.set(Some(response));
                     set_loading.set(false);
                 }
-                Err(err) => {
-                    set_error.set(Some(err));
+                Err(error) => {
+                    set_error.set(Some(error));
                     set_loading.set(false);
                 }
             }
@@ -249,20 +203,4 @@ where
     };
 
     (result, fetch)
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_query_result_creation() {
-        // Test that QueryResult can be created
-        // (actual functionality requires runtime context)
-    }
-
-    #[test]
-    fn test_mutation_result_creation() {
-        // Test that MutationResult can be created
-        // (actual functionality requires runtime context)
-    }
 }

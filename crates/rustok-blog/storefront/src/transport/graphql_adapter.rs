@@ -1,6 +1,6 @@
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::{BlogPostDetail, BlogPostList, StorefrontBlogData};
-use leptos_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
 use super::{configured_tenant_slug, ApiError};

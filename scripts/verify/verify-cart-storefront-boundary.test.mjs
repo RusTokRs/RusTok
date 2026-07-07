@@ -69,7 +69,7 @@ ${options.rawApiTransport ? "use crate::api;" : ""}
 `);
   writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs", "pub async fn fetch_storefront_cart_graphql() {}\n");
   writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs", `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 use crate::model::StorefrontCartShippingOption;
 const STOREFRONT_CART_QUERY: &str = "availableShippingOptions { id name currencyCode amount providerId active }";
 #[server(prefix = "/api/fn", endpoint = "cart/storefront-data")]

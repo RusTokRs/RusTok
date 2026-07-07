@@ -98,7 +98,7 @@ rustok-api = { workspace = true, default-features = false }
 
 function graphqlAdapterSource({ includeServerEndpoint = false } = {}) {
   return `
-use leptos_graphql::execute as execute_graphql;
+use rustok_graphql::execute as execute_graphql;
 pub async fn fetch_workflows() {}
 pub async fn fetch_templates() {}
 pub async fn create_from_template() {}

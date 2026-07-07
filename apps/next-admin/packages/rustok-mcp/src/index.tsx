@@ -2,13 +2,20 @@
 
 import React from 'react';
 
-import { graphqlRequest as sharedGraphqlRequest } from '../../../src/shared/api/graphql';
-
 export type McpAdminPageProps = {
+  graphql: AdminGraphqlExecutor;
   token?: string | null;
   tenantSlug?: string | null;
   graphqlUrl?: string;
 };
+
+export type AdminGraphqlExecutor = <V, T>(
+  query: string,
+  variables?: V,
+  token?: string | null,
+  tenantSlug?: string | null,
+  options?: { graphqlUrl?: string; tenantId?: string | null }
+) => Promise<T>;
 
 type McpScaffoldDraft = {
   id: string;
@@ -237,7 +244,7 @@ async function gql<TData, TVars = Record<string, never>>(
   variables: TVars,
   props: McpAdminPageProps
 ): Promise<TData> {
-  return sharedGraphqlRequest<TVars, TData>(
+  return props.graphql<TVars, TData>(
     query,
     variables,
     props.token,

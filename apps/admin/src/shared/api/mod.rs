@@ -7,12 +7,12 @@ use leptos::prelude::*;
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
     feature = "ssr"
 )))]
-use leptos_graphql::GraphqlHttpError;
+use rustok_graphql::GraphqlHttpError;
 #[cfg(any(
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
     feature = "ssr"
 ))]
-use leptos_graphql::{
+use rustok_graphql::{
     execute as execute_graphql, persisted_query_extension, GraphqlHttpError, GraphqlRequest,
 };
 use serde::{Deserialize, Serialize};
@@ -193,7 +193,7 @@ mod map_server_fn_error_tests {
         combine_native_and_graphql_error, map_server_fn_error, normalize_server_fn_error_message,
     };
     use leptos::prelude::ServerFnError;
-    use leptos_graphql::GraphqlHttpError;
+    use rustok_graphql::GraphqlHttpError;
 
     #[test]
     fn maps_well_known_transport_errors() {

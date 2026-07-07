@@ -34,7 +34,7 @@ admin/                            (or storefront/)
     ├── i18n.rs                   ← written manually using rustok-ui-i18n helpers
     ├── transport/
     │   ├── mod.rs                ← public facade; only entry point for ui/leptos.rs
-    │   └── graphql_adapter.rs    ← mandatory for dual-path/headless parity; uses leptos-graphql
+    │   └── graphql_adapter.rs    ← mandatory for dual-path/headless parity; uses rustok-graphql
     │  (└── native_server_adapter.rs)  ← #[server] path for SSR/hydrate profiles
     └── ui/
         ├── mod.rs
@@ -55,8 +55,8 @@ leptos-ui-routing.workspace = true
 serde.workspace = true
 ```
 
-Declare `leptos-graphql.workspace = true` only when the package has a GraphQL adapter.
-Documented native-only operator/bootstrap exceptions do not need `leptos-graphql`.
+Declare `rustok-graphql.workspace = true` only when the package has a GraphQL adapter.
+Documented native-only operator/bootstrap exceptions do not need `rustok-graphql`.
 
 **Why?** In Rust workspace:
 - `workspace = true` means "use version from root Cargo.toml"
@@ -215,14 +215,14 @@ pub async fn fetch_posts(req: PostListRequest) -> Result<PostListResponse, Trans
   operator/bootstrap exceptions do not need this file until a GraphQL/REST contract exists.
 - Never remove an existing GraphQL adapter just because a native path was added.
 - Active in CSR/Trunk debug profile and used by Next.js/mobile/headless hosts.
-- Currently uses `leptos-graphql` crate (Leptos-specific wrapper). **Future FFA evolution:** when Dioxus migration happens, a framework-agnostic GraphQL client will be introduced, and this adapter will switch to it while keeping the same facade contract in `transport/mod.rs`.
+- `transport/graphql_adapter.rs` uses `rustok-graphql`, the framework-agnostic GraphQL HTTP client. Leptos hooks, if needed, belong in `rustok-graphql-leptos`; transport adapters should not depend on Leptos hooks.
 - Never write raw HTTP calls — always use the platform-provided GraphQL client.
 - May call `core::*` helpers (e.g. `core::optional_text`) for input normalisation before
   building the GraphQL variables. This is allowed because `core` is framework-agnostic and
   has no Leptos dependency.
 
 ```rust
-use leptos_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use crate::core;
 use crate::model::PostList;
 
@@ -291,7 +291,6 @@ pub fn BlogAdmin() -> impl IntoView {
 |---|---|---|
 | `leptos-ui` | `Button`, `Input`, `Badge`, `Alert`, `Card`, `CardHeader`, `CardContent`, `CardFooter`, `Label`, `Separator`, `Spinner`, `Checkbox`, `Switch`, `Textarea`, `Select`, `LanguageToggle` | Always — check before writing any primitive component |
 | `leptos-ui-routing` | `UiRouteContext`, `module_route_base()`, `query_value()`, `UiRouteQueryUpdate` | All route/query state; never invent a local helper |
-| `leptos-graphql` | GraphQL client for Leptos (Leptos-specific wrapper) | Current `graphql_adapter.rs` files; documented native-only exceptions do not need it |
 | `leptos-auth` | Auth hooks and session context | Auth-gated operations |
 | `leptos-forms` | Form state management | Multi-field forms |
 | `leptos-hook-form` | Hook-form validation pattern | Complex validation flows |
@@ -305,6 +304,8 @@ pub fn BlogAdmin() -> impl IntoView {
 | Crate | What it provides |
 |---|---|
 | `rustok-api` | **Core helpers:** `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate` (use in `core.rs`). It does not own or re-export UI i18n helpers. |
+| `rustok-graphql` | **GraphQL core client:** `GraphqlRequest`, `GraphqlHttpError`, `execute`, `persisted_query_extension` (use in `graphql_adapter.rs`) |
+| `rustok-graphql-leptos` | **Leptos GraphQL hooks:** `use_query`, `use_mutation`, `use_lazy_query` for Leptos UI code that needs reactive GraphQL hooks |
 | `rustok-ui-i18n` | **i18n core:** `UiMessageCatalog`, `UiTranslator`, catalog parsing and fallback resolution. Do not import it through `rustok-api`. |
 | `rustok-ui-i18n-leptos` | **Leptos i18n adapter:** `LeptosUiMessages` for module-owned Leptos `i18n.rs` files. |
 | `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
@@ -330,7 +331,8 @@ Cross-framework component API (props, variants, CSS variables):
 |---|---|---|
 | UI primitives (buttons, inputs, cards) | `crates/leptos-ui/` | `Button`, `Input`, `Card` |
 | Routing/query helpers | `crates/leptos-ui-routing/` | `UiRouteContext`, `module_route_base()` |
-| GraphQL transport client | `crates/leptos-graphql/` (now)<br>`crates/rustok-graphql/` (FFA future) | GraphQL execution wrapper |
+| Framework-agnostic GraphQL transport client | `crates/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
+| Leptos GraphQL hooks adapter | `crates/rustok-graphql-leptos/` | Reactive Leptos query/mutation hooks |
 | Auth/session hooks | `crates/leptos-auth/` | Auth state, session context |
 | Form state management | `crates/leptos-forms/` | Multi-field form state |
 | Table/pagination UI | `crates/leptos-table/` | Reusable table component |
@@ -369,7 +371,7 @@ When creating a new shared library, decide upfront:
 **Framework-agnostic (FFA-compatible, permanent):**
 - Name: `crates/rustok-<name>/` or `crates/<name>/` (if truly generic)
 - **NO** `leptos::*` or `dioxus::*` imports
-- Example: `rustok-api`, `rustok-ui-i18n`, future `rustok-graphql`
+- Example: `rustok-api`, `rustok-ui-i18n`, `rustok-graphql`
 - Works with both Leptos and Dioxus UI adapters
 
 ### Current extraction opportunities (examples)
@@ -379,7 +381,7 @@ If you see these patterns duplicated across modules, extract them:
 - **Locale negotiation helpers** → Already in `rustok-api::locale`
 - **Route query parsing** → Already in `rustok-api::ui` (`UiRouteQueryUpdate`)
 - **i18n message resolution** → Already in `rustok-ui-i18n` (`build_ui_message_catalog`)
-- **GraphQL error mapping** → Currently in `leptos-graphql` (Leptos-specific; needs FFA version)
+- **GraphQL error mapping** → Already in `rustok-graphql`
 - **Form validation patterns** → Extract to `leptos-forms` or framework-agnostic `rustok-forms`
 - **Table pagination logic** → Already in `leptos-table`
 - **Selection state URL sync** → Already in `leptos-ui-routing`
@@ -521,7 +523,7 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 | Removing `graphql_adapter.rs` after adding native path without documenting an approved native-only exception | Breaks Next.js/mobile/debug |
 | `use_cookie("lang")` or local `Accept-Language` parsing | Violates platform i18n contract |
 | `auto_select_first` as selection source of truth | Causes stale state bugs |
-| Raw HTTP client instead of platform GraphQL client | Unmanaged transport; bypasses platform patterns (use `leptos-graphql` now, framework-agnostic client in future) |
+| Raw HTTP client instead of platform GraphQL client | Unmanaged transport; bypasses platform patterns (use `rustok-graphql`) |
 | Writing `leptos-table`/`leptos-ui` primitives locally | Duplicates internal libraries |
 | Domain business UI placed inside `apps/admin/src/` | Host becomes domain owner |
 | Duplicating code across 2+ modules | Violates DRY; extract to shared library instead (see extraction decision matrix above) |

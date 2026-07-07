@@ -104,25 +104,20 @@ Rules that keep a package Dioxus-ready:
 When Dioxus is introduced, a new `ui/dioxus.rs` is added alongside `ui/leptos.rs`. The
 Leptos adapter is not deleted — both coexist until the host migration is complete.
 
-### FFA Evolution: Framework-Agnostic GraphQL Client
+### FFA GraphQL Client Boundary
 
-Currently, `transport/graphql_adapter.rs` uses `leptos-graphql` (Leptos-specific wrapper).
-**During Dioxus migration**, a framework-agnostic GraphQL client will be introduced:
+`transport/graphql_adapter.rs` uses `rustok-graphql`, the framework-agnostic GraphQL HTTP client.
+Leptos-specific reactive hooks live in `rustok-graphql-leptos` and must not be imported
+from transport/core code.
 
-- `transport/graphql_adapter.rs` will switch from `leptos-graphql` to the new client
-- The facade in `transport/mod.rs` stays unchanged — UI adapters don't notice the change
-- Both Leptos and Dioxus UI adapters will use the same GraphQL adapter underneath
-- This is the **essence of FFA**: transport is a replaceable infrastructure detail
+When Dioxus is introduced, add a sibling Dioxus hooks adapter if reactive GraphQL hooks are
+needed. The module transport facade remains unchanged because GraphQL request execution is
+already framework-neutral.
 
-**Current state (Leptos-only):**
+**Current target state:**
 ```
-ui/leptos.rs → transport/mod.rs → graphql_adapter (leptos-graphql) → /api/graphql
-```
-
-**Future state (Leptos + Dioxus):**
-```
-ui/leptos.rs   → transport/mod.rs → graphql_adapter (framework-agnostic) → /api/graphql
-ui/dioxus.rs   → transport/mod.rs → graphql_adapter (framework-agnostic) → /api/graphql
+ui/leptos.rs -> transport/mod.rs -> graphql_adapter (rustok-graphql) -> /api/graphql
+ui/dioxus.rs -> transport/mod.rs -> graphql_adapter (rustok-graphql) -> /api/graphql
 ```
 
 Migration plan: [`docs/research/dioxus-ffa-ui-migration-plan.md`](../research/dioxus-ffa-ui-migration-plan.md)

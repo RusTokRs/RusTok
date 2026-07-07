@@ -24,7 +24,7 @@ function fixture(options = {}) {
   put(root, "crates/rustok-commerce/admin/src/transport/shipping_profile.rs", "use super::raw_adapter::{self, ApiError};\npub async fn fetch_bootstrap() -> Result<(), ApiError> { raw_adapter::fetch_bootstrap().await }\n");
   put(root, "crates/rustok-commerce/admin/src/transport/promotion.rs", "use super::raw_adapter::{self, ApiError};\npub async fn preview_cart_promotion() -> Result<(), ApiError> { raw_adapter::fetch_bootstrap().await }\n");
   put(root, "crates/rustok-commerce/admin/src/transport/order_change.rs", "use super::raw_adapter::{self, ApiError};\npub async fn fetch_order_changes() -> Result<(), ApiError> { raw_adapter::fetch_bootstrap().await }\n");
-  put(root, "crates/rustok-commerce/admin/src/transport/raw_adapter.rs", "use leptos_graphql::GraphqlRequest;\npub enum ApiError { ServerFn(String) }\n#[server]\npub async fn fetch_bootstrap() -> Result<(), ApiError> { Ok(()) }\n");
+  put(root, "crates/rustok-commerce/admin/src/transport/raw_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub enum ApiError { ServerFn(String) }\n#[server]\npub async fn fetch_bootstrap() -> Result<(), ApiError> { Ok(()) }\n");
   put(root, "crates/rustok-commerce/src/lib.rs", "pub mod graphql;\npub mod state_machine;\n");
   if (options.legacyApi) put(root, "crates/rustok-commerce/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");
   put(root, "crates/rustok-commerce/docs/implementation-plan.md", "verify-commerce-admin-boundary.mjs admin/src/transport/raw_adapter.rs root GraphQL and state-machine aliases");

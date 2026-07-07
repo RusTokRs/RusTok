@@ -3,7 +3,7 @@ mod native_server_adapter;
 mod rest_adapter;
 
 use leptos::prelude::ServerFnError;
-use leptos_graphql::GraphqlHttpError;
+use rustok_graphql::GraphqlHttpError;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 

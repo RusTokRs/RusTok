@@ -71,6 +71,8 @@ Rules mandatory for all automated agents operating in this repository:
     - UI primitives → `crates/leptos-ui/`
     - Routing/query helpers → `crates/leptos-ui-routing/`
     - Framework-agnostic UI i18n → `crates/rustok-ui-i18n/`
+    - Framework-agnostic GraphQL client → `crates/rustok-graphql/`
+    - Leptos GraphQL hooks adapter → `crates/rustok-graphql-leptos/`
     - Framework-agnostic contracts → `crates/rustok-api/`
     - Domain-specific cross-module UI → `crates/rustok-<capability>-<surface>-support/`
     - Before writing reusable code, check existing libraries in `crates/leptos-*` and `crates/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.

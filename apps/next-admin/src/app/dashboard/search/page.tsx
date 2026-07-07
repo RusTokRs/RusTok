@@ -2,18 +2,20 @@ import { Suspense } from 'react';
 import { getLocale } from 'next-intl/server';
 
 import { auth } from '@/auth';
+import { graphqlRequest } from '@/shared/api/graphql';
+import { SearchAdminClient } from '@/modules/search-admin-client';
 import { PageContainer } from '@/widgets/app-shell';
 import {
   listCatalogAttributeSearchOptions,
   listCatalogCategorySearchOptions
 } from '../../../../packages/rustok-product/src';
-import { SearchAdminPage } from '../../../../packages/search/src';
 
 export const metadata = {
   title: 'Dashboard: Search'
 };
 
 async function loadCatalogSearchOptions(opts: {
+  graphql: typeof graphqlRequest;
   token: string | null;
   tenantSlug: string | null;
   tenantId: string | null;
@@ -47,6 +49,7 @@ export default async function Page({ searchParams }: PageProps) {
   const tenantId = session?.user?.tenantId ?? null;
   const locale = await getLocale();
   const { categoryOptions, attributeOptions } = await loadCatalogSearchOptions({
+    graphql: graphqlRequest,
     token,
     tenantSlug,
     tenantId,
@@ -63,7 +66,7 @@ export default async function Page({ searchParams }: PageProps) {
       pageDescription='Inspect search diagnostics, queue rebuilds, and run PostgreSQL FTS previews'
     >
       <Suspense fallback={<div>Loading search control plane...</div>}>
-        <SearchAdminPage
+        <SearchAdminClient
           token={token}
           tenantSlug={tenantSlug}
           initialQuery={initialQuery}

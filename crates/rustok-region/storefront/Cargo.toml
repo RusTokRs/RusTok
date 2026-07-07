@@ -11,7 +11,6 @@ hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
-  "dep:loco-rs",
   "dep:rustok-region",
   "rustok-api/server",
 ]
@@ -19,9 +18,8 @@ ssr = [
 [dependencies]
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
-leptos-graphql.workspace = true
+rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
-loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n-leptos.workspace = true
 rustok-region = { workspace = true, optional = true }

@@ -26,7 +26,7 @@ Leptos storefront UI package for the `rustok-region` module.
 ## Interactions
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
-- Uses `RegionService` directly on the SSR path and falls back to the existing `storefrontRegions` GraphQL contract when native transport is unavailable.
+- Uses `RegionService` directly on the SSR path through `HostRuntimeContext` and falls back to the existing `storefrontRegions` GraphQL contract when native transport is unavailable.
 - Reads the effective locale from `UiRouteContext.locale`; route/query semantics remain core-owned via `SELECTED_REGION_QUERY_KEY` and `RegionRouteState`, while the Leptos adapter only supplies `UiRouteContext::module_route_base()` for host path wiring.
 
 ## Documentation

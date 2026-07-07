@@ -15,6 +15,7 @@ const files = {
   transport: "crates/rustok-region/storefront/src/transport/mod.rs",
   native: "crates/rustok-region/storefront/src/transport/native_server_adapter.rs",
   graphql: "crates/rustok-region/storefront/src/transport/graphql_adapter.rs",
+  cargo: "crates/rustok-region/storefront/Cargo.toml",
   plan: "crates/rustok-region/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   package: "package.json",
@@ -63,6 +64,10 @@ if (source.transport.indexOf("native_server_adapter::fetch_regions") > source.tr
   failures.push(`${files.transport}: fallback order must remain native then GraphQL`);
 }
 has("native", "fetch_storefront_regions_server", `${files.native}: missing native endpoint call`);
+has("native", "HostRuntimeContext", `${files.native}: native adapter must consume neutral host runtime context`);
+has("native", "runtime_ctx.db_clone()", `${files.native}: native adapter must build service from neutral DB handle`);
+lacks("native", "loco_rs", `${files.native}: native adapter must not depend on Loco runtime context`);
+lacks("cargo", "loco-rs", `${files.cargo}: storefront crate must not depend on Loco`);
 has("graphql", "fetch_storefront_regions_graphql", `${files.graphql}: missing GraphQL endpoint call`);
 has("plan", "verify-region-storefront-boundary.mjs", `${files.plan}: missing storefront guardrail evidence`);
 has("registry", "verify-region-storefront-boundary.mjs", `${files.registry}: missing storefront guardrail evidence`);

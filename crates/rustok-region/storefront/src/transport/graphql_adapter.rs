@@ -1,4 +1,4 @@
-use leptos_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
 use crate::core::resolve_storefront_regions;

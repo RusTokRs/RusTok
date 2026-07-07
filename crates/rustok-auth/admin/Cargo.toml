@@ -42,7 +42,7 @@ leptos_router.workspace = true
 leptos-ui.workspace = true
 leptos-hook-form.workspace = true
 leptos-use.workspace = true
-leptos-graphql.workspace = true
+rustok-graphql.workspace = true
 gloo-storage = { workspace = true }
 reqwest = { workspace = true, optional = true }
 serde_urlencoded.workspace = true

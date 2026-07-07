@@ -4,7 +4,7 @@
 >
 > **Module UI Package Guides (for `crates/rustok-*/storefront` packages):**
 > - [Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture), `core/transport/ui` split, dual-path model
-> - [Implementation Guide](../../../docs/UI/module-package-implementation.md) — **internal libraries** (`leptos-ui`, `leptos-ui-routing`, `leptos-graphql`, etc.), **i18n rules**, file structure, forbidden patterns
+> - [Implementation Guide](../../../docs/UI/module-package-implementation.md) — **internal libraries** (`leptos-ui`, `leptos-ui-routing`, `rustok-graphql`, etc.), **i18n rules**, file structure, forbidden patterns
 > - [Verification Guide](../../../docs/UI/module-package-verification.md) — verification commands, common errors
 >
 > **FSD Architecture:** This host follows **Feature-Sliced Design** layers: `app`, `widgets`, `features`, `shared`. Module storefront UI must NOT be placed in `apps/storefront/src/` — it belongs in owner module packages.

@@ -143,7 +143,7 @@ function classifySurface(moduleRoot, surface) {
   const source = files.map((filePath) => readFileSync(filePath, "utf8")).join("\n");
 
   const native = relativeFiles.some((filePath) => filePath.includes("/native_server_adapter.rs") || filePath.endsWith("/native.rs")) || /#\[server|\/api\/fn|ServerFn/.test(source);
-  const graphql = relativeFiles.some((filePath) => filePath.includes("/graphql_adapter.rs")) || /leptos_graphql|GraphqlRequest|GraphQL|graphql|\/api\/graphql|RUSTOK_GRAPHQL_URL/.test(source);
+  const graphql = relativeFiles.some((filePath) => filePath.includes("/graphql_adapter.rs")) || /rustok_graphql|GraphqlRequest|GraphQL|graphql|\/api\/graphql|RUSTOK_GRAPHQL_URL/.test(source);
   const rest = relativeFiles.some((filePath) => filePath.includes("/rest_adapter.rs")) || /reqwest::|Method::(GET|POST|PUT|DELETE|PATCH)|RUSTOK_API_URL/.test(source);
   const ownerFragment = !native && !graphql && !rest;
 

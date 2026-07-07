@@ -4,7 +4,7 @@ pub mod native_server_adapter;
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::StorefrontBlogData;
 use leptos::prelude::ServerFnError;
-use leptos_graphql::GraphqlHttpError;
+use rustok_graphql::GraphqlHttpError;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 

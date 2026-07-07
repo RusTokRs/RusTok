@@ -12,14 +12,21 @@
 
 import React from 'react';
 
-import { graphqlRequest as sharedGraphqlRequest } from '../../../src/shared/api/graphql';
-
 type AiAdminPageProps = {
+  graphql: AdminGraphqlExecutor;
   token?: string | null;
   tenantSlug?: string | null;
   graphqlUrl?: string;
   section?: 'overview' | 'diagnostics';
 };
+
+type AdminGraphqlExecutor = <V, T>(
+  query: string,
+  variables?: V,
+  token?: string | null,
+  tenantSlug?: string | null,
+  options?: { graphqlUrl?: string; tenantId?: string | null }
+) => Promise<T>;
 
 type Provider = {
   id: string;
@@ -402,7 +409,7 @@ async function gql<TData, TVars = Record<string, never>>(
   variables: TVars,
   props: AiAdminPageProps
 ): Promise<TData> {
-  return sharedGraphqlRequest<TVars, TData>(
+  return props.graphql<TVars, TData>(
     query,
     variables,
     props.token,
@@ -556,7 +563,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
     sourceDescription: '',
     imageUrls: '',
     copyInstructions:
-      'Сформируй только подтверждаемые атрибуты и пометь неподтверждаемые как not_specified.',
+      'РЎС„РѕСЂРјРёСЂСѓР№ С‚РѕР»СЊРєРѕ РїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ Р°С‚СЂРёР±СѓС‚С‹ Рё РїРѕРјРµС‚СЊ РЅРµРїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ РєР°Рє not_specified.',
     assistantPrompt: ''
   });
   const [blogForm, setBlogForm] = React.useState({
@@ -1382,8 +1389,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     >
                       <div className='font-medium'>{provider.displayName}</div>
                       <div className='text-muted-foreground'>
-                        {provider.providerKind} · {provider.model} ·{' '}
-                        {provider.capabilities.length} capabilities ·{' '}
+                        {provider.providerKind} В· {provider.model} В·{' '}
+                        {provider.capabilities.length} capabilities В·{' '}
                         {provider.isActive ? 'active' : 'inactive'}
                       </div>
                     </button>
@@ -1564,8 +1571,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     >
                       <div className='font-medium'>{profile.displayName}</div>
                       <div className='text-muted-foreground'>
-                        allowed: {profile.allowedTools.length} · sensitive:{' '}
-                        {profile.sensitiveTools.length} ·{' '}
+                        allowed: {profile.allowedTools.length} В· sensitive:{' '}
+                        {profile.sensitiveTools.length} В·{' '}
                         {profile.isActive ? 'active' : 'inactive'}
                       </div>
                     </button>
@@ -1799,8 +1806,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     >
                       <div className='font-medium'>{profile.displayName}</div>
                       <div className='text-muted-foreground'>
-                        {profile.targetCapability} ·{' '}
-                        {profile.defaultExecutionMode} ·{' '}
+                        {profile.targetCapability} В·{' '}
+                        {profile.defaultExecutionMode} В·{' '}
                         {profile.isActive ? 'active' : 'inactive'}
                       </div>
                     </button>
@@ -1900,18 +1907,18 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       className='border-border rounded-lg border px-3 py-2'
                     >
                       <div className='text-foreground font-medium'>
-                        {run.sessionTitle} · {run.status} · {run.durationMs} ms
+                        {run.sessionTitle} В· {run.status} В· {run.durationMs} ms
                       </div>
                       <div>
-                        {run.providerDisplayName} ·{' '}
-                        {run.executionTarget ?? run.executionPath} ·{' '}
+                        {run.providerDisplayName} В·{' '}
+                        {run.executionTarget ?? run.executionPath} В·{' '}
                         {run.requestedLocale ?? 'auto'} -&gt;{' '}
                         {run.resolvedLocale}
                       </div>
                       <div className='text-muted-foreground text-xs'>
                         {new Date(run.startedAt).toLocaleString()}
                         {run.taskProfileSlug
-                          ? ` · task ${run.taskProfileSlug}`
+                          ? ` В· task ${run.taskProfileSlug}`
                           : ''}
                       </div>
                       {run.errorMessage ? (
@@ -2135,7 +2142,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     disabled={isSubmittingDirectJob}
                   >
                     {activeDirectSubmit === 'blog_draft'
-                      ? 'Submitting…'
+                      ? 'SubmittingвЂ¦'
                       : 'Generate blog draft'}
                   </button>
                 </form>
@@ -2333,7 +2340,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     disabled={isSubmittingDirectJob}
                   >
                     {activeDirectSubmit === 'product_copy'
-                      ? 'Submitting…'
+                      ? 'SubmittingвЂ¦'
                       : 'Generate product copy'}
                   </button>
                 </form>
@@ -2553,7 +2560,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     Parsed image URLs:{' '}
                     {productAttributesParsedImageUrls.urls.length}
                     {hasProductAttributesInvalidImageUrls
-                      ? ` · Invalid entries: ${productAttributesParsedImageUrls.invalid.length}`
+                      ? ` В· Invalid entries: ${productAttributesParsedImageUrls.invalid.length}`
                       : ''}
                   </p>
                   <div className='flex flex-wrap gap-2'>
@@ -2663,12 +2670,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                             : 'text-amber-700'
                         }
                       >
-                        {item.status === 'pass' ? '✓' : '•'} {item.message}
+                        {item.status === 'pass' ? 'вњ“' : 'вЂў'} {item.message}
                       </li>
                     ))}
                     {hasProductAttributesReadyState ? (
                       <li className='text-emerald-700'>
-                        ✓ Form is ready to generate product attributes.
+                        вњ“ Form is ready to generate product attributes.
                       </li>
                     ) : null}
                   </ul>
@@ -2681,7 +2688,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     }
                   >
                     {isSubmittingProductAttributes
-                      ? 'Generating…'
+                      ? 'GeneratingвЂ¦'
                       : 'Generate product attributes'}
                   </button>
                 </form>
@@ -2849,7 +2856,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     disabled={isSubmittingDirectJob}
                   >
                     {activeDirectSubmit === 'image_asset'
-                      ? 'Submitting…'
+                      ? 'SubmittingвЂ¦'
                       : 'Generate media image'}
                   </button>
                 </form>
@@ -3002,7 +3009,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     disabled={isSubmittingDirectJob}
                   >
                     {activeDirectSubmit === 'alloy_code'
-                      ? 'Submitting…'
+                      ? 'SubmittingвЂ¦'
                       : 'Run Alloy job'}
                   </button>
                 </form>
@@ -3100,7 +3107,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     disabled={isSubmittingDirectJob}
                   >
                     {activeDirectSubmit === 'new_session'
-                      ? 'Submitting…'
+                      ? 'SubmittingвЂ¦'
                       : 'Start session'}
                   </button>
                 </form>
@@ -3118,8 +3125,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   >
                     <div className='font-medium'>{session.title}</div>
                     <div className='text-muted-foreground'>
-                      status: {session.status} · mode: {session.executionMode} ·
-                      latest: {session.latestRunStatus ?? 'idle'} · approvals:{' '}
+                      status: {session.status} В· mode: {session.executionMode} В·
+                      latest: {session.latestRunStatus ?? 'idle'} В· approvals:{' '}
                       {session.pendingApprovals}
                     </div>
                   </button>
@@ -3138,8 +3145,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     {detail.session.resolvedLocale}
                   </div>
                   <div className='text-muted-foreground'>
-                    provider: {detail.providerProfile.displayName} · model:{' '}
-                    {detail.providerProfile.model} · mode:{' '}
+                    provider: {detail.providerProfile.displayName} В· model:{' '}
+                    {detail.providerProfile.model} В· mode:{' '}
                     {detail.session.executionMode}
                   </div>
                 </div>
@@ -3165,12 +3172,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         Live stream
                       </div>
                       <div className='text-muted-foreground text-xs'>
-                        {liveStream.connected ? 'connected' : 'disconnected'} ·{' '}
+                        {liveStream.connected ? 'connected' : 'disconnected'} В·{' '}
                         {liveStream.status}
                       </div>
                     </div>
                     <div className='text-foreground mt-3 whitespace-pre-wrap'>
-                      {liveStream.content || 'Waiting for assistant output…'}
+                      {liveStream.content || 'Waiting for assistant outputвЂ¦'}
                     </div>
                     {liveStream.errorMessage ? (
                       <div className='mt-2 text-rose-600'>
@@ -3189,7 +3196,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           className='border-border rounded-lg border px-3 py-2'
                         >
                           <div className='font-medium'>
-                            {event.eventKind} · {event.runId}
+                            {event.eventKind} В· {event.runId}
                           </div>
                           <div className='text-muted-foreground'>
                             {new Date(event.createdAt).toLocaleString()}
@@ -3330,7 +3337,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         {run.resolvedLocale}
                       </div>
                       <div className='text-muted-foreground'>
-                        {run.status} · {run.executionMode} · path{' '}
+                        {run.status} В· {run.executionMode} В· path{' '}
                         {run.executionPath}
                       </div>
                       {run.errorMessage ? (
@@ -3351,7 +3358,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     >
                       <div className='font-medium'>{trace.toolName}</div>
                       <div className='text-muted-foreground'>
-                        {trace.status} · {trace.durationMs} ms
+                        {trace.status} В· {trace.durationMs} ms
                       </div>
                     </div>
                   ))}

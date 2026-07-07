@@ -12,9 +12,8 @@
 
 import React from 'react';
 
-import { storefrontGraphql } from '../../../src/shared/lib/graphql';
-
 export type SearchStorefrontPageProps = {
+  graphql: StorefrontGraphqlExecutor;
   token?: string | null;
   tenantSlug?: string | null;
   graphqlUrl?: string;
@@ -23,6 +22,23 @@ export type SearchStorefrontPageProps = {
   initialFilters?: Partial<SearchCatalogFilters>;
   categoryOptions?: SearchCatalogFilterOption[];
   attributeOptions?: SearchCatalogFilterOption[];
+};
+
+export type StorefrontGraphqlExecutor = <T, V = Record<string, unknown>>(
+  options: StorefrontGraphqlOptions<V>,
+) => Promise<StorefrontGraphqlResponse<T>>;
+
+export type StorefrontGraphqlOptions<V> = {
+  query: string;
+  variables?: V;
+  token?: string;
+  tenant?: string;
+  baseUrl?: string;
+};
+
+export type StorefrontGraphqlResponse<T> = {
+  data?: T;
+  errors?: Array<{ message: string }>;
 };
 
 export type SearchCatalogFilterOption = {
@@ -167,7 +183,7 @@ async function fetchStorefrontSearch(
 ): Promise<SearchPreviewPayload> {
   const categoryIds = parseCsv(filters.categoryIds);
   const attributeValues = parseCsv(filters.attributeValues);
-  const response = await storefrontGraphql<StorefrontSearchResponse, { input: Record<string, unknown> }>({
+  const response = await props.graphql<StorefrontSearchResponse, { input: Record<string, unknown> }>({
     query: STOREFRONT_SEARCH_QUERY,
     variables: {
       input: {
@@ -208,7 +224,7 @@ async function fetchStorefrontSearch(
 async function fetchStorefrontFilterPresets(
   props: SearchStorefrontPageProps,
 ): Promise<SearchFilterPreset[]> {
-  const response = await storefrontGraphql<StorefrontFilterPresetsResponse>({
+  const response = await props.graphql<StorefrontFilterPresetsResponse>({
     query: STOREFRONT_FILTER_PRESETS_QUERY,
     token: props.token ?? undefined,
     tenant: props.tenantSlug ?? undefined,
@@ -222,7 +238,7 @@ async function fetchStorefrontSuggestions(
   query: string,
   props: SearchStorefrontPageProps,
 ): Promise<SearchSuggestion[]> {
-  const response = await storefrontGraphql<
+  const response = await props.graphql<
     StorefrontSuggestionsResponse,
     { input: Record<string, unknown> }
   >({
@@ -394,7 +410,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <strong>Filter presets</strong>
             <span style={{ fontSize: 12, color: '#71717a' }}>
-              {isLoadingPresets ? 'loading…' : 'surface defaults'}
+              {isLoadingPresets ? 'loadingвЂ¦' : 'surface defaults'}
             </span>
           </div>
           {presetsError ? (
@@ -493,7 +509,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <strong>Suggestions</strong>
             <span style={{ fontSize: 12, color: '#71717a' }}>
-              {isLoadingSuggestions ? 'loading…' : 'autocomplete'}
+              {isLoadingSuggestions ? 'loadingвЂ¦' : 'autocomplete'}
             </span>
           </div>
           {suggestionsError ? (
@@ -527,7 +543,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
                   <div style={{ fontWeight: 600 }}>{suggestion.text}</div>
                   <div style={{ marginTop: 4, fontSize: 12, color: '#71717a' }}>
                     {suggestion.kind}
-                    {suggestion.locale ? ` • ${suggestion.locale}` : ''}
+                    {suggestion.locale ? ` вЂў ${suggestion.locale}` : ''}
                   </div>
                 </button>
               ))}
@@ -541,7 +557,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
           <strong>Results</strong>
           <span style={{ fontSize: 12, color: '#71717a' }}>
             {isLoadingResults
-              ? 'loading…'
+              ? 'loadingвЂ¦'
               : results
                 ? `${results.total} hits via ${results.engine} (${results.rankingProfile})`
                 : 'idle'}
@@ -557,7 +573,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
           <div style={{ marginTop: 16, display: 'grid', gap: 14 }}>
             <div style={{ color: '#52525b' }}>
               {results.total} results in {results.tookMs} ms
-              {results.presetKey ? ` • preset ${results.presetKey}` : ''}
+              {results.presetKey ? ` вЂў preset ${results.presetKey}` : ''}
             </div>
             {results.facets.length ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -579,7 +595,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
                 style={{ border: '1px solid #e4e4e7', borderRadius: 18, padding: 16 }}
               >
                 <div style={{ fontSize: 12, color: '#71717a', textTransform: 'uppercase' }}>
-                  {item.entityType} • {item.sourceModule}
+                  {item.entityType} вЂў {item.sourceModule}
                 </div>
                 <h3 style={{ marginTop: 8, fontSize: 18 }}>{item.title}</h3>
                 <p style={{ marginTop: 8, color: '#52525b' }}>

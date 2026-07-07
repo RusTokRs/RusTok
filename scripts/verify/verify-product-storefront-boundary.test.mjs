@@ -83,7 +83,7 @@ pub async fn fetch_storefront_products_graphql() {}
 
 function nativeServerAdapterSource() {
   return `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 #[server(prefix = "/api/fn", endpoint = "product/storefront-data")]
 async fn storefront_products_native() {}
 `;

@@ -24,7 +24,7 @@
 ## Interactions
 
 - Used by `apps/admin` and `apps/storefront` as the shared auth UI/runtime layer.
-- Uses `leptos-graphql` for GraphQL fallback transport.
+- Uses `rustok-graphql` for GraphQL fallback transport.
 - Talks to `apps/server` auth endpoints and server-function surfaces without embedding server-specific policy in the UI package.
 
 ## Docs

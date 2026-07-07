@@ -16,7 +16,7 @@ ssr = ["leptos/ssr"]
 [dependencies]
 leptos = { workspace = true, features = ["csr"] }
 leptos-auth.workspace = true
-leptos-graphql.workspace = true
+rustok-graphql.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n-leptos.workspace = true
 leptos-ui-routing.workspace = true

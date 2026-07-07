@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { ShippingProfilesTemplate } from '@rustok/commerce-admin';
+import { ShippingProfilesClient } from '@/modules/commerce-admin-client';
 
 export const metadata = {
   title: 'Dashboard: Shipping Profiles'
@@ -13,5 +13,5 @@ export default async function Page() {
     tenantId: session?.user?.tenantId ?? null
   };
 
-  return <ShippingProfilesTemplate opts={opts} />;
+  return <ShippingProfilesClient opts={opts} />;
 }

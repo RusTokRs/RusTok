@@ -11,7 +11,7 @@ crate-type = ["rlib"]
 [dependencies]
 leptos = { workspace = true, features = ["csr"] }
 leptos-auth.workspace = true
-leptos-graphql.workspace = true
+rustok-graphql.workspace = true
 reqwest.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n-leptos.workspace = true

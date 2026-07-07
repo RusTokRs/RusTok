@@ -2,11 +2,10 @@
 
 import React from 'react';
 
-import { graphqlRequest as sharedGraphqlRequest } from '../../../src/shared/api/graphql';
-
 type SearchAdminTab = 'overview' | 'playground' | 'analytics' | 'dictionaries';
 
 export type SearchAdminPageProps = {
+  graphql: AdminGraphqlExecutor;
   token?: string | null;
   tenantSlug?: string | null;
   graphqlUrl?: string;
@@ -16,6 +15,14 @@ export type SearchAdminPageProps = {
   categoryOptions?: SearchCatalogFilterOption[];
   attributeOptions?: SearchCatalogFilterOption[];
 };
+
+export type AdminGraphqlExecutor = <V, T>(
+  query: string,
+  variables?: V,
+  token?: string | null,
+  tenantSlug?: string | null,
+  options?: { graphqlUrl?: string; tenantId?: string | null }
+) => Promise<T>;
 
 export type SearchCatalogFilterOption = {
   value: string;
@@ -482,9 +489,10 @@ async function graphqlRequest<TData>(
     token?: string | null;
     tenantSlug?: string | null;
     graphqlUrl?: string;
+    graphql: AdminGraphqlExecutor;
   }
 ): Promise<TData> {
-  return sharedGraphqlRequest<unknown, TData>(
+  return opts.graphql<unknown, TData>(
     query,
     variables,
     opts.token,
@@ -494,6 +502,7 @@ async function graphqlRequest<TData>(
 }
 
 export function SearchAdminPage({
+  graphql,
   token = null,
   tenantSlug = null,
   graphqlUrl,
@@ -502,7 +511,7 @@ export function SearchAdminPage({
   laggingLimit = 25,
   categoryOptions,
   attributeOptions
-}: SearchAdminPageProps = {}): React.JSX.Element {
+}: SearchAdminPageProps): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<SearchAdminTab>(initialTab);
   const [bootstrap, setBootstrap] = React.useState<SearchAdminBootstrap | null>(
     null
@@ -628,7 +637,7 @@ export function SearchAdminPage({
               sortDesc: filters.sortDesc || undefined
             }
           },
-          { token, tenantSlug, graphqlUrl }
+          { token, tenantSlug, graphqlUrl, graphql }
         );
 
         setPreview(data.searchPreview);
@@ -685,7 +694,7 @@ export function SearchAdminPage({
           surface: 'search_preview'
         }
       },
-      { token, tenantSlug, graphqlUrl }
+      { token, tenantSlug, graphqlUrl, graphql }
     )
       .then((data) => {
         if (!cancelled) {
@@ -706,7 +715,7 @@ export function SearchAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [token, tenantSlug, graphqlUrl, refreshNonce]);
+  }, [graphql, token, tenantSlug, graphqlUrl, refreshNonce]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -725,7 +734,7 @@ export function SearchAdminPage({
     void graphqlRequest<SearchAdminBootstrap>(
       SEARCH_ADMIN_BOOTSTRAP_QUERY,
       undefined,
-      { token, tenantSlug, graphqlUrl }
+      { token, tenantSlug, graphqlUrl, graphql }
     )
       .then((data) => {
         if (!cancelled) {
@@ -783,7 +792,7 @@ export function SearchAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [token, tenantSlug, graphqlUrl, refreshNonce]);
+  }, [graphql, token, tenantSlug, graphqlUrl, refreshNonce]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -804,7 +813,7 @@ export function SearchAdminPage({
     }>(
       SEARCH_LAGGING_DOCUMENTS_QUERY,
       { limit: laggingLimit },
-      { token, tenantSlug, graphqlUrl }
+      { token, tenantSlug, graphqlUrl, graphql }
     )
       .then((data) => {
         if (!cancelled) setLaggingDocuments(data.searchLaggingDocuments);
@@ -819,7 +828,7 @@ export function SearchAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [token, tenantSlug, graphqlUrl, laggingLimit, refreshNonce]);
+  }, [graphql, token, tenantSlug, graphqlUrl, laggingLimit, refreshNonce]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -842,7 +851,7 @@ export function SearchAdminPage({
     }>(
       SEARCH_CONSISTENCY_ISSUES_QUERY,
       { limit: laggingLimit },
-      { token, tenantSlug, graphqlUrl }
+      { token, tenantSlug, graphqlUrl, graphql }
     )
       .then((data) => {
         if (!cancelled) setConsistencyIssues(data.searchConsistencyIssues);
@@ -857,7 +866,7 @@ export function SearchAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, token, tenantSlug, graphqlUrl, laggingLimit, refreshNonce]);
+  }, [activeTab, graphql, token, tenantSlug, graphqlUrl, laggingLimit, refreshNonce]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -878,7 +887,7 @@ export function SearchAdminPage({
     void graphqlRequest<{ searchAnalytics: SearchAnalyticsPayload }>(
       SEARCH_ANALYTICS_QUERY,
       { days: 7, limit: 10 },
-      { token, tenantSlug, graphqlUrl }
+      { token, tenantSlug, graphqlUrl, graphql }
     )
       .then((data) => {
         if (!cancelled) setAnalytics(data.searchAnalytics);
@@ -893,7 +902,7 @@ export function SearchAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, token, tenantSlug, graphqlUrl, refreshNonce]);
+  }, [activeTab, graphql, token, tenantSlug, graphqlUrl, refreshNonce]);
 
   async function runPreview(
     event: React.FormEvent<HTMLFormElement>
@@ -948,7 +957,7 @@ export function SearchAdminPage({
             targetId: optionalText(rebuildTargetId)
           }
         },
-        { token, tenantSlug, graphqlUrl }
+        { token, tenantSlug, graphqlUrl, graphql }
       );
       const payload = data.triggerSearchRebuild;
       const suffix = payload.targetId ? ` for target ${payload.targetId}` : '';
@@ -1005,7 +1014,7 @@ export function SearchAdminPage({
             config: mergedConfig
           }
         },
-        { token, tenantSlug, graphqlUrl }
+        { token, tenantSlug, graphqlUrl, graphql }
       );
       const settings = data.updateSearchSettings.settings;
       setSettingsFeedback('Search settings saved.');
@@ -1117,6 +1126,7 @@ export function SearchAdminPage({
           token={token}
           tenantSlug={tenantSlug}
           graphqlUrl={graphqlUrl}
+          graphql={graphql}
           onQueryChange={setQuery}
           onChannelIdChange={setChannelId}
           onPresetKeyChange={setPresetKey}
@@ -1151,6 +1161,7 @@ export function SearchAdminPage({
           token={token}
           tenantSlug={tenantSlug}
           graphqlUrl={graphqlUrl}
+          graphql={graphql}
         />
       ) : (
         <OverviewPanel
@@ -1519,6 +1530,7 @@ function PlaygroundPanel(props: {
   token: string | null;
   tenantSlug: string | null;
   graphqlUrl?: string;
+  graphql: AdminGraphqlExecutor;
   onQueryChange: (value: string) => void;
   onChannelIdChange: (value: string) => void;
   onPresetKeyChange: (value: string) => void;
@@ -1726,6 +1738,7 @@ function PlaygroundPanel(props: {
           token={props.token}
           tenantSlug={props.tenantSlug}
           graphqlUrl={props.graphqlUrl}
+          graphql={props.graphql}
         />
       ) : (
         <EmptyPanel
@@ -1856,6 +1869,7 @@ function DictionariesPanel(props: {
   token: string | null;
   tenantSlug: string | null;
   graphqlUrl?: string;
+  graphql: AdminGraphqlExecutor;
 }): React.JSX.Element {
   const [snapshot, setSnapshot] =
     React.useState<SearchDictionarySnapshotPayload | null>(null);
@@ -1890,8 +1904,9 @@ function DictionariesPanel(props: {
     }>(SEARCH_DICTIONARY_SNAPSHOT_QUERY, undefined, {
       token: props.token,
       tenantSlug: props.tenantSlug,
-      graphqlUrl: props.graphqlUrl
-    })
+      graphqlUrl: props.graphqlUrl,
+        graphql: props.graphql
+      })
       .then((data) => {
         if (!cancelled) setSnapshot(data.searchDictionarySnapshot);
       })
@@ -1905,7 +1920,7 @@ function DictionariesPanel(props: {
     return () => {
       cancelled = true;
     };
-  }, [props.token, props.tenantSlug, props.graphqlUrl, refreshNonce]);
+  }, [props.graphql, props.token, props.tenantSlug, props.graphqlUrl, refreshNonce]);
 
   async function runMutation<TData>(
     query: string,
@@ -1924,7 +1939,8 @@ function DictionariesPanel(props: {
       await graphqlRequest<TData>(query, variables, {
         token: props.token,
         tenantSlug: props.tenantSlug,
-        graphqlUrl: props.graphqlUrl
+        graphqlUrl: props.graphqlUrl,
+        graphql: props.graphql
       });
       setFeedback(successMessage);
       setRefreshNonce((value) => value + 1);
@@ -2423,12 +2439,14 @@ function PreviewPanel({
   payload,
   token,
   tenantSlug,
-  graphqlUrl
+  graphqlUrl,
+  graphql
 }: {
   payload: SearchPreviewPayload;
   token: string | null;
   tenantSlug: string | null;
   graphqlUrl?: string;
+  graphql: AdminGraphqlExecutor;
 }): React.JSX.Element {
   return (
     <article className='rounded-3xl border border-zinc-200 bg-white p-6'>
@@ -2498,7 +2516,7 @@ function PreviewPanel({
                         href: item.url
                       }
                     },
-                    { token, tenantSlug, graphqlUrl }
+                    { token, tenantSlug, graphqlUrl, graphql }
                   ).finally(() => {
                     window.location.href = item.url!;
                   });

@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_graphql::{execute, GraphqlRequest};
+use rustok_graphql::{execute, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -296,16 +296,16 @@ fn rest_payload_to_native(payload: RestAuthResponse, tenant: String) -> NativeAu
     }
 }
 
-fn map_graphql_auth_error(error: leptos_graphql::GraphqlHttpError, is_login: bool) -> AuthError {
+fn map_graphql_auth_error(error: rustok_graphql::GraphqlHttpError, is_login: bool) -> AuthError {
     match error {
-        leptos_graphql::GraphqlHttpError::Unauthorized => {
+        rustok_graphql::GraphqlHttpError::Unauthorized => {
             if is_login {
                 AuthError::InvalidCredentials
             } else {
                 AuthError::Unauthorized
             }
         }
-        leptos_graphql::GraphqlHttpError::Graphql(message) => {
+        rustok_graphql::GraphqlHttpError::Graphql(message) => {
             let lower = message.to_ascii_lowercase();
             if is_login && (lower.contains("invalid") || lower.contains("credential")) {
                 AuthError::InvalidCredentials
@@ -315,11 +315,11 @@ fn map_graphql_auth_error(error: leptos_graphql::GraphqlHttpError, is_login: boo
                 AuthError::Http(400)
             }
         }
-        leptos_graphql::GraphqlHttpError::Http(status) => status
+        rustok_graphql::GraphqlHttpError::Http(status) => status
             .parse::<u16>()
             .map(AuthError::Http)
             .unwrap_or(AuthError::Http(500)),
-        leptos_graphql::GraphqlHttpError::Network => AuthError::Network,
+        rustok_graphql::GraphqlHttpError::Network => AuthError::Network,
     }
 }
 

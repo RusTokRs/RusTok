@@ -18,7 +18,7 @@ fn read_source(path: impl AsRef<Path>) -> String {
 #[test]
 fn graphql_runtime_details_are_removed_from_inventory_admin_package() {
     let forbidden_markers = [
-        "leptos_graphql",
+        "rustok_graphql",
         "GraphqlRequest",
         "GraphqlHttpError",
         "execute_graphql",

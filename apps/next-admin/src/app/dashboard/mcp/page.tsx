@@ -1,7 +1,7 @@
-import { McpAdminPage } from '@rustok/mcp-admin';
 import { Suspense } from 'react';
 
 import { auth } from '@/auth';
+import { McpAdminClient } from '@/modules/mcp-admin-client';
 import { PageContainer } from '@/widgets/app-shell';
 
 export const metadata = {
@@ -20,7 +20,7 @@ export default async function McpPage() {
       pageDescription='Manage MCP clients, token policies, audit events, and Alloy scaffold drafts'
     >
       <Suspense fallback={<div>Loading MCP control plane...</div>}>
-        <McpAdminPage token={token} tenantSlug={tenantSlug} />
+        <McpAdminClient token={token} tenantSlug={tenantSlug} />
       </Suspense>
     </PageContainer>
   );

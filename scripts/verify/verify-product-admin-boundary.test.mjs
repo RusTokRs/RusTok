@@ -169,7 +169,7 @@ async fn product_admin_bind_category_attribute_native(tenant_id: String) { let _
 
 function apiSource({ optionalCatalogLocale = false, fallbackCatalogLocale = false } = {}) {
   return `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 const PRODUCT_ATTRIBUTES_QUERY: &str = "query ProductAdminAttributes($tenantId: UUID!, $locale: String!) { productAttributes(tenantId: $tenantId, locale: $locale) { total items { id } } }";
 const CATALOG_CATEGORIES_QUERY: &str = "query ProductAdminCatalogCategories($tenantId: UUID!, $locale: String!) { catalogCategories(tenantId: $tenantId, locale: $locale) { total items { id } } }";
 const ATTRIBUTE_SCHEMAS_QUERY: &str = "query ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!) { productAttributeSchemas(tenantId: $tenantId, locale: $locale) { total items { id } } }";

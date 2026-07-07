@@ -14,6 +14,7 @@ pub mod services;
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;
+#[cfg(feature = "server")]
 use rustok_api::Permission;
 #[cfg(feature = "server")]
 use rustok_core::{MigrationSource, RusToKModule};

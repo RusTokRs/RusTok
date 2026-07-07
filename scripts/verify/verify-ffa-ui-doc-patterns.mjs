@@ -69,7 +69,7 @@ function findMatches(files, pattern) {
   return matches;
 }
 
-console.log("[1/4] Checking conflicting transport wording...");
+console.log("[1/6] Checking conflicting transport wording...");
 const textFiles = ["docs", "apps", "crates"].flatMap((dir) =>
   listFiles(dir, (filePath) => /\.(md|rs|toml|json|js|mjs|ts|tsx|jsx|sh|txt)$/i.test(filePath)),
 );
@@ -79,7 +79,7 @@ if (conflicts.length > 0) {
   fail(`Found potentially conflicting transport wording:\n${conflicts.join("\n")}`);
 }
 
-console.log("[2/4] Checking that the plan contains required execution sections...");
+console.log("[2/6] Checking that the plan contains required execution sections...");
 const planPath = "docs/research/dioxus-ffa-ui-migration-plan.md";
 const plan = readText(planPath);
 for (const marker of [
@@ -94,7 +94,7 @@ for (const marker of [
   }
 }
 
-console.log("[2b/4] Checking the anti-over-extraction standard for FFA slices...");
+console.log("[2b/6] Checking the anti-over-extraction standard for FFA slices...");
 for (const marker of [
   "Standard for minimal FFA slice and anti-over-extraction",
   "An FFA slice should reduce coupling",
@@ -110,7 +110,7 @@ for (const marker of [
   }
 }
 
-console.log("[3/5] Searching for Leptos dependencies inside the core layer (core.rs and core/)...");
+console.log("[3/6] Searching for Leptos dependencies inside the core layer (core.rs and core/)...");
 const coreFiles = listFiles("crates", (filePath) => {
   const normalized = relativePath(filePath);
   return normalized.endsWith(".rs") && (normalized.endsWith("/core.rs") || normalized.includes("/core/"));
@@ -121,7 +121,7 @@ if (coreHits.length > 0) {
   fail(`Found Leptos dependencies inside the core layer:\n${coreHits.join("\n")}`);
 }
 
-console.log("[4/5] Checking UI i18n ownership boundaries...");
+console.log("[4/6] Checking UI i18n ownership boundaries...");
 const moduleI18nFiles = listFiles("crates", (filePath) => {
   const normalized = relativePath(filePath);
   return normalized.endsWith("/src/i18n.rs") && /\/(admin|storefront)\/src\/i18n\.rs$/.test(normalized);
@@ -141,7 +141,42 @@ if (staleRustokApiI18nDocsHits.length > 0) {
   fail(`Documentation must not describe rustok_api as the UI i18n owner:\n${staleRustokApiI18nDocsHits.join("\n")}`);
 }
 
-console.log("[5/5] Checking that docs/index.md links to the plan...");
+console.log("[5/7] Checking GraphQL ownership boundaries...");
+const staleGraphqlPattern = new RegExp(
+  [
+    "leptos" + "_graphql",
+    "leptos" + "-graphql",
+    "crates/" + "leptos" + "-graphql",
+    "packages/" + "rustok" + "-graphql",
+    "rustok" + "-graphql/next",
+    "graphql" + "-request",
+    "future `rustok" + "-graphql`",
+    "rustok" +
+      "-graphql.*(Leptos-specific|tempor" +
+      "ary|will become framework-agnostic|needs FFA version)",
+  ].join("|"),
+  "i",
+);
+const staleGraphqlHits = findMatches(textFiles.concat(docsFiles), staleGraphqlPattern);
+if (staleGraphqlHits.length > 0) {
+  fail(`GraphQL documentation and code must use rustok-graphql core plus adapter crates:\n${staleGraphqlHits.join("\n")}`);
+}
+
+console.log("[6/7] Checking Next UI package GraphQL ownership boundaries...");
+const nextPackageFiles = listFiles("apps/next-admin/packages", (filePath) =>
+  /\.(ts|tsx|json)$/i.test(filePath),
+).concat(
+  listFiles("apps/next-frontend/packages", (filePath) =>
+    /\.(ts|tsx|json)$/i.test(filePath),
+  ),
+);
+const nextPackageGraphqlPattern = /src\/shared\/(api|lib)\/graphql|@apollo\/client|graphql-request|rustok-graphql\/next/;
+const nextPackageGraphqlHits = findMatches(nextPackageFiles, nextPackageGraphqlPattern);
+if (nextPackageGraphqlHits.length > 0) {
+  fail(`Next UI packages must consume host-injected GraphQL executors instead of owning host/Apollo imports:\n${nextPackageGraphqlHits.join("\n")}`);
+}
+
+console.log("[7/7] Checking that docs/index.md links to the plan...");
 if (!readText("docs/index.md").includes("dioxus-ffa-ui-migration-plan")) {
   fail("docs/index.md: missing dioxus-ffa-ui-migration-plan link");
 }

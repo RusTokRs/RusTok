@@ -20,7 +20,7 @@ function withFixture({
   registryExtra = "",
   transportSource = "pub async fn fetch_demo() { native_server_adapter::fetch_demo().await }\nmod native_server_adapter;\n",
   nativeAdapterSource = "#[server(prefix = \"/api/fn\", endpoint = \"demo/fetch\")] async fn fetch_demo_server() {}\n",
-  graphqlAdapterSource = "use leptos_graphql::GraphqlRequest;\npub async fn fetch_demo_graphql() {}\n",
+  graphqlAdapterSource = "use rustok_graphql::GraphqlRequest;\npub async fn fetch_demo_graphql() {}\n",
   includeNativeAdapter = true,
   includeGraphqlAdapter = true,
 } = {}) {

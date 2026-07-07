@@ -6,6 +6,7 @@ import SearchStorefrontPage, {
   type SearchCatalogFilterOption,
 } from "../../../../packages/search/src";
 import { fetchCatalogSearchOptions } from "../../../../packages/rustok-product/src";
+import { storefrontGraphql } from "@/shared/lib/graphql";
 
 export type SearchSectionProps = {
   locale: string;
@@ -34,7 +35,7 @@ export function SearchSection({
       return;
     }
 
-    void fetchCatalogSearchOptions({ locale, tenantSlug })
+    void fetchCatalogSearchOptions({ graphql: storefrontGraphql, locale, tenantSlug })
       .then((options) => {
         if (cancelled) {
           return;
@@ -57,6 +58,7 @@ export function SearchSection({
 
   return (
     <SearchStorefrontPage
+      graphql={storefrontGraphql}
       locale={locale}
       tenantSlug={tenantSlug}
       categoryOptions={categoryOptions}

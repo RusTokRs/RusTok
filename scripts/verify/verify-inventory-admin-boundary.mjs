@@ -146,8 +146,8 @@ function assertInventoryAdminTransportBoundary() {
   const cargo = readRepo(cargoPath);
   const legacyTransportPath = "crates/rustok-inventory/admin/src/transport.rs";
   const removedGraphqlMarkers = [
-    "leptos_graphql",
-    "leptos-graphql",
+    "rustok_graphql",
+    "rustok-graphql",
     "GraphqlRequest",
     "GraphqlHttpError",
     "execute_graphql",

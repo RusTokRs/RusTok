@@ -1,8 +1,7 @@
 import { Suspense } from 'react';
 
-import { AiAdminPage } from '@rustok/ai-admin';
-
 import { auth } from '@/auth';
+import { AiAdminClient } from '@/modules/ai-admin-client';
 import { PageContainer } from '@/widgets/app-shell';
 
 export const metadata = {
@@ -21,7 +20,7 @@ export default async function Page() {
       pageDescription='Inspect router decisions, run health, execution targets and AI runtime diagnostics'
     >
       <Suspense fallback={<div>Loading AI diagnostics...</div>}>
-        <AiAdminPage
+        <AiAdminClient
           token={token}
           tenantSlug={tenantSlug}
           section='diagnostics'

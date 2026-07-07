@@ -273,13 +273,13 @@ Below captures the alignment of the plan with the current repository state.
 - Basic shared UI crates depend on Leptos:
   - `crates/leptos-ui/Cargo.toml`
   - `crates/leptos-ui-routing/Cargo.toml`
-  - `crates/leptos-graphql/Cargo.toml`
+  - `crates/rustok-graphql/Cargo.toml`
   - `crates/leptos-auth/Cargo.toml`
 - Module-owned UI packages actively use `leptos::*`, `#[component]`, `leptos_router` and Leptos hooks (example: `rustok-search`, `rustok-workflow`, `rustok-commerce`, `rustok-cart`).
 
 ### 3) Data already flows through native/GraphQL hybrid
 
-- In `crates/rustok-*/storefront/src/api.rs` and `crates/rustok-*/admin/src/api.rs`, GraphQL adapters (`leptos_graphql`) and `#[cfg(feature = "ssr")]` branches for native SSR paths are visible.
+- In `crates/rustok-*/storefront/src/api.rs` and `crates/rustok-*/admin/src/api.rs`, GraphQL adapters (`rustok_graphql`) and `#[cfg(feature = "ssr")]` branches for native SSR paths are visible.
 - This means the plan does not invent a new model but formalizes an already existing runtime split and converts it into an FFA structure.
 
 ### 4) Pilot candidates confirmed by current complexity

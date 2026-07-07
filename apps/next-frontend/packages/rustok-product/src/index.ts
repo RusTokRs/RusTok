@@ -8,8 +8,6 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-import { storefrontGraphql } from "../../../src/shared/lib/graphql";
-
 export type ProductCatalogSearchOption = {
   value: string;
   label: string;
@@ -21,10 +19,28 @@ export type ProductCatalogSearchOptions = {
 };
 
 export type ProductCatalogSearchOptionsRequest = {
+  graphql: StorefrontGraphqlExecutor;
   locale: string;
   token?: string | null;
   tenantSlug?: string | null;
   graphqlUrl?: string;
+};
+
+export type StorefrontGraphqlExecutor = <T, V = Record<string, unknown>>(
+  options: StorefrontGraphqlOptions<V>,
+) => Promise<StorefrontGraphqlResponse<T>>;
+
+export type StorefrontGraphqlOptions<V> = {
+  query: string;
+  variables?: V;
+  token?: string;
+  tenant?: string;
+  baseUrl?: string;
+};
+
+export type StorefrontGraphqlResponse<T> = {
+  data?: T;
+  errors?: Array<{ message: string }>;
 };
 
 type StorefrontCatalogSearchOptionsResponse = {
@@ -48,7 +64,7 @@ export async function fetchCatalogSearchOptions(
     return { categoryOptions: [], attributeOptions: [] };
   }
 
-  const response = await storefrontGraphql<
+  const response = await request.graphql<
     StorefrontCatalogSearchOptionsResponse,
     { locale: string }
   >({

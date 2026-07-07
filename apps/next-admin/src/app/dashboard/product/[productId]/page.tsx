@@ -1,4 +1,5 @@
 import { auth } from '@/auth';
+import { graphqlRequest } from '@/shared/api/graphql';
 import { getProduct } from '../../../../../packages/rustok-product/src';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
@@ -27,7 +28,7 @@ export const metadata = {
 type PageProps = { params: Promise<{ productId: string }> };
 
 const PRODUCT_ATTRIBUTES_COPY_INSTRUCTIONS =
-  'Сформируй только подтверждаемые атрибуты и пометь неподтверждаемые как not_specified.';
+  'РЎС„РѕСЂРјРёСЂСѓР№ С‚РѕР»СЊРєРѕ РїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ Р°С‚СЂРёР±СѓС‚С‹ Рё РїРѕРјРµС‚СЊ РЅРµРїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ РєР°Рє not_specified.';
 
 function normalizeSeedText(value: string | null | undefined): string {
   return (value ?? '').trim();
@@ -137,6 +138,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
   }
 
   const opts = {
+    graphql: graphqlRequest,
     token: session?.user?.rustokToken ?? null,
     tenantSlug: session?.user?.tenantSlug ?? null,
     tenantId: session?.user?.tenantId ?? null

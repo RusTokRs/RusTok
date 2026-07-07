@@ -84,7 +84,7 @@ function assertSearchAdminBoundary() {
   assertContains(ui, "core::build_search_preview_request", `${uiPath}: UI adapter must consume core-owned preview request policy`);
   assertContains(ui, "transport::fetch_search_preview", `${uiPath}: UI adapter must call transport facade for preview`);
   assertContains(ui, "transport::fetch_dictionary_snapshot", `${uiPath}: UI adapter must call transport facade for dictionaries`);
-  for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "leptos_graphql::", "execute_graphql", "#[server"] ) {
+  for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "rustok_graphql::", "execute_graphql", "#[server"] ) {
     assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport (${marker})`);
   }
 
@@ -98,7 +98,7 @@ function assertSearchAdminBoundary() {
   assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 
   assertContains(native, "#[server", `${nativePath}: admin raw adapter must keep native server-function endpoints`);
-  assertContains(native, "leptos_graphql", `${nativePath}: admin raw adapter must keep GraphQL fallback implementation`);
+  assertContains(native, "rustok_graphql", `${nativePath}: admin raw adapter must keep GraphQL fallback implementation`);
 }
 
 function assertSearchStorefrontBoundary() {
@@ -151,7 +151,7 @@ function assertSearchStorefrontBoundary() {
   assertContains(ui, "core::build_storefront_suggestion_fetch_request", `${uiPath}: UI adapter must consume core-owned suggestion fetch policy`);
   assertContains(ui, "transport::fetch_search", `${uiPath}: UI adapter must call transport facade for search`);
   assertContains(ui, "transport::track_search_click", `${uiPath}: UI adapter must call transport facade for click tracking`);
-  for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "native_server_adapter::", "graphql_adapter::", "leptos_graphql::", "execute_graphql", "#[server"] ) {
+  for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "native_server_adapter::", "graphql_adapter::", "rustok_graphql::", "execute_graphql", "#[server"] ) {
     assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport (${marker})`);
   }
 

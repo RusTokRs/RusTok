@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "ssr")]
 use serde_json::Value;

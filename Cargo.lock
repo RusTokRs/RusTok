@@ -5625,12 +5625,12 @@ dependencies = [
  "gloo-storage",
  "js-sys",
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-use",
  "leptos_axum",
  "leptos_router",
  "loco-rs",
  "reqwest 0.13.2",
+ "rustok-graphql",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -5657,18 +5657,6 @@ dependencies = [
  "leptos 0.8.20",
  "regex",
  "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "leptos-graphql"
-version = "0.1.0"
-dependencies = [
- "leptos 0.8.20",
- "reqwest 0.13.2",
- "rustok-api",
- "serde",
- "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -9403,7 +9391,6 @@ dependencies = [
  "leptos-auth",
  "leptos-chartistry",
  "leptos-forms",
- "leptos-graphql",
  "leptos-hook-form",
  "leptos-shadcn-pagination",
  "leptos-struct-table",
@@ -9433,6 +9420,7 @@ dependencies = [
  "rustok-customer-admin",
  "rustok-forum-admin",
  "rustok-fulfillment-admin",
+ "rustok-graphql",
  "rustok-index-admin",
  "rustok-installer",
  "rustok-inventory-admin",
@@ -9635,7 +9623,6 @@ dependencies = [
  "gloo-storage",
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-hook-form",
  "leptos-ui",
  "leptos-use",
@@ -9646,6 +9633,7 @@ dependencies = [
  "rustok-api",
  "rustok-auth",
  "rustok-core",
+ "rustok-graphql",
  "rustok-ui-i18n-leptos",
  "sea-orm",
  "serde",
@@ -9714,11 +9702,11 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui",
  "leptos-ui-routing",
  "leptos_router",
  "rustok-api",
+ "rustok-graphql",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-i18n-leptos",
@@ -9731,7 +9719,6 @@ name = "rustok-blog-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
@@ -9739,6 +9726,7 @@ dependencies = [
  "rustok-blog",
  "rustok-channel",
  "rustok-core",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-tenant",
  "rustok-ui-i18n-leptos",
@@ -9790,7 +9778,6 @@ name = "rustok-cart-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
@@ -9798,6 +9785,7 @@ dependencies = [
  "rustok-api",
  "rustok-cart",
  "rustok-customer",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-pricing",
  "rustok-ui-i18n-leptos",
@@ -9935,7 +9923,6 @@ dependencies = [
  "chrono",
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
@@ -9947,6 +9934,7 @@ dependencies = [
  "rustok-core",
  "rustok-customer",
  "rustok-fulfillment",
+ "rustok-graphql",
  "rustok-inventory",
  "rustok-order",
  "rustok-outbox",
@@ -9986,7 +9974,6 @@ name = "rustok-commerce-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
@@ -9996,6 +9983,7 @@ dependencies = [
  "rustok-commerce",
  "rustok-customer",
  "rustok-fulfillment-storefront",
+ "rustok-graphql",
  "rustok-inventory",
  "rustok-order-storefront",
  "rustok-payment-storefront",
@@ -10216,10 +10204,10 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "reqwest 0.13.2",
  "rustok-api",
+ "rustok-graphql",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-i18n-leptos",
@@ -10232,9 +10220,9 @@ name = "rustok-forum-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-graphql",
  "rustok-ui-i18n-leptos",
  "serde",
 ]
@@ -10267,9 +10255,9 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-graphql",
  "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
@@ -10280,16 +10268,37 @@ name = "rustok-fulfillment-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-commerce",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-ui-i18n-leptos",
  "serde",
  "uuid",
  "web-sys",
+]
+
+[[package]]
+name = "rustok-graphql"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "rustok-graphql-leptos"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "rustok-api",
+ "rustok-graphql",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -10483,12 +10492,12 @@ dependencies = [
  "js-sys",
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "reqwest 0.13.2",
  "rustok-api",
  "rustok-core",
+ "rustok-graphql",
  "rustok-media",
  "rustok-storage",
  "rustok-ui-i18n-leptos",
@@ -10531,9 +10540,9 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-graphql",
  "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
@@ -10544,11 +10553,11 @@ name = "rustok-order-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-commerce",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-ui-i18n-leptos",
  "serde",
@@ -10647,9 +10656,9 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-graphql",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-i18n-leptos",
@@ -10662,14 +10671,13 @@ name = "rustok-pages-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
- "loco-rs",
  "rustok-api",
  "rustok-channel",
  "rustok-content",
  "rustok-core",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-pages",
  "rustok-tenant",
@@ -10706,12 +10714,12 @@ name = "rustok-payment-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos_axum",
  "loco-rs",
  "rust_decimal",
  "rustok-api",
  "rustok-commerce",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-payment",
  "rustok-ui-i18n-leptos",
@@ -10747,7 +10755,6 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
@@ -10760,6 +10767,7 @@ dependencies = [
  "rustok-core",
  "rustok-customer",
  "rustok-fulfillment",
+ "rustok-graphql",
  "rustok-inventory",
  "rustok-order",
  "rustok-outbox",
@@ -10783,12 +10791,12 @@ name = "rustok-pricing-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-channel",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-pricing",
  "rustok-ui-i18n-leptos",
@@ -10831,12 +10839,12 @@ dependencies = [
  "chrono",
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rust_decimal",
  "rustok-api",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-product",
  "rustok-seo-admin-support",
@@ -10852,12 +10860,12 @@ name = "rustok-product-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-commerce-foundation",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-pricing",
  "rustok-product",
@@ -10965,11 +10973,10 @@ name = "rustok-region-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
- "loco-rs",
  "rustok-api",
+ "rustok-graphql",
  "rustok-region",
  "rustok-ui-i18n-leptos",
  "serde",
@@ -11003,7 +11010,6 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
@@ -11011,6 +11017,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-events",
+ "rustok-graphql",
  "rustok-outbox",
  "rustok-search",
  "rustok-ui-i18n-leptos",
@@ -11025,9 +11032,9 @@ name = "rustok-search-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
- "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-graphql",
  "rustok-ui-i18n-leptos",
  "serde",
 ]
@@ -11099,8 +11106,8 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "rustok-api",
+ "rustok-graphql",
  "rustok-seo-targets",
  "serde",
  "serde_json",
@@ -11257,7 +11264,6 @@ dependencies = [
  "futures",
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos-hook-form",
  "leptos-next-metadata",
  "leptos-shadcn-pagination",
@@ -11280,6 +11286,7 @@ dependencies = [
  "rustok-core",
  "rustok-forum-storefront",
  "rustok-fulfillment-storefront",
+ "rustok-graphql",
  "rustok-order-storefront",
  "rustok-outbox",
  "rustok-pages-storefront",
@@ -11459,11 +11466,11 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos-auth",
- "leptos-graphql",
  "leptos_axum",
  "leptos_router",
  "rustok-api",
  "rustok-core",
+ "rustok-graphql",
  "rustok-ui-i18n-leptos",
  "rustok-workflow",
  "serde",

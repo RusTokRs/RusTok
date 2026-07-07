@@ -1,0 +1,12 @@
+[package]
+name = "rustok-graphql"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Framework-agnostic GraphQL HTTP client contracts for RusToK UI adapters"
+
+[dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true

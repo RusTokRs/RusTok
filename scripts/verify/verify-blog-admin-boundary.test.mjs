@@ -153,7 +153,7 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 
 function graphqlAdapterSource({ swallowPostsContractUnavailable = false } = {}) {
   return `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin { posts { total } }";
 pub fn is_posts_contract_unavailable() {}
 pub async fn fetch_posts() {

@@ -130,7 +130,7 @@ function assertWorkflowAdminBoundary() {
     /(^|[^A-Za-z0-9_])api::/,
     "graphql_adapter::",
     "native_server_adapter::",
-    "leptos_graphql::",
+    "rustok_graphql::",
     "execute_graphql",
     "#[server",
   ]) {
@@ -155,7 +155,7 @@ function assertWorkflowAdminBoundary() {
   assertNotContains(nativeAdapter, "execute_graphql", `${nativeAdapterPath}: native adapter must not own GraphQL fallback calls`);
   assertNotContains(cargoToml, "loco-rs", `${cargoPath}: workflow admin must not depend on Loco`);
 
-  assertContains(graphqlAdapter, "leptos_graphql", `${graphqlAdapterPath}: GraphQL adapter must own GraphQL client dependency`);
+  assertContains(graphqlAdapter, "rustok_graphql", `${graphqlAdapterPath}: GraphQL adapter must own GraphQL client dependency`);
   assertContains(graphqlAdapter, "fetch_workflows", `${graphqlAdapterPath}: GraphQL adapter must expose workflow list fallback`);
   assertContains(graphqlAdapter, "fetch_templates", `${graphqlAdapterPath}: GraphQL adapter must expose template fallback`);
   assertContains(graphqlAdapter, "create_from_template", `${graphqlAdapterPath}: GraphQL adapter must expose create-from-template fallback`);

@@ -129,7 +129,6 @@ leptos = "0.8.19"
 leptos_axum = "0.8.9"
 leptos_router = "0.8.13"
 leptos-auth = { path = "crates/leptos-auth", default-features = false }
-leptos-graphql = { path = "crates/leptos-graphql" }
 iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/leptos-ui" }
 leptos-forms = { path = "crates/leptos-forms" }
@@ -215,6 +214,8 @@ rustok-seo-render = { path = "crates/rustok-seo/render" }
 rustok-seo-admin-support = { path = "crates/rustok-seo-admin-support" }
 rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api", default-features = false }
+rustok-graphql = { path = "crates/rustok-graphql" }
+rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
 rustok-ui-i18n = { path = "crates/rustok-ui-i18n" }
 rustok-ui-i18n-leptos = { path = "crates/rustok-ui-i18n-leptos" }
 leptos-ui-routing = { path = "crates/leptos-ui-routing" }

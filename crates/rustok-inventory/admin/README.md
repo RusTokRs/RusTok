@@ -32,7 +32,7 @@ Leptos admin UI package for the `rustok-inventory` module.
 
 ## Native-only transport status
 
-`CommerceGraphqlInventoryReadAdapter` has been removed after native read parity for the current inventory admin read model. No GraphQL fallback remains in this package: `src/transport.rs`, `leptos-graphql`, token/tenant-slug fallback parameters, and GraphQL runtime error mapping are intentionally absent. Future inventory admin read/write expansion must add inventory-owned native/transport facade functions and targeted parity tests instead of reintroducing a commerce GraphQL adapter.
+`CommerceGraphqlInventoryReadAdapter` has been removed after native read parity for the current inventory admin read model. No GraphQL fallback remains in this package: `src/transport.rs`, `rustok-graphql`, token/tenant-slug fallback parameters, and GraphQL runtime error mapping are intentionally absent. Future inventory admin read/write expansion must add inventory-owned native/transport facade functions and targeted parity tests instead of reintroducing a commerce GraphQL adapter.
 
 Current native read coverage includes:
 

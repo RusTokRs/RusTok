@@ -6,8 +6,8 @@ Current typed tax policy contract: `region.tax_provider_id` became a first-class
 
 ## Execution checkpoint
 
-- Current phase: loco_free_native_admin_transport
-- Last checkpoint: FFA slice #43 made the region admin native server-function transport Loco-free: `admin/src/transport/native_server_adapter.rs` consumes host-provided `rustok_api::HostRuntimeContext` for DB access, and `rustok-region-admin` no longer depends on `loco-rs`.
+- Current phase: loco_free_native_admin_and_storefront_transport
+- Last checkpoint: FFA slice #44 made the region storefront native server-function transport Loco-free: `storefront/src/transport/native_server_adapter.rs` consumes host-provided `rustok_api::HostRuntimeContext` for DB access, `rustok-region-storefront` no longer depends on `loco-rs`, and the GraphQL fallback path remains intact. FFA slice #43 previously made the region admin native server-function transport Loco-free.
 - Next step: Continue Loco-exit parity/evidence hardening for module-owned native adapters, then gather runtime contract/fallback smoke evidence for shared-context `RegionReadPort` and storefront native success/native failure + GraphQL success/double-failure error envelope; until runtime evidence, status remains `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: After each increment, update this block; when changing status code/locale key/DOM evidence, first update the verify script and its test fixture.
@@ -70,6 +70,7 @@ Current typed tax policy contract: `region.tax_provider_id` became a first-class
   - FFA slice #41 retired storefront legacy `api.rs`; the native server-function endpoint and GraphQL fallback request path now live inside their module-owned transport adapters, and `verify-region-storefront-boundary.mjs` rejects reintroducing `storefront/src/api.rs` or `mod api`.
   - FFA slice #42 retired admin legacy `api.rs`; the native server-function endpoints now live in `admin/src/transport/native_server_adapter.rs`, `admin/src/transport/mod.rs` delegates through that adapter, and `verify-region-admin-boundary.mjs` rejects reintroducing `admin/src/api.rs` or `mod api`.
   - FFA slice #43 added Loco-free native admin transport: `admin/src/transport/native_server_adapter.rs` uses `HostRuntimeContext` instead of Loco `AppContext`, `admin/Cargo.toml` no longer declares `loco-rs`, and `scripts/verify/verify-region-admin-boundary.mjs` plus `scripts/verify/verify-api-surface-contract.mjs` guard that boundary.
+  - FFA slice #44 added Loco-free native storefront transport: `storefront/src/transport/native_server_adapter.rs` uses `HostRuntimeContext` instead of Loco `AppContext`, `storefront/Cargo.toml` no longer declares `loco-rs`, native-first GraphQL fallback remains unchanged, and `scripts/verify/verify-region-storefront-boundary.mjs` plus `scripts/verify/verify-api-surface-contract.mjs` guard that boundary.
 - Last verified at (UTC): 2026-06-29T00:00:00Z
 - Owner: `rustok-region` module team
 
@@ -87,7 +88,7 @@ Current typed tax policy contract: `region.tax_provider_id` became a first-class
 - tenant locale policy remains a platform-level concern outside `rustok-region`;
 - storefront region transport is still published through `rustok-commerce`;
 - admin route for region list/detail/create/update now lives in `rustok-region/admin` and uses native Leptos server functions over `RegionService`; the native transport receives DB access through `rustok_api::HostRuntimeContext`, not Loco `AppContext`.
-- storefront route for region discovery now lives in `rustok-region/storefront` and uses native Leptos server functions with GraphQL fallback over existing `storefrontRegions` transport; route/tax/country presentation helpers, selection resolution, error status classification, error DOM evidence and error view-model live in framework-agnostic storefront core, transport split into facade + native/GraphQL adapters, transport errors pass through typed envelope with fallback evidence, and Leptos render adapter lives in `storefront/src/ui/leptos.rs` and remains a bind/render layer.
+- storefront route for region discovery now lives in `rustok-region/storefront` and uses Loco-free native Leptos server functions with GraphQL fallback over existing `storefrontRegions` transport; native SSR reads DB access from `HostRuntimeContext`; route/tax/country presentation helpers, selection resolution, error status classification, error DOM evidence and error view-model live in framework-agnostic storefront core, transport split into facade + native/GraphQL adapters, transport errors pass through typed envelope with fallback evidence, and Leptos render adapter lives in `storefront/src/ui/leptos.rs` and remains a bind/render layer.
 
 ## Stages
 

@@ -59,7 +59,7 @@ leptos = { workspace = true }
 leptos_axum = { workspace = true, optional = true }
 leptos_router = { workspace = true }
 leptos-auth = { workspace = true }
-leptos-graphql = { workspace = true }
+rustok-graphql = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-hook-form = { workspace = true }
 leptos-zod = { workspace = true }
@@ -106,7 +106,7 @@ toml = { workspace = true }
 [package.metadata.cargo-udeps.ignore]
 normal = [
   "leptos-auth",
-  "leptos-graphql",
+  "rustok-graphql",
   "leptos-hook-form",
   "leptos-table",
   "leptos-zod",

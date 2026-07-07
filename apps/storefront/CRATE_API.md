@@ -12,7 +12,7 @@
 - Consumes: `apps/server` responses, content/commerce data.
 
 ## Dependencies on Other Crates
-- `leptos-ui`, `leptos-graphql`.
+- `leptos-ui`, `rustok-graphql`.
 
 ## Common AI Mistakes
 - Using admin-oriented GraphQL operations in the storefront.

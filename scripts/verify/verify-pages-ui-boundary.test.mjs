@@ -158,7 +158,7 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 
 function adminApiSource() {
   return `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 pub async fn fetch_pages() {}
 pub async fn fetch_page() {}
 pub async fn create_page() {}
@@ -171,7 +171,7 @@ pub async fn delete_page() {}
 
 function storefrontApiSource() {
   return `
-use leptos_graphql::GraphqlRequest;
+use rustok_graphql::GraphqlRequest;
 #[server(prefix = "/api/fn", endpoint = "pages/storefront-data")]
 pub async fn fetch_storefront_pages_server() {}
 pub async fn fetch_storefront_pages() {}

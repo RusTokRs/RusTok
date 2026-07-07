@@ -13,7 +13,7 @@ ssr = ["leptos/ssr", "dep:leptos_axum", "dep:loco-rs", "dep:rustok-cart", "dep:r
 [dependencies]
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
-leptos-graphql.workspace = true
+rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }

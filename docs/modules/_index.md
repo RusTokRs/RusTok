@@ -50,6 +50,8 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-email` | [docs](../../crates/rustok-email/docs/README.md) | [plan](../../crates/rustok-email/docs/implementation-plan.md) |
 | `rustok-storage` | [docs](../../crates/rustok-storage/docs/README.md) | [plan](../../crates/rustok-storage/docs/implementation-plan.md) |
 | `rustok-api` | [docs](../../crates/rustok-api/docs/README.md) | [plan](../../crates/rustok-api/docs/implementation-plan.md) |
+| `rustok-graphql` | [docs](../../crates/rustok-graphql/docs/README.md) | [plan](../../crates/rustok-graphql/docs/implementation-plan.md) |
+| `rustok-graphql-leptos` | [docs](../../crates/rustok-graphql-leptos/docs/README.md) | - |
 | `rustok-ui-i18n` | [docs](../../crates/rustok-ui-i18n/docs/README.md) | [plan](../../crates/rustok-ui-i18n/docs/implementation-plan.md) |
 | `rustok-ui-i18n-leptos` | [docs](../../crates/rustok-ui-i18n-leptos/docs/README.md) | - |
 | `rustok-test-utils` | [docs](../../crates/rustok-test-utils/docs/README.md) | [plan](../../crates/rustok-test-utils/docs/implementation-plan.md) |
