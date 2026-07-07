@@ -46,3 +46,28 @@ impl LeptosUiMessages {
         self.t_for_locale(locale.as_deref(), key, fallback)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::LeptosUiMessages;
+
+    static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+        "en",
+        &[
+            ("en", r#"{ "title": "Dashboard" }"#),
+            ("ru", r#"{ "title": "Dashboard RU" }"#),
+        ],
+    );
+
+    #[test]
+    fn resolves_explicit_locale_through_core_catalog() {
+        assert_eq!(
+            MESSAGES.t_for_locale(Some("ru-RU"), "title", "Fallback"),
+            "Dashboard RU"
+        );
+        assert_eq!(
+            MESSAGES.t_for_locale(Some("fr"), "missing", "Fallback"),
+            "Fallback"
+        );
+    }
+}

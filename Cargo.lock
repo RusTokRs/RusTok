@@ -10487,7 +10487,6 @@ dependencies = [
  "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
- "loco-rs",
  "reqwest 0.13.2",
  "rustok-api",
  "rustok-core",

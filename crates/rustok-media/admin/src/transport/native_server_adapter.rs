@@ -22,6 +22,18 @@ fn require_permission(
     }
 }
 
+#[cfg(feature = "ssr")]
+fn media_service() -> Result<rustok_media::MediaService, ServerFnError> {
+    use leptos::prelude::expect_context;
+    use rustok_api::HostRuntimeContext;
+
+    let runtime = expect_context::<HostRuntimeContext>();
+    let storage = runtime
+        .shared_get::<rustok_storage::StorageService>()
+        .ok_or_else(|| ServerFnError::new("StorageService not available"))?;
+    Ok(rustok_media::MediaService::new(runtime.db_clone(), storage))
+}
+
 #[server(prefix = "/api/fn", endpoint = "media/library")]
 pub(super) async fn media_library_native(
     page: i32,
@@ -29,11 +41,8 @@ pub(super) async fn media_library_native(
 ) -> Result<MediaListPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{Action, Permission, Resource};
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -42,11 +51,7 @@ pub(super) async fn media_library_native(
             .map_err(ServerFnError::new)?;
 
         require_permission(&auth, Permission::new(Resource::Media, Action::List))?;
-        let storage = app_ctx
-            .shared_store
-            .get::<rustok_storage::StorageService>()
-            .ok_or_else(|| ServerFnError::new("StorageService not available"))?;
-        let service = rustok_media::MediaService::new(app_ctx.db.clone(), storage);
+        let service = media_service()?;
         let limit = per_page.clamp(1, 100) as u64;
         let offset = (page.max(1) - 1) as u64 * limit;
         let (items, total) = service
@@ -90,11 +95,8 @@ pub(super) async fn media_detail_native(
 ) -> Result<Option<MediaListItem>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{Action, Permission, Resource};
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -103,11 +105,7 @@ pub(super) async fn media_detail_native(
             .map_err(ServerFnError::new)?;
 
         require_permission(&auth, Permission::new(Resource::Media, Action::Read))?;
-        let storage = app_ctx
-            .shared_store
-            .get::<rustok_storage::StorageService>()
-            .ok_or_else(|| ServerFnError::new("StorageService not available"))?;
-        let service = rustok_media::MediaService::new(app_ctx.db.clone(), storage);
+        let service = media_service()?;
         match service.get(tenant.id, parse_uuid(&media_id)?).await {
             Ok(item) => Ok(Some(MediaListItem {
                 id: item.id.to_string(),
@@ -142,11 +140,8 @@ pub(super) async fn media_translations_native(
 ) -> Result<Vec<MediaTranslationPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{Action, Permission, Resource};
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -155,11 +150,7 @@ pub(super) async fn media_translations_native(
             .map_err(ServerFnError::new)?;
 
         require_permission(&auth, Permission::new(Resource::Media, Action::Read))?;
-        let storage = app_ctx
-            .shared_store
-            .get::<rustok_storage::StorageService>()
-            .ok_or_else(|| ServerFnError::new("StorageService not available"))?;
-        let service = rustok_media::MediaService::new(app_ctx.db.clone(), storage);
+        let service = media_service()?;
         let items = service
             .get_translations(tenant.id, parse_uuid(&media_id)?)
             .await
@@ -192,11 +183,8 @@ pub(super) async fn media_upsert_translation_native(
 ) -> Result<MediaTranslationPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{Action, Permission, Resource};
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -205,11 +193,7 @@ pub(super) async fn media_upsert_translation_native(
             .map_err(ServerFnError::new)?;
 
         require_permission(&auth, Permission::new(Resource::Media, Action::Update))?;
-        let storage = app_ctx
-            .shared_store
-            .get::<rustok_storage::StorageService>()
-            .ok_or_else(|| ServerFnError::new("StorageService not available"))?;
-        let service = rustok_media::MediaService::new(app_ctx.db.clone(), storage);
+        let service = media_service()?;
         let item = service
             .upsert_translation(
                 tenant.id,
@@ -245,11 +229,8 @@ pub(super) async fn media_upsert_translation_native(
 pub(super) async fn media_delete_native(media_id: String) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{Action, Permission, Resource};
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -258,11 +239,7 @@ pub(super) async fn media_delete_native(media_id: String) -> Result<bool, Server
             .map_err(ServerFnError::new)?;
 
         require_permission(&auth, Permission::new(Resource::Media, Action::Delete))?;
-        let storage = app_ctx
-            .shared_store
-            .get::<rustok_storage::StorageService>()
-            .ok_or_else(|| ServerFnError::new("StorageService not available"))?;
-        let service = rustok_media::MediaService::new(app_ctx.db.clone(), storage);
+        let service = media_service()?;
         service
             .delete(tenant.id, parse_uuid(&media_id)?)
             .await
@@ -283,11 +260,11 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{Action, Permission, Resource};
         use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -299,7 +276,7 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
 
         let file_count = rustok_media::entities::media::Entity::find()
             .filter(rustok_media::entities::media::Column::TenantId.eq(tenant.id))
-            .count(&app_ctx.db)
+            .count(runtime.db())
             .await
             .map_err(ServerFnError::new)? as i64;
 
@@ -311,7 +288,7 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
                 "total",
             )
             .into_tuple::<Option<i64>>()
-            .one(&app_ctx.db)
+            .one(runtime.db())
             .await
             .map_err(ServerFnError::new)?
             .flatten()

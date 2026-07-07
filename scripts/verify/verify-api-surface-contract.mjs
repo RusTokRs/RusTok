@@ -140,7 +140,10 @@ requireContains('crates/rustok-api/src/ports.rs', 'pub struct PortError', 'rusto
 requireNotContains('crates/rustok-api/src/ports.rs', 'rustok_core', 'rustok-api Port contracts do not re-export core');
 requireContains('crates/rustok-api/src/runtime.rs', 'pub struct HostRuntimeContext', 'rustok-api owns neutral host runtime context');
 requireContains('crates/rustok-api/src/runtime.rs', 'pub fn db_clone(&self) -> DatabaseConnection', 'HostRuntimeContext exposes DB access without Loco');
+requireContains('crates/rustok-api/src/runtime.rs', 'pub fn with_shared_value<T>', 'HostRuntimeContext accepts host-provided typed handles without Loco');
+requireContains('crates/rustok-api/src/runtime.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'HostRuntimeContext exposes typed shared handles without Loco');
 requireContains('apps/server/src/services/app_router.rs', 'HostRuntimeContext::new(ctx.db.clone())', 'server function context provides neutral runtime context');
+requireContains('apps/server/src/services/app_router.rs', 'with_shared_value(storage)', 'server function context provides storage through neutral host runtime context');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub struct ServerRuntimeContext', 'server owns neutral runtime context for server services');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn db(&self) -> &DatabaseConnection', 'ServerRuntimeContext exposes DB access without service-level Loco dependency');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'ServerRuntimeContext exposes typed shared-store access behind server boundary');
@@ -398,6 +401,7 @@ for (const rel of [
   'crates/rustok-region/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-comments/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-workflow/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-media/admin/src/transport/native_server_adapter.rs',
 ]) {
   requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
   requireContains(rel, 'HostRuntimeContext', `${rel} consumes neutral host runtime context`);
@@ -406,6 +410,7 @@ requireNotContains('crates/rustok-tenant/admin/Cargo.toml', 'loco-rs', 'tenant a
 requireNotContains('crates/rustok-region/admin/Cargo.toml', 'loco-rs', 'region admin crate does not depend on Loco');
 requireNotContains('crates/rustok-comments/admin/Cargo.toml', 'loco-rs', 'comments admin crate does not depend on Loco');
 requireNotContains('crates/rustok-workflow/admin/Cargo.toml', 'loco-rs', 'workflow admin crate does not depend on Loco');
+requireNotContains('crates/rustok-media/admin/Cargo.toml', 'loco-rs', 'media admin crate does not depend on Loco');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub struct Permission', 'rustok-api owns Permission');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Action', 'rustok-api owns Action');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Resource', 'rustok-api owns Resource');

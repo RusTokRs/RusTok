@@ -49,7 +49,7 @@ admin/                            (or storefront/)
 [dependencies]
 leptos.workspace = true
 rustok-api = { workspace = true, default-features = false }
-rustok-ui-i18n.workspace = true
+rustok-ui-i18n-leptos.workspace = true
 leptos-ui.workspace = true
 leptos-ui-routing.workspace = true
 serde.workspace = true
@@ -304,8 +304,9 @@ pub fn BlogAdmin() -> impl IntoView {
 
 | Crate | What it provides |
 |---|---|
-| `rustok-api` | **Core helpers:** `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate` (use in `core.rs`). It temporarily re-exports UI i18n helpers for compatibility, but new code should import them from `rustok-ui-i18n`. |
-| `rustok-ui-i18n` | **i18n helpers:** `build_ui_message_catalog`, `resolve_ui_message_or_fallback`, `UiMessageCatalog` (use in `i18n.rs`) |
+| `rustok-api` | **Core helpers:** `normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate` (use in `core.rs`). It does not own or re-export UI i18n helpers. |
+| `rustok-ui-i18n` | **i18n core:** `UiMessageCatalog`, `UiTranslator`, catalog parsing and fallback resolution. Do not import it through `rustok-api`. |
+| `rustok-ui-i18n-leptos` | **Leptos i18n adapter:** `LeptosUiMessages` for module-owned Leptos `i18n.rs` files. |
 | `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
 
 ### Shared UI primitives (`UI/leptos/`)
@@ -334,6 +335,7 @@ Cross-framework component API (props, variants, CSS variables):
 | Form state management | `crates/leptos-forms/` | Multi-field form state |
 | Table/pagination UI | `crates/leptos-table/` | Reusable table component |
 | Framework-agnostic UI i18n | `crates/rustok-ui-i18n/` | Message catalog and key resolution |
+| Leptos UI i18n adapter | `crates/rustok-ui-i18n-leptos/` | Static bundle storage and `UiRouteContext.locale` adapter |
 | Framework-agnostic contracts | `crates/rustok-api/` | UI input/query helpers, locale, permissions, ports |
 | Domain-specific cross-module UI | `crates/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
 
@@ -358,7 +360,7 @@ Before duplicating code, check:
 
 When creating a new shared library, decide upfront:
 
-**Framework-specific (Leptos-only, temporary):**
+**Framework-specific (Leptos-only):**
 - Name: `crates/leptos-<name>/`
 - Can use `leptos::*` imports
 - Example: `leptos-ui`, `leptos-auth`
@@ -401,43 +403,34 @@ Full contract: [`docs/architecture/i18n.md`](../architecture/i18n.md)
 - Won't work with future Dioxus UI adapters
 
 **Current state:**
-- ✅ Module-owned UI packages (`crates/rustok-*/admin`) — already use `rustok_api` pattern
-- ⚠️ Host apps (`apps/admin`, `apps/storefront`) — still use `leptos_i18n` (will migrate to `rustok_api` pattern)
+- Module-owned Leptos UI packages use `rustok-ui-i18n-leptos`.
+- Host apps (`apps/admin`, `apps/storefront`) still use `leptos_i18n` for shell/navigation until host-level FFA migration.
 
-**Solution:** `rustok-ui-i18n` provides a simple framework-agnostic i18n pattern:
-- `build_ui_message_catalog()` — parses nested JSON into flat BTreeMap
-- `resolve_ui_message_or_fallback()` — resolves keys with locale fallback chain
-- No macros, no framework dependencies, works in `core/` and future Dioxus
+**Solution:** `rustok-ui-i18n` provides framework-agnostic catalog and fallback resolution, while `rustok-ui-i18n-leptos` provides the shared Leptos adapter.
 
 This is **not a full-featured i18n library** (no pluralization, ICU MessageFormat, etc.), but:
-- ✅ Framework-agnostic — works with Leptos now, Dioxus later
-- ✅ Simple and sufficient for current needs
-- ✅ Can be used in `core/` without violating Dioxus-readiness
-- ✅ **Future hosts evolution:** When hosts migrate to FFA, they'll also switch from `leptos_i18n` to this pattern
+- Framework-agnostic core works with Leptos now and Dioxus later.
+- Adapter crates prevent repeating static catalog boilerplate in every UI package.
+- The core crate has no Leptos, Dioxus, Next.js, GraphQL or host locale-selection dependency.
 
-`rustok-api` re-exports these helpers during the migration from the previous import path,
-but new code should depend on and import `rustok-ui-i18n` directly.
+`rustok-api` does not own or re-export UI message resolution.
 
-`i18n.rs` is **written manually** using `rustok-ui-i18n` helpers. The pattern used across module UI packages:
+`i18n.rs` uses the shared Leptos adapter pattern:
 
 ```rust
-// src/i18n.rs — write once per package, this is the standard boilerplate
-use std::sync::OnceLock;
-use rustok_ui_i18n::{build_ui_message_catalog, resolve_ui_message_or_fallback, UiMessageCatalog};
+// src/i18n.rs
+use rustok_ui_i18n_leptos::LeptosUiMessages;
 
-static CATALOG: OnceLock<UiMessageCatalog> = OnceLock::new();
-
-fn catalog() -> &'static UiMessageCatalog {
-    CATALOG.get_or_init(|| {
-        build_ui_message_catalog(&[
-            ("en", include_str!("../locales/en.json")),
-            ("ru", include_str!("../locales/ru.json")),
-        ])
-    })
-}
+static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+    "en",
+    &[
+        ("en", include_str!("../locales/en.json")),
+        ("ru", include_str!("../locales/ru.json")),
+    ],
+);
 
 pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
-    resolve_ui_message_or_fallback(catalog(), locale, "en", key, fallback)
+    MESSAGES.t_for_locale(locale, key, fallback)
 }
 ```
 

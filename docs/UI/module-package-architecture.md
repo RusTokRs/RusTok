@@ -144,7 +144,10 @@ They are **not** responsible for:
 - knowing about module-internal transport or core
 
 **Current state:** Host apps still use `leptos_i18n` for their shell/navigation i18n.
-**Future FFA migration:** When hosts adopt the `core/transport/ui` split, they will also migrate from `leptos_i18n` to `rustok-ui-i18n`, the framework-agnostic UI message catalog crate. This ensures hosts can support both Leptos and Dioxus UI adapters.
+Module-owned Leptos UI packages use `rustok-ui-i18n-leptos`, which adapts the
+framework-agnostic `rustok-ui-i18n` catalog core to host-provided `UiRouteContext.locale`.
+When Dioxus enters the workspace, add a sibling `rustok-ui-i18n-dioxus` adapter instead
+of adding Dioxus dependencies to the core crate.
 
 If module business UI ends up inside `apps/admin/src/` (outside of
 `src/widgets/app_shell/` or `src/shared/`), that is an ownership violation.

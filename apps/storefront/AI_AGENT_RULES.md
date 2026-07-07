@@ -120,7 +120,7 @@ Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-fronte
 | `t!(i18n, key)` macro | Use `i18n::t(locale, "key", "fallback")` |
 | Module UI in `apps/storefront/src/` | Use `crates/rustok-<module>/storefront/` |
 | Building routes with hardcoded strings | Use `UiRouteContext::module_route_base()` |
-| Writing `i18n.rs` without `rustok_api` pattern | Follow standard `build_ui_message_catalog` boilerplate |
+| Writing `i18n.rs` without `rustok-ui-i18n-leptos` | Follow standard `LeptosUiMessages` adapter boilerplate |
 | Forgetting to declare deps in module `Cargo.toml` | Each module must declare ALL dependencies explicitly (for `cargo check`/`cargo test`), even if host has them. `workspace = true` coordinates version only. |
 
 ## Full Documentation

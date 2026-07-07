@@ -8,7 +8,6 @@
 - Provide reusable channel request context types for channel-aware runtime resolution.
 - Provide thin UI host route context types when module-owned frontend packages need generic host data such as route segment, nested subpath, locale, and query params.
 - Provide framework-agnostic UI input and route-query update helpers (`normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate`) for FFA module UI cores.
-- Re-export `rustok-ui-i18n` helpers during the transition from the previous `rustok_api` import path.
 - Provide typed route-selection schemas and sanitization helpers for host-owned URL contracts.
 - Provide the framework-independent manifest-to-runtime registry comparison contract used by the server composition root.
 - Provide GraphQL helper types and error helpers shared across modules.
@@ -32,7 +31,7 @@
 - `apps/server` may wire and re-export `rustok-api`, but must not grow a second parallel shared API layer.
 - Module crates may depend on `rustok-api` for shared host contracts, but keep module-specific transport code and domain behavior locally.
 - New cross-module request/auth/GraphQL/UI host helpers should go into `rustok-api` only when they are genuinely shared and host-level.
-- New UI message catalog or translation-key resolution helpers belong in `rustok-ui-i18n`, not in `rustok-api`.
+- UI message catalog or translation-key resolution helpers belong in `rustok-ui-i18n` and framework adapters such as `rustok-ui-i18n-leptos`, not in `rustok-api`.
 
 ## Entry points
 - `src/lib.rs`

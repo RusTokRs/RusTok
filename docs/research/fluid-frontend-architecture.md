@@ -360,21 +360,14 @@ topology is an implementation detail, not an architectural constraint.
 
 ### i18n and FFA
 
-For i18n to be FFA-compatible, it must be **framework-agnostic**:
-- ❌ `leptos_i18n` — Leptos-specific, uses reactive context and `t!(i18n, key)` macro
-- ✅ `rustok_api` pattern — simple framework-agnostic helpers (`build_ui_message_catalog`, `resolve_ui_message_or_fallback`)
+For i18n to be FFA-compatible, message resolution must be split into framework-neutral core and thin framework adapters:
+- `rustok-ui-i18n` owns catalog parsing, locale normalization and fallback resolution.
+- `rustok-ui-i18n-leptos` adapts that core to Leptos module UI packages.
+- `rustok-ui-i18n-dioxus` must be added as a sibling adapter when Dioxus enters the workspace.
 
-**Current state:**
-- Module-owned UI packages already use `rustok_api` pattern
-- Host apps (`apps/admin`, `apps/storefront`) still use `leptos_i18n` (temporary)
+`leptos_i18n` remains Leptos-specific and must not be used by module-owned FFA UI packages. Host apps may keep it for shell/navigation until host-level FFA migration.
 
-**Future evolution:**
-When hosts migrate to FFA structure, they'll also need framework-agnostic i18n. Options:
-1. Use existing `rustok_api` pattern (minimal, sufficient for current needs)
-2. Extract into dedicated `rustok-ui-i18n` crate with extended features (pluralization, ICU MessageFormat)
-3. Adopt/contribute to a community framework-agnostic Rust i18n library if one emerges
-
-The key principle: i18n must work in `core/` layer without framework imports, so both Leptos and Dioxus UI adapters can use it.
+The key principle: i18n core must work without framework imports, so both Leptos and Dioxus UI adapters can use it.
 
 ## FFA Compatibility Criteria
 

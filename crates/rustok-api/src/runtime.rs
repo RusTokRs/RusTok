@@ -1,13 +1,23 @@
+use std::{
+    any::{Any, TypeId},
+    collections::HashMap,
+    sync::Arc,
+};
+
 use sea_orm::DatabaseConnection;
 
 #[derive(Clone)]
 pub struct HostRuntimeContext {
     db: DatabaseConnection,
+    shared_values: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 }
 
 impl HostRuntimeContext {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            shared_values: Arc::new(HashMap::new()),
+        }
     }
 
     pub fn db(&self) -> &DatabaseConnection {
@@ -16,5 +26,25 @@ impl HostRuntimeContext {
 
     pub fn db_clone(&self) -> DatabaseConnection {
         self.db.clone()
+    }
+
+    pub fn with_shared_value<T>(mut self, value: T) -> Self
+    where
+        T: 'static + Send + Sync,
+    {
+        let mut shared_values = (*self.shared_values).clone();
+        shared_values.insert(TypeId::of::<T>(), Arc::new(value));
+        self.shared_values = Arc::new(shared_values);
+        self
+    }
+
+    pub fn shared_get<T>(&self) -> Option<T>
+    where
+        T: 'static + Send + Sync + Clone,
+    {
+        self.shared_values
+            .get(&TypeId::of::<T>())
+            .and_then(|value| value.downcast_ref::<T>())
+            .cloned()
     }
 }

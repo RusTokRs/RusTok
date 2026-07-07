@@ -17,15 +17,17 @@
 
 ## Integration
 
-- Module-owned UI packages should use this crate from local `i18n.rs` files.
-- `rustok-api` re-exports this crate during migration so existing imports keep compiling.
+- Leptos module-owned UI packages should use `rustok-ui-i18n-leptos` from local
+  `i18n.rs` files.
+- Framework adapters depend on this crate directly; `rustok-api` does not own or
+  re-export UI i18n helpers.
 - Host applications pass the effective locale; this crate does not inspect cookies, headers,
   route query parameters or framework context.
 
 ## Verification
 
 - `cargo test -p rustok-ui-i18n --lib`
-- `cargo test -p rustok-api --lib`
+- `cargo test -p rustok-ui-i18n-leptos --lib`
 
 ## Related Documents
 
@@ -33,4 +35,3 @@
 - [Implementation Plan](./implementation-plan.md)
 - [Module UI Package Implementation Guide](../../../docs/UI/module-package-implementation.md)
 - [Platform Documentation Map](../../../docs/index.md)
-

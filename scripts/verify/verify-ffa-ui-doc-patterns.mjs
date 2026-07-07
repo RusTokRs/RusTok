@@ -110,7 +110,7 @@ for (const marker of [
   }
 }
 
-console.log("[3/4] Searching for Leptos dependencies inside the core layer (core.rs and core/)...");
+console.log("[3/5] Searching for Leptos dependencies inside the core layer (core.rs and core/)...");
 const coreFiles = listFiles("crates", (filePath) => {
   const normalized = relativePath(filePath);
   return normalized.endsWith(".rs") && (normalized.endsWith("/core.rs") || normalized.includes("/core/"));
@@ -121,7 +121,27 @@ if (coreHits.length > 0) {
   fail(`Found Leptos dependencies inside the core layer:\n${coreHits.join("\n")}`);
 }
 
-console.log("[4/4] Checking that docs/index.md links to the plan...");
+console.log("[4/5] Checking UI i18n ownership boundaries...");
+const moduleI18nFiles = listFiles("crates", (filePath) => {
+  const normalized = relativePath(filePath);
+  return normalized.endsWith("/src/i18n.rs") && /\/(admin|storefront)\/src\/i18n\.rs$/.test(normalized);
+});
+const rustokApiI18nPattern = /rustok_api::.*(build_ui_message_catalog|resolve_ui_message|UiMessageCatalog)|rustok_api::build_ui_message_catalog/;
+const rustokApiI18nHits = findMatches(moduleI18nFiles, rustokApiI18nPattern);
+if (rustokApiI18nHits.length > 0) {
+  fail(`Module UI i18n files must not import UI i18n helpers from rustok_api:\n${rustokApiI18nHits.join("\n")}`);
+}
+
+const docsFiles = listFiles("docs", (filePath) => /\.(md|mjs|js)$/i.test(filePath)).concat(
+  listFiles("apps", (filePath) => /AI_AGENT_RULES\.md$|docs[\\/].*\.md$/i.test(filePath)),
+);
+const staleRustokApiI18nDocsPattern = /rustok_api::build_ui_message_catalog|rustok_api` pattern|rustok-api.*re-exports UI i18n|temporary re-exports for `rustok-ui-i18n`/;
+const staleRustokApiI18nDocsHits = findMatches(docsFiles, staleRustokApiI18nDocsPattern);
+if (staleRustokApiI18nDocsHits.length > 0) {
+  fail(`Documentation must not describe rustok_api as the UI i18n owner:\n${staleRustokApiI18nDocsHits.join("\n")}`);
+}
+
+console.log("[5/5] Checking that docs/index.md links to the plan...");
 if (!readText("docs/index.md").includes("dioxus-ffa-ui-migration-plan")) {
   fail("docs/index.md: missing dioxus-ffa-ui-migration-plan link");
 }

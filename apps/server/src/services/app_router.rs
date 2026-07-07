@@ -155,7 +155,14 @@ pub fn compose_application_router(
     let server_fn_ctx = ctx.clone();
     let middleware_runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
     let auth_runtime = ServerAuthRuntime::from_loco_app_context(ctx);
-    let server_fn_runtime_ctx = HostRuntimeContext::new(ctx.db.clone());
+    let server_fn_runtime_ctx = {
+        let runtime_ctx = HostRuntimeContext::new(ctx.db.clone());
+        if let Some(storage) = ctx.shared_store.get::<rustok_storage::StorageService>() {
+            runtime_ctx.with_shared_value(storage)
+        } else {
+            runtime_ctx
+        }
+    };
     let server_fn_registry = runtime.registry.clone();
 
     mount_application_shell(

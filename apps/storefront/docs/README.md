@@ -11,7 +11,7 @@
 >
 > **IMPORTANT RULES:**
 > - **DO NOT write custom UI components** — check [Rust UI Component Catalog](../../../docs/UI/rust-ui-component-catalog.md) first
-> - **DO NOT invent custom i18n** — use `rustok_api::build_ui_message_catalog` pattern (see Implementation Guide)
+> - **DO NOT invent custom i18n** — use `rustok-ui-i18n-leptos` for Leptos module UI packages (see Implementation Guide)
 > - **DO NOT remove GraphQL** when adding `#[server]` — both must coexist
 > - **DO NOT write Leptos code in `core.rs`** — CI will reject it
 

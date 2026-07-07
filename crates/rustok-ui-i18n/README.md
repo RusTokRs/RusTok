@@ -22,7 +22,8 @@ RusToK module-owned UI packages and future UI adapters.
 ## Interactions
 
 - Module-owned UI packages use this crate from local `i18n.rs` files.
-- `rustok-api` re-exports the public helpers during the transition from the previous `rustok_api` path.
+- Leptos packages use `rustok-ui-i18n-leptos` for shared adapter boilerplate.
+- Dioxus packages must use a sibling `rustok-ui-i18n-dioxus` adapter when Dioxus enters the workspace.
 - Host/runtime code still owns effective locale selection; this crate only resolves messages for a supplied locale.
 
 ## Boundary Rules
@@ -35,4 +36,3 @@ RusToK module-owned UI packages and future UI adapters.
 
 - [Platform docs index](../../docs/index.md)
 - [Module UI package implementation guide](../../docs/UI/module-package-implementation.md)
-

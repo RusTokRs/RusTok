@@ -118,7 +118,7 @@ Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-fronte
 | Raw HTTP client in graphql_adapter | Use platform GraphQL client (`leptos-graphql` now, framework-agnostic later) |
 | `t!(i18n, key)` macro | Use `i18n::t(locale, "key", "fallback")` |
 | Module UI in `apps/admin/src/features/` | Use `crates/rustok-<module>/admin/` |
-| Writing `i18n.rs` without `rustok_api` pattern | Follow standard `build_ui_message_catalog` boilerplate |
+| Writing `i18n.rs` without `rustok-ui-i18n-leptos` | Follow standard `LeptosUiMessages` adapter boilerplate |
 | Forgetting to declare deps in module `Cargo.toml` | Each module must declare ALL dependencies explicitly (for `cargo check`/`cargo test`), even if host has them. `workspace = true` coordinates version only. |
 
 ## Full Documentation
