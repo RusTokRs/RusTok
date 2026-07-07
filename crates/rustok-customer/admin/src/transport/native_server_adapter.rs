@@ -91,6 +91,20 @@ fn parse_optional_uuid(value: &str, field_name: &str) -> Result<Option<uuid::Uui
 }
 
 #[cfg(feature = "ssr")]
+fn customer_service(
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+) -> rustok_customer::CustomerService {
+    rustok_customer::CustomerService::new(runtime_ctx.db_clone())
+}
+
+#[cfg(feature = "ssr")]
+fn profile_service(
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+) -> rustok_profiles::ProfileService {
+    rustok_profiles::ProfileService::new(runtime_ctx.db_clone())
+}
+
+#[cfg(feature = "ssr")]
 fn map_current_tenant(tenant: &rustok_api::TenantContext) -> CurrentTenant {
     CurrentTenant {
         id: tenant.id.to_string(),
@@ -233,12 +247,11 @@ async fn customer_list_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, TenantContext};
-        use rustok_customer::{CustomerService, ListCustomersInput};
+        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_customer::ListCustomersInput;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -262,7 +275,7 @@ async fn customer_list_native(
         };
         let page = page.max(1);
         let per_page = per_page.clamp(1, 100);
-        let service = CustomerService::new(app_ctx.db.clone());
+        let service = customer_service(&runtime_ctx);
         let (items, total) = service
             .list_customers(
                 tenant.id,
@@ -297,13 +310,10 @@ async fn customer_detail_native(customer_id: String) -> Result<CustomerDetail, S
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, TenantContext};
-        use rustok_customer::CustomerService;
-        use rustok_profiles::ProfileService;
+        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -318,8 +328,8 @@ async fn customer_detail_native(customer_id: String) -> Result<CustomerDetail, S
         )?;
 
         let customer_id = parse_uuid(&customer_id, "customer_id")?;
-        let customer_service = CustomerService::new(app_ctx.db.clone());
-        let profile_service = ProfileService::new(app_ctx.db.clone());
+        let customer_service = customer_service(&runtime_ctx);
+        let profile_service = profile_service(&runtime_ctx);
 
         load_customer_detail(
             &customer_service,
@@ -344,13 +354,11 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, TenantContext};
-        use rustok_customer::{CreateCustomerInput, CustomerService};
-        use rustok_profiles::ProfileService;
+        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_customer::CreateCustomerInput;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -369,8 +377,8 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
             .as_deref()
             .unwrap_or(tenant.default_locale.as_str())
             .to_string();
-        let customer_service = CustomerService::new(app_ctx.db.clone());
-        let profile_service = ProfileService::new(app_ctx.db.clone());
+        let customer_service = customer_service(&runtime_ctx);
+        let profile_service = profile_service(&runtime_ctx);
         let created = customer_service
             .create_customer(
                 tenant.id,
@@ -413,13 +421,11 @@ async fn customer_update_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{AuthContext, TenantContext};
-        use rustok_customer::{CustomerService, UpdateCustomerInput};
-        use rustok_profiles::ProfileService;
+        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_customer::UpdateCustomerInput;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -442,8 +448,8 @@ async fn customer_update_native(
                 trimmed.to_string()
             }
         };
-        let customer_service = CustomerService::new(app_ctx.db.clone());
-        let profile_service = ProfileService::new(app_ctx.db.clone());
+        let customer_service = customer_service(&runtime_ctx);
+        let profile_service = profile_service(&runtime_ctx);
         customer_service
             .update_customer(
                 tenant.id,

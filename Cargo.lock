@@ -10125,7 +10125,6 @@ dependencies = [
  "leptos 0.8.20",
  "leptos-ui-routing",
  "leptos_axum",
- "loco-rs",
  "rustok-api",
  "rustok-core",
  "rustok-customer",

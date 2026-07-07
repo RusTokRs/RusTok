@@ -18,7 +18,7 @@
 - customer profile is stored separately from the auth/user domain;
 - the link to a user is optional, tenant-scoped and does not negate the autonomy of the customer model;
 - the bridge to `profiles` remains an optional read-contract and does not turn the customer into a canonical public profile;
-- admin UI ownership now lives in `rustok-customer/admin`; list defaults are extracted to `admin/src/core.rs`, Leptos rendering is extracted to `admin/src/ui/leptos.rs`, and CRUD calls go through `admin/src/transport.rs`; storefront GraphQL and REST transport remain in the `rustok-commerce` facade for now.
+- admin UI ownership now lives in `rustok-customer/admin`; list defaults are extracted to `admin/src/core.rs`, Leptos rendering is extracted to `admin/src/ui/leptos.rs`, and CRUD calls go through `admin/src/transport/mod.rs`; native server functions use `HostRuntimeContext`; storefront GraphQL and REST transport remain in the `rustok-commerce` facade for now.
 
 ## Integration
 
@@ -30,11 +30,12 @@
 
 ## FFA split for admin
 
-The admin package now uses framework-agnostic defaults `admin/src/core.rs`, a facade `admin/src/transport.rs` over native Leptos server functions and an explicit Leptos render adapter `admin/src/ui/leptos.rs`; the crate root only connects the module layers and re-exports `CustomerAdmin`.
+The admin package now uses framework-agnostic defaults `admin/src/core.rs`, a facade `admin/src/transport/mod.rs` over native Leptos server functions and an explicit Leptos render adapter `admin/src/ui/leptos.rs`; native server functions consume `HostRuntimeContext`; the crate root only connects the module layers and re-exports `CustomerAdmin`.
 
 ## Verification
 
 - No-compile source/evidence gates for iterations without compilation:
+  - `node scripts/verify/verify-customer-admin-boundary.mjs`
   - `node scripts/verify/verify-customer-fba-no-compile.mjs`
   - `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`
   - `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`

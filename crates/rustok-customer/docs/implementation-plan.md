@@ -7,7 +7,7 @@ transport and checkout orchestration remain with umbrella `rustok-commerce`.
 ## Execution checkpoint
 
 - Current phase: customer_docs_and_no_compile_verification_slice
-- Last checkpoint: Customer read-port policy cleanup removed redundant direct deadline checks; `CustomerReadPort` now relies on shared `PortCallPolicy::read()` as the single read gate while keeping no-compile FBA evidence and docs promotion blockers unchanged.
+- Last checkpoint: Customer read-port policy cleanup removed redundant direct deadline checks; `CustomerReadPort` now relies on shared `PortCallPolicy::read()` as the single read gate while keeping no-compile FBA evidence and docs promotion blockers unchanged. Native admin customer CRUD server functions now consume `rustok_api::HostRuntimeContext` and no longer depend on the previous runtime crate.
 - Next step: When compilation is allowed again, run targeted customer service/port tests for normalized identity guards and read-projection runtime smoke, including verification of `PortCallPolicy::read()` deadline semantics, then decide whether FBA can move above `in_progress`; until then, keep fast no-compile gates (`node scripts/verify/verify-customer-fba-no-compile.mjs`, `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`, `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`) green without long builds.
 - Open blockers: None.
 - Hand-off notes for next agent: After each increment, update this block and keep the central readiness board synchronized.
@@ -24,7 +24,7 @@ transport and checkout orchestration remain with umbrella `rustok-commerce`.
   - `src/ports.rs` exports `CustomerReadPort` and DTO for customer read/list projection operations; machine-readable registry and verifier check port trait operations match FBA metadata;
   - FBA-provider metadata is open for `customer read projection` through `crates/rustok-customer/contracts/customer-fba-registry.json`; status remains `in_progress` until contract tests/remote transport evidence;
   - static evidence packet `crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates); source-locked runtime/fallback packet `crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json` points to authored no-compile tests in `crates/rustok-customer/tests/customer_service_test.rs` for deadline enforcement, typed port errors and tenant-scoped fallback listing; status is not raised without actual compiled runtime execution;
-  - any UI/transport boundary changes must be locked with parity/boundary evidence in the same increment;
+  - any UI/transport boundary changes must be locked with parity/boundary evidence in the same increment; native admin transport is now source-locked by `scripts/verify/verify-customer-admin-boundary.mjs` to use `HostRuntimeContext` and avoid the previous runtime crate dependency;
   - legacy umbrella facade removed: `rustok-commerce` no longer re-exports `CustomerService` or `services::customer`, and all affected callers import the owner crate directly;
   - admin FFA slice added framework-agnostic `admin/src/core.rs` list request policy, submit-command validation/preparation, submit/transport error message mapping, form snapshot mapping, shell/list/detail header view-models, field placeholder DTOs, detail section/profile-empty copy, timestamp/user/locale/visibility display labels, list/detail row view-model policy, active row CSS policy, page-level list/detail empty/error/loading states, refresh/open action-state policy and editor action-state policy; `admin/src/transport/mod.rs` remains the module-owned facade over native-only `admin/src/transport/native_server_adapter.rs` `#[server]` endpoints; explicit Leptos render adapter `admin/src/ui/leptos.rs` consumes core view-models/snapshots/states and no longer owns covered shell/list/detail header copy, list/detail fallback strings, timestamp/profile display labels, submit/transport error copy/formatting, form placeholders, detail section/profile-empty copy, refresh/open disabled policy, active-row class decisions or editor mode/disabled policy; legacy `admin/src/api.rs` removed, `admin/src/lib.rs` only wires modules and re-exports `CustomerAdmin`.
 - Last verified at (UTC): 2026-06-20T00:00:00Z
@@ -40,7 +40,7 @@ transport and checkout orchestration remain with umbrella `rustok-commerce`.
 
 - `customers` and `CustomerService` are already separated into their own module;
 - optional linkage to `user_id` and bridge to `profiles` already exist as integration contract;
-- `rustok-customer` already publishes its own module-owned admin UI package `rustok-customer/admin` with `admin/src/core.rs` defaults for request, submit-command policy, submit/transport error message mapping, form snapshots, shell/list/detail header view-models, field placeholder DTOs, detail section/profile-empty copy, timestamp/user/locale/visibility display labels, list/detail view-model policy, page-state policy, refresh/open action-state policy and editor action-state policy, `admin/src/transport/mod.rs` facade over `admin/src/transport/native_server_adapter.rs` native Leptos server functions for list/detail/create/update customer records and explicit `admin/src/ui/leptos.rs` render adapter;
+- `rustok-customer` already publishes its own module-owned admin UI package `rustok-customer/admin` with `admin/src/core.rs` defaults for request, submit-command policy, submit/transport error message mapping, form snapshots, shell/list/detail header view-models, field placeholder DTOs, detail section/profile-empty copy, timestamp/user/locale/visibility display labels, list/detail view-model policy, page-state policy, refresh/open action-state policy and editor action-state policy, `admin/src/transport/mod.rs` facade over Loco-free `admin/src/transport/native_server_adapter.rs` native Leptos server functions for list/detail/create/update customer records and explicit `admin/src/ui/leptos.rs` render adapter;
 - transport adapters are still published through `rustok-commerce` facade;
 - customer read/write contract does not turn customer into a canonical public profile surface.
 
@@ -73,6 +73,8 @@ transport and checkout orchestration remain with umbrella `rustok-commerce`.
 ## No-compile verification gates
 
 While compilation is prohibited, customer increments are checked by fast source/evidence gates:
+
+- `node scripts/verify/verify-customer-admin-boundary.mjs` - checks the customer admin core/transport/ui split and Loco-free native server-function runtime boundary;
 
 - `node scripts/verify/verify-customer-fba-no-compile.mjs` — checks `CustomerReadPort`, `rustok-module.toml`, `Cargo.toml`, local plan and central readiness board against `customer-fba-registry.json`;
 - `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs` — checks static contract-test matrix against registry contract cases/profiles/assertions;

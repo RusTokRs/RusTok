@@ -111,6 +111,7 @@
     "verify:media:fba": "node scripts/verify/verify-media-fba.mjs && npm run verify:owner:fba-runtime-order",
     "verify:commerce:admin-boundary": "node scripts/verify/verify-commerce-admin-boundary.mjs",
     "test:verify:commerce:admin-boundary": "node scripts/verify/verify-commerce-admin-boundary.test.mjs",
+    "verify:customer:admin-boundary": "node scripts/verify/verify-customer-admin-boundary.mjs",
     "verify:commerce:storefront-transport-handoff": "node scripts/verify/verify-commerce-storefront-transport-handoff.mjs",
     "verify:seo:admin-boundary": "node scripts/verify/verify-seo-admin-boundary.mjs",
     "verify:consumer:fba-runtime-order": "node scripts/verify/verify-consumer-fba-runtime-order.mjs",

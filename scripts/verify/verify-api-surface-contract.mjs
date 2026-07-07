@@ -402,6 +402,7 @@ for (const rel of [
   'crates/rustok-comments/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-workflow/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-media/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-customer/admin/src/transport/native_server_adapter.rs',
 ]) {
   requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
   requireContains(rel, 'HostRuntimeContext', `${rel} consumes neutral host runtime context`);
@@ -411,6 +412,7 @@ requireNotContains('crates/rustok-region/admin/Cargo.toml', 'loco-rs', 'region a
 requireNotContains('crates/rustok-comments/admin/Cargo.toml', 'loco-rs', 'comments admin crate does not depend on Loco');
 requireNotContains('crates/rustok-workflow/admin/Cargo.toml', 'loco-rs', 'workflow admin crate does not depend on Loco');
 requireNotContains('crates/rustok-media/admin/Cargo.toml', 'loco-rs', 'media admin crate does not depend on Loco');
+requireNotContains('crates/rustok-customer/admin/Cargo.toml', 'loco-rs', 'customer admin crate does not depend on Loco');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub struct Permission', 'rustok-api owns Permission');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Action', 'rustok-api owns Action');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Resource', 'rustok-api owns Resource');
