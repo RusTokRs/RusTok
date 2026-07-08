@@ -6,7 +6,7 @@ Status: support crate is stabilized as a reusable owner-side SEO UI layer. D6.1/
 
 - Current phase: `phase_d6_transport_parity_followup`
 - Last checkpoint: Legacy `src/api.rs` file removed; shared SEO GraphQL helpers now live in `src/transport.rs`, and `SeoEntityPanel` consumes the internal transport module directly while keeping owner-module API unchanged.
-- Next step: Close D6.2 — transport helpers parity (REST-first + GraphQL fallback) for diagnostics/sitemap/bulk control-plane read surfaces.
+- Next step: Close D6.2 — transport helpers parity (REST primary + GraphQL secondary path) for diagnostics/sitemap/bulk control-plane read surfaces.
 - Open blockers:
   - For D6.2, the minimum REST surface in the support crate needs to be agreed upon without duplicating heavy client code from Next admin.
   - For D8 integration coverage, a coordinated fixture set of permission/validation errors for Leptos owner panels is needed.

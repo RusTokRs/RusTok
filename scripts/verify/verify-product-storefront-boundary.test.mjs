@@ -29,14 +29,14 @@ function coreSource({ includeLeptos = false, omitCatalogLabels = false } = {}) {
   return `
 ${includeLeptos ? "use leptos::prelude::*;" : ""}
 ${omitCatalogLabels ? "" : "pub fn build_product_catalog_rail_labels() {}"}
-pub fn build_product_catalog_rail_view_model() {}
-pub fn build_product_storefront_shell_view_model() {}
-pub fn build_product_transport_error_dom_evidence() {}
+pub fn build_catalog_rail_view_model() {}
+pub fn build_shell_view_model() {}
+pub fn build_transport_error_dom_evidence() {}
 pub fn build_selected_product_empty_view_model() {}
 pub fn build_selected_product_view_model() {}
-pub fn build_storefront_fetch_request() {}
-pub fn build_storefront_route_input() {}
-pub fn resolve_product_storefront_route_segment() {}
+pub fn build_fetch_request() {}
+pub fn build_route_input() {}
+pub fn resolve_route_segment() {}
 pub struct ProductCatalogRailViewModel { pub show_empty_state: bool }
 pub struct SelectedProductViewModel { pub metadata_items: Vec<String> }
 `;
@@ -50,14 +50,14 @@ function uiSource({
   catalogEmptyBranch = false,
 } = {}) {
   return `
-use crate::core::{build_product_catalog_rail_labels, build_product_catalog_rail_view_model, resolve_product_storefront_route_segment};
+use crate::core::{build_product_catalog_rail_labels, build_catalog_rail_view_model, resolve_route_segment};
 use crate::transport;
 
 pub fn ProductView() {
     let _transport = transport::fetch_products;
     let _labels = build_product_catalog_rail_labels;
-    let _rail = build_product_catalog_rail_view_model;
-    let _route_segment = resolve_product_storefront_route_segment;
+    let _rail = build_catalog_rail_view_model;
+    let _route_segment = resolve_route_segment;
     ${rawApiCall ? "let _raw = api::fetch_products;" : ""}
     ${directCatalogLabels ? 'let _copy = "Published products";' : ""}
     ${metadataSeparator ? 'let _separator = view! { <span>"|"</span> };' : ""}
@@ -84,8 +84,14 @@ pub async fn fetch_storefront_products_graphql() {}
 function nativeServerAdapterSource() {
   return `
 use rustok_graphql::GraphqlRequest;
+use rustok_api::HostRuntimeContext;
+use rustok_outbox::TransactionalEventBus;
 #[server(prefix = "/api/fn", endpoint = "product/storefront-data")]
-async fn storefront_products_native() {}
+async fn storefront_products_native() {
+  let runtime_ctx = expect_context::<HostRuntimeContext>();
+  let event_bus = runtime_ctx.shared_get::<TransactionalEventBus>();
+  let db = runtime_ctx.db_clone();
+}
 `;
 }
 
@@ -97,6 +103,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", transportSource());
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/graphql_adapter.rs", graphqlAdapterSource());
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs", nativeServerAdapterSource());
+  writeFixtureFile(root, "crates/rustok-product/storefront/Cargo.toml", "[package]\nname = \"rustok-product-storefront\"\n");
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-product/storefront/src/api.rs", nativeServerAdapterSource());
   writeFixtureFile(root, "crates/rustok-product/docs/implementation-plan.md", "verify-product-storefront-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-product-storefront-boundary.mjs");

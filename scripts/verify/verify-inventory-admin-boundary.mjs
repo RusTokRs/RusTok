@@ -184,6 +184,13 @@ function assertInventoryAdminTransportBoundary() {
 
   assertContains(lib, "mod transport;", `${libPath}: inventory admin FFA facade must be wired through transport/`);
   assertNotContains(lib, "mod api;", `${libPath}: UI must not be wired to the pre-FFA api facade`);
+  assertContains(native, "expect_context::<rustok_api::HostRuntimeContext>()", `${nativePath}: native functions must consume neutral host runtime context`);
+  assertContains(native, "runtime_ctx.db_clone()", `${nativePath}: native functions must read DB from neutral host runtime context`);
+  assertContains(native, "shared_get::<rustok_outbox::TransactionalEventBus>()", `${nativePath}: native write functions must read the typed event bus from host runtime context`);
+  assertNotContains(native, "loco_rs", `${nativePath}: native functions must not depend on Loco runtime context`);
+  assertNotContains(native, "rustok_outbox::loco", `${nativePath}: native functions must not consume the outbox Loco adapter`);
+  assertNotContains(cargo, "loco-rs", `${cargoPath}: inventory admin crate must not depend on Loco`);
+  assertNotContains(cargo, "loco-adapter", `${cargoPath}: inventory admin crate must not enable the outbox Loco adapter feature`);
 
   for (const [functionName, nativeCall] of [
     ["set_variant_quantity", "crate::native::set_variant_quantity"],
@@ -253,7 +260,7 @@ function assertInventoryAdminTransportBoundary() {
     );
     assertNotContains(
       source,
-      "оставшиеся inventory mutations",
+      "remaining inventory mutations",
       `${relativePath}: admin UI copy must not claim current stock operations are still split from umbrella transport`,
     );
     assertContains(
@@ -325,7 +332,7 @@ function assertInventoryDocsBoundaryEvidence() {
 
   assertContains(
     plan,
-    "- [x] перевести текущие inventory admin UI stock operations на inventory-owned native/transport mutations",
+    "- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations",
     `${planPath}: implementation plan must mark current inventory admin stock operations as native/transport covered`,
   );
   assertContains(
@@ -335,7 +342,7 @@ function assertInventoryDocsBoundaryEvidence() {
   );
   assertNotContains(
     plan,
-    "- [ ] перевести оставшиеся inventory admin UI stock operations",
+    "- [ ] move remaining inventory admin UI stock operations",
     `${planPath}: implementation plan must not keep stale unchecked admin UI stock-operation split item`,
   );
 }

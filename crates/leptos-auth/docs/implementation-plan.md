@@ -5,7 +5,7 @@ _No planned tasks._
 ## Execution checkpoint
 
 - Current phase: transport_module_alignment
-- Last checkpoint: Legacy `src/api.rs` file removed; auth native/server-function + GraphQL fallback implementation now lives in `src/transport.rs`, while `leptos_auth::api::*` remains as a compatibility re-export for existing callers.
+- Last checkpoint: Legacy `src/api.rs` file removed; auth native/server-function + GraphQL selected-path implementation now lives in `src/transport.rs`, while `leptos_auth::api::*` remains as a compatibility re-export for existing callers.
 - Next step: Synchronize the plan with the current code and select the first incomplete item.
 - Open blockers: None.
 - Hand-off notes for next agent: Update this block after each increment.

@@ -26,7 +26,7 @@ Selection reasons:
 Selection reasons:
 - pronounced search-state logic (query/filter/pagination/sort);
 - sensitivity to route/query parity and locale/tenant context;
-- presence of fallback branches and runtime branching for SSR/GraphQL path.
+- presence of selected-path branches and runtime branching for SSR/GraphQL path.
 
 ## A2. Connectivity Map
 
@@ -39,7 +39,7 @@ Selection reasons:
 
 ### Transport binding points
 - native `#[server]` handlers for SSR/hydrate path;
-- GraphQL fallback through module-owned API adapters;
+- GraphQL selected path through module-owned transport adapters;
 - `cfg(feature = "ssr")` branching for runtime split.
 
 ### Layer mixing risks
@@ -56,8 +56,8 @@ Selection reasons:
 
 ### Transport binding points
 - native `#[server]` read/search path in SSR/hydrate;
-- GraphQL fallback adapters for headless/CSR-compatible flow;
-- runtime conditional branches for fallback/degradation mode.
+- GraphQL selected-path adapters for headless/CSR-compatible flow;
+- runtime conditional branches for selected-path/degradation mode.
 
 ### Layer mixing risks
 - binding transport payload format directly to UI model;
@@ -95,13 +95,13 @@ with mandatory evidence per checklist:
 - added `crates/rustok-pages/storefront/src/core.rs`;
 - `SelectedPageCard` migrated to `core::*` functions;
 - Leptos storefront render/bind layer moved to `crates/rustok-pages/storefront/src/ui/leptos.rs`, crate root only wires modules/re-exports `PagesView`;
-- dual-path transport contract (`native #[server]` + GraphQL fallback) not changed.
+- dual-path transport contract (`native #[server]` + GraphQL selected path) not changed.
 
 ### Double-check after completion
 
 - [x] Pass #1 (code/docs consistency):
   - `rustok-pages/storefront` actually uses the extracted `core` layer for selected-page logic and explicit `ui/leptos.rs` adapter for render/bind;
-  - dual-path transport (`native #[server]` + GraphQL fallback) preserved without removing fallback surface.
+  - dual-path transport (`native #[server]` + GraphQL selected path) preserved without removing the GraphQL surface.
 - [x] Pass #2 (cleanup stale wording):
   - current central docs for this step contain no wording contradicting the `core` slice in `rustok-pages`.
 
@@ -119,7 +119,7 @@ with mandatory evidence per checklist:
   - [x] impact of the same use-case verified;
   - [x] same `core` approach applied in `admin/src/core.rs` without contract divergence.
 - [x] Headless parity (Next/mobile/external)
-  - [x] confirmed that GraphQL fallback path has not degraded;
+  - [x] confirmed that GraphQL selected path has not degraded;
   - [x] route/query/i18n contract has no drift relative to host expectations.
 
 ### Evidence check before closing `rustok-search` iteration
@@ -133,7 +133,7 @@ with mandatory evidence per checklist:
 
 - added `crates/rustok-search/storefront/src/core.rs` and `crates/rustok-search/admin/src/core.rs`;
 - removed local duplicates of `parse_csv`/`optional_text` in storefront/admin UI and connected `core::*`;
-- dual-path transport (`native #[server]` + GraphQL fallback) not modified.
+- dual-path transport (`native #[server]` + GraphQL selected path) not modified.
 
 - `rustok-search` slice #2: facet name normalization extracted to core for storefront/admin (`facet_display_name`).
 - `rustok-search` slice #3: facet bucket label formatting extracted to core (`facet_bucket_label`) for storefront/admin.
@@ -195,15 +195,15 @@ with mandatory evidence per checklist:
 
 ### Additional iteration evidence
 
-- blog slice #1 evidence: `crates/rustok-blog/storefront/src/core.rs` used by `crates/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #13 evidence: admin analytics/dictionaries error messages and timestamp fallbacks now use existing `admin/src/core.rs` helpers; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #14 evidence: admin tab and diagnostics/consistency badge CSS class mapping moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #15 evidence: admin navigation href, engine option label and rebuild feedback rendering moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #16 evidence: admin relevance editor merge and JSON-array validation moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) not changed.
-- `rustok-search` slice #31 evidence: storefront transport split into `transport/native_server_adapter.rs` and `transport/graphql_adapter.rs`; native-first fallback orchestration moved to `transport/mod.rs`, while raw `api.rs` keeps the existing native server-function and GraphQL endpoints.
+- blog slice #1 evidence: `crates/rustok-blog/storefront/src/core.rs` used by `crates/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #13 evidence: admin analytics/dictionaries error messages and timestamp fallbacks now use existing `admin/src/core.rs` helpers; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #14 evidence: admin tab and diagnostics/consistency badge CSS class mapping moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #15 evidence: admin navigation href, engine option label and rebuild feedback rendering moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #16 evidence: admin relevance editor merge and JSON-array validation moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- `rustok-search` slice #31 evidence: storefront transport split into `transport/native_server_adapter.rs` and `transport/graphql_adapter.rs`; build-profile-selected native/GraphQL orchestration moved to `transport/mod.rs`, while raw `api.rs` keeps the existing native server-function and GraphQL endpoints.
 - `rustok-search` slice #32 evidence: storefront suggestions presentation and document-vs-query navigation decision moved into `storefront/src/core.rs`; Leptos adapter renders core-owned suggestion view-models and only executes the prepared navigation target.
 - `rustok-search` slice #33 evidence: storefront filter preset chip state/class/next-selection mapping moved into `storefront/src/core.rs`; Leptos adapter renders core-owned chip view-models and keeps only signal wiring/navigation execution.
 - `rustok-search` slice #34 evidence: storefront facet display names and bucket labels moved into `storefront/src/core.rs`; Leptos facet cards render core-owned facet view-models without inline facet formatting.

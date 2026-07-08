@@ -15,7 +15,7 @@ Leptos storefront UI package for the `rustok-cart` module.
   metadata from the cart boundary instead of collapsing everything into summary-only counters.
 - Supports safe cart-owned line-item decrement and remove actions without taking over checkout orchestration,
   while repricing line items through the pricing resolver on quantity change.
-- Uses native Leptos `#[server]` calls for monolith/hydrate builds and keeps GraphQL as the headless/CSR selected path.
+- Uses native Leptos `#[server]` calls for monolith/hydrate builds through `HostRuntimeContext` and keeps GraphQL as the headless/CSR selected path.
 - Keeps cart UI policy and display/view-model mapping in a framework-agnostic `core/` layer and keeps Leptos rendering in `ui/leptos.rs`, routing actions through a thin `transport` facade.
 - Leaves checkout completion and broader cross-domain orchestration inside `rustok-commerce`.
 
@@ -31,7 +31,7 @@ Leptos storefront UI package for the `rustok-cart` module.
 ## Interactions
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
-- Reads `CartService` through server functions and enforces customer-owned cart access with the host auth context.
+- Reads `CartService` through server functions, resolves DB/event bus handles from the host runtime context, and enforces customer-owned cart access with the host auth context.
 - Stays compatible with locale-prefixed module routes via `UiRouteContext::module_route_base()`.
 - Coexists with the `rustok-commerce` storefront/transport layer while checkout and shipping orchestration remain aggregate concerns.
 

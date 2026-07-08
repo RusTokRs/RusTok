@@ -2,6 +2,7 @@
 use chrono::{Duration, Utc};
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
+use rustok_ui_transport::UiTransportPath;
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
@@ -10,13 +11,20 @@ use serde_json::json;
 use crate::app::modules::{components_for_slot, AdminSlot};
 use crate::app::providers::enabled_modules::use_enabled_modules;
 use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
-use crate::shared::api::request;
-use crate::shared::api::ApiError;
+use crate::shared::api::{request, ApiError};
 use crate::shared::ui::{
     Badge, BadgeVariant, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader,
 };
 use crate::widgets::stats_card::StatsCard;
 use crate::{t_string, use_i18n};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -102,10 +110,6 @@ fn server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError(message.into())
 }
 
-fn map_fallback_error(context: &str, native: ServerFnError, graphql: ApiError) -> String {
-    format!("{context}: native path failed ({native}); GraphQL fallback failed ({graphql})")
-}
-
 async fn fetch_dashboard_stats_graphql(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -131,17 +135,13 @@ async fn fetch_dashboard_stats(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<DashboardStatsResponse, String> {
-    match dashboard_stats_native().await {
-        Ok(response) => Ok(response),
-        Err(native_error) => fetch_dashboard_stats_graphql(token, tenant_slug)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => dashboard_stats_native()
             .await
-            .map_err(|graphql_error| {
-                map_fallback_error(
-                    "dashboard stats request failed",
-                    native_error,
-                    graphql_error,
-                )
-            }),
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => fetch_dashboard_stats_graphql(token, tenant_slug)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -150,17 +150,13 @@ async fn fetch_recent_activity(
     tenant_slug: Option<String>,
     limit: i64,
 ) -> Result<RecentActivityResponse, String> {
-    match recent_activity_native(limit).await {
-        Ok(response) => Ok(response),
-        Err(native_error) => fetch_recent_activity_graphql(token, tenant_slug, limit)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => recent_activity_native(limit)
             .await
-            .map_err(|graphql_error| {
-                map_fallback_error(
-                    "recent activity request failed",
-                    native_error,
-                    graphql_error,
-                )
-            }),
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => fetch_recent_activity_graphql(token, tenant_slug, limit)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 

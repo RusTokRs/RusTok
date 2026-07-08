@@ -12,11 +12,11 @@ post-v0 rollout policy lifecycle, runtime integration parity, no-compile executa
 ## Execution checkpoint
 
 - Current phase: server_artifact_cleanup
-- Last checkpoint: channel REST/control-plane DTOs and rule-payload mapping helpers moved from `apps/server` into `crates/rustok-channel/src/dto/mod.rs`. The server `/api/channels/*` controller now imports owner request/response types and helper functions while keeping only RBAC, tenant ownership checks, OAuth-app lookup and Axum/Loco route wiring. The same source guard now prevents reintroducing server-local channel DTOs or rule-construction taxonomy.
-- Next step: Collect full Rust runtime contract evidence for `ChannelReadPort` and full `cargo check`/`cargo test` evidence for `rustok-channel-admin`/server middleware in CI or in a session without short execution limit; until Rust runtime evidence FBA remains `in_progress`, but fallback smoke profiles are now locked by dedicated no-compile executable verifier, and resolution-order decision by a fast source verifier.
-- Open blockers: compilation was not requested in this iteration; compile evidence is absent, so FFA/FBA status remains `in_progress`. Compile-free evidence passes: channel admin boundary verifier, channel FBA verifier with static matrix + no-compile executable runtime fallback smoke, channel resolution contract verifier, channel proof-points verifier and channel boundary fixture suite 13/13.
+- Last checkpoint: channel admin native server functions now consume `HostRuntimeContext::db_clone()` instead of Loco `AppContext`, the package no longer depends on `loco-rs`, and the REST secondary path remains isolated in `admin/src/transport/rest_adapter.rs`.
+- Next step: Collect full Rust runtime contract evidence for `ChannelReadPort` and full server middleware test evidence; until Rust runtime evidence FBA remains `in_progress`, but fallback smoke profiles are now locked by dedicated no-compile executable verifier, resolution-order decision by a fast source verifier, and `rustok-channel-admin` SSR compile evidence is present.
+- Open blockers: Full server middleware/runtime contract test evidence is still pending; `cargo check -p rustok-channel-admin --features ssr` passed in this iteration.
 - Hand-off notes for next agent: Keep channel admin UI calls behind `transport`, and route-selection policy in `core` or shared route helpers; do not return raw transport calls to `ui/leptos/`.
-- Last updated at (UTC): 2026-06-26T00:00:00Z
+- Last updated at (UTC): 2026-07-08T07:00:42Z
 
 ## FFA/FBA readiness
 
@@ -38,13 +38,13 @@ post-v0 rollout policy lifecycle, runtime integration parity, no-compile executa
   - `PolicyRuleFormState` and create/edit builders own default priority, fallback action channel and predicate-to-form mapping; Leptos applies the prepared state only to signals.
   - `reorder_policy_rule_ids` owns first/last boundary checking and rule ID reordering; Leptos move-up/move-down handlers only send the prepared order to the transport facade.
   - `PolicyRuleFormState::{create_payload,update_payload}` and `policy_rule_active_update_payload` own optional-text normalization and transport DTO construction for create/edit/toggle flows.
-  - `crates/rustok-channel/admin/src/transport/mod.rs` contains module-owned transport facade and fallback policy, `native_server_adapter.rs` contains server-function endpoints, and `rest_adapter.rs` contains REST fallback; Leptos adapter no longer imports the pre-FFA module `api`.
+  - `crates/rustok-channel/admin/src/transport/mod.rs` contains module-owned transport facade and fallback policy, `native_server_adapter.rs` contains server-function endpoints, and `rest_adapter.rs` contains REST secondary path; Leptos adapter no longer imports the pre-FFA module `api`.
+  - Channel admin native server functions use `HostRuntimeContext::db_clone()` instead of Loco `AppContext`; `rustok-channel-admin` no longer depends on `loco-rs`, and `scripts/verify/verify-channel-admin-boundary.mjs` now locks the Loco-free native runtime boundary alongside the existing FFA split.
   - `crates/rustok-channel/admin/src/ui/leptos/` is the explicit Leptos render adapter directory: `mod.rs` owns `ChannelAdmin`/shared render glue, and runtime context, policy workbench, policy-set card and channel card are isolated in component files; channel operations call only the module-owned transport facade.
   - `scripts/verify/verify-channel-admin-boundary.mjs` locks the split without full Rust compilation: required `ui/leptos/` structure, absence of `api.rs`/legacy `transport.rs`, absence of raw transport calls in UI, Leptos-free `core`, and separation of `#[server]`/`reqwest` into adapter files.
   - `scripts/verify/verify-channel-admin-boundary.test.mjs` adds fixture-based regression coverage for pass path, legacy `api.rs`, legacy flat `transport.rs`, raw adapter calls from UI, inline policy-selection lookup, Leptos-specific core regression, erroneous `#[server]` endpoints in facade/REST adapter and raw REST calls outside `rest_adapter.rs`.
   - `npm run verify:ffa:ui:migration` now runs the channel admin boundary verifier as part of the common FFA verification pipeline.
-- Compile-evidence note (2026-06-20): compilation was not requested in the current iteration. Compile-free gates: `npm run verify:channel:admin-boundary`, `npm run verify:channel:fba` (registry + static matrix + no-compile executable fallback smoke), `npm run verify:channel:resolution-contract` (canonical order + built-in host fast-path docs sync), `npm run verify:channel:proof-points` (pages/blog/commerce/forum proof-point source/docs sync) and `node --test scripts/verify/verify-channel-admin-boundary.test.mjs` passed; `cargo fmt -p rustok-server -- apps/server/src/middleware/channel.rs` applied only as formatting without compilation.
-- Next parity step: collect full Rust evidence (`cargo check`/`cargo test`) before moving channel admin row to `phase_b_ready`.
+- Compile-evidence note (2026-07-08): `cargo check -p rustok-channel-admin --features ssr`, `npm run verify:channel:admin-boundary` and `npm run test:verify:channel:admin-boundary` passed for the Loco-free native admin transport. Remaining parity step: collect full server middleware/runtime contract test evidence before moving channel admin row to `phase_b_ready`.
 
 ## Scope of work
 
@@ -102,8 +102,8 @@ post-v0 rollout policy lifecycle, runtime integration parity, no-compile executa
 
 ### 4) Admin package (`rustok-channel/admin`)
 
-- close native-first parity for policy operations in `admin/src/transport/`
-  (`#[server]` path + REST fallback, like channel/target/module flows);
+- close build-profile-selected native parity for policy operations in `admin/src/transport/`
+  (`#[server]` path + REST secondary path, like channel/target/module flows);
 - extend `PolicyWorkbench` / `PolicySetCard` (`admin/src/ui/leptos/`) to full operator flow:
   - rule active toggle,
   - rule reorder (up/down or explicit priority move),
@@ -127,7 +127,7 @@ post-v0 rollout policy lifecycle, runtime integration parity, no-compile executa
 | Host REST | `apps/server/src/controllers/channel.rs` | thin channel bootstrap/write API | new policy update/reorder endpoints |
 | Host middleware | `apps/server/src/middleware/channel.rs` | request -> `RequestFacts` -> `ChannelContext` | locale/oauth facts parity with runtime extensions |
 | Host composition | `apps/server/src/services/app_router.rs` | middleware chaining | adjust middleware ordering if necessary |
-| Admin transport | `crates/rustok-channel/admin/src/transport/` | facade + explicit native server-function adapter + REST fallback adapter after FFA split | add fast boundary verifier for absence of raw transport/API calls in UI |
+| Admin transport | `crates/rustok-channel/admin/src/transport/` | facade + explicit native server-function adapter + REST secondary-path adapter after FFA split | add fast boundary verifier for absence of raw transport/API calls in UI |
 | Admin UI | `crates/rustok-channel/admin/src/ui/leptos/` | explicit Leptos render adapter directory after FFA split | keep full operator flow behind core/transport boundaries |
 | Shared UI routing | `crates/rustok-api/src/route_selection.rs` | channel query keys (`channel_id/target_id/module_slug/oauth_app_id`) + policy edit keys (`policy_set_id/policy_rule_id`) | maintain URL-owned selection contract and dependency cleanup (`policy_set_id -> policy_rule_id`) |
 
@@ -151,7 +151,7 @@ post-v0 rollout policy lifecycle, runtime integration parity, no-compile executa
 
 - [x] bring `rustok-channel-admin` to operator flow for policy rules (reorder/disable);
 - [x] add full rule edit flow (changing predicates/action without delete+recreate);
-- [x] align native-first `#[server]` transport for policy operations with existing channel CRUD flows;
+- [x] align build-profile-selected native `#[server]` transport for policy operations with existing channel CRUD flows;
 - [x] when adding policy edit-selection state, lock URL query contract through shared `AdminQueryKey`.
 
 ### 4. Runtime integration rollout

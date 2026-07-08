@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use rustok_ui_transport::UiTransportPath;
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
@@ -11,18 +12,28 @@ use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
     ReleaseInfo, TenantModule, ToggleModuleResult,
 };
-use crate::shared::api::{combine_native_and_graphql_error, request, ApiError};
+use crate::shared::api::{map_server_fn_error, request, ApiError};
 
 use super::server::*;
 use super::types::*;
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 pub async fn fetch_enabled_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<String>, ApiError> {
-    match fetch_enabled_modules_server().await {
-        Ok(modules) => Ok(modules),
-        Err(_) => fetch_enabled_modules_graphql(token, tenant_slug).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_enabled_modules_server()
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => fetch_enabled_modules_graphql(token, tenant_slug).await,
     }
 }
 
@@ -334,17 +345,18 @@ pub async fn fetch_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<ModuleInfo>, ApiError> {
-    match list_module_registry_native().await {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => list_module_registry_native()
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: Result<ModuleRegistryResponse, ApiError> = request(
                 MODULE_REGISTRY_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
+            .await;
             match response {
                 Ok(response) => Ok(response.module_registry),
                 Err(_) => Ok(fallback_module_registry()),
@@ -357,17 +369,18 @@ pub async fn fetch_installed_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<InstalledModule>, ApiError> {
-    match list_installed_modules_native().await {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => list_installed_modules_native()
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: Result<InstalledModulesResponse, ApiError> = request(
                 INSTALLED_MODULES_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
+            .await;
             match response {
                 Ok(response) => Ok(response.installed_modules),
                 Err(_) => Ok(fallback_installed_modules()),
@@ -380,17 +393,18 @@ pub async fn fetch_tenant_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<TenantModule>, ApiError> {
-    match list_tenant_modules_native().await {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => list_tenant_modules_native()
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: Result<TenantModulesResponse, ApiError> = request(
                 TENANT_MODULES_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
+            .await;
             match response {
                 Ok(response) => Ok(response.tenant_modules),
                 Err(_) => Ok(fallback_tenant_modules()),
@@ -418,26 +432,22 @@ pub async fn fetch_marketplace_modules(
         };
     }
 
-    match list_marketplace_modules_native(
-        variables.search.clone(),
-        variables.category.clone(),
-        variables.tag.clone(),
-        variables.source.clone(),
-        variables.trust_level.clone(),
-        variables.only_compatible,
-        variables.installed_only,
-    )
-    .await
-    {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => list_marketplace_modules_native(
+            variables.search,
+            variables.category,
+            variables.tag,
+            variables.source,
+            variables.trust_level,
+            variables.only_compatible,
+            variables.installed_only,
+        )
+        .await
+        .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let fallback_variables = variables.clone();
             let response: Result<MarketplaceResponse, ApiError> =
-                request(MARKETPLACE_QUERY, variables, token, tenant_slug)
-                    .await
-                    .map_err(|graphql_err| {
-                        combine_native_and_graphql_error(server_err, graphql_err)
-                    });
+                request(MARKETPLACE_QUERY, variables, token, tenant_slug).await;
             match response {
                 Ok(response) => Ok(response.marketplace),
                 Err(_) => Ok(fallback_marketplace_modules(&fallback_variables)),
@@ -465,9 +475,11 @@ pub async fn fetch_marketplace_module(
         };
     }
 
-    match marketplace_module_native(slug.clone()).await {
-        Ok(module) => Ok(module),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => marketplace_module_native(slug)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let fallback_slug = slug.clone();
             let response: Result<MarketplaceModuleResponse, ApiError> = request(
                 MARKETPLACE_MODULE_QUERY,
@@ -475,8 +487,7 @@ pub async fn fetch_marketplace_module(
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
+            .await;
             match response {
                 Ok(response) => Ok(response.marketplace_module),
                 Err(_) => Ok(fallback_marketplace_module(&fallback_slug)),
@@ -489,17 +500,16 @@ pub async fn fetch_active_build(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Option<BuildJob>, ApiError> {
-    match active_build_native().await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => active_build_native().await.map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: ActiveBuildResponse = request(
                 ACTIVE_BUILD_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(response.active_build)
         }
     }
@@ -509,17 +519,16 @@ pub async fn fetch_active_release(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Option<ReleaseInfo>, ApiError> {
-    match active_release_native().await {
-        Ok(release) => Ok(release),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => active_release_native().await.map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: ActiveReleaseResponse = request(
                 ACTIVE_RELEASE_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(response.active_release)
         }
     }
@@ -531,17 +540,18 @@ pub async fn fetch_build_history(
     limit: i32,
     offset: i32,
 ) -> Result<Vec<BuildJob>, ApiError> {
-    match build_history_native(limit, offset).await {
-        Ok(history) => Ok(history),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => build_history_native(limit, offset)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: BuildHistoryResponse = request(
                 BUILD_HISTORY_QUERY,
                 BuildHistoryVariables { limit, offset },
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(response.build_history)
         }
     }
@@ -633,9 +643,11 @@ pub async fn update_module_settings(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<TenantModule, ApiError> {
-    match update_module_settings_native(module_slug.clone(), settings.clone()).await {
-        Ok(module) => Ok(module),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => update_module_settings_native(module_slug, settings)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: UpdateModuleSettingsResponse = request(
                 UPDATE_MODULE_SETTINGS_MUTATION,
                 UpdateModuleSettingsVariables {
@@ -645,8 +657,7 @@ pub async fn update_module_settings(
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(response.update_module_settings)
         }
     }
@@ -704,17 +715,18 @@ pub async fn rollback_build(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
-    match rollback_build_native(build_id.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => rollback_build_native(build_id)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let response: RollbackBuildResponse = request(
                 ROLLBACK_BUILD_MUTATION,
                 RollbackBuildVariables { build_id },
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(response.rollback_build)
         }
     }

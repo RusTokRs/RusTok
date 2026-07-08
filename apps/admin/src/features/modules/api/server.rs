@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use serde::de::DeserializeOwned;
+#[cfg(feature = "ssr")]
 use serde::Serialize;
 
 use super::types::*;
@@ -14,6 +15,7 @@ use crate::entities::module::model::{
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
 };
+#[cfg(feature = "ssr")]
 use crate::shared::api::api_base_url;
 
 #[cfg(feature = "ssr")]

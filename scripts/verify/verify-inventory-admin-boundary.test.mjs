@@ -137,6 +137,15 @@ const BOOTSTRAP_QUERY: &str = "query Bootstrap /api/graphql RUSTOK_GRAPHQL_URL";
 
 function nativeSource() {
   return `
+fn inventory_read_service_from_context() {
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    runtime_ctx.db_clone();
+}
+fn inventory_service_from_context() {
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    runtime_ctx.db_clone();
+    runtime_ctx.shared_get::<rustok_outbox::TransactionalEventBus>();
+}
 #[server(prefix = "/api/fn", endpoint = "inventory/bootstrap")]
 async fn inventory_bootstrap_native() {}
 #[server(prefix = "/api/fn", endpoint = "inventory/products")]
@@ -215,11 +224,11 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-inventory/admin/locales/en.json", "{\"inventory.subtitle\":\"native inventory facade\"}\n");
   writeFixtureFile(root, "crates/rustok-inventory/admin/locales/ru.json", "{\"inventory.subtitle\":\"native inventory facade\"}\n");
   writeFixtureFile(root, "crates/rustok-inventory/admin/Cargo.toml", "[package]\nname = \"rustok-inventory-admin\"\n");
-  writeFixtureFile(root, "crates/rustok-inventory/docs/implementation-plan.md", "- Next step: Перейти к завершающему verification/CI evidence slice для inventory boundary.\n- [x] перевести текущие inventory admin UI stock operations на inventory-owned native/transport mutations\n");
+  writeFixtureFile(root, "crates/rustok-inventory/docs/implementation-plan.md", "- Next step: verification/CI evidence slice for inventory boundary.\n- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations\n");
   for (const relativePath of [
-    "crates/rustok-commerce/src/graphql/mutation.rs",
+    "crates/rustok-commerce/src/graphql/mutations/helpers.rs",
     "crates/rustok-commerce/src/services/checkout.rs",
-    "crates/rustok-commerce/src/controllers/store.rs",
+    "crates/rustok-commerce/src/controllers/store/mod.rs",
   ]) {
     writeFixtureFile(root, relativePath, commerceAvailabilityCallerSource(options));
   }

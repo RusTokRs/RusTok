@@ -66,7 +66,7 @@ Completed baseline (`D1..D6`):
 
 Current wave (`D7..D9`) is grouped into large end-to-end milestones (`A..E`):
 
-- `A`: runtime SEO data plumbing (REST-first + GraphQL fallback adapter semantics for Next storefront)
+- `A`: runtime SEO data plumbing (REST primary + GraphQL selected-path adapter semantics for Next storefront)
 - `B`: runtime migration cutover for Next `robots`/`sitemap`/metadata surfaces
 - `C`: route ownership matrix + cross-host fixture parity guardrails
 - `D`: verification matrix execution

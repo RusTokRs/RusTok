@@ -6,8 +6,8 @@ steady-state hardening and drift-prevention mode.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: RBAC admin FFA guardrail added fast boundary verifier `scripts/verify/verify-rbac-admin-boundary.mjs` and fixture suite `scripts/verify/verify-rbac-admin-boundary.test.mjs` for canonical split, legacy `api.rs`, Leptos-specific core, raw adapter calls, package-local GraphQL fallback and misplaced `#[server]` endpoints without long Rust compilation.
-- Next step: Expand operator flows/verification for role and permission management surfaces; add GraphQL/REST fallback only if such a remote/headless admin contract is approved, and keep the current native-only overview with fast boundary guardrails.
+- Last checkpoint: RBAC admin FFA guardrail added fast boundary verifier `scripts/verify/verify-rbac-admin-boundary.mjs` and fixture suite `scripts/verify/verify-rbac-admin-boundary.test.mjs` for canonical split, legacy `api.rs`, Leptos-specific core, raw adapter calls, package-local GraphQL selected path and misplaced `#[server]` endpoints without long Rust compilation.
+- Next step: Expand operator flows/verification for role and permission management surfaces; add GraphQL/REST secondary path only if such a remote/headless admin contract is approved, and keep the current native-only overview with fast boundary guardrails.
 - Open blockers: None.
 - Hand-off notes for next agent: After each increment, update this block and the central FFA/FBA readiness board.
 - Last updated at (UTC): 2026-06-19T00:00:00Z

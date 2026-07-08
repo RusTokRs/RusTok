@@ -1,13 +1,12 @@
 use leptos::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::model::SearchAttributeFilter;
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
-    SearchAttributeFilter, SearchConsistencyIssuePayload, SearchDictionaryMutationPayload,
+    SearchConsistencyIssuePayload, SearchDictionaryMutationPayload,
     SearchDictionarySnapshotPayload, SearchFilterPresetPayload, SearchPreviewFilters,
     SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
     TriggerSearchRebuildPayload,
@@ -30,12 +29,6 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<GraphqlHttpError> for ApiError {
-    fn from(value: GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
-
 impl From<ServerFnError> for ApiError {
     fn from(value: ServerFnError) -> Self {
         Self::ServerFn(value.to_string())
@@ -53,165 +46,7 @@ const MAX_ATTRIBUTE_FILTERS: usize = 10;
 #[cfg(feature = "ssr")]
 const MAX_LOCALE_LEN: usize = 16;
 
-const SEARCH_ADMIN_BOOTSTRAP_QUERY: &str = "query SearchAdminBootstrap { availableSearchEngines { kind label providedBy enabled defaultEngine } searchSettingsPreview { tenantId activeEngine fallbackEngine config updatedAt } searchDiagnostics { tenantId totalDocuments publicDocuments contentDocuments productDocuments staleDocuments missingDocuments orphanedDocuments newestIndexedAt oldestIndexedAt maxLagSeconds state } }";
-const SEARCH_PREVIEW_QUERY: &str = "query SearchPreview($input: SearchPreviewInput!) { searchPreview(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
-const SEARCH_FILTER_PRESETS_QUERY: &str = "query SearchFilterPresets($input: SearchFilterPresetsInput!) { searchFilterPresets(input: $input) { key label entityTypes sourceModules statuses rankingProfile } }";
-const SEARCH_LAGGING_DOCUMENTS_QUERY: &str = "query SearchLaggingDocuments($limit: Int) { searchLaggingDocuments(limit: $limit) { documentKey documentId sourceModule entityType locale status isPublic title updatedAt indexedAt lagSeconds } }";
-const SEARCH_CONSISTENCY_ISSUES_QUERY: &str = "query SearchConsistencyIssues($limit: Int) { searchConsistencyIssues(limit: $limit) { issueKind documentKey documentId sourceModule entityType locale status title updatedAt indexedAt } }";
-const SEARCH_ANALYTICS_QUERY: &str = "query SearchAnalytics($days: Int, $limit: Int) { searchAnalytics(days: $days, limit: $limit) { summary { windowDays totalQueries successfulQueries zeroResultQueries zeroResultRate slowQueries slowQueryRate avgTookMs avgResultsPerQuery uniqueQueries clickedQueries totalClicks clickThroughRate abandonmentQueries abandonmentRate lastQueryAt } topQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } zeroResultQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } slowQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } lowCtrQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } abandonmentQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } intelligenceCandidates { query hits zeroResultHits clicks clickThroughRate abandonmentRate recommendation } } }";
-const SEARCH_DICTIONARY_SNAPSHOT_QUERY: &str = "query SearchDictionarySnapshot { searchDictionarySnapshot { synonyms { id term synonyms updatedAt } stopWords { id value updatedAt } queryRules { id queryText queryNormalized ruleKind documentId entityType sourceModule title pinnedPosition updatedAt } } }";
-const TRIGGER_SEARCH_REBUILD_MUTATION: &str = "mutation TriggerSearchRebuild($input: TriggerSearchRebuildInput!) { triggerSearchRebuild(input: $input) { success queued tenantId targetType targetId } }";
-const TRACK_SEARCH_CLICK_MUTATION: &str = "mutation TrackSearchClick($input: TrackSearchClickInput!) { trackSearchClick(input: $input) { success tracked } }";
-const UPDATE_SEARCH_SETTINGS_MUTATION: &str = "mutation UpdateSearchSettings($input: UpdateSearchSettingsInput!) { updateSearchSettings(input: $input) { success settings { tenantId activeEngine fallbackEngine config updatedAt } } }";
-const UPSERT_SEARCH_SYNONYM_MUTATION: &str = "mutation UpsertSearchSynonym($input: UpsertSearchSynonymInput!) { upsertSearchSynonym(input: $input) { success synonym { id term synonyms updatedAt } } }";
-const DELETE_SEARCH_SYNONYM_MUTATION: &str = "mutation DeleteSearchSynonym($input: DeleteSearchSynonymInput!) { deleteSearchSynonym(input: $input) { success } }";
-const ADD_SEARCH_STOP_WORD_MUTATION: &str = "mutation AddSearchStopWord($input: AddSearchStopWordInput!) { addSearchStopWord(input: $input) { success stopWord { id value updatedAt } } }";
-const DELETE_SEARCH_STOP_WORD_MUTATION: &str = "mutation DeleteSearchStopWord($input: DeleteSearchStopWordInput!) { deleteSearchStopWord(input: $input) { success } }";
-const UPSERT_SEARCH_PIN_RULE_MUTATION: &str = "mutation UpsertSearchPinRule($input: UpsertSearchPinRuleInput!) { upsertSearchPinRule(input: $input) { success queryRule { id queryText queryNormalized ruleKind documentId entityType sourceModule title pinnedPosition updatedAt } } }";
-const DELETE_SEARCH_QUERY_RULE_MUTATION: &str = "mutation DeleteSearchQueryRule($input: DeleteSearchQueryRuleInput!) { deleteSearchQueryRule(input: $input) { success } }";
-
-#[derive(Debug, Deserialize)]
-struct SearchPreviewResponse {
-    #[serde(rename = "searchPreview")]
-    search_preview: SearchPreviewPayload,
-}
-
-#[derive(Debug, Deserialize)]
-struct TriggerSearchRebuildResponse {
-    #[serde(rename = "triggerSearchRebuild")]
-    trigger_search_rebuild: TriggerSearchRebuildPayload,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchLaggingDocumentsResponse {
-    #[serde(rename = "searchLaggingDocuments")]
-    search_lagging_documents: Vec<LaggingSearchDocumentPayload>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchConsistencyIssuesResponse {
-    #[serde(rename = "searchConsistencyIssues")]
-    search_consistency_issues: Vec<SearchConsistencyIssuePayload>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchAnalyticsResponse {
-    #[serde(rename = "searchAnalytics")]
-    search_analytics: SearchAnalyticsPayload,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchFilterPresetsResponse {
-    #[serde(rename = "searchFilterPresets")]
-    search_filter_presets: Vec<SearchFilterPresetPayload>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchDictionarySnapshotResponse {
-    #[serde(rename = "searchDictionarySnapshot")]
-    search_dictionary_snapshot: SearchDictionarySnapshotPayload,
-}
-
-#[derive(Debug, Deserialize)]
-struct TrackSearchClickResponse {
-    #[serde(rename = "trackSearchClick")]
-    track_search_click: TrackSearchClickPayload,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpdateSearchSettingsResponse {
-    #[serde(rename = "updateSearchSettings")]
-    update_search_settings: UpdateSearchSettingsEnvelope,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchDictionaryMutationResponse {
-    #[serde(rename = "success")]
-    success: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpsertSearchSynonymResponse {
-    #[serde(rename = "upsertSearchSynonym")]
-    upsert_search_synonym: SearchDictionaryMutationEnvelope,
-}
-
-#[derive(Debug, Deserialize)]
-struct AddSearchStopWordResponse {
-    #[serde(rename = "addSearchStopWord")]
-    add_search_stop_word: SearchDictionaryMutationEnvelope,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpsertSearchPinRuleResponse {
-    #[serde(rename = "upsertSearchPinRule")]
-    upsert_search_pin_rule: SearchDictionaryMutationEnvelope,
-}
-
-#[derive(Debug, Deserialize)]
-struct DeleteSearchSynonymResponse {
-    #[serde(rename = "deleteSearchSynonym")]
-    delete_search_synonym: SearchDictionaryMutationResponse,
-}
-
-#[derive(Debug, Deserialize)]
-struct DeleteSearchStopWordResponse {
-    #[serde(rename = "deleteSearchStopWord")]
-    delete_search_stop_word: SearchDictionaryMutationResponse,
-}
-
-#[derive(Debug, Deserialize)]
-struct DeleteSearchQueryRuleResponse {
-    #[serde(rename = "deleteSearchQueryRule")]
-    delete_search_query_rule: SearchDictionaryMutationResponse,
-}
-
-#[derive(Debug, Serialize)]
-struct SearchPreviewVariables {
-    input: SearchPreviewInput,
-}
-
-#[derive(Debug, Serialize)]
-struct TriggerSearchRebuildVariables {
-    input: TriggerSearchRebuildInput,
-}
-
-#[derive(Debug, Serialize)]
-struct SearchLaggingDocumentsVariables {
-    limit: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-struct SearchAnalyticsVariables {
-    days: Option<i32>,
-    limit: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-struct SearchFilterPresetsVariables {
-    input: SearchFilterPresetsInput,
-}
-
-#[derive(Debug, Serialize)]
-struct TrackSearchClickVariables {
-    input: TrackSearchClickInput,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateSearchSettingsVariables {
-    input: UpdateSearchSettingsInput,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchDictionaryMutationEnvelope {
-    success: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpdateSearchSettingsEnvelope {
-    settings: SearchSettingsPayload,
-}
-
+#[cfg(feature = "ssr")]
 #[derive(Debug, Serialize)]
 struct SearchPreviewInput {
     query: String,
@@ -241,6 +76,7 @@ struct SearchPreviewInput {
     sort_desc: Option<bool>,
 }
 
+#[cfg(feature = "ssr")]
 #[derive(Debug, Serialize)]
 struct SearchAttributeFilterInput {
     #[serde(rename = "attributeCode")]
@@ -250,166 +86,7 @@ struct SearchAttributeFilterInput {
     max: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-struct TriggerSearchRebuildInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    #[serde(rename = "targetType")]
-    target_type: Option<String>,
-    #[serde(rename = "targetId")]
-    target_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct SearchFilterPresetsInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    surface: String,
-}
-
-#[derive(Debug, Serialize)]
-struct TrackSearchClickInput {
-    #[serde(rename = "queryLogId")]
-    query_log_id: String,
-    #[serde(rename = "documentId")]
-    document_id: String,
-    position: Option<i32>,
-    href: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateSearchSettingsInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    #[serde(rename = "activeEngine")]
-    active_engine: String,
-    #[serde(rename = "fallbackEngine")]
-    fallback_engine: Option<String>,
-    config: String,
-}
-
-#[derive(Debug, Serialize)]
-struct UpsertSearchSynonymInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    term: String,
-    synonyms: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct DeleteSearchSynonymInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    #[serde(rename = "synonymId")]
-    synonym_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct AddSearchStopWordInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    value: String,
-}
-
-#[derive(Debug, Serialize)]
-struct DeleteSearchStopWordInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    #[serde(rename = "stopWordId")]
-    stop_word_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct UpsertSearchPinRuleInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    #[serde(rename = "queryText")]
-    query_text: String,
-    #[serde(rename = "documentId")]
-    document_id: String,
-    #[serde(rename = "pinnedPosition")]
-    pinned_position: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-struct DeleteSearchQueryRuleInput {
-    #[serde(rename = "tenantId")]
-    tenant_id: Option<String>,
-    #[serde(rename = "queryRuleId")]
-    query_rule_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct UpsertSearchSynonymVariables {
-    input: UpsertSearchSynonymInput,
-}
-
-#[derive(Debug, Serialize)]
-struct DeleteSearchSynonymVariables {
-    input: DeleteSearchSynonymInput,
-}
-
-#[derive(Debug, Serialize)]
-struct AddSearchStopWordVariables {
-    input: AddSearchStopWordInput,
-}
-
-#[derive(Debug, Serialize)]
-struct DeleteSearchStopWordVariables {
-    input: DeleteSearchStopWordInput,
-}
-
-#[derive(Debug, Serialize)]
-struct UpsertSearchPinRuleVariables {
-    input: UpsertSearchPinRuleInput,
-}
-
-#[derive(Debug, Serialize)]
-struct DeleteSearchQueryRuleVariables {
-    input: DeleteSearchQueryRuleInput,
-}
-
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
-
-async fn request<V, T>(
-    query: &str,
-    variables: Option<V>,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    V: Serialize,
-    T: for<'de> Deserialize<'de>,
-{
-    execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(query, variables),
-        token,
-        tenant_slug,
-        None,
-    )
-    .await
-    .map_err(ApiError::from)
-}
-
+#[cfg(feature = "ssr")]
 fn search_attribute_filter_inputs(
     filters: Vec<SearchAttributeFilter>,
 ) -> Vec<SearchAttributeFilterInput> {
@@ -423,466 +100,176 @@ fn search_attribute_filter_inputs(
         })
         .collect()
 }
-
 pub async fn fetch_bootstrap(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
 ) -> Result<SearchAdminBootstrap, ApiError> {
-    match search_admin_bootstrap_native().await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            request::<serde_json::Value, SearchAdminBootstrap>(
-                SEARCH_ADMIN_BOOTSTRAP_QUERY,
-                None,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
+    search_admin_bootstrap_native()
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_search_preview(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     query: String,
     locale: Option<String>,
     ranking_profile: Option<String>,
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    match search_admin_preview_native(
-        query.clone(),
-        locale.clone(),
-        ranking_profile.clone(),
-        preset_key.clone(),
-        filters.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: SearchPreviewResponse = request(
-                SEARCH_PREVIEW_QUERY,
-                Some(SearchPreviewVariables {
-                    input: SearchPreviewInput {
-                        query,
-                        locale,
-                        channel_id: filters.channel_id,
-                        tenant_id: None,
-                        limit: Some(12),
-                        offset: Some(0),
-                        ranking_profile,
-                        preset_key,
-                        entity_types: (!filters.entity_types.is_empty())
-                            .then_some(filters.entity_types),
-                        source_modules: (!filters.source_modules.is_empty())
-                            .then_some(filters.source_modules),
-                        statuses: (!filters.statuses.is_empty()).then_some(filters.statuses),
-                        category_ids: (!filters.category_ids.is_empty())
-                            .then_some(filters.category_ids),
-                        attribute_filters: (!filters.attribute_filters.is_empty())
-                            .then_some(search_attribute_filter_inputs(filters.attribute_filters)),
-                        sort_attribute_code: filters.sort_attribute_code,
-                        sort_desc: filters.sort_desc.then_some(true),
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.search_preview)
-        }
-    }
+    search_admin_preview_native(query, locale, ranking_profile, preset_key, filters)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_filter_presets(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     surface: &str,
 ) -> Result<Vec<SearchFilterPresetPayload>, ApiError> {
-    match search_admin_filter_presets_native(surface.to_string()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: SearchFilterPresetsResponse = request(
-                SEARCH_FILTER_PRESETS_QUERY,
-                Some(SearchFilterPresetsVariables {
-                    input: SearchFilterPresetsInput {
-                        tenant_id: None,
-                        surface: surface.to_string(),
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.search_filter_presets)
-        }
-    }
+    search_admin_filter_presets_native(surface.to_string())
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn trigger_search_rebuild(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     target_type: Option<String>,
     target_id: Option<String>,
 ) -> Result<TriggerSearchRebuildPayload, ApiError> {
-    match trigger_search_rebuild_native(target_type.clone(), target_id.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: TriggerSearchRebuildResponse = request(
-                TRIGGER_SEARCH_REBUILD_MUTATION,
-                Some(TriggerSearchRebuildVariables {
-                    input: TriggerSearchRebuildInput {
-                        tenant_id: None,
-                        target_type,
-                        target_id,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.trigger_search_rebuild)
-        }
-    }
+    trigger_search_rebuild_native(target_type, target_id)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_lagging_documents(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     limit: Option<i32>,
 ) -> Result<Vec<LaggingSearchDocumentPayload>, ApiError> {
-    match search_admin_lagging_documents_native(limit).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: SearchLaggingDocumentsResponse = request(
-                SEARCH_LAGGING_DOCUMENTS_QUERY,
-                Some(SearchLaggingDocumentsVariables { limit }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.search_lagging_documents)
-        }
-    }
+    search_admin_lagging_documents_native(limit)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_consistency_issues(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     limit: Option<i32>,
 ) -> Result<Vec<SearchConsistencyIssuePayload>, ApiError> {
-    match search_admin_consistency_issues_native(limit).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: SearchConsistencyIssuesResponse = request(
-                SEARCH_CONSISTENCY_ISSUES_QUERY,
-                Some(SearchLaggingDocumentsVariables { limit }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.search_consistency_issues)
-        }
-    }
+    search_admin_consistency_issues_native(limit)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_search_analytics(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     days: Option<i32>,
     limit: Option<i32>,
 ) -> Result<SearchAnalyticsPayload, ApiError> {
-    match search_admin_analytics_native(days, limit).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: SearchAnalyticsResponse = request(
-                SEARCH_ANALYTICS_QUERY,
-                Some(SearchAnalyticsVariables { days, limit }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.search_analytics)
-        }
-    }
+    search_admin_analytics_native(days, limit)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_dictionary_snapshot(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
 ) -> Result<SearchDictionarySnapshotPayload, ApiError> {
-    match search_admin_dictionary_snapshot_native().await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: SearchDictionarySnapshotResponse = request::<serde_json::Value, _>(
-                SEARCH_DICTIONARY_SNAPSHOT_QUERY,
-                None,
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.search_dictionary_snapshot)
-        }
-    }
+    search_admin_dictionary_snapshot_native()
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn track_search_click(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     query_log_id: String,
     document_id: String,
     position: Option<i32>,
     href: Option<String>,
 ) -> Result<TrackSearchClickPayload, ApiError> {
-    match track_search_click_native(
-        query_log_id.clone(),
-        document_id.clone(),
-        position,
-        href.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: TrackSearchClickResponse = request(
-                TRACK_SEARCH_CLICK_MUTATION,
-                Some(TrackSearchClickVariables {
-                    input: TrackSearchClickInput {
-                        query_log_id,
-                        document_id,
-                        position,
-                        href,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.track_search_click)
-        }
-    }
+    track_search_click_native(query_log_id, document_id, position, href)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn update_search_settings(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     active_engine: String,
     fallback_engine: Option<String>,
     config: String,
 ) -> Result<SearchSettingsPayload, ApiError> {
-    match update_search_settings_native(
-        active_engine.clone(),
-        fallback_engine.clone(),
-        config.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: UpdateSearchSettingsResponse = request(
-                UPDATE_SEARCH_SETTINGS_MUTATION,
-                Some(UpdateSearchSettingsVariables {
-                    input: UpdateSearchSettingsInput {
-                        tenant_id: None,
-                        active_engine,
-                        fallback_engine,
-                        config,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(response.update_search_settings.settings)
-        }
-    }
+    update_search_settings_native(active_engine, fallback_engine, config)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn upsert_search_synonym(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     term: String,
     synonyms: Vec<String>,
 ) -> Result<SearchDictionaryMutationPayload, ApiError> {
-    match upsert_search_synonym_native(term.clone(), synonyms.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: UpsertSearchSynonymResponse = request(
-                UPSERT_SEARCH_SYNONYM_MUTATION,
-                Some(UpsertSearchSynonymVariables {
-                    input: UpsertSearchSynonymInput {
-                        tenant_id: None,
-                        term,
-                        synonyms,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(SearchDictionaryMutationPayload {
-                success: response.upsert_search_synonym.success,
-            })
-        }
-    }
+    upsert_search_synonym_native(term, synonyms)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn delete_search_synonym(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     synonym_id: String,
 ) -> Result<SearchDictionaryMutationPayload, ApiError> {
-    match delete_search_synonym_native(synonym_id.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: DeleteSearchSynonymResponse = request(
-                DELETE_SEARCH_SYNONYM_MUTATION,
-                Some(DeleteSearchSynonymVariables {
-                    input: DeleteSearchSynonymInput {
-                        tenant_id: None,
-                        synonym_id,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(SearchDictionaryMutationPayload {
-                success: response.delete_search_synonym.success,
-            })
-        }
-    }
+    delete_search_synonym_native(synonym_id)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn add_search_stop_word(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     value: String,
 ) -> Result<SearchDictionaryMutationPayload, ApiError> {
-    match add_search_stop_word_native(value.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: AddSearchStopWordResponse = request(
-                ADD_SEARCH_STOP_WORD_MUTATION,
-                Some(AddSearchStopWordVariables {
-                    input: AddSearchStopWordInput {
-                        tenant_id: None,
-                        value,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(SearchDictionaryMutationPayload {
-                success: response.add_search_stop_word.success,
-            })
-        }
-    }
+    add_search_stop_word_native(value)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn delete_search_stop_word(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     stop_word_id: String,
 ) -> Result<SearchDictionaryMutationPayload, ApiError> {
-    match delete_search_stop_word_native(stop_word_id.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: DeleteSearchStopWordResponse = request(
-                DELETE_SEARCH_STOP_WORD_MUTATION,
-                Some(DeleteSearchStopWordVariables {
-                    input: DeleteSearchStopWordInput {
-                        tenant_id: None,
-                        stop_word_id,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(SearchDictionaryMutationPayload {
-                success: response.delete_search_stop_word.success,
-            })
-        }
-    }
+    delete_search_stop_word_native(stop_word_id)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn upsert_search_pin_rule(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     query_text: String,
     document_id: String,
     pinned_position: Option<i32>,
 ) -> Result<SearchDictionaryMutationPayload, ApiError> {
-    match upsert_search_pin_rule_native(query_text.clone(), document_id.clone(), pinned_position)
+    upsert_search_pin_rule_native(query_text, document_id, pinned_position)
         .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: UpsertSearchPinRuleResponse = request(
-                UPSERT_SEARCH_PIN_RULE_MUTATION,
-                Some(UpsertSearchPinRuleVariables {
-                    input: UpsertSearchPinRuleInput {
-                        tenant_id: None,
-                        query_text,
-                        document_id,
-                        pinned_position,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(SearchDictionaryMutationPayload {
-                success: response.upsert_search_pin_rule.success,
-            })
-        }
-    }
+        .map_err(ApiError::from)
 }
 
 pub async fn delete_search_query_rule(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     query_rule_id: String,
 ) -> Result<SearchDictionaryMutationPayload, ApiError> {
-    match delete_search_query_rule_native(query_rule_id.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            let response: DeleteSearchQueryRuleResponse = request(
-                DELETE_SEARCH_QUERY_RULE_MUTATION,
-                Some(DeleteSearchQueryRuleVariables {
-                    input: DeleteSearchQueryRuleInput {
-                        tenant_id: None,
-                        query_rule_id,
-                    },
-                }),
-                token,
-                tenant_slug,
-            )
-            .await?;
-
-            Ok(SearchDictionaryMutationPayload {
-                success: response.delete_search_query_rule.success,
-            })
-        }
-    }
+    delete_search_query_rule_native(query_rule_id)
+        .await
+        .map_err(ApiError::from)
 }
 
 #[server(prefix = "/api/fn", endpoint = "search/bootstrap")]

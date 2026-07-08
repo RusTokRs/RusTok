@@ -5,12 +5,12 @@ Current state: `OpenAI-compatible + Anthropic + Gemini providers + task profiles
 
 ## Execution checkpoint
 
-- Current phase: ai_graphql_owner_boundary
-- Last checkpoint: AI GraphQL query/mutation/subscription roots and DTO moved from `apps/server` to `rustok-ai`; host leaves only schema composition and `AiGraphqlRoleSlugProvider` implementation for server-owned RBAC persistence. The boundary is locked by a static server boundary guard without compilation.
-- Next step: Continue extracting remaining AI-specific host artifacts from `apps/server`, keeping only composition adapters there; compile/test evidence to be done via GitHub Actions.
-- Open blockers: compile/test evidence deferred by explicit iteration constraint: no compilations.
+- Current phase: ai_admin_loco_free_native_runtime
+- Last checkpoint: AI admin native server functions now consume `HostRuntimeContext` instead of Loco `AppContext`; DB, `TransactionalEventBus`, `SharedAiModuleRegistry`, `StorageService` and `SharedAlloyRuntime` are resolved through neutral host runtime handles, while the GraphQL/headless adapter remains parallel.
+- Next step: Continue extracting remaining AI-specific host artifacts from `apps/server`, keeping only composition adapters there; keep GraphQL parity and live runtime evidence in the next transport-verification slices.
+- Open blockers: Full end-to-end browser/runtime parity evidence remains pending; source guardrails and `rustok-ai-admin` SSR compile evidence are present.
 - Hand-off notes for next agent: Update this block and the central FFA/FBA readiness board after each increment.
-- Last updated at (UTC): 2026-07-02T00:00:00Z
+- Last updated at (UTC): 2026-07-08T07:12:30Z
 
 ## State as of 2026-04-04
 
@@ -140,8 +140,8 @@ Further items are no longer part of the mandatory MVP contour and are considered
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `core_transport_ui` for the first AI admin slice.
-- Evidence: domain support crates `rustok-ai-product`, `rustok-ai-content` and `rustok-ai-order` expose `register_*_ai_vertical_handlers` adapter APIs consumed by `crates/rustok-ai/src/direct_domain_*.rs`; `rustok-ai-content` also owns `blog_draft` task/tool identity plus generated draft validation and compile-free static contract evidence, so direct handler binding follows domain-owned descriptors while `rustok-ai` remains the runtime composition owner; `crates/rustok-ai/admin/src/core.rs` owns Leptos-free request normalization, direct-job payload builders (`parse_csv`, `optional_text`, `alloy_task_payload`, `image_task_payload`, `product_task_payload`, `product_attributes_task_payload`, `blog_task_payload`) and diagnostics summary policy (`average_latency_ms`, `summarize_recent_runs`), `admin/src/transport/mod.rs` owns current facade, `admin/src/transport/native_server_adapter.rs` owns existing native server-function endpoints after removing pre-FFA `api.rs` facade, `admin/src/transport/graphql_adapter.rs` owns Leptos-free GraphQL/headless operation documents, request builders and live-stream GraphQL WebSocket endpoint/message construction, `admin/src/ui/leptos.rs` remains the explicit Leptos adapter consuming `core` + `transport`, and `admin/src/lib.rs` only wires/re-exports module layers.
+- Structural shape: `core_transport_ui` for the AI admin slice.
+- Evidence: domain support crates `rustok-ai-product`, `rustok-ai-content` and `rustok-ai-order` expose `register_*_ai_vertical_handlers` adapter APIs consumed by `crates/rustok-ai/src/direct_domain_*.rs`; `rustok-ai-content` also owns `blog_draft` task/tool identity plus generated draft validation and compile-free static contract evidence, so direct handler binding follows domain-owned descriptors while `rustok-ai` remains the runtime composition owner; `crates/rustok-ai/admin/src/core.rs` owns Leptos-free request normalization, direct-job payload builders (`parse_csv`, `optional_text`, `alloy_task_payload`, `image_task_payload`, `product_task_payload`, `product_attributes_task_payload`, `blog_task_payload`) and diagnostics summary policy (`average_latency_ms`, `summarize_recent_runs`), `admin/src/transport/mod.rs` owns current facade, `admin/src/transport/native_server_adapter.rs` owns Loco-free native server-function endpoints through `HostRuntimeContext` shared handles, `admin/src/transport/graphql_adapter.rs` owns Leptos-free GraphQL/headless operation documents, request builders and live-stream GraphQL WebSocket endpoint/message construction, `admin/src/ui/leptos.rs` remains the explicit Leptos adapter consuming `core` + `transport`, and `admin/src/lib.rs` only wires/re-exports module layers.
 - Guardrail: `scripts/verify/verify-ai-admin-boundary.mjs` checks core/transport slice, including diagnostics summary helpers, GraphQL/headless adapter markers and live-stream WebSocket message builders, and prevents moved request/payload helpers or raw `api::` calls from returning to the Leptos adapter.
 - Static evidence: `scripts/verify/verify-ai-domain-verticals.mjs` locks product/content/order/media/alloy support-crate descriptors, runtime binding seams, generated payload validators, media size validation, alloy execution policy, and content moderation sensitive-tool policy merge without compiling; `scripts/verify/verify-ai-router-policy.mjs` locks router candidate status taxonomy, selected/fallback decision-trace evidence and unit-test markers for provider allow/deny/role/capability fallback policy without compiling.
 - FBA baseline evidence: `crates/rustok-ai/contracts/ai-fba-registry.json` locks `rustok-ai` as the capability orchestrator that consumes support-adapter registries from `ai-content`, `ai-order`, `ai-product`, `ai-media` and `ai-alloy`; `crates/rustok-ai/contracts/evidence/ai-runtime-static-matrix.json` and `crates/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json` source-lock direct registration, router policy and admin transport boundary fallback evidence under `scripts/verify/verify-ai-fba-baseline.mjs`.
@@ -157,6 +157,8 @@ Minimum local verification already covering the current slice:
 - [x] `cargo check -p rustok-server`
 - [x] `cargo check -p rustok-ai-admin --features ssr`
 - [x] `cargo check -p rustok-ai-admin --features hydrate --target wasm32-unknown-unknown`
+- [x] `npm run verify:ai:admin-boundary`
+- [x] `node scripts/verify/verify-api-surface-contract.mjs`
 - [x] `cargo check -p rustok-admin`
 - [x] `cmd /c npx.cmd tsc --noEmit --incremental false -p tsconfig.json` in `apps/next-admin`
 - [x] `cargo test -p rustok-ai --features server metrics::tests direct::tests service::tests -- --nocapture`

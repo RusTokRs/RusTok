@@ -374,7 +374,7 @@ Below establishes practical template for converting existing module-owned domain
 1. Establish builder-capability boundary in `rustok-pages` docs/manifest and prohibit reverting to pages-local builder ownership.
 2. Add tenant-scoped capability toggles: `builder.preview`, `builder.publish`, `builder.properties` as part of rollout-profile.
 3. Synchronize observability: correlation between page publish latency and builder sanitize/validation failures.
-4. Verify dual-path admin integration (`native #[server]` + GraphQL fallback) without payload contract drift.
+4. Verify dual-path admin integration (`native #[server]` + GraphQL selected path) without payload contract drift.
 5. Move legacy blocks compatibility-layer to sunset-mode: only read/bridge path, without feature expansion.
 
 ### 7.4 FBA readiness checklist for `pages`

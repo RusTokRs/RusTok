@@ -92,7 +92,7 @@ Provides typed access to:
 - Sitemap status/jobs
 - Bulk jobs and job detail
 
-Strategy: **REST-first (rollout-gated) + GraphQL fallback**
+Strategy: **REST primary (rollout-gated) + GraphQL secondary path**
 
 Semantic error taxonomy:
 - `BAD_USER_INPUT`

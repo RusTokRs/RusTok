@@ -15,8 +15,6 @@ ssr = [
   "leptos/ssr",
   "rustok-api/server",
   "dep:leptos_axum",
-  "dep:loco-rs",
-  "dep:rustok-core",
   "dep:rustok-inventory",
   "dep:rustok-outbox",
   "dep:uuid",
@@ -26,13 +24,11 @@ ssr = [
 rustok-ui-core.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
-loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 
 rustok-ui-i18n-leptos.workspace = true
-rustok-core = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
-rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
+rustok-outbox = { workspace = true, optional = true }
 leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

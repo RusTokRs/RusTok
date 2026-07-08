@@ -54,7 +54,7 @@ FFA classification: `apps/next-frontend` is an `FFA-compatible composition host`
 - if a module-owned storefront surface uses query-driven state, Next host must maintain
   the same key semantics and canonical behavior as the Leptos storefront.
 - SEO runtime is not duplicated in the host: canonical source of truth lives in `rustok-seo`, and the Next host acts only as an adapter layer on top of `SeoPageContext = route + document`.
-- runtime transport policy for SEO in Next host: `REST-first + GraphQL fallback` with typed semantic error mapping (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures), without blanket `catch {}`.
+- runtime transport policy for SEO in Next host: `REST primary + GraphQL secondary path` with typed semantic error mapping (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures), without blanket `catch {}`.
 - built-in Next Metadata API is considered the primary render target for SEO head; the shared metadata builder maps typed robots, Open Graph, Twitter, verification and alternates there without its own SEO source-of-truth in the host.
 - `robots.ts` and `sitemap.ts` operate in runtime-driven mode through the SEO runtime source; host-local static rules are allowed only as an emergency fallback or rollout guard.
 - Rollout guard for runtime robots/sitemap is set by the `NEXT_PUBLIC_SEO_NEXT_RUNTIME_SITEMAP_ENABLED` flag (or `SEO_NEXT_RUNTIME_SITEMAP_ENABLED` in server env).

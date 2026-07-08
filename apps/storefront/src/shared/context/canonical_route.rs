@@ -1,9 +1,18 @@
 use std::collections::{BTreeMap, HashMap};
 
 use leptos::prelude::*;
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 
 use crate::shared::api::{configured_tenant_slug, ApiError};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 const RESOLVE_CANONICAL_ROUTE_QUERY: &str = r#"
     query ResolveCanonicalRoute($route: String!, $locale: String!) {
@@ -55,10 +64,13 @@ pub async fn fetch_canonical_route(
     };
 
     let route = build_module_route(route_segment, query_params);
-    match fetch_canonical_route_server(tenant_slug.clone(), locale.to_string(), route.clone()).await
-    {
-        Ok(resolved) => Ok(resolved),
-        Err(_) => fetch_canonical_route_graphql(tenant_slug, locale.to_string(), route).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            fetch_canonical_route_server(tenant_slug, locale.to_string(), route).await
+        }
+        UiTransportPath::Graphql => {
+            fetch_canonical_route_graphql(tenant_slug, locale.to_string(), route).await
+        }
     }
 }
 

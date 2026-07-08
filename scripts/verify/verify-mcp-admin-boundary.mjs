@@ -39,6 +39,7 @@ function assertNotContains(text, pattern, description) {
 
 const nextPackagePath = "apps/next-admin/packages/rustok-mcp/src/index.tsx";
 const nextRoutePath = "apps/next-admin/src/app/dashboard/mcp/page.tsx";
+const nextClientWrapperPath = "apps/next-admin/src/modules/mcp-admin-client.tsx";
 const leptosHostCargoPath = "apps/admin/Cargo.toml";
 const leptosHostRouterPath = "apps/admin/src/app/router.rs";
 const leptosLibPath = "crates/rustok-mcp/admin/src/lib.rs";
@@ -46,6 +47,7 @@ const leptosUiPath = "crates/rustok-mcp/admin/src/ui/leptos.rs";
 const transportModPath = "crates/rustok-mcp/admin/src/transport/mod.rs";
 const nativeAdapterPath = "crates/rustok-mcp/admin/src/transport/native_server_adapter.rs";
 const graphqlAdapterPath = "crates/rustok-mcp/admin/src/transport/graphql_adapter.rs";
+const mcpAdminCargoPath = "crates/rustok-mcp/admin/Cargo.toml";
 const managementContractPath = "crates/rustok-mcp/src/management.rs";
 const mcpAccessContractPath = "crates/rustok-mcp/src/access.rs";
 const serverMcpControllerPath = "apps/server/src/controllers/mcp.rs";
@@ -59,6 +61,7 @@ const centralRegistryPath = "docs/modules/registry.md";
 for (const [file, description] of [
   [nextPackagePath, "expected MCP Next owner package entry"],
   [nextRoutePath, "expected thin MCP host route"],
+  [nextClientWrapperPath, "expected thin MCP Next client wrapper"],
   [leptosHostCargoPath, "expected MCP Leptos host dependency"],
   [leptosHostRouterPath, "expected MCP Leptos host route"],
   [leptosLibPath, "expected MCP Leptos admin crate root"],
@@ -66,6 +69,7 @@ for (const [file, description] of [
   [transportModPath, "expected MCP transport facade"],
   [nativeAdapterPath, "expected MCP native server-function adapter"],
   [graphqlAdapterPath, "expected MCP GraphQL adapter"],
+  [mcpAdminCargoPath, "expected MCP admin package manifest"],
   [managementContractPath, "expected MCP management port contract"],
   [mcpAccessContractPath, "expected MCP access contract"],
   [serverMcpControllerPath, "expected server MCP controller adapter"],
@@ -79,6 +83,7 @@ for (const [file, description] of [
 
 const nextPackage = readRepo(nextPackagePath);
 const nextRoute = readRepo(nextRoutePath);
+const nextClientWrapper = readRepo(nextClientWrapperPath);
 const leptosHostCargo = readRepo(leptosHostCargoPath);
 const leptosHostRouter = readRepo(leptosHostRouterPath);
 const leptosLib = readRepo(leptosLibPath);
@@ -86,6 +91,7 @@ const leptosUi = readRepo(leptosUiPath);
 const transportMod = readRepo(transportModPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
+const mcpAdminCargo = readRepo(mcpAdminCargoPath);
 const managementContract = readRepo(managementContractPath);
 const mcpAccessContract = readRepo(mcpAccessContractPath);
 const serverMcpController = readRepo(serverMcpControllerPath);
@@ -119,8 +125,12 @@ for (const marker of [
   assertContains(nextPackage, marker, `${nextPackagePath}: expected Next MCP owner marker ${marker}`);
 }
 
-assertContains(nextRoute, "import { McpAdminPage } from '@rustok/mcp-admin';", `${nextRoutePath}: route must mount the MCP owner package`);
+assertContains(nextRoute, "import { McpAdminClient } from '@/modules/mcp-admin-client';", `${nextRoutePath}: route must mount the MCP client wrapper`);
+assertContains(nextRoute, "<McpAdminClient token={token} tenantSlug={tenantSlug} />", `${nextRoutePath}: route must pass host auth context into MCP owner UI`);
 assertNotContains(nextRoute, "mcpModuleScaffoldDrafts", `${nextRoutePath}: host route must not own MCP draft GraphQL`);
+assertContains(nextClientWrapper, "import { McpAdminPage, type McpAdminPageProps } from '@rustok/mcp-admin';", `${nextClientWrapperPath}: wrapper must mount the MCP owner package`);
+assertContains(nextClientWrapper, "graphql={graphqlRequest}", `${nextClientWrapperPath}: wrapper must inject the shared host GraphQL executor`);
+assertNotContains(nextClientWrapper, "mcpModuleScaffoldDrafts", `${nextClientWrapperPath}: wrapper must not own MCP draft GraphQL`);
 assertContains(leptosHostCargo, "rustok-mcp-admin", `${leptosHostCargoPath}: host must depend on the MCP owner package`);
 assertContains(leptosHostCargo, "rustok-mcp-admin/csr", `${leptosHostCargoPath}: CSR debug profile must include the MCP owner package`);
 assertContains(leptosHostCargo, "rustok-mcp-admin/hydrate", `${leptosHostCargoPath}: hydrate profile must include the MCP owner package`);
@@ -137,6 +147,13 @@ assertContains(transportMod, "pub mod native_server_adapter;", `${transportModPa
 assertContains(transportMod, "pub mod graphql_adapter;", `${transportModPath}: transport facade must wire GraphQL adapter`);
 assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must expose server functions for Leptos FFA`);
 assertContains(nativeAdapter, "mcp_scaffold_drafts_native", `${nativeAdapterPath}: native adapter must own drafts endpoint`);
+assertContains(nativeAdapter, "expect_context::<rustok_api::HostRuntimeContext>()", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
+assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native adapter must read DB from neutral host runtime context`);
+assertContains(nativeAdapter, "shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()", `${nativeAdapterPath}: native adapter must read module runtime extensions from typed host handles`);
+assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
+assertNotContains(nativeAdapter, "rustok_outbox::loco", `${nativeAdapterPath}: native adapter must not consume outbox Loco adapter`);
+assertNotContains(mcpAdminCargo, "loco-rs", `${mcpAdminCargoPath}: MCP admin crate must not depend on Loco`);
+assertNotContains(mcpAdminCargo, "loco-adapter", `${mcpAdminCargoPath}: MCP admin crate must not enable outbox Loco adapter feature`);
 for (const marker of [
   "mcp_native_context",
   "mcp_audit_events_native",

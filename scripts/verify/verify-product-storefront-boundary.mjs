@@ -45,6 +45,7 @@ const transportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
 const legacyApiPath = "crates/rustok-product/storefront/src/api.rs";
 const graphqlAdapterPath = "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
 const nativeServerAdapterPath = "crates/rustok-product/storefront/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/rustok-product/storefront/Cargo.toml";
 const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
@@ -56,6 +57,7 @@ for (const filePath of [
   transportPath,
   graphqlAdapterPath,
   nativeServerAdapterPath,
+  cargoPath,
   implementationPlanPath,
   registryPath,
   packagePath,
@@ -72,6 +74,7 @@ const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const nativeServerAdapter = readRepo(nativeServerAdapterPath);
+const cargo = readRepo(cargoPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
@@ -87,14 +90,14 @@ for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "Resour
 }
 for (const marker of [
   "build_product_catalog_rail_labels",
-  "build_product_catalog_rail_view_model",
-  "build_product_storefront_shell_view_model",
-  "build_product_transport_error_dom_evidence",
+  "build_catalog_rail_view_model",
+  "build_shell_view_model",
+  "build_transport_error_dom_evidence",
   "build_selected_product_empty_view_model",
   "build_selected_product_view_model",
-  "build_storefront_fetch_request",
-  "build_storefront_route_input",
-  "resolve_product_storefront_route_segment",
+  "build_fetch_request",
+  "build_route_input",
+  "resolve_route_segment",
   "metadata_items",
   "show_empty_state",
 ]) {
@@ -104,7 +107,7 @@ for (const marker of [
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
 assertContains(ui, "build_product_catalog_rail_labels", `${uiPath}: UI must consume core-owned catalog rail labels`);
-assertContains(ui, "build_product_catalog_rail_view_model", `${uiPath}: UI must consume core-owned catalog rail view-model`);
+assertContains(ui, "build_catalog_rail_view_model", `${uiPath}: UI must consume core-owned catalog rail view-model`);
 for (const marker of [
   "crate::i18n::t",
   "ProductCatalogRailLabels {",
@@ -135,6 +138,13 @@ assertNotContains(transport, "crate::api", `${transportPath}: transport facade m
 assertContains(graphqlAdapter, "fetch_storefront_products_graphql", `${graphqlAdapterPath}: GraphQL adapter must expose GraphQL request path`);
 assertContains(nativeServerAdapter, "#[server", `${nativeServerAdapterPath}: native server adapter must keep native server-function endpoint`);
 assertContains(nativeServerAdapter, "GraphqlRequest", `${nativeServerAdapterPath}: moved adapter must keep GraphQL fallback request contract until split further`);
+assertContains(nativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${nativeServerAdapterPath}: native server adapter must use host runtime context`);
+assertContains(nativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${nativeServerAdapterPath}: native server adapter must receive event bus through host runtime context`);
+assertContains(nativeServerAdapter, "runtime_ctx.db_clone()", `${nativeServerAdapterPath}: native server adapter must receive DB through host runtime context`);
+assertNotContains(nativeServerAdapter, "loco_rs", `${nativeServerAdapterPath}: native server adapter must not depend on Loco AppContext`);
+assertNotContains(nativeServerAdapter, "rustok_outbox::loco", `${nativeServerAdapterPath}: native server adapter must not use the outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${cargoPath}: product storefront package must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${cargoPath}: product storefront package must not enable the outbox Loco adapter`);
 assertContains(implementationPlan, "verify-product-storefront-boundary.mjs", `${implementationPlanPath}: local plan must mention the product storefront fast boundary guardrail`);
 assertContains(registry, "verify-product-storefront-boundary.mjs", `${registryPath}: central readiness board must mention the product storefront fast boundary guardrail`);
 assertContains(packageJson, "verify:product:storefront-boundary", `${packagePath}: package scripts must expose product storefront boundary verification`);

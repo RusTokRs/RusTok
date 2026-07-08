@@ -81,6 +81,7 @@ ssr = [
 
 [dependencies]
 rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
 leptos = { workspace = true, features = ["csr"] }
 leptos_router = { workspace = true }
 leptos_axum = { workspace = true, optional = true }
@@ -181,6 +182,7 @@ normal = [
   "leptos-forms",
   "uuid",
   "rustok-api",
+  "rustok-ui-transport",
   "rustok-installer",
   "rustok-cache",
   "rustok-comments",

@@ -68,7 +68,7 @@ FFA classification: `apps/next-admin` is an `FFA-compatible composition host`, n
 - shared UI and frontend contracts go through `UI/next` and internal transport/auth packages;
 - backend — `apps/server`;
 - module-owned Next admin packages live in `apps/next-admin/packages/*`;
-- shared API helper `src/shared/api/seo.ts` provides typed access to SEO control-plane: `seoTargets`, diagnostics, sitemap status/jobs, bulk jobs and job detail with REST-first (rollout-gated) + GraphQL fallback strategy;
+- shared API helper `src/shared/api/seo.ts` provides typed access to SEO control-plane: `seoTargets`, diagnostics, sitemap status/jobs, bulk jobs and job detail with REST primary (rollout-gated) + GraphQL secondary path strategy;
 - semantic SEO error taxonomy (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures) is considered canonical for Next hosts and is reused not only in `next-admin`, but also in Next storefront SEO runtime adapters;
 - package naming contract for module-owned admin UI remains `@rustok/*-admin`.
 

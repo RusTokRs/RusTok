@@ -43,6 +43,7 @@ const corePath = "crates/rustok-payment/storefront/src/core.rs";
 const transportPath = "crates/rustok-payment/storefront/src/transport.rs";
 const graphqlPath = "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs";
 const nativeRawPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const cargoPath = "crates/rustok-payment/storefront/Cargo.toml";
 const uiPath = "crates/rustok-payment/storefront/src/ui/leptos.rs";
 const i18nPath = "crates/rustok-payment/storefront/src/i18n.rs";
 const manifestPath = "crates/rustok-payment/rustok-module.toml";
@@ -52,7 +53,7 @@ const planPath = "crates/rustok-payment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected payment storefront FFA file`);
 }
 
@@ -61,6 +62,7 @@ const core = readRepo(corePath);
 const transport = readRepo(transportPath);
 const graphql = readRepo(graphqlPath);
 const nativeRaw = readRepo(nativeRawPath);
+const cargo = readRepo(cargoPath);
 const ui = readRepo(uiPath);
 const i18n = readRepo(i18nPath);
 const manifest = readRepo(manifestPath);
@@ -119,6 +121,13 @@ assertContains(nativeRaw, "endpoint = \"payment/refund-summary\"", `${nativeRawP
 assertContains(nativeRaw, "read_storefront_payment_collection", `${nativeRawPath}: payment native read adapter must call the access-checked commerce runtime API`);
 assertContains(nativeRaw, "read_storefront_order_refunds", `${nativeRawPath}: payment refund adapter must call the access-checked commerce runtime API`);
 assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: payment native adapter must call the explicit commerce checkout runtime API`);
+assertContains(nativeRaw, "expect_context::<HostRuntimeContext>()", `${nativeRawPath}: payment native adapter must use the host runtime context`);
+assertContains(nativeRaw, "shared_get::<TransactionalEventBus>()", `${nativeRawPath}: payment native adapter must receive the event bus through the host runtime context`);
+assertContains(nativeRaw, "runtime_ctx.db_clone()", `${nativeRawPath}: payment native adapter must receive DB through the host runtime context`);
+assertNotContains(nativeRaw, "loco_rs", `${nativeRawPath}: payment native adapter must not depend on Loco AppContext`);
+assertNotContains(nativeRaw, "rustok_outbox::loco", `${nativeRawPath}: payment native adapter must not use the outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${cargoPath}: payment storefront package must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${cargoPath}: payment storefront package must not enable the outbox Loco adapter`);
 
 for (const marker of [
   "PaymentView",
@@ -132,7 +141,7 @@ for (const marker of [
 ]) {
   assertContains(ui, marker, `${uiPath}: expected payment-owned UI/request marker ${marker}`);
 }
-for (const marker of ["include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "resolve_ui_message_or_fallback"]) {
+for (const marker of ["LeptosUiMessages", "include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "t_for_locale"]) {
   assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
 }
 for (const marker of ["slot = \"checkout_payment_handoff\"", "[provides.storefront_ui.i18n]", "leptos_locales_path = \"storefront/locales\""]) {

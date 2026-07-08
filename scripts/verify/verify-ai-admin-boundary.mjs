@@ -43,6 +43,7 @@ const corePath = "crates/rustok-ai/admin/src/core.rs";
 const transportModPath = "crates/rustok-ai/admin/src/transport/mod.rs";
 const nativeAdapterPath = "crates/rustok-ai/admin/src/transport/native_server_adapter.rs";
 const graphqlAdapterPath = "crates/rustok-ai/admin/src/transport/graphql_adapter.rs";
+const cargoPath = "crates/rustok-ai/admin/Cargo.toml";
 
 assertExists(libPath, `${libPath}: expected AI admin crate root file`);
 assertExists(uiPath, `${uiPath}: expected AI admin Leptos adapter file`);
@@ -50,6 +51,7 @@ assertExists(corePath, `${corePath}: expected AI admin core slice file`);
 assertExists(transportModPath, `${transportModPath}: expected AI admin transport facade file`);
 assertExists(nativeAdapterPath, `${nativeAdapterPath}: expected AI admin native server adapter file`);
 assertExists(graphqlAdapterPath, `${graphqlAdapterPath}: expected AI admin GraphQL/headless adapter file`);
+assertExists(cargoPath, `${cargoPath}: expected AI admin package manifest`);
 if (existsSync(repoPath("crates/rustok-ai/admin/src/api.rs"))) {
   fail("crates/rustok-ai/admin/src/api.rs: pre-FFA api facade must stay removed");
 }
@@ -60,6 +62,7 @@ const core = readRepo(corePath);
 const transportMod = readRepo(transportModPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
+const cargo = readRepo(cargoPath);
 
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "pub mod transport;", `${libPath}: crate root must expose the transport facade for headless adapters`);
@@ -99,6 +102,16 @@ assertContains(transportMod, "fetch_bootstrap", `${transportModPath}: transport 
 assertContains(transportMod, "run_task_job", `${transportModPath}: transport facade must expose direct job execution`);
 assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must contain server-function endpoints`);
 assertContains(nativeAdapter, "ai_bootstrap_native", `${nativeAdapterPath}: native adapter must own bootstrap endpoint`);
+assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must use neutral host runtime context`);
+assertContains(nativeAdapter, "db_clone()", `${nativeAdapterPath}: native adapter must use host runtime DB clone`);
+assertContains(nativeAdapter, "shared_get::<rustok_outbox::TransactionalEventBus>", `${nativeAdapterPath}: native adapter must resolve shared transactional event bus`);
+assertContains(nativeAdapter, "shared_get::<rustok_ai::SharedAiModuleRegistry>", `${nativeAdapterPath}: native adapter must resolve shared AI module registry`);
+assertContains(nativeAdapter, "shared_get::<rustok_storage::StorageService>", `${nativeAdapterPath}: native adapter must resolve shared storage handle`);
+assertContains(nativeAdapter, "shared_get::<alloy::SharedAlloyRuntime>", `${nativeAdapterPath}: native adapter must resolve shared Alloy runtime handle`);
+assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
+assertNotContains(nativeAdapter, "rustok_outbox::loco", `${nativeAdapterPath}: native adapter must not use the outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${cargoPath}: AI admin crate must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${cargoPath}: AI admin crate must not enable the outbox Loco adapter feature`);
 assertContains(graphqlAdapter, "pub const AI_BOOTSTRAP_QUERY", `${graphqlAdapterPath}: GraphQL adapter must expose bootstrap query document`);
 assertContains(graphqlAdapter, "pub fn bootstrap_request", `${graphqlAdapterPath}: GraphQL adapter must expose a bootstrap request builder`);
 assertContains(graphqlAdapter, "pub fn session_request", `${graphqlAdapterPath}: GraphQL adapter must expose a session request builder`);

@@ -3,10 +3,19 @@ use std::collections::{BTreeMap, HashMap};
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use rustok_core::ModuleRuntimeExtensions;
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::shared::api::{configured_tenant_slug, ApiError};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 const SEO_PAGE_CONTEXT_QUERY: &str = r#"
     query SeoPageContext($route: String!, $locale: String!) {
@@ -309,11 +318,13 @@ pub async fn fetch_seo_page_context(
     };
 
     let route = build_module_route(route_segment, query_params);
-    match fetch_seo_page_context_server(tenant_slug.clone(), locale.to_string(), route.clone())
-        .await
-    {
-        Ok(resolved) => Ok(resolved),
-        Err(_) => fetch_seo_page_context_graphql(tenant_slug, locale.to_string(), route).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            fetch_seo_page_context_server(tenant_slug, locale.to_string(), route).await
+        }
+        UiTransportPath::Graphql => {
+            fetch_seo_page_context_graphql(tenant_slug, locale.to_string(), route).await
+        }
     }
 }
 

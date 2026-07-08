@@ -42,6 +42,7 @@ const files = {
   core: "crates/rustok-pricing/storefront/src/core.rs",
   ui: "crates/rustok-pricing/storefront/src/ui/leptos.rs",
   transport: "crates/rustok-pricing/storefront/src/transport/mod.rs",
+  cargo: "crates/rustok-pricing/storefront/Cargo.toml",
   legacyApi: "crates/rustok-pricing/storefront/src/api.rs",
   graphqlAdapter: "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs",
   nativeServerAdapter: "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
@@ -62,6 +63,7 @@ const lib = readRepo(files.lib);
 const core = readRepo(files.core);
 const ui = readRepo(files.ui);
 const transport = readRepo(files.transport);
+const cargo = readRepo(files.cargo);
 const graphqlAdapter = readRepo(files.graphqlAdapter);
 const nativeServerAdapter = readRepo(files.nativeServerAdapter);
 const implementationPlan = readRepo(files.implementationPlan);
@@ -89,6 +91,13 @@ assertNotContains(transport, "crate::api", `${files.transport}: transport facade
 assertContains(graphqlAdapter, "fetch_storefront_pricing_graphql", `${files.graphqlAdapter}: GraphQL adapter must delegate to GraphQL path`);
 assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: native server adapter must keep server functions`);
 assertContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAdapter}: moved adapter must keep GraphQL fallback request contract until split further`);
+assertContains(nativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${files.nativeServerAdapter}: native adapter must use the host runtime context`);
+assertContains(nativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${files.nativeServerAdapter}: native adapter must receive the event bus through the host runtime context`);
+assertContains(nativeServerAdapter, "runtime_ctx.db_clone()", `${files.nativeServerAdapter}: native adapter must receive DB through the host runtime context`);
+assertNotContains(nativeServerAdapter, "loco_rs", `${files.nativeServerAdapter}: native adapter must not depend on Loco AppContext`);
+assertNotContains(nativeServerAdapter, "rustok_outbox::loco", `${files.nativeServerAdapter}: native adapter must not use the outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${files.cargo}: pricing storefront package must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${files.cargo}: pricing storefront package must not enable the outbox Loco adapter`);
 
 assertContains(implementationPlan, "verify-pricing-storefront-boundary.mjs", `${files.implementationPlan}: local plan must mention pricing storefront guardrail`);
 assertContains(registry, "verify-pricing-storefront-boundary.mjs", `${files.registry}: central readiness board must mention pricing storefront guardrail`);

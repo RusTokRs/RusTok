@@ -403,11 +403,21 @@ for (const rel of [
   'crates/rustok-workflow/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-media/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-customer/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-channel/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-ai/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-product/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-product/storefront/src/transport/native_server_adapter.rs',
+  'crates/rustok-seo/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-mcp/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-inventory/admin/src/native.rs',
+  'crates/rustok-cart/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-region/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-pages/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-order/storefront/src/transport/native_server_adapter/raw_adapter.rs',
   'crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/raw_adapter.rs',
+  'crates/rustok-payment/storefront/src/transport/native_server_adapter/raw_adapter.rs',
+  'crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs',
 ]) {
   requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
   requireNotContains(rel, 'rustok_outbox::loco', `${rel} does not consume the outbox Loco adapter`);
@@ -419,6 +429,23 @@ requireNotContains('crates/rustok-comments/admin/Cargo.toml', 'loco-rs', 'commen
 requireNotContains('crates/rustok-workflow/admin/Cargo.toml', 'loco-rs', 'workflow admin crate does not depend on Loco');
 requireNotContains('crates/rustok-media/admin/Cargo.toml', 'loco-rs', 'media admin crate does not depend on Loco');
 requireNotContains('crates/rustok-customer/admin/Cargo.toml', 'loco-rs', 'customer admin crate does not depend on Loco');
+requireNotContains('crates/rustok-channel/admin/Cargo.toml', 'loco-rs', 'channel admin crate does not depend on Loco');
+requireNotContains('crates/rustok-ai/admin/Cargo.toml', 'loco-rs', 'AI admin crate does not depend on Loco');
+requireNotContains('crates/rustok-ai/admin/Cargo.toml', 'loco-adapter', 'AI admin crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-product/admin/Cargo.toml', 'loco-rs', 'product admin crate does not depend on Loco');
+requireNotContains('crates/rustok-product/admin/Cargo.toml', 'loco-adapter', 'product admin crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-product/storefront/Cargo.toml', 'loco-rs', 'product storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-product/storefront/Cargo.toml', 'loco-adapter', 'product storefront crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-seo/admin/Cargo.toml', 'loco-rs', 'SEO admin crate does not depend on Loco');
+requireNotContains('crates/rustok-seo/admin/Cargo.toml', 'loco-adapter', 'SEO admin crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-mcp/admin/Cargo.toml', 'loco-rs', 'MCP admin crate does not depend on Loco');
+requireNotContains('crates/rustok-mcp/admin/Cargo.toml', 'loco-adapter', 'MCP admin crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-inventory/admin/Cargo.toml', 'loco-rs', 'inventory admin crate does not depend on Loco');
+requireNotContains('crates/rustok-inventory/admin/Cargo.toml', 'loco-adapter', 'inventory admin crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-cart/storefront/Cargo.toml', 'loco-rs', 'cart storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-cart/storefront/Cargo.toml', 'loco-adapter', 'cart storefront crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-commerce/storefront/Cargo.toml', 'loco-rs', 'commerce storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-commerce/storefront/Cargo.toml', 'loco-adapter', 'commerce storefront crate does not enable the outbox Loco adapter feature');
 requireNotContains('crates/rustok-region/storefront/Cargo.toml', 'loco-rs', 'region storefront crate does not depend on Loco');
 requireNotContains('crates/rustok-pages/storefront/Cargo.toml', 'loco-rs', 'pages storefront crate does not depend on Loco');
 requireNotContains('crates/rustok-pages/storefront/Cargo.toml', 'loco-adapter', 'pages storefront crate does not enable the outbox Loco adapter feature');
@@ -428,6 +455,10 @@ requireNotContains('crates/rustok-order/storefront/Cargo.toml', 'loco-rs', 'orde
 requireNotContains('crates/rustok-order/storefront/Cargo.toml', 'loco-adapter', 'order storefront crate does not enable the outbox Loco adapter feature');
 requireNotContains('crates/rustok-fulfillment/storefront/Cargo.toml', 'loco-rs', 'fulfillment storefront crate does not depend on Loco');
 requireNotContains('crates/rustok-fulfillment/storefront/Cargo.toml', 'loco-adapter', 'fulfillment storefront crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-payment/storefront/Cargo.toml', 'loco-rs', 'payment storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-payment/storefront/Cargo.toml', 'loco-adapter', 'payment storefront crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-pricing/storefront/Cargo.toml', 'loco-rs', 'pricing storefront crate does not depend on Loco');
+requireNotContains('crates/rustok-pricing/storefront/Cargo.toml', 'loco-adapter', 'pricing storefront crate does not enable the outbox Loco adapter feature');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub struct Permission', 'rustok-api owns Permission');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Action', 'rustok-api owns Action');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Resource', 'rustok-api owns Resource');

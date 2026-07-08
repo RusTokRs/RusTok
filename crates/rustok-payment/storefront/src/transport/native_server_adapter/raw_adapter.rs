@@ -23,15 +23,9 @@ async fn storefront_refund_summary_native(
 ) -> Result<RefundSummary, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_commerce::storefront_checkout_runtime;
 
-        let app_ctx = expect_context::<AppContext>();
-        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
-        );
+        let runtime = checkout_runtime()?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -79,15 +73,9 @@ async fn storefront_payment_collection_native(
 ) -> Result<Option<PaymentCollection>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_commerce::storefront_checkout_runtime;
 
-        let app_ctx = expect_context::<AppContext>();
-        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
-        );
+        let runtime = checkout_runtime()?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -127,17 +115,11 @@ async fn storefront_payment_create_collection_native(
 ) -> Result<PaymentCollection, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_commerce::storefront_checkout_runtime::{
             self, StorefrontPaymentCollectionCommand,
         };
 
-        let app_ctx = expect_context::<AppContext>();
-        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
-        );
+        let runtime = checkout_runtime()?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -178,6 +160,31 @@ async fn storefront_payment_create_collection_native(
             "payment/create-payment-collection requires the `ssr` feature",
         ))
     }
+}
+
+#[cfg(feature = "ssr")]
+fn checkout_runtime(
+) -> Result<rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime, ServerFnError>
+{
+    use leptos::prelude::expect_context;
+    use rustok_api::HostRuntimeContext;
+    use rustok_outbox::TransactionalEventBus;
+
+    let runtime_ctx = expect_context::<HostRuntimeContext>();
+    let event_bus = runtime_ctx
+        .shared_get::<TransactionalEventBus>()
+        .ok_or_else(|| {
+            ServerFnError::new(
+                "payment storefront native transport requires TransactionalEventBus in host runtime context",
+            )
+        })?;
+
+    Ok(
+        rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
+            runtime_ctx.db_clone(),
+            event_bus,
+        ),
+    )
 }
 
 #[cfg(feature = "ssr")]

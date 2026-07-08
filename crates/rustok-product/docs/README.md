@@ -13,9 +13,9 @@
 ## Scope
 
 - `rustok-product` owns module-owned admin/storefront UI packages, native `#[server]` internal paths and product-owned GraphQL contract types; the umbrella `rustok-commerce` remains the ecommerce composition layer, but does not mask the product owner boundary.
-- The storefront read-side for published catalog now lives in `rustok-product/storefront` and uses native Leptos server functions over `CatalogService`, keeping the GraphQL storefront contract as a fallback.
+- The storefront read-side for published catalog now lives in `rustok-product/storefront` and uses Loco-free native Leptos server functions over `CatalogService` with `HostRuntimeContext` DB/event-bus handles, keeping the GraphQL storefront contract as a fallback.
 - Product CRUD in the admin UI has been moved out of `rustok-commerce-admin`
-  into the module-owned route `product`; native server functions are the primary internal path,
+  into the module-owned route `product`; native server functions are the monolith/hydrate selected path,
   and GraphQL is maintained in parallel without returning ownership to the umbrella `rustok-commerce`;
 - The generic GraphQL roots `product` / `storefrontProduct`, which are still used by
   module-owned product UI packages, are considered a catalog-authoritative surface:
@@ -71,7 +71,7 @@
 - `product_categories` stores additional navigation/storefront bindings and does not change the product form.
 - Values live in typed product/variant attribute value tables; localized labels and text-like values are in translation tables.
 - Product-level values are read and modified through an owner-owned typed read/patch contract: an omitted attribute does not change, `clear` deletes the value, an empty multiselect clears the value, options and effective schema are validated before transactional write, and detached values are preserved and returned with a separate marker.
-- Detached values are displayed in the product admin as a separate review block and are cleared only through the owner-owned `clear_detached_product_attribute_values`; the service verifies that each deleted attribute is indeed outside the current effective schema, native `#[server]` remains the primary path, GraphQL is maintained in parallel.
+- Detached values are displayed in the product admin as a separate review block and are cleared only through the owner-owned `clear_detached_product_attribute_values`; the service verifies that each deleted attribute is indeed outside the current effective schema, build-profile-selected native `#[server]` and GraphQL paths are maintained in parallel.
 - Publish validation is performed in the owner-owned `ProductCatalogSchemaService`: required effective attributes must be filled before the product transitions to `Active`, localized text-like values require an explicit non-empty translation row, option attributes require saved option relations, and create-with-publish is rejected for categories with required typed attributes.
 - Effective form loads localized options in a single bounded query by effective attribute ids; schema/category groups return a localized `group_label` by host locale, binding uses stable `group_code`, and the product admin groups fields by label/code, displays typed controls and sends only dirty patches after saving the product and its primary category.
 - `rustok-index` when indexing a product materializes tenant/locale-scoped category strings and normalized facet/search/sort values. Multiselect expands to one row per option, localized labels are taken only from the explicit row of the requested locale, and effective attribute ids are computed by a read-only resolver in `rustok-product`, so detached values do not enter the read model.
@@ -105,7 +105,7 @@ When reindexing a product, `rustok-index` first completely replaces its rows in 
 ## Search metadata
 
 - The Leptos product admin package exports `fetch_catalog_search_options` and neutral option DTOs. The helper requires the host effective locale, uses a current-tenant native `#[server]` endpoint with a parallel GraphQL selected path and is already connected in `apps/admin` through host-owned `SearchAdminComposition` without a direct dependency from search UI on `rustok-product`.
-- The Leptos product storefront package publishes a separate public-safe `fetch_catalog_search_options`: native `product/storefront/catalog-search-options` is the primary path, GraphQL `storefrontCatalogSearchOptions(locale: String!)` remains parallel. The payload contains only category ids/labels and filterable/sortable attribute codes/labels; `apps/storefront` connects it through `SearchStorefrontComposition` with host effective locale.
+- The Leptos product storefront package publishes a separate public-safe `fetch_catalog_search_options`: native `product/storefront/catalog-search-options` is the monolith/hydrate selected path and is built from `HostRuntimeContext` DB/event-bus handles, GraphQL `storefrontCatalogSearchOptions(locale: String!)` is the headless/CSR selected path. The payload contains only category ids/labels and filterable/sortable attribute codes/labels; `apps/storefront` connects it through `SearchStorefrontComposition` with host effective locale.
 - The Next storefront has a mirror product-owned helper `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions` which reads the same public GraphQL contract and returns safe DTOs to the host search composition without a direct product dependency inside the search package.
 
 - The Next admin product package exposes owner-owned search metadata helpers: category options return `catalogCategories.id`, attribute options return filterable/sortable `productAttributes.code`, labels use the host effective locale, and the search UI consumes only host-provided options without importing product internals.

@@ -261,13 +261,14 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, OptionalChannel, TenantContext};
         use rustok_channel::ChannelService;
         use rustok_core::ModuleRegistry;
         use sea_orm::{ConnectionTrait, DbBackend, QueryResult, Statement};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -282,7 +283,7 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channels = service
             .list_channel_details(tenant.id)
             .await
@@ -325,11 +326,7 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
             "#,
             vec![tenant.id.into()],
         );
-        let oauth_rows = app_ctx
-            .db
-            .query_all(stmt)
-            .await
-            .map_err(ServerFnError::new)?;
+        let oauth_rows = db.query_all(stmt).await.map_err(ServerFnError::new)?;
         let oauth_apps = oauth_rows
             .into_iter()
             .map(
@@ -379,11 +376,12 @@ pub(super) async fn channel_create_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{ChannelService, CreateChannelInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -393,7 +391,7 @@ pub(super) async fn channel_create_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel = service
             .create_channel(CreateChannelInput {
                 tenant_id: tenant.id,
@@ -422,11 +420,12 @@ pub(super) async fn channel_set_default_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -436,7 +435,7 @@ pub(super) async fn channel_set_default_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
         let updated = service
@@ -463,11 +462,12 @@ pub(super) async fn channel_create_target_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{ChannelService, CreateChannelTargetInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -477,7 +477,7 @@ pub(super) async fn channel_create_target_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
         let target = service
@@ -513,11 +513,12 @@ pub(super) async fn channel_update_target_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{ChannelService, UpdateChannelTargetInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -527,7 +528,7 @@ pub(super) async fn channel_update_target_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         let target_uuid = parse_uuid(&target_id, "target_id")?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
@@ -564,11 +565,12 @@ pub(super) async fn channel_bind_module_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{BindChannelModuleInput, ChannelService};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -578,7 +580,7 @@ pub(super) async fn channel_bind_module_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
         let binding = service
@@ -612,12 +614,13 @@ pub(super) async fn channel_bind_oauth_app_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{BindChannelOauthAppInput, ChannelService};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -629,7 +632,7 @@ pub(super) async fn channel_bind_oauth_app_native(
 
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         let oauth_app_uuid = parse_uuid(&payload.oauth_app_id, "oauth_app_id")?;
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
 
         let stmt = Statement::from_sql_and_values(
@@ -645,8 +648,7 @@ pub(super) async fn channel_bind_oauth_app_native(
             "#,
             vec![tenant.id.into(), oauth_app_uuid.into()],
         );
-        let exists = app_ctx
-            .db
+        let exists = db
             .query_one(stmt)
             .await
             .map_err(ServerFnError::new)?
@@ -687,11 +689,12 @@ pub(super) async fn channel_delete_target_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -701,7 +704,7 @@ pub(super) async fn channel_delete_target_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         let target_uuid = parse_uuid(&target_id, "target_id")?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
@@ -729,11 +732,12 @@ pub(super) async fn channel_delete_module_binding_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -743,7 +747,7 @@ pub(super) async fn channel_delete_module_binding_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         let binding_uuid = parse_uuid(&binding_id, "binding_id")?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
@@ -771,11 +775,12 @@ pub(super) async fn channel_delete_oauth_app_binding_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -785,7 +790,7 @@ pub(super) async fn channel_delete_oauth_app_binding_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
         let binding_uuid = parse_uuid(&binding_id, "binding_id")?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
@@ -812,11 +817,12 @@ pub(super) async fn channel_create_resolution_policy_set_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{ChannelService, CreateChannelResolutionPolicySetInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -826,7 +832,7 @@ pub(super) async fn channel_create_resolution_policy_set_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let policy_set = service
             .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
                 tenant_id: tenant.id,
@@ -858,11 +864,12 @@ pub(super) async fn channel_activate_resolution_policy_set_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -872,7 +879,7 @@ pub(super) async fn channel_activate_resolution_policy_set_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
         ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
         let policy_set = service
@@ -899,11 +906,12 @@ pub(super) async fn channel_create_resolution_rule_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{ChannelService, CreateChannelResolutionRuleInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -915,7 +923,7 @@ pub(super) async fn channel_create_resolution_rule_native(
 
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
         let action_channel_id = parse_uuid(&payload.action_channel_id, "action_channel_id")?;
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
         ensure_channel_belongs_to_tenant(&service, tenant.id, action_channel_id).await?;
 
@@ -954,11 +962,12 @@ pub(super) async fn channel_update_resolution_rule_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{ChannelService, UpdateChannelResolutionRuleInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -968,7 +977,7 @@ pub(super) async fn channel_update_resolution_rule_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
         let rule_uuid = parse_uuid(&rule_id, "rule_id")?;
         ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
@@ -1019,11 +1028,12 @@ pub(super) async fn channel_reorder_resolution_rules_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::{ChannelService, ReorderChannelResolutionRulesInput};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1033,7 +1043,7 @@ pub(super) async fn channel_reorder_resolution_rules_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
         ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
         let rule_ids = payload
@@ -1069,11 +1079,12 @@ pub(super) async fn channel_delete_resolution_rule_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1083,7 +1094,7 @@ pub(super) async fn channel_delete_resolution_rule_native(
 
         ensure_manage_permission(&auth.permissions)?;
 
-        let service = ChannelService::new(app_ctx.db.clone());
+        let service = ChannelService::new(db.clone());
         let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
         let rule_uuid = parse_uuid(&rule_id, "rule_id")?;
         ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;

@@ -7,13 +7,13 @@ stay in the active backlog umbrella `rustok-commerce`.
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_variant_editor_copy_defaults_slice
-- Last checkpoint: Admin variant price editor copy/count/default-currency policy extracted from Leptos adapter into Leptos-free `admin/src/core/presentation.rs`: `format_variant_price_editor_title`, `format_variant_count_label` and `default_variant_price_editor_currency` now centralize repeatable labels/defaults for variant price editor with pure-core unit-test evidence.
-- Dependency evidence: pricing storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`.
+- Current phase: storefront native Loco-free transport ownership
+- Last checkpoint: Pricing storefront native pricing atlas endpoint `pricing/storefront-data` now builds `PricingService` from `HostRuntimeContext` DB/event-bus handles and builds `ChannelService` from the same neutral DB handle. The storefront package no longer depends on `loco-rs` or `rustok-outbox/loco-adapter`, while the build-profile-selected native + GraphQL selected path remains unchanged.
+- Dependency evidence: pricing storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`; SSR profile no longer contains a package-local Loco dependency.
 - Next step: Continue small FFA slices only where they reduce Leptos-owned presentation/state policy; do not change the build-profile-selected native/GraphQL transport contract.
 - Open blockers: None.
-- Hand-off notes for next agent: After each increment, update this block.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Hand-off notes for next agent: Continue small FFA/Loco-exit slices without touching the parallel UI/i18n library work unless the slice explicitly targets it.
+- Last updated at (UTC): 2026-07-08T00:00:00Z
 
 ## FFA/FBA status
 
@@ -30,6 +30,7 @@ stay in the active backlog umbrella `rustok-commerce`.
   - registry now locks `contract_tests.status = planned_cases_locked`: for each port operation, an in-process/remote-adapter-placeholder case matrix is defined with baseline assertions (`typed_port_error_mapping`, `context_deadline_preserved`) with explicit deadline enforcement for read path and `write_idempotency_required` only on write operations; fallback smoke profile set; static evidence packet `crates/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates) and `npm run verify:ecommerce:fba-contract-evidence`; this closes metadata/evidence anti-drift for future contract tests, but does not promote status without runtime evidence;
   - storefront pricing route now uses framework-agnostic `storefront/src/core.rs` for summary/label/effective context formatting, query href building and shared `StorefrontPricingQuery`; Leptos `lib.rs` no longer owns this presentation/request policy;
   - storefront transport split into thin facade + explicit `native_server_adapter` and `graphql_adapter`, with fallback order (`native #[server]` first, GraphQL second) preserved; legacy `storefront/src/api.rs` removed, raw operations live in `storefront/src/transport/`, and `scripts/verify/verify-pricing-storefront-boundary.mjs` blocks legacy API return;
+  - storefront native transport is Loco-free: `storefront/src/transport/native_server_adapter.rs` reads `HostRuntimeContext`, obtains `TransactionalEventBus` from the neutral typed host-handle snapshot, passes `runtime_ctx.db_clone()` into `PricingService`/`ChannelService`, and the storefront package has no `loco-rs` or `rustok-outbox/loco-adapter` dependency;
   - Leptos render/bind adapter extracted into `storefront/src/ui/leptos.rs`, and `storefront/src/lib.rs` became crate-level composition/re-export boundary;
   - targeted facade tests confirm both selected paths: native success does not call GraphQL, and GraphQL selected-path execution receives the original `StorefrontPricingQuery`;
   - request normalization/validation moved to `storefront/src/core.rs`, including typed `StorefrontPricingQueryError`; API layer converts core validation errors into the existing transport envelope without changing public behavior;
@@ -39,7 +40,7 @@ stay in the active backlog umbrella `rustok-commerce`.
   - admin write request construction for variant price, percentage discount and price-list rule/scope remains in core-owned draft builders; Leptos adapter uses explicit core imports instead of wildcard and does not construct covered write DTO inline;
   - admin GraphQL/native input sanitization for active price-list/product context (`currency_code`, UUID strings, channel slug, resolution quantity/context) moved from legacy `admin/src/api.rs` to `core/requests.rs`; transport adapter preserves the existing `ApiError`/`ServerFnError` envelope through adapter mapping;
   - admin detail header presentation is now assembled by `PricingProductDetailHeaderViewModel` in `admin/src/core/presentation.rs`: translation fallback, status badge/label, meta/seller/shipping/timestamp strings are no longer formatted inline in Leptos render path, and pure-core unit test locks fallback policy; latest admin variant-card slice added `PricingVariantCardViewModel` which assembles health label/badge, identity/profile lines, effective price line and price table outside Leptos adapter; latest admin product-list slice added `PricingProductListItemViewModel` which assembles row id/title, status label/badge, shipping-profile fallback, meta line and selected-row class policy outside Leptos adapter; latest admin editor routing slice added `legacy_channel_option_label` in `admin/src/core/routing.rs` so legacy channel option label/not-set fallback is no longer duplicated in Leptos variant price, discount and price-list rule editors; latest variant editor presentation slice added `format_variant_price_editor_title`, `format_variant_count_label` and `default_variant_price_editor_currency` to `admin/src/core/presentation.rs`, so editor title/count/default-currency policy no longer belongs to Leptos adapter.
-- Last verified at (UTC): 2026-06-20T00:00:00Z
+- Last verified at (UTC): 2026-07-08T00:00:00Z
 - Owner: `rustok-pricing` module team
 
 ## Scope of work

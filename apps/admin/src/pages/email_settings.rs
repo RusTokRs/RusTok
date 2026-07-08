@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_ui_transport::UiTransportPath;
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,14 @@ use crate::shared::api::queries::{PLATFORM_SETTINGS_QUERY, UPDATE_PLATFORM_SETTI
 use crate::shared::api::request;
 use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -89,16 +98,13 @@ async fn fetch_email_settings(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<PlatformSettingsResponse, String> {
-    match fetch_email_settings_server().await {
-        Ok(response) => Ok(response),
-        Err(server_err) => fetch_email_settings_graphql(token, tenant_slug)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_email_settings_server()
             .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => fetch_email_settings_graphql(token, tenant_slug)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 

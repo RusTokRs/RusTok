@@ -1,9 +1,18 @@
 use std::collections::HashSet;
 
 use leptos::prelude::*;
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 
 use crate::shared::api::{configured_tenant_slug, ApiError};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
 
@@ -51,9 +60,9 @@ pub async fn fetch_enabled_modules() -> Result<Vec<String>, ApiError> {
         return Ok(Vec::new());
     };
 
-    match fetch_enabled_modules_server(tenant_slug.clone()).await {
-        Ok(modules) => Ok(modules),
-        Err(_) => fetch_enabled_modules_graphql(tenant_slug).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_enabled_modules_server(tenant_slug).await,
+        UiTransportPath::Graphql => fetch_enabled_modules_graphql(tenant_slug).await,
     }
 }
 

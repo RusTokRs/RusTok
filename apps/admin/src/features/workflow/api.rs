@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -7,7 +8,15 @@ use crate::entities::workflow::{
     ExecutionStatus, OnError, StepExecution, StepType, WorkflowStatus, WorkflowStep,
 };
 use crate::entities::workflow::{WorkflowDetail, WorkflowExecution, WorkflowSummary};
-use crate::shared::api::{combine_native_and_graphql_error, request, ApiError};
+use crate::shared::api::{map_server_fn_error, request, ApiError};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 pub const WORKFLOWS_QUERY: &str =
     "query Workflows { workflows { id tenantId name status failureCount createdAt updatedAt } }";
@@ -480,18 +489,13 @@ pub async fn fetch_workflows(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<WorkflowSummary>, String> {
-    match fetch_workflows_server().await {
-        Ok(response) => Ok(response),
-        Err(server_err) => {
-            fetch_workflows_graphql(token, tenant_slug)
-                .await
-                .map_err(|graphql_err| {
-                    format!(
-                        "native path failed: {}; graphql path failed: {}",
-                        server_err, graphql_err
-                    )
-                })
-        }
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_workflows_server()
+            .await
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => fetch_workflows_graphql(token, tenant_slug)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -500,16 +504,13 @@ pub async fn fetch_workflow(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<Option<WorkflowDetail>, String> {
-    match fetch_workflow_server(id.clone()).await {
-        Ok(response) => Ok(response),
-        Err(server_err) => fetch_workflow_graphql(token, tenant_slug, id)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_workflow_server(id)
             .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => fetch_workflow_graphql(token, tenant_slug, id)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -518,16 +519,15 @@ pub async fn fetch_workflow_executions(
     tenant_slug: Option<String>,
     workflow_id: String,
 ) -> Result<Vec<WorkflowExecution>, String> {
-    match fetch_workflow_executions_server(workflow_id.clone()).await {
-        Ok(response) => Ok(response),
-        Err(server_err) => fetch_workflow_executions_graphql(token, tenant_slug, workflow_id)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_workflow_executions_server(workflow_id)
             .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => {
+            fetch_workflow_executions_graphql(token, tenant_slug, workflow_id)
+                .await
+                .map_err(|error| error.to_string())
+        }
     }
 }
 
@@ -728,17 +728,18 @@ pub async fn create_workflow(
     tenant_slug: Option<String>,
     input: CreateWorkflowInput,
 ) -> Result<String, ApiError> {
-    match create_workflow_native(input.clone()).await {
-        Ok(response) => Ok(response),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => create_workflow_native(input)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let resp: CreateWorkflowResponse = request(
                 CREATE_WORKFLOW_MUTATION,
                 CreateWorkflowVars { input },
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(resp.create_workflow)
         }
     }
@@ -749,15 +750,13 @@ pub async fn delete_workflow(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
-    match delete_workflow_native(id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => delete_workflow_native(id)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let _: serde_json::Value =
-                request(DELETE_WORKFLOW_MUTATION, IdVars { id }, token, tenant_slug)
-                    .await
-                    .map_err(|graphql_err| {
-                        combine_native_and_graphql_error(server_err, graphql_err)
-                    })?;
+                request(DELETE_WORKFLOW_MUTATION, IdVars { id }, token, tenant_slug).await?;
             Ok(())
         }
     }
@@ -768,17 +767,18 @@ pub async fn activate_workflow(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
-    match activate_workflow_native(id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => activate_workflow_native(id)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let _: serde_json::Value = request(
                 ACTIVATE_WORKFLOW_MUTATION,
                 IdVars { id },
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(())
         }
     }
@@ -789,15 +789,13 @@ pub async fn pause_workflow(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
-    match pause_workflow_native(id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            pause_workflow_native(id).await.map_err(map_server_fn_error)
+        }
+        UiTransportPath::Graphql => {
             let _: serde_json::Value =
-                request(PAUSE_WORKFLOW_MUTATION, IdVars { id }, token, tenant_slug)
-                    .await
-                    .map_err(|graphql_err| {
-                        combine_native_and_graphql_error(server_err, graphql_err)
-                    })?;
+                request(PAUSE_WORKFLOW_MUTATION, IdVars { id }, token, tenant_slug).await?;
             Ok(())
         }
     }
@@ -809,17 +807,18 @@ pub async fn add_step(
     workflow_id: String,
     input: CreateStepInput,
 ) -> Result<String, ApiError> {
-    match add_step_native(workflow_id.clone(), input.clone()).await {
-        Ok(response) => Ok(response),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => add_step_native(workflow_id, input)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let resp: AddStepResponse = request(
                 ADD_STEP_MUTATION,
                 AddStepVars { workflow_id, input },
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(resp.add_workflow_step)
         }
     }
@@ -831,9 +830,11 @@ pub async fn delete_step(
     workflow_id: String,
     step_id: String,
 ) -> Result<(), ApiError> {
-    match delete_step_native(workflow_id.clone(), step_id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => delete_step_native(workflow_id, step_id)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let _: serde_json::Value = request(
                 DELETE_STEP_MUTATION,
                 DeleteStepVars {
@@ -843,8 +844,7 @@ pub async fn delete_step(
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(())
         }
     }
@@ -1089,18 +1089,13 @@ pub async fn fetch_templates(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<WorkflowTemplateDto>, String> {
-    match fetch_templates_server().await {
-        Ok(response) => Ok(response),
-        Err(server_err) => {
-            fetch_templates_graphql(token, tenant_slug)
-                .await
-                .map_err(|graphql_err| {
-                    format!(
-                        "native path failed: {}; graphql path failed: {}",
-                        server_err, graphql_err
-                    )
-                })
-        }
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_templates_server()
+            .await
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => fetch_templates_graphql(token, tenant_slug)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -1110,17 +1105,18 @@ pub async fn create_from_template(
     template_id: String,
     name: String,
 ) -> Result<String, ApiError> {
-    match create_from_template_native(template_id.clone(), name.clone()).await {
-        Ok(response) => Ok(response),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => create_from_template_native(template_id, name)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let resp: CreateFromTemplateResponse = request(
                 CREATE_FROM_TEMPLATE_MUTATION,
                 CreateFromTemplateVars { template_id, name },
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(resp.create_workflow_from_template)
         }
     }
@@ -1131,16 +1127,13 @@ pub async fn fetch_versions(
     tenant_slug: Option<String>,
     workflow_id: String,
 ) -> Result<Vec<WorkflowVersionSummaryDto>, String> {
-    match fetch_versions_server(workflow_id.clone()).await {
-        Ok(response) => Ok(response),
-        Err(server_err) => fetch_versions_graphql(token, tenant_slug, workflow_id)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => fetch_versions_server(workflow_id)
             .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => fetch_versions_graphql(token, tenant_slug, workflow_id)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -1150,9 +1143,11 @@ pub async fn restore_version(
     workflow_id: String,
     version: i32,
 ) -> Result<(), ApiError> {
-    match restore_version_native(workflow_id.clone(), version).await {
-        Ok(()) => Ok(()),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => restore_version_native(workflow_id, version)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
             let _: serde_json::Value = request(
                 RESTORE_VERSION_MUTATION,
                 RestoreVersionVars {
@@ -1162,8 +1157,7 @@ pub async fn restore_version(
                 token,
                 tenant_slug,
             )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            .await?;
             Ok(())
         }
     }

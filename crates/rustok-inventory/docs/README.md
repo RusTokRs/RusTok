@@ -22,7 +22,7 @@
 - dedicated native inventory write/validation endpoints `inventory/variant/set-quantity`,
   `inventory/variant/adjust-quantity`, `inventory/variant/reserve-quantity`,
   `inventory/variant/release-reservation` and `inventory/variant/check-availability` have already been extracted
-  to a module-owned surface without GraphQL fallback and return typed write/validation results;
+  to a module-owned surface without GraphQL selected path and return typed write/validation results;
   set-quantity treats the requested quantity as the target available quantity and preserves
   the existing reserved stock, while backorder policy `continue` is normalized case-insensitively
   in the service/read-side and commerce checkout/storefront compatibility semantics through an exported
@@ -37,7 +37,7 @@
 - the inventory-owned backend admin read service is exported by the root crate and is the source
   for native server-function read transport;
 - inventory-owned admin UX and read facade are published through `rustok-inventory/admin`;
-  read-side and targeted set/adjust/reserve/release quantity plus check-availability flows go through native inventory-owned server-function surface without commerce GraphQL fallback;
+  read-side and targeted set/adjust/reserve/release quantity plus check-availability flows go through native inventory-owned server-function surface without commerce GraphQL selected path;
 - cross-module contract changes must be synchronized with `rustok-commerce`
   and neighboring split modules.
 

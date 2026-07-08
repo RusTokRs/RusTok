@@ -26,6 +26,7 @@ ssr = [
 
 [dependencies]
 rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
 leptos = { workspace = true, features = ["csr"] }
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true

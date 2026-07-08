@@ -1,9 +1,18 @@
 use leptos::prelude::*;
 use rustok_graphql::{execute, GraphqlRequest};
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{AuthError, AuthSession, AuthUser};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 const SIGN_IN_MUTATION: &str = r#"
 mutation SignIn($input: SignInInput!) {
@@ -323,6 +332,31 @@ fn map_graphql_auth_error(error: rustok_graphql::GraphqlHttpError, is_login: boo
     }
 }
 
+fn map_server_auth_error(error: ServerFnError, is_login: bool) -> AuthError {
+    let message = error.to_string();
+    let clean_message = message
+        .strip_prefix("error running server function: ")
+        .unwrap_or(&message);
+    let lower = clean_message.to_ascii_lowercase();
+
+    if is_login && (lower.contains("invalid") || lower.contains("credential")) {
+        AuthError::InvalidCredentials
+    } else if lower.contains("unauthorized") || lower.contains("unauthenticated") {
+        AuthError::Unauthorized
+    } else if lower.contains("network") {
+        AuthError::Network
+    } else if let Some(status) = clean_message
+        .strip_prefix("HTTP error: ")
+        .or_else(|| clean_message.strip_prefix("Http error: "))
+        .and_then(|value| value.split_whitespace().next())
+        .and_then(|value| value.parse::<u16>().ok())
+    {
+        AuthError::Http(status)
+    } else {
+        AuthError::Http(500)
+    }
+}
+
 async fn sign_in_graphql(
     email: String,
     password: String,
@@ -460,9 +494,14 @@ pub async fn sign_in(
     password: String,
     tenant: String,
 ) -> Result<(AuthUser, AuthSession), AuthError> {
-    match sign_in_native(email.clone(), password.clone(), tenant.clone()).await {
-        Ok(payload) => Ok((payload.user, payload.session)),
-        Err(_) => sign_in_graphql(email, password, tenant).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            let payload = sign_in_native(email, password, tenant)
+                .await
+                .map_err(|error| map_server_auth_error(error, true))?;
+            Ok((payload.user, payload.session))
+        }
+        UiTransportPath::Graphql => sign_in_graphql(email, password, tenant).await,
     }
 }
 
@@ -472,16 +511,14 @@ pub async fn sign_up(
     name: Option<String>,
     tenant: String,
 ) -> Result<(AuthUser, AuthSession), AuthError> {
-    match sign_up_native(
-        email.clone(),
-        password.clone(),
-        name.clone(),
-        tenant.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok((payload.user, payload.session)),
-        Err(_) => sign_up_graphql(email, password, name, tenant).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            let payload = sign_up_native(email, password, name, tenant)
+                .await
+                .map_err(|error| map_server_auth_error(error, false))?;
+            Ok((payload.user, payload.session))
+        }
+        UiTransportPath::Graphql => sign_up_graphql(email, password, name, tenant).await,
     }
 }
 
@@ -490,9 +527,11 @@ pub async fn sign_out(
     refresh_token: String,
     tenant: String,
 ) -> Result<(), AuthError> {
-    match sign_out_native(refresh_token.clone(), tenant.clone()).await {
-        Ok(()) => Ok(()),
-        Err(_) => sign_out_graphql(token, tenant).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => sign_out_native(refresh_token, tenant)
+            .await
+            .map_err(|error| map_server_auth_error(error, false)),
+        UiTransportPath::Graphql => sign_out_graphql(token, tenant).await,
     }
 }
 
@@ -500,16 +539,23 @@ pub async fn refresh_token(
     refresh_tok: String,
     tenant: String,
 ) -> Result<(AuthSession, AuthUser), AuthError> {
-    match refresh_token_native(refresh_tok.clone(), tenant.clone()).await {
-        Ok(payload) => Ok((payload.session, payload.user)),
-        Err(_) => refresh_token_graphql(refresh_tok, tenant).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            let payload = refresh_token_native(refresh_tok, tenant)
+                .await
+                .map_err(|error| map_server_auth_error(error, false))?;
+            Ok((payload.session, payload.user))
+        }
+        UiTransportPath::Graphql => refresh_token_graphql(refresh_tok, tenant).await,
     }
 }
 
 pub async fn forgot_password(email: String, tenant: String) -> Result<String, AuthError> {
-    match forgot_password_native(email.clone(), tenant.clone()).await {
-        Ok(message) => Ok(message),
-        Err(_) => forgot_password_graphql(email, tenant).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => forgot_password_native(email, tenant)
+            .await
+            .map_err(|error| map_server_auth_error(error, false)),
+        UiTransportPath::Graphql => forgot_password_graphql(email, tenant).await,
     }
 }
 
@@ -517,9 +563,14 @@ pub async fn fetch_current_user(
     token: String,
     tenant: String,
 ) -> Result<Option<AuthUser>, AuthError> {
-    match current_user_native(token.clone(), tenant.clone()).await {
-        Ok(payload) => Ok(payload.user),
-        Err(_) => fetch_current_user_graphql(token, tenant).await,
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            let payload = current_user_native(token, tenant)
+                .await
+                .map_err(|error| map_server_auth_error(error, false))?;
+            Ok(payload.user)
+        }
+        UiTransportPath::Graphql => fetch_current_user_graphql(token, tenant).await,
     }
 }
 

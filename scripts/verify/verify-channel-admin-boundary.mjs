@@ -142,6 +142,10 @@ function assertChannelAdminBoundary() {
 
   assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must contain server-function endpoints`);
   assertContains(nativeAdapter, "channel_bootstrap_native", `${nativeAdapterPath}: native adapter must own bootstrap server-function endpoint`);
+  assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must use neutral host runtime context`);
+  assertContains(nativeAdapter, "db_clone()", `${nativeAdapterPath}: native adapter must use host runtime DB clone`);
+  assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
+  assertNotContains(nativeAdapter, "expect_context::<AppContext>", `${nativeAdapterPath}: native adapter must not read Loco AppContext from Leptos context`);
   assertNotContains(nativeAdapter, "reqwest::", `${nativeAdapterPath}: native adapter must not own REST fallback HTTP calls`);
 
   assertContains(restAdapter, "reqwest::Client::new", `${restAdapterPath}: REST adapter must own raw HTTP fallback calls`);

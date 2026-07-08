@@ -16,19 +16,18 @@ ssr = [
   "leptos/ssr",
   "dep:chrono",
   "dep:leptos_axum",
-  "dep:loco-rs",
   "dep:rustok-api",
   "dep:rustok-core",
   "dep:rustok-mcp",
   "dep:sea-orm",
   "dep:uuid",
+  "rustok-api/server",
 ]
 
 [dependencies]
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
-loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-mcp = { workspace = true, optional = true }

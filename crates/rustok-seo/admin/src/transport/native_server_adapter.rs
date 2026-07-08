@@ -85,9 +85,10 @@ pub(super) async fn seo_service_from_context() -> Result<
     ServerFnError,
 > {
     use leptos::prelude::expect_context;
-    use loco_rs::app::AppContext;
+    use rustok_api::HostRuntimeContext;
+    use rustok_outbox::TransactionalEventBus;
 
-    let app_ctx = expect_context::<AppContext>();
+    let runtime_ctx = expect_context::<HostRuntimeContext>();
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
         .map_err(ServerFnError::new)?;
@@ -97,16 +98,21 @@ pub(super) async fn seo_service_from_context() -> Result<
 
     Ok((
         {
-            let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx);
-            let extensions = app_ctx
-                .shared_store
-                .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
+            let event_bus = runtime_ctx
+                .shared_get::<TransactionalEventBus>()
+                .ok_or_else(|| {
+                    ServerFnError::new(
+                        "SEO native transport requires TransactionalEventBus in host runtime context",
+                    )
+                })?;
+            let extensions = runtime_ctx
+                .shared_get::<std::sync::Arc<ModuleRuntimeExtensions>>()
                 .ok_or_else(|| {
                     ServerFnError::new(
                         "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
                     )
                 })?;
-            SeoService::from_runtime_extensions(app_ctx.db.clone(), event_bus, &extensions)
+            SeoService::from_runtime_extensions(runtime_ctx.db_clone(), event_bus, &extensions)
                 .map_err(|err| ServerFnError::new(err.to_string()))?
         },
         auth,
@@ -248,9 +254,9 @@ pub(super) async fn seo_save_settings_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostRuntimeContext;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
@@ -258,7 +264,8 @@ pub(super) async fn seo_save_settings_native(
             "seo:update required",
         )?;
 
-        persist_seo_settings(&app_ctx.db, tenant.id, input).await?;
+        let db = runtime_ctx.db_clone();
+        persist_seo_settings(&db, tenant.id, input).await?;
 
         service
             .load_settings(tenant.id)

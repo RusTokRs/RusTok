@@ -394,8 +394,8 @@ async fn mcp_native_context(
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
         .map_err(ServerFnError::new)?;
-    let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
-    Ok((app_ctx.db.clone(), auth))
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    Ok((runtime_ctx.db_clone(), auth))
 }
 
 #[cfg(feature = "ssr")]
@@ -436,10 +436,9 @@ async fn mcp_mutation_context() -> Result<
         .await
         .map_err(ServerFnError::new)?;
     ensure_mcp_manage(&auth)?;
-    let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
-    let extensions = app_ctx
-        .shared_store
-        .get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    let extensions = runtime_ctx
+        .shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
         .ok_or_else(|| ServerFnError::new("ModuleRuntimeExtensions not initialized"))?;
     let runtime = extensions
         .get::<rustok_mcp::McpManagementRuntime>()

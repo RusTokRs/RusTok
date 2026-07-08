@@ -67,11 +67,22 @@ pub async fn decrement_line_item() {}
 pub async fn remove_line_item() {}
 ${options.rawApiTransport ? "use crate::api;" : ""}
 `);
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs", "pub async fn fetch_storefront_cart_graphql() {}\n");
+  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs", `
+use rustok_graphql::GraphqlRequest;
+const STOREFRONT_CART_QUERY: &str = "availableShippingOptions { id name currencyCode amount providerId active }";
+async fn request_graphql_cart() {}
+async fn update_storefront_cart_line_item_quantity_graphql() {}
+async fn remove_storefront_cart_line_item_graphql() {}
+`);
   writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs", `
 use rustok_graphql::GraphqlRequest;
+use rustok_api::HostRuntimeContext;
 use crate::model::StorefrontCartShippingOption;
 const STOREFRONT_CART_QUERY: &str = "availableShippingOptions { id name currencyCode amount providerId active }";
+fn runtime(ctx: HostRuntimeContext) {
+  let _ = ctx.db_clone();
+  let _ = ctx.shared_get::<rustok_outbox::TransactionalEventBus>();
+}
 #[server(prefix = "/api/fn", endpoint = "cart/storefront-data")]
 async fn storefront_cart_native() {}
 fn reprice_storefront_cart_line_items() {}

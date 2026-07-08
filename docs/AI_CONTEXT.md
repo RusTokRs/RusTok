@@ -82,11 +82,11 @@ Do not mix:
 - Tenant isolation and RBAC are mandatory in the service layer.
 - Events and handlers must remain compatible with `DomainEvent` / `EventEnvelope`.
 - For Leptos host applications and module-owned Leptos UI packages, the default internal data layer is built via `#[server]` functions.
-- GraphQL remains a mandatory parallel contract: for headless clients, Next.js UI and fallback branches in Leptos during migration/partial coverage.
+- GraphQL remains a mandatory parallel contract: for headless clients, Next.js UI and selected GraphQL paths in Leptos where the surface supports headless/CSR execution.
 - New Leptos UI code must not be born as a GraphQL-only path if a native `#[server]` layer is possible for the scenario.
 - For the core wave, the source of truth for module composition and coverage is `modules.toml`, not outdated lists in local notes.
-- In the current core wave, `auth`, `search` and `channel` are considered active dual-path work; `cache` and `email` are already covered by host-level native-first surfaces; `index`, `outbox`, `tenant` and `rbac` now also have module-owned Leptos admin surfaces with native `#[server]` bootstrap.
-- For Leptos core surfaces, only two legacy fallback paths are allowed: GraphQL fallback for GraphQL-backed scenarios and REST fallback for `rustok-channel-admin`, as long as its thin REST client is still supported in parallel.
+- In the current core wave, `auth`, `search` and `channel` are considered active dual-path work; `cache` and `email` are already covered by host-level build-profile-selected native surfaces; `index`, `outbox`, `tenant` and `rbac` now also have module-owned Leptos admin surfaces with native `#[server]` bootstrap.
+- Leptos core surfaces use build-profile-selected native and GraphQL paths where both contracts exist; `rustok-channel-admin` may keep its REST secondary path while that REST client is supported in parallel.
 
 ## Loco Subsystem Replacements — Must Read
 
@@ -201,8 +201,8 @@ Check only errors in changed files; errors in `services/app_router.rs` / `AdminA
 - Use only actually existing APIs from code and docs.
 - For domain write-flows with events, use `publish_in_tx` when atomic publish is needed.
 - Check that docs reflect the current code, not old architectural assumptions.
-- For Leptos UI, first design a local API layer `view -> local api -> #[server]`, and keep GraphQL as a parallel transport/fallback.
-- For optional-wave module-owned Leptos admin surfaces, the current baseline is: `rustok-media-admin` works on the native `#[server]` first model with GraphQL fallback for `list/detail/translations/delete/usage` and with a preserved REST-first upload path; `rustok-comments-admin` works on the native-only `#[server]` model because legacy GraphQL/REST transport surface for `comments` did not exist.
+- For Leptos UI, first design a local API layer `view -> local api -> #[server]`, and keep GraphQL as a parallel selected-path transport.
+- For optional-wave module-owned Leptos admin surfaces, the current baseline is: `rustok-media-admin` works on the build-profile-selected native `#[server]` model with GraphQL selected path for `list/detail/translations/delete/usage` and with a preserved REST primary upload path; `rustok-comments-admin` works on the native-only `#[server]` model because no owner GraphQL/REST transport surface exists for `comments` admin.
 - `rustok-content` remains a shared helper/orchestration boundary without its own operator-facing UI.
 - Commerce split crates (`cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`) do not receive separate admin UIs in this wave and continue to live under the aggregate surface `rustok-commerce-admin`.
 

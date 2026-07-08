@@ -1,10 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
 use leptos::prelude::*;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
 use crate::core::build_pricing_context;
 #[cfg(feature = "ssr")]
 use crate::core::{resolve_requested_locale, sanitize_channel_slug, sanitize_uuid_string};
@@ -35,133 +35,10 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<GraphqlHttpError> for ApiError {
-    fn from(value: GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
-
 impl From<ServerFnError> for ApiError {
     fn from(value: ServerFnError) -> Self {
         Self::ServerFn(value.to_string())
     }
-}
-
-const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags createdAt publishedAt } } }";
-const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status sellerId vendor productType tags publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
-const STOREFRONT_PRICING_PRODUCT_QUERY: &str = "query StorefrontProductPricing($locale: String, $handle: String!, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { storefrontPricingProduct(locale: $locale, handle: $handle, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { variants { id title sku prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
-
-#[derive(Debug, Deserialize)]
-struct StorefrontProductsResponse {
-    #[serde(rename = "storefrontProducts")]
-    storefront_products: ProductList,
-}
-
-#[derive(Debug, Deserialize)]
-struct StorefrontProductResponse {
-    #[serde(rename = "storefrontProduct")]
-    storefront_product: Option<ProductDetail>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StorefrontPricingProductResponse {
-    #[serde(rename = "storefrontPricingProduct")]
-    storefront_pricing_product: Option<ProductPricingDetail>,
-}
-
-#[derive(Debug, Serialize)]
-struct StorefrontProductsVariables {
-    locale: Option<String>,
-    filter: StorefrontProductsFilter,
-}
-
-#[derive(Debug, Serialize)]
-struct StorefrontProductVariables {
-    locale: Option<String>,
-    handle: String,
-}
-
-#[derive(Debug, Serialize)]
-struct StorefrontPricingProductVariables {
-    locale: Option<String>,
-    handle: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: Option<String>,
-    #[serde(rename = "regionId")]
-    region_id: Option<String>,
-    #[serde(rename = "priceListId")]
-    price_list_id: Option<String>,
-    #[serde(rename = "channelId")]
-    channel_id: Option<String>,
-    #[serde(rename = "channelSlug")]
-    channel_slug: Option<String>,
-    quantity: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-struct StorefrontProductsFilter {
-    vendor: Option<String>,
-    #[serde(rename = "productType")]
-    product_type: Option<String>,
-    search: Option<String>,
-    page: Option<u64>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u64>,
-}
-
-fn configured_tenant_slug() -> Option<String> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-    })
-}
-
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
-
-pub(super) async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
-where
-    V: Serialize,
-    T: for<'de> Deserialize<'de>,
-{
-    execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(query, Some(variables)),
-        None,
-        configured_tenant_slug(),
-        None,
-    )
-    .await
-    .map_err(ApiError::from)
 }
 
 pub async fn fetch_storefront_products_server(
@@ -210,102 +87,6 @@ pub async fn fetch_catalog_search_options(
     storefront_catalog_search_options_native(locale)
         .await
         .map_err(ApiError::from)
-}
-
-pub async fn fetch_storefront_products_graphql(
-    selected_handle: Option<String>,
-    locale: Option<String>,
-    currency_code: Option<String>,
-    region_id: Option<String>,
-    price_list_id: Option<String>,
-    channel_id: Option<String>,
-    channel_slug: Option<String>,
-    quantity: Option<i32>,
-) -> Result<StorefrontProductsData, ApiError> {
-    let products_response: StorefrontProductsResponse = request(
-        STOREFRONT_PRODUCTS_QUERY,
-        StorefrontProductsVariables {
-            locale: locale.clone(),
-            filter: StorefrontProductsFilter {
-                vendor: None,
-                product_type: None,
-                search: None,
-                page: Some(1),
-                per_page: Some(12),
-            },
-        },
-    )
-    .await?;
-
-    let resolved_handle = selected_handle.or_else(|| {
-        products_response
-            .storefront_products
-            .items
-            .first()
-            .map(|item| item.handle.clone())
-            .filter(|handle| !handle.is_empty())
-    });
-
-    let selected_product = if let Some(handle) = resolved_handle.clone() {
-        let response: StorefrontProductResponse = request(
-            STOREFRONT_PRODUCT_QUERY,
-            StorefrontProductVariables {
-                locale: locale.clone(),
-                handle,
-            },
-        )
-        .await?;
-        response.storefront_product
-    } else {
-        None
-    };
-
-    let resolution_context = build_pricing_context(
-        selected_product.as_ref(),
-        currency_code,
-        region_id,
-        price_list_id,
-        channel_id,
-        channel_slug,
-        quantity,
-    );
-    let selected_pricing = if let Some(handle) = resolved_handle.clone() {
-        let response: StorefrontPricingProductResponse = request(
-            STOREFRONT_PRICING_PRODUCT_QUERY,
-            StorefrontPricingProductVariables {
-                locale: locale.clone(),
-                handle,
-                currency_code: resolution_context
-                    .as_ref()
-                    .map(|context| context.currency_code.clone()),
-                region_id: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.region_id.clone()),
-                price_list_id: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.price_list_id.clone()),
-                channel_id: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.channel_id.clone()),
-                channel_slug: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.channel_slug.clone()),
-                quantity: resolution_context.as_ref().map(|context| context.quantity),
-            },
-        )
-        .await?;
-        response.storefront_pricing_product
-    } else {
-        None
-    };
-
-    Ok(StorefrontProductsData {
-        products: products_response.storefront_products,
-        selected_product,
-        selected_pricing,
-        selected_handle: resolved_handle,
-        resolution_context,
-    })
 }
 
 #[allow(dead_code)]
@@ -458,21 +239,25 @@ async fn storefront_catalog_search_options_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
+        use rustok_api::HostRuntimeContext;
+        use rustok_outbox::TransactionalEventBus;
         use rustok_product::ProductCatalogSchemaService;
 
         if locale.trim().is_empty() {
             return Err(ServerFnError::new("locale is required"));
         }
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "product/storefront catalog search options requires TransactionalEventBus in host runtime context",
+                )
+            })?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let service = ProductCatalogSchemaService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(&app_ctx),
-        );
+        let service = ProductCatalogSchemaService::new(runtime_ctx.db_clone(), event_bus);
         let category_options = service
             .list_categories(tenant.id, locale.trim())
             .await
@@ -526,13 +311,21 @@ async fn storefront_products_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
+        use rustok_api::HostRuntimeContext;
+        use rustok_outbox::TransactionalEventBus;
         use rustok_pricing::{PriceResolutionContext, PricingService};
         use rustok_product::CatalogService;
         use uuid::Uuid;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "product/storefront-data requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let db = runtime_ctx.db_clone();
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
@@ -554,14 +347,8 @@ async fn storefront_products_native(
         let selected_channel_slug =
             sanitize_channel_slug(channel_slug).or_else(|| public_channel_slug.clone());
 
-        let service = CatalogService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(&app_ctx),
-        );
-        let pricing_service = PricingService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(&app_ctx),
-        );
+        let service = CatalogService::new(db.clone(), event_bus.clone());
+        let pricing_service = PricingService::new(db, event_bus);
         let products = service
             .list_published_products_with_locale_fallback(
                 tenant.id,

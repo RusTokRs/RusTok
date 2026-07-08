@@ -476,31 +476,39 @@ fn parse_attribute_value_patch(
 
 #[cfg(feature = "ssr")]
 fn service_from_context(
-    app_ctx: &loco_rs::app::AppContext,
-) -> rustok_product::ProductCatalogSchemaService {
-    rustok_product::ProductCatalogSchemaService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
-    )
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+) -> Result<rustok_product::ProductCatalogSchemaService, ServerFnError> {
+    let event_bus = runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            ServerFnError::new(
+                "product/admin native transport requires TransactionalEventBus in host runtime context",
+            )
+        })?;
+    Ok(rustok_product::ProductCatalogSchemaService::new(
+        runtime_ctx.db_clone(),
+        event_bus,
+    ))
 }
 
 #[cfg(feature = "ssr")]
 async fn native_context() -> Result<
     (
-        loco_rs::app::AppContext,
+        rustok_product::ProductCatalogSchemaService,
         rustok_api::AuthContext,
         rustok_api::TenantContext,
     ),
     ServerFnError,
 > {
-    let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    let service = service_from_context(&runtime_ctx)?;
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
         .map_err(ServerFnError::new)?;
     let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
         .await
         .map_err(ServerFnError::new)?;
-    Ok((app_ctx, auth, tenant))
+    Ok((service, auth, tenant))
 }
 
 #[server(prefix = "/api/fn", endpoint = "product/admin/attributes")]
@@ -510,7 +518,7 @@ async fn product_admin_attributes_native(
 ) -> Result<ProductAttributeList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_READ],
@@ -522,7 +530,6 @@ async fn product_admin_attributes_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        let service = service_from_context(&app_ctx);
         let items = service
             .list_attributes(tenant.id, locale.trim())
             .await
@@ -550,7 +557,7 @@ async fn product_admin_categories_native(
 ) -> Result<CatalogCategoryList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_READ],
@@ -562,7 +569,6 @@ async fn product_admin_categories_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        let service = service_from_context(&app_ctx);
         let items = service
             .list_categories(tenant.id, locale.trim())
             .await
@@ -589,13 +595,12 @@ async fn product_admin_catalog_search_options_native(
 ) -> Result<ProductCatalogSearchOptions, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_READ],
             "products:read required",
         )?;
-        let service = service_from_context(&app_ctx);
         let categories = service
             .list_categories(tenant.id, locale.trim())
             .await
@@ -644,7 +649,7 @@ async fn product_admin_attribute_schemas_native(
 ) -> Result<ProductAttributeSchemaList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_READ],
@@ -656,7 +661,6 @@ async fn product_admin_attribute_schemas_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        let service = service_from_context(&app_ctx);
         let items = service
             .list_schemas(tenant.id, locale.trim())
             .await
@@ -686,7 +690,7 @@ async fn product_admin_effective_form_native(
 ) -> Result<Option<ProductEffectiveForm>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_READ],
@@ -698,7 +702,6 @@ async fn product_admin_effective_form_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        let service = service_from_context(&app_ctx);
         let form = match (product_id, category_id) {
             (Some(product_id), _) => service
                 .load_effective_form_for_product(tenant.id, parse_uuid(&product_id, "product_id")?)
@@ -815,7 +818,7 @@ async fn product_admin_attribute_values_native(
 ) -> Result<Vec<ProductAttributeValueItem>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_READ],
@@ -827,7 +830,7 @@ async fn product_admin_attribute_values_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .load_product_attribute_values(
                 tenant.id,
                 parse_uuid(&product_id, "product_id")?,
@@ -854,7 +857,7 @@ async fn product_admin_save_attribute_values_native(
 ) -> Result<Vec<ProductAttributeValueItem>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -870,7 +873,7 @@ async fn product_admin_save_attribute_values_native(
             .into_iter()
             .map(parse_attribute_value_patch)
             .collect::<Result<Vec<_>, _>>()?;
-        service_from_context(&app_ctx)
+        service
             .save_product_attribute_values(
                 tenant.id,
                 auth.user_id,
@@ -902,7 +905,7 @@ async fn product_admin_clear_detached_attribute_values_native(
 ) -> Result<Vec<ProductAttributeValueItem>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -918,7 +921,7 @@ async fn product_admin_clear_detached_attribute_values_native(
             .into_iter()
             .map(|attribute_id| parse_uuid(&attribute_id, "attribute_id"))
             .collect::<Result<Vec<_>, _>>()?;
-        service_from_context(&app_ctx)
+        service
             .clear_detached_product_attribute_values(
                 tenant.id,
                 auth.user_id,
@@ -946,7 +949,7 @@ async fn product_admin_create_attribute_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -958,7 +961,7 @@ async fn product_admin_create_attribute_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .create_attribute(
                 tenant.id,
                 auth.user_id,
@@ -1009,7 +1012,7 @@ async fn product_admin_create_attribute_option_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1021,7 +1024,7 @@ async fn product_admin_create_attribute_option_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .create_attribute_option(
                 tenant.id,
                 auth.user_id,
@@ -1056,7 +1059,7 @@ async fn product_admin_create_category_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1068,7 +1071,7 @@ async fn product_admin_create_category_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .create_category(
                 tenant.id,
                 auth.user_id,
@@ -1109,7 +1112,7 @@ async fn product_admin_create_schema_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1121,7 +1124,7 @@ async fn product_admin_create_schema_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .create_schema(
                 tenant.id,
                 auth.user_id,
@@ -1157,7 +1160,7 @@ async fn product_admin_set_category_schema_mode_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1169,7 +1172,7 @@ async fn product_admin_set_category_schema_mode_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .set_category_schema_mode(
                 tenant.id,
                 auth.user_id,
@@ -1202,7 +1205,7 @@ async fn product_admin_bind_schema_attribute_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1214,7 +1217,7 @@ async fn product_admin_bind_schema_attribute_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .bind_schema_attribute(
                 tenant.id,
                 auth.user_id,
@@ -1250,7 +1253,7 @@ async fn product_admin_create_schema_group_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1262,7 +1265,7 @@ async fn product_admin_create_schema_group_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .create_schema_group(
                 tenant.id,
                 auth.user_id,
@@ -1297,7 +1300,7 @@ async fn product_admin_create_category_group_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1309,7 +1312,7 @@ async fn product_admin_create_category_group_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .create_category_group(
                 tenant.id,
                 auth.user_id,
@@ -1343,7 +1346,7 @@ async fn product_admin_bind_category_attribute_native(
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, auth, tenant) = native_context().await?;
+        let (service, auth, tenant) = native_context().await?;
         ensure_permission(
             &auth.permissions,
             &[rustok_api::Permission::PRODUCTS_MANAGE],
@@ -1355,7 +1358,7 @@ async fn product_admin_bind_category_attribute_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service_from_context(&app_ctx)
+        service
             .bind_category_attribute(
                 tenant.id,
                 auth.user_id,

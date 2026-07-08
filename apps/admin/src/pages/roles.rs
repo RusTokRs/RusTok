@@ -2,12 +2,21 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 
 use crate::shared::api::queries::ROLES_QUERY;
 use crate::shared::api::{request, ApiError};
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -58,25 +67,14 @@ async fn fetch_roles(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<GraphqlRolesResponse, String> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return match fetch_roles_graphql(token, tenant_slug).await {
+    match selected_transport_path() {
+        UiTransportPath::Graphql => match fetch_roles_graphql(token, tenant_slug).await {
             Ok(response) => Ok(response),
             Err(graphql_err) => Ok(built_in_roles_response(Some(graphql_err.to_string()))),
-        };
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match fetch_roles_server().await {
-        Ok(response) => Ok(response),
-        Err(server_err) => fetch_roles_graphql(token, tenant_slug)
+        },
+        UiTransportPath::NativeServer => fetch_roles_server()
             .await
-            .or_else(|graphql_err| {
-                Ok::<_, String>(built_in_roles_response(Some(format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                ))))
-            }),
+            .map_err(|error| error.to_string()),
     }
 }
 

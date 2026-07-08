@@ -79,26 +79,6 @@ pub fn get_graphql_ws_url() -> String {
 
 pub type ApiError = GraphqlHttpError;
 
-pub fn combine_native_and_graphql_error(
-    server_err: leptos::prelude::ServerFnError,
-    graphql_err: ApiError,
-) -> ApiError {
-    let err_str = server_err.to_string();
-    let clean_err = err_str
-        .strip_prefix("error running server function: ")
-        .unwrap_or(&err_str);
-    let graph_str = graphql_err.to_string();
-    let clean_graph = graph_str
-        .strip_prefix("GraphQL error: ")
-        .unwrap_or(&graph_str);
-    let payload = serde_json::json!({
-        "kind": "dual_path_failure",
-        "native": clean_err,
-        "graphql": clean_graph,
-    });
-    ApiError::Graphql(format!("dual-path failure {}", payload))
-}
-
 /// Read the admin UI locale from LocalStorage.
 /// Returns None in non-WASM environments or if the key is absent.
 pub fn get_stored_locale() -> Option<String> {
@@ -142,27 +122,27 @@ async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, 
 }
 
 async fn execute_admin_graphql(request: ServerGraphqlRequest) -> Result<Value, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    #[cfg(all(target_arch = "wasm32", not(feature = "hydrate")))]
     {
         execute_server_graphql(request)
             .await
             .map_err(ApiError::from)
     }
 
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    #[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
     {
         admin_graphql(request).await.map_err(map_server_fn_error)
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-fn map_server_fn_error(error: ServerFnError) -> ApiError {
+#[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
+pub(crate) fn map_server_fn_error(error: ServerFnError) -> ApiError {
     let message = error.to_string();
 
     normalize_server_fn_error_message(&message)
 }
 
-#[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+#[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
 fn normalize_server_fn_error_message(message: &str) -> ApiError {
     let mut clean_msg = message;
     if let Some(stripped) = clean_msg.strip_prefix("error running server function: ") {
@@ -189,9 +169,7 @@ fn normalize_server_fn_error_message(message: &str) -> ApiError {
     not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))
 ))]
 mod map_server_fn_error_tests {
-    use super::{
-        combine_native_and_graphql_error, map_server_fn_error, normalize_server_fn_error_message,
-    };
+    use super::{map_server_fn_error, normalize_server_fn_error_message};
     use leptos::prelude::ServerFnError;
     use rustok_graphql::GraphqlHttpError;
 
@@ -585,30 +563,6 @@ mod map_server_fn_error_tests {
         assert!(
             matches!(mapped, GraphqlHttpError::Graphql(message) if message == "internal adapter panic")
         );
-    }
-
-    #[test]
-    fn combined_error_keeps_structured_dual_path_and_taxonomy() {
-        let combined = combine_native_and_graphql_error(
-            ServerFnError::new("native disabled"),
-            GraphqlHttpError::Graphql("MODULE_HAS_DEPENDENTS".to_string()),
-        );
-        assert!(matches!(combined, GraphqlHttpError::Graphql(message)
-            if message.contains("dual-path failure")
-            && message.contains("\"kind\":\"dual_path_failure\"")
-            && message.contains("\"native\":\"native disabled\"")
-            && message.contains("\"graphql\":\"MODULE_HAS_DEPENDENTS\"")));
-    }
-
-    #[test]
-    fn combined_error_escapes_special_chars_in_json_payload() {
-        let combined = combine_native_and_graphql_error(
-            ServerFnError::new("native [disabled]"),
-            GraphqlHttpError::Graphql("MODULE_HAS_DEPENDENTS: \"quoted\"".to_string()),
-        );
-        assert!(matches!(combined, GraphqlHttpError::Graphql(message)
-            if message.contains("\"native\":\"native [disabled]\"")
-            && message.contains("\\\"quoted\\\"")));
     }
 }
 

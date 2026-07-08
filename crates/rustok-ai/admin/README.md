@@ -21,7 +21,7 @@ Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
   parallel `aiRecentRunStreamEvents` query surface.
 - Shows bounded recent persisted run history in diagnostics through the parallel `aiRecentRuns`
   query surface.
-- Uses native-first Leptos `#[server]` functions while keeping GraphQL in parallel.
+- Uses build-profile-selected native Leptos `#[server]` functions through `HostRuntimeContext` while keeping GraphQL in parallel.
 - Reads the effective admin locale from `UiRouteContext.locale` and does not invent a separate
   package-local fallback chain.
 - Does not use `rustok-module.toml`: unlike module-owned packages, `rustok-ai-admin` is a
@@ -37,9 +37,9 @@ Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
 ## Interactions
 
 - Consumed by `apps/admin` as a host/composition-root dependency.
-- Talks to `apps/server` through `rustok-ai` server functions and the parallel GraphQL contract.
+- Talks to `apps/server` through `rustok-ai` server functions that receive DB/event/registry/storage/runtime handles from the host runtime context, plus the parallel GraphQL contract.
 - Uses the shared `/api/graphql/ws` transport for live session streaming while keeping server
-  functions as the primary internal data layer.
+  functions as the monolith/hydrate selected path.
 - Depends on `rustok-ai` for typed runtime/service contracts and on `rustok-mcp` indirectly through
   the server-side orchestration path.
 

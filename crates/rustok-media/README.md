@@ -27,7 +27,7 @@
 - `rustok-seo` and owner SEO providers consume `MediaImageDescriptor` to build OG/Twitter/schema
   fallback surfaces without raw media blob coupling.
 - `rustok-media-admin` uses native Leptos `#[server]` functions as the default internal data layer,
-  keeps GraphQL as the fallback for `list/detail/translations/delete/usage`, and preserves REST-first
+  keeps GraphQL as the selected path for `list/detail/translations/delete/usage`, and preserves REST primary
   upload via `/api/media`.
 
 ## Entry points

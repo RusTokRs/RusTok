@@ -14,7 +14,7 @@ the `docs/research/dioxus-ffa-ui-migration-plan.md` plan.
 ## Purpose
 
 The checklist is used as evidence for phase-gates `A -> B`, `B -> C`, `D -> E`
-and to ensure that the dual-path contract (`native #[server]` + GraphQL fallback)
+and to ensure that the dual-path contract (`native #[server]` + GraphQL selected path)
 does not degrade during FFA decomposition.
 
 ## Scope
@@ -28,7 +28,7 @@ does not degrade during FFA decomposition.
 ### 1) Contract parity
 
 - [ ] Native path (Leptos SSR/hydrate) works for the target scenario.
-- [ ] GraphQL fallback works for the same scenario.
+- [ ] GraphQL selected path works for the same scenario.
 - [ ] Headless host path (Next/mobile/external) is not broken.
 - [ ] GraphQL/REST surface is not removed or weakened.
 
@@ -47,7 +47,7 @@ The target structural shape is set to one of:
 - [ ] UI layer does not own transport/business logic.
 - [ ] UI adapter accesses transport only through module-owned facade; request/command/state construction and business/policy remain in core ports/helpers.
 - [ ] Core layer does not depend on `leptos*`.
-- [ ] Transport adapters are separated by role: native and GraphQL fallback, or a temporary single-adapter state with a next-step parity plan is explicitly documented.
+- [ ] Transport adapters are separated by role: native and GraphQL selected path, or a temporary single-adapter state with a next-step parity plan is explicitly documented.
 - [ ] Host-visible UI status/error contracts have stable machine-readable codes and documented locale keys.
 
 ### 3) i18n/tenant/request context
@@ -83,7 +83,7 @@ The target structural shape is set to one of:
 - Module: <slug>
 - Task slice: <one-task-per-iteration description>
 - Native path: PASS/FAIL
-- GraphQL fallback: PASS/FAIL
+- GraphQL selected path: PASS/FAIL
 - Headless path: PASS/FAIL
 - Structural shape: none/docs_boundary/core_only/core_transport/core_transport_ui
 - Contract guard (GraphQL/REST retained): PASS/FAIL

@@ -1,9 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use leptos::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 #[cfg(feature = "ssr")]
 use rustok_ui_core::normalize_optional_ui_text;
 
@@ -19,9 +16,9 @@ use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 use crate::model::{
-    CurrentTenant, PricingAdjustmentPreview, PricingAdminBootstrap, PricingChannelOption,
-    PricingDiscountDraft, PricingPriceDraft, PricingPriceListOption, PricingPriceListRuleDraft,
-    PricingPriceListScopeDraft, PricingProductDetail, PricingProductList,
+    PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
+    PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
+    PricingProductDetail, PricingProductList,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -45,12 +42,6 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<GraphqlHttpError> for ApiError {
-    fn from(value: GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
-
 impl From<ServerFnError> for ApiError {
     fn from(value: ServerFnError) -> Self {
         Self::ServerFn(value.to_string())
@@ -63,190 +54,47 @@ impl From<PricingAdminRequestError> for ApiError {
     }
 }
 
-const BOOTSTRAP_QUERY: &str = "query PricingAdminBootstrap { currentTenant { id slug name } storefrontPricingChannels { id slug name isActive isDefault status } storefrontActivePriceLists { id name listType channelId channelSlug ruleKind adjustmentPercent } }";
-const ACTIVE_PRICE_LISTS_QUERY: &str = "query PricingAdminActivePriceLists($channelId: UUID, $channelSlug: String) { storefrontActivePriceLists(channelId: $channelId, channelSlug: $channelSlug) { id name listType channelId channelSlug ruleKind adjustmentPercent } }";
-const PRODUCTS_QUERY: &str = "query PricingAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status sellerId title handle vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
-const PRODUCT_QUERY: &str = "query PricingAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { adminPricingProduct(tenantId: $tenantId, id: $id, locale: $locale, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { id status sellerId vendor productType shippingProfileSlug createdAt updatedAt publishedAt translations { locale title handle description } variants { id sku barcode shippingProfileSlug title option1 option2 option3 prices { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug minQuantity maxQuantity } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale regionId priceListId channelId channelSlug minQuantity maxQuantity } } } }";
-
-#[derive(Debug, Deserialize)]
-struct BootstrapResponse {
-    #[serde(rename = "currentTenant")]
-    current_tenant: CurrentTenant,
-    #[serde(rename = "storefrontPricingChannels", default)]
-    available_channels: Vec<PricingChannelOption>,
-    #[serde(rename = "storefrontActivePriceLists", default)]
-    active_price_lists: Vec<PricingPriceListOption>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProductsResponse {
-    products: PricingProductList,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProductResponse {
-    #[serde(rename = "adminPricingProduct")]
-    product: Option<PricingProductDetail>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ActivePriceListsResponse {
-    #[serde(rename = "storefrontActivePriceLists", default)]
-    active_price_lists: Vec<PricingPriceListOption>,
-}
-
-#[derive(Debug, Serialize)]
-struct TenantScopedVariables<T> {
-    #[serde(rename = "tenantId")]
-    tenant_id: String,
-    #[serde(flatten)]
-    extra: T,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductsVariables {
-    locale: Option<String>,
-    filter: ProductsFilter,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductVariables {
-    id: String,
-    locale: Option<String>,
-    #[serde(rename = "currencyCode")]
-    currency_code: Option<String>,
-    #[serde(rename = "regionId")]
-    region_id: Option<String>,
-    #[serde(rename = "priceListId")]
-    price_list_id: Option<String>,
-    #[serde(rename = "channelId")]
-    channel_id: Option<String>,
-    #[serde(rename = "channelSlug")]
-    channel_slug: Option<String>,
-    quantity: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-struct ActivePriceListsVariables {
-    #[serde(rename = "channelId")]
-    channel_id: Option<String>,
-    #[serde(rename = "channelSlug")]
-    channel_slug: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductsFilter {
-    status: Option<String>,
-    vendor: Option<String>,
-    search: Option<String>,
-    page: Option<u64>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u64>,
-}
-
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
-
-async fn request<V, T>(
-    query: &str,
-    variables: Option<V>,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    V: Serialize,
-    T: for<'de> Deserialize<'de>,
-{
-    execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(query, variables),
-        token,
-        tenant_slug,
-        None,
-    )
-    .await
-    .map_err(ApiError::from)
-}
-
 pub async fn fetch_bootstrap(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
 ) -> Result<PricingAdminBootstrap, ApiError> {
-    match pricing_admin_bootstrap_native().await {
-        Ok(data) => Ok(data),
-        Err(_) => fetch_bootstrap_graphql(token, tenant_slug).await,
-    }
+    pricing_admin_bootstrap_native()
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_active_price_lists(
-    token: Option<String>,
-    tenant_slug: Option<String>,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
     channel_id: Option<String>,
     channel_slug: Option<String>,
 ) -> Result<Vec<PricingPriceListOption>, ApiError> {
     let channel_id =
         parse_optional_uuid_string(channel_id, "channel_id").map_err(ApiError::from)?;
     let channel_slug = sanitize_channel_slug(channel_slug);
-    match pricing_admin_active_price_lists_native(channel_id.clone(), channel_slug.clone()).await {
-        Ok(data) => Ok(data),
-        Err(_) => {
-            fetch_active_price_lists_graphql(token, tenant_slug, channel_id, channel_slug).await
-        }
-    }
+    pricing_admin_active_price_lists_native(channel_id, channel_slug)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_products(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
+    _tenant_id: String,
     locale: Option<String>,
     search: Option<String>,
     status: Option<String>,
 ) -> Result<PricingProductList, ApiError> {
-    match pricing_admin_products_native(
-        locale.clone().unwrap_or_default(),
-        search.clone(),
-        status.clone(),
-    )
-    .await
-    {
-        Ok(data) => Ok(data),
-        Err(_) => {
-            fetch_products_graphql(
-                token,
-                tenant_slug,
-                tenant_id,
-                locale.unwrap_or_default(),
-                search,
-                status,
-            )
-            .await
-        }
-    }
+    pricing_admin_products_native(locale.unwrap_or_default(), search, status)
+        .await
+        .map_err(ApiError::from)
 }
 
 #[allow(clippy::too_many_arguments)]
 pub async fn fetch_product(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
+    _token: Option<String>,
+    _tenant_slug: Option<String>,
+    _tenant_id: String,
     id: String,
     locale: Option<String>,
     currency_code: Option<String>,
@@ -272,36 +120,18 @@ pub async fn fetch_product(
         .as_ref()
         .and_then(|context| context.price_list_id.clone());
     let quantity = resolution_context.as_ref().map(|context| context.quantity);
-    match pricing_admin_product_native(
-        id.clone(),
-        locale.clone().unwrap_or_default(),
-        currency_code.clone(),
-        region_id.clone(),
-        price_list_id.clone(),
-        channel_id.clone(),
-        channel_slug.clone(),
+    pricing_admin_product_native(
+        id,
+        locale.unwrap_or_default(),
+        currency_code,
+        region_id,
+        price_list_id,
+        channel_id,
+        channel_slug,
         quantity,
     )
     .await
-    {
-        Ok(data) => Ok(data),
-        Err(_) => {
-            fetch_product_graphql(
-                token,
-                tenant_slug,
-                tenant_id,
-                id,
-                locale.unwrap_or_default(),
-                currency_code,
-                region_id,
-                price_list_id,
-                channel_id,
-                channel_slug,
-                quantity,
-            )
-            .await
-        }
-    }
+    .map_err(ApiError::from)
 }
 
 pub async fn update_variant_price(
@@ -347,105 +177,6 @@ pub async fn update_price_list_scope(
     pricing_admin_update_price_list_scope_native(price_list_id, payload)
         .await
         .map_err(Into::into)
-}
-
-async fn fetch_bootstrap_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<PricingAdminBootstrap, ApiError> {
-    let response: BootstrapResponse =
-        request::<serde_json::Value, BootstrapResponse>(BOOTSTRAP_QUERY, None, token, tenant_slug)
-            .await?;
-    Ok(PricingAdminBootstrap {
-        current_tenant: response.current_tenant,
-        available_channels: response.available_channels,
-        active_price_lists: response.active_price_lists,
-    })
-}
-
-async fn fetch_active_price_lists_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: Option<String>,
-    channel_slug: Option<String>,
-) -> Result<Vec<PricingPriceListOption>, ApiError> {
-    let response: ActivePriceListsResponse = request(
-        ACTIVE_PRICE_LISTS_QUERY,
-        Some(ActivePriceListsVariables {
-            channel_id,
-            channel_slug,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.active_price_lists)
-}
-
-async fn fetch_products_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    locale: String,
-    search: Option<String>,
-    status: Option<String>,
-) -> Result<PricingProductList, ApiError> {
-    let response: ProductsResponse = request(
-        PRODUCTS_QUERY,
-        Some(TenantScopedVariables {
-            tenant_id,
-            extra: ProductsVariables {
-                locale: Some(locale),
-                filter: ProductsFilter {
-                    status,
-                    vendor: None,
-                    search,
-                    page: Some(1),
-                    per_page: Some(24),
-                },
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.products)
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn fetch_product_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    id: String,
-    locale: String,
-    currency_code: Option<String>,
-    region_id: Option<String>,
-    price_list_id: Option<String>,
-    channel_id: Option<String>,
-    channel_slug: Option<String>,
-    quantity: Option<i32>,
-) -> Result<Option<PricingProductDetail>, ApiError> {
-    let response: ProductResponse = request(
-        PRODUCT_QUERY,
-        Some(TenantScopedVariables {
-            tenant_id,
-            extra: ProductVariables {
-                id,
-                locale: Some(locale),
-                currency_code,
-                region_id,
-                price_list_id,
-                channel_id,
-                channel_slug,
-                quantity,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.product)
 }
 
 #[cfg(feature = "ssr")]

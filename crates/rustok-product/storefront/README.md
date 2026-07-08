@@ -21,6 +21,9 @@ published catalog discovery.
 - Read storefront product data through `src/transport/`, which keeps native
   `#[server]` functions backed by `rustok-product::CatalogService` as the
   preferred path.
+- Build native storefront services from `HostRuntimeContext` DB and typed
+  `TransactionalEventBus` host handles without a package-local Loco runtime or
+  outbox Loco adapter.
 - Keep the existing GraphQL storefront contract as a parallel fallback adapter in
   `src/transport/graphql_adapter.rs`.
 - Preserve host-visible native/GraphQL selected-path failure evidence through

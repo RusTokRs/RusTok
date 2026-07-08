@@ -14,7 +14,7 @@ status: verified
 The platform already captures a dual-path transport contract for Leptos UI:
 
 - native `#[server]` functions — preferred internal path in SSR/hydrate runtime;
-- GraphQL `/api/graphql` — mandatory parallel contract for headless hosts and fallback.
+- GraphQL `/api/graphql` — mandatory parallel contract for headless hosts and selected-path execution.
 
 The goal of this plan is to prepare module-owned UI packages for the FFA pattern
 (shared core + transport adapters + host adapters) so that migration to Dioxus can be
@@ -22,7 +22,7 @@ incremental, rather than a second full rewrite.
 
 ## Goals
 
-1. Preserve the current production contract (`native + GraphQL fallback`) without regression.
+1. Preserve the current production contract (`native + GraphQL selected path`) without regression.
 2. Decompose Leptos UI packages into framework-agnostic and framework-specific layers.
 3. Prepare infrastructure for Dioxus host/adapters without changing domain logic.
 4. Maintain parity for headless clients (Next.js/mobile/external).
@@ -53,14 +53,14 @@ incremental, rather than a second full rewrite.
 For each pilot, capture:
 
 - Leptos-specific points (`#[component]`, router hooks, reactive state);
-- transport binding points (`#[server]`, GraphQL requests, fallback branches);
+- transport binding points (`#[server]`, GraphQL requests, selected-path branches);
 - places where UI/state/business logic are mixed.
 - Baseline connectivity map for pilots (`rustok-pages`, `rustok-search`) captured in `docs/research/dioxus-ffa-pilot-connectivity-map.md`.
 
 ### A3. Contract Freeze
 
 - Capture current GraphQL/native surfaces and smoke scripts.
-- Add parity checklist: SSR native path, GraphQL fallback, headless path.
+- Add parity checklist: SSR native path, GraphQL selected path, headless path.
 - Baseline checklist established in `docs/verification/ffa-ui-parity-checklist.md` and mandatory for phase-gate evidence.
 
 ## Phase B — FFA Decomposition in Pilots (2–4 weeks)
@@ -73,7 +73,7 @@ For each pilot UI package, introduce 3 layers:
    - `core.rs` acceptable for a small slice, `core/` mandatory when multiple subdomains appear (`view_model`, `policy`, `error`, `ports`, `identifiers`).
 2. `transport/`
    - `native_server_adapter` (current Leptos native path);
-   - `graphql_adapter` (fallback/headless-compatible path);
+   - `graphql_adapter` (selected GraphQL/headless-compatible path);
    - if the slice temporarily has only one adapter, this is captured as a temporary single-adapter state with next-step parity plan.
 3. `ui/leptos.rs` or `ui/leptos/`
    - render/bind layer only, without transport/business ownership;
@@ -244,7 +244,7 @@ For platform-level changes:
 1. **Risk:** core layer remains coupled to Leptos types.
    - **Mitigation:** CI check that forbids `leptos*` dependencies in `core` crates.
 
-2. **Risk:** fallback path stops being actually verified.
+2. **Risk:** selected GraphQL path stops being actually verified.
    - **Mitigation:** mandatory parity integration suites for native and GraphQL adapters.
 
 3. **Risk:** divergence between Leptos and Dioxus behavior.
@@ -265,8 +265,8 @@ Below captures the alignment of the plan with the current repository state.
 
 ### 1) Actual dual-path contract already captured in docs
 
-- `docs/UI/graphql-architecture.md` captures the model: native `#[server]` preferred + GraphQL as mandatory parallel contract.
-- `apps/storefront/docs/README.md` captures native-first in SSR/hydrate and mandatory GraphQL fallback for storefront surfaces.
+- `docs/UI/graphql-architecture.md` captures the model: build-profile-selected native `#[server]` + GraphQL as mandatory parallel contract.
+- `apps/storefront/docs/README.md` captures build-profile-selected native in SSR/hydrate and mandatory GraphQL selected path for storefront surfaces.
 
 ### 2) UI packages in code are currently Leptos-specific
 
@@ -285,7 +285,7 @@ Below captures the alignment of the plan with the current repository state.
 ### 4) Pilot candidates confirmed by current complexity
 
 - `rustok-pages`/`rustok-blog`: smaller UI state volume and simpler CRUD/read scenarios.
-- `rustok-search` and `rustok-commerce`/`rustok-cart`: pronounced complexity in state/fallback flows and SSR branches.
+- `rustok-search` and `rustok-commerce`/`rustok-cart`: pronounced complexity in state, selected-path flow and SSR branches.
 
 ### 5) Verification commands used to update this document
 
@@ -311,7 +311,7 @@ The plan is executed **without changing the product contract**: first, package s
 
 ## KPI Parity (measurable thresholds)
 
-- Functional parity: all mandatory scenarios of pilot checklist pass in both native path and GraphQL fallback path.
+- Functional parity: all mandatory scenarios of pilot checklist pass in both native path and GraphQL selected path.
 - Error parity: error-classification divergence rate between adapters = 0 for mandatory scenarios.
 - Performance guard: p95 latency of new adapter paths does not degrade more than 15% relative to pilot baseline.
 - Contract guard: 0 cases of removal/weakening of headless GraphQL/REST contract in migration PRs.

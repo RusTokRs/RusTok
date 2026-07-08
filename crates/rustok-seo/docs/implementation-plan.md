@@ -4,8 +4,8 @@ Status: SEO Suite v1 is assembled as an optional platform module. Phase A–C (t
 
 ## Execution checkpoint
 
-- Current phase: `fba_media_consumer_static_metadata`
-- Last checkpoint: REST SEO handlers now consume narrow `SeoHttpRuntime` state with explicit DB/event bus/runtime extensions handles and no longer depend on `rustok_outbox::loco`; the current Loco `AppContext` is isolated to the route-state adapter until the full Axum cutover. No-compile D8/D9 evidence seed includes concrete per-file live artifact templates for backend GraphQL/REST parity, outbox/index counters, Next runtime robots/sitemap/metadata, Leptos storefront page-context smoke, media descriptor fallback smoke and owner sign-off; it also links runbook scenarios to required live artifacts, CI attachment metadata/redaction checklists, defect triage severities and an owner sign-off state machine. `verify-seo-runtime-fixtures.mjs` validates that each required closeout artifact has capture requirements, closeout blockers and promotion guardrails without compilation. FBA consumer runtime-order smoke source-locks SEO -> media descriptor policy/alias/template order without compilation.
+- Current phase: `seo_admin_native_loco_free_transport`
+- Last checkpoint: REST SEO handlers consume narrow `SeoHttpRuntime` state with explicit DB/event bus/runtime extensions handles and no longer depend on `rustok_outbox::loco`; `rustok-seo-admin` native server functions now consume `HostRuntimeContext`, read `TransactionalEventBus` and `ModuleRuntimeExtensions` through typed host handles, and no longer depend on `loco-rs` or `rustok-outbox/loco-adapter`. No-compile D8/D9 evidence seed includes concrete per-file live artifact templates for backend GraphQL/REST parity, outbox/index counters, Next runtime robots/sitemap/metadata, Leptos storefront page-context smoke, media descriptor fallback smoke and owner sign-off; it also links runbook scenarios to required live artifacts, CI attachment metadata/redaction checklists, defect triage severities and an owner sign-off state machine. `verify-seo-runtime-fixtures.mjs` validates that each required closeout artifact has capture requirements, closeout blockers and promotion guardrails without compilation. FBA consumer runtime-order smoke source-locks SEO -> media descriptor policy/alias/template order without compilation.
 - Next step: gather live CI/runtime evidence packet against the deployed backend/hosts, including SEO image descriptor fallback smoke for `MediaAssetReadPort` by files `image-descriptor-in-process.json`, `provider-unavailable-omit-image-metadata.json`, `asset-unavailable-keep-existing-seo-image.json`, `relative-url-proxy-fallback.json`, `diagnostics-image-quality-before-after.json`, attach before/after counters and transition owner sign-off rows from pending to signed; do not consider D8/D9 or FBA boundary readiness closed by static evidence until then.
 - Open blockers:
   - For D8, a live CI/runtime evidence packet against the deployed backend is still needed.
@@ -16,7 +16,7 @@ Status: SEO Suite v1 is assembled as an optional platform module. Phase A–C (t
   - For the delivery tracker, maintain the invariant: one idempotency key = one actual state transition.
   - For replay mode, preserve forward-only semantics (`not_started -> repair_only -> replay_requested -> replaying -> replay_completed`) without backward transitions.
   - For Next runtime adapter, preserve semantic error mapping (`BAD_USER_INPUT` / `PERMISSION_DENIED` / `NOT_FOUND` / transport failures) and do not revert to blanket `catch {}`.
-- Last updated at (UTC): 2026-06-30T00:00:00Z
+- Last updated at (UTC): 2026-07-08T00:00:00Z
 
 ## FFA/FBA status block
 
@@ -27,7 +27,7 @@ Status: SEO Suite v1 is assembled as an optional platform module. Phase A–C (t
   - `cargo fmt --all -- --check` *(pass, 2026-06-07)*
   - `cargo check -p rustok-seo-admin --config profile.dev.debug=0` *(pass, 2026-06-07)*
   - `cargo test -p rustok-seo-admin --lib --config profile.dev.debug=0` *(pass, 2026-06-07; 12 pure-core tests)*
-- Scope note: module-owned UI remains infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels in `pages/product/blog/forum`); `rustok-seo-admin` now has an explicit `core/transport/ui` FFA split: `admin/src/core.rs` owns tab/busy/form policy plus effective-settings snapshot mapping via `SeoSettingsSnapshotItem` / `build_seo_settings_snapshot_items`, `admin/src/transport/mod.rs` is the facade, `admin/src/transport/native_server_adapter.rs` owns native server functions and SSR host context extraction, and `scripts/verify/verify-seo-admin-boundary.mjs` locks the fast boundary; transport boundary continues to evolve through GraphQL + REST `/api/seo/page-context`, `/api/seo/cross-link-suggestions`, control-plane parity endpoints and a unified GraphQL-compatible REST error envelope within Phase D.
+- Scope note: module-owned UI remains infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels in `pages/product/blog/forum`); `rustok-seo-admin` now has an explicit `core/transport/ui` FFA split: `admin/src/core.rs` owns tab/busy/form policy plus effective-settings snapshot mapping via `SeoSettingsSnapshotItem` / `build_seo_settings_snapshot_items`, `admin/src/transport/mod.rs` is the facade, `admin/src/transport/native_server_adapter.rs` owns native server functions and SSR host context extraction through `HostRuntimeContext` typed DB/event-bus/runtime-extension handles with no package-local `loco-rs` or `loco-adapter` dependency, and `scripts/verify/verify-seo-admin-boundary.mjs` locks the fast boundary; transport boundary continues to evolve through GraphQL + REST `/api/seo/page-context`, `/api/seo/cross-link-suggestions`, control-plane parity endpoints and a unified GraphQL-compatible REST error envelope within Phase D.
 - FBA evidence: `crates/rustok-seo/contracts/seo-fba-registry.json` declares the `seo_image_descriptor` consumer profile for `MediaAssetReadPort` / `media.asset_read.v1`, `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json` is `source_locked_pending_consumer_runtime` and mirrors consumer cases, degraded modes (`omit_image_metadata`, `keep_existing_seo_image`, `proxy_storage_relative_url`), provider fallback-smoke source, static source assertions, runtime closeout requirements, consumer runtime artifact template and drill matrix; `crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json` plus `scripts/verify/verify-consumer-fba-runtime-order.mjs` lock media read-policy -> tenant parse -> owner `SeoTargetImageRecord` construction order without coupling `rustok-seo-targets` to media; status remains below `boundary_ready` until consumer runtime contract execution/fallback smoke lands.
 
 ## Scope of work
@@ -207,7 +207,7 @@ All flags are tenant-aware, default `false` for safe staged rollout.
     - [x] Add typed remediation mapping (`issue_code -> action`), including `run_reindex` and `open_bulk_job`.
     - [x] Add shared error/permission/empty-state contract for SEO control-plane widgets.
   - [x] **D6.3 host wiring (`apps/next-admin`)**
-    - [x] Connect index tracking/replay API in operator UI (using existing REST-first helper).
+    - [x] Connect index tracking/replay API in operator UI (using existing REST primary helper).
     - [x] Add semantic error handling for replay flows (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`).
     - [x] Add telemetry hooks (action started/success/failure) for replay/remediation operations.
   - [x] **D6.4 owner-module wiring (`pages/product/blog/forum`)**
@@ -219,7 +219,7 @@ All flags are tenant-aware, default `false` for safe staged rollout.
 
 - [x] **Batch D7 — Storefront + Next frontend runtime parity (regrouped in Milestones A–C)**
   - [x] **Milestone A — Runtime SEO Data Plumbing (D7 foundation, large batch)**
-    - [x] A.1 Add shared Next runtime adapter: REST-first + GraphQL fallback with typed semantic error mapping (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures).
+    - [x] A.1 Add shared Next runtime adapter: REST primary + GraphQL secondary path with typed semantic error mapping (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures).
     - [x] A.2 Lock deterministic locale/route/query normalization policy in Next adapter (`routeSegment -> /modules/*`, `lang` excluded, query keys sorted).
     - [x] A.3 Unify response->metadata mapping (`canonical/hreflang/robots/OG/Twitter/verification`) and add runtime JSON-LD script extraction from `structuredDataBlocks`.
     - [x] A.4 Lock fallback-behavior evidence (module disabled / not found / permission / transport) on fixture set (`apps/next-frontend/contracts/seo/runtime-parity-fixtures.json`).
@@ -263,7 +263,7 @@ All flags are tenant-aware, default `false` for safe staged rollout.
 
 ### Milestone A — Runtime SEO Data Plumbing
 
-- [x] A.1 Shared Next runtime adapter (`REST-first + GraphQL fallback + typed errors`).
+- [x] A.1 Shared Next runtime adapter (`REST primary + GraphQL secondary path + typed errors`).
 - [x] A.2 Deterministic locale/route/query normalization parity with storefront.
 - [x] A.3 Unified metadata mapper + JSON-LD extraction helper.
 - [x] A.4 Fallback fixtures/evidence: `module_disabled`, `not_found`, `permission_denied`, transport failures.

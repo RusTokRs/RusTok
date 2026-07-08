@@ -92,8 +92,11 @@ ${includeRawRest ? "fn bad_rest() { reqwest::Client::new(); }" : ""}
 function nativeAdapterSource({ includeRest = false } = {}) {
   return `
 use leptos::prelude::*;
+use rustok_api::HostRuntimeContext;
 #[server(prefix = "/api/fn", endpoint = "channel/bootstrap")]
 pub(super) async fn channel_bootstrap_native() -> Result<(), ServerFnError> {
+    let runtime_ctx = expect_context::<HostRuntimeContext>();
+    let _db = runtime_ctx.db_clone();
     ${includeRest ? "reqwest::Client::new();" : ""}
     Ok(())
 }

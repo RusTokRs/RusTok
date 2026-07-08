@@ -30,12 +30,13 @@ const libPath = "crates/rustok-seo/admin/src/lib.rs";
 const corePath = "crates/rustok-seo/admin/src/core.rs";
 const transportModPath = "crates/rustok-seo/admin/src/transport/mod.rs";
 const nativeAdapterPath = "crates/rustok-seo/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/rustok-seo/admin/Cargo.toml";
 const uiPath = "crates/rustok-seo/admin/src/ui/leptos.rs";
 const defaultsSectionPath = "crates/rustok-seo/admin/src/sections/defaults.rs";
 const localPlanPath = "crates/rustok-seo/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
-for (const filePath of [libPath, corePath, transportModPath, nativeAdapterPath, uiPath, defaultsSectionPath, localPlanPath, registryPath]) {
+for (const filePath of [libPath, corePath, transportModPath, nativeAdapterPath, cargoPath, uiPath, defaultsSectionPath, localPlanPath, registryPath]) {
   assertExists(filePath, `${filePath}: expected SEO admin FFA boundary file`);
 }
 assertMissing("crates/rustok-seo/admin/src/transport.rs", "crates/rustok-seo/admin/src/transport.rs: monolithic pre-split transport facade must stay removed");
@@ -44,6 +45,7 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const transportMod = readRepo(transportModPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
+const cargo = readRepo(cargoPath);
 const ui = readRepo(uiPath);
 const defaultsSection = readRepo(defaultsSectionPath);
 const localPlan = readRepo(localPlanPath);
@@ -84,6 +86,14 @@ assertContains(nativeAdapter, /#\[server[^\n]*endpoint = "seo\/redirects"/, `${n
 assertContains(nativeAdapter, /#\[server[^\n]*endpoint = "seo\/index-repair-replay"/, `${nativeAdapterPath}: native adapter must own index repair/replay server-function endpoint`);
 assertContains(nativeAdapter, "seo_service_from_context", `${nativeAdapterPath}: native adapter must own host context extraction`);
 assertContains(nativeAdapter, "persist_seo_settings", `${nativeAdapterPath}: native adapter must own settings persistence helper`);
+assertContains(nativeAdapter, "expect_context::<HostRuntimeContext>()", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
+assertContains(nativeAdapter, "shared_get::<TransactionalEventBus>()", `${nativeAdapterPath}: native adapter must read the typed event bus from host runtime context`);
+assertContains(nativeAdapter, "shared_get::<std::sync::Arc<ModuleRuntimeExtensions>>()", `${nativeAdapterPath}: native adapter must read SEO runtime extensions from typed host handles`);
+assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native adapter must read DB from neutral host runtime context`);
+assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
+assertNotContains(nativeAdapter, "rustok_outbox::loco", `${nativeAdapterPath}: native adapter must not consume outbox Loco adapter`);
+assertNotContains(cargo, "loco-rs", `${cargoPath}: SEO admin crate must not depend on Loco`);
+assertNotContains(cargo, "loco-adapter", `${cargoPath}: SEO admin crate must not enable outbox Loco adapter feature`);
 
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_redirects", `${uiPath}: Leptos adapter must call module-owned transport facade`);

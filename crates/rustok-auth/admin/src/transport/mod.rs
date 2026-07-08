@@ -4,10 +4,19 @@ pub use native_server_adapter::ApiError;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use leptos::prelude::*;
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use crate::model::{CreateOAuthAppInput, UpdateOAuthAppInput};
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 pub async fn request_password_reset(email: String, tenant: String) -> Result<String, String> {
     leptos_auth::api::forgot_password(email, tenant)
@@ -52,6 +61,13 @@ pub fn get_graphql_url() -> String {
             std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
         format!("{}/api/graphql", base)
     }
+}
+
+pub fn api_base_url() -> String {
+    get_graphql_url()
+        .trim_end_matches("/api/graphql")
+        .trim_end_matches('/')
+        .to_string()
 }
 
 fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> ApiRequestContext {
@@ -107,12 +123,12 @@ async fn auth_graphql(request: ServerGraphqlRequest) -> Result<Value, ServerFnEr
 async fn execute_auth_graphql(
     request: ServerGraphqlRequest,
 ) -> Result<Value, rustok_graphql::GraphqlHttpError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    #[cfg(all(target_arch = "wasm32", not(feature = "hydrate")))]
     {
         execute_server_graphql(request).await
     }
 
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    #[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
     {
         auth_graphql(request).await.map_err(|err| {
             let message = err.to_string();
@@ -345,33 +361,16 @@ pub async fn fetch_users(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<GraphqlUsersResponse, String> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return fetch_users_graphql(page, limit, search, role, status, token, tenant_slug)
-            .await
-            .map_err(|err| err.to_string());
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::list_users_native(
-        page,
-        limit,
-        search.clone(),
-        role.clone(),
-        status.clone(),
-    )
-    .await
-    {
-        Ok(response) => Ok(response),
-        Err(server_err) => {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            native_server_adapter::list_users_native(page, limit, search, role, status)
+                .await
+                .map_err(|err| err.to_string())
+        }
+        UiTransportPath::Graphql => {
             fetch_users_graphql(page, limit, search, role, status, token, tenant_slug)
                 .await
-                .map_err(|graphql_err| {
-                    format!(
-                        "native path failed: {}; graphql path failed: {}",
-                        server_err, graphql_err
-                    )
-                })
+                .map_err(|err| err.to_string())
         }
     }
 }
@@ -381,24 +380,13 @@ pub async fn fetch_user(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<GraphqlUserResponse, String> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return fetch_user_graphql(user_id, token, tenant_slug)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::user_details_native(user_id)
             .await
-            .map_err(|err| err.to_string());
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::user_details_native(user_id.clone()).await {
-        Ok(response) => Ok(response),
-        Err(server_err) => fetch_user_graphql(user_id, token, tenant_slug)
+            .map_err(|err| err.to_string()),
+        UiTransportPath::Graphql => fetch_user_graphql(user_id, token, tenant_slug)
             .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+            .map_err(|err| err.to_string()),
     }
 }
 
@@ -406,24 +394,13 @@ pub async fn list_oauth_apps(
     token: Option<String>,
     tenant: Option<String>,
 ) -> Result<Vec<OAuthApp>, String> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return list_oauth_apps_graphql(token, tenant)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::list_oauth_apps_native(100)
             .await
-            .map_err(|err| err.to_string());
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::list_oauth_apps_native(100).await {
-        Ok(apps) => Ok(apps),
-        Err(server_err) => list_oauth_apps_graphql(token, tenant)
+            .map_err(|err| err.to_string()),
+        UiTransportPath::Graphql => list_oauth_apps_graphql(token, tenant)
             .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+            .map_err(|err| err.to_string()),
     }
 }
 
@@ -459,28 +436,15 @@ pub async fn update_profile(
     tenant: String,
     name: Option<String>,
 ) -> Result<native_server_adapter::ProfileUser, String> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return update_profile_graphql(token, tenant, name)
-            .await
-            .map_err(|err| err.to_string());
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::update_profile_native(token.clone(), tenant.clone(), name.clone())
-        .await
-    {
-        Ok(user) => Ok(user),
-        Err(server_err) => {
-            update_profile_graphql(token, tenant, name)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            native_server_adapter::update_profile_native(token, tenant, name)
                 .await
-                .map_err(|graphql_err| {
-                    format!(
-                        "native path failed: {}; graphql path failed: {}",
-                        server_err, graphql_err
-                    )
-                })
+                .map_err(|err| err.to_string())
         }
+        UiTransportPath::Graphql => update_profile_graphql(token, tenant, name)
+            .await
+            .map_err(|err| err.to_string()),
     }
 }
 
@@ -536,31 +500,20 @@ pub async fn change_password(
     current_password: String,
     new_password: String,
 ) -> Result<native_server_adapter::SuccessPayload, String> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return change_password_graphql(token, tenant, current_password, new_password)
-            .await
-            .map_err(|err| err.to_string());
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::change_password_native(
-        token.clone(),
-        tenant.clone(),
-        current_password.clone(),
-        new_password.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(server_err) => change_password_graphql(token, tenant, current_password, new_password)
-            .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::change_password_native(
+            token,
+            tenant,
+            current_password,
+            new_password,
+        )
+        .await
+        .map_err(|err| err.to_string()),
+        UiTransportPath::Graphql => {
+            change_password_graphql(token, tenant, current_password, new_password)
+                .await
+                .map_err(|err| err.to_string())
+        }
     }
 }
 
@@ -628,22 +581,11 @@ pub async fn create_user(
     tenant: Option<String>,
     input: crate::model::CreateUserInput,
 ) -> Result<Option<crate::model::GraphqlUser>, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return create_user_graphql(token, tenant, input).await;
-    }
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::create_user_native(input.clone()).await {
-        Ok(user) => Ok(user),
-        Err(native_error) => {
-            create_user_graphql(token, tenant, input)
-                .await
-                .map_err(|graphql_error| {
-                    ApiError::Graphql(format!(
-                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
-                    ))
-                })
-        }
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::create_user_native(input)
+            .await
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => create_user_graphql(token, tenant, input).await,
     }
 }
 
@@ -732,22 +674,11 @@ pub async fn update_user_details(
     id: String,
     input: crate::model::UpdateUserInput,
 ) -> Result<Option<crate::model::GraphqlUser>, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return update_user_graphql(token, tenant, id, input).await;
-    }
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::update_user_native(id.clone(), input.clone()).await {
-        Ok(user) => Ok(user),
-        Err(native_error) => {
-            update_user_graphql(token, tenant, id, input)
-                .await
-                .map_err(|graphql_error| {
-                    ApiError::Graphql(format!(
-                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
-                    ))
-                })
-        }
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::update_user_native(id, input)
+            .await
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => update_user_graphql(token, tenant, id, input).await,
     }
 }
 
@@ -756,22 +687,11 @@ pub async fn delete_user_details(
     tenant: Option<String>,
     id: String,
 ) -> Result<bool, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return delete_user_graphql(token, tenant, id).await;
-    }
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::delete_user_native(id.clone()).await {
-        Ok(deleted) => Ok(deleted),
-        Err(native_error) => {
-            delete_user_graphql(token, tenant, id)
-                .await
-                .map_err(|graphql_error| {
-                    ApiError::Graphql(format!(
-                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
-                    ))
-                })
-        }
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::delete_user_native(id)
+            .await
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => delete_user_graphql(token, tenant, id).await,
     }
 }
 
@@ -996,21 +916,11 @@ pub async fn create_oauth_app(
     tenant: Option<String>,
     input: CreateOAuthAppInput,
 ) -> Result<CreateOAuthAppResult, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return create_oauth_app_graphql(token, tenant, input).await;
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::create_oauth_app_native(input.clone()).await {
-        Ok(result) => Ok(result),
-        Err(native_error) => create_oauth_app_graphql(token, tenant, input)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::create_oauth_app_native(input)
             .await
-            .map_err(|graphql_error| {
-                ApiError::Graphql(format!(
-                    "native path failed: {native_error}; graphql path failed: {graphql_error}"
-                ))
-            }),
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => create_oauth_app_graphql(token, tenant, input).await,
     }
 }
 
@@ -1020,21 +930,11 @@ pub async fn update_oauth_app(
     id: uuid::Uuid,
     input: UpdateOAuthAppInput,
 ) -> Result<OAuthApp, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return update_oauth_app_graphql(token, tenant, id, input).await;
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::update_oauth_app_native(id, input.clone()).await {
-        Ok(result) => Ok(result),
-        Err(native_error) => update_oauth_app_graphql(token, tenant, id, input)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::update_oauth_app_native(id, input)
             .await
-            .map_err(|graphql_error| {
-                ApiError::Graphql(format!(
-                    "native path failed: {native_error}; graphql path failed: {graphql_error}"
-                ))
-            }),
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => update_oauth_app_graphql(token, tenant, id, input).await,
     }
 }
 
@@ -1043,21 +943,11 @@ pub async fn rotate_oauth_app_secret(
     tenant: Option<String>,
     id: uuid::Uuid,
 ) -> Result<CreateOAuthAppResult, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return rotate_oauth_app_secret_graphql(token, tenant, id).await;
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::rotate_oauth_app_secret_native(id).await {
-        Ok(result) => Ok(result),
-        Err(native_error) => rotate_oauth_app_secret_graphql(token, tenant, id)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::rotate_oauth_app_secret_native(id)
             .await
-            .map_err(|graphql_error| {
-                ApiError::Graphql(format!(
-                    "native path failed: {native_error}; graphql path failed: {graphql_error}"
-                ))
-            }),
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => rotate_oauth_app_secret_graphql(token, tenant, id).await,
     }
 }
 
@@ -1066,22 +956,10 @@ pub async fn revoke_oauth_app(
     tenant: Option<String>,
     id: uuid::Uuid,
 ) -> Result<uuid::Uuid, ApiError> {
-    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
-    {
-        return revoke_oauth_app_graphql(token, tenant, id).await;
-    }
-
-    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::revoke_oauth_app_native(id).await {
-        Ok(result) => Ok(result),
-        Err(native_error) => {
-            revoke_oauth_app_graphql(token, tenant, id)
-                .await
-                .map_err(|graphql_error| {
-                    ApiError::Graphql(format!(
-                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
-                    ))
-                })
-        }
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::revoke_oauth_app_native(id)
+            .await
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => revoke_oauth_app_graphql(token, tenant, id).await,
     }
 }

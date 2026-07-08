@@ -1,3 +1,4 @@
+mod graphql_adapter;
 mod order_change;
 mod promotion;
 mod raw_adapter;

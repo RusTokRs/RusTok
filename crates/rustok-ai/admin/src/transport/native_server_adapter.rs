@@ -286,55 +286,40 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_overview_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         Ok(AiAdminBootstrap {
             metrics: map_runtime_metrics(rustok_ai::AiManagementService::metrics_snapshot()),
-            providers: rustok_ai::AiManagementService::list_provider_profiles(
-                &app_ctx.db,
-                auth.tenant_id,
-            )
-            .await
-            .map_err(server_error)?
-            .into_iter()
-            .map(map_provider)
-            .collect(),
-            task_profiles: rustok_ai::AiManagementService::list_task_profiles(
-                &app_ctx.db,
-                auth.tenant_id,
-            )
-            .await
-            .map_err(server_error)?
-            .into_iter()
-            .map(map_task_profile)
-            .collect(),
-            tool_profiles: rustok_ai::AiManagementService::list_tool_profiles(
-                &app_ctx.db,
-                auth.tenant_id,
-            )
-            .await
-            .map_err(server_error)?
-            .into_iter()
-            .map(map_tool_profile)
-            .collect(),
-            sessions: rustok_ai::AiManagementService::list_chat_sessions(
-                &app_ctx.db,
-                auth.tenant_id,
-            )
-            .await
-            .map_err(server_error)?
-            .into_iter()
-            .map(map_session_summary)
-            .collect(),
-            recent_runs: rustok_ai::AiManagementService::list_recent_runs(
-                &app_ctx.db,
-                auth.tenant_id,
-                20,
-            )
-            .await
-            .map_err(server_error)?
-            .into_iter()
-            .map(map_recent_run)
-            .collect(),
+            providers: rustok_ai::AiManagementService::list_provider_profiles(&db, auth.tenant_id)
+                .await
+                .map_err(server_error)?
+                .into_iter()
+                .map(map_provider)
+                .collect(),
+            task_profiles: rustok_ai::AiManagementService::list_task_profiles(&db, auth.tenant_id)
+                .await
+                .map_err(server_error)?
+                .into_iter()
+                .map(map_task_profile)
+                .collect(),
+            tool_profiles: rustok_ai::AiManagementService::list_tool_profiles(&db, auth.tenant_id)
+                .await
+                .map_err(server_error)?
+                .into_iter()
+                .map(map_tool_profile)
+                .collect(),
+            sessions: rustok_ai::AiManagementService::list_chat_sessions(&db, auth.tenant_id)
+                .await
+                .map_err(server_error)?
+                .into_iter()
+                .map(map_session_summary)
+                .collect(),
+            recent_runs: rustok_ai::AiManagementService::list_recent_runs(&db, auth.tenant_id, 20)
+                .await
+                .map_err(server_error)?
+                .into_iter()
+                .map(map_recent_run)
+                .collect(),
             recent_stream_events: rustok_ai::AiManagementService::recent_stream_events(None, 20)
                 .into_iter()
                 .map(map_stream_event)
@@ -359,15 +344,13 @@ async fn ai_session_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_session_read_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let session_id = parse_uuid(&session_id, "session_id")?;
-        let detail = rustok_ai::AiManagementService::chat_session_detail(
-            &app_ctx.db,
-            auth.tenant_id,
-            session_id,
-        )
-        .await
-        .map_err(server_error)?;
+        let detail =
+            rustok_ai::AiManagementService::chat_session_detail(&db, auth.tenant_id, session_id)
+                .await
+                .map_err(server_error)?;
         Ok(detail.map(|detail| map_session_detail_with_recent_events(detail, 20)))
     }
     #[cfg(not(feature = "ssr"))]
@@ -398,10 +381,11 @@ async fn ai_create_provider_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_provider_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::create_provider_profile(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             rustok_ai::CreateAiProviderProfileInput {
                 slug,
                 display_name,
@@ -452,9 +436,10 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_provider_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::test_provider_profile(
-            &app_ctx.db,
+            &db,
             auth.tenant_id,
             parse_uuid(&id, "id")?,
         )
@@ -495,10 +480,11 @@ async fn ai_update_provider_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_provider_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::update_provider_profile(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiProviderProfileInput {
                 display_name,
@@ -549,10 +535,11 @@ async fn ai_deactivate_provider_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_provider_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::deactivate_provider_profile(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             parse_uuid(&id, "id")?,
         )
         .await
@@ -581,10 +568,11 @@ async fn ai_create_tool_profile_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_tool_profile_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::create_tool_profile(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             rustok_ai::CreateAiToolProfileInput {
                 slug,
                 display_name,
@@ -629,10 +617,11 @@ async fn ai_update_tool_profile_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_tool_profile_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::update_tool_profile(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiToolProfileInput {
                 display_name,
@@ -681,10 +670,11 @@ async fn ai_create_task_profile_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_tool_profile_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::create_task_profile(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             rustok_ai::CreateAiTaskProfileInput {
                 slug,
                 display_name,
@@ -746,10 +736,11 @@ async fn ai_update_task_profile_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_tool_profile_manage_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::update_task_profile(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiTaskProfileInput {
                 display_name,
@@ -809,11 +800,12 @@ async fn ai_start_session_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_session_run_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
-        let runtime = ai_runtime_from_app_ctx(&app_ctx);
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::start_chat_session(
             &runtime,
-            &operator(&auth, &app_ctx.db).await?,
+            &operator(&auth, &db).await?,
             rustok_ai::StartAiChatSessionInput {
                 title,
                 provider_profile_id: parse_optional_uuid(
@@ -862,13 +854,14 @@ async fn ai_run_task_job_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_session_run_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let task_input_json = serde_json::from_str(&task_input_json)
             .map_err(|err| ServerFnError::new(err.to_string()))?;
-        let runtime = ai_runtime_from_app_ctx(&app_ctx);
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::run_task_job(
             &runtime,
-            &operator(&auth, &app_ctx.db).await?,
+            &operator(&auth, &db).await?,
             rustok_ai::RunAiTaskJobInput {
                 title,
                 provider_profile_id: parse_optional_uuid(
@@ -914,11 +907,12 @@ async fn ai_send_message_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_session_run_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
-        let runtime = ai_runtime_from_app_ctx(&app_ctx);
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::send_chat_message(
             &runtime,
-            &operator(&auth, &app_ctx.db).await?,
+            &operator(&auth, &db).await?,
             parse_uuid(&session_id, "session_id")?,
             rustok_ai::SendAiChatMessageInput { content },
         )
@@ -945,11 +939,12 @@ async fn ai_resume_approval_native(
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_approval_resolve_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
-        let runtime = ai_runtime_from_app_ctx(&app_ctx);
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::resume_approval(
             &runtime,
-            &operator(&auth, &app_ctx.db).await?,
+            &operator(&auth, &db).await?,
             parse_uuid(&approval_id, "approval_id")?,
             rustok_ai::ResumeAiApprovalInput { approved, reason },
         )
@@ -972,10 +967,11 @@ async fn ai_cancel_run_native(run_id: String) -> Result<AiChatRunPayload, Server
             .await
             .map_err(ServerFnError::new)?;
         ensure_ai_run_cancel_permission(&auth.permissions)?;
-        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
         let item = rustok_ai::AiManagementService::cancel_run(
-            &app_ctx.db,
-            &operator(&auth, &app_ctx.db).await?,
+            &db,
+            &operator(&auth, &db).await?,
             parse_uuid(&run_id, "run_id")?,
         )
         .await
@@ -1081,18 +1077,26 @@ fn ensure_ai_overview_permission(
 }
 
 #[cfg(feature = "ssr")]
-fn ai_runtime_from_app_ctx(app_ctx: &loco_rs::app::AppContext) -> rustok_ai::AiHostRuntime {
-    rustok_ai::AiHostRuntime::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
-        app_ctx
-            .shared_store
-            .get::<rustok_ai::SharedAiModuleRegistry>()
-            .expect("AI module registry not initialized")
-            .0,
+fn ai_runtime_from_context(
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+) -> Result<rustok_ai::AiHostRuntime, ServerFnError> {
+    let event_bus = runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            ServerFnError::new("AI admin requires TransactionalEventBus in host runtime context")
+        })?;
+    let module_registry = runtime_ctx
+        .shared_get::<rustok_ai::SharedAiModuleRegistry>()
+        .ok_or_else(|| {
+            ServerFnError::new("AI admin requires SharedAiModuleRegistry in host runtime context")
+        })?
+        .0;
+
+    Ok(
+        rustok_ai::AiHostRuntime::new(runtime_ctx.db_clone(), event_bus, module_registry)
+            .with_storage(runtime_ctx.shared_get::<rustok_storage::StorageService>())
+            .with_alloy_runtime(runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()),
     )
-    .with_storage(app_ctx.shared_store.get::<rustok_storage::StorageService>())
-    .with_alloy_runtime(app_ctx.shared_store.get::<alloy::SharedAlloyRuntime>())
 }
 
 #[cfg(feature = "ssr")]

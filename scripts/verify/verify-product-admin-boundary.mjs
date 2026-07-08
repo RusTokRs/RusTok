@@ -45,6 +45,7 @@ const transportPath = "crates/rustok-product/admin/src/transport.rs";
 const legacyApiPath = "crates/rustok-product/admin/src/api.rs";
 const graphqlAdapterPath = "crates/rustok-product/admin/src/transport/graphql_adapter.rs";
 const nativeAdapterPath = "crates/rustok-product/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/rustok-product/admin/Cargo.toml";
 const commerceQueryPath = "crates/rustok-commerce/src/graphql/query.rs";
 const commerceCatalogMutationPath = "crates/rustok-commerce/src/graphql/mutations/catalog.rs";
 const commerceTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
@@ -59,6 +60,7 @@ for (const filePath of [
   transportPath,
   graphqlAdapterPath,
   nativeAdapterPath,
+  cargoPath,
   commerceQueryPath,
   commerceCatalogMutationPath,
   commerceTypesPath,
@@ -78,6 +80,7 @@ const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
+const cargo = readRepo(cargoPath);
 const commerceQuery = readRepo(commerceQueryPath);
 const commerceCatalogMutation = readRepo(commerceCatalogMutationPath);
 const commerceTypes = readRepo(commerceTypesPath);
@@ -95,23 +98,23 @@ for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalR
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
 }
 for (const marker of [
-  "ProductAdminSaveCommand",
+  "SaveCommand",
   "ProductAdminEditorFormState",
-  "ProductAdminStatusMutationResultViewModel",
-  "ProductAdminDeleteResultViewModel",
+  "StatusResultViewModel",
+  "DeleteResultViewModel",
   "ProductAdminSeoPanelCopy",
   "ProductAdminSummaryPanelCopy",
   "parse_product_admin_inventory_quantity_input",
   "ProductAdminOpenProductViewModel",
-  "product_admin_pricing_preview_state_from_result",
+  "pricing_preview_state_from_result",
   "ProductAdminRouteQueryIntent",
   "ProductAdminSelectedProductQueryState",
   "product_admin_selected_product_query_state",
   "ProductAdminProductsLoadViewModel",
   "product_admin_products_load_view_from_result",
-  "ProductAdminShippingProfilesLoadViewModel",
+  "ShippingProfilesLoadViewModel",
   "ProductAttributeEditorState",
-  "product_admin_shipping_profiles_load_view_from_result",
+  "shipping_profiles_load_view_from_result",
   "show_shipping_profile",
 ]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
@@ -119,13 +122,13 @@ for (const marker of [
 
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
-assertContains(ui, "build_product_admin_save_command", `${uiPath}: UI must use core-owned save command preparation`);
+assertContains(ui, "build_save_command", `${uiPath}: UI must use core-owned save command preparation`);
 assertContains(ui, "ProductAdminOpenProductViewModel", `${uiPath}: UI must consume core-owned open-product outcomes`);
-assertContains(ui, "product_admin_pricing_preview_state_from_result", `${uiPath}: UI must use core-owned pricing preview state mapping`);
+assertContains(ui, "pricing_preview_state_from_result", `${uiPath}: UI must use core-owned pricing preview state mapping`);
 assertContains(ui, "build_product_admin_summary_panel_copy", `${uiPath}: UI must consume core-owned selected-summary panel copy`);
 assertContains(ui, "product_admin_selected_product_query_state", `${uiPath}: UI must use core-owned selected product query state`);
 assertContains(ui, "product_admin_products_load_view_from_result", `${uiPath}: UI must use core-owned products load-result normalization`);
-assertContains(ui, "product_admin_shipping_profiles_load_view_from_result", `${uiPath}: UI must use core-owned shipping-profiles load-result normalization`);
+assertContains(ui, "shipping_profiles_load_view_from_result", `${uiPath}: UI must use core-owned shipping-profiles load-result normalization`);
 for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "ProductService", "PricingService"] ) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport or services (${marker})`);
 }
@@ -205,8 +208,17 @@ for (const marker of [
   "locale: String",
   "leptos_axum::extract::<rustok_api::AuthContext>",
   "leptos_axum::extract::<rustok_api::TenantContext>",
+  "expect_context::<rustok_api::HostRuntimeContext>()",
+  "shared_get::<rustok_outbox::TransactionalEventBus>()",
+  "runtime_ctx.db_clone()",
 ]) {
   assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native server adapter must expose category-bound server function contract (${marker})`);
+}
+for (const marker of ["loco_rs", "rustok_outbox::loco"]) {
+  assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native server adapter must not depend on Loco (${marker})`);
+}
+for (const marker of ["loco-rs", "loco-adapter"]) {
+  assertNotContains(cargo, marker, `${cargoPath}: product admin package must not depend on Loco (${marker})`);
 }
 for (const marker of [/locale: Option<String>/, /unwrap_or_else\(\|\| "en"/, /PLATFORM_FALLBACK_LOCALE/]) {
   assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native category-bound adapter must not invent optional/fallback locale`);

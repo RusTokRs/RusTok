@@ -44,7 +44,7 @@ Finally, RusTok has already documented two very useful host-level contracts that
 |---|---|---|
 | `apps/server` — composition root; hosts mount surfaces | Flutter must be a new host client |  |
 | Module-owned UI stays with the module | Extract module screens into separate mobile packages |  |
-| GraphQL is the canonical UI-facing contract | Mobile transport foundation is GraphQL, not REST-first |  |
+| GraphQL is the canonical UI-facing contract | Mobile transport foundation is GraphQL, not REST primary |  |
 | Server raises `/api/graphql` and `/api/graphql/ws` | Client needs HTTP + subscriptions |  |
 | Shared UI must be presentational only | Do not put auth/routing/domain behavior in shared packages |  |
 | Effective locale is determined by the host layer | Locale provider in app shell; not in module packages |  |

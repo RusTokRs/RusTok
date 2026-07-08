@@ -1,12 +1,21 @@
 use crate::entities::oauth_app::model::{AppType, OAuthApp};
 use crate::shared::api::{request, ApiError};
 use leptos::prelude::*;
+use rustok_ui_transport::UiTransportPath;
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "ssr")]
 use serde_json::Value;
 use uuid::Uuid;
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
+}
 
 pub const OAUTH_APPS_QUERY: &str = r#"
 query OAuthApps($limit: Int) {
@@ -245,16 +254,13 @@ pub async fn list_oauth_apps(
     token: Option<String>,
     tenant: Option<String>,
 ) -> Result<Vec<OAuthApp>, String> {
-    match list_oauth_apps_server(100).await {
-        Ok(apps) => Ok(apps),
-        Err(server_err) => list_oauth_apps_graphql(token, tenant)
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => list_oauth_apps_server(100)
             .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+            .map_err(|error| error.to_string()),
+        UiTransportPath::Graphql => list_oauth_apps_graphql(token, tenant)
+            .await
+            .map_err(|error| error.to_string()),
     }
 }
 

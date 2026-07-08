@@ -29,7 +29,7 @@ Tenant enablement is implemented via the `tenant_modules` table (unique by `tena
 
 ### API Surfaces Needed by SEO Suite
 
-The platform uses a hybrid transport layer: `/api/graphql` (+ subscriptions via `/api/graphql/ws`) as the UI-facing contract and `/api/v1/...` as REST for integrations/ops; there are also OpenAPI endpoints. For Leptos UI, a "dual-path" approach is used: native `#[server]` functions as the preferred internal data layer and parallel GraphQL as a mandatory contract for Next.js/headless/fallback. This is important for SEO Suite UX: admin screens may be Leptos-native-first, but the API must live in GraphQL/REST in parallel.
+The platform uses a hybrid transport layer: `/api/graphql` (+ subscriptions via `/api/graphql/ws`) as the UI-facing contract and `/api/v1/...` as REST for integrations/ops; there are also OpenAPI endpoints. For Leptos UI, a "dual-path" approach is used: native `#[server]` functions as the preferred internal data layer and parallel GraphQL as a mandatory contract for Next.js/headless/fallback. This is important for SEO Suite UX: admin screens may be Leptos-build-profile-selected native, but the API must live in GraphQL/REST in parallel.
 
 ### Database and Existing SEO Artifacts
 
@@ -87,7 +87,7 @@ Based on public materials from Amasty SEO Toolkit (Magento 2) and similar soluti
 Given that:
 - modules are enabled per-tenant via `tenant_modules`;
 - security and tenant/locale/RBAC contract must be unified across all API paths;
-- Leptos UI requires native-first, but GraphQL is mandatory in parallel;
+- Leptos UI uses build-profile-selected native execution and keeps GraphQL mandatory in parallel;
 
 the SEO Suite is more rationally built as:
 - **One "SEO Core" optional module** (storage + services + basic API + audit/versioning),

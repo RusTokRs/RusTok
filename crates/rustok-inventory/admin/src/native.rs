@@ -81,6 +81,28 @@ fn ensure_permission(
 }
 
 #[cfg(feature = "ssr")]
+fn inventory_read_service_from_context() -> rustok_inventory::AdminInventoryReadService {
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    rustok_inventory::AdminInventoryReadService::new(runtime_ctx.db_clone())
+}
+
+#[cfg(feature = "ssr")]
+fn inventory_service_from_context() -> Result<rustok_inventory::InventoryService, ServerFnError> {
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    let event_bus = runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            ServerFnError::new(
+                "inventory/admin native transport requires TransactionalEventBus in host runtime context",
+            )
+        })?;
+    Ok(rustok_inventory::InventoryService::new(
+        runtime_ctx.db_clone(),
+        event_bus,
+    ))
+}
+
+#[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim())
         .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
@@ -285,13 +307,10 @@ async fn inventory_products_native(
 ) -> Result<InventoryProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, RequestContext, TenantContext};
-        use rustok_inventory::{AdminInventoryProductsFilter, AdminInventoryReadService};
+        use rustok_inventory::AdminInventoryProductsFilter;
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -310,7 +329,7 @@ async fn inventory_products_native(
 
         let requested_locale = crate::core::normalize_locale_filter(locale)
             .unwrap_or_else(|| request_context.locale.clone());
-        let service = AdminInventoryReadService::new(app_ctx.db.clone());
+        let service = inventory_read_service_from_context();
         let products = service
             .list_products(
                 tenant.id,
@@ -344,13 +363,9 @@ async fn inventory_product_native(
 ) -> Result<Option<InventoryProductDetail>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, RequestContext, TenantContext};
-        use rustok_inventory::AdminInventoryReadService;
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -370,7 +385,7 @@ async fn inventory_product_native(
         let product_id = parse_uuid(&id, "product_id")?;
         let requested_locale = crate::core::normalize_locale_filter(locale)
             .unwrap_or_else(|| request_context.locale.clone());
-        let service = AdminInventoryReadService::new(app_ctx.db.clone());
+        let service = inventory_read_service_from_context();
         let product = service
             .get_product(tenant.id, product_id, Some(requested_locale.as_str()))
             .await
@@ -395,15 +410,9 @@ async fn inventory_set_quantity_native(
 ) -> Result<InventoryQuantityWriteResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_inventory::InventoryService;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
 
-        let app_ctx = expect_context::<AppContext>();
-        let event_bus = transactional_event_bus_from_context(&app_ctx);
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -418,7 +427,7 @@ async fn inventory_set_quantity_native(
         assert_requested_tenant(&tenant, &tenant_id)?;
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
-        InventoryService::new(app_ctx.db.clone(), event_bus)
+        inventory_service_from_context()?
             .set_variant_quantity(tenant.id, auth.user_id, variant_id, quantity)
             .await
             .map(|result| InventoryQuantityWriteResult {
@@ -444,15 +453,9 @@ async fn inventory_adjust_quantity_native(
 ) -> Result<InventoryQuantityWriteResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_inventory::InventoryService;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
 
-        let app_ctx = expect_context::<AppContext>();
-        let event_bus = transactional_event_bus_from_context(&app_ctx);
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -467,7 +470,7 @@ async fn inventory_adjust_quantity_native(
         assert_requested_tenant(&tenant, &tenant_id)?;
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
-        InventoryService::new(app_ctx.db.clone(), event_bus)
+        inventory_service_from_context()?
             .adjust_variant_quantity(
                 tenant.id,
                 auth.user_id,
@@ -499,13 +502,9 @@ async fn inventory_reserve_quantity_native(
 ) -> Result<InventoryReservationWriteResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_inventory::InventoryService;
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -520,14 +519,11 @@ async fn inventory_reserve_quantity_native(
         assert_requested_tenant(&tenant, &tenant_id)?;
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
-        InventoryService::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
-        )
-        .reserve(tenant.id, variant_id, quantity)
-        .await
-        .map(map_reservation_result)
-        .map_err(ServerFnError::new)
+        inventory_service_from_context()?
+            .reserve(tenant.id, variant_id, quantity)
+            .await
+            .map(map_reservation_result)
+            .map_err(ServerFnError::new)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -546,15 +542,9 @@ async fn inventory_check_availability_native(
 ) -> Result<InventoryAvailabilityCheckResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_inventory::InventoryService;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
 
-        let app_ctx = expect_context::<AppContext>();
-        let event_bus = transactional_event_bus_from_context(&app_ctx);
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -569,7 +559,7 @@ async fn inventory_check_availability_native(
         assert_requested_tenant(&tenant, &tenant_id)?;
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
-        InventoryService::new(app_ctx.db.clone(), event_bus)
+        inventory_service_from_context()?
             .check_variant_availability(tenant.id, variant_id, requested_quantity)
             .await
             .map(map_availability_result)
@@ -592,13 +582,9 @@ async fn inventory_release_reservation_native(
 ) -> Result<InventoryReservationReleaseWriteResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_inventory::InventoryService;
 
-        let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -613,14 +599,11 @@ async fn inventory_release_reservation_native(
         assert_requested_tenant(&tenant, &tenant_id)?;
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
-        InventoryService::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
-        )
-        .release_reservation_quantity(tenant.id, variant_id, quantity)
-        .await
-        .map(map_release_result)
-        .map_err(ServerFnError::new)
+        inventory_service_from_context()?
+            .release_reservation_quantity(tenant.id, variant_id, quantity)
+            .await
+            .map(map_release_result)
+            .map_err(ServerFnError::new)
     }
     #[cfg(not(feature = "ssr"))]
     {

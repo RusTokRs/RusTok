@@ -105,7 +105,7 @@ Readiness score is derived from the issue set. The summary also returns counts b
 ## Integration
 
 - `apps/storefront` consumes `SeoPageContext.route + document` via `rustok-seo-render` for SSR `<title>`, meta description, canonical, robots, hreflang, Open Graph, Twitter, verification tags, pagination links and JSON-LD.
-- `apps/next-frontend` uses a shared runtime SEO adapter over the Next Metadata API: `SeoPageContext` arrives via REST-first + GraphQL fallback transport, `robots.ts`/`sitemap.ts` read the runtime source, and host-local static metadata remains only as an emergency fallback path.
+- `apps/next-frontend` uses a shared runtime SEO adapter over the Next Metadata API: `SeoPageContext` arrives via REST primary + GraphQL selected-path transport, `robots.ts`/`sitemap.ts` read the runtime source, and host-local static metadata remains only as an emergency fallback path.
 - `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin` and `rustok-forum/admin` are the canonical owner surfaces for entity SEO authoring.
 - The host runtime must pass `ModuleRuntimeExtensions` with `SeoTargetRegistry` to all SEO entrypoints; a built-in registry is only acceptable in tests/helpers.
 

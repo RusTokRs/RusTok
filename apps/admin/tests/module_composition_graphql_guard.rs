@@ -731,18 +731,18 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
 }
 
 #[test]
-fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallback_combiner() {
+fn module_api_helpers_do_not_use_native_graphql_fallback_combiner() {
     let content = read_client_content();
 
     let rollback_body = extract_function_block(&content, "pub async fn rollback_build(")
         .expect("rollback_build helper signature not found");
     assert!(
-        rollback_body.contains("combine_native_and_graphql_error"),
-        "rollback_build must preserve native/graphql fallback combiner contract"
+        !rollback_body.contains("combine_native_and_graphql_error"),
+        "rollback_build must not compose native/graphql fallback errors"
     );
     assert!(
         rollback_body.contains("rollback_build_native("),
-        "rollback_build must preserve native-first fallback path"
+        "rollback_build must keep the native path as an explicit selected transport branch"
     );
 
     for signature in [

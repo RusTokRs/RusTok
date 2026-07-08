@@ -8,7 +8,7 @@
 
 - Provide auth context and route guards for Leptos hosts.
 - Expose auth hooks and session/local-storage helpers.
-- Keep native Leptos `#[server]` auth flows and GraphQL fallback on the same package boundary.
+- Keep native Leptos `#[server]` auth flows and GraphQL selected path on the same package boundary.
 
 ## Entry points
 
@@ -24,7 +24,7 @@
 ## Interactions
 
 - Used by `apps/admin` and `apps/storefront` as the shared auth UI/runtime layer.
-- Uses `rustok-graphql` for GraphQL fallback transport.
+- Uses `rustok-graphql` for GraphQL selected-path transport.
 - Talks to `apps/server` auth endpoints and server-function surfaces without embedding server-specific policy in the UI package.
 
 ## Docs

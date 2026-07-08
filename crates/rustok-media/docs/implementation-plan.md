@@ -40,7 +40,7 @@ the module is maintained in the scoped audit path.
 - `load_media_usage_snapshot` is used through owner-owned field `MediaQuery::media_usage`, and
   `apps/server::SystemQuery` no longer contains media resolver/DTO/imports;
 - media metadata is stored in module-owned tables, while binary files remain in `rustok-storage`;
-- upload remains REST-first path, GraphQL covers read/write flows without multipart semantics;
+- upload remains REST-owned, GraphQL covers read/write flows without multipart semantics;
 - module-owned admin UI and observability surface are already part of the module contract;
 - `MediaAssetSummary` introduced for kind/usage classification without raw blob coupling; typed `MediaImageDescriptor` introduced as a cross-module boundary for SEO image payload (`url/alt/size/mime` + derived helpers), complemented with delivery profile policy (`absolute/root-relative public URL`, `storage-relative path`, `opaque reference`) and public URL policy (`direct public`, `proxy required`, `not addressable`), covered by edge-case normalization tests for explicit MIME, invalid dimensions, query/fragment cleanup and proxy-required storage paths.
 

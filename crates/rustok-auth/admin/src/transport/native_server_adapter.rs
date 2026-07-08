@@ -249,10 +249,7 @@ fn page_statement_values(vals: Vec<sea_orm::Value>) -> Vec<sea_orm::Value> {
 
 #[cfg(feature = "ssr")]
 fn api_base_url() -> String {
-    super::get_graphql_url()
-        .trim_end_matches("/api/graphql")
-        .trim_end_matches('/')
-        .to_string()
+    super::api_base_url()
 }
 
 #[cfg(feature = "ssr")]
