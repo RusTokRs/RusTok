@@ -4,13 +4,13 @@ use leptos::prelude::*;
 use super::cache::CacheHealthPayload;
 use super::cache::GraphqlCacheHealthResponse;
 #[cfg(feature = "ssr")]
+use super::dashboard::DashboardStats;
+#[cfg(feature = "ssr")]
 use super::dashboard::{
     calculate_percent_change, load_order_stats_snapshot, load_period_count_snapshot,
     load_recent_activity, server_error as dashboard_server_error,
 };
 use super::dashboard::{DashboardStatsResponse, RecentActivityResponse};
-#[cfg(feature = "ssr")]
-use super::dashboard::DashboardStats;
 #[cfg(feature = "ssr")]
 use super::email_settings::PlatformSettingsPayload as EmailPlatformSettingsPayload;
 use super::email_settings::PlatformSettingsResponse as EmailPlatformSettingsResponse;

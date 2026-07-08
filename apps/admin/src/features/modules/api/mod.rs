@@ -4,7 +4,7 @@ pub mod types;
 pub mod manifest;
 
 pub mod client;
-pub mod server;
+pub mod native_server_adapter;
 
 pub use types::*;
 
@@ -12,4 +12,4 @@ pub use types::*;
 pub use manifest::*;
 
 pub use client::*;
-pub use server::*;
+pub use native_server_adapter::*;

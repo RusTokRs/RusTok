@@ -3,9 +3,9 @@
 //! Seed data for development and testing.
 //! Run with: `cargo loco db seed`
 
-use loco_rs::app::AppContext;
+pub type SeedAppContext = loco_rs::app::AppContext;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use std::path::Path;
 
@@ -68,7 +68,7 @@ fn superadmin_tenant_name() -> String {
 }
 
 /// Seed the database with initial data
-pub async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
+pub async fn seed(ctx: &SeedAppContext, path: &Path) -> Result<()> {
     let seed_name = path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -91,7 +91,7 @@ pub async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
 }
 
 /// Development seed data
-async fn seed_development(ctx: &AppContext) -> Result<()> {
+async fn seed_development(ctx: &SeedAppContext) -> Result<()> {
     tracing::info!("Seeding development data...");
 
     let tenant_slug = superadmin_tenant_slug();
@@ -136,7 +136,7 @@ async fn seed_development(ctx: &AppContext) -> Result<()> {
             Some("seed".to_string()),
         )
         .await
-        .map_err(|error| loco_rs::Error::Message(error.to_string()))?;
+        .map_err(|error| Error::Message(error.to_string()))?;
     }
 
     tracing::info!(tenant_id = %demo_tenant.id, "Development seed data ensured");
@@ -145,7 +145,7 @@ async fn seed_development(ctx: &AppContext) -> Result<()> {
 }
 
 async fn seed_user(
-    ctx: &AppContext,
+    ctx: &SeedAppContext,
     tenant_id: uuid::Uuid,
     email: &str,
     name: &str,
@@ -170,7 +170,7 @@ async fn seed_user(
 }
 
 /// Test seed data
-async fn seed_test(_ctx: &AppContext) -> Result<()> {
+async fn seed_test(_ctx: &SeedAppContext) -> Result<()> {
     tracing::info!("Seeding test data...");
 
     // Minimal data for tests
@@ -179,7 +179,7 @@ async fn seed_test(_ctx: &AppContext) -> Result<()> {
 }
 
 /// Minimal seed data — creates only the default superadmin from env vars
-async fn seed_minimal(ctx: &AppContext) -> Result<()> {
+async fn seed_minimal(ctx: &SeedAppContext) -> Result<()> {
     tracing::info!("Seeding minimal data...");
 
     let Some(email) = superadmin_email() else {

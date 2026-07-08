@@ -106,9 +106,7 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
     feature = "ssr"
 ))]
-pub(super) async fn execute_server_graphql(
-    request: ServerGraphqlRequest,
-) -> Result<Value, GraphqlHttpError> {
+async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, GraphqlHttpError> {
     let mut graphql_request = GraphqlRequest::new(request.query, Some(request.variables));
 
     if let Some(sha256_hash) = request.persisted_query_sha256.as_deref() {

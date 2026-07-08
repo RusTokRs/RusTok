@@ -11,11 +11,9 @@
 //! Or schedule via `scheduler.yaml`.
 
 use async_trait::async_trait;
-use loco_rs::{
-    app::AppContext,
-    task::{Task, TaskInfo, Vars},
-    Result,
-};
+
+use crate::error::{Error, Result};
+use crate::tasks::{Task, TaskAppContext as AppContext, TaskInfo, Vars};
 
 pub struct MediaCleanupTask;
 
@@ -66,7 +64,7 @@ async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
     let records = MediaEntity::find()
         .all(&ctx.db)
         .await
-        .map_err(|e| loco_rs::Error::Message(e.to_string()))?;
+        .map_err(|e| Error::Message(e.to_string()))?;
 
     let total = records.len();
     let mut removed = 0usize;

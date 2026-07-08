@@ -4,8 +4,9 @@ use axum::Extension;
 use axum::Router as AxumRouter;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
-use loco_rs::app::AppContext;
 use rustok_api::HostRuntimeContext;
+
+pub type AppRouterHostContext = loco_rs::app::AppContext;
 
 #[cfg(feature = "embed-admin")]
 #[allow(unused_imports)]
@@ -123,7 +124,7 @@ pub fn mount_application_shell(
 
 pub fn compose_application_router(
     router: AxumRouter,
-    ctx: &AppContext,
+    ctx: &AppRouterHostContext,
     runtime: AppRuntimeBootstrap,
     rustok_settings: &RustokSettings,
 ) -> AxumRouter {

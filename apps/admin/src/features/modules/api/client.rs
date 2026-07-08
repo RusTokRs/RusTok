@@ -14,7 +14,7 @@ use crate::entities::module::{
 };
 use crate::shared::api::{map_server_fn_error, request, ApiError};
 
-use super::server::*;
+use super::native_server_adapter::*;
 use super::types::*;
 
 fn selected_transport_path() -> UiTransportPath {

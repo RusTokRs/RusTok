@@ -177,6 +177,10 @@ requireNotContains('apps/server/src/services/module_event_dispatcher.rs', 'loco_
 requireNotContains('apps/server/src/services/email.rs', 'AppContext', 'email service factory does not depend on Loco AppContext');
 requireContains('apps/server/src/services/email.rs', 'ServerRuntimeContext', 'email service factory consumes server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'pub fn module_runtime_extensions_from_ctx', 'module runtime extensions helper is owned by app runtime');
+requireContains('apps/server/src/services/app_runtime.rs', 'pub type AppRuntimeHostContext = loco_rs::app::AppContext;', 'app runtime exposes a local host AppContext bridge');
+requireNotContains('apps/server/src/services/app_runtime.rs', 'use loco_rs::app::AppContext', 'app runtime does not import Loco AppContext directly');
+requireContains('apps/server/src/auth.rs', 'pub type AuthHostContext = loco_rs::app::AppContext;', 'auth config exposes a local host AppContext bridge');
+requireNotContains('apps/server/src/auth.rs', 'use loco_rs::app::AppContext', 'auth config does not import Loco AppContext directly');
 requireContains('apps/server/src/services/app_runtime.rs', 'ctx: &ServerRuntimeContext', 'app runtime helpers consume server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'init_storage(ctx: &ServerRuntimeContext)', 'storage bootstrap helper consumes server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'init_marketplace_catalog(ctx: &ServerRuntimeContext)', 'marketplace catalog bootstrap helper consumes server runtime context');
@@ -388,8 +392,12 @@ requireContains('apps/server/src/controllers/marketplace_registry.rs', 'http_err
 requireContains('apps/server/src/controllers/marketplace_registry.rs', 'http_error(HttpError::new', 'marketplace registry controller maps conflict errors through rustok-web HTTP boundary');
 requireNotContains('apps/server/src/controllers/installer.rs', 'ErrorDetail', 'installer controller does not build Loco error details directly');
 requireContains('apps/server/src/controllers/installer.rs', 'http_error(HttpError::', 'installer controller maps errors through rustok-web HTTP boundary');
+requireContains('apps/server/src/services/app_router.rs', 'pub type AppRouterHostContext = loco_rs::app::AppContext;', 'app router exposes a local host AppContext bridge');
+requireNotContains('apps/server/src/services/app_router.rs', 'use loco_rs::app::AppContext', 'app router does not import Loco AppContext directly');
+requireNotContains('apps/server/src/app.rs', 'loco_rs::Error::Message', 'server app maps host bootstrap errors through the server error bridge');
+requireContains('apps/server/src/app.rs', 'return Err(Error::Message(format!', 'server app production-secret guard uses the server error bridge');
 requireNotContains('apps/server/src/app.rs', 'controller::AppRoutes', 'server app imports AppRoutes through the route isolation layer');
-requireContains('apps/server/src/app.rs', 'crate::routes::AppRoutes', 'server app uses the route isolation layer for AppRoutes');
+requireContains('apps/server/src/app.rs', 'use crate::routes::{self, AppRoutes, Routes};', 'server app uses the route isolation layer for AppRoutes');
 requireNotContains('apps/server/src/app.rs', 'AppRoutes::with_default_routes', 'server app creates routes through the route isolation helper');
 requireNotContains('apps/server/src/app.rs', '.add_route(', 'server app mounts routes through the route isolation helper');
 requireContains('apps/server/src/app.rs', 'routes::default_app_routes()', 'server app uses the route isolation helper for default routes');
@@ -398,6 +406,23 @@ requireNotContains('apps/server/build.rs', 'loco_rs::controller::AppRoutes', 'ge
 requireContains('apps/server/build.rs', 'crate::routes::AppRoutes', 'generated optional route composition references the route isolation layer');
 requireNotContains('apps/server/build.rs', '.add_route(', 'generated optional route composition mounts through the route isolation helper');
 requireContains('apps/server/build.rs', 'crate::routes::mount_route', 'generated optional route composition uses the route isolation helper');
+requireContains('apps/server/src/tasks/mod.rs', 'pub type TaskAppContext = loco_rs::app::AppContext;', 'server tasks expose a local task AppContext bridge');
+requireContains('apps/server/src/tasks/mod.rs', 'pub use loco_rs::task::{Task, TaskInfo, Tasks, Vars};', 'server tasks expose a local Loco task bridge');
+requireContains('apps/server/src/seeds/mod.rs', 'pub type SeedAppContext = loco_rs::app::AppContext;', 'server seeds expose a local seed AppContext bridge');
+requireNotContains('apps/server/src/seeds/mod.rs', 'use loco_rs::app::AppContext', 'server seeds do not import Loco AppContext directly');
+requireNotContains('apps/server/src/seeds/mod.rs', 'loco_rs::Error', 'server seeds map errors through the server error bridge');
+requireContains('apps/server/src/seeds/mod.rs', 'SeedAppContext', 'server seeds use the local seed AppContext bridge');
+for (const rel of [
+  'apps/server/src/tasks/cleanup.rs',
+  'apps/server/src/tasks/create_oauth_app.rs',
+  'apps/server/src/tasks/db_baseline.rs',
+  'apps/server/src/tasks/media_cleanup.rs',
+  'apps/server/src/tasks/profiles_backfill.rs',
+  'apps/server/src/tasks/rebuild.rs',
+]) {
+  requireNotContains(rel, 'loco_rs::task', `${rel} imports task contracts through the server task bridge`);
+  requireContains(rel, 'crate::tasks::{', `${rel} uses the server task bridge`);
+}
 for (const rel of [
   'apps/server/src/controllers/admin_events.rs',
   'apps/server/src/controllers/auth.rs',

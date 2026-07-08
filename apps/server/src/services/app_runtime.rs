@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use loco_rs::app::AppContext;
-
 use crate::error::{Error, Result};
 use rustok_core::ModuleRegistry;
+
+pub type AppRuntimeHostContext = loco_rs::app::AppContext;
 
 use crate::auth::{auth_config_from_ctx, AuthConfig};
 use crate::common::settings::{RustokSettings, SharedRustokSettings};
@@ -58,7 +58,7 @@ fn validate_compiled_surface_contract(
 }
 
 pub async fn bootstrap_app_runtime(
-    ctx: &AppContext,
+    ctx: &AppRuntimeHostContext,
     settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
     let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);

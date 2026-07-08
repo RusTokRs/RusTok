@@ -16,13 +16,14 @@ use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 use crate::model::{
-    CurrentTenant, PricingAdjustmentPreview, PricingAdminBootstrap, PricingChannelOption,
-    PricingDiscountDraft, PricingPriceDraft, PricingPriceListOption, PricingPriceListRuleDraft,
-    PricingPriceListScopeDraft, PricingProductDetail, PricingProductList,
+    PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
+    PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
+    PricingProductDetail, PricingProductList,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
-    PricingEffectivePrice, PricingProductListItem, PricingProductTranslation, PricingVariant,
+    CurrentTenant, PricingChannelOption, PricingEffectivePrice, PricingProductListItem,
+    PricingProductTranslation, PricingVariant,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

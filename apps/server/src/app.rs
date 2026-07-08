@@ -260,14 +260,14 @@ fn check_production_secrets(ctx: &AppContext) -> Result<()> {
             .unwrap_or("");
 
         if let Some(fragment) = known_dev_jwt_fragment(jwt_secret) {
-            return Err(loco_rs::Error::Message(format!(
+            return Err(Error::Message(format!(
                 "FATAL: JWT secret contains a known development value (\"{fragment}\"). \
                  Set a strong, random secret in your production configuration."
             )));
         }
 
         if !jwt_secret.is_empty() && jwt_secret.len() < 32 {
-            return Err(loco_rs::Error::Message(
+            return Err(Error::Message(
                 "FATAL: JWT secret is too short (< 32 characters) for production use. \
                  Generate a cryptographically random secret of at least 32 characters."
                     .to_string(),
@@ -275,7 +275,7 @@ fn check_production_secrets(ctx: &AppContext) -> Result<()> {
         }
 
         if let Some(pattern) = sample_database_credentials_pattern(&ctx.config.database.uri) {
-            return Err(loco_rs::Error::Message(format!(
+            return Err(Error::Message(format!(
                 "FATAL: database URI matches known sample credentials ({pattern}). \
                  Set production database credentials before starting the release build."
             )));
@@ -283,7 +283,7 @@ fn check_production_secrets(ctx: &AppContext) -> Result<()> {
 
         if let Some((variable, password)) = configured_superadmin_password() {
             if let Some(sample) = known_sample_superadmin_password(&password) {
-                return Err(loco_rs::Error::Message(format!(
+                return Err(Error::Message(format!(
                     "FATAL: env var {variable} contains sample superadmin password \"{sample}\". \
                      Set a unique secret before starting the release build."
                 )));

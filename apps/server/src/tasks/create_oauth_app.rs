@@ -1,8 +1,7 @@
 use async_trait::async_trait;
-use loco_rs::app::AppContext;
-use loco_rs::task::{Task, Vars};
 
 use crate::error::{Error, Result};
+use crate::tasks::{Task, TaskAppContext as AppContext, TaskInfo, Vars};
 use tracing::info;
 
 use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
@@ -11,8 +10,8 @@ pub struct CreateOAuthAppTask;
 
 #[async_trait]
 impl Task for CreateOAuthAppTask {
-    fn task(&self) -> loco_rs::task::TaskInfo {
-        loco_rs::task::TaskInfo {
+    fn task(&self) -> TaskInfo {
+        TaskInfo {
             name: "create_oauth_app".to_string(),
             detail: "Create a new OAuth application (e.g., for local development)".to_string(),
         }

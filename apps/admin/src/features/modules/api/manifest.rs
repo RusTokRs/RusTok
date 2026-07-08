@@ -11,7 +11,7 @@ use crate::entities::module::model::{
 use crate::entities::module::MarketplaceModule;
 
 #[cfg(feature = "ssr")]
-use super::server::*;
+use super::native_server_adapter::*;
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]

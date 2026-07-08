@@ -4,12 +4,9 @@
 //! Run with: `cargo loco task --name cleanup --args "sessions"`
 
 use crate::error::{Error, Result};
+use crate::tasks::{Task, TaskAppContext as AppContext, TaskInfo, Vars};
 use async_trait::async_trait;
 use chrono::Utc;
-use loco_rs::{
-    app::AppContext,
-    task::{Task, TaskInfo, Vars},
-};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::json;
 

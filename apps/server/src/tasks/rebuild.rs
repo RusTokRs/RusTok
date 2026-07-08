@@ -1,13 +1,10 @@
 use async_trait::async_trait;
-use loco_rs::{
-    app::AppContext,
-    task::{Task, TaskInfo, Vars},
-    Error, Result,
-};
 use uuid::Uuid;
 
+use crate::error::{Error, Result};
 use crate::services::build_executor::BuildExecutionService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::tasks::{Task, TaskAppContext as AppContext, TaskInfo, Vars};
 
 pub struct RebuildTask;
 

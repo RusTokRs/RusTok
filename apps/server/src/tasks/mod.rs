@@ -3,7 +3,8 @@
 //! Background tasks for maintenance and operations.
 //! Run with: `cargo loco task --name <task_name>`
 
-use loco_rs::task::Tasks;
+pub type TaskAppContext = loco_rs::app::AppContext;
+pub use loco_rs::task::{Task, TaskInfo, Tasks, Vars};
 
 mod cleanup;
 mod create_oauth_app;

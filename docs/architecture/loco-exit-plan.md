@@ -75,13 +75,13 @@ Current classified inventory baseline after the `rustok-ai-admin` native transpo
 
 | Category | Count | Practical Meaning |
 |---|---:|---|
-| `host_runtime` | 44 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
-| `module_ui_adapter` | 88 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
+| `host_runtime` | 38 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
+| `module_ui_adapter` | 90 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
 | `module_controller` | 35 | Mostly controller route/state adapters and remaining Loco controller API usage after handler runtime narrowing. |
-| `server_task` / `server_seed` / `server_schedule` | 22 | Maintenance flows that belong in `rustok-cli`, not the HTTP server binary. |
+| `server_task` / `server_seed` / `server_schedule` | 11 | Maintenance flows that belong in `rustok-cli`, not the HTTP server binary; task and seed framework imports are now isolated behind local server bridges. |
 | `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
 | `dependency_manifest` / `lockfile` | 47 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
-| `verification_guard` / `docs` / `scaffold_template` | 392 | Guardrails, historical docs and generated templates to update/archive last. |
+| `verification_guard` / `docs` / `scaffold_template` | 406 | Guardrails, historical docs and generated templates to update/archive last. |
 
 Approximate remaining effort:
 
@@ -255,6 +255,9 @@ Exit gate: inventory script passes, allowlist is fixed, new Loco imports without
 - [x] Migrate email service factory/password reset URL to `ServerRuntimeContext`; Loco mailer remains an explicit boundary handle.
 - [x] Migrate app runtime bootstrap helpers (`module_runtime_extensions_from_ctx`, storage, marketplace catalog, workflow cron shared setup) to `ServerRuntimeContext`; Loco-specific bootstrap remains a boundary adapter.
 - [x] Migrate rate-limit bootstrap and shared limiter registration to `ServerRuntimeContext`; Loco `AppContext` in `bootstrap_app_runtime` remains only for current Loco-boundary adapters.
+- [x] Isolate `app_runtime` and `app_router` Loco host context imports behind local host bridge aliases; the pure Axum bootstrap cutover still owns the actual removal of these aliases.
+- [x] Isolate auth config host context behind `crate::auth::AuthHostContext`; `auth.rs` no longer imports Loco `AppContext` directly or describes auth errors as direct Loco errors.
+- [x] Migrate `check_production_secrets` failures to `crate::error::Error::Message`; `app.rs` no longer constructs `loco_rs::Error::Message` directly.
 - [x] Migrate GraphQL schema assembly, shared/cache helpers and media storage fallback to `ServerRuntimeContext`; Loco host data remains only above, in the current app bootstrap/controller boundary.
 - [x] Remove Loco `AppContext` from `rustok-content-orchestration`: host builds `SharedContentOrchestrationService` from explicit DB/event bus handles, GraphQL receives it through schema data.
 - [x] Migrate Alloy runtime bootstrap, GraphQL resolvers and HTTP handlers to explicit runtime handles: host builds `SharedAlloyRuntime` via `alloy::build_alloy_runtime(DatabaseConnection)`, GraphQL reads this handle from schema-owned data, REST handlers receive `AlloyHttpRuntime`, and Loco remains only in the current route-state adapter until Phase 2/5.
@@ -344,6 +347,8 @@ Exit gate: production HTTP/GraphQL routes are assembled without `loco_rs::contro
 
 - [ ] Leave server binary responsible only for HTTP runtime startup/shutdown.
 - [x] Introduce `rustok-cli-core` for stable CLI capability/provider contracts.
+- [x] Isolate server task trait, task metadata, variables and task `AppContext` imports behind `apps/server/src/tasks/mod.rs`; concrete Loco task registration remains until the separate `rustok-cli` cutover.
+- [x] Isolate server seed `AppContext` and seed error mapping behind `apps/server/src/seeds/mod.rs`; concrete Loco seed execution remains until the separate `rustok-cli seed` cutover.
 - [ ] Introduce a separate CLI crate/binary (`crates/rustok-cli`, bin `rustok-cli`) for maintenance entrypoints.
 - [ ] Introduce explicit ops registry that aggregates command providers of the selected distribution from module manifests/generated registry.
 - [ ] Move module-specific commands to module-local `cli/` adapter packages, not to domain core and not to the central CLI crate.

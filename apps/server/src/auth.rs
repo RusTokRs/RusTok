@@ -4,17 +4,17 @@ pub use rustok_auth::{
     JwtAlgorithm, PasswordResetClaims,
 };
 
-use loco_rs::app::AppContext;
-
 use crate::error::{Error, Result};
 use serde::Deserialize;
 
+pub type AuthHostContext = loco_rs::app::AppContext;
+
 // ─── Loco bridge ─────────────────────────────────────────────────────
-// Thin wrappers that convert `rustok_auth::AuthError` → `loco_rs::Error`.
+// Thin wrappers that convert `rustok_auth::AuthError` to the server error bridge.
 // All server code imports from `crate::auth`, never directly from `rustok_auth`.
 
 /// Build `AuthConfig` from Loco's `AppContext`.
-pub fn auth_config_from_ctx(ctx: &AppContext) -> Result<AuthConfig> {
+pub fn auth_config_from_ctx(ctx: &AuthHostContext) -> Result<AuthConfig> {
     let auth = ctx
         .config
         .auth
@@ -151,7 +151,7 @@ pub fn hash_refresh_token(token: &str) -> String {
 
 // ─── Error conversion ────────────────────────────────────────────────
 
-/// Convert `AuthError` → `loco_rs::Error`.
+/// Convert `AuthError` to the server error bridge.
 pub fn auth_err(err: AuthError) -> Error {
     match err {
         AuthError::InvalidCredentials | AuthError::InvalidAccessToken => {

@@ -1,19 +1,16 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use loco_rs::{
-    app::AppContext,
-    task::{Task, TaskInfo, Vars},
-    Error, Result,
-};
 use rustok_events::DomainEvent;
 use rustok_profiles::{ProfileService, ProfileVisibility, ProfilesReader};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::error::{Error, Result};
 use crate::models::{tenants, users};
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::tasks::{Task, TaskAppContext as AppContext, TaskInfo, Vars};
 
 #[cfg(feature = "mod-customer")]
 use rustok_customer::customer;
@@ -341,8 +338,7 @@ fn customer_preferred_locale(_customer: Option<&()>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_flag_enabled, parse_visibility};
-    use loco_rs::task::Vars;
+    use super::{is_flag_enabled, parse_visibility, Vars};
     use rustok_profiles::ProfileVisibility;
 
     #[test]
