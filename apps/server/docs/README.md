@@ -25,7 +25,7 @@ Platform `Core` modules:
 - `rustok-tenant`
 - `rustok-rbac`
 
-Shared foundation / support crates:
+Shared foundation / support crates used by the backend platform:
 
 - `rustok-core`
 - `rustok-events`
@@ -36,9 +36,16 @@ Shared foundation / support crates:
 - `rustok-fba`
 - `rustok-cli-core`
 
-`rustok-api` remains the stable contract crate. Executable runtime helpers, Axum
-boundary helpers, FBA metadata and CLI provider contracts must live in the dedicated
-foundation crates above instead of accumulating in `apps/server` or expanding `rustok-api`.
+This is a foundation catalog, not a requirement that the production server binary depends on
+every listed crate. `apps/server` should depend only on the crates needed for its active
+runtime boundary. For example, Axum response mapping belongs to `rustok-web`, typed runtime
+helper extraction belongs to `rustok-runtime` when needed, FBA descriptors belong to
+`rustok-fba`, and CLI provider contracts belong to `rustok-cli-core` but command adapters
+must stay outside the production HTTP runtime.
+
+`rustok-api` remains the stable contract crate. Executable runtime helpers, Axum boundary
+helpers, FBA metadata and CLI provider contracts must live in the dedicated foundation
+crates above instead of accumulating in `apps/server` or expanding `rustok-api`.
 
 The tenant-toggle logic applies only to `Optional` modules. `Core` modules should not be treated as switchable by host configuration.
 

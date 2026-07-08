@@ -26,7 +26,10 @@ crates/rustok-<module>/
   Cargo.toml
   README.md
   rustok-module.toml
-  contracts/                         optional FBA/OpenAPI/GraphQL evidence
+  contracts/                         published FBA/OpenAPI/GraphQL evidence, no runtime code
+    fba-*.json                       provider/consumer evidence when the boundary is promoted
+    openapi*.json                    owner-owned REST contract artifacts, when published
+    graphql*.graphql                 owner-owned GraphQL contract artifacts, when published
   docs/
     README.md
     implementation-plan.md
@@ -41,10 +44,40 @@ crates/rustok-<module>/
     graphql/                         owner-owned GraphQL roots/DTOs when published
     rest/ or controllers/            owner-owned HTTP DTOs/handlers when published
     runtime.rs                       narrow module runtime state, if needed
+  admin/                             optional module-owned Leptos admin UI adapter package
+  storefront/                        optional module-owned Leptos storefront UI adapter package
+  cli/                               optional external CLI adapter package
+    Cargo.toml
+    src/
+      lib.rs                         command provider exports, no domain logic
+      commands.rs                    command request mapping and outcomes
 ```
 
 `apps/server` mounts and composes the module. It must not become the place where module
 queries, mutations, DTOs or business policies accumulate.
+
+The `cli/`, `admin/` and `storefront/` directories are ownership-local adapter packages.
+They sit next to the module so a large ecosystem of third-party modules can keep all of its
+adapters discoverable in one module folder. They are not part of the domain crate. A
+production server build must be able to include the module domain crate without linking the
+module CLI adapter.
+
+Use these placement rules:
+
+| Thing Being Added | Place It In |
+|---|---|
+| Domain entity, invariant, service, command object | `src/models.rs`, `src/entity/`, `src/services/` |
+| Cross-module stable backend port | `src/ports.rs` or `src/ports/` |
+| Domain event | `src/events.rs` or `src/events/` |
+| Module runtime handle bundle | `src/runtime.rs` |
+| GraphQL root/resolver/DTO owned by the module | `src/graphql/` |
+| REST handler/DTO owned by the module | `src/rest/` or `src/controllers/` |
+| OpenAPI/GraphQL/FBA evidence artifact | `contracts/` |
+| Module-local backend roadmap and FFA/FBA status | `docs/implementation-plan.md` |
+| Maintenance command provider | `cli/` adapter package |
+| Server route mounting only | `apps/server` |
+
+If a file starts mixing two rows from the table, split it before adding new behavior.
 
 ## `lib.rs` and Module Wiring
 
@@ -70,6 +103,10 @@ Use the narrowest runtime contract that fits the boundary:
 Do not pass full host contexts into domain services. Convert request/runtime state at the
 adapter boundary and pass explicit handles into services.
 
+Use `rustok-runtime` only for executable runtime helper behavior. Do not move request DTOs,
+port DTOs, FBA descriptors, HTTP response mapping or domain errors into it. If a helper is
+used only once in a module adapter, keep it local until the second real consumer appears.
+
 ## HTTP Adapters
 
 HTTP handlers should be thin:
@@ -94,6 +131,10 @@ mounting adapter only; replacing it with `axum::Router` is a separate cutover.
 
 Use `rustok-web::HttpError` / `HttpResult` only for HTTP boundary errors. Domain errors
 belong to the module and should be mapped at the adapter boundary.
+
+`rustok-web` is the replacement direction for Loco response/error helpers, not a new
+business policy layer. It may format JSON, status codes and HTTP envelopes. It must not
+decide inventory, checkout, RBAC, tenant lifecycle or other module behavior.
 
 ## GraphQL and Server Functions
 
@@ -124,18 +165,32 @@ contract. A port must define:
 Use `rustok-fba` for descriptors and topology metadata. Do not invent local JSON shapes that
 duplicate `rustok-fba` concepts.
 
+Keep FBA artifacts close to the module:
+
+- source descriptors live in the module crate;
+- generated/static evidence lives in `contracts/`;
+- status and verification notes live in `docs/implementation-plan.md`;
+- central status lives in `docs/modules/registry.md`.
+
+Do not promote FBA status just because a descriptor type exists. Promotion requires an
+actual provider/consumer boundary, error mapping, fallback policy and verification evidence.
+
 ## CLI Adapters
 
 If a module needs operational commands:
 
 - keep domain APIs in the module crate;
-- place command adapter code in a separate module-local `cli/` package or future integration
-  package;
+- place command adapter code in a separate module-local `cli/` package;
 - depend on `rustok-cli-core` from the adapter, not from domain core;
 - return machine-readable `CommandOutcome` values;
 - keep stdout, prompts, `clap` and process exit behavior outside domain services.
 
 The HTTP server must not link module command providers into the production runtime.
+
+The future platform CLI may aggregate many module-local command providers through an
+explicit registry. It should discover or select command adapters; it should not require all
+third-party module commands to be implemented inside one central crate. This preserves module
+isolation while keeping executable tooling outside domain code.
 
 ## Data and Migrations
 
@@ -162,4 +217,3 @@ When backend contracts change, update in the same change:
 
 Documentation must describe the actual code state, including temporary Loco inventory that
 still exists.
-

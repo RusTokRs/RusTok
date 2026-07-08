@@ -1,8 +1,10 @@
+mod native_server_adapter;
 pub mod queries;
 
 #[cfg(target_arch = "wasm32")]
 use gloo_storage::Storage as GlooStorage;
-use leptos::prelude::*;
+#[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
+use leptos::prelude::ServerFnError;
 #[cfg(not(any(
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
     feature = "ssr"
@@ -104,7 +106,9 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
     feature = "ssr"
 ))]
-async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, GraphqlHttpError> {
+pub(super) async fn execute_server_graphql(
+    request: ServerGraphqlRequest,
+) -> Result<Value, GraphqlHttpError> {
     let mut graphql_request = GraphqlRequest::new(request.query, Some(request.variables));
 
     if let Some(sha256_hash) = request.persisted_query_sha256.as_deref() {
@@ -131,7 +135,9 @@ async fn execute_admin_graphql(request: ServerGraphqlRequest) -> Result<Value, A
 
     #[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
     {
-        admin_graphql(request).await.map_err(map_server_fn_error)
+        native_server_adapter::admin_graphql(request)
+            .await
+            .map_err(map_server_fn_error)
     }
 }
 
@@ -588,13 +594,6 @@ pub async fn extract_http_error(response: reqwest::Response) -> String {
     }
 
     trimmed.to_string()
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/graphql")]
-async fn admin_graphql(request: ServerGraphqlRequest) -> Result<Value, ServerFnError> {
-    execute_server_graphql(request)
-        .await
-        .map_err(|err| ServerFnError::ServerError(err.to_string()))
 }
 
 pub async fn request<V, T>(

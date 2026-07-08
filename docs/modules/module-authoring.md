@@ -172,6 +172,21 @@ Foundation ownership is fixed:
 
 Do not expand `rustok-api` or `apps/server` just because a backend helper is needed.
 
+The module backend layout is fixed as well:
+
+- domain/application code goes in `crates/rustok-<module>/src`;
+- public contract and FBA evidence artifacts go in module-local `contracts/`;
+- local roadmap and FFA/FBA evidence go in module-local `docs/`;
+- operational command adapters go in module-local `cli/` and depend on
+  `rustok-cli-core`;
+- `admin/` and `storefront/` remain optional module-owned UI adapter packages;
+- `apps/server` only mounts routes, assembles runtime state and composes owner-owned
+  entrypoints.
+
+Do not put CLI adapters into the domain crate, do not put module business logic into
+`apps/server`, and do not collect every third-party module command in one central crate. The
+future platform CLI aggregates module-local providers through an explicit registry.
+
 ### 3. Data and Migrations Follow the Common Storage Contract
 
 You cannot invent your own storage schema for text, locale and identity.

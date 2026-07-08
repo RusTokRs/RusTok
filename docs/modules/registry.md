@@ -30,6 +30,16 @@ For components listed in this registry, a unified documentation standard applies
 
 The central registry must not duplicate these local documents. Its purpose is to provide the platform map and direct the reader to the correct component.
 
+For backend boundary changes, use the backend module guides before changing a row:
+
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
+- [Backend Module Verification Guide](../backend/module-backend-verification.md)
+
+The registry records ownership and readiness. It does not move implementation ownership to
+`apps/server`: module services, ports, GraphQL/REST DTOs and command adapters remain in the
+owning module structure described by the backend guides.
+
 ## Ownership-review Policy
 
 For changes to this registry, a mandatory ownership-review path applies:

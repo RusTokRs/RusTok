@@ -74,6 +74,10 @@ These crates provide foundation or shared contracts for platform modules and the
 
 - `rustok-core`
 - `rustok-api`
+- `rustok-runtime`
+- `rustok-web`
+- `rustok-fba`
+- `rustok-cli-core`
 - `rustok-events`
 - `rustok-storage`
 - `rustok-test-utils`
@@ -115,6 +119,27 @@ The same rule applies to transport types: a host can combine owner-provided
 GraphQL roots through `MergedObject`, but concrete connection types, resolvers and DTOs
 remain in the owner/support crate. Cross-module integration surface belongs to a separate
 support crate, not to `apps/server`.
+
+Backend module implementation must follow the backend module guides:
+
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
+- [Backend Module Verification Guide](../backend/module-backend-verification.md)
+
+The key foundation split is stable: `rustok-api` owns API contracts,
+`rustok-runtime` owns executable runtime helpers, `rustok-web` owns Axum boundary helpers,
+`rustok-fba` owns FBA metadata, and `rustok-cli-core` owns CLI provider contracts.
+
+Backend module file ownership follows the same split:
+
+- `crates/rustok-<module>/src` owns domain/application code, services, ports, events,
+  migrations and owner-owned GraphQL/REST entrypoints;
+- `crates/rustok-<module>/contracts` owns published OpenAPI/GraphQL/FBA evidence artifacts;
+- `crates/rustok-<module>/docs` owns local implementation plan and readiness evidence;
+- `crates/rustok-<module>/cli` owns optional external command adapters and uses
+  `rustok-cli-core`;
+- `apps/server` mounts and composes owner-owned entrypoints, but must not become the owner
+  of module services, DTOs, command providers or business policy.
 
 ## UI Composition Policy
 
@@ -181,6 +206,8 @@ assembled platform composition. It must not:
 - [Module Documentation Index](../modules/_index.md)
 - [`rustok-module.toml` Contract](../modules/manifest.md)
 - [Module Platform Crate Registry](../modules/crates-registry.md)
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
 - [Module Documentation Template](../templates/module_contract.md)
 
 ## Runtime Control Plane and Lifecycle

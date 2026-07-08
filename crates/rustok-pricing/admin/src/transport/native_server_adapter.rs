@@ -16,9 +16,9 @@ use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 use crate::model::{
-    PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
-    PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
-    PricingProductDetail, PricingProductList,
+    CurrentTenant, PricingAdjustmentPreview, PricingAdminBootstrap, PricingChannelOption,
+    PricingDiscountDraft, PricingPriceDraft, PricingPriceListOption, PricingPriceListRuleDraft,
+    PricingPriceListScopeDraft, PricingProductDetail, PricingProductList,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{

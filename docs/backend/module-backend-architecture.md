@@ -23,6 +23,29 @@ The host composes modules; it does not become the owner of module business logic
 that needs a backend capability exposes typed services, ports, events or owner-owned
 transport roots from its crate.
 
+## Backend Module Physical Shape
+
+A module backend is a small hexagonal package with optional adapter packages around it:
+
+```text
+crates/rustok-<module>/
+  src/                 domain, application services, ports, events, migrations
+  contracts/           published OpenAPI/GraphQL/FBA evidence, not executable code
+  docs/                local contract and implementation plan
+  admin/               optional module-owned Leptos admin UI adapter package
+  storefront/          optional module-owned Leptos storefront UI adapter package
+  cli/                 optional external maintenance-command adapter package
+```
+
+Only `src/` is the backend domain/application crate. `admin/` and `storefront/` are UI
+adapter packages. `cli/` is an external operations adapter package. These packages may live
+inside the module directory for ownership and discoverability, but they are not part of the
+domain core and must not be required by the production HTTP server.
+
+Generated or curated evidence belongs in `contracts/`; local runtime plans belong in
+`docs/implementation-plan.md`; platform-wide rules belong in `docs/backend/*` or
+`docs/architecture/*`. Do not hide executable adapters in `contracts/` or `docs/`.
+
 ## Foundation Crate Responsibilities
 
 Use the new backend foundation crates by purpose:
@@ -40,6 +63,29 @@ Use the new backend foundation crates by purpose:
 
 If code is repeated in two or more backend modules or hosts, decide whether it belongs in
 one of these crates before adding another local helper.
+
+## Dependency Placement Matrix
+
+Use this table before adding a dependency:
+
+| Code Location | May Depend On | Must Not Depend On |
+|---|---|---|
+| `crates/rustok-<module>/src` | `rustok-core`, `rustok-api`, domain support crates, `rustok-fba` only when publishing descriptors | `apps/server`, `loco_rs`, `rustok-cli-core` for command execution, UI crates, `clap` |
+| `crates/rustok-<module>/src/graphql` | owner services, `rustok-api`, GraphQL crates already used by the module | `apps/server` resolver DTOs, Loco context, duplicated service logic |
+| `crates/rustok-<module>/src/rest` or `controllers` | owner services, `rustok-web`, narrow module runtime structs | `loco_rs::controller::format`, `AppContext`, host-only controllers |
+| `crates/rustok-<module>/src/runtime.rs` | explicit handles, `rustok-runtime` helpers when repeated lookup is needed | service locator patterns, global host context |
+| `crates/rustok-<module>/contracts` | schema/evidence artifacts and registry JSON | executable Rust code, command scripts, runtime wiring |
+| `crates/rustok-<module>/cli` | module domain crate, `rustok-cli-core` | production server runtime, UI crates, direct stdout/exit policy in domain services |
+| `apps/server` | module public entrypoints, `rustok-runtime`, `rustok-web` | module business rules, module-owned DTO ownership, CLI adapters |
+
+When the table is not enough, prefer the narrowest crate that matches the boundary. Shared
+stable contracts go to `rustok-api`; executable runtime helpers go to `rustok-runtime`; Axum
+response/error helpers go to `rustok-web`; FBA metadata goes to `rustok-fba`; CLI provider
+contracts go to `rustok-cli-core`.
+
+`rustok-cli-core` is intentionally not a domain dependency by default. A module's domain
+crate exposes typed services; the module-local `cli/` package adapts those services to
+command descriptors and outcomes.
 
 ## Runtime Context
 
@@ -115,4 +161,3 @@ binary with command execution code.
 - CLI logic in domain crates or production server runtime.
 - Compatibility wrappers, deprecated aliases or old/new dual paths unless explicitly approved
   for an external staged migration with an owner and removal deadline.
-

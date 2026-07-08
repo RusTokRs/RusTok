@@ -113,6 +113,10 @@ Part of Loco's built-in subsystems have been replaced with our own modules. **Do
 - Maintenance/CLI flows of the target state go through a separate `rustok-cli` and module-local `cli/` adapters, not through `cargo loco task` and not through the production server binary.
 - New backend helpers must use the dedicated foundation crates: `rustok-runtime` for executable runtime access helpers, `rustok-web` for Axum response/error/extractor helpers, `rustok-fba` for FBA metadata, and `rustok-cli-core` for CLI provider contracts. Do not put these concerns back into `rustok-api` or `apps/server`.
 - New HTTP response formatting must use `rustok_web::json_response` or another `rustok-web` helper. Do not add new `loco_rs::controller::format` usage.
+- Backend module layout is fixed: domain/application code in `crates/rustok-<module>/src`,
+  contract/evidence artifacts in `contracts/`, local plan/evidence in `docs/`, optional
+  command adapters in module-local `cli/`, and route/runtime composition in `apps/server`.
+  The production HTTP server must not link module CLI adapters.
 
 **Loco Queue (Sidekiq/Redis) is not connected and not needed.** Reasons:
 - Background workers run as direct tokio tasks: outbox relay (`OutboxRelayWorkerHandle`), build worker (`BuildWorkerHandle`), index/search dispatchers, workflow cron.
@@ -218,6 +222,9 @@ Check only errors in changed files; errors in `services/app_router.rs` / `AdminA
 - For Leptos UI, first design a local API layer `view -> local api -> #[server]`, and keep GraphQL as a parallel selected-path transport.
 - For optional-wave module-owned Leptos admin surfaces, the current baseline is: `rustok-media-admin` works on the build-profile-selected native `#[server]` model with GraphQL selected path for `list/detail/translations/delete/usage` and with a preserved REST primary upload path; `rustok-comments-admin` works on the native-only `#[server]` model because no owner GraphQL/REST transport surface exists for `comments` admin.
 - For backend modules, follow `docs/backend/module-backend-implementation.md`: domain logic stays in the owner module, host wiring stays in `apps/server`, reusable runtime/web/FBA/CLI contracts go into the dedicated foundation crates.
+- Keep module-local `cli/` as an external adapter package: it may depend on the module
+  domain crate and `rustok-cli-core`, but the domain crate and production server runtime
+  must not depend on CLI parsing, stdout or process exit behavior.
 - `rustok-content` remains a shared helper/orchestration boundary without its own operator-facing UI.
 - Commerce split crates (`cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`) do not receive separate admin UIs in this wave and continue to live under the aggregate surface `rustok-commerce-admin`.
 

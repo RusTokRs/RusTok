@@ -75,7 +75,10 @@ REST must not duplicate UI-facing GraphQL without a clear reason.
 If a module publishes HTTP routes or UI surfaces:
 
 - routing is declared through `rustok-module.toml`
-- the host application only mounts the surface
+- owner-owned REST handlers/DTOs live in `crates/rustok-<module>/src/rest` or
+  `crates/rustok-<module>/src/controllers`;
+- owner-owned GraphQL roots/DTOs live in `crates/rustok-<module>/src/graphql`;
+- the host application only mounts the surface and provides runtime/request context;
 - the source of truth for wiring lives in the manifest and local docs of the module
 
 The presence of a controller or UI sub-crate without manifest wiring is not considered a complete

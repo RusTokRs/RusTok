@@ -42,6 +42,22 @@ RusToK uses a hybrid transport layer:
 - host applications and UI packages must not become canonical owner of API logic
 - module-owned HTTP/GraphQL surfaces must align with manifest wiring and local docs
 
+## API Adapter Placement
+
+API adapters follow the backend module layout:
+
+- owner services, ports, GraphQL roots and REST DTO/handlers live in
+  `crates/rustok-<module>/src`;
+- published OpenAPI/GraphQL/FBA evidence artifacts live in module-local `contracts/`;
+- `apps/server` mounts owner-owned routes, composes schema roots and provides runtime state;
+- `apps/server` must not become the owner of module DTOs, resolver policy, command
+  providers or business rules;
+- maintenance/API-adjacent command flows live in module-local `cli/` adapters over
+  `rustok-cli-core`, not in HTTP handlers.
+
+Use `rustok-web` for Axum response/error mapping and `rustok-runtime` only for reusable
+runtime helper access. Stable request/port contracts stay in `rustok-api`.
+
 ## GraphQL Surface
 
 GraphQL remains the canonical UI-facing contract for:

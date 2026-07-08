@@ -37,6 +37,21 @@ For FFA/FBA status changes, update both:
 - module-local `docs/implementation-plan.md`;
 - central readiness board in `docs/modules/registry.md`.
 
+For backend layout changes, also inspect the physical placement:
+
+```bash
+rg -n "clap|std::process::exit|println!|eprintln!" crates/rustok-MODULE/src -g "*.rs"
+rg -n "apps::server|loco_rs::app::AppContext|loco_rs::controller::format" crates/rustok-MODULE -g "*.rs"
+```
+
+Expected result:
+
+- domain/application code is in `src/`;
+- evidence artifacts are in `contracts/`;
+- local FFA/FBA status is in `docs/implementation-plan.md`;
+- CLI command adapters, when present, are in module-local `cli/`;
+- `apps/server` only mounts and composes owner-owned entrypoints.
+
 ## Targeted Rust Checks
 
 Use targeted checks when code changed:
@@ -90,4 +105,3 @@ rg -n "rustok-web|rustok-runtime|rustok-fba|rustok-cli-core|loco_rs|cargo loco" 
 
 Confirm that active docs point to the target architecture and old Loco notes are marked as
 deprecated or historical inventory.
-
