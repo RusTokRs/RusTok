@@ -39,74 +39,74 @@ where
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct DashboardStatsResponse {
+pub(super) struct DashboardStatsResponse {
     #[serde(rename = "dashboardStats")]
-    dashboard_stats: Option<DashboardStats>,
+    pub(super) dashboard_stats: Option<DashboardStats>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct DashboardStats {
+pub(super) struct DashboardStats {
     #[serde(rename = "totalUsers")]
-    total_users: i64,
+    pub(super) total_users: i64,
     #[serde(rename = "totalPosts")]
-    total_posts: i64,
+    pub(super) total_posts: i64,
     #[serde(rename = "totalOrders")]
-    total_orders: i64,
+    pub(super) total_orders: i64,
     #[serde(rename = "totalRevenue")]
-    total_revenue: i64,
+    pub(super) total_revenue: i64,
     #[serde(rename = "usersChange")]
-    users_change: f64,
+    pub(super) users_change: f64,
     #[serde(rename = "postsChange")]
-    posts_change: f64,
+    pub(super) posts_change: f64,
     #[serde(rename = "ordersChange")]
-    orders_change: f64,
+    pub(super) orders_change: f64,
     #[serde(rename = "revenueChange")]
-    revenue_change: f64,
+    pub(super) revenue_change: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct RecentActivityResponse {
+pub(super) struct RecentActivityResponse {
     #[serde(rename = "recentActivity")]
-    recent_activity: Vec<ActivityItem>,
+    pub(super) recent_activity: Vec<ActivityItem>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct ActivityItem {
-    id: String,
+pub(super) struct ActivityItem {
+    pub(super) id: String,
     #[serde(rename = "type")]
-    r#type: String,
-    description: String,
-    timestamp: String,
-    user: Option<ActivityUser>,
+    pub(super) r#type: String,
+    pub(super) description: String,
+    pub(super) timestamp: String,
+    pub(super) user: Option<ActivityUser>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct ActivityUser {
-    id: String,
-    name: Option<String>,
+pub(super) struct ActivityUser {
+    pub(super) id: String,
+    pub(super) name: Option<String>,
 }
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Copy, Default)]
-struct OrderStatsSnapshot {
-    total_orders: i64,
-    total_revenue: i64,
-    current_orders: i64,
-    previous_orders: i64,
-    current_revenue: i64,
-    previous_revenue: i64,
+pub(super) struct OrderStatsSnapshot {
+    pub(super) total_orders: i64,
+    pub(super) total_revenue: i64,
+    pub(super) current_orders: i64,
+    pub(super) previous_orders: i64,
+    pub(super) current_revenue: i64,
+    pub(super) previous_revenue: i64,
 }
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Copy, Default)]
-struct PeriodCountSnapshot {
-    total_count: i64,
-    current_count: i64,
-    previous_count: i64,
+pub(super) struct PeriodCountSnapshot {
+    pub(super) total_count: i64,
+    pub(super) current_count: i64,
+    pub(super) previous_count: i64,
 }
 
 #[cfg(feature = "ssr")]
-fn server_error(message: impl Into<String>) -> ServerFnError {
+pub(super) fn server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError(message.into())
 }
 
@@ -136,7 +136,7 @@ async fn fetch_dashboard_stats(
     tenant_slug: Option<String>,
 ) -> Result<DashboardStatsResponse, String> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => dashboard_stats_native()
+        UiTransportPath::NativeServer => super::native_server_adapter::dashboard_stats_native()
             .await
             .map_err(|error| error.to_string()),
         UiTransportPath::Graphql => fetch_dashboard_stats_graphql(token, tenant_slug)
@@ -151,123 +151,14 @@ async fn fetch_recent_activity(
     limit: i64,
 ) -> Result<RecentActivityResponse, String> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => recent_activity_native(limit)
-            .await
-            .map_err(|error| error.to_string()),
+        UiTransportPath::NativeServer => {
+            super::native_server_adapter::recent_activity_native(limit)
+                .await
+                .map_err(|error| error.to_string())
+        }
         UiTransportPath::Graphql => fetch_recent_activity_graphql(token, tenant_slug, limit)
             .await
             .map_err(|error| error.to_string()),
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/dashboard-stats")]
-async fn dashboard_stats_native() -> Result<DashboardStatsResponse, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        let _auth = leptos_axum::extract::<rustok_api::AuthContext>()
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let app_ctx = expect_context::<loco_rs::app::AppContext>();
-
-        let now = Utc::now();
-        let current_period_start = now - Duration::days(30);
-        let previous_period_start = current_period_start - Duration::days(30);
-
-        let user_stats = load_period_count_snapshot(
-            &app_ctx.db,
-            "users",
-            tenant.id,
-            current_period_start,
-            previous_period_start,
-            None,
-            None,
-        )
-        .await
-        .map_err(|err| server_error(err.to_string()))?;
-
-        let post_stats = load_period_count_snapshot(
-            &app_ctx.db,
-            "nodes",
-            tenant.id,
-            current_period_start,
-            previous_period_start,
-            Some(match app_ctx.db.get_database_backend() {
-                DbBackend::Sqlite => " AND kind = ?4",
-                _ => " AND kind = $4",
-            }),
-            Some("post"),
-        )
-        .await
-        .map_err(|err| server_error(err.to_string()))?;
-
-        let order_stats = load_order_stats_snapshot(
-            &app_ctx.db,
-            tenant.id,
-            current_period_start,
-            previous_period_start,
-        )
-        .await
-        .map_err(|err| server_error(err.to_string()))?;
-
-        Ok(DashboardStatsResponse {
-            dashboard_stats: Some(DashboardStats {
-                total_users: user_stats.total_count,
-                total_posts: post_stats.total_count,
-                total_orders: order_stats.total_orders,
-                total_revenue: order_stats.total_revenue,
-                users_change: calculate_percent_change(
-                    user_stats.current_count,
-                    user_stats.previous_count,
-                ),
-                posts_change: calculate_percent_change(
-                    post_stats.current_count,
-                    post_stats.previous_count,
-                ),
-                orders_change: calculate_percent_change(
-                    order_stats.current_orders,
-                    order_stats.previous_orders,
-                ),
-                revenue_change: calculate_percent_change(
-                    order_stats.current_revenue,
-                    order_stats.previous_revenue,
-                ),
-            }),
-        })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "admin/dashboard-stats requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/recent-activity")]
-async fn recent_activity_native(_limit: i64) -> Result<RecentActivityResponse, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        let _auth = leptos_axum::extract::<rustok_api::AuthContext>()
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let app_ctx = expect_context::<loco_rs::app::AppContext>();
-
-        Ok(RecentActivityResponse {
-            recent_activity: load_recent_activity(&app_ctx.db, tenant.id, _limit.clamp(1, 50))
-                .await
-                .map_err(|err| server_error(err.to_string()))?,
-        })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "admin/recent-activity requires the `ssr` feature",
-        ))
     }
 }
 
@@ -497,7 +388,7 @@ fn format_time_ago(timestamp: &str) -> String {
 }
 
 #[cfg(feature = "ssr")]
-fn calculate_percent_change(current: i64, previous: i64) -> f64 {
+pub(super) fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     if previous == 0 {
         if current == 0 {
             0.0
@@ -510,7 +401,7 @@ fn calculate_percent_change(current: i64, previous: i64) -> f64 {
 }
 
 #[cfg(feature = "ssr")]
-async fn load_period_count_snapshot(
+pub(super) async fn load_period_count_snapshot(
     db: &sea_orm::DatabaseConnection,
     table: &str,
     tenant_id: uuid::Uuid,
@@ -583,7 +474,7 @@ async fn load_period_count_snapshot(
 }
 
 #[cfg(feature = "ssr")]
-async fn load_order_stats_snapshot(
+pub(super) async fn load_order_stats_snapshot(
     db: &sea_orm::DatabaseConnection,
     tenant_id: uuid::Uuid,
     current_period_start: chrono::DateTime<Utc>,
@@ -668,7 +559,7 @@ async fn load_order_stats_snapshot(
 }
 
 #[cfg(feature = "ssr")]
-async fn load_recent_activity(
+pub(super) async fn load_recent_activity(
     db: &sea_orm::DatabaseConnection,
     tenant_id: uuid::Uuid,
     limit: i64,

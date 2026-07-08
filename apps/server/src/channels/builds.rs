@@ -18,6 +18,7 @@ use serde::Serialize;
 use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
+use crate::routes::Routes;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::build_service::BuildEvent;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -177,9 +178,7 @@ async fn handle_socket(
 
 // ── Route registration ────────────────────────────────────────────────────────
 
-pub fn routes() -> loco_rs::controller::Routes {
+pub fn routes() -> Routes {
     use axum::routing::get;
-    loco_rs::controller::Routes::new()
-        .prefix("ws")
-        .add("/builds", get(ws_builds))
+    Routes::new().prefix("ws").add("/builds", get(ws_builds))
 }

@@ -4,12 +4,12 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use loco_rs::{controller::Routes, Result};
 use utoipa::openapi::OpenApi as OpenApiDoc;
 use utoipa::OpenApi;
 
 use crate::common::settings::RustokSettings;
-use crate::error::Error;
+use crate::error::{Error, Result};
+use crate::routes::Routes;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(OpenApi)]

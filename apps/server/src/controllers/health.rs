@@ -1,12 +1,12 @@
 //! Health check endpoints for K8s probes and module health aggregation
 
 use crate::error::Result;
+use crate::routes::Routes;
 use axum::extract::State;
 use axum::response::Response;
 use axum::routing::get;
 use axum::Extension;
 use chrono::Utc;
-use loco_rs::controller::Routes;
 use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};

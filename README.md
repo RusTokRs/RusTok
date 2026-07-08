@@ -379,7 +379,7 @@ backed by evidence:
 
 | Term | Meaning | Where to check current status |
 |---|---|---|
-| FFA | Fluid Frontend Architecture: module-owned UI split into framework-agnostic `core`, transport facade and explicit host UI adapters such as Leptos or Next.js. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
+| FFA | Fluid Frontend Architecture: module-owned UI split into framework-agnostic `core`, transport facade and explicit host UI adapters such as Leptos or Dioxus. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
 | FBA | Fluid Backend Architecture: module-owned backend boundary with typed ports, request context, errors, fallback/degraded modes and verification evidence. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
 
 ---

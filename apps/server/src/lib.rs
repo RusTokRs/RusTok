@@ -25,6 +25,7 @@ pub mod installer_cli;
 pub mod middleware;
 pub mod models;
 pub mod modules;
+pub mod routes;
 pub mod seeds;
 pub mod services;
 pub mod tasks;

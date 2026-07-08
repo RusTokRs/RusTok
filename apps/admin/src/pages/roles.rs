@@ -31,16 +31,16 @@ where
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct GraphqlRolesResponse {
-    roles: Vec<RoleInfo>,
+pub(super) struct GraphqlRolesResponse {
+    pub(super) roles: Vec<RoleInfo>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct RoleInfo {
-    slug: String,
+pub(super) struct RoleInfo {
+    pub(super) slug: String,
     #[serde(rename = "displayName")]
-    display_name: String,
-    permissions: Vec<String>,
+    pub(super) display_name: String,
+    pub(super) permissions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -60,7 +60,7 @@ async fn fetch_roles_graphql(
 }
 
 async fn fetch_roles_server() -> Result<GraphqlRolesResponse, ServerFnError> {
-    list_roles_native().await
+    super::native_server_adapter::list_roles_native().await
 }
 
 async fn fetch_roles(
@@ -328,60 +328,6 @@ fn group_permissions(permissions: &[String]) -> Vec<PermissionGroup> {
             PermissionGroup { name, permissions }
         })
         .collect()
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/list-roles")]
-async fn list_roles_native() -> Result<GraphqlRolesResponse, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos_axum::extract;
-        use rustok_api::Permission;
-        use rustok_api::{has_effective_permission, AuthContext};
-        use rustok_core::{Rbac, UserRole};
-
-        let auth = extract::<AuthContext>().await.map_err(ServerFnError::new)?;
-
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
-            return Err(ServerFnError::new("settings:read required to list roles"));
-        }
-
-        let roles = [
-            UserRole::SuperAdmin,
-            UserRole::Admin,
-            UserRole::Manager,
-            UserRole::Customer,
-        ]
-        .into_iter()
-        .map(|role| {
-            let mut permissions = Rbac::permissions_for_role(&role)
-                .iter()
-                .map(|permission| permission.to_string())
-                .collect::<Vec<_>>();
-            permissions.sort();
-
-            let display_name = match role {
-                UserRole::SuperAdmin => "Super Admin",
-                UserRole::Admin => "Admin",
-                UserRole::Manager => "Manager",
-                UserRole::Customer => "Customer",
-            };
-
-            RoleInfo {
-                slug: role.to_string(),
-                display_name: display_name.to_string(),
-                permissions,
-            }
-        })
-        .collect();
-
-        Ok(GraphqlRolesResponse { roles })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "admin/list-roles requires the `ssr` feature",
-        ))
-    }
 }
 
 #[component]

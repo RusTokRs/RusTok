@@ -344,7 +344,9 @@ requireContains('apps/server/src/controllers/graphql.rs', 'State(runtime_ctx): S
 requireContains('apps/server/src/controllers/graphql.rs', 'State(auth_runtime): State<ServerAuthRuntime>', 'GraphQL WebSocket controller extracts narrow auth state');
 requireNotContains('apps/server/src/controllers/users.rs', 'loco_rs::app::AppContext', 'users controller handlers do not consume Loco AppContext');
 requireNotContains('apps/server/src/controllers/users.rs', 'loco_rs::controller::format', 'users controller does not use Loco response formatting');
+requireNotContains('apps/server/src/controllers/users.rs', 'ErrorDetail', 'users controller does not build Loco error details directly');
 requireContains('apps/server/src/controllers/users.rs', 'rustok_web::json_response', 'users controller uses rustok-web JSON response helper');
+requireContains('apps/server/src/controllers/users.rs', 'http_error(rustok_web::HttpError::forbidden', 'users controller maps forbidden errors through rustok-web HTTP boundary');
 requireContains('apps/server/src/controllers/users.rs', 'State<ServerRuntimeContext>', 'users controller extracts neutral runtime state');
 requireNotContains('apps/server/src/controllers/metrics.rs', 'loco_rs::app::AppContext', 'metrics controller does not consume Loco AppContext');
 requireContains('apps/server/src/controllers/metrics.rs', 'State(ctx): State<ServerRuntimeContext>', 'metrics controller extracts neutral runtime state');
@@ -355,7 +357,9 @@ requireContains('apps/server/src/controllers/health.rs', 'rustok_web::json_respo
 requireContains('apps/server/src/controllers/health.rs', 'State(ctx): State<ServerRuntimeContext>', 'health controller extracts neutral runtime state');
 requireContains('apps/server/src/controllers/health.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'health readiness extracts narrow email runtime state');
 requireNotContains('apps/server/src/controllers/channel.rs', 'loco_rs::controller::format', 'channel controller does not use Loco response formatting');
+requireNotContains('apps/server/src/controllers/channel.rs', 'ErrorDetail', 'channel controller does not build Loco error details directly');
 requireContains('apps/server/src/controllers/channel.rs', 'rustok_web::json_response', 'channel controller uses rustok-web JSON response helper');
+requireContains('apps/server/src/controllers/channel.rs', 'http_error(rustok_web::HttpError::forbidden', 'channel controller maps forbidden errors through rustok-web HTTP boundary');
 for (const rel of [
   'apps/server/src/controllers/channel.rs',
   'apps/server/src/controllers/flex.rs',
@@ -379,6 +383,41 @@ requireContains('apps/server/src/controllers/oauth.rs', 'State(ctx): State<Serve
 requireNotContains('apps/server/src/controllers/marketplace_registry.rs', 'loco_rs::app::AppContext', 'marketplace registry controller does not consume Loco AppContext');
 requireContains('apps/server/src/controllers/marketplace_registry.rs', 'State(ctx): State<ServerRuntimeContext>', 'marketplace registry controller extracts neutral runtime state');
 requireContains('apps/server/src/controllers/marketplace_registry.rs', 'shared_get::<rustok_storage::StorageService>()', 'marketplace registry artifact paths read storage through neutral runtime state');
+requireNotContains('apps/server/src/controllers/marketplace_registry.rs', 'ErrorDetail', 'marketplace registry controller does not build Loco error details directly');
+requireContains('apps/server/src/controllers/marketplace_registry.rs', 'http_error(HttpError::forbidden', 'marketplace registry controller maps forbidden errors through rustok-web HTTP boundary');
+requireContains('apps/server/src/controllers/marketplace_registry.rs', 'http_error(HttpError::new', 'marketplace registry controller maps conflict errors through rustok-web HTTP boundary');
+requireNotContains('apps/server/src/controllers/installer.rs', 'ErrorDetail', 'installer controller does not build Loco error details directly');
+requireContains('apps/server/src/controllers/installer.rs', 'http_error(HttpError::', 'installer controller maps errors through rustok-web HTTP boundary');
+requireNotContains('apps/server/src/app.rs', 'controller::AppRoutes', 'server app imports AppRoutes through the route isolation layer');
+requireContains('apps/server/src/app.rs', 'crate::routes::AppRoutes', 'server app uses the route isolation layer for AppRoutes');
+requireNotContains('apps/server/src/app.rs', 'AppRoutes::with_default_routes', 'server app creates routes through the route isolation helper');
+requireNotContains('apps/server/src/app.rs', '.add_route(', 'server app mounts routes through the route isolation helper');
+requireContains('apps/server/src/app.rs', 'routes::default_app_routes()', 'server app uses the route isolation helper for default routes');
+requireContains('apps/server/src/app.rs', 'routes::mount_route', 'server app mounts routes through the route isolation helper');
+requireNotContains('apps/server/build.rs', 'loco_rs::controller::AppRoutes', 'generated optional route composition uses the server route isolation layer');
+requireContains('apps/server/build.rs', 'crate::routes::AppRoutes', 'generated optional route composition references the route isolation layer');
+requireNotContains('apps/server/build.rs', '.add_route(', 'generated optional route composition mounts through the route isolation helper');
+requireContains('apps/server/build.rs', 'crate::routes::mount_route', 'generated optional route composition uses the route isolation helper');
+for (const rel of [
+  'apps/server/src/controllers/admin_events.rs',
+  'apps/server/src/controllers/auth.rs',
+  'apps/server/src/controllers/channel.rs',
+  'apps/server/src/controllers/flex.rs',
+  'apps/server/src/controllers/graphql.rs',
+  'apps/server/src/controllers/health.rs',
+  'apps/server/src/controllers/installer.rs',
+  'apps/server/src/controllers/marketplace_registry.rs',
+  'apps/server/src/controllers/mcp.rs',
+  'apps/server/src/controllers/metrics.rs',
+  'apps/server/src/controllers/oauth.rs',
+  'apps/server/src/controllers/oauth_metadata.rs',
+  'apps/server/src/controllers/swagger.rs',
+  'apps/server/src/controllers/users.rs',
+  'apps/server/src/channels/builds.rs',
+]) {
+  requireNotContains(rel, 'loco_rs::controller::Routes', `${rel} imports routes through the server route isolation layer`);
+  requireContains(rel, 'crate::routes::Routes', `${rel} uses the server route isolation layer`);
+}
 for (const rel of [
   'apps/server/src/controllers/admin_events.rs',
   'apps/server/src/controllers/installer.rs',

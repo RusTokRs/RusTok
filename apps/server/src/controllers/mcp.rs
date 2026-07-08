@@ -1,3 +1,4 @@
+use crate::routes::Routes;
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
@@ -5,7 +6,6 @@ use axum::{
     routing::{get, post, put},
     Extension, Json,
 };
-use loco_rs::controller::Routes;
 use std::str::FromStr;
 use uuid::Uuid;
 

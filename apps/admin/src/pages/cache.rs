@@ -29,20 +29,20 @@ where
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct GraphqlCacheHealthResponse {
+pub(super) struct GraphqlCacheHealthResponse {
     #[serde(rename = "cacheHealth")]
-    cache_health: CacheHealthPayload,
+    pub(super) cache_health: CacheHealthPayload,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct CacheHealthPayload {
+pub(super) struct CacheHealthPayload {
     #[serde(rename = "redisConfigured")]
-    redis_configured: bool,
+    pub(super) redis_configured: bool,
     #[serde(rename = "redisHealthy")]
-    redis_healthy: bool,
+    pub(super) redis_healthy: bool,
     #[serde(rename = "redisError")]
-    redis_error: Option<String>,
-    backend: String,
+    pub(super) redis_error: Option<String>,
+    pub(super) backend: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -62,7 +62,7 @@ async fn fetch_cache_health_graphql(
 }
 
 async fn fetch_cache_health_server() -> Result<GraphqlCacheHealthResponse, ServerFnError> {
-    cache_health_native().await
+    super::native_server_adapter::cache_health_native().await
 }
 
 async fn fetch_cache_health(
@@ -76,48 +76,6 @@ async fn fetch_cache_health(
         UiTransportPath::Graphql => fetch_cache_health_graphql(token, tenant_slug)
             .await
             .map_err(|error| error.to_string()),
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/cache-health")]
-async fn cache_health_native() -> Result<GraphqlCacheHealthResponse, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-        use rustok_cache::CacheService;
-
-        let app_ctx = expect_context::<AppContext>();
-        let payload = if let Some(cache) = app_ctx.shared_store.get::<CacheService>() {
-            let report = cache.health().await;
-            CacheHealthPayload {
-                redis_configured: report.redis_configured,
-                redis_healthy: report.redis_healthy,
-                redis_error: report.redis_error,
-                backend: if report.redis_configured {
-                    "redis".to_string()
-                } else {
-                    "in-memory".to_string()
-                },
-            }
-        } else {
-            CacheHealthPayload {
-                redis_configured: false,
-                redis_healthy: false,
-                redis_error: None,
-                backend: "none".to_string(),
-            }
-        };
-
-        Ok(GraphqlCacheHealthResponse {
-            cache_health: payload,
-        })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "admin/cache-health requires the `ssr` feature",
-        ))
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::routes::Routes;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -5,15 +6,15 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
-use loco_rs::controller::{ErrorDetail, Routes};
 use once_cell::sync::Lazy;
 use rustok_installer::{evaluate_preflight, redact_install_plan, InstallPlan};
+use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::error::{Error, Result};
+use crate::error::{http_error, Error, Result};
 use crate::installer_cli::{apply_plan, InstallerApplyOptions, InstallerApplyOutput};
 use crate::models::install_step_receipt;
 use crate::services::installer_persistence::InstallerPersistenceService;
@@ -289,24 +290,19 @@ fn installer_schema_missing(error: &sea_orm::DbErr) -> bool {
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        ErrorDetail::new("forbidden", description.into().as_str()),
-    )
+    http_error(HttpError::forbidden("forbidden", description))
 }
 
 fn not_found_error(description: impl Into<String>) -> Error {
-    Error::CustomError(
-        StatusCode::NOT_FOUND,
-        ErrorDetail::new("not_found", description.into().as_str()),
-    )
+    http_error(HttpError::not_found("not_found", description))
 }
 
 fn internal_error(description: impl Into<String>) -> Error {
-    Error::CustomError(
+    http_error(HttpError::new(
         StatusCode::INTERNAL_SERVER_ERROR,
-        ErrorDetail::new("installer_error", description.into().as_str()),
-    )
+        "installer_error",
+        description,
+    ))
 }
 
 pub fn routes() -> Routes {

@@ -1,11 +1,10 @@
+use crate::routes::Routes;
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     response::Response,
     routing::{delete, get, patch, post},
     Extension, Json,
 };
-use loco_rs::controller::{ErrorDetail, Routes};
 use rustok_api::Permission;
 use rustok_channel::{
     create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
@@ -19,7 +18,7 @@ use rustok_web::json_response;
 use uuid::Uuid;
 
 use crate::context::OptionalChannel;
-use crate::error::{Error, Result};
+use crate::error::{http_error, Error, Result};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;
@@ -470,11 +469,7 @@ fn internal_error(error: impl std::fmt::Display) -> Error {
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {
-    let description = description.into();
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        ErrorDetail::new("forbidden", description.as_str()),
-    )
+    http_error(rustok_web::HttpError::forbidden("forbidden", description))
 }
 
 async fn invalidate_channel_resolution_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {

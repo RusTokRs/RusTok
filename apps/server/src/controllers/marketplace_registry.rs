@@ -18,13 +18,13 @@ use axum::{
 const REGISTRY_ARTIFACT_MAX_BYTES: usize = 100 * 1024 * 1024;
 const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
 const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
-use loco_rs::controller::{ErrorDetail, Routes};
+use crate::routes::Routes;
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
-use crate::error::Error;
+use crate::error::{http_error, Error};
 use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
 use crate::services::marketplace_catalog::{
     legacy_registry_catalog_module_path, legacy_registry_catalog_path,
@@ -57,6 +57,7 @@ use crate::services::registry_principal::RegistryAuthority;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
 use rustok_api::request::RequestContext;
+use rustok_web::HttpError;
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
 struct RegistryCatalogListParams {
@@ -2393,15 +2394,12 @@ fn authority_from_auth(
             "{action_label} requires authentication"
         ))),
         Some(AuthContextExtension(ctx)) if ctx.client_id.is_some() && ctx.session_id.is_nil() => {
-            Err(Error::CustomError(
-                StatusCode::FORBIDDEN,
-                ErrorDetail::new(
-                    "forbidden".to_string(),
-                    format!(
-                        "{action_label} requires a user session; OAuth service tokens are not supported"
-                    ),
+            Err(http_error(HttpError::forbidden(
+                "forbidden",
+                format!(
+                    "{action_label} requires a user session; OAuth service tokens are not supported"
                 ),
-            ))
+            )))
         }
         Some(auth) => Ok(RegistryAuthority::from_auth(auth)),
     }
@@ -2657,16 +2655,14 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
         }
         Some(RegistryGovernanceError::Forbidden(message)) => {
             tracing::warn!(error = %error, "Registry governance forbidden");
-            Error::CustomError(
-                StatusCode::FORBIDDEN,
-                ErrorDetail::new("forbidden", message.as_str()),
-            )
+            http_error(HttpError::forbidden("forbidden", message.as_str()))
         }
         Some(RegistryGovernanceError::NotFound(_)) => Error::NotFound,
-        Some(RegistryGovernanceError::Conflict(message)) => Error::CustomError(
+        Some(RegistryGovernanceError::Conflict(message)) => http_error(HttpError::new(
             StatusCode::CONFLICT,
-            ErrorDetail::new("conflict", message.as_str()),
-        ),
+            "conflict",
+            message.as_str(),
+        )),
         Some(RegistryGovernanceError::Internal(_)) | None => {
             tracing::error!(error = %error, "Registry governance error");
             Error::InternalServerError

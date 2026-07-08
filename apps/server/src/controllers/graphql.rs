@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::routes::Routes;
 use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
 use async_graphql::Data;
 use axum::{
@@ -13,7 +14,6 @@ use axum::{
     Extension, Json,
 };
 use futures_util::{SinkExt, StreamExt};
-use loco_rs::controller::Routes;
 use rustok_core::i18n::Locale;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 

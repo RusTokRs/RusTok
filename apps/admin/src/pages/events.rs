@@ -2,8 +2,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_ui_transport::UiTransportPath;
-#[cfg(feature = "ssr")]
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -24,8 +22,6 @@ fn selected_transport_path() -> UiTransportPath {
     }
 }
 
-// ── GQL types ────────────────────────────────────────────────────────────────
-
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
     fetcher: impl Fn(S) -> Fut + 'static,
@@ -39,40 +35,40 @@ where
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct EventsStatusResponse {
+pub(super) struct EventsStatusResponse {
     #[serde(rename = "eventsStatus")]
-    events_status: EventsStatus,
+    pub(super) events_status: EventsStatus,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct EventsStatus {
+pub(super) struct EventsStatus {
     #[serde(rename = "configuredTransport")]
-    configured_transport: String,
+    pub(super) configured_transport: String,
     #[serde(rename = "iggyMode")]
-    iggy_mode: String,
+    pub(super) iggy_mode: String,
     #[serde(rename = "relayIntervalMs")]
-    relay_interval_ms: u64,
+    pub(super) relay_interval_ms: u64,
     #[serde(rename = "dlqEnabled")]
-    dlq_enabled: bool,
+    pub(super) dlq_enabled: bool,
     #[serde(rename = "maxAttempts")]
-    max_attempts: i32,
+    pub(super) max_attempts: i32,
     #[serde(rename = "pendingEvents")]
-    pending_events: i64,
+    pub(super) pending_events: i64,
     #[serde(rename = "dlqEvents")]
-    dlq_events: i64,
+    pub(super) dlq_events: i64,
     #[serde(rename = "availableTransports")]
-    available_transports: Vec<String>,
+    pub(super) available_transports: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct PlatformSettingsResponse {
+pub(super) struct PlatformSettingsResponse {
     #[serde(rename = "platformSettings")]
-    platform_settings: PlatformSettingsPayload,
+    pub(super) platform_settings: PlatformSettingsPayload,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct PlatformSettingsPayload {
-    settings: String,
+pub(super) struct PlatformSettingsPayload {
+    pub(super) settings: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -105,11 +101,6 @@ struct UpdateSettingsInput {
 #[derive(Clone, Debug, Serialize)]
 struct EmptyVariables {}
 
-#[cfg(feature = "ssr")]
-fn server_error(message: impl Into<String>) -> ServerFnError {
-    ServerFnError::ServerError(message.into())
-}
-
 async fn fetch_events_status_graphql(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -124,7 +115,7 @@ async fn fetch_events_status_graphql(
 }
 
 async fn fetch_events_status_server() -> Result<EventsStatusResponse, ServerFnError> {
-    events_status_native().await
+    super::native_server_adapter::events_status_native().await
 }
 
 async fn fetch_events_status(
@@ -157,7 +148,7 @@ async fn fetch_platform_settings_graphql(
 }
 
 async fn fetch_platform_settings_server() -> Result<PlatformSettingsResponse, ServerFnError> {
-    event_settings_native().await
+    super::native_server_adapter::event_settings_native().await
 }
 
 async fn fetch_platform_settings(
@@ -173,256 +164,6 @@ async fn fetch_platform_settings(
             .map_err(|error| error.to_string()),
     }
 }
-
-#[server(prefix = "/api/fn", endpoint = "admin/events-status")]
-async fn events_status_native() -> Result<EventsStatusResponse, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-
-        let app_ctx = expect_context::<AppContext>();
-        let root = app_ctx
-            .config
-            .settings
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({}));
-        let events = root
-            .get("rustok")
-            .and_then(|value| value.get("events"))
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}));
-
-        let transport = events
-            .get("transport")
-            .and_then(|value| value.as_str())
-            .unwrap_or("memory");
-        let iggy_mode = events
-            .pointer("/iggy/mode")
-            .and_then(|value| value.as_str())
-            .unwrap_or("embedded")
-            .to_string();
-        let configured_transport = match transport {
-            "outbox" => "outbox".to_string(),
-            "iggy" => {
-                if iggy_mode.eq_ignore_ascii_case("remote") {
-                    "iggy_external".to_string()
-                } else {
-                    "iggy_embedded".to_string()
-                }
-            }
-            _ => "memory".to_string(),
-        };
-
-        let backend = app_ctx.db.get_database_backend();
-        let outbox_statement = match backend {
-            DbBackend::Sqlite => Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                r#"
-                SELECT
-                    COALESCE(SUM(CASE WHEN status = ?1 THEN 1 ELSE 0 END), 0) AS pending_events,
-                    COALESCE(SUM(CASE WHEN status = ?2 THEN 1 ELSE 0 END), 0) AS dlq_events
-                FROM sys_events
-                "#,
-                vec!["pending".into(), "failed".into()],
-            ),
-            _ => Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                r#"
-                SELECT
-                    COALESCE(SUM(CASE WHEN status = $1 THEN 1 ELSE 0 END), 0) AS pending_events,
-                    COALESCE(SUM(CASE WHEN status = $2 THEN 1 ELSE 0 END), 0) AS dlq_events
-                FROM sys_events
-                "#,
-                vec!["pending".into(), "failed".into()],
-            ),
-        };
-
-        let (pending_events, dlq_events) = match app_ctx.db.query_one(outbox_statement).await {
-            Ok(Some(row)) => (
-                row.try_get("", "pending_events").unwrap_or(0),
-                row.try_get("", "dlq_events").unwrap_or(0),
-            ),
-            Ok(None) | Err(_) => (0, 0),
-        };
-
-        Ok(EventsStatusResponse {
-            events_status: EventsStatus {
-                configured_transport,
-                iggy_mode,
-                relay_interval_ms: events
-                    .get("relay_interval_ms")
-                    .and_then(|value| value.as_u64())
-                    .unwrap_or(1_000),
-                dlq_enabled: events
-                    .pointer("/dlq/enabled")
-                    .and_then(|value| value.as_bool())
-                    .unwrap_or(true),
-                max_attempts: events
-                    .pointer("/relay_retry_policy/max_attempts")
-                    .and_then(|value| value.as_i64())
-                    .unwrap_or(5) as i32,
-                pending_events,
-                dlq_events,
-                available_transports: vec![
-                    "memory".to_string(),
-                    "outbox".to_string(),
-                    "iggy_embedded".to_string(),
-                    "iggy_external".to_string(),
-                ],
-            },
-        })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "admin/events-status requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/event-settings")]
-async fn event_settings_native() -> Result<PlatformSettingsResponse, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-        use rustok_api::Permission;
-        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
-
-        let auth = leptos_axum::extract::<AuthContext>()
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let tenant = leptos_axum::extract::<TenantContext>()
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-
-        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
-            return Err(ServerFnError::new("settings:read required"));
-        }
-
-        let app_ctx = expect_context::<AppContext>();
-        let backend = app_ctx.db.get_database_backend();
-        let statement = match backend {
-            DbBackend::Sqlite => Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1",
-                vec![tenant.id.into(), "events".into()],
-            ),
-            _ => Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT settings FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1",
-                vec![tenant.id.into(), "events".into()],
-            ),
-        };
-
-        let settings = match app_ctx
-            .db
-            .query_one(statement)
-            .await
-            .map_err(|err| server_error(err.to_string()))?
-        {
-            Some(row) => row
-                .try_get::<Value>("", "settings")
-                .map(|value| value.to_string())
-                .or_else(|_| row.try_get::<String>("", "settings"))
-                .map_err(|err| server_error(err.to_string()))?,
-            None => {
-                let root = app_ctx
-                    .config
-                    .settings
-                    .clone()
-                    .unwrap_or_else(|| serde_json::json!({}));
-                let events = root
-                    .get("rustok")
-                    .and_then(|value| value.get("events"))
-                    .cloned()
-                    .unwrap_or_else(|| serde_json::json!({}));
-                let transport = events
-                    .get("transport")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("memory");
-                let mode = events
-                    .pointer("/iggy/mode")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("embedded");
-
-                serde_json::json!({
-                    "transport": match transport {
-                        "outbox" => "outbox",
-                        "iggy" if mode.eq_ignore_ascii_case("remote") => "iggy_external",
-                        "iggy" => "iggy_embedded",
-                        _ => "memory",
-                    },
-                    "relay_interval_ms": events
-                        .get("relay_interval_ms")
-                        .and_then(|value| value.as_u64())
-                        .unwrap_or(1_000),
-                    "max_attempts": events
-                        .pointer("/relay_retry_policy/max_attempts")
-                        .and_then(|value| value.as_i64())
-                        .unwrap_or(5),
-                    "dlq_enabled": events
-                        .pointer("/dlq/enabled")
-                        .and_then(|value| value.as_bool())
-                        .unwrap_or(true),
-                    "iggy_addresses": events
-                        .pointer("/iggy/remote/addresses")
-                        .and_then(|value| value.as_array())
-                        .map(|values| {
-                            values
-                                .iter()
-                                .filter_map(|value| value.as_str())
-                                .collect::<Vec<_>>()
-                                .join(",")
-                        })
-                        .unwrap_or_else(|| "127.0.0.1:8090".to_string()),
-                    "iggy_protocol": events
-                        .pointer("/iggy/remote/protocol")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("tcp"),
-                    "iggy_username": events
-                        .pointer("/iggy/remote/username")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("iggy"),
-                    "iggy_password": events
-                        .pointer("/iggy/remote/password")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or(""),
-                    "iggy_tls": events
-                        .pointer("/iggy/remote/tls_enabled")
-                        .and_then(|value| value.as_bool())
-                        .unwrap_or(false),
-                    "iggy_stream": events
-                        .pointer("/iggy/topology/stream_name")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("rustok"),
-                    "iggy_partitions": events
-                        .pointer("/iggy/topology/domain_partitions")
-                        .and_then(|value| value.as_u64())
-                        .unwrap_or(8),
-                    "iggy_replication": events
-                        .pointer("/iggy/topology/replication_factor")
-                        .and_then(|value| value.as_u64())
-                        .unwrap_or(1),
-                })
-                .to_string()
-            }
-        };
-
-        Ok(PlatformSettingsResponse {
-            platform_settings: PlatformSettingsPayload { settings },
-        })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "admin/event-settings requires the `ssr` feature",
-        ))
-    }
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 #[component]
 pub fn EventsPage() -> impl IntoView {
@@ -443,7 +184,7 @@ pub fn EventsPage() -> impl IntoView {
         move |(t, tn)| async move { fetch_platform_settings(t, tn).await },
     );
 
-    // Form state — desired transport + iggy external settings
+    // Form state for desired transport and external Iggy settings.
     let (selected_transport, set_selected_transport) = signal(String::new());
     let (relay_interval_ms, set_relay_interval_ms) = signal(String::from("1000"));
     let (max_attempts, set_max_attempts) = signal(String::from("5"));

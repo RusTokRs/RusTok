@@ -1,11 +1,10 @@
-use crate::error::{Error, Result};
+use crate::error::{http_error, Error, Result};
+use crate::routes::Routes;
+use axum::response::Response;
 use axum::{
     extract::{Path, Query},
     routing::get,
 };
-use axum::{http::StatusCode, response::Response};
-use loco_rs::controller::ErrorDetail;
-use loco_rs::controller::Routes;
 use rustok_auth::{UserItem, UsersListParams, UsersResponse};
 use rustok_web::json_response;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
@@ -148,9 +147,5 @@ pub fn routes() -> Routes {
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {
-    let description = description.into();
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        ErrorDetail::new("forbidden", description.as_str()),
-    )
+    http_error(rustok_web::HttpError::forbidden("forbidden", description))
 }

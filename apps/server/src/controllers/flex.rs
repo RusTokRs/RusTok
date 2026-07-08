@@ -1,9 +1,9 @@
+use crate::routes::Routes;
 use axum::{
     extract::{Path, State},
     routing::get,
     Json,
 };
-use loco_rs::controller::Routes;
 use rustok_events::EventEnvelope;
 use uuid::Uuid;
 

@@ -4,7 +4,6 @@ use loco_rs::{
     app::{AppContext, Hooks, Initializer},
     boot::{create_app, BootResult, StartMode},
     config::Config,
-    controller::AppRoutes,
     environment::Environment,
     task::Tasks,
     Result,
@@ -17,6 +16,7 @@ use crate::channels;
 use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::controllers;
 use crate::initializers;
+use crate::routes::{self, AppRoutes, Routes};
 use crate::seeds;
 use crate::services::app_lifecycle::{apply_boot_database_fallback, connect_runtime_workers};
 use crate::services::app_router::compose_application_router;
@@ -32,6 +32,13 @@ mod routes_codegen {
 }
 
 pub struct App;
+
+fn mount_routes<const N: usize>(mut routes: AppRoutes, route_list: [Routes; N]) -> AppRoutes {
+    for route in route_list {
+        routes = routes::mount_route(routes, route);
+    }
+    routes
+}
 
 #[async_trait]
 impl Hooks for App {
@@ -112,27 +119,35 @@ impl Hooks for App {
             .is_some_and(|settings| settings.runtime.is_registry_only());
 
         let routes = if registry_only {
-            AppRoutes::with_default_routes()
-                .add_route(controllers::health::routes())
-                .add_route(controllers::marketplace_registry::read_only_routes())
-                .add_route(controllers::metrics::routes())
-                .add_route(controllers::swagger::routes())
+            mount_routes(
+                routes::default_app_routes(),
+                [
+                    controllers::health::routes(),
+                    controllers::marketplace_registry::read_only_routes(),
+                    controllers::metrics::routes(),
+                    controllers::swagger::routes(),
+                ],
+            )
         } else {
-            AppRoutes::with_default_routes()
-                .add_route(controllers::health::routes())
-                .add_route(controllers::marketplace_registry::routes())
-                .add_route(controllers::metrics::routes())
-                .add_route(controllers::swagger::routes())
-                .add_route(controllers::admin_events::routes())
-                .add_route(controllers::auth::routes())
-                .add_route(controllers::channel::routes())
-                .add_route(controllers::flex::routes())
-                .add_route(controllers::graphql::routes())
-                .add_route(controllers::installer::routes())
-                .add_route(controllers::mcp::routes())
-                .add_route(controllers::oauth::routes())
-                .add_route(controllers::oauth_metadata::routes())
-                .add_route(controllers::users::routes())
+            mount_routes(
+                routes::default_app_routes(),
+                [
+                    controllers::health::routes(),
+                    controllers::marketplace_registry::routes(),
+                    controllers::metrics::routes(),
+                    controllers::swagger::routes(),
+                    controllers::admin_events::routes(),
+                    controllers::auth::routes(),
+                    controllers::channel::routes(),
+                    controllers::flex::routes(),
+                    controllers::graphql::routes(),
+                    controllers::installer::routes(),
+                    controllers::mcp::routes(),
+                    controllers::oauth::routes(),
+                    controllers::oauth_metadata::routes(),
+                    controllers::users::routes(),
+                ],
+            )
         };
 
         let mut routes = if registry_only {
@@ -142,7 +157,7 @@ impl Hooks for App {
         };
 
         if !registry_only {
-            routes = routes.add_route(channels::builds::routes());
+            routes = routes::mount_route(routes, channels::builds::routes());
         }
 
         routes

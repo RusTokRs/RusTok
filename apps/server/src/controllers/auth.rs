@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::error::Result;
+use crate::routes::Routes;
 use axum::response::Response;
 use axum::{
     extract::State,
@@ -9,7 +10,6 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use loco_rs::controller::Routes;
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
 use sea_orm::{

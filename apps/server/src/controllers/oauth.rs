@@ -2,6 +2,7 @@
 //!
 //! `POST /oauth/token` — Token endpoint (client_credentials flow)
 
+use crate::routes::Routes;
 use axum::{
     extract::{ConnectInfo, Form, Query, State},
     http::{
@@ -12,7 +13,6 @@ use axum::{
     routing::{get, post},
     Json,
 };
-use loco_rs::controller::Routes;
 use reqwest::Url;
 use rustok_auth::{
     AuthorizeRequest, BrowserAuthorizeRequest, ConsentRequest, RevokeRequest, TokenErrorResponse,

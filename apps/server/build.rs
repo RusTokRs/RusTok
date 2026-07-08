@@ -366,19 +366,19 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
 
 fn render_routes_codegen(entries: &[OptionalModuleEntry]) -> String {
     let mut out = String::from(
-        "#[allow(unused_mut)]\npub fn append_optional_module_routes(mut routes: loco_rs::controller::AppRoutes) -> loco_rs::controller::AppRoutes {\n",
+        "#[allow(unused_mut)]\npub fn append_optional_module_routes(mut routes: crate::routes::AppRoutes) -> crate::routes::AppRoutes {\n",
     );
     for entry in entries {
         if let Some(routes_expr) = &entry.routes_expr {
             out.push_str(&format!(
-                "    #[cfg(feature = \"{feature}\")]\n    {{\n        routes = routes.add_route({routes_expr});\n    }}\n",
+                "    #[cfg(feature = \"{feature}\")]\n    {{\n        routes = crate::routes::mount_route(routes, {routes_expr});\n    }}\n",
                 feature = entry.feature,
                 routes_expr = routes_expr,
             ));
         }
         for extra_route_expr in &entry.extra_route_exprs {
             out.push_str(&format!(
-                "    #[cfg(feature = \"{feature}\")]\n    {{\n        routes = routes.add_route({route_expr});\n    }}\n",
+                "    #[cfg(feature = \"{feature}\")]\n    {{\n        routes = crate::routes::mount_route(routes, {route_expr});\n    }}\n",
                 feature = entry.feature,
                 route_expr = extra_route_expr,
             ));

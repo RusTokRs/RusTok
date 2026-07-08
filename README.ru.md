@@ -339,7 +339,7 @@ FFA/FBA отслеживаются централизованно, потому 
 
 | Термин | Значение | Где смотреть текущий статус |
 |---|---|---|
-| FFA | Fluid Frontend Architecture: module-owned UI разделяется на framework-agnostic `core`, transport facade и явные host UI adapters, например Leptos или Next.js. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
+| FFA | Fluid Frontend Architecture: module-owned UI разделяется на framework-agnostic `core`, transport facade и явные host UI adapters, например Leptos или Dioxus. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
 | FBA | Fluid Backend Architecture: module-owned backend boundary с typed ports, request context, errors, fallback/degraded modes и verification evidence. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
 
 Ключевые границы доменов:

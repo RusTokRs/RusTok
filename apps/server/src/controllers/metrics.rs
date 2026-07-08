@@ -1,10 +1,10 @@
+use crate::routes::Routes;
 use axum::{
     extract::State,
     http::{header::CONTENT_TYPE, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
 };
-use loco_rs::controller::Routes;
 
 use crate::common::settings::{EmailProvider, EventTransportKind};
 use crate::error::Result;

@@ -75,13 +75,13 @@ Current classified inventory baseline after the `rustok-ai-admin` native transpo
 
 | Category | Count | Practical Meaning |
 |---|---:|---|
-| `host_runtime` | 60 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
-| `module_ui_adapter` | 90 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
+| `host_runtime` | 44 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
+| `module_ui_adapter` | 88 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
 | `module_controller` | 35 | Mostly controller route/state adapters and remaining Loco controller API usage after handler runtime narrowing. |
 | `server_task` / `server_seed` / `server_schedule` | 22 | Maintenance flows that belong in `rustok-cli`, not the HTTP server binary. |
 | `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
 | `dependency_manifest` / `lockfile` | 47 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
-| `verification_guard` / `docs` / `scaffold_template` | 390 | Guardrails, historical docs and generated templates to update/archive last. |
+| `verification_guard` / `docs` / `scaffold_template` | 392 | Guardrails, historical docs and generated templates to update/archive last. |
 
 Approximate remaining effort:
 
@@ -326,8 +326,14 @@ Exit gate: module-owned crates and UI packages do not import `loco_rs::app::AppC
 - [ ] Introduce unified `AppError` / response mapper without `loco_rs::Error`.
 - [ ] Migrate `crate::error::{Error, Result}` off `pub use loco_rs`.
 - [x] Migrate health controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` for the router cutover slice.
-- [x] Migrate users controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` and `ErrorDetail` for later routing/error cutover slices.
-- [x] Migrate channel controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` and `ErrorDetail` for later routing/error cutover slices.
+- [x] Migrate users controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` for the router cutover slice.
+- [x] Migrate channel controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` for the router cutover slice.
+- [x] Isolate users/channel forbidden error details behind `crate::error::http_error(rustok_web::HttpError)` so controllers no longer build Loco `ErrorDetail` directly.
+- [x] Isolate installer HTTP error details behind `crate::error::http_error(rustok_web::HttpError)` while keeping Loco `Routes` for the router cutover slice.
+- [x] Isolate marketplace registry authorization/governance error details behind `crate::error::http_error(rustok_web::HttpError)` while keeping Loco `Routes` for the router cutover slice.
+- [x] Isolate server-owned controller route declarations behind `crate::routes::Routes`; `apps/server/src/routes.rs` is the only server controller bridge to Loco `Routes` until the Axum router composition cutover.
+- [x] Isolate server `AppRoutes` composition and generated optional-module route signature behind `crate::routes::AppRoutes`; full Axum `Router` composition remains the next router cutover.
+- [x] Isolate default-route creation and route mounting behind `crate::routes::{default_app_routes, mount_route}` so `app.rs` and generated optional-route code no longer call Loco `AppRoutes` methods directly.
 - [x] Migrate auth controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` for the router cutover slice.
 - [ ] Migrate health/metrics/graphql/auth/controllers to Axum response contracts.
 - [ ] Update OpenAPI/export reference gates.
