@@ -16,7 +16,10 @@ Mandatory starting context for AI sessions.
 1. `docs/index.md`
 2. `docs/AI_CONTEXT.md`
 3. `README.md` and `CRATE_API.md` of the target component
-4. For event changes: `crates/rustok-outbox/docs/README.md` and `docs/architecture/event-flow-contract.md`
+4. For backend module changes: `docs/backend/module-backend-architecture.md`,
+   `docs/backend/module-backend-implementation.md` and
+   `docs/backend/module-backend-verification.md`
+5. For event changes: `crates/rustok-outbox/docs/README.md` and `docs/architecture/event-flow-contract.md`
 
 ## Terminology
 
@@ -108,6 +111,8 @@ Part of Loco's built-in subsystems have been replaced with our own modules. **Do
 - Module-owned Leptos server functions must consume `rustok_api::HostRuntimeContext`, not `AppContext`.
 - Loco `Hooks`, `AppContext`, `Config`, tasks and initializers remain only as the current cutover inventory, not as the target architecture.
 - Maintenance/CLI flows of the target state go through a separate `rustok-cli` and module-local `cli/` adapters, not through `cargo loco task` and not through the production server binary.
+- New backend helpers must use the dedicated foundation crates: `rustok-runtime` for executable runtime access helpers, `rustok-web` for Axum response/error/extractor helpers, `rustok-fba` for FBA metadata, and `rustok-cli-core` for CLI provider contracts. Do not put these concerns back into `rustok-api` or `apps/server`.
+- New HTTP response formatting must use `rustok_web::json_response` or another `rustok-web` helper. Do not add new `loco_rs::controller::format` usage.
 
 **Loco Queue (Sidekiq/Redis) is not connected and not needed.** Reasons:
 - Background workers run as direct tokio tasks: outbox relay (`OutboxRelayWorkerHandle`), build worker (`BuildWorkerHandle`), index/search dispatchers, workflow cron.
@@ -169,6 +174,15 @@ Infrastructure storage crate: `StorageBackend` trait, `LocalStorage`, `StorageSe
 
 `Core` module transactional outbox: `TransactionalEventBus`, `OutboxTransport`, `OutboxRelay`, `SysEventsMigration`. **Replaces** Loco Queue / Workers. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
 
+### Backend foundation crates
+
+- `crates/rustok-runtime`: executable runtime helpers such as typed host shared-handle lookup.
+- `crates/rustok-web`: Axum HTTP boundary helpers such as JSON response mapping and HTTP error envelopes.
+- `crates/rustok-fba`: FBA provider/consumer metadata and backend topology descriptors.
+- `crates/rustok-cli-core`: stable command/provider contracts for the future `rustok-cli` and module-local `cli/` adapters.
+
+For module backend implementation, read `docs/backend/README.md`.
+
 ### `crates/rustok-tenant`
 
 `Core` module multi-tenant lifecycle and module enablement.
@@ -203,6 +217,7 @@ Check only errors in changed files; errors in `services/app_router.rs` / `AdminA
 - Check that docs reflect the current code, not old architectural assumptions.
 - For Leptos UI, first design a local API layer `view -> local api -> #[server]`, and keep GraphQL as a parallel selected-path transport.
 - For optional-wave module-owned Leptos admin surfaces, the current baseline is: `rustok-media-admin` works on the build-profile-selected native `#[server]` model with GraphQL selected path for `list/detail/translations/delete/usage` and with a preserved REST primary upload path; `rustok-comments-admin` works on the native-only `#[server]` model because no owner GraphQL/REST transport surface exists for `comments` admin.
+- For backend modules, follow `docs/backend/module-backend-implementation.md`: domain logic stays in the owner module, host wiring stays in `apps/server`, reusable runtime/web/FBA/CLI contracts go into the dedicated foundation crates.
 - `rustok-content` remains a shared helper/orchestration boundary without its own operator-facing UI.
 - Commerce split crates (`cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`) do not receive separate admin UIs in this wave and continue to live under the aggregate surface `rustok-commerce-admin`.
 
@@ -212,3 +227,4 @@ Check only errors in changed files; errors in `services/app_router.rs` / `AdminA
 - Do not substitute the architectural status of a module with the runtime wiring method.
 - Do not bypass outbox in production event-flow.
 - Do not delete GraphQL resolver/path just because a native `#[server]` path appeared nearby.
+- Do not add new backend code around `loco_rs::app::AppContext`, `loco_rs::controller::format`, `cargo loco task` or host-local helper copies when a `rustok-*` foundation crate owns the concern.

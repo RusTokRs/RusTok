@@ -15,3 +15,16 @@ Boundary rules:
 - Parser/output/terminal UX can live in the binary crate, while command metadata and
   machine-readable outcomes live here.
 
+Current entry points:
+
+- `CommandDescriptor`
+- `CommandRequest`
+- `CommandOutcome`
+- `CommandProvider`
+- `CliCoreError`
+
+Use this crate from module-local `cli/` adapter packages or the future CLI registry/binary.
+Do not add CLI command implementations to module domain crates or to the production HTTP
+server runtime.
+
+Related guide: [Backend Module Architecture](../../../docs/backend/module-backend-architecture.md).

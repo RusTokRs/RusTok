@@ -31,6 +31,14 @@ Shared foundation / support crates:
 - `rustok-events`
 - `rustok-telemetry`
 - `rustok-api`
+- `rustok-runtime`
+- `rustok-web`
+- `rustok-fba`
+- `rustok-cli-core`
+
+`rustok-api` remains the stable contract crate. Executable runtime helpers, Axum
+boundary helpers, FBA metadata and CLI provider contracts must live in the dedicated
+foundation crates above instead of accumulating in `apps/server` or expanding `rustok-api`.
 
 The tenant-toggle logic applies only to `Optional` modules. `Core` modules should not be treated as switchable by host configuration.
 
@@ -84,17 +92,20 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass Loco `AppContext` into request/connection data. `loco_rs::controller::Routes`
   remains only a temporary routing adapter until Phase 2.
-- Users REST handlers also extract `ServerRuntimeContext`; Loco response/error helpers are
-  kept as a separate part of Phase 2, without mixing state migration and response cutover.
+- Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
+  for JSON response formatting; Loco `Routes` and error helpers remain separate Phase 2 routing/error
+  cutover inventory.
 - Metrics handler and the entire metrics helper pipeline use `ServerRuntimeContext`; the mailer
   state is passed via a separate `ServerEmailRuntime`, and worker handles are read through a scoped shared API.
 - Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
-  event transport, rate limits, worker lifecycle, and email backend state; the Loco response formatter
-  remains only until the general Phase 2 error/response cutover.
-- Channel and standalone Flex REST handlers receive `ServerRuntimeContext`; Flex controller tests
-  assemble the same neutral runtime fixture and do not create Loco `AppContext`.
+  event transport, rate limits, worker lifecycle, and email backend state; JSON response formatting
+  goes through `rustok_web::json_response` while Loco route assembly remains Phase 2 inventory.
+- Channel and standalone Flex REST handlers receive `ServerRuntimeContext`; channel JSON response
+  formatting goes through `rustok_web::json_response`, and Flex controller tests assemble the same
+  neutral runtime fixture without creating Loco `AppContext`.
 - Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
-  additionally receive `ServerEmailRuntime`. The controller does not read Loco config, DB, or mailer directly.
+  additionally receive `ServerEmailRuntime`. The controller does not read Loco config, DB, or mailer directly,
+  and JSON response formatting goes through `rustok_web::json_response`.
 - Module guard and server channel contract are typed through `ServerRuntimeContext`; Loco `AppContext`
   is not a request/channel contract for server-owned runtime paths.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
@@ -232,6 +243,7 @@ Minimum local verification path for changes in `apps/server`:
 ## Related documents
 
 - [Health and runtime guardrails](./health.md)
+- [Backend module guides](../../../docs/backend/README.md)
 - [Library stack](./library-stack.md)
 - [Plan to migrate from Loco RS to pure Axum and custom CLI](../../../docs/architecture/loco-exit-plan.md)
 - [Event transport contract](./event-transport.md)

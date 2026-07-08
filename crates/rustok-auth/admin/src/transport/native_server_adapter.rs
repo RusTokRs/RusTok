@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::model::{
     CreateOAuthAppInput, GraphqlUser, GraphqlUserResponse, GraphqlUsersResponse, OAuthApp,
@@ -10,8 +11,6 @@ use crate::model::{
 use crate::model::{AppType, GraphqlPageInfo, GraphqlUserEdge, GraphqlUsersConnection};
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
-#[cfg(feature = "ssr")]
-use serde_json::Value;
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
 
@@ -47,6 +46,25 @@ impl From<ServerFnError> for ApiError {
 #[cfg(feature = "ssr")]
 fn server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError(message.into())
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/graphql")]
+pub(super) async fn auth_graphql(
+    request: super::ServerGraphqlRequest,
+) -> Result<Value, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        super::execute_server_graphql(request)
+            .await
+            .map_err(|err| ServerFnError::ServerError(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = request;
+        Err(ServerFnError::ServerError(
+            "SSR feature not enabled".to_string(),
+        ))
+    }
 }
 
 #[server(prefix = "/api/fn", endpoint = "admin/list-users")]

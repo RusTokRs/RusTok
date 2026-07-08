@@ -14,3 +14,17 @@ Boundary rules:
 - Observability implementation remains in `rustok-telemetry`; this crate may only carry
   metadata needed to describe parity requirements.
 
+Current entry points:
+
+- `BackendTopology`
+- `TransportProfile`
+- `CapabilityId`
+- `FbaCallContext`
+- `FbaProviderDescriptor`
+- `FbaConsumerDependency`
+
+Use this crate for provider/consumer metadata and topology descriptors. Port request,
+response and error semantics still use `rustok-api::ports` primitives; transport
+implementations stay in owner modules or adapter crates.
+
+Related guide: [Backend Module Architecture](../../../docs/backend/module-backend-architecture.md).

@@ -241,21 +241,106 @@ RusToK по-прежнему ориентирован на agent-assisted раб
 
 ### Таксономия модулей
 
-`modules.toml` — источник истины по модульному составу платформы.
+`modules.toml` — источник истины по модульному составу платформы на этапе сборки.
+Полная карта владельцев, статусы FFA/FBA и доказательства находятся в
+[реестре модулей](docs/modules/registry.md).
 
-Core-модули:
+Core-модули обязательны и всегда входят в платформу:
 
-`auth` · `cache` · `channel` · `email` · `index` · `search` · `outbox` · `tenant` · `rbac`
+| Модуль | Crate | Описание |
+|---|---|---|
+| `auth` | `rustok-auth` | Жизненный цикл аутентификации, учетные данные, OAuth, пользователи и контракты сессий |
+| `cache` | `rustok-cache` | Фабрика кеш-бэкендов с Redis и режимом in-memory |
+| `channel` | `rustok-channel` | Контекст каналов, привязки хостов, разрешение locale/channel и факты запроса |
+| `email` | `rustok-email` | Email-провайдеры, шаблоны и контракты жизненного цикла доставки |
+| `index` | `rustok-index` | Индексированные модели чтения для межмодульной фильтрации и проекций |
+| `search` | `rustok-search` | Поиск, подсказки, ранжирование, фасеты и UI-контракты поиска для витрины и админки |
+| `outbox` | `rustok-outbox` | Транзакционный outbox событий, relay, retry и DLQ-поверхности управления |
+| `tenant` | `rustok-tenant` | Жизненный цикл tenant, его разрешение и включение модулей для каждого tenant |
+| `rbac` | `rustok-rbac` | Runtime прав доступа, политики ролей и решения авторизации |
 
-Optional-модули:
+Optional-модули подключаются через manifest composition и включаются для каждого tenant отдельно:
 
-- Контент и community: `content`, `blog`, `comments`, `forum`, `pages`, `media`, `workflow`
-- Commerce family: `cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `commerce`
+| Модуль | Crate | Описание |
+|---|---|---|
+| `content` | `rustok-content` | Общая оркестрация контента, rich-text и helpers для локализованного контента |
+| `cart` | `rustok-cart` | Жизненный цикл корзины, позиции, корректировки и UI-граница корзины на витрине |
+| `customer` | `rustok-customer` | Граница профиля клиента и клиентские операции в админке |
+| `product` | `rustok-product` | Каталог, варианты, атрибуты категорий, product admin и UI каталога на витрине |
+| `profiles` | `rustok-profiles` | Публичный слой профилей поверх пользователей, авторов и кратких карточек участников |
+| `region` | `rustok-region` | Регионы, страны, валюты, налоговая база и UI-поверхности регионов |
+| `pricing` | `rustok-pricing` | Прайс-листы, видимость цен и представление цен на витрине |
+| `inventory` | `rustok-inventory` | Инвентарь, наличие на складе и принадлежащие inventory модели чтения для админки |
+| `order` | `rustok-order` | Жизненный цикл заказов, snapshots, returns, refunds и UI операций с заказами |
+| `payment` | `rustok-payment` | Payment collections, платежи и представление оплаты на витрине |
+| `fulfillment` | `rustok-fulfillment` | Варианты доставки, fulfillments и handoff доставки в checkout |
+| `commerce` | `rustok-commerce` | Зонтичная e-commerce оркестрация поверх cart, customer, product, pricing, inventory, order, payment и fulfillment |
+| `blog` | `rustok-blog` | Посты блога, категории, теги, интеграция комментариев и поверхности админки/витрины |
+| `forum` | `rustok-forum` | Темы форума, ответы, модерация и потребление widgets от page builder |
+| `comments` | `rustok-comments` | Общий comments domain и переиспользуемая граница comment-thread |
+| `pages` | `rustok-pages` | Страницы, меню, страницы витрины и page-builder consumer surfaces |
+| `page_builder` | `rustok-page-builder` | Контракты visual builder для preview, tree, properties и publish flows |
+| `taxonomy` | `rustok-taxonomy` | Общий слой словарей, taxonomy и dictionaries |
+| `media` | `rustok-media` | Загрузка медиа, storage-facing APIs и типизированные контракты image descriptors |
+| `seo` | `rustok-seo` | SEO metadata, templates, redirects, sitemap, robots и remediation workflows |
+| `workflow` | `rustok-workflow` | Выполнение workflow, templates, schedules и webhook ingress |
+| `alloy` | `alloy` | Sandboxed scripting, scheduler, hook runtime и automation capabilities |
+| `flex` | `flex` | Custom fields и attached/standalone extension contracts |
 
-Вспомогательные и capability-crates находятся вне таксономии `Core` / `Optional`:
+Shared libraries и capability crates не всегда являются platform modules, но
+держат общие контракты, адаптеры или vertical capabilities:
 
-- Shared/support: `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-commerce-foundation`, `rustok-test-utils`, `rustok-telemetry`
-- Capability/runtime layers: `rustok-mcp`, `alloy`, `alloy-scripting`, `flex`, `rustok-iggy`, `rustok-iggy-connector`
+| Crate | Описание |
+|---|---|
+| `rustok-core` | Общие foundation contracts, primitives, validation и security helpers |
+| `rustok-api` | Общий host/API слой для transport adapters и boundary contracts |
+| `rustok-runtime` | Host runtime helpers для типизированных shared handles, нейтрального доступа к БД и module adapters |
+| `rustok-web` | Axum HTTP helpers для response/error mapping в Loco-exit controller boundary |
+| `rustok-fba` | Общие FBA metadata для provider/consumer registries и transport-profile descriptors |
+| `rustok-cli-core` | Контракты platform CLI command/provider для будущих module-local CLI adapters |
+| `rustok-events` | Канонические event contracts и import surface |
+| `rustok-storage` | Абстракция storage backend |
+| `rustok-commerce-foundation` | Общие commerce DTOs, entities, errors и search helpers |
+| `rustok-content-orchestration` | Межмодульный content orchestration bridge вне `apps/server` |
+| `rustok-installer` | Installer-core support contracts для hybrid installer flow |
+| `rustok-test-utils` | Общие test fixtures, mocks и helpers |
+| `rustok-telemetry` | Observability bootstrap и telemetry helpers |
+| `rustok-ui-core` | Framework-agnostic UI contracts для route/query/input/busy в FFA packages |
+| `rustok-ui-transport` | Framework-agnostic UI contracts для transport path/result/evidence |
+| `rustok-ui-i18n` | Framework-agnostic UI message catalog и key-resolution core |
+| `rustok-ui-i18n-leptos` | Leptos adapter для shared UI message catalogs |
+| `rustok-graphql` | Framework-agnostic GraphQL HTTP client contracts |
+| `rustok-graphql-leptos` | Leptos reactive hooks adapter для `rustok-graphql` |
+| `leptos-ui` | UI primitives и переиспользуемые host/module components для Leptos |
+| `leptos-ui-routing` | Leptos helpers для route/query поверх `rustok-ui-core` |
+| `leptos-shadcn-pagination` | Компоненты пагинации для Leptos |
+| `leptos-auth` | Auth helpers для integrated Leptos UI hosts |
+| `leptos-forms` | Form helpers для Leptos |
+| `leptos-hook-form` | Hook-style form helpers для Leptos |
+| `leptos-table` | Table helpers для Leptos |
+| `leptos-zod` | Zod-style validation helpers для Leptos UI flows |
+| `leptos-zustand` | Zustand-style state helpers для Leptos UI flows |
+| `rustok-mcp` | Model Context Protocol server и management surfaces |
+| `rustok-ai` | AI orchestration capability и admin/operator surfaces |
+| `rustok-ai-content` | AI support adapter для content и blog |
+| `rustok-ai-product` | AI support adapter для product catalog |
+| `rustok-ai-order` | AI support adapter для order analytics и operations |
+| `rustok-ai-media` | AI support adapter для media/image |
+| `rustok-ai-alloy` | AI policy и adapter layer для Alloy scripting |
+| `rustok-seo-admin-support` | Переиспользуемые SEO admin panels и GraphQL transport helpers для owner modules |
+| `rustok-seo-targets` | Typed SEO target descriptors для owner modules и SEO templates |
+| `rustok-tax` | Tax calculation provider track и FBA tax boundary contracts |
+| `alloy-scripting` | Scripting support layer для Alloy runtime flows |
+| `rustok-iggy` | Event streaming transport runtime |
+| `rustok-iggy-connector` | Embedded/remote connector layer для Iggy |
+
+FFA/FBA отслеживаются централизованно, потому что статус меняется по каждому
+модулю и должен быть подтвержден доказательствами:
+
+| Термин | Значение | Где смотреть текущий статус |
+|---|---|---|
+| FFA | Fluid Frontend Architecture: module-owned UI разделяется на framework-agnostic `core`, transport facade и явные host UI adapters, например Leptos или Next.js. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
+| FBA | Fluid Backend Architecture: module-owned backend boundary с typed ports, request context, errors, fallback/degraded modes и verification evidence. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
 
 Ключевые границы доменов:
 

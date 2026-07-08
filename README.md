@@ -281,30 +281,106 @@ Leptos apps (admin and storefront) use `#[server]` functions as their data layer
 
 ### Module taxonomy
 
-`modules.toml` is the source of truth for platform modules.
+`modules.toml` is the source of truth for build-time platform modules. The
+full ownership map, FFA/FBA status and verification evidence live in
+[docs/modules/registry.md](docs/modules/registry.md).
 
-Core modules:
+Core modules are required and always compiled into the platform:
 
-- `auth`
-- `cache`
-- `channel`
-- `email`
-- `index`
-- `search`
-- `outbox`
-- `tenant`
-- `rbac`
+| Module | Crate | Description |
+|---|---|---|
+| `auth` | `rustok-auth` | Authentication lifecycle, credentials, OAuth, users and session-facing contracts |
+| `cache` | `rustok-cache` | Cache backend factory with Redis and in-memory runtime options |
+| `channel` | `rustok-channel` | Channel context, host bindings, locale/channel resolution and request facts |
+| `email` | `rustok-email` | Email providers, templates and delivery lifecycle contracts |
+| `index` | `rustok-index` | Indexed read-model substrate for cross-module filtering and projections |
+| `search` | `rustok-search` | Search query, suggestions, ranking, facets and storefront/admin search UI contracts |
+| `outbox` | `rustok-outbox` | Transactional event outbox, relay, retry and DLQ control surfaces |
+| `tenant` | `rustok-tenant` | Tenant lifecycle, tenant resolution and per-tenant module enablement |
+| `rbac` | `rustok-rbac` | Permission runtime, role policy and authorization decisions |
 
-Optional modules:
+Optional modules are compiled by manifest composition and enabled per tenant:
 
-- Content and community: `content`, `blog`, `comments`, `forum`, `pages`, `media`, `workflow`
-- Cross-cutting experience/runtime: `seo`
-- Commerce family: `cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `commerce`
+| Module | Crate | Description |
+|---|---|---|
+| `content` | `rustok-content` | Shared content orchestration, rich-text and localized content helpers |
+| `cart` | `rustok-cart` | Cart lifecycle, line items, adjustments and storefront cart UI boundary |
+| `customer` | `rustok-customer` | Customer profile boundary and customer-owned admin operations |
+| `product` | `rustok-product` | Catalog, variants, category-bound attributes, product admin and storefront catalog UI |
+| `profiles` | `rustok-profiles` | Public profile layer over users, authors and member summaries |
+| `region` | `rustok-region` | Regions, countries, currencies, tax baseline and region UI surfaces |
+| `pricing` | `rustok-pricing` | Price lists, pricing visibility and storefront pricing presentation |
+| `inventory` | `rustok-inventory` | Inventory, stock availability and inventory-owned admin read models |
+| `order` | `rustok-order` | Order lifecycle, snapshots, returns, refunds and order operations UI |
+| `payment` | `rustok-payment` | Payment collections, payments and storefront payment presentation |
+| `fulfillment` | `rustok-fulfillment` | Shipping options, fulfillments and checkout shipping handoff |
+| `commerce` | `rustok-commerce` | Umbrella ecommerce orchestration across cart, customer, product, pricing, inventory, order, payment and fulfillment |
+| `blog` | `rustok-blog` | Blog posts, categories, tags, comments integration and admin/storefront surfaces |
+| `forum` | `rustok-forum` | Forum topics, replies, moderation and page-builder widget consumption |
+| `comments` | `rustok-comments` | Generic comments domain and reusable comment-thread boundary |
+| `pages` | `rustok-pages` | Pages, menus, storefront pages and page-builder consumer surfaces |
+| `page_builder` | `rustok-page-builder` | Visual builder capability contracts for preview, tree, properties and publish flows |
+| `taxonomy` | `rustok-taxonomy` | Shared vocabulary, taxonomy and dictionary layer |
+| `media` | `rustok-media` | Media upload, storage-facing APIs and typed image descriptor contracts |
+| `seo` | `rustok-seo` | SEO metadata, templates, redirects, sitemap, robots and remediation workflows |
+| `workflow` | `rustok-workflow` | Workflow execution, templates, schedules and webhook ingress |
+| `alloy` | `alloy` | Sandboxed scripting, scheduler, hook runtime and automation capabilities |
+| `flex` | `flex` | Custom fields and attached/standalone extension contracts |
 
-Support and capability crates sit outside the `Core` / `Optional` taxonomy:
+Shared libraries and capability crates are not all platform modules, but they
+carry common contracts, adapters or vertical capabilities:
 
-- Shared/support: `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-commerce-foundation`, `rustok-test-utils`, `rustok-telemetry`
-- Capability/runtime layers: `rustok-mcp`, `alloy`, `alloy-scripting`, `flex`, `rustok-iggy`, `rustok-iggy-connector`
+| Crate | Description |
+|---|---|
+| `rustok-core` | Shared foundation contracts, primitives, validation and security helpers |
+| `rustok-api` | Shared host/API layer used by transport adapters and boundary contracts |
+| `rustok-runtime` | Host runtime helpers for typed shared handles, neutral DB access and module adapters |
+| `rustok-web` | Axum HTTP response/error helpers used by the Loco-exit controller boundary |
+| `rustok-fba` | Shared FBA provider/consumer registry metadata and transport-profile descriptors |
+| `rustok-cli-core` | Platform CLI command/provider contracts for future module-local CLI adapters |
+| `rustok-events` | Canonical event contracts and import surface |
+| `rustok-storage` | Storage backend abstraction |
+| `rustok-commerce-foundation` | Shared commerce DTOs, entities, errors and search helpers |
+| `rustok-content-orchestration` | Cross-module content orchestration bridge outside `apps/server` |
+| `rustok-installer` | Installer-core support contracts for the hybrid installer flow |
+| `rustok-test-utils` | Shared test fixtures, mocks and helpers |
+| `rustok-telemetry` | Observability bootstrap and telemetry helpers |
+| `rustok-ui-core` | Framework-agnostic UI route/query/input/busy contracts for FFA packages |
+| `rustok-ui-transport` | Framework-agnostic UI transport path/result/evidence contracts |
+| `rustok-ui-i18n` | Framework-agnostic UI message catalog and key-resolution core |
+| `rustok-ui-i18n-leptos` | Leptos adapter for shared UI message catalogs |
+| `rustok-graphql` | Framework-agnostic GraphQL HTTP client contracts |
+| `rustok-graphql-leptos` | Leptos reactive hooks adapter for `rustok-graphql` |
+| `leptos-ui` | RusToK Leptos UI primitives and reusable host/module components |
+| `leptos-ui-routing` | Leptos route/query helpers over `rustok-ui-core` |
+| `leptos-shadcn-pagination` | Leptos pagination component support |
+| `leptos-auth` | Leptos auth helpers for integrated UI hosts |
+| `leptos-forms` | Leptos form helpers |
+| `leptos-hook-form` | Hook-style Leptos form helpers |
+| `leptos-table` | Leptos table helpers |
+| `leptos-zod` | Zod-style validation helpers for Leptos UI flows |
+| `leptos-zustand` | Zustand-style state helpers for Leptos UI flows |
+| `rustok-mcp` | Model Context Protocol server and management surfaces |
+| `rustok-ai` | AI orchestration capability and admin/operator surfaces |
+| `rustok-ai-content` | Content and blog AI support adapter |
+| `rustok-ai-product` | Product catalog AI support adapter |
+| `rustok-ai-order` | Order analytics and operations AI support adapter |
+| `rustok-ai-media` | Media/image AI support adapter |
+| `rustok-ai-alloy` | Alloy scripting AI policy and adapter layer |
+| `rustok-seo-admin-support` | Reusable owner-module SEO admin panels and GraphQL transport helpers |
+| `rustok-seo-targets` | Typed SEO target descriptors used by owner modules and SEO templates |
+| `rustok-tax` | Tax calculation provider track and FBA tax boundary contracts |
+| `alloy-scripting` | Scripting support layer used by Alloy runtime flows |
+| `rustok-iggy` | Event streaming transport runtime |
+| `rustok-iggy-connector` | Embedded/remote connector layer for Iggy |
+
+FFA/FBA status is tracked centrally because it changes per module and must be
+backed by evidence:
+
+| Term | Meaning | Where to check current status |
+|---|---|---|
+| FFA | Fluid Frontend Architecture: module-owned UI split into framework-agnostic `core`, transport facade and explicit host UI adapters such as Leptos or Next.js. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
+| FBA | Fluid Backend Architecture: module-owned backend boundary with typed ports, request context, errors, fallback/degraded modes and verification evidence. | [FFA/FBA readiness board](docs/modules/registry.md#ffafba-readiness-board-module-owned-ui) |
 
 ---
 

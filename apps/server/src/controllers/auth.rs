@@ -9,9 +9,9 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use loco_rs::controller::format;
 use loco_rs::controller::Routes;
 use rustok_telemetry::metrics;
+use rustok_web::json_response;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
@@ -87,13 +87,13 @@ async fn register(
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     let user_role = tokens.effective_role.clone();
-    format::json(AuthResponse {
+    Ok(json_response(AuthResponse {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_type: "Bearer",
         expires_in: tokens.expires_in,
         user: user_info_from_model(user, user_role),
-    })
+    }))
 }
 
 #[utoipa::path(post, path = "/api/auth/login", tag = "auth", request_body = LoginParams,
@@ -128,13 +128,13 @@ async fn login(
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     let user_role = tokens.effective_role.clone();
-    format::json(AuthResponse {
+    Ok(json_response(AuthResponse {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_type: "Bearer",
         expires_in: tokens.expires_in,
         user: user_info_from_model(user, user_role),
-    })
+    }))
 }
 
 #[utoipa::path(post, path = "/api/auth/refresh", tag = "auth", request_body = RefreshRequest,
@@ -159,13 +159,13 @@ async fn refresh(
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     let user_role = tokens.effective_role.clone();
-    format::json(AuthResponse {
+    Ok(json_response(AuthResponse {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_type: "Bearer",
         expires_in: tokens.expires_in,
         user: user_info_from_model(user, user_role),
-    })
+    }))
 }
 
 #[utoipa::path(post, path = "/api/auth/logout", tag = "auth", request_body = RefreshRequest,
@@ -187,7 +187,7 @@ async fn logout(
         session_model.update(ctx.runtime_ctx().db()).await?;
     }
 
-    format::json(LogoutResponse { status: "ok" })
+    Ok(json_response(LogoutResponse { status: "ok" }))
 }
 
 #[utoipa::path(get, path = "/api/auth/me", tag = "auth", security(("bearer_auth" = [])),
@@ -199,7 +199,7 @@ async fn me(
         ..
     }: CurrentUser,
 ) -> Result<Response> {
-    format::json(user_response_from_model(user, inferred_role))
+    Ok(json_response(user_response_from_model(user, inferred_role)))
 }
 
 #[utoipa::path(post, path = "/api/auth/invite/accept", tag = "auth", request_body = AcceptInviteParams,
@@ -240,11 +240,11 @@ async fn accept_invite(
         other => Error::from(other),
     })?;
 
-    format::json(InviteAcceptResponse {
+    Ok(json_response(InviteAcceptResponse {
         status: "ok",
         email,
         role,
-    })
+    }))
 }
 
 #[utoipa::path(post, path = "/api/auth/reset/request", tag = "auth", request_body = RequestResetParams,
@@ -305,10 +305,10 @@ async fn request_reset(
         });
     }
 
-    format::json(ResetRequestResponse {
+    Ok(json_response(ResetRequestResponse {
         status: "ok",
         reset_token: if expose_token { reset_token } else { None },
-    })
+    }))
 }
 
 #[utoipa::path(post, path = "/api/auth/reset/confirm", tag = "auth", request_body = ConfirmResetParams,
@@ -333,7 +333,7 @@ async fn confirm_reset(
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
-    format::json(GenericStatusResponse { status: "ok" })
+    Ok(json_response(GenericStatusResponse { status: "ok" }))
 }
 
 #[utoipa::path(post, path = "/api/auth/verify/request", tag = "auth", request_body = RequestVerificationParams,
@@ -396,14 +396,14 @@ async fn request_verification(
         });
     }
 
-    format::json(VerificationRequestResponse {
+    Ok(json_response(VerificationRequestResponse {
         status: "ok",
         verification_token: if expose_token {
             verification_token
         } else {
             None
         },
-    })
+    }))
 }
 
 #[utoipa::path(post, path = "/api/auth/verify/confirm", tag = "auth", request_body = ConfirmVerificationParams,
@@ -433,7 +433,7 @@ async fn confirm_verification(
         user_active.update(ctx.runtime_ctx().db()).await?;
     }
 
-    format::json(GenericStatusResponse { status: "ok" })
+    Ok(json_response(GenericStatusResponse { status: "ok" }))
 }
 
 #[utoipa::path(get, path = "/api/auth/sessions", tag = "auth", security(("bearer_auth" = [])),
@@ -481,7 +481,7 @@ async fn list_sessions(
         })
         .collect();
 
-    format::json(SessionsResponse { sessions: data })
+    Ok(json_response(SessionsResponse { sessions: data }))
 }
 
 #[utoipa::path(post, path = "/api/auth/sessions/revoke-all", tag = "auth", security(("bearer_auth" = [])),
@@ -502,7 +502,7 @@ async fn revoke_all_sessions(
         .exec(ctx.runtime_ctx().db())
         .await?;
 
-    format::json(GenericStatusResponse { status: "ok" })
+    Ok(json_response(GenericStatusResponse { status: "ok" }))
 }
 
 #[utoipa::path(post, path = "/api/auth/change-password", tag = "auth", security(("bearer_auth" = [])), request_body = ChangePasswordParams,
@@ -525,7 +525,7 @@ async fn change_password(
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
-    format::json(GenericStatusResponse { status: "ok" })
+    Ok(json_response(GenericStatusResponse { status: "ok" }))
 }
 
 #[utoipa::path(post, path = "/api/auth/profile", tag = "auth", security(("bearer_auth" = [])), request_body = UpdateProfileParams,
@@ -546,7 +546,10 @@ async fn update_profile(
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
-    format::json(user_response_from_model(user, current.inferred_role))
+    Ok(json_response(user_response_from_model(
+        user,
+        current.inferred_role,
+    )))
 }
 
 #[utoipa::path(get, path = "/api/auth/history", tag = "auth", security(("bearer_auth" = [])),
@@ -592,7 +595,7 @@ async fn login_history(
         })
         .collect();
 
-    format::json(SessionsResponse { sessions: data })
+    Ok(json_response(SessionsResponse { sessions: data }))
 }
 
 #[utoipa::path(delete, path = "/api/auth/sessions/{id}", tag = "auth", security(("bearer_auth" = [])),
@@ -618,7 +621,7 @@ async fn revoke_session(
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     if revoked {
-        format::json(GenericStatusResponse { status: "ok" })
+        Ok(json_response(GenericStatusResponse { status: "ok" }))
     } else {
         Err(Error::NotFound)
     }

@@ -13,11 +13,11 @@ The plan replaces the previous direction of "integrate Loco deeper". The old `ap
 ## Execution Checkpoint
 
 - Current phase: `phase_1_runtime_context_and_request_extractors`
-- Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin`, `rustok-outbox-admin`, `rustok-channel-admin`, `rustok-ai-admin`, `rustok-product` admin/storefront, `rustok-seo-admin`, `rustok-mcp-admin`, `rustok-inventory-admin` and `rustok-cart-storefront` native transports no longer import `loco_rs::app::AppContext`; `rustok-ai-admin` now resolves DB, `TransactionalEventBus`, `SharedAiModuleRegistry`, `StorageService` and `SharedAlloyRuntime` through `HostRuntimeContext`, with no `loco-rs` or `rustok-outbox/loco-adapter` package dependency; `rustok-commerce-storefront` no longer carries a package-level `loco-rs` dependency after its native code had already moved to owner checkout runtimes; backend foundation crates `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core` were added so executable runtime/web/FBA/CLI helpers do not continue to expand `rustok-api`; `apps/server/src/controllers/health.rs` is the first `rustok-web` consumer and now uses `rustok_web::json_response` instead of Loco response formatting while keeping Loco `Routes` for the later Axum router slice; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted.
-- Next step: continue forward with 1-2 server controller response-mapping slices through `rustok-web`; do not backfill already-green UI/native adapters unless the same boundary is being changed or a helper has stabilized in multiple new call sites with a guardrail.
+- Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin`, `rustok-outbox-admin`, `rustok-channel-admin`, `rustok-ai-admin`, `rustok-product` admin/storefront, `rustok-seo-admin`, `rustok-mcp-admin`, `rustok-inventory-admin` and `rustok-cart-storefront` native transports no longer import `loco_rs::app::AppContext`; `rustok-ai-admin` now resolves DB, `TransactionalEventBus`, `SharedAiModuleRegistry`, `StorageService` and `SharedAlloyRuntime` through `HostRuntimeContext`, with no `loco-rs` or `rustok-outbox/loco-adapter` package dependency; `rustok-commerce-storefront` no longer carries a package-level `loco-rs` dependency after its native code had already moved to owner checkout runtimes; backend foundation crates `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core` were added so executable runtime/web/FBA/CLI helpers do not continue to expand `rustok-api`; `apps/server/src/controllers/health.rs`, `apps/server/src/controllers/users.rs`, `apps/server/src/controllers/channel.rs` and `apps/server/src/controllers/auth.rs` now use `rustok_web::json_response` instead of Loco response formatting while keeping Loco `Routes` for the later Axum router slice; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted.
+- Next step: continue forward with remaining server controller response/error boundary slices through `rustok-web`; do not backfill already-green UI/native adapters unless the same boundary is being changed or a helper has stabilized in multiple new call sites with a guardrail.
 - Open blockers: none for Phase 1 planning; before Phase 4, targeted integration smoke for pure Axum startup will be needed.
 - Hand-off notes for next agent: do not add compatibility wrappers and dual execution paths; each cutover must migrate all internal callers to the target contract and remove the replaced Loco path in the same change set.
-- Last updated at (UTC): 2026-07-08T11:09:37Z
+- Last updated at (UTC): 2026-07-08T12:29:14Z
 
 ## Goal
 
@@ -75,13 +75,13 @@ Current classified inventory baseline after the `rustok-ai-admin` native transpo
 
 | Category | Count | Practical Meaning |
 |---|---:|---|
-| `host_runtime` | 61 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
+| `host_runtime` | 60 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
 | `module_ui_adapter` | 90 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
 | `module_controller` | 35 | Mostly controller route/state adapters and remaining Loco controller API usage after handler runtime narrowing. |
 | `server_task` / `server_seed` / `server_schedule` | 22 | Maintenance flows that belong in `rustok-cli`, not the HTTP server binary. |
 | `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
 | `dependency_manifest` / `lockfile` | 47 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
-| `verification_guard` / `docs` / `scaffold_template` | 361 | Guardrails, historical docs and generated templates to update/archive last. |
+| `verification_guard` / `docs` / `scaffold_template` | 368 | Guardrails, historical docs and generated templates to update/archive last. |
 
 Approximate remaining effort:
 
@@ -285,12 +285,13 @@ Exit gate: inventory script passes, allowlist is fixed, new Loco imports without
 - [x] Migrate `tenant`, `channel` and `locale` middleware to `ServerRuntimeContext`; router/health/metrics remain boundary adapters.
 - [x] Migrate `auth_context`, `CurrentUser`/`OptionalCurrentUser` and RBAC permission extractor macro to narrow `ServerAuthRuntime`; Loco `AppContext` remains only as a boundary source for assembling this runtime in the current host.
 - [x] Migrate module guard and server channel contract to `ServerRuntimeContext`; Loco context is no longer a public request/channel contract inside the server.
-- [x] Migrate GraphQL and users controller handlers to Axum substate (`ServerRuntimeContext`/`ServerAuthRuntime`); Loco `Routes`, response format and error contracts remain for Phase 2 routing cutover.
+- [x] Migrate GraphQL and users controller handlers to Axum substate (`ServerRuntimeContext`/`ServerAuthRuntime`); Loco `Routes` and error contracts remain for Phase 2 routing cutover.
 - [x] Migrate metrics handler and helper pipeline to `ServerRuntimeContext` + narrow `ServerEmailRuntime`; non-clone worker handles are read through scoped runtime API without leaking Loco `SharedStore`.
 - [x] Migrate health readiness/runtime handlers and dependency checks to `ServerRuntimeContext` + `ServerEmailRuntime`; Loco route assembly remains a separate Phase 2 item.
-- [x] Migrate channel and standalone Flex REST handlers to `ServerRuntimeContext`; Flex controller tests also use neutral runtime fixture instead of test-only Loco `AppContext`.
+- [x] Migrate channel and standalone Flex REST handlers to `ServerRuntimeContext`; channel controller also uses `rustok_web::json_response` for JSON response formatting, while Flex controller tests use neutral runtime fixture instead of test-only Loco `AppContext`.
 - [x] Migrate OAuth metadata handler to `ServerAuthRuntime`; discovery metadata no longer reads auth config from Loco host state.
 - [x] Migrate OAuth REST token, authorize/consent, browser-session and revoke handlers to `ServerAuthRuntime`/`ServerRuntimeContext`; Loco `Routes` remains only a routing adapter until Phase 2.
+- [x] Migrate auth controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response`; Loco `Routes` remains for the router cutover slice.
 - [x] Migrate marketplace registry/governance REST handlers to `ServerRuntimeContext`; artifact storage and remote executor settings are read through neutral runtime state.
 - [x] Migrate swagger, installer status/receipts, admin DLQ, MCP management/remote tools and build WebSocket handlers to `ServerRuntimeContext`; Loco `Routes` remains only a routing adapter until Phase 2.
 - [ ] Migrate Leptos server functions to `HostRuntimeContext`/typed narrow contexts.
@@ -325,6 +326,9 @@ Exit gate: module-owned crates and UI packages do not import `loco_rs::app::AppC
 - [ ] Introduce unified `AppError` / response mapper without `loco_rs::Error`.
 - [ ] Migrate `crate::error::{Error, Result}` off `pub use loco_rs`.
 - [x] Migrate health controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` for the router cutover slice.
+- [x] Migrate users controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` and `ErrorDetail` for later routing/error cutover slices.
+- [x] Migrate channel controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` and `ErrorDetail` for later routing/error cutover slices.
+- [x] Migrate auth controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response` while keeping Loco `Routes` for the router cutover slice.
 - [ ] Migrate health/metrics/graphql/auth/controllers to Axum response contracts.
 - [ ] Update OpenAPI/export reference gates.
 

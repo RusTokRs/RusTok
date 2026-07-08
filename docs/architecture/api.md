@@ -120,6 +120,17 @@ contract crate:
 - FBA provider/consumer metadata and topology descriptors belong in `rustok-fba`;
 - platform CLI command/provider contracts belong in `rustok-cli-core`.
 
+When implementing module backend code, use the backend module guides as the operational
+contract:
+
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
+- [Backend Module Verification Guide](../backend/module-backend-verification.md)
+
+New module services, ports, HTTP handlers, GraphQL roots, `#[server]` adapters and CLI
+adapters must not use Loco runtime APIs as their target contract. During the current
+cutover, any remaining Loco controller/router usage is legacy boundary inventory only.
+
 ## Security and Context Contract
 
 Each API path must operate through a single host/runtime context:
@@ -214,5 +225,7 @@ Verification Evidence for artifact export and a link to the diff.
 
 - [Routing and Transport Layer Boundaries](./routing.md)
 - [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
 - [Module Architecture](./modules.md)
 - [Platform Architecture Overview](./overview.md)

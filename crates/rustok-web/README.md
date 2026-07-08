@@ -16,6 +16,7 @@ adapters.
 - `HttpError`
 - `HttpResult`
 - `ErrorBody`
+- `json_response`
 
 ## Interactions
 
@@ -24,4 +25,3 @@ adapters.
 - Does not own runtime composition, domain errors, FBA metadata, CLI contracts, or UI transport.
 
 See [docs](docs/README.md).
-

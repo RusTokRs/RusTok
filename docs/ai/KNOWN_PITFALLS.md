@@ -15,8 +15,17 @@ Short list of typical mistakes before making code changes.
 
 - Do not add new dependencies on `loco_rs` outside the already classified inventory. Run `node scripts/verify/verify-loco-inventory.mjs` on Loco/Axum cutover.
 - Do not design new server-owned services around `loco_rs::app::AppContext`; use `ServerRuntimeContext` or narrow typed contexts.
+- Do not add new `loco_rs::controller::format` response formatting; use `rustok_web::json_response` or another `rustok-web` helper.
 - Do not move maintenance/CLI flows into the production server binary. The target layer is a separate `rustok-cli` over `rustok-cli-core` and module-local `cli/` adapters.
 - While legacy controllers are not yet migrated, do not mix new Axum error contracts with Loco controller paths in the same slice; translate route/error surface atomically per plan.
+
+## Backend Foundation
+
+- Do not put executable runtime helpers into `rustok-api`; use `rustok-runtime`.
+- Do not put Axum response/error/extractor helpers into module crates or `apps/server`; use `rustok-web`.
+- Do not invent package-local FBA metadata JSON when `rustok-fba` owns the descriptor shape.
+- Do not put CLI command parsing, stdout or process exit behavior in domain crates; module command adapters use `rustok-cli-core` and stay outside the production server runtime.
+- Before writing module backend code, read `docs/backend/module-backend-architecture.md`, `docs/backend/module-backend-implementation.md` and `docs/backend/module-backend-verification.md`.
 
 ## Iggy / Outbox
 

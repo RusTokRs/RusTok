@@ -60,6 +60,10 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Module Documentation Template](./templates/module_contract.md)
 - [Module UI Packages Index](./modules/UI_PACKAGES_INDEX.md)
 - [UI Packages Quick Start](./modules/UI_PACKAGES_QUICKSTART.md)
+- **Module Backend Guides** (read these when working on module services, ports, GraphQL/REST handlers, Leptos server-function adapters, FBA metadata or CLI adapters):
+  - [Architecture Guide](./backend/module-backend-architecture.md) - backend ownership, runtime boundaries, foundation crates and FBA/CLI split
+  - [Implementation Guide](./backend/module-backend-implementation.md) - crate layout, runtime helpers, transport adapters, ports and forbidden patterns
+  - [Verification Guide](./backend/module-backend-verification.md) - fast guardrails, targeted Rust checks and FBA evidence
 - [Rich-text and Visual Page Builder Special Plan](./modules/tiptap-page-builder-implementation-plan.md)
 - AI support adapter plans for `rustok-ai-media` and `rustok-ai-alloy` are available through the [module documentation index](./modules/_index.md).
 
@@ -84,6 +88,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 ## Architecture and Foundation
 
 - [Platform Diagram](./architecture/diagram.md)
+- [Backend Module Guides](./backend/README.md) - target backend module architecture, implementation and verification for `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core`
 - [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`
 - [Hybrid Installer ADR](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
 - [Loco RS Exit Plan to Pure Axum and Custom CLI](./architecture/loco-exit-plan.md)

@@ -3,7 +3,6 @@ pub mod native_server_adapter;
 pub use native_server_adapter::ApiError;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-use leptos::prelude::*;
 use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -82,7 +81,7 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
     feature = "ssr"
 ))]
-async fn execute_server_graphql(
+pub(super) async fn execute_server_graphql(
     request: ServerGraphqlRequest,
 ) -> Result<Value, rustok_graphql::GraphqlHttpError> {
     let mut graphql_request =
@@ -103,23 +102,6 @@ async fn execute_server_graphql(
     .await
 }
 
-#[server(prefix = "/api/fn", endpoint = "auth/graphql")]
-async fn auth_graphql(request: ServerGraphqlRequest) -> Result<Value, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        execute_server_graphql(request)
-            .await
-            .map_err(|err| ServerFnError::ServerError(err.to_string()))
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = request;
-        Err(ServerFnError::ServerError(
-            "SSR feature not enabled".to_string(),
-        ))
-    }
-}
-
 async fn execute_auth_graphql(
     request: ServerGraphqlRequest,
 ) -> Result<Value, rustok_graphql::GraphqlHttpError> {
@@ -130,20 +112,22 @@ async fn execute_auth_graphql(
 
     #[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
     {
-        auth_graphql(request).await.map_err(|err| {
-            let message = err.to_string();
-            if message == "Unauthorized" {
-                rustok_graphql::GraphqlHttpError::Unauthorized
-            } else if message == "Network error" {
-                rustok_graphql::GraphqlHttpError::Network
-            } else if let Some(value) = message.strip_prefix("Http error: ") {
-                rustok_graphql::GraphqlHttpError::Http(value.to_string())
-            } else if let Some(value) = message.strip_prefix("GraphQL error: ") {
-                rustok_graphql::GraphqlHttpError::Graphql(value.to_string())
-            } else {
-                rustok_graphql::GraphqlHttpError::Graphql(message)
-            }
-        })
+        native_server_adapter::auth_graphql(request)
+            .await
+            .map_err(|err| {
+                let message = err.to_string();
+                if message == "Unauthorized" {
+                    rustok_graphql::GraphqlHttpError::Unauthorized
+                } else if message == "Network error" {
+                    rustok_graphql::GraphqlHttpError::Network
+                } else if let Some(value) = message.strip_prefix("Http error: ") {
+                    rustok_graphql::GraphqlHttpError::Http(value.to_string())
+                } else if let Some(value) = message.strip_prefix("GraphQL error: ") {
+                    rustok_graphql::GraphqlHttpError::Graphql(value.to_string())
+                } else {
+                    rustok_graphql::GraphqlHttpError::Graphql(message)
+                }
+            })
     }
 }
 

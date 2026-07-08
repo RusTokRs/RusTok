@@ -32,7 +32,6 @@ fn graphql_runtime_details_are_removed_from_inventory_admin_package() {
     for source_path in [
         "src/core.rs",
         "src/model.rs",
-        "src/native.rs",
         "src/transport/mod.rs",
         "src/transport/native_server_adapter.rs",
         "src/ui/leptos.rs",
@@ -88,7 +87,7 @@ fn package_root_exports_ui_only_without_exposing_transport_adapter() {
 
 #[test]
 fn native_read_path_targets_inventory_backend_service() {
-    let native = read_source("src/native.rs");
+    let native = read_source("src/transport/native_server_adapter.rs");
 
     for marker in [
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/bootstrap\")]",
@@ -101,7 +100,7 @@ fn native_read_path_targets_inventory_backend_service() {
     ] {
         assert!(
             native.contains(marker),
-            "src/native.rs must keep native inventory read path marker `{}`",
+            "src/transport/native_server_adapter.rs must keep native inventory read path marker `{}`",
             marker
         );
     }
@@ -109,7 +108,7 @@ fn native_read_path_targets_inventory_backend_service() {
 
 #[test]
 fn native_write_path_targets_inventory_service() {
-    let native = read_source("src/native.rs");
+    let native = read_source("src/transport/native_server_adapter.rs");
 
     for marker in [
         r#"#[server(prefix = "/api/fn", endpoint = "inventory/variant/set-quantity")]"#,
@@ -122,7 +121,8 @@ fn native_write_path_targets_inventory_service() {
         "inventory/variant/reserve-quantity requires the `ssr` feature",
         "inventory/variant/check-availability requires the `ssr` feature",
         "inventory/variant/release-reservation requires the `ssr` feature",
-        "transactional_event_bus_from_context",
+        "shared_get::<rustok_outbox::TransactionalEventBus>()",
+        "inventory/admin native transport requires TransactionalEventBus in host runtime context",
         "assert_requested_tenant",
         "Permission::INVENTORY_UPDATE",
         "Permission::INVENTORY_MANAGE",
@@ -142,7 +142,7 @@ fn native_write_path_targets_inventory_service() {
     ] {
         assert!(
             native.contains(marker),
-            "src/native.rs must keep native inventory write path marker `{}`",
+            "src/transport/native_server_adapter.rs must keep native inventory write path marker `{}`",
             marker
         );
     }
@@ -315,7 +315,7 @@ fn native_only_graphql_adapter_removal_is_documented() {
 #[test]
 fn native_read_mapper_keeps_backend_read_model_parity() {
     let model = read_source("src/model.rs");
-    let native = read_source("src/native.rs");
+    let native = read_source("src/transport/native_server_adapter.rs");
     let backend = read_source("../src/services/admin_read.rs");
 
     for (model_marker, backend_marker, native_marker) in [
@@ -398,7 +398,7 @@ fn native_read_mapper_keeps_backend_read_model_parity() {
 #[test]
 fn native_write_path_returns_quantity_contract_not_bare_integer() {
     let model = read_source("src/model.rs");
-    let native = read_source("src/native.rs");
+    let native = read_source("src/transport/native_server_adapter.rs");
     let transport = read_source("src/transport/mod.rs");
     let core = read_source("src/core.rs");
     let ui = read_source("src/ui/leptos.rs");

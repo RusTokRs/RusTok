@@ -1,6 +1,6 @@
 #[test]
 fn admin_graphql_queries_keep_catalog_contract_stable() {
-    let source = include_str!("../admin/src/transport/raw_adapter.rs");
+    let source = include_str!("../admin/src/transport/graphql_adapter.rs");
 
     for required in [
         "query CommerceAdminBootstrap { currentTenant { id slug name } }",
@@ -36,7 +36,7 @@ fn admin_graphql_queries_keep_catalog_contract_stable() {
 
 #[test]
 fn storefront_graphql_transports_keep_owner_handoff_stable() {
-    let commerce_source = include_str!("../storefront/src/transport/raw_adapter.rs");
+    let commerce_source = include_str!("../storefront/src/transport/shared_adapter.rs");
     let payment_source =
         include_str!("../../rustok-payment/storefront/src/transport/graphql_adapter.rs");
     let order_source =

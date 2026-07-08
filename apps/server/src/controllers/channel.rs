@@ -5,7 +5,7 @@ use axum::{
     routing::{delete, get, patch, post},
     Extension, Json,
 };
-use loco_rs::controller::{format, ErrorDetail, Routes};
+use loco_rs::controller::{ErrorDetail, Routes};
 use rustok_api::Permission;
 use rustok_channel::{
     create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
@@ -15,6 +15,7 @@ use rustok_channel::{
     ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, UpdateChannelTargetInput,
 };
 use rustok_core::ModuleRegistry;
+use rustok_web::json_response;
 use uuid::Uuid;
 
 use crate::context::OptionalChannel;
@@ -73,13 +74,15 @@ async fn bootstrap(
         .collect::<Vec<_>>();
     oauth_apps.sort_by(|left, right| left.slug.cmp(&right.slug));
 
-    format::json(ChannelBootstrapResponse::<crate::context::ChannelContext> {
+    Ok(json_response(ChannelBootstrapResponse::<
+        crate::context::ChannelContext,
+    > {
         current_channel,
         channels,
         policy_sets,
         available_modules,
         oauth_apps,
-    })
+    }))
 }
 
 async fn create_channel(
@@ -102,7 +105,7 @@ async fn create_channel(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(channel)
+    Ok(json_response(channel))
 }
 
 async fn create_target(
@@ -122,7 +125,7 @@ async fn create_target(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(target)
+    Ok(json_response(target))
 }
 
 async fn set_default_channel(
@@ -141,7 +144,7 @@ async fn set_default_channel(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(channel)
+    Ok(json_response(channel))
 }
 
 async fn update_target(
@@ -161,7 +164,7 @@ async fn update_target(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(target)
+    Ok(json_response(target))
 }
 
 async fn delete_target(
@@ -180,7 +183,7 @@ async fn delete_target(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(target)
+    Ok(json_response(target))
 }
 
 async fn bind_module(
@@ -200,7 +203,7 @@ async fn bind_module(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(binding)
+    Ok(json_response(binding))
 }
 
 async fn bind_oauth_app(
@@ -229,7 +232,7 @@ async fn bind_oauth_app(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(binding)
+    Ok(json_response(binding))
 }
 
 async fn delete_module_binding(
@@ -248,7 +251,7 @@ async fn delete_module_binding(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(binding)
+    Ok(json_response(binding))
 }
 
 async fn delete_oauth_app_binding(
@@ -267,7 +270,7 @@ async fn delete_oauth_app_binding(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(binding)
+    Ok(json_response(binding))
 }
 
 async fn create_resolution_policy_set(
@@ -285,7 +288,7 @@ async fn create_resolution_policy_set(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(policy_set)
+    Ok(json_response(policy_set))
 }
 
 async fn create_resolution_rule(
@@ -309,7 +312,7 @@ async fn create_resolution_rule(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(rule)
+    Ok(json_response(rule))
 }
 
 async fn update_resolution_rule(
@@ -333,7 +336,7 @@ async fn update_resolution_rule(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(rule)
+    Ok(json_response(rule))
 }
 
 async fn reorder_resolution_rules(
@@ -358,7 +361,7 @@ async fn reorder_resolution_rules(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(rules)
+    Ok(json_response(rules))
 }
 
 async fn activate_resolution_policy_set(
@@ -377,7 +380,7 @@ async fn activate_resolution_policy_set(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(policy_set)
+    Ok(json_response(policy_set))
 }
 
 async fn delete_resolution_rule(
@@ -396,7 +399,7 @@ async fn delete_resolution_rule(
         .map_err(internal_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
-    format::json(rule)
+    Ok(json_response(rule))
 }
 
 async fn ensure_channel_manage_access(

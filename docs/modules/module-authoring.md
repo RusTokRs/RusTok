@@ -27,6 +27,9 @@ Before any module changes, be sure to check:
 - [Platform Database Schema](../architecture/database.md)
 - [i18n Architecture](../architecture/i18n.md)
 - [API Architecture](../architecture/api.md)
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
+- [Backend Module Verification Guide](../backend/module-backend-verification.md)
 - [`apps/server` Documentation](../../apps/server/docs/README.md)
 - [`apps/admin` Documentation](../../apps/admin/docs/README.md)
 - [Workspace CLI `xtask`](../../xtask/README.md)
@@ -115,6 +118,16 @@ fallback to an outdated internal port or duplicate old business logic.
 
 ## Backend
 
+The detailed backend contract lives in the backend module guides:
+
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
+- [Backend Module Verification Guide](../backend/module-backend-verification.md)
+
+These guides are mandatory for module services, ports, GraphQL/REST handlers,
+Leptos `#[server]` adapters, FBA metadata and CLI adapters. The rest of this section
+is a summary and must not be used to bypass the detailed backend guides.
+
 ### 1. First Fix the Runtime Contract
 
 Minimum for a backend module:
@@ -147,6 +160,17 @@ Canon:
 - API surfaces: [api.md](../architecture/api.md)
 - routing and transport boundaries: [routing.md](../architecture/routing.md)
 - server host contract: [apps/server/docs/README.md](../../apps/server/docs/README.md)
+- backend implementation guide: [module-backend-implementation.md](../backend/module-backend-implementation.md)
+
+Foundation ownership is fixed:
+
+- stable cross-boundary contracts stay in `rustok-api`;
+- executable runtime helpers go to `rustok-runtime`;
+- Axum response/error/extractor helpers go to `rustok-web`;
+- FBA provider/consumer metadata goes to `rustok-fba`;
+- CLI command/provider contracts go to `rustok-cli-core`.
+
+Do not expand `rustok-api` or `apps/server` just because a backend helper is needed.
 
 ### 3. Data and Migrations Follow the Common Storage Contract
 

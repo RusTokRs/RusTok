@@ -4,9 +4,10 @@ use axum::{
     routing::get,
 };
 use axum::{http::StatusCode, response::Response};
+use loco_rs::controller::ErrorDetail;
 use loco_rs::controller::Routes;
-use loco_rs::controller::{format, ErrorDetail};
 use rustok_auth::{UserItem, UsersListParams, UsersResponse};
+use rustok_web::json_response;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
@@ -85,12 +86,12 @@ async fn list_users(
     let total = paginator.num_items().await.unwrap_or(0);
     let rows = paginator.fetch_page(page - 1).await.unwrap_or_default();
 
-    format::json(UsersResponse {
+    Ok(json_response(UsersResponse {
         users: rows.into_iter().map(map_user).collect(),
         total,
         page,
         page_size,
-    })
+    }))
 }
 
 #[utoipa::path(get, path = "/api/users/{id}", tag = "users", security(("bearer_auth" = [])),
@@ -136,7 +137,7 @@ async fn get_user(
         .map_err(|e| Error::Message(e.to_string()))?
         .ok_or(Error::NotFound)?;
 
-    format::json(map_user(user))
+    Ok(json_response(map_user(user)))
 }
 
 pub fn routes() -> Routes {

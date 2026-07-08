@@ -15,3 +15,14 @@ Boundary rules:
 - CLI command contracts belong in `rustok-cli-core`.
 - FBA provider/consumer metadata belongs in `rustok-fba`.
 
+Current entry points:
+
+- `HostRuntimeContext` re-export for backend adapters that need the neutral host contract.
+- `db_clone` for explicit DB handle cloning from host runtime context.
+- `require_shared` and `RuntimeHandleError` for typed shared-handle lookup.
+
+Use this crate when the same runtime lookup pattern appears in multiple backend adapters.
+Do not copy shared-handle lookup code into each module or push executable helpers back into
+`rustok-api`.
+
+Related guide: [Backend Module Implementation](../../../docs/backend/module-backend-implementation.md).

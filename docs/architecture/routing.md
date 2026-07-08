@@ -81,6 +81,17 @@ If a module publishes HTTP routes or UI surfaces:
 The presence of a controller or UI sub-crate without manifest wiring is not considered a complete
 contract.
 
+For backend implementation details, read the backend module guides:
+
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
+- [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
+- [Backend Module Verification Guide](../backend/module-backend-verification.md)
+
+New HTTP response formatting must use `rustok-web` helpers such as
+`rustok_web::json_response`. Do not add new `loco_rs::controller::format` usage. Current
+`loco_rs::controller::Routes` occurrences are temporary route-mounting inventory until the
+Axum router cutover, not a model for new module routing.
+
 ## Route-selection Contract for Module-owned Admin UI
 
 For module-owned admin UI, a single platform contract applies:
@@ -137,4 +148,5 @@ Locale routing is determined by the host/runtime layer:
 - [API Architecture](./api.md)
 - [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
 - [Quick Start for Admin ↔ Server](../UI/admin-server-connection-quickstart.md)
+- [Backend Module Architecture](../backend/module-backend-architecture.md)
 - [Module Architecture](./modules.md)

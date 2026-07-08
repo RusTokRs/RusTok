@@ -343,6 +343,8 @@ requireNotContains('apps/server/src/controllers/graphql.rs', 'loco_rs::app::AppC
 requireContains('apps/server/src/controllers/graphql.rs', 'State(runtime_ctx): State<ServerRuntimeContext>', 'GraphQL controller extracts neutral runtime state');
 requireContains('apps/server/src/controllers/graphql.rs', 'State(auth_runtime): State<ServerAuthRuntime>', 'GraphQL WebSocket controller extracts narrow auth state');
 requireNotContains('apps/server/src/controllers/users.rs', 'loco_rs::app::AppContext', 'users controller handlers do not consume Loco AppContext');
+requireNotContains('apps/server/src/controllers/users.rs', 'loco_rs::controller::format', 'users controller does not use Loco response formatting');
+requireContains('apps/server/src/controllers/users.rs', 'rustok_web::json_response', 'users controller uses rustok-web JSON response helper');
 requireContains('apps/server/src/controllers/users.rs', 'State<ServerRuntimeContext>', 'users controller extracts neutral runtime state');
 requireNotContains('apps/server/src/controllers/metrics.rs', 'loco_rs::app::AppContext', 'metrics controller does not consume Loco AppContext');
 requireContains('apps/server/src/controllers/metrics.rs', 'State(ctx): State<ServerRuntimeContext>', 'metrics controller extracts neutral runtime state');
@@ -352,6 +354,8 @@ requireNotContains('apps/server/src/controllers/health.rs', 'loco_rs::controller
 requireContains('apps/server/src/controllers/health.rs', 'rustok_web::json_response', 'health controller uses rustok-web JSON response helper');
 requireContains('apps/server/src/controllers/health.rs', 'State(ctx): State<ServerRuntimeContext>', 'health controller extracts neutral runtime state');
 requireContains('apps/server/src/controllers/health.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'health readiness extracts narrow email runtime state');
+requireNotContains('apps/server/src/controllers/channel.rs', 'loco_rs::controller::format', 'channel controller does not use Loco response formatting');
+requireContains('apps/server/src/controllers/channel.rs', 'rustok_web::json_response', 'channel controller uses rustok-web JSON response helper');
 for (const rel of [
   'apps/server/src/controllers/channel.rs',
   'apps/server/src/controllers/flex.rs',
@@ -361,6 +365,8 @@ for (const rel of [
 }
 requireContains('apps/server/src/controllers/flex.rs', 'fn test_runtime_context', 'Flex controller tests use the neutral runtime fixture');
 requireNotContains('apps/server/src/controllers/auth.rs', 'loco_rs::app::AppContext', 'auth controller does not consume Loco AppContext');
+requireNotContains('apps/server/src/controllers/auth.rs', 'loco_rs::controller::format', 'auth controller does not use Loco response formatting');
+requireContains('apps/server/src/controllers/auth.rs', 'rustok_web::json_response', 'auth controller uses rustok-web JSON response helper');
 requireContains('apps/server/src/controllers/auth.rs', 'State(ctx): State<ServerAuthRuntime>', 'auth controller extracts narrow auth runtime state');
 requireContains('apps/server/src/controllers/auth.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'auth email endpoints extract narrow email runtime state');
 requireNotContains('apps/server/src/controllers/auth.rs', 'auth_config_from_ctx', 'auth controller reads config from the narrow auth runtime');
@@ -411,14 +417,10 @@ for (const rel of [
   'crates/rustok-product/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-seo/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-mcp/admin/src/transport/native_server_adapter.rs',
-  'crates/rustok-inventory/admin/src/native.rs',
   'crates/rustok-cart/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-region/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-pages/storefront/src/transport/native_server_adapter.rs',
   'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs',
-  'crates/rustok-order/storefront/src/transport/native_server_adapter/raw_adapter.rs',
-  'crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/raw_adapter.rs',
-  'crates/rustok-payment/storefront/src/transport/native_server_adapter/raw_adapter.rs',
   'crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs',
 ]) {
   requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
