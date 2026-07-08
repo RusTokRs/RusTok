@@ -1,0 +1,12 @@
+[package]
+name = "rustok-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Axum HTTP boundary helpers for RusToK backend adapters"
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

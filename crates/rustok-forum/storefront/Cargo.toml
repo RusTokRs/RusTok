@@ -7,7 +7,13 @@ license.workspace = true
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr"]
+ssr = [
+    "leptos/ssr",
+    "dep:rustok-core",
+    "dep:rustok-forum",
+    "dep:rustok-outbox",
+    "rustok-api/server",
+]
 
 [dependencies]
 rustok-ui-core.workspace = true
@@ -16,4 +22,8 @@ leptos.workspace = true
 rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
+rustok-core = { workspace = true, optional = true }
+rustok-forum = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+uuid.workspace = true

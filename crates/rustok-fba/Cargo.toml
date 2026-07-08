@@ -1,0 +1,12 @@
+[package]
+name = "rustok-fba"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fluid Backend Architecture contracts for RusToK module boundaries"
+
+[dependencies]
+rustok-api.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+

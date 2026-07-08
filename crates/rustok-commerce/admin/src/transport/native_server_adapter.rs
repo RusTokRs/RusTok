@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
 use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -87,10 +88,6 @@ pub async fn apply_cart_promotion(
     commerce_admin_apply_cart_promotion_native(cart_id, payload)
         .await
         .map_err(Into::into)
-}
-
-fn optional_json_text(value: &str) -> Option<String> {
-    optional_text(value)
 }
 
 #[cfg(feature = "ssr")]

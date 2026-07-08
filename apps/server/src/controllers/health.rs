@@ -6,11 +6,11 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::Extension;
 use chrono::Utc;
-use loco_rs::controller::format;
 use loco_rs::controller::Routes;
 use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
+use rustok_web::json_response;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
     QueryOrder, Statement,
@@ -137,11 +137,11 @@ struct CircuitState {
     )
 )]
 pub async fn health() -> Result<Response> {
-    format::json(HealthResponse {
+    Ok(json_response(HealthResponse {
         status: "ok",
         app: "rustok",
         version: env!("CARGO_PKG_VERSION"),
-    })
+    }))
 }
 
 /// GET /health/live - K8s liveness probe
@@ -155,7 +155,7 @@ pub async fn health() -> Result<Response> {
     )
 )]
 pub async fn live() -> Result<Response> {
-    format::json(serde_json::json!({ "status": "ok" }))
+    Ok(json_response(serde_json::json!({ "status": "ok" })))
 }
 
 /// GET /health/ready - K8s readiness probe
@@ -332,12 +332,12 @@ pub async fn ready(
     let status = aggregate_status(&checks, &module_checks);
     let degraded_reasons = collect_reasons(&checks, &module_checks);
 
-    format::json(ReadinessResponse {
+    Ok(json_response(ReadinessResponse {
         status,
         checks,
         modules: module_checks,
         degraded_reasons,
-    })
+    }))
 }
 
 /// GET /health/runtime - Runtime guardrail snapshot for operators
@@ -352,7 +352,7 @@ pub async fn ready(
 )]
 pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
     let snapshot = collect_runtime_guardrail_snapshot(&ctx).await;
-    format::json(snapshot)
+    Ok(json_response(snapshot))
 }
 
 /// GET /health/modules - Module health aggregation
@@ -390,10 +390,10 @@ pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<R
         });
     }
 
-    format::json(ModulesHealthResponse {
+    Ok(json_response(ModulesHealthResponse {
         status: if overall_healthy { "ok" } else { "degraded" },
         modules: modules_health,
-    })
+    }))
 }
 
 #[cfg(feature = "mod-media")]

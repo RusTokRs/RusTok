@@ -1,4 +1,4 @@
-# Axum runtime and ops CLI boundary
+# Axum runtime and platform CLI boundary
 
 - Date: 2026-07-02
 - Status: Accepted
@@ -20,21 +20,22 @@ codes, and operator UX, which breaks the hexagonal boundary.
 
 1. `apps/server` is a pure Axum runtime entrypoint: HTTP startup/shutdown,
    router composition, runtime context, workers, and lifecycle.
-2. The production server binary does not depend on the ops CLI crate and does not contain
+2. The production server binary does not depend on the platform CLI crate and does not contain
    maintenance command code.
-3. The operator/dev CLI belongs to a separate ops layer: `rustok-ops` runner,
-   parser, registry, settings loading, and exit-code/output policy.
-4. The module's domain core does not depend on ops CLI contracts.
+3. The operator/dev CLI belongs to a separate platform CLI layer: the future
+   `rustok-cli` runner, parser, registry, settings loading, and exit-code/output policy.
+   Shared command/provider contracts live in `rustok-cli-core`.
+4. The module's domain core does not depend on CLI contracts.
 5. Module-specific commands live next to the module as a separate `cli/` adapter
    package, for example `crates/rustok-index/cli`, and call the public typed API
    of their module.
-6. `rustok-ops` aggregates command providers through an explicit module/distribution
+6. `rustok-cli` aggregates command providers through an explicit module/distribution
    manifest or generated registry, not through a hardcoded list of all modules.
 7. External modules may ship their own `cli/` adapter package; if they do not,
    the host/distribution may keep the adapter in the integration layer.
-8. Distribution-aware builds are an acceptable follow-up: `rustok-ops` can
-   generate runtime/ops registries, build a server binary without the ops layer, and
-   an ops binary only with providers of the selected distribution.
+8. Distribution-aware builds are an acceptable follow-up: `rustok-cli` can
+   generate runtime/CLI registries, build a server binary without the CLI layer, and
+   a CLI binary only with providers of the selected distribution.
 
 ## Consequences
 
@@ -42,9 +43,9 @@ codes, and operator UX, which breaks the hexagonal boundary.
   `apps/server`.
 - Module ownership is preserved: commands, scripts, and maintenance adapters live
   next to the module, but not inside the domain core.
-- The central ops runner remains an infrastructure orchestration layer, not a
+- The central CLI runner remains an infrastructure orchestration layer, not a
   catalog of all commands of all modules.
 - Distributions can build different sets of runtime modules and ops providers without
   manually editing the server crate.
 - Any future cutover from Loco tasks must translate the use case into a typed Rust
-  API and call it from a module-local `cli/` adapter via `rustok-ops`.
+  API and call it from a module-local `cli/` adapter via `rustok-cli`.

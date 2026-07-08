@@ -214,6 +214,10 @@ rustok-seo-render = { path = "crates/rustok-seo/render" }
 rustok-seo-admin-support = { path = "crates/rustok-seo-admin-support" }
 rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api", default-features = false }
+rustok-runtime = { path = "crates/rustok-runtime" }
+rustok-web = { path = "crates/rustok-web" }
+rustok-fba = { path = "crates/rustok-fba" }
+rustok-cli-core = { path = "crates/rustok-cli-core" }
 rustok-graphql = { path = "crates/rustok-graphql" }
 rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
 rustok-ui-core = { path = "crates/rustok-ui-core" }

@@ -27,12 +27,6 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<rustok_graphql::GraphqlHttpError> for ApiError {
-    fn from(value: rustok_graphql::GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
-
 impl From<ServerFnError> for ApiError {
     fn from(value: ServerFnError) -> Self {
         Self::ServerFn(value.to_string())

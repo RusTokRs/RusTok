@@ -1,6 +1,6 @@
 mod graphql_adapter;
 mod native_server_adapter;
-mod raw_adapter;
+mod shared_adapter;
 
 use crate::core::{
     CheckoutCompletionCommandRequest, FetchCommerceRequest, PaymentCollectionCommandRequest,
@@ -9,11 +9,11 @@ use crate::core::{
 use crate::model::{
     StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCommerceData,
 };
-use raw_adapter::ApiError;
 use rustok_fulfillment_storefront::transport::select_shipping_option;
 use rustok_order_storefront::transport::complete_checkout;
 use rustok_payment_storefront::transport::create_payment_collection;
 use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
+use shared_adapter::ApiError;
 
 pub async fn fetch_storefront_commerce(
     request: FetchCommerceRequest,

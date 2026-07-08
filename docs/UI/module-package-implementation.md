@@ -385,14 +385,14 @@ When creating a new shared library, decide upfront:
 
 If you see these patterns duplicated across modules, extract them:
 
-- **Locale negotiation helpers** → Already in `rustok-api::locale`
-- **Route query parsing** → Already in `rustok-ui-core` (`UiRouteQueryUpdate`)
-- **i18n message resolution** → Already in `rustok-ui-i18n` (`LeptosUiMessages`)
-- **GraphQL error mapping** → Already in `rustok-graphql`
+- **Locale negotiation helpers** -> Already in `rustok-api::locale`
+- **Route query parsing** -> Already in `rustok-ui-core` (`UiRouteQueryUpdate`)
+- **i18n message resolution** -> Already in `rustok-ui-i18n` (`LeptosUiMessages`)
+- **GraphQL error mapping** -> Already in `rustok-graphql`
 - **Native/GraphQL transport evidence and build-profile transport selection** -> Already in `rustok-ui-transport`
-- **Form validation patterns** → Extract to `leptos-forms` or framework-agnostic `rustok-forms`
-- **Table pagination logic** → Already in `leptos-table`
-- **Selection state URL sync** → Already in `leptos-ui-routing`
+- **Form validation patterns** -> Extract to `leptos-forms` or framework-agnostic `rustok-forms`
+- **Table pagination logic** -> Already in `leptos-table`
+- **Selection state URL sync** -> Already in `leptos-ui-routing`
 
 ---
 
@@ -405,21 +405,22 @@ Full contract: [`docs/architecture/i18n.md`](../architecture/i18n.md)
 
 ### How i18n works in practice
 
-**Why not `leptos_i18n`?** The platform is moving toward FFA (Fluid Frontend Architecture) where UI must be framework-agnostic to support future Dioxus migration.
+**Why not `leptos_i18n`?** Module-owned UI follows FFA (Fluid Frontend Architecture), so message catalogs and translation lookup must be framework-agnostic and reusable by sibling framework adapters.
 
 `leptos_i18n` is a Leptos-specific library with `t!(i18n, key)` macro that:
 - Depends on Leptos reactive system
 - Cannot be used in framework-agnostic `core/`
-- Won't work with future Dioxus UI adapters
+- Cannot be reused by a Dioxus UI adapter
 
-**Current state:**
+**Current contract:**
 - Module-owned Leptos UI packages use `rustok-ui-i18n-leptos`.
-- Host apps (`apps/admin`, `apps/storefront`) still use `leptos_i18n` for shell/navigation until host-level FFA migration.
+- Module-owned UI packages never use `leptos_i18n`, `t!(i18n, key)` macros, or `rustok-api` UI i18n helpers.
+- Host shell/navigation i18n is host-owned and must not be copied into module-owned UI packages.
 
 **Solution:** `rustok-ui-i18n` provides framework-agnostic catalog and fallback resolution, while `rustok-ui-i18n-leptos` provides the shared Leptos adapter.
 
 This is **not a full-featured i18n library** (no pluralization, ICU MessageFormat, etc.), but:
-- Framework-agnostic core works with Leptos now and Dioxus later.
+- Framework-agnostic core works with the Leptos adapter now and with the Dioxus adapter when Dioxus enters the workspace.
 - Adapter crates prevent repeating static catalog boilerplate in every UI package.
 - The core crate has no Leptos, Dioxus, Next.js, GraphQL or host locale-selection dependency.
 

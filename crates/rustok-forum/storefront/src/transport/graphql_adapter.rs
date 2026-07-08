@@ -1,5 +1,4 @@
-use leptos::prelude::*;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -24,18 +23,6 @@ impl Display for ApiError {
 }
 
 impl std::error::Error for ApiError {}
-
-impl From<GraphqlHttpError> for ApiError {
-    fn from(value: GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
-
-impl From<ServerFnError> for ApiError {
-    fn from(value: ServerFnError) -> Self {
-        Self::ServerFn(value.to_string())
-    }
-}
 
 const STOREFRONT_FORUM_CATEGORIES_QUERY: &str = "query StorefrontForumCategories($tenantId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontCategories(tenantId: $tenantId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale name slug description icon color topicCount replyCount } } }";
 const STOREFRONT_FORUM_TOPICS_QUERY: &str = "query StorefrontForumTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale categoryId title slug status isPinned isLocked replyCount createdAt } } }";
@@ -160,36 +147,7 @@ where
         None,
     )
     .await
-    .map_err(ApiError::from)
-}
-
-pub async fn fetch_storefront_forum(
-    selected_category_id: Option<String>,
-    selected_topic_id: Option<String>,
-    locale: Option<String>,
-) -> Result<StorefrontForumData, ApiError> {
-    match fetch_storefront_forum_server(
-        selected_category_id.clone(),
-        selected_topic_id.clone(),
-        locale.clone(),
-    )
-    .await
-    {
-        Ok(data) => Ok(data),
-        Err(_) => {
-            fetch_storefront_forum_graphql(selected_category_id, selected_topic_id, locale).await
-        }
-    }
-}
-
-pub async fn fetch_storefront_forum_server(
-    selected_category_id: Option<String>,
-    selected_topic_id: Option<String>,
-    locale: Option<String>,
-) -> Result<StorefrontForumData, ApiError> {
-    storefront_forum_native(selected_category_id, selected_topic_id, locale)
-        .await
-        .map_err(ApiError::from)
+    .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
 pub async fn fetch_storefront_forum_graphql(
@@ -306,25 +264,4 @@ pub async fn fetch_storefront_forum_graphql(
         selected_topic,
         replies,
     })
-}
-
-#[server(prefix = "/api/fn", endpoint = "forum/storefront-data")]
-async fn storefront_forum_native(
-    selected_category_id: Option<String>,
-    selected_topic_id: Option<String>,
-    locale: Option<String>,
-) -> Result<StorefrontForumData, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        fetch_storefront_forum_graphql(selected_category_id, selected_topic_id, locale)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = (selected_category_id, selected_topic_id, locale);
-        Err(ServerFnError::new(
-            "forum/storefront-data requires the `ssr` feature",
-        ))
-    }
 }

@@ -1,4 +1,4 @@
-use super::raw_adapter::{self, ApiError};
+use super::native_server_adapter::{self, ApiError};
 use crate::model::{
     CommerceAdminCartSnapshot, CommerceCartPromotionDraft, CommerceCartPromotionPreview,
 };
@@ -7,14 +7,14 @@ pub async fn preview_cart_promotion(
     cart_id: String,
     draft: CommerceCartPromotionDraft,
 ) -> Result<CommerceCartPromotionPreview, ApiError> {
-    raw_adapter::preview_cart_promotion(cart_id, draft).await
+    native_server_adapter::preview_cart_promotion(cart_id, draft).await
 }
 
 pub async fn apply_cart_promotion(
     cart_id: String,
     draft: CommerceCartPromotionDraft,
 ) -> Result<CommerceAdminCartSnapshot, ApiError> {
-    raw_adapter::apply_cart_promotion(cart_id, draft).await
+    native_server_adapter::apply_cart_promotion(cart_id, draft).await
 }
 
 #[cfg(test)]

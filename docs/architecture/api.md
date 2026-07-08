@@ -112,6 +112,14 @@ which depends on the API contract layer. Runtime-specific adapters are also not 
 outbox Loco wiring belongs to `rustok-outbox::loco` and is enabled by feature
 `rustok-outbox/loco-adapter`.
 
+Backend foundation responsibilities are intentionally split so `rustok-api` remains a
+contract crate:
+
+- executable host runtime helpers belong in `rustok-runtime`;
+- Axum HTTP response/extractor helpers belong in `rustok-web`;
+- FBA provider/consumer metadata and topology descriptors belong in `rustok-fba`;
+- platform CLI command/provider contracts belong in `rustok-cli-core`.
+
 ## Security and Context Contract
 
 Each API path must operate through a single host/runtime context:

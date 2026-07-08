@@ -9846,6 +9846,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-cli-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "rustok-comments"
 version = "0.1.0"
 dependencies = [
@@ -10177,6 +10186,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-fba"
+version = "0.1.0"
+dependencies = [
+ "rustok-api",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "rustok-forum"
 version = "0.1.0"
 dependencies = [
@@ -10236,10 +10254,14 @@ dependencies = [
  "leptos 0.8.20",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-core",
+ "rustok-forum",
  "rustok-graphql",
+ "rustok-outbox",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "serde",
+ "uuid",
 ]
 
 [[package]]
@@ -11016,6 +11038,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-runtime"
+version = "0.1.0"
+dependencies = [
+ "rustok-api",
+ "sea-orm",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "rustok-search"
 version = "0.1.0"
 dependencies = [
@@ -11256,6 +11287,7 @@ dependencies = [
  "rustok-telemetry",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-web",
  "rustok-workflow",
  "sea-orm",
  "sea-orm-migration",
@@ -11489,6 +11521,16 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rustok-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

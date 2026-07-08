@@ -84,5 +84,5 @@ where
         None,
     )
     .await
-    .map_err(ApiError::from)
+    .map_err(|error| ApiError::Graphql(error.to_string()))
 }

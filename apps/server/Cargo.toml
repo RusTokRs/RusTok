@@ -78,6 +78,7 @@ rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-channel.workspace = true
 rustok-email.workspace = true
 rustok-events.workspace = true
+rustok-web.workspace = true
 flex.workspace = true
 rustok-admin = { path = "../admin", default-features = false, features = ["ssr"], optional = true }
 rustok-storefront = { path = "../storefront", default-features = false, features = ["ssr"], optional = true }

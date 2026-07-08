@@ -1,4 +1,4 @@
-# `rustok-api` — Implementation Plan
+# `rustok-api` - Implementation Plan
 
 Status: shared host/API layer already serves as the foundation for `apps/server` and
 module-owned transport adapters; the main task is to prevent it from growing into a
@@ -16,29 +16,28 @@ parallel application layer.
 ## Scope of work
 
 - maintain `rustok-api` as the shared web/API adapter foundation;
-- synchronize request/auth/tenant/channel/UI host contracts and local docs;
+- synchronize request/auth/tenant/channel/GraphQL/port contracts and local docs;
 - prevent module-specific business logic from being pulled into the shared API layer.
 
 ## Current state
 
 - crate already provides shared request/auth/tenant/channel contexts and GraphQL helpers;
-- `UiRouteContext` and related host contracts are already used by module-owned UI packages;
 - `PortContext`/`PortError` set the shared baseline for transport-agnostic ports, and `PortCallPolicy` fixes reusable read/write/event-replay/best-effort enforcement without module-specific logic; `rustok-region`, tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay and page-builder publish paths already consume the shared policy baseline (`PortCallPolicy::read()` for read projections, `PortCallPolicy::write()` for write control);
 - default and `server` feature sets own neutral API contracts without dependency on `rustok-core`; runtime RBAC/security lives in core, which depends on API;
 - `apps/server` remains the composition root above this layer, not a second parallel shared API framework;
-- module transport adapters can gradually migrate to `rustok-api` without duplicating common contracts.
+- module transport adapters use `rustok-api` for shared host/API contracts without duplicating them locally.
 
 ## Stages
 
 ### 1. Contract stability
 
 - [x] lock `rustok-api` as the shared host/API layer;
-- [x] maintain reusable request/auth/channel/UI contracts outside `rustok-core`;
-- [~] maintain sync between public surface, host wiring and local docs; (started: shared FFA UI input and route-query update contracts)
+- [x] maintain reusable request/auth/channel/GraphQL/port contracts outside `rustok-core`;
+- [~] maintain sync between public surface, host wiring and local docs; (updated: UI helper ownership moved to `rustok-ui-core`, `leptos-ui-routing` and `rustok-ui-i18n`)
 
 ### 2. Boundary hardening
 
-- [~] continue extracting truly shared transport/UI/port helpers from host/module-specific layers; (continued: neutral port context/error primitives, port call policies, typed error constructors and expanded multi-module read/write-port consumer migration)
+- [~] continue extracting truly shared transport/port helpers from host/module-specific layers; (continued: neutral port context/error primitives, port call policies, typed error constructors and expanded multi-module read/write-port consumer migration)
 - [ ] do not pull module-owned resolvers and controllers here;
 - [ ] cover new shared contracts with targeted compile/tests when changing surface.
 

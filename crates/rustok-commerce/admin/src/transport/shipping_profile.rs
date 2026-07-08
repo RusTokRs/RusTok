@@ -1,4 +1,4 @@
-use super::{graphql_adapter, raw_adapter::ApiError};
+use super::{graphql_adapter, native_server_adapter::ApiError};
 use crate::model::{
     CommerceAdminBootstrap, ShippingProfile, ShippingProfileDraft, ShippingProfileList,
 };

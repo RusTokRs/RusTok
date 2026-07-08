@@ -1,0 +1,12 @@
+[package]
+name = "rustok-cli-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core contracts for the RusToK platform CLI and module command providers"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+

@@ -15,7 +15,7 @@ Short list of typical mistakes before making code changes.
 
 - Do not add new dependencies on `loco_rs` outside the already classified inventory. Run `node scripts/verify/verify-loco-inventory.mjs` on Loco/Axum cutover.
 - Do not design new server-owned services around `loco_rs::app::AppContext`; use `ServerRuntimeContext` or narrow typed contexts.
-- Do not move maintenance/CLI flows into the production server binary. The target layer is a separate `rustok-ops` and module-local `cli/` adapters.
+- Do not move maintenance/CLI flows into the production server binary. The target layer is a separate `rustok-cli` over `rustok-cli-core` and module-local `cli/` adapters.
 - While legacy controllers are not yet migrated, do not mix new Axum error contracts with Loco controller paths in the same slice; translate route/error surface atomically per plan.
 
 ## Iggy / Outbox

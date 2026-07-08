@@ -1,38 +1,41 @@
 # AI Agent Rules for `apps/admin`
 
-## READ THESE GUIDES FIRST
+## Read These Guides First
 
-Before making ANY changes to Leptos admin code or module-owned UI packages:
+Before making any changes to Leptos admin code or module-owned UI packages:
 
-1. **[Implementation Guide](../../docs/UI/module-package-implementation.md)** — internal libraries, i18n, file structure, forbidden patterns
-2. **[Architecture Guide](../../docs/UI/module-package-architecture.md)** — FFA (Fluid Frontend Architecture), `core/transport/ui` split
-3. **[Verification Guide](../../docs/UI/module-package-verification.md)** — verification commands, common errors
+1. **[Implementation Guide](../../docs/UI/module-package-implementation.md)** - internal libraries, i18n, file structure, forbidden patterns
+2. **[Architecture Guide](../../docs/UI/module-package-architecture.md)** - FFA (Fluid Frontend Architecture), `core/transport/ui` split
+3. **[Verification Guide](../../docs/UI/module-package-verification.md)** - verification commands, common errors
 
 ## Critical Rules
 
-### 1. DO NOT Write Custom UI Components
-✅ **ALWAYS check first:** [Rust UI Component Catalog](../../docs/UI/rust-ui-component-catalog.md)
+### 1. Do Not Write Custom UI Components
 
-**Before writing ANY reusable code, check if it exists in shared libraries:**
+**Always check first:** [Rust UI Component Catalog](../../docs/UI/rust-ui-component-catalog.md)
 
-Available internal libraries:
-- `leptos-ui` — Button, Input, Badge, Alert, Card, Label, Spinner, Checkbox, Switch, Textarea, Select, LanguageToggle
-- `leptos-ui-routing` — UiRouteContext, module_route_base(), query_value()
-- `rustok-graphql` — framework-agnostic GraphQL HTTP client
-- `rustok-graphql-leptos` — Leptos GraphQL hooks adapter
-- `leptos-auth` — Auth hooks and session
-- `leptos-forms` — Form state management
-- `leptos-table` — Table with pagination
-- `leptos-zod` — Schema validation
-- `leptos-zustand` — Cross-component state
+Before writing reusable code, check whether it already exists in shared libraries:
 
-### 2. DO NOT Invent Custom i18n
-ALWAYS use `rustok-ui-i18n-leptos` for Leptos module-owned UI packages.
-NEVER use `rustok-api` for UI i18n helpers, `leptos_i18n`, `t!(i18n, key)` macros, or custom locale negotiation.
+- `leptos-ui` - Button, Input, Badge, Alert, Card, Label, Spinner, Checkbox, Switch, Textarea, Select, LanguageToggle
+- `leptos-ui-routing` - `UiRouteContext`, `module_route_base()`, `query_value()`
+- `rustok-graphql` - framework-agnostic GraphQL HTTP client
+- `rustok-graphql-leptos` - Leptos GraphQL hooks adapter
+- `leptos-auth` - auth hooks and session
+- `leptos-forms` - form state management
+- `leptos-table` - table with pagination
+- `leptos-zod` - schema validation
+- `leptos-zustand` - cross-component state
+
+### 2. Do Not Invent Custom i18n
+
+Always use `rustok-ui-i18n-leptos` for Leptos module-owned UI packages.
+
+Never use `rustok-api` for UI i18n helpers, `leptos_i18n`, `t!(i18n, key)` macros, or custom locale negotiation.
 
 `rustok-ui-i18n` is the framework-agnostic core. `rustok-ui-i18n-leptos` is the shared Leptos adapter. A sibling `rustok-ui-i18n-dioxus` adapter must be added when Dioxus enters the workspace.
 
 Pattern:
+
 ```rust
 use rustok_ui_i18n_leptos::LeptosUiMessages;
 
@@ -49,30 +52,43 @@ pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
 }
 ```
 
-Locale comes from `UiRouteContext.locale` or another host-provided effective locale, NEVER from package-local cookies, headers, query parameters or browser storage.
-### 3. DO NOT Remove GraphQL When Adding `#[server]`
-✅ **ALWAYS keep both:** native `#[server]` (SSR/hydrate) + GraphQL (CSR/headless)
-❌ **NEVER make `#[server]` the only path** — CSR/Trunk debug requires GraphQL
+Locale comes from `UiRouteContext.locale` or another host-provided effective locale. Never read package-local cookies, headers, query parameters, or browser storage for module-owned UI locale selection.
 
-### 4. DO NOT Write Leptos Code in `core.rs`
-✅ `core.rs` / `core/` must have **ZERO `leptos::*` imports** — CI enforces this
-❌ **NEVER put** `#[component]`, `view!`, signals, effects in `core`
+### 3. Do Not Remove GraphQL When Adding `#[server]`
 
-### 5. DO NOT Put Module UI in Host
-✅ Module business UI belongs in `crates/rustok-<module>/admin/`
-❌ **NEVER place** module CRUD/workflows in `apps/admin/src/` (except `widgets/app_shell`, `shared`)
+Always keep both transport contracts:
+
+- native `#[server]` functions for SSR/hydrate monolith builds;
+- GraphQL for CSR debug, headless clients, Next.js, and external consumers.
+
+Do not make `#[server]` the only path for module-owned UI packages that expose public/headless-capable surfaces.
+
+### 4. Do Not Write Leptos Code in `core.rs`
+
+`core.rs` and `core/` must have zero `leptos::*` imports. CI enforces this.
+
+Never put `#[component]`, `view!`, signals, or effects in `core`.
+
+### 5. Do Not Put Module UI in Host
+
+Module business UI belongs in `crates/rustok-<module>/admin/`.
+
+Never place module CRUD screens or workflows in `apps/admin/src/`, except host shell and shared composition code under `widgets/app_shell` or `shared`.
 
 ### 6. FSD Architecture
-This host follows **Feature-Sliced Design** layers:
-- `app` — routing, shell
-- `widgets` — app_shell, header
-- `features` — cross-module composition
-- `shared` — shared contracts
-- Module-owned UI packages: `crates/rustok-*/admin/`
+
+This host follows Feature-Sliced Design layers:
+
+- `app` - routing, shell
+- `widgets` - app shell, header
+- `features` - cross-module composition
+- `shared` - shared contracts
+- module-owned UI packages - `crates/rustok-*/admin/`
 
 ## Verification Commands
 
-After ANY change:
+After any change:
+
 ```powershell
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
@@ -82,47 +98,53 @@ npm run verify:frontend:host-ffa-contract
 powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 ```
 
-## What is FFA?
+## What Is FFA?
 
-**FFA (Fluid Frontend Architecture)** = same UI code runs in:
-- Monolith SSR/hydrate (via `#[server]`)
-- Standalone CSR/Trunk (via GraphQL)
-- Headless Next.js/mobile (via GraphQL)
+FFA (Fluid Frontend Architecture) means module UI keeps framework-agnostic policy, transport contracts, and Leptos bindings separated.
 
-**Three-layer split:**
+Target runtime paths:
+
+- monolith SSR/hydrate via native `#[server]`;
+- standalone CSR/Trunk via GraphQL;
+- headless Next.js/mobile via GraphQL.
+
+Three-layer split:
+
+```text
+core/             - no Leptos imports; framework-agnostic logic
+transport/        - adapters: native_server_adapter.rs and graphql_adapter.rs
+ui/leptos.rs      - Leptos binding only: #[component], view!, signals
 ```
-core/             — NO Leptos imports, framework-agnostic logic
-transport/        — adapters (native_server_adapter.rs + graphql_adapter.rs)
-                    graphql_adapter uses rustok-graphql (framework-agnostic core client)
-ui/leptos.rs      — ONLY Leptos binding (#[component], view!, signals)
-```
 
-**Goal:** When migrating to Dioxus:
-1. Only `ui/leptos.rs` → `ui/dioxus.rs` changes
-2. Core and transport stay unchanged
-3. GraphQL transport stays on the framework-agnostic `rustok-graphql` client
-4. Leptos and Dioxus UI adapters coexist during migration
+The `graphql_adapter` must use the framework-agnostic `rustok-graphql` client.
+
+Target Dioxus shape:
+
+1. Add `ui/dioxus.rs` and Dioxus-specific bindings when Dioxus enters the workspace.
+2. Keep `core` and transport unchanged.
+3. Keep GraphQL transport on `rustok-graphql`.
+4. Treat Leptos and Dioxus as sibling framework adapters, not as old/new compatibility layers.
 
 Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-frontend-architecture.md)
 
 ## Common Mistakes to Avoid
 
-| ❌ WRONG | ✅ RIGHT |
-|---------|---------|
-| `use leptos::*` in `core.rs` | Move logic to `ui/leptos.rs` or make transport-neutral |
-| `transport::graphql_adapter::fetch_x()` in UI | Call `transport::fetch_x()` facade |
-| `#[server]` only, no GraphQL | Keep both in parallel |
-| Removing `graphql_adapter.rs` | Keep it forever, even after adding native path |
-| `use_cookie("lang")` in package | Use `UiRouteContext.locale` from host |
-| Writing `Button` component locally | Use `leptos-ui::Button` |
-| Raw HTTP client in graphql_adapter | Use platform GraphQL client (`rustok-graphql`) |
+| Wrong | Right |
+| --- | --- |
+| `use leptos::*` in `core.rs` | Move logic to `ui/leptos.rs` or make it transport-neutral |
+| `transport::graphql_adapter::fetch_x()` in UI | Call the public `transport::fetch_x()` facade |
+| `#[server]` only, no GraphQL | Keep native and GraphQL in parallel where the surface is public/headless-capable |
+| Removing `graphql_adapter.rs` | Keep GraphQL as the public/headless contract |
+| `use_cookie("lang")` in a package | Use `UiRouteContext.locale` from the host |
+| Writing `Button` locally | Use `leptos-ui::Button` |
+| Raw HTTP client in `graphql_adapter` | Use `rustok-graphql` |
 | `t!(i18n, key)` macro | Use `i18n::t(locale, "key", "fallback")` |
 | Module UI in `apps/admin/src/features/` | Use `crates/rustok-<module>/admin/` |
-| Writing `i18n.rs` without `rustok-ui-i18n-leptos` | Follow standard `LeptosUiMessages` adapter boilerplate |
-| Forgetting to declare deps in module `Cargo.toml` | Each module must declare ALL dependencies explicitly (for `cargo check`/`cargo test`), even if host has them. `workspace = true` coordinates version only. |
+| Writing `i18n.rs` without `rustok-ui-i18n-leptos` | Follow the standard `LeptosUiMessages` adapter boilerplate |
+| Forgetting dependencies in module `Cargo.toml` | Each module must declare all direct dependencies explicitly |
 
 ## Full Documentation
 
-- [apps/admin/docs/README.md](./docs/README.md) — host-level documentation
-- [docs/UI/README.md](../../docs/UI/README.md) — UI documentation index
-- [docs/index.md](../../docs/index.md) — platform documentation map
+- [apps/admin/docs/README.md](./docs/README.md) - host-level documentation
+- [docs/UI/README.md](../../docs/UI/README.md) - UI documentation index
+- [docs/index.md](../../docs/index.md) - platform documentation map

@@ -98,7 +98,7 @@ Part of Loco's built-in subsystems have been replaced with our own modules. **Do
 | `ctx.config.cache` / Loco cache config | `rustok-cache` (`crates/rustok-cache`) | Get `CacheService` from `ctx.shared_store.get::<CacheService>()` — it is initialized in `bootstrap_app_runtime` | Do not read `REDIS_URL` manually in modules; do not create `redis::Client` directly; do not ignore `ctx.config.cache` in favor of a self-managed connection |
 | Loco Mailer (`ctx.mailer`) / SMTP | `rustok-email` + `apps/server/src/services/email.rs` | Use `email_service_from_ctx(ctx, locale)` — returns a localized `BuiltInAuthEmailSender` for built-in auth mailers; provider is selected via `settings.rustok.email.provider` | Do not call `ctx.mailer` directly in handlers; do not create `AsyncSmtpTransport` outside the email service; do not extract email into a separate platform module |
 | Loco Storage abstraction | `rustok-storage` (`crates/rustok-storage`) | Get `StorageService` from `ctx.shared_store.get::<StorageService>()`; upload files through it | Do not create adhoc upload backends in controllers; do not add parallel storage paths outside `rustok-storage` |
-| Loco Queue / Workers | `rustok-outbox` — not a direct replacement, but a separate layer for transactional event delivery. Loco Queue (Sidekiq) and Outbox solve different problems. | For domain events with atomicity guarantees: `publish_in_tx` via `TransactionalEventBus`. For background runtime workers, use own lifecycle; for maintenance flows, the target layer is a separate `rustok-ops`. | Do not duplicate event delivery-path via Loco Queue; do not create `rustok-jobs` on top of outbox — they solve different problems. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md` |
+| Loco Queue / Workers | `rustok-outbox` — not a direct replacement, but a separate layer for transactional event delivery. Loco Queue (Sidekiq) and Outbox solve different problems. | For domain events with atomicity guarantees: `publish_in_tx` via `TransactionalEventBus`. For background runtime workers, use own lifecycle; for maintenance flows, the target layer is a separate `rustok-cli` over `rustok-cli-core`. | Do not duplicate event delivery-path via Loco Queue; do not create `rustok-jobs` on top of outbox — they solve different problems. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md` |
 | Loco Channels (WebSocket) | Custom Axum WebSocket in `apps/server` | Use existing WS handlers | Do not use `loco_rs::controller::channels` — incompatible with custom auth-handshake |
 
 **Current status of Loco migration:**
@@ -107,12 +107,12 @@ Part of Loco's built-in subsystems have been replaced with our own modules. **Do
 - New server-owned services must not accept `loco_rs::app::AppContext`; use `ServerRuntimeContext` or narrow typed contexts.
 - Module-owned Leptos server functions must consume `rustok_api::HostRuntimeContext`, not `AppContext`.
 - Loco `Hooks`, `AppContext`, `Config`, tasks and initializers remain only as the current cutover inventory, not as the target architecture.
-- Maintenance/CLI flows of the target state go through a separate `rustok-ops` and module-local `cli/` adapters, not through `cargo loco task` and not through the production server binary.
+- Maintenance/CLI flows of the target state go through a separate `rustok-cli` and module-local `cli/` adapters, not through `cargo loco task` and not through the production server binary.
 
 **Loco Queue (Sidekiq/Redis) is not connected and not needed.** Reasons:
 - Background workers run as direct tokio tasks: outbox relay (`OutboxRelayWorkerHandle`), build worker (`BuildWorkerHandle`), index/search dispatchers, workflow cron.
 - Outbox pattern is architecturally better than Sidekiq for domain events — guarantees atomicity.
-- Current Loco Tasks are legacy inventory; new maintenance flows are designed for a separate `rustok-ops`.
+- Current Loco Tasks are legacy inventory; new maintenance flows are designed for a separate `rustok-cli`.
 - For decoupling slow operations from HTTP requests, `tokio::spawn` is used (e.g., sending email in `forgot_password`).
 - If a push-based queue with retry is needed — consider extending the outbox relay, not connecting Sidekiq.
 

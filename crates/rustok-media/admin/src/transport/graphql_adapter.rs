@@ -199,7 +199,7 @@ where
         None,
     )
     .await
-    .map_err(ApiError::from)
+    .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
 fn required_tenant_id(tenant_slug: &Option<String>) -> Result<String, ApiError> {

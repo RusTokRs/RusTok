@@ -4,7 +4,6 @@ pub mod native_server_adapter;
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::StorefrontBlogData;
 use leptos::prelude::ServerFnError;
-use rustok_graphql::GraphqlHttpError;
 use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -25,12 +24,6 @@ impl Display for ApiError {
 }
 
 impl std::error::Error for ApiError {}
-
-impl From<GraphqlHttpError> for ApiError {
-    fn from(value: GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
 
 impl From<ServerFnError> for ApiError {
     fn from(value: ServerFnError) -> Self {

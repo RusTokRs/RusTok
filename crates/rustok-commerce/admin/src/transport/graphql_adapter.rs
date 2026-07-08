@@ -4,7 +4,7 @@ use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 
-use super::raw_adapter::ApiError;
+use super::native_server_adapter::ApiError;
 use crate::model::{
     CommerceAdminBootstrap, CommerceOrderChange, CommerceOrderChangeActionDraft,
     CommerceOrderChangeList, ShippingProfile, ShippingProfileDraft, ShippingProfileList,
@@ -213,8 +213,7 @@ where
     .await
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
-
-
+pub async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<CommerceAdminBootstrap, ApiError> {
@@ -432,26 +431,6 @@ pub async fn cancel_order_change(
     Ok(response.cancel_order_change)
 }
 
-#[allow(dead_code)]
-pub async fn preview_cart_promotion(
-    cart_id: String,
-    payload: CommerceCartPromotionDraft,
-) -> Result<CommerceCartPromotionPreview, ApiError> {
-    commerce_admin_preview_cart_promotion_native(cart_id, payload)
-        .await
-        .map_err(Into::into)
-}
-
-#[allow(dead_code)]
-pub async fn apply_cart_promotion(
-    cart_id: String,
-    payload: CommerceCartPromotionDraft,
-) -> Result<CommerceAdminCartSnapshot, ApiError> {
-    commerce_admin_apply_cart_promotion_native(cart_id, payload)
-        .await
-        .map_err(Into::into)
-}
-
 fn build_create_shipping_profile_input(draft: ShippingProfileDraft) -> CreateShippingProfileInput {
     CreateShippingProfileInput {
         slug: draft.slug.trim().to_string(),
@@ -477,3 +456,5 @@ fn build_update_shipping_profile_input(draft: ShippingProfileDraft) -> UpdateShi
 }
 
 fn optional_json_text(value: &str) -> Option<String> {
+    optional_text(value)
+}

@@ -353,6 +353,11 @@ apps/server
 Key point: the gRPC crate does not own business logic. It only serializes the call,
 propagates context and invokes the canonical service contract.
 
+Shared metadata and topology descriptors live in `rustok-fba`. That crate does not own
+transport implementations or service traits; it provides the common provider/consumer
+registry shape, embedded/remote topology labels and call-context wrapper over
+`rustok-api::ports`.
+
 ## FBA-Ready Module Criteria
 
 A module can be considered FBA-ready if the following conditions are met:
