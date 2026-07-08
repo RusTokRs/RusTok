@@ -54,6 +54,9 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-web` | [docs](../../crates/rustok-web/docs/README.md) | [plan](../../crates/rustok-web/docs/implementation-plan.md) |
 | `rustok-fba` | [docs](../../crates/rustok-fba/docs/README.md) | [plan](../../crates/rustok-fba/docs/implementation-plan.md) |
 | `rustok-cli-core` | [docs](../../crates/rustok-cli-core/docs/README.md) | [plan](../../crates/rustok-cli-core/docs/implementation-plan.md) |
+| `rustok-cli-platform` | [docs](../../crates/rustok-cli-platform/docs/README.md) | [plan](../../crates/rustok-cli-platform/docs/implementation-plan.md) |
+| `rustok-cli-registry` | [docs](../../crates/rustok-cli-registry/docs/README.md) | [plan](../../crates/rustok-cli-registry/docs/implementation-plan.md) |
+| `rustok-cli` | [docs](../../crates/rustok-cli/docs/README.md) | [plan](../../crates/rustok-cli/docs/implementation-plan.md) |
 | `rustok-graphql` | [docs](../../crates/rustok-graphql/docs/README.md) | [plan](../../crates/rustok-graphql/docs/implementation-plan.md) |
 | `rustok-graphql-leptos` | [docs](../../crates/rustok-graphql-leptos/docs/README.md) | - |
 | `rustok-ui-i18n` | [docs](../../crates/rustok-ui-i18n/docs/README.md) | [plan](../../crates/rustok-ui-i18n/docs/implementation-plan.md) |

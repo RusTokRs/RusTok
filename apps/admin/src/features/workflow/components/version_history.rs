@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::features::workflow::api::{self, WorkflowVersionSummaryDto};
+use crate::features::workflow::transport::{self, WorkflowVersionSummaryDto};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -30,7 +30,7 @@ pub fn VersionHistory(
     let ts = tenant_slug.clone();
     let versions_resource = local_resource(
         move || (tok.clone(), ts.clone(), wf_id.clone()),
-        move |(tok, ts, id)| async move { api::fetch_versions(tok, ts, id).await },
+        move |(tok, ts, id)| async move { transport::fetch_versions(tok, ts, id).await },
     );
 
     view! {
@@ -73,7 +73,7 @@ pub fn VersionHistory(
                                                 set_restoring.set(Some(ver));
 
                                                 spawn_local(async move {
-                                                    match api::restore_version(tok3, ts3, wf_id3, ver).await {
+                                                    match transport::restore_version(tok3, ts3, wf_id3, ver).await {
                                                         Ok(_) => {
                                                             set_restoring.set(None);
                                                             on_restored.run(());

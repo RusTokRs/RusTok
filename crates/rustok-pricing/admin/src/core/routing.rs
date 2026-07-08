@@ -32,7 +32,7 @@ pub(crate) fn format_channel_scope_text(
 }
 
 pub(crate) const GLOBAL_CHANNEL_KEY: &str = "__global__";
-pub(crate) const LEGACY_CHANNEL_KEY: &str = "__legacy__";
+pub(crate) const UNLISTED_CHANNEL_KEY: &str = "__unlisted__";
 
 pub(crate) fn normalize_channel_value(value: &str) -> Option<String> {
     normalize_ui_text(value)
@@ -57,7 +57,7 @@ pub(crate) fn selected_channel_key(
         return option.id.clone();
     }
 
-    LEGACY_CHANNEL_KEY.to_string()
+    UNLISTED_CHANNEL_KEY.to_string()
 }
 
 pub(crate) fn apply_selected_channel_option(
@@ -68,7 +68,7 @@ pub(crate) fn apply_selected_channel_option(
 ) -> (String, String) {
     match selected_key {
         GLOBAL_CHANNEL_KEY => (String::new(), String::new()),
-        LEGACY_CHANNEL_KEY => (
+        UNLISTED_CHANNEL_KEY => (
             fallback_channel_id.to_string(),
             fallback_channel_slug.to_string(),
         ),
@@ -80,14 +80,14 @@ pub(crate) fn apply_selected_channel_option(
     }
 }
 
-pub(crate) fn legacy_channel_option_label(
+pub(crate) fn unlisted_channel_option_label(
     locale: Option<&str>,
     channel_id: &str,
     channel_slug: &str,
 ) -> String {
     format!(
         "{}: {}",
-        t(locale, "pricing.channel.legacy", "Legacy scope"),
+        t(locale, "pricing.channel.unlisted", "Unlisted scope"),
         format_channel_scope_text(
             None,
             normalize_channel_value(channel_id).as_deref(),
@@ -117,7 +117,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn selected_channel_key_preserves_global_known_and_legacy_scopes() {
+    fn selected_channel_key_preserves_global_known_and_unlisted_scopes() {
         let channels = [PricingChannelOption {
             id: "channel-id".to_string(),
             slug: "web".to_string(),
@@ -131,19 +131,19 @@ mod tests {
         assert_eq!(selected_channel_key("", " web ", &channels), "channel-id");
         assert_eq!(
             selected_channel_key("unknown", "", &channels),
-            LEGACY_CHANNEL_KEY
+            UNLISTED_CHANNEL_KEY
         );
     }
 
     #[test]
-    fn legacy_channel_option_label_formats_scope_or_not_set() {
+    fn unlisted_channel_option_label_formats_scope_or_not_set() {
         assert_eq!(
-            legacy_channel_option_label(Some("en"), "channel-id", "web"),
-            "Legacy scope: channel web (channel-id)"
+            unlisted_channel_option_label(Some("en"), "channel-id", "web"),
+            "Unlisted scope: channel web (channel-id)"
         );
         assert_eq!(
-            legacy_channel_option_label(Some("en"), "", ""),
-            "Legacy scope: not set"
+            unlisted_channel_option_label(Some("en"), "", ""),
+            "Unlisted scope: not set"
         );
     }
 }

@@ -9846,12 +9846,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-cli"
+version = "0.1.0"
+dependencies = [
+ "rustok-cli-core",
+ "rustok-cli-registry",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-cli-core"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "rustok-cli-platform"
+version = "0.1.0"
+dependencies = [
+ "rustok-cli-core",
+ "serde_json",
+]
+
+[[package]]
+name = "rustok-cli-registry"
+version = "0.1.0"
+dependencies = [
+ "rustok-cli-core",
+ "rustok-cli-platform",
 ]
 
 [[package]]

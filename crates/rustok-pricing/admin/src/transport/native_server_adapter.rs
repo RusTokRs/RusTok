@@ -15,15 +15,15 @@ use std::fmt::{Display, Formatter};
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
 
-use crate::model::{
-    PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
-    PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
-    PricingProductDetail, PricingProductList,
-};
 #[cfg(feature = "ssr")]
 use crate::model::{
     CurrentTenant, PricingChannelOption, PricingEffectivePrice, PricingProductListItem,
     PricingProductTranslation, PricingVariant,
+};
+use crate::model::{
+    PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
+    PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
+    PricingProductDetail, PricingProductList,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

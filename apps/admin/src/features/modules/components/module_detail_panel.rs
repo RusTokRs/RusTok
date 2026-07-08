@@ -16,7 +16,9 @@ use std::collections::HashMap;
 
 use crate::entities::module::model::{MarketplaceModuleVersion, RegistryReleaseLifecycle};
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
-use crate::features::modules::api::{self, RegistryMutationResult, RegistryPublishStatusContract};
+use crate::features::modules::transport::{
+    self, RegistryMutationResult, RegistryPublishStatusContract,
+};
 use crate::shared::ui::Button;
 use crate::{use_i18n, Locale};
 
@@ -221,7 +223,8 @@ pub fn ModuleDetailPanel(
         set_governance_status_contract_error.set(None);
 
         spawn_local(async move {
-            match api::fetch_registry_publish_request_status(request_id, token, tenant).await {
+            match transport::fetch_registry_publish_request_status(request_id, token, tenant).await
+            {
                 Ok(status) => {
                     if governance_contract_refresh_nonce.get_untracked() == requested_refresh_nonce
                     {
@@ -558,7 +561,7 @@ pub fn ModuleDetailPanel(
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
-                                    match api::validate_registry_publish_request(
+                                    match transport::validate_registry_publish_request(
                                         request_id,
                                         dry_run,
                                         token,
@@ -645,7 +648,7 @@ pub fn ModuleDetailPanel(
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
-                                    match api::approve_registry_publish_request(
+                                    match transport::approve_registry_publish_request(
                                         request_id,
                                         (!reason.is_empty()).then_some(reason),
                                         (!reason_code.is_empty()).then_some(reason_code),
@@ -734,7 +737,7 @@ pub fn ModuleDetailPanel(
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
-                                    match api::request_changes_registry_publish_request(
+                                    match transport::request_changes_registry_publish_request(
                                         request_id,
                                         reason,
                                         reason_code,
@@ -822,7 +825,7 @@ pub fn ModuleDetailPanel(
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
-                                    match api::hold_registry_publish_request(
+                                    match transport::hold_registry_publish_request(
                                         request_id,
                                         reason,
                                         reason_code,
@@ -910,7 +913,7 @@ pub fn ModuleDetailPanel(
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
-                                    match api::resume_registry_publish_request(
+                                    match transport::resume_registry_publish_request(
                                         request_id,
                                         reason,
                                         reason_code,
@@ -1018,7 +1021,7 @@ pub fn ModuleDetailPanel(
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
-                                    match api::reject_registry_publish_request(
+                                    match transport::reject_registry_publish_request(
                                         request_id,
                                         reason,
                                         reason_code,
@@ -1135,7 +1138,7 @@ pub fn ModuleDetailPanel(
                                 let tenant = tenant_slug.get_untracked();
                                 let module_slug_for_actions = module_slug_for_actions.clone();
                                 spawn_local(async move {
-                                    match api::transfer_registry_owner(
+                                    match transport::transfer_registry_owner(
                                         module_slug_for_actions.clone(),
                                         new_owner_user_id,
                                         reason,
@@ -1239,7 +1242,7 @@ pub fn ModuleDetailPanel(
                                 let module_slug_for_actions = module_slug_for_actions.clone();
                                 let release_version = release_version.clone();
                                 spawn_local(async move {
-                                    match api::yank_registry_release(
+                                    match transport::yank_registry_release(
                                         module_slug_for_actions.clone(),
                                         release_version.clone(),
                                         reason,

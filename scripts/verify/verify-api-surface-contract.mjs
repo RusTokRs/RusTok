@@ -181,6 +181,16 @@ requireContains('apps/server/src/services/app_runtime.rs', 'pub type AppRuntimeH
 requireNotContains('apps/server/src/services/app_runtime.rs', 'use loco_rs::app::AppContext', 'app runtime does not import Loco AppContext directly');
 requireContains('apps/server/src/auth.rs', 'pub type AuthHostContext = loco_rs::app::AppContext;', 'auth config exposes a local host AppContext bridge');
 requireNotContains('apps/server/src/auth.rs', 'use loco_rs::app::AppContext', 'auth config does not import Loco AppContext directly');
+requireContains('apps/server/src/testing.rs', 'pub async fn get_server_app_context()', 'server test fixture bridge exposes a local context helper');
+requireNotContains('apps/server/src/app.rs', 'loco_rs::tests_cfg', 'server app tests use the server test fixture bridge');
+requireContains('apps/server/src/app.rs', 'use crate::testing::get_server_app_context;', 'server app tests import the server test fixture bridge');
+requireNotContains('apps/server/src/services/app_runtime.rs', 'loco_rs::tests_cfg', 'app runtime tests use the server test fixture bridge');
+requireNotContains('apps/server/src/services/app_lifecycle.rs', 'loco_rs::tests_cfg', 'app lifecycle tests use the server test fixture bridge');
+for (const rel of walk('apps/server/src', (childRel) => childRel.endsWith('.rs'))) {
+  if (rel !== path.join('apps', 'server', 'src', 'testing.rs')) {
+    requireNotContains(rel, 'loco_rs::tests_cfg', `${rel} uses the server test fixture bridge instead of Loco test helpers`);
+  }
+}
 requireContains('apps/server/src/services/app_runtime.rs', 'ctx: &ServerRuntimeContext', 'app runtime helpers consume server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'init_storage(ctx: &ServerRuntimeContext)', 'storage bootstrap helper consumes server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'init_marketplace_catalog(ctx: &ServerRuntimeContext)', 'marketplace catalog bootstrap helper consumes server runtime context');
@@ -411,6 +421,7 @@ requireContains('apps/server/src/tasks/mod.rs', 'pub use loco_rs::task::{Task, T
 requireContains('apps/server/src/seeds/mod.rs', 'pub type SeedAppContext = loco_rs::app::AppContext;', 'server seeds expose a local seed AppContext bridge');
 requireNotContains('apps/server/src/seeds/mod.rs', 'use loco_rs::app::AppContext', 'server seeds do not import Loco AppContext directly');
 requireNotContains('apps/server/src/seeds/mod.rs', 'loco_rs::Error', 'server seeds map errors through the server error bridge');
+requireNotContains('apps/server/src/seeds/mod.rs', 'cargo loco', 'server seed comments do not advertise cargo-loco execution');
 requireContains('apps/server/src/seeds/mod.rs', 'SeedAppContext', 'server seeds use the local seed AppContext bridge');
 for (const rel of [
   'apps/server/src/tasks/cleanup.rs',
@@ -421,8 +432,10 @@ for (const rel of [
   'apps/server/src/tasks/rebuild.rs',
 ]) {
   requireNotContains(rel, 'loco_rs::task', `${rel} imports task contracts through the server task bridge`);
+  requireNotContains(rel, 'cargo loco', `${rel} comments do not advertise cargo-loco execution`);
   requireContains(rel, 'crate::tasks::{', `${rel} uses the server task bridge`);
 }
+requireNotContains('apps/server/src/tasks/mod.rs', 'cargo loco', 'server task registry comments do not advertise cargo-loco execution');
 for (const rel of [
   'apps/server/src/controllers/admin_events.rs',
   'apps/server/src/controllers/auth.rs',
@@ -590,6 +603,67 @@ requireContains('crates/rustok-outbox/src/ports.rs', 'use rustok_api::{PortCallP
 requireContains('crates/rustok-outbox/Cargo.toml', 'rustok-api.workspace = true', 'outbox depends on the neutral API contract layer');
 requireContains('crates/rustok-outbox/src/lib.rs', 'pub mod loco;', 'outbox owns its Loco composition adapter');
 requireContains('DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md', 'Status: Accepted', 'Port contract ownership ADR is accepted');
+requireContains('crates/rustok-cli/Cargo.toml', 'name = "rustok-cli"', 'rustok-cli binary crate exists');
+requireContains('crates/rustok-cli/Cargo.toml', 'rustok-cli-core.workspace = true', 'rustok-cli consumes CLI core contracts');
+requireContains('crates/rustok-cli/Cargo.toml', 'rustok-cli-registry.workspace = true', 'rustok-cli consumes selected distribution registry');
+requireNotContains('crates/rustok-cli/Cargo.toml', 'loco-rs', 'rustok-cli does not depend on Loco');
+requireNotContains('crates/rustok-cli/Cargo.toml', 'rustok-server', 'rustok-cli does not depend on the server crate');
+requireContains('crates/rustok-cli-platform/Cargo.toml', 'name = "rustok-cli-platform"', 'rustok-cli-platform provider crate exists');
+requireContains('crates/rustok-cli-platform/Cargo.toml', 'rustok-cli-core.workspace = true', 'rustok-cli-platform consumes CLI core contracts');
+requireNotContains('crates/rustok-cli-platform/Cargo.toml', 'rustok-cli.workspace', 'rustok-cli-platform does not depend on runner APIs');
+requireNotContains('crates/rustok-cli-platform/Cargo.toml', 'rustok-server', 'rustok-cli-platform does not depend on the server crate');
+requireContains('cli-registry.toml', 'rustok_cli_platform::command_provider', 'root CLI registry selects platform provider');
+requireContains('crates/rustok-cli-registry/Cargo.toml', 'name = "rustok-cli-registry"', 'rustok-cli-registry crate exists');
+requireContains('crates/rustok-cli-registry/Cargo.toml', 'rustok-cli-core.workspace = true', 'rustok-cli-registry consumes CLI core contracts');
+requireContains('crates/rustok-cli-registry/Cargo.toml', 'rustok-cli-platform.workspace = true', 'rustok-cli-registry depends on selected platform provider');
+requireNotContains('crates/rustok-cli-registry/Cargo.toml', 'rustok-cli.workspace', 'rustok-cli-registry does not depend on the runner');
+requireNotContains('crates/rustok-cli-registry/Cargo.toml', 'rustok-server', 'rustok-cli-registry does not depend on the server crate');
+requireContains('crates/rustok-cli-registry/src/lib.rs', 'pub struct SelectedDistributionRegistry', 'rustok-cli-registry owns selected distribution registry type');
+requireContains('crates/rustok-cli-registry/src/lib.rs', 'selected_distribution_registry', 'rustok-cli-registry exposes selected distribution entrypoint');
+requireContains('crates/rustok-cli-registry/src/lib.rs', 'mod generated;', 'rustok-cli-registry consumes generated selected distribution source');
+requireContains('crates/rustok-cli-registry/src/generated.rs', '@generated by scripts/generate/generate-cli-registry.mjs', 'rustok-cli-registry generated source is marked generated');
+requireContains('crates/rustok-cli-registry/src/generated.rs', 'rustok_cli_platform::command_provider()', 'rustok-cli-registry generated source wires platform provider');
+requireContains('scripts/generate/generate-cli-registry.mjs', '[provides.cli]', 'CLI registry generator reads module CLI metadata');
+requireContains('scripts/generate/generate-cli-registry.mjs', 'cli-registry.toml', 'CLI registry generator reads root provider metadata');
+requireContains('scripts/generate/generate-cli-registry.mjs', 'validateRegistryDependencies', 'CLI registry generator validates selected provider dependencies');
+requireContains('package.json', '"generate:cli-registry"', 'package scripts expose CLI registry generation');
+requireContains('package.json', '"verify:cli-registry"', 'package scripts expose CLI registry freshness check');
+requireContains('crates/rustok-cli-core/src/lib.rs', 'fn execute(&self, request: CommandRequest)', 'CLI core provider contract exposes typed execution');
+requireContains('crates/rustok-cli-core/src/lib.rs', 'CliCoreError::UnknownCommand', 'CLI core provider default execution is explicit unknown-command behavior');
+requireContains('crates/rustok-cli/src/lib.rs', 'pub struct CommandRegistry', 'rustok-cli owns an explicit command registry');
+requireContains('crates/rustok-cli/src/lib.rs', 'DuplicateCommand', 'rustok-cli rejects duplicate command registrations');
+requireContains('crates/rustok-cli/src/lib.rs', 'CommandRegistry::from_providers', 'rustok-cli aggregates providers through the registry');
+requireContains('crates/rustok-cli/src/lib.rs', 'pub fn execute(&self, request: CommandRequest)', 'rustok-cli command registry dispatches typed execution');
+requireContains('crates/rustok-cli/src/lib.rs', 'rustok-cli <namespace> <command>', 'rustok-cli documents namespace command execution in usage');
+requireContains('crates/rustok-cli/src/lib.rs', 'pub fn parse_command_args', 'rustok-cli normalizes provider command arguments');
+requireContains('crates/rustok-cli/src/lib.rs', '"positionals"', 'rustok-cli command args include positional values');
+requireContains('crates/rustok-cli/src/lib.rs', 'key.replace', 'rustok-cli normalizes option names for provider input');
+requireContains('crates/rustok-cli/src/lib.rs', 'core_version_command_uses_provider_execution', 'rustok-cli tests first built-in typed provider command');
+requireNotContains('crates/rustok-cli/src/lib.rs', 'Print rustok-cli version metadata', 'rustok-cli runner does not own core version provider metadata');
+requireContains('crates/rustok-cli/docs/README.md', 'rustok-cli core version', 'rustok-cli docs mention first built-in typed provider command');
+requireContains('crates/rustok-cli/src/lib.rs', 'render_command_list_json', 'rustok-cli exposes machine-readable command inventory output');
+requireContains('crates/rustok-cli/src/lib.rs', 'list", "--json"', 'rustok-cli tests JSON command inventory output');
+requireContains('crates/rustok-cli/src/lib.rs', '--namespace', 'rustok-cli supports namespace-scoped command discovery');
+for (const rel of walk('crates/rustok-cli', (childRel) => childRel.endsWith('.rs'))) {
+  requireNotContains(rel, 'loco_rs', `${rel} does not import Loco`);
+  requireNotContains(rel, 'rustok_server', `${rel} does not import the server crate`);
+}
+for (const rel of walk('crates/rustok-cli-registry', (childRel) => childRel.endsWith('.rs'))) {
+  requireNotContains(rel, 'loco_rs', `${rel} does not import Loco`);
+  requireNotContains(rel, 'rustok_server', `${rel} does not import the server crate`);
+  requireNotContains(rel, 'rustok_cli::', `${rel} does not depend on runner APIs`);
+}
+for (const rel of walk('crates/rustok-cli-platform', (childRel) => childRel.endsWith('.rs'))) {
+  requireNotContains(rel, 'loco_rs', `${rel} does not import Loco`);
+  requireNotContains(rel, 'rustok_server', `${rel} does not import the server crate`);
+  requireNotContains(rel, 'rustok_cli::', `${rel} does not depend on runner APIs`);
+}
+requireContains('docs/modules/crates-registry.md', '| `rustok-cli` |', 'crate registry lists rustok-cli runner ownership');
+requireContains('docs/modules/crates-registry.md', '| `rustok-cli-platform` |', 'crate registry lists rustok-cli-platform ownership');
+requireContains('docs/modules/crates-registry.md', '| `rustok-cli-registry` |', 'crate registry lists rustok-cli-registry ownership');
+requireContains('docs/modules/manifest.md', '[provides.cli]', 'module manifest contract documents CLI provider metadata');
+requireContains('docs/modules/_index.md', '| `rustok-cli-registry` |', 'module docs index links rustok-cli-registry docs');
+requireContains('docs/modules/_index.md', '| `rustok-cli` |', 'module docs index links rustok-cli docs');
 
 const entries = moduleEntries();
 if (entries.length === 0) fail('modules.toml exposes module entries');

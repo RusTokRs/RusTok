@@ -28,7 +28,7 @@ transport implementation are distributed more widely than necessary:
 - `PlatformCompositionService` manages platform snapshot and build enqueue;
 - `RegistryGovernanceService` manages publishing, releases and ownership;
 - GraphQL publishes the server API;
-- `apps/admin/src/features/modules/api` additionally contains its own manifest
+- `apps/admin/src/features/modules/transport` additionally contains its own manifest
   DTOs, hashing, SQL, build/release and marketplace orchestration.
 
 Main boundary defect: the admin host partially performs backend/control-plane

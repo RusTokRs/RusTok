@@ -3,19 +3,19 @@ use std::path::Path;
 
 fn read_client_content() -> String {
     let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let client_path = crate_root.join("src/features/modules/api/client.rs");
+    let client_path = crate_root.join("src/features/modules/transport/client.rs");
     if client_path.exists() {
         fs::read_to_string(&client_path).expect("read client.rs")
     } else {
-        let api_path = crate_root.join("src/features/modules/api.rs");
-        fs::read_to_string(&api_path).expect("read api.rs")
+        let transport_path = crate_root.join("src/features/modules/transport.rs");
+        fs::read_to_string(&transport_path).expect("read transport.rs")
     }
 }
 
-fn read_api_content() -> String {
+fn read_transport_content() -> String {
     let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_dir = crate_root.join("src/features/modules/api");
-    if api_dir.exists() {
+    let transport_dir = crate_root.join("src/features/modules/transport");
+    if transport_dir.exists() {
         let mut content = String::new();
         for filename in [
             "types.rs",
@@ -24,15 +24,15 @@ fn read_api_content() -> String {
             "client.rs",
             "mod.rs",
         ] {
-            if let Ok(file_content) = fs::read_to_string(api_dir.join(filename)) {
+            if let Ok(file_content) = fs::read_to_string(transport_dir.join(filename)) {
                 content.push_str(&file_content);
                 content.push('\n');
             }
         }
         content
     } else {
-        let api_path = crate_root.join("src/features/modules/api.rs");
-        fs::read_to_string(&api_path).expect("read api.rs")
+        let transport_path = crate_root.join("src/features/modules/transport.rs");
+        fs::read_to_string(&transport_path).expect("read transport.rs")
     }
 }
 
@@ -654,7 +654,7 @@ fn module_composition_helpers_use_typed_responses_and_direct_payload_returns() {
 
 #[test]
 fn module_composition_mutation_constants_are_declared_once() {
-    let content = read_api_content();
+    let content = read_transport_content();
 
     for constant in [
         "pub const INSTALL_MODULE_MUTATION: &str =",
@@ -960,7 +960,7 @@ fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
 
 #[test]
 fn module_graphql_mutation_constants_have_stable_operation_shapes() {
-    let content = read_api_content();
+    let content = read_transport_content();
 
     let cases: &[(&str, &[&str], &[&str])] = &[
         (
@@ -1080,7 +1080,7 @@ fn assert_graphql_only_helper(
 #[test]
 fn module_recovery_helpers_use_canonical_graphql_surface() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let content = read_api_content();
+    let content = read_transport_content();
     let modules_list_path = crate_root.join("src/features/modules/components/modules_list.rs");
     let modules_list = fs::read_to_string(&modules_list_path).expect("read modules_list.rs");
 
@@ -1247,7 +1247,7 @@ fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
         .parent()
         .and_then(Path::parent)
         .expect("workspace root");
-    let admin_api = read_api_content();
+    let admin_transport = read_transport_content();
     let modules_list_path = crate_root.join("src/features/modules/components/modules_list.rs");
     let modules_list = fs::read_to_string(&modules_list_path).expect("read modules_list.rs");
     let shared_api_path = crate_root.join("src/shared/api/mod.rs");
@@ -1309,7 +1309,7 @@ fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
         );
     }
 
-    let toggle_helper = extract_function_block(&admin_api, "pub async fn toggle_module(")
+    let toggle_helper = extract_function_block(&admin_transport, "pub async fn toggle_module(")
         .expect("toggle_module helper should exist");
     assert!(
         toggle_helper.contains("TOGGLE_MODULE_MUTATION")
@@ -1354,7 +1354,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
         .parent()
         .and_then(Path::parent)
         .expect("workspace root");
-    let admin_api = read_api_content();
+    let admin_transport = read_transport_content();
     let server_composition_path =
         repo_root.join("apps/server/src/services/platform_composition.rs");
     let server_composition =
@@ -1370,7 +1370,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
     let shared_api = fs::read_to_string(&shared_api_path).expect("read shared api.rs");
 
     let admin_hash_helper = extract_function_block(
-        &admin_api,
+        &admin_transport,
         "fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String",
     )
     .expect("runtime_manifest_hash helper should exist");
@@ -1394,7 +1394,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
         "pub const UNINSTALL_MODULE_MUTATION: &str = \"",
         "pub const UPGRADE_MODULE_MUTATION: &str = \"",
     ] {
-        let mutation = extract_const_string_literal(&admin_api, mutation_decl)
+        let mutation = extract_const_string_literal(&admin_transport, mutation_decl)
             .unwrap_or_else(|| panic!("mutation declaration not found: {mutation_decl}"));
         for required in ["manifestRef", "manifestHash", "manifestRevision"] {
             assert!(
@@ -1418,7 +1418,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
             "Ok(response.upgrade_module)",
         ),
     ] {
-        let helper_body = extract_function_block(&admin_api, helper.0)
+        let helper_body = extract_function_block(&admin_transport, helper.0)
             .unwrap_or_else(|| panic!("helper signature not found: {}", helper.0));
         assert!(
             helper_body.contains(helper.1),
@@ -1466,7 +1466,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
 
 #[test]
 fn runtime_manifest_hash_uses_shared_typed_hash_helper() {
-    let content = read_api_content();
+    let content = read_transport_content();
 
     let helper_body = extract_function_block(
         &content,

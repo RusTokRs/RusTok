@@ -168,7 +168,8 @@ Foundation ownership is fixed:
 - executable runtime helpers go to `rustok-runtime`;
 - Axum response/error/extractor helpers go to `rustok-web`;
 - FBA provider/consumer metadata goes to `rustok-fba`;
-- CLI command/provider contracts go to `rustok-cli-core`.
+- CLI command/provider contracts, including typed command execution, go to
+  `rustok-cli-core`.
 
 Do not expand `rustok-api` or `apps/server` just because a backend helper is needed.
 

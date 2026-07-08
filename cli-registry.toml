@@ -1,0 +1,4 @@
+[providers.core]
+namespace = "core"
+factory = "rustok_cli_platform::command_provider"
+

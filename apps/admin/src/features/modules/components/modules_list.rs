@@ -6,7 +6,7 @@ use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
     ModuleSettingField, ReleaseInfo, TenantModule,
 };
-use crate::features::modules::api;
+use crate::features::modules::transport;
 #[cfg(target_arch = "wasm32")]
 use crate::shared::api as shared_api;
 use crate::shared::ui::ui_success_message as UiSuccessMessage;
@@ -266,7 +266,7 @@ fn is_build_terminal_status(status: &str) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn apply_build_progress_to_job(job: &mut BuildJob, event: &api::BuildProgressEvent) {
+fn apply_build_progress_to_job(job: &mut BuildJob, event: &transport::BuildProgressEvent) {
     job.status = event.status.clone();
     job.stage = event.stage.clone();
     job.progress = event.progress;
@@ -296,8 +296,8 @@ fn recovery_plan_summary(plan: &ModuleOperationRecoveryPlan) -> String {
     }
 }
 
-fn normalize_catalog_filters(filters: &CatalogFilters) -> api::MarketplaceVariables {
-    api::MarketplaceVariables {
+fn normalize_catalog_filters(filters: &CatalogFilters) -> transport::MarketplaceVariables {
+    transport::MarketplaceVariables {
         search: (!filters.search.trim().is_empty()).then(|| filters.search.trim().to_string()),
         category: (filters.category != "all").then(|| filters.category.clone()),
         tag: (filters.tag != "all").then(|| filters.tag.clone()),
@@ -337,7 +337,7 @@ struct BuildProgressSubscriptionPayload {
 #[derive(serde::Deserialize)]
 struct BuildProgressSubscriptionData {
     #[serde(rename = "buildProgress")]
-    build_progress: Option<api::BuildProgressEvent>,
+    build_progress: Option<transport::BuildProgressEvent>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -445,7 +445,8 @@ pub fn ModulesList(
         }
         spawn_local(async move {
             let filters = normalize_catalog_filters(&filters);
-            let result = api::fetch_marketplace_modules(token_value, tenant_value, filters).await;
+            let result =
+                transport::fetch_marketplace_modules(token_value, tenant_value, filters).await;
             if let Ok(marketplace) = result {
                 set_known_categories.update(|categories| {
                     for category in marketplace
@@ -499,23 +500,24 @@ pub fn ModulesList(
               filters: CatalogFilters| {
             spawn_local(async move {
                 if let Ok(build) =
-                    api::fetch_active_build(token_value.clone(), tenant_value.clone()).await
+                    transport::fetch_active_build(token_value.clone(), tenant_value.clone()).await
                 {
                     set_active_build_state.set(build);
                 }
                 if let Ok(release) =
-                    api::fetch_active_release(token_value.clone(), tenant_value.clone()).await
+                    transport::fetch_active_release(token_value.clone(), tenant_value.clone()).await
                 {
                     set_active_release_state.set(release);
                 }
                 if let Ok(history) =
-                    api::fetch_build_history(token_value.clone(), tenant_value.clone(), 10, 0).await
+                    transport::fetch_build_history(token_value.clone(), tenant_value.clone(), 10, 0)
+                        .await
                 {
                     set_build_history_state.set(history);
                 }
                 let filters = normalize_catalog_filters(&filters);
                 if let Ok(marketplace) =
-                    api::fetch_marketplace_modules(token_value, tenant_value, filters).await
+                    transport::fetch_marketplace_modules(token_value, tenant_value, filters).await
                 {
                     set_known_categories.update(|categories| {
                         for category in marketplace
@@ -564,7 +566,7 @@ pub fn ModulesList(
         move |token_value: Option<String>, tenant_value: Option<String>| {
             set_recovery_refreshing.set(true);
             spawn_local(async move {
-                match api::failed_module_operation_recovery_plans(
+                match transport::failed_module_operation_recovery_plans(
                     None,
                     Some(10),
                     token_value,
@@ -595,7 +597,7 @@ pub fn ModulesList(
     let resume_live_polling = live_polling.resume.clone();
     #[cfg(target_arch = "wasm32")]
     let apply_build_progress_event =
-        move |event: api::BuildProgressEvent,
+        move |event: transport::BuildProgressEvent,
               token_value: Option<String>,
               tenant_value: Option<String>| {
             let mut matched_active_build = false;
@@ -698,7 +700,7 @@ pub fn ModulesList(
                 "id": "modules-build-progress",
                 "type": "subscribe",
                 "payload": {
-                    "query": api::BUILD_PROGRESS_SUBSCRIPTION,
+                    "query": transport::BUILD_PROGRESS_SUBSCRIPTION,
                 }
             })
             .to_string();
@@ -850,7 +852,8 @@ pub fn ModulesList(
         let enabled_modules_for_toggle_async = enabled_modules_for_toggle.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match api::toggle_module(slug_clone.clone(), enabled, token_val, tenant_val).await {
+            match transport::toggle_module(slug_clone.clone(), enabled, token_val, tenant_val).await
+            {
                 Ok(result) => {
                     set_module_list.update(|modules| {
                         if let Some(module) = modules
@@ -905,7 +908,7 @@ pub fn ModulesList(
         set_success_message.set(None);
         set_recovery_action_operation_id.set(Some(operation_id.clone()));
         spawn_local(async move {
-            match api::retry_failed_module_operation_post_hook(
+            match transport::retry_failed_module_operation_post_hook(
                 operation_id_for_call.clone(),
                 token_val.clone(),
                 tenant_val.clone(),
@@ -941,7 +944,7 @@ pub fn ModulesList(
         set_recovery_action_operation_id.set(Some(operation_id.clone()));
         let enabled_modules_for_compensation = enabled_modules_for_compensation.clone();
         spawn_local(async move {
-            match api::compensate_failed_module_operation(
+            match transport::compensate_failed_module_operation(
                 operation_id_for_call.clone(),
                 token_val.clone(),
                 tenant_val.clone(),
@@ -994,7 +997,9 @@ pub fn ModulesList(
         let refresh_tenant = tenant_val.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match api::install_module(slug_clone.clone(), version, token_val, tenant_val).await {
+            match transport::install_module(slug_clone.clone(), version, token_val, tenant_val)
+                .await
+            {
                 Ok(build) => {
                     upsert_installed_module(slug_clone.clone(), version_clone);
                     push_build_job(build);
@@ -1024,7 +1029,7 @@ pub fn ModulesList(
         let enabled_modules_for_uninstall_async = enabled_modules_for_uninstall.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match api::uninstall_module(slug_clone.clone(), token_val, tenant_val).await {
+            match transport::uninstall_module(slug_clone.clone(), token_val, tenant_val).await {
                 Ok(build) => {
                     set_installed_module_list
                         .update(|modules| modules.retain(|module| module.slug != slug_clone));
@@ -1071,7 +1076,9 @@ pub fn ModulesList(
         let refresh_tenant = tenant_val.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match api::upgrade_module(slug_clone.clone(), version, token_val, tenant_val).await {
+            match transport::upgrade_module(slug_clone.clone(), version, token_val, tenant_val)
+                .await
+            {
                 Ok(build) => {
                     upsert_installed_module(slug_clone.clone(), version_clone);
                     push_build_job(build);
@@ -1099,7 +1106,7 @@ pub fn ModulesList(
         let refresh_tenant = tenant_val.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match api::rollback_build(build_id_clone.clone(), token_val, tenant_val).await {
+            match transport::rollback_build(build_id_clone.clone(), token_val, tenant_val).await {
                 Ok(build) => {
                     set_active_build_state.set(None);
                     push_build_job(build);
@@ -1200,8 +1207,13 @@ pub fn ModulesList(
         set_settings_loading_slug.set(Some(slug.clone()));
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match api::update_module_settings(slug.clone(), settings_payload, token_val, tenant_val)
-                .await
+            match transport::update_module_settings(
+                slug.clone(),
+                settings_payload,
+                token_val,
+                tenant_val,
+            )
+            .await
             {
                 Ok(module) => {
                     set_tenant_module_list.update(|modules: &mut Vec<TenantModule>| {
@@ -1248,7 +1260,7 @@ pub fn ModulesList(
         let tenant_value = tenant.get();
         set_module_detail_loading.set(true);
         spawn_local(async move {
-            match api::fetch_marketplace_module(slug, token_value, tenant_value).await {
+            match transport::fetch_marketplace_module(slug, token_value, tenant_value).await {
                 Ok(module) => set_selected_module_detail.set(module),
                 Err(err) => set_form_state.set(FormState::with_form_error(format!("{}", err))),
             }
@@ -1327,7 +1339,7 @@ pub fn ModulesList(
             let tenant_value = tenant.get();
             set_module_detail_loading.set(true);
             spawn_local(async move {
-                match api::fetch_marketplace_module(slug, token_value, tenant_value).await {
+                match transport::fetch_marketplace_module(slug, token_value, tenant_value).await {
                     Ok(module) => set_selected_module_detail.set(module),
                     Err(err) => set_form_state.set(FormState::with_form_error(format!("{}", err))),
                 }

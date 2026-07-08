@@ -4,9 +4,8 @@
 //! - top statements from `pg_stat_statements` when available
 //! - EXPLAIN plans for known GraphQL/admin read paths
 //!
-//! Run with:
-//! `cargo loco task --name db_baseline`
-//! `cargo loco task --name db_baseline --args "tenant_id=<uuid> top_n=15 output=tmp/db-baseline.json"`
+//! Current legacy server task bridge; target entrypoint:
+//! `rustok-cli task db-baseline --tenant-id <uuid> --top-n 15 --output tmp/db-baseline.json`
 
 use crate::error::{Error, Result};
 use crate::tasks::{Task, TaskAppContext as AppContext, TaskInfo, Vars};

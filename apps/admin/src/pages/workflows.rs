@@ -3,7 +3,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 
-use crate::features::workflow::{api, TemplateGallery, WorkflowList};
+use crate::features::workflow::{transport, TemplateGallery, WorkflowList};
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
 
@@ -30,7 +30,9 @@ pub fn Workflows() -> impl IntoView {
 
     let workflows_resource = local_resource(
         move || (token.get(), tenant.get()),
-        move |(token_val, tenant_val)| async move { api::fetch_workflows(token_val, tenant_val).await },
+        move |(token_val, tenant_val)| async move {
+            transport::fetch_workflows(token_val, tenant_val).await
+        },
     );
 
     view! {

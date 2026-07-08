@@ -42,7 +42,7 @@ const libPath = "crates/rustok-payment/storefront/src/lib.rs";
 const corePath = "crates/rustok-payment/storefront/src/core.rs";
 const transportPath = "crates/rustok-payment/storefront/src/transport.rs";
 const graphqlPath = "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs";
-const nativeRawPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const nativeServerFunctionsPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs";
 const cargoPath = "crates/rustok-payment/storefront/Cargo.toml";
 const uiPath = "crates/rustok-payment/storefront/src/ui/leptos.rs";
 const i18nPath = "crates/rustok-payment/storefront/src/i18n.rs";
@@ -53,7 +53,7 @@ const planPath = "crates/rustok-payment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeServerFunctionsPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected payment storefront FFA file`);
 }
 
@@ -61,7 +61,7 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const transport = readRepo(transportPath);
 const graphql = readRepo(graphqlPath);
-const nativeRaw = readRepo(nativeRawPath);
+const nativeServerFunctions = readRepo(nativeServerFunctionsPath);
 const cargo = readRepo(cargoPath);
 const ui = readRepo(uiPath);
 const i18n = readRepo(i18nPath);
@@ -114,18 +114,18 @@ for (const marker of ["STOREFRONT_REFUNDS_QUERY", "STOREFRONT_PAYMENT_COLLECTION
   assertContains(graphql, marker, `${graphqlPath}: payment must own GraphQL create/reuse marker ${marker}`);
 }
 assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: payment GraphQL adapter must not depend on commerce storefront internals`);
-assertContains(nativeRaw, "#[server", `${nativeRawPath}: payment native adapter must own a server-function endpoint shell`);
-assertContains(nativeRaw, "endpoint = \"payment/create-payment-collection\"", `${nativeRawPath}: payment native adapter must expose the owner endpoint path`);
-assertContains(nativeRaw, "endpoint = \"payment/payment-collection\"", `${nativeRawPath}: payment native adapter must expose the owner read endpoint path`);
-assertContains(nativeRaw, "endpoint = \"payment/refund-summary\"", `${nativeRawPath}: payment native adapter must expose the owner refund-summary endpoint path`);
-assertContains(nativeRaw, "read_storefront_payment_collection", `${nativeRawPath}: payment native read adapter must call the access-checked commerce runtime API`);
-assertContains(nativeRaw, "read_storefront_order_refunds", `${nativeRawPath}: payment refund adapter must call the access-checked commerce runtime API`);
-assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: payment native adapter must call the explicit commerce checkout runtime API`);
-assertContains(nativeRaw, "expect_context::<HostRuntimeContext>()", `${nativeRawPath}: payment native adapter must use the host runtime context`);
-assertContains(nativeRaw, "shared_get::<TransactionalEventBus>()", `${nativeRawPath}: payment native adapter must receive the event bus through the host runtime context`);
-assertContains(nativeRaw, "runtime_ctx.db_clone()", `${nativeRawPath}: payment native adapter must receive DB through the host runtime context`);
-assertNotContains(nativeRaw, "loco_rs", `${nativeRawPath}: payment native adapter must not depend on Loco AppContext`);
-assertNotContains(nativeRaw, "rustok_outbox::loco", `${nativeRawPath}: payment native adapter must not use the outbox Loco adapter`);
+assertContains(nativeServerFunctions, "#[server", `${nativeServerFunctionsPath}: payment native server-functions adapter must own a server-function endpoint shell`);
+assertContains(nativeServerFunctions, "endpoint = \"payment/create-payment-collection\"", `${nativeServerFunctionsPath}: payment native server-functions adapter must expose the owner endpoint path`);
+assertContains(nativeServerFunctions, "endpoint = \"payment/payment-collection\"", `${nativeServerFunctionsPath}: payment native server-functions adapter must expose the owner read endpoint path`);
+assertContains(nativeServerFunctions, "endpoint = \"payment/refund-summary\"", `${nativeServerFunctionsPath}: payment native server-functions adapter must expose the owner refund-summary endpoint path`);
+assertContains(nativeServerFunctions, "read_storefront_payment_collection", `${nativeServerFunctionsPath}: payment native read adapter must call the access-checked commerce runtime API`);
+assertContains(nativeServerFunctions, "read_storefront_order_refunds", `${nativeServerFunctionsPath}: payment refund adapter must call the access-checked commerce runtime API`);
+assertContains(nativeServerFunctions, "rustok_commerce::storefront_checkout_runtime", `${nativeServerFunctionsPath}: payment native server-functions adapter must call the explicit commerce checkout runtime API`);
+assertContains(nativeServerFunctions, "expect_context::<HostRuntimeContext>()", `${nativeServerFunctionsPath}: payment native server-functions adapter must use the host runtime context`);
+assertContains(nativeServerFunctions, "shared_get::<TransactionalEventBus>()", `${nativeServerFunctionsPath}: payment native server-functions adapter must receive the event bus through the host runtime context`);
+assertContains(nativeServerFunctions, "runtime_ctx.db_clone()", `${nativeServerFunctionsPath}: payment native server-functions adapter must receive DB through the host runtime context`);
+assertNotContains(nativeServerFunctions, "loco_rs", `${nativeServerFunctionsPath}: payment native server-functions adapter must not depend on Loco AppContext`);
+assertNotContains(nativeServerFunctions, "rustok_outbox::loco", `${nativeServerFunctionsPath}: payment native server-functions adapter must not use the outbox Loco adapter`);
 assertNotContains(cargo, "loco-rs", `${cargoPath}: payment storefront package must not depend on Loco`);
 assertNotContains(cargo, "loco-adapter", `${cargoPath}: payment storefront package must not enable the outbox Loco adapter`);
 
@@ -154,7 +154,7 @@ for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[se
 assertContains(commerceUi, "PaymentCollectionActionButton", `${commerceUiPath}: commerce host must render payment-owned action UI`);
 assertContains(commerceUi, "Callback::new(move |request: PaymentCollectionCreateRequest|", `${commerceUiPath}: commerce callback must accept payment-owned request DTO`);
 assertNotContains(commerceUi, "build_payment_collection_command_request", `${commerceUiPath}: commerce UI must not rebuild payment requests from raw cart ids`);
-assertContains(commerceRequests, "pub type PaymentCollectionCommandRequest = PaymentCollectionCreateRequest", `${commerceRequestsPath}: commerce transport may keep transitional alias to owner request`);
+assertContains(commerceRequests, "pub type PaymentCollectionCommandRequest = PaymentCollectionCreateRequest", `${commerceRequestsPath}: commerce transport must keep the owner request alias for aggregate checkout composition`);
 assertNotContains(commerceRequests, "build_payment_collection_create_request", `${commerceRequestsPath}: commerce core must not wrap payment-owned request construction`);
 assertNotContains(commerceRequests, "build_payment_collection_command_request", `${commerceRequestsPath}: commerce core must not expose a payment request builder after owner UI handoff`);
 assertContains(plan, "verify-payment-storefront-boundary.mjs", `${planPath}: local plan must mention payment storefront boundary guardrail`);

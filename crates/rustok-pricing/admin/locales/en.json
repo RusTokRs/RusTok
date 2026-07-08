@@ -10,7 +10,7 @@
   "pricing.channel.default": "default",
   "pricing.channel.global": "Global channel",
   "pricing.channel.inactive": "inactive",
-  "pricing.channel.legacy": "Legacy scope",
+  "pricing.channel.unlisted": "Unlisted scope",
   "pricing.detail.empty": "Open a product to inspect variant prices, currency coverage and sale markers from the pricing route.",
   "pricing.detail.openProduct": "Open product module",
   "pricing.detail.contextTitle": "Effective price context",

@@ -1,6 +1,6 @@
-pub mod api;
 pub mod components;
-mod native_server_adapter;
+pub mod model;
+pub mod transport;
 
 pub use components::{
     ExecutionHistory, StatusBadge, TemplateGallery, VersionHistory, WorkflowList,

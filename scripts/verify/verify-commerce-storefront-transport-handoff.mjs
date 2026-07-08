@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // RusTok commerce storefront transport handoff guardrails.
-// Fast source-level checks that aggregate checkout keeps owner DTOs and only falls back
-// to GraphQL when native server functions are unavailable, not for validation/domain errors.
+// Fast source-level checks that aggregate checkout keeps owner DTOs and selects native
+// or GraphQL through the shared UI transport policy.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -62,20 +62,19 @@ const uiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const transportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const nativePath = "crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs";
 const graphqlPath = "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs";
-const rawPath = "crates/rustok-commerce/storefront/src/transport/raw_adapter.rs";
 const runtimePath = "crates/rustok-commerce/src/storefront_checkout_runtime.rs";
 const storeControllerPath = "crates/rustok-commerce/src/controllers/store/mod.rs";
 const graphqlTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
 const legacyApiPath = "crates/rustok-commerce/storefront/src/api.rs";
 const paymentTransportPath = "crates/rustok-payment/storefront/src/transport.rs";
 const paymentGraphqlPath = "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs";
-const paymentNativeRawPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const paymentNativeServerFunctionsPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs";
 const orderTransportPath = "crates/rustok-order/storefront/src/transport.rs";
 const orderGraphqlPath = "crates/rustok-order/storefront/src/transport/graphql_adapter.rs";
-const orderNativeRawPath = "crates/rustok-order/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const orderNativeServerFunctionsPath = "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
 const fulfillmentTransportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
 const fulfillmentGraphqlPath = "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs";
-const fulfillmentNativeRawPath = "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const fulfillmentNativeServerFunctionsPath = "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs";
 const commercePlanPath = "crates/rustok-commerce/docs/implementation-plan.md";
 const paymentPlanPath = "crates/rustok-payment/docs/implementation-plan.md";
 const orderPlanPath = "crates/rustok-order/docs/implementation-plan.md";
@@ -83,11 +82,11 @@ const fulfillmentPlanPath = "crates/rustok-fulfillment/docs/implementation-plan.
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [requestsPath, presentationPath, modelPath, libPath, uiPath, transportPath, nativePath, graphqlPath, rawPath, runtimePath, storeControllerPath, graphqlTypesPath, paymentTransportPath, paymentGraphqlPath, paymentNativeRawPath, orderTransportPath, orderGraphqlPath, orderNativeRawPath, fulfillmentTransportPath, fulfillmentGraphqlPath, fulfillmentNativeRawPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
+for (const filePath of [requestsPath, presentationPath, modelPath, libPath, uiPath, transportPath, nativePath, graphqlPath, runtimePath, storeControllerPath, graphqlTypesPath, paymentTransportPath, paymentGraphqlPath, paymentNativeServerFunctionsPath, orderTransportPath, orderGraphqlPath, orderNativeServerFunctionsPath, fulfillmentTransportPath, fulfillmentGraphqlPath, fulfillmentNativeServerFunctionsPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected storefront transport handoff file`);
 }
 if (existsSync(repoPath(legacyApiPath))) {
-  fail(`${legacyApiPath}: commerce storefront legacy api.rs must stay removed; transport/raw_adapter.rs owns raw operations`);
+  fail(`${legacyApiPath}: commerce storefront legacy api.rs must stay removed; transport/native_server_adapter.rs owns native operations`);
 }
 
 const requests = readRepo(requestsPath);
@@ -98,19 +97,18 @@ const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const nativeAdapter = readRepo(nativePath);
 const graphqlAdapter = readRepo(graphqlPath);
-const rawAdapter = readRepo(rawPath);
 const runtimeApi = readRepo(runtimePath);
 const storeController = readRepo(storeControllerPath);
 const graphqlTypes = readRepo(graphqlTypesPath);
 const paymentTransport = readRepo(paymentTransportPath);
 const paymentGraphql = readRepo(paymentGraphqlPath);
-const paymentNativeRaw = readRepo(paymentNativeRawPath);
+const paymentNativeServerFunctions = readRepo(paymentNativeServerFunctionsPath);
 const orderTransport = readRepo(orderTransportPath);
 const orderGraphql = readRepo(orderGraphqlPath);
-const orderNativeRaw = readRepo(orderNativeRawPath);
+const orderNativeServerFunctions = readRepo(orderNativeServerFunctionsPath);
 const fulfillmentTransport = readRepo(fulfillmentTransportPath);
 const fulfillmentGraphql = readRepo(fulfillmentGraphqlPath);
-const fulfillmentNativeRaw = readRepo(fulfillmentNativeRawPath);
+const fulfillmentNativeServerFunctions = readRepo(fulfillmentNativeServerFunctionsPath);
 const commercePlan = readRepo(commercePlanPath);
 const paymentPlan = readRepo(paymentPlanPath);
 const orderPlan = readRepo(orderPlanPath);
@@ -173,18 +171,13 @@ for (const operation of [
 ]) {
   assertContains(transport, `pub async fn ${operation}`, `${transportPath}: missing transport operation ${operation}`);
 }
-assertContains(transport, "Err(error) if should_fallback_to_graphql(&error)", `${transportPath}: native fallback must be explicitly gated`);
-assertContains(transport, "Err(error) => Err(error)", `${transportPath}: native validation/domain errors must be returned without GraphQL fallback`);
-assertContains(transport, "validation_and_graphql_errors_do_not_trigger_compatibility_fallback", `${transportPath}: fallback guardrail unit test marker missing`);
+assertContains(transport, "execute_selected_transport", `${transportPath}: native/GraphQL selection must use shared UI transport policy`);
 for (const marker of [
   "create_payment_collection",
-  "PaymentTransportError",
   "complete_checkout",
-  "CheckoutCompletionTransportError",
   "select_shipping_option",
-  "ShippingSelectionTransportError",
 ]) {
-  assertContains(transport, marker, `${transportPath}: aggregate checkout must delegate owner handoff fallback policy through ${marker}`);
+  assertContains(transport, marker, `${transportPath}: aggregate checkout must delegate owner handoff through ${marker}`);
 }
 for (const marker of [
   "Err(_) => graphql_adapter::create_storefront_payment_collection",
@@ -195,19 +188,19 @@ for (const marker of [
   assertNotContains(transport, marker, `${transportPath}: broad GraphQL fallback is forbidden for owner handoff paths (${marker})`);
 }
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api module`);
-assertContains(transport, "mod raw_adapter;", `${transportPath}: transport facade must wire raw adapter inside transport boundary`);
-assertContains(transport, "use raw_adapter::ApiError;", `${transportPath}: transport facade must expose ApiError from raw adapter`);
+assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must wire native server adapter inside transport boundary`);
+assertContains(transport, "use shared_adapter::ApiError;", `${transportPath}: transport facade must expose ApiError from shared adapter`);
 assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 assertNotContains(nativeAdapter, "crate::api", `${nativePath}: native adapter must not delegate to legacy api module`);
 assertNotContains(graphqlAdapter, "crate::api", `${graphqlPath}: GraphQL adapter must not delegate to legacy api module`);
-assertContains(rawAdapter, "#[server", `${rawPath}: raw adapter must keep native server-function endpoints`);
-assertNotContains(rawAdapter, "GraphqlRequest", `${rawPath}: commerce aggregate adapter must delegate owner GraphQL reads instead of issuing raw GraphQL requests`);
-assertContains(rawAdapter, "endpoint = \"commerce/storefront-data\"", `${rawPath}: commerce raw adapter must keep only the aggregate storefront data server-function endpoint`);
-assertContains(rawAdapter, "rustok_cart_storefront::transport::fetch_cart", `${rawPath}: commerce aggregate read must delegate cart workspace loading to the cart owner transport`);
-assertContains(rawAdapter, "rustok_cart_storefront::core::build_cart_fetch_request", `${rawPath}: commerce aggregate read must build cart owner requests through cart core`);
-assertContains(rawAdapter, "rustok_payment_storefront::transport::fetch_payment_collection", `${rawPath}: commerce aggregate read must delegate payment collection loading to the payment owner transport`);
-assertContains(rawAdapter, "rustok_payment_storefront::transport::build_payment_collection_fetch_request", `${rawPath}: commerce aggregate read must build payment owner requests through its transport contract`);
-assertContains(rawAdapter, "map_cart_checkout_cart", `${rawPath}: commerce aggregate read may only convert from cart-owned DTOs into its checkout aggregate model`);
+assertContains(nativeAdapter, "#[server", `${nativePath}: native adapter must keep native server-function endpoints`);
+assertNotContains(nativeAdapter, "GraphqlRequest", `${nativePath}: commerce aggregate adapter must delegate owner GraphQL reads instead of issuing raw GraphQL requests`);
+assertContains(nativeAdapter, "endpoint = \"commerce/storefront-data\"", `${nativePath}: commerce native adapter must keep only the aggregate storefront data server-function endpoint`);
+assertContains(nativeAdapter, "rustok_cart_storefront::transport::fetch_cart", `${nativePath}: commerce aggregate read must delegate cart workspace loading to the cart owner transport`);
+assertContains(nativeAdapter, "rustok_cart_storefront::core::build_cart_fetch_request", `${nativePath}: commerce aggregate read must build cart owner requests through cart core`);
+assertContains(nativeAdapter, "rustok_payment_storefront::transport::fetch_payment_collection", `${nativePath}: commerce aggregate read must delegate payment collection loading to the payment owner transport`);
+assertContains(nativeAdapter, "rustok_payment_storefront::transport::build_payment_collection_fetch_request", `${nativePath}: commerce aggregate read must build payment owner requests through its transport contract`);
+assertContains(nativeAdapter, "map_cart_checkout_cart", `${nativePath}: commerce aggregate read may only convert from cart-owned DTOs into its checkout aggregate model`);
 for (const marker of [
   "STOREFRONT_CHECKOUT_QUERY",
   "StorefrontCheckoutResponse",
@@ -225,10 +218,10 @@ for (const marker of [
   "fetch_storefront_order_refunds_summary",
   "reprice_storefront_cart_line_items",
 ]) {
-  assertNotContains(rawAdapter, marker, `${rawPath}: commerce raw adapter must not own cart read implementation (${marker})`);
+  assertNotContains(nativeAdapter, marker, `${nativePath}: commerce native adapter must not own cart read implementation (${marker})`);
 }
 for (const endpoint of ["commerce/create-payment-collection", "commerce/select-shipping-option", "commerce/complete-checkout"]) {
-  assertNotContains(rawAdapter, endpoint, `${rawPath}: commerce raw adapter must not own owner operation endpoint ${endpoint}`);
+  assertNotContains(nativeAdapter, endpoint, `${nativePath}: commerce native adapter must not own owner operation endpoint ${endpoint}`);
 }
 assertContains(runtimeApi, "pub async fn create_storefront_payment_collection", `${runtimePath}: commerce runtime API must expose payment collection orchestration`);
 assertContains(runtimeApi, "pub async fn read_storefront_order_refunds", `${runtimePath}: commerce runtime API must expose access-checked order refund reads to the payment owner adapter`);
@@ -237,11 +230,11 @@ assertContains(runtimeApi, "pub async fn complete_storefront_checkout", `${runti
 assertContains(runtimeApi, "StorefrontPaymentCollectionCommand", `${runtimePath}: runtime API must use typed payment command input`);
 assertContains(runtimeApi, "StorefrontShippingSelectionCommand", `${runtimePath}: runtime API must use typed fulfillment command input`);
 assertContains(runtimeApi, "StorefrontCheckoutCompletionCommand", `${runtimePath}: runtime API must use typed order command input`);
-assertNotContains(rawAdapter, "build_shipping_selection_updates", `${rawPath}: commerce raw adapter must not consume fulfillment-owned shipping selection materialization`);
-assertNotContains(rawAdapter, "build_shipping_selection_plan", `${rawPath}: commerce raw adapter must not own shipping selection planning`);
-assertNotContains(rawAdapter, "fn shipping_selection_error_message", `${rawPath}: commerce raw adapter must not own fulfillment selection error text`);
-assertNotContains(rawAdapter, "sellerScope lineItemIds", `${rawPath}: checkout read query must not request legacy sellerScope for delivery-group matching`);
-assertNotContains(rawAdapter, "serde(rename = \"sellerScope\")", `${rawPath}: storefront GraphQL fallback selection payload must not send legacy sellerScope`);
+assertNotContains(nativeAdapter, "build_shipping_selection_updates", `${nativePath}: commerce native adapter must not consume fulfillment-owned shipping selection materialization`);
+assertNotContains(nativeAdapter, "build_shipping_selection_plan", `${nativePath}: commerce native adapter must not own shipping selection planning`);
+assertNotContains(nativeAdapter, "fn shipping_selection_error_message", `${nativePath}: commerce native adapter must not own fulfillment selection error text`);
+assertNotContains(nativeAdapter, "sellerScope lineItemIds", `${nativePath}: checkout read query must not request legacy sellerScope for delivery-group matching`);
+assertNotContains(nativeAdapter, "serde(rename = \"sellerScope\")", `${nativePath}: storefront GraphQL fallback selection payload must not send legacy sellerScope`);
 assertStructNotContains(storeController, "StoreCartShippingSelectionInput", "seller_scope", `${storeControllerPath}: REST storefront shipping selection input must not accept legacy seller_scope`);
 assertStructNotContains(graphqlTypes, "StorefrontShippingSelectionInput", "seller_scope", `${graphqlTypesPath}: GraphQL storefront shipping selection input must not accept legacy seller_scope`);
 assertStructNotContains(graphqlTypes, "GqlCartLineItem", "seller_scope", `${graphqlTypesPath}: GraphQL cart line item output must not expose legacy seller_scope`);
@@ -256,7 +249,7 @@ for (const marker of [
   "GraphqlPaymentCollection",
   "GraphqlCheckoutCompletion",
 ]) {
-  assertNotContains(rawAdapter, marker, `${rawPath}: owner checkout GraphQL implementation must not remain in commerce (${marker})`);
+  assertNotContains(nativeAdapter, marker, `${nativePath}: owner checkout GraphQL implementation must not remain in commerce (${marker})`);
   assertNotContains(graphqlAdapter, marker, `${graphqlPath}: commerce GraphQL wrapper must not reintroduce owner operation ${marker}`);
 }
 
@@ -268,8 +261,7 @@ for (const [ownerTransport, ownerPath, operation, errorType] of [
   assertContains(ownerTransport, `pub enum ${errorType}`, `${ownerPath}: owner transport must expose typed fallback error ${errorType}`);
   assertContains(ownerTransport, `pub async fn ${operation}`, `${ownerPath}: owner transport must expose owner GraphQL fallback facade ${operation}`);
   assertContains(ownerTransport, "mod native_server_adapter;", `${ownerPath}: owner transport facade must wire its native server adapter`);
-  assertContains(ownerTransport, "Err(error) if error.should_fallback_to_graphql()", `${ownerPath}: owner fallback facade must be MissingServer-gated`);
-  assertContains(ownerTransport, "Err(error) => Err(error)", `${ownerPath}: owner fallback facade must preserve validation/domain errors`);
+  assertContains(ownerTransport, "execute_selected_transport", `${ownerPath}: owner fallback facade must use shared UI transport selection`);
   assertContains(ownerTransport, "mod graphql_adapter;", `${ownerPath}: owner transport facade must wire its GraphQL adapter`);
 }
 assertContains(fulfillmentTransport, "build_shipping_selection_updates", `${fulfillmentTransportPath}: fulfillment transport must own shipping selection materialization for compatibility cutover`);
@@ -277,12 +269,12 @@ assertContains(fulfillmentTransport, "build_shipping_selection_updates", `${fulf
 assertNotContains(nativeAdapter, "create_storefront_payment_collection", `${nativePath}: commerce native adapter must not keep payment owner operation wrapper`);
 assertNotContains(nativeAdapter, "complete_storefront_checkout", `${nativePath}: commerce native adapter must not keep order owner operation wrapper`);
 assertNotContains(nativeAdapter, "select_storefront_shipping_option", `${nativePath}: commerce native adapter must not keep fulfillment owner operation wrapper`);
-assertContains(paymentNativeRaw, "endpoint = \"payment/create-payment-collection\"", `${paymentNativeRawPath}: payment must own native payment collection endpoint shell`);
-assertContains(paymentNativeRaw, "rustok_commerce::storefront_checkout_runtime", `${paymentNativeRawPath}: payment native endpoint must call explicit commerce checkout runtime API`);
-assertContains(orderNativeRaw, "endpoint = \"order/complete-checkout\"", `${orderNativeRawPath}: order must own native checkout completion endpoint shell`);
-assertContains(orderNativeRaw, "rustok_commerce::storefront_checkout_runtime", `${orderNativeRawPath}: order native endpoint must call explicit commerce checkout runtime API`);
-assertContains(fulfillmentNativeRaw, "endpoint = \"fulfillment/select-shipping-option\"", `${fulfillmentNativeRawPath}: fulfillment must own native shipping selection endpoint shell`);
-assertContains(fulfillmentNativeRaw, "rustok_commerce::storefront_checkout_runtime", `${fulfillmentNativeRawPath}: fulfillment native endpoint must call explicit commerce checkout runtime API`);
+assertContains(paymentNativeServerFunctions, "endpoint = \"payment/create-payment-collection\"", `${paymentNativeServerFunctionsPath}: payment must own native payment collection endpoint shell`);
+assertContains(paymentNativeServerFunctions, "rustok_commerce::storefront_checkout_runtime", `${paymentNativeServerFunctionsPath}: payment native endpoint must call explicit commerce checkout runtime API`);
+assertContains(orderNativeServerFunctions, "endpoint = \"order/complete-checkout\"", `${orderNativeServerFunctionsPath}: order must own native checkout completion endpoint shell`);
+assertContains(orderNativeServerFunctions, "rustok_commerce::storefront_checkout_runtime", `${orderNativeServerFunctionsPath}: order native endpoint must call explicit commerce checkout runtime API`);
+assertContains(fulfillmentNativeServerFunctions, "endpoint = \"fulfillment/select-shipping-option\"", `${fulfillmentNativeServerFunctionsPath}: fulfillment must own native shipping selection endpoint shell`);
+assertContains(fulfillmentNativeServerFunctions, "rustok_commerce::storefront_checkout_runtime", `${fulfillmentNativeServerFunctionsPath}: fulfillment native endpoint must call explicit commerce checkout runtime API`);
 for (const [ownerGraphql, ownerPath, mutation, operation] of [
   [paymentGraphql, paymentGraphqlPath, "CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION", "create_payment_collection"],
   [orderGraphql, orderGraphqlPath, "COMPLETE_STOREFRONT_CHECKOUT_MUTATION", "complete_checkout"],
@@ -294,15 +286,15 @@ for (const [ownerGraphql, ownerPath, mutation, operation] of [
 }
 
 assertContains(commercePlan, "verify-commerce-storefront-transport-handoff.mjs", `${commercePlanPath}: commerce plan must mention transport handoff guardrail`);
-assertContains(commercePlan, "storefront/src/transport/raw_adapter.rs", `${commercePlanPath}: commerce plan must document storefront raw adapter location`);
+assertContains(commercePlan, "storefront/src/transport/native_server_adapter.rs", `${commercePlanPath}: commerce plan must document storefront native adapter location`);
 for (const operation of ["create_payment_collection", "fetch_payment_collection", "fetch_refund_summary"]) {
   assertContains(paymentPlan, `\`${operation}\``, `${paymentPlanPath}: payment plan must document owner GraphQL fallback policy for ${operation}`);
 }
-assertContains(paymentPlan, "MissingServer-gated", `${paymentPlanPath}: payment plan must document MissingServer-only fallback policy`);
-assertContains(orderPlan, "MissingServer-gated `complete_checkout` facade", `${orderPlanPath}: order plan must document owner GraphQL fallback policy`);
-assertContains(fulfillmentPlan, "MissingServer-gated `select_shipping_option` facade", `${fulfillmentPlanPath}: fulfillment plan must document owner GraphQL fallback policy`);
+assertContains(paymentPlan, "execute_selected_transport", `${paymentPlanPath}: payment plan must document shared transport selection policy`);
+assertContains(orderPlan, "execute_selected_transport", `${orderPlanPath}: order plan must document shared transport selection policy`);
+assertContains(fulfillmentPlan, "execute_selected_transport", `${fulfillmentPlanPath}: fulfillment plan must document shared transport selection policy`);
 assertContains(registry, "verify-commerce-storefront-transport-handoff.mjs", `${registryPath}: central registry must mention transport handoff guardrail`);
-assertContains(registry, "storefront/src/transport/raw_adapter.rs", `${registryPath}: central registry must document commerce storefront raw adapter location`);
+assertContains(registry, "storefront/src/transport/native_server_adapter.rs", `${registryPath}: central registry must document commerce storefront native adapter location`);
 assertContains(packageJson, "verify:commerce:storefront-transport-handoff", `${packagePath}: expected transport handoff script`);
 assertContains(packageJson, "npm run verify:commerce:storefront-transport-handoff", `${packagePath}: aggregate FFA migration verification must include transport handoff guardrail`);
 

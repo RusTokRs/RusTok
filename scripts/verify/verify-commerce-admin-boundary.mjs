@@ -45,7 +45,7 @@ const files = {
   shippingProfile: "crates/rustok-commerce/admin/src/transport/shipping_profile.rs",
   promotion: "crates/rustok-commerce/admin/src/transport/promotion.rs",
   orderChange: "crates/rustok-commerce/admin/src/transport/order_change.rs",
-  rawAdapter: "crates/rustok-commerce/admin/src/transport/raw_adapter.rs",
+  nativeAdapter: "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
   commerceRoot: "crates/rustok-commerce/src/lib.rs",
   legacyApi: "crates/rustok-commerce/admin/src/api.rs",
   implementationPlan: "crates/rustok-commerce/docs/implementation-plan.md",
@@ -58,7 +58,7 @@ for (const [name, filePath] of Object.entries(files)) {
   assertExists(filePath, `${filePath}: expected commerce admin FFA boundary file`);
 }
 if (existsSync(repoPath(files.legacyApi))) {
-  fail(`${files.legacyApi}: commerce admin legacy api.rs must stay removed; transport/raw_adapter.rs owns raw operations`);
+  fail(`${files.legacyApi}: commerce admin legacy api.rs must stay removed; transport/native_server_adapter.rs owns native operations`);
 }
 
 const lib = readRepo(files.lib);
@@ -68,7 +68,7 @@ const transport = readRepo(files.transport);
 const shippingProfile = readRepo(files.shippingProfile);
 const promotion = readRepo(files.promotion);
 const orderChange = readRepo(files.orderChange);
-const rawAdapter = readRepo(files.rawAdapter);
+const nativeAdapter = readRepo(files.nativeAdapter);
 const commerceRoot = readRepo(files.commerceRoot);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
@@ -87,18 +87,17 @@ for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server"]) {
   assertNotContains(ui, marker, `${files.ui}: UI adapter must not call raw transport or server functions (${marker})`);
 }
 
-assertContains(transport, "mod raw_adapter;", `${files.transport}: transport must wire raw adapter inside transport boundary`);
+assertContains(transport, "mod native_server_adapter;", `${files.transport}: transport must wire native server adapter inside transport boundary`);
 for (const [source, filePath] of [
   [shippingProfile, files.shippingProfile],
   [promotion, files.promotion],
   [orderChange, files.orderChange],
 ]) {
-  assertContains(source, "use super::raw_adapter", `${filePath}: transport slice must delegate through raw_adapter`);
+  assertContains(source, "native_server_adapter", `${filePath}: transport slice must consume native server adapter error contract or operations`);
   assertNotContains(source, "crate::api", `${filePath}: transport slice must not import legacy api module`);
 }
-assertContains(rawAdapter, "pub enum ApiError", `${files.rawAdapter}: raw adapter must own shared ApiError envelope`);
-assertContains(rawAdapter, "GraphqlRequest", `${files.rawAdapter}: raw adapter must keep GraphQL request contract until split further`);
-assertContains(rawAdapter, "#[server", `${files.rawAdapter}: raw adapter must keep native server-function endpoints`);
+assertContains(nativeAdapter, "pub enum ApiError", `${files.nativeAdapter}: native server adapter must own shared ApiError envelope`);
+assertContains(nativeAdapter, "#[server", `${files.nativeAdapter}: native server adapter must keep native server-function endpoints`);
 
 for (const marker of [
   "pub use graphql::{CommerceMutation, CommerceQuery}",
@@ -110,7 +109,7 @@ assertContains(commerceRoot, "pub mod graphql;", `${files.commerceRoot}: GraphQL
 assertContains(commerceRoot, "pub mod state_machine;", `${files.commerceRoot}: state-machine module path must remain explicit`);
 
 assertContains(implementationPlan, "verify-commerce-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention commerce admin guardrail`);
-assertContains(implementationPlan, "admin/src/transport/raw_adapter.rs", `${files.implementationPlan}: local plan must document commerce admin raw adapter location`);
+assertContains(implementationPlan, "admin/src/transport/native_server_adapter.rs", `${files.implementationPlan}: local plan must document commerce admin native adapter location`);
 assertContains(implementationPlan, "root GraphQL and state-machine aliases", `${files.implementationPlan}: local plan must document removed root GraphQL/state-machine aliases`);
 assertContains(registry, "verify-commerce-admin-boundary.mjs", `${files.registry}: central readiness board must mention commerce admin guardrail`);
 assertContains(registry, "root GraphQL/state-machine aliases", `${files.registry}: central registry must document removed root GraphQL/state-machine aliases`);

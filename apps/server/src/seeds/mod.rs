@@ -1,7 +1,7 @@
 //! # RusToK Database Seeds
 //!
 //! Seed data for development and testing.
-//! Run with: `cargo loco db seed`
+//! Current legacy server seed bridge; target entrypoint: `rustok-cli seed <profile>`.
 
 pub type SeedAppContext = loco_rs::app::AppContext;
 

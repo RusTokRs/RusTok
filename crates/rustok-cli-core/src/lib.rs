@@ -73,4 +73,43 @@ pub type CliCoreResult<T> = Result<T, CliCoreError>;
 
 pub trait CommandProvider {
     fn commands(&self) -> Vec<CommandDescriptor>;
+
+    fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
+        Err(CliCoreError::UnknownCommand {
+            namespace: request.namespace,
+            name: request.name,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CliCoreError, CommandDescriptor, CommandProvider, CommandRequest};
+
+    struct DiscoveryOnlyProvider;
+
+    impl CommandProvider for DiscoveryOnlyProvider {
+        fn commands(&self) -> Vec<CommandDescriptor> {
+            vec![CommandDescriptor::new("test", "noop", "No-op command")]
+        }
+    }
+
+    #[test]
+    fn discovery_only_provider_reports_unknown_execution_by_default() {
+        let provider = DiscoveryOnlyProvider;
+        let error = provider
+            .execute(CommandRequest {
+                namespace: "test".to_string(),
+                name: "noop".to_string(),
+                args: serde_json::Value::Null,
+                dry_run: false,
+            })
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliCoreError::UnknownCommand { namespace, name }
+                if namespace == "test" && name == "noop"
+        ));
+    }
 }

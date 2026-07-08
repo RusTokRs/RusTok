@@ -101,41 +101,20 @@ function nativeAdapterSource({ includeWriteFallback = false } = {}) {
   if (includeWriteFallback) {
     return `
 pub async fn set_variant_quantity(token: Option<String>, tenant_slug: Option<String>) {
-    fallback_products(token, tenant_slug, "tenant".to_string(), None, None, None).await;
-    transitional_read_transport().fetch_products().await;
+    graphql_selected_path_products(token, tenant_slug, "tenant".to_string(), None, None, None).await;
+    removed_graphql_read_transport().fetch_products().await;
     CommerceGraphqlInventoryReadAdapter;
 }
-pub async fn adjust_variant_quantity() { crate::native::adjust_variant_quantity().await; }
-pub async fn reserve_variant_quantity() { crate::native::reserve_variant_quantity().await; }
-pub async fn release_reservation_quantity() { crate::native::release_reservation_quantity().await; }
-pub async fn check_variant_availability() { crate::native::check_variant_availability().await; }
-pub async fn fetch_bootstrap() { crate::native::fetch_bootstrap().await; }
-pub async fn fetch_products() { crate::native::fetch_products().await; }
-pub async fn fetch_product() { crate::native::fetch_product().await; }
+pub async fn adjust_variant_quantity() {}
+pub async fn reserve_variant_quantity() {}
+pub async fn release_reservation_quantity() {}
+pub async fn check_variant_availability() {}
+pub async fn fetch_bootstrap() {}
+pub async fn fetch_products() {}
+pub async fn fetch_product() {}
 `;
   }
 
-  return `
-pub async fn fetch_bootstrap() { crate::native::fetch_bootstrap().await; }
-pub async fn fetch_products() { crate::native::fetch_products().await; }
-pub async fn fetch_product() { crate::native::fetch_product().await; }
-pub async fn set_variant_quantity() { crate::native::set_variant_quantity().await; }
-pub async fn adjust_variant_quantity() { crate::native::adjust_variant_quantity().await; }
-pub async fn reserve_variant_quantity() { crate::native::reserve_variant_quantity().await; }
-pub async fn release_reservation_quantity() { crate::native::release_reservation_quantity().await; }
-pub async fn check_variant_availability() { crate::native::check_variant_availability().await; }
-`;
-}
-
-function transportSource() {
-  return `
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-pub struct CommerceGraphqlInventoryReadAdapter;
-const BOOTSTRAP_QUERY: &str = "query Bootstrap /api/graphql RUSTOK_GRAPHQL_URL";
-`;
-}
-
-function nativeSource() {
   return `
 fn inventory_read_service_from_context() {
     let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
@@ -162,6 +141,22 @@ async fn inventory_reserve_quantity_native() {}
 async fn inventory_release_reservation_native() {}
 #[server(prefix = "/api/fn", endpoint = "inventory/variant/check-availability")]
 async fn inventory_check_availability_native() {}
+pub async fn fetch_bootstrap() { inventory_bootstrap_native().await; }
+pub async fn fetch_products() { inventory_products_native().await; }
+pub async fn fetch_product() { inventory_product_native().await; }
+pub async fn set_variant_quantity() { inventory_set_quantity_native().await; }
+pub async fn adjust_variant_quantity() { inventory_adjust_quantity_native().await; }
+pub async fn reserve_variant_quantity() { inventory_reserve_quantity_native().await; }
+pub async fn release_reservation_quantity() { inventory_release_reservation_native().await; }
+pub async fn check_variant_availability() { inventory_check_availability_native().await; }
+`;
+}
+
+function transportSource() {
+  return `
+use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+pub struct CommerceGraphqlInventoryReadAdapter;
+const BOOTSTRAP_QUERY: &str = "query Bootstrap /api/graphql RUSTOK_GRAPHQL_URL";
 `;
 }
 
@@ -216,8 +211,7 @@ function withFixture(options = {}) {
   if (options.includeLegacyApiFile) {
     writeFixtureFile(root, "crates/rustok-inventory/admin/src/api.rs", transportFacadeSource());
   }
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/native.rs", nativeSource());
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/lib.rs", "mod core;\nmod native;\nmod transport;\n");
+  writeFixtureFile(root, "crates/rustok-inventory/admin/src/lib.rs", "mod core;\nmod transport;\n");
   writeFixtureFile(root, "crates/rustok-inventory/admin/src/core.rs", "");
   writeFixtureFile(root, "crates/rustok-inventory/admin/src/model.rs", "");
   writeFixtureFile(root, "crates/rustok-inventory/admin/src/ui/leptos.rs", "native inventory facade");
@@ -271,7 +265,7 @@ test("inventory admin boundary verifier rejects leftover GraphQL transport file"
   try {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected leftover transport fixture to fail");
-    assert.match(result.stderr, /remove the transitional GraphQL adapter file/);
+    assert.match(result.stderr, /removed GraphQL adapter file must stay absent/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -289,11 +283,11 @@ test("inventory admin boundary verifier rejects leftover pre-FFA api facade", ()
   }
 });
 
-test("inventory admin boundary verifier rejects transitional write fallback", () => {
+test("inventory admin boundary verifier rejects removed GraphQL write fallback", () => {
   const root = withFixture({ includeWriteFallback: true });
   try {
     const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected transitional write fallback fixture to fail");
+    assert.notEqual(result.status, 0, "Expected removed GraphQL write fallback fixture to fail");
     assert.match(result.stderr, /removed GraphQL fallback marker must stay absent/);
     assert.match(result.stderr, /must not accept auth tokens for a GraphQL fallback path/);
   } finally {

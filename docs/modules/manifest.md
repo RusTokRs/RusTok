@@ -89,6 +89,26 @@ If `rustok-module.toml` declares:
 then the corresponding type/function symbols must actually exist inside `src/**/*.rs`
 of the module. The manifest must not reference decorative or already removed transport surfaces.
 
+### `provides.cli`
+
+`[provides.cli]` is optional metadata for module-local operational command
+adapters. It does not make the module domain crate depend on CLI parsing or
+terminal concerns. The provider implementation must live in a module-local
+`cli/` adapter package or external integration package, and it must implement
+`rustok-cli-core` command/provider contracts.
+
+Supported keys:
+
+- `namespace`: optional command namespace; defaults to the module slug and must
+  use `snake_case`.
+- `factory`: Rust path to a function returning `Box<dyn CommandProvider>`.
+- `provider`: Rust path to a provider type that implements `Default` and
+  `CommandProvider`; the generated registry wraps it with `Box::new(...)`.
+
+Declare exactly one of `factory` or `provider`. The selected distribution
+registry is generated from this metadata into `rustok-cli-registry`; it is not
+hand-maintained inside `rustok-cli`.
+
 ## Mandatory Minimum for a Path Module
 
 Every path module from `modules.toml` must have:
@@ -171,7 +191,7 @@ Additional sections are allowed, but this minimum must be preserved.
 - If a UI sub-crate is declared in the manifest, its `Cargo.toml` actually exists and the version matches the main module version.
 - `[provides.admin_ui]` requires not only `leptos_crate`, but also non-empty `route_segment`, `nav_label` and `[provides.admin_ui.i18n]` with `default_locale`, `supported_locales`, `leptos_locales_path`.
 - `[provides.admin_ui].nav_group` and `nav_order` are optional navigation metadata for the host sidebar. If not specified, `apps/admin` uses standard groups `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
-- `[[provides.admin_ui.child_pages]]` is canonical metadata for nested admin navigation: each item declares `subpath`, `title`, `nav_label` and is mounted under `/modules/:route_segment/:subpath`. The old name `[[provides.admin_ui.pages]]` is allowed only as a compatibility alias.
+- `[[provides.admin_ui.child_pages]]` is canonical metadata for nested admin navigation: each item declares `subpath`, `title`, `nav_label` and is mounted under `/modules/:route_segment/:subpath`.
 - The presence of `[settings]` in `rustok-module.toml` does not create a module-owned settings page. The host shows a contextual settings link at `/modules?module_slug=<slug>` and uses the existing tenant settings editor.
 - `[provides.storefront_ui]` requires not only `leptos_crate`, but also non-empty `slot`, `route_segment`, `page_title` and `[provides.storefront_ui.i18n]` with `default_locale`, `supported_locales`, `leptos_locales_path`. The `slot` value must be one of the platform-known slots: `home_after_hero`, `home_after_catalog`, `home_before_footer`, `checkout_shipping_handoff`, `checkout_payment_handoff`, `checkout_result_handoff`.
 - If a UI sub-crate is declared in the manifest, the corresponding host (`apps/admin` or `apps/storefront`) actually connects it as a dependency and forwards mandatory host feature links (`/hydrate`, `/ssr`) where the sub-crate exports them.
@@ -191,7 +211,7 @@ If a slug is missing from `modules.toml`, `xtask` returns `Unknown module slug`.
 - `default_enabled` references only actually declared modules;
 - `does not contain missing slugs;
 - `source` specification is valid for each module;
-- `apps/server` holds the module-owned event runtime path: shared `module_event_dispatcher`, no legacy `index/search` dispatchers and no manual `WorkflowTriggerHandler` wiring in host runtime;
+- `apps/server` holds the module-owned event runtime path through the shared `module_event_dispatcher`;
 - All path modules actually contain `rustok-module.toml`.
 
 This step does not replace `cargo xtask module validate <slug>`, but complements it.
@@ -263,6 +283,10 @@ mutation = "graphql::BlogMutation"
 
 [provides.http]
 routes = "controllers::routes"
+
+[provides.cli]
+namespace = "blog"
+factory = "rustok_blog_cli::command_provider"
 
 [provides.admin_ui]
 leptos_crate = "rustok-blog-admin"

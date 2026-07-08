@@ -1,8 +1,5 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::features::oauth_apps::api::{
-    OAuthAppIdVariables, RevokeOAuthAppResponse, REVOKE_OAUTH_APP_MUTATION,
-};
-use crate::shared::api::request;
+use crate::features::oauth_apps::transport;
 use crate::shared::ui::Button;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -27,19 +24,13 @@ pub fn RevokeAppDialog(
 
         let tenant_value = tenant.clone();
         let on_success = on_success.clone();
-        let variables = OAuthAppIdVariables { id: app.id };
+        let app_id = app.id;
 
         set_submitting.set(true);
         set_error.set(None);
 
         spawn_local(async move {
-            let result = request::<OAuthAppIdVariables, RevokeOAuthAppResponse>(
-                REVOKE_OAUTH_APP_MUTATION,
-                variables,
-                Some(token_value),
-                tenant_value,
-            )
-            .await;
+            let result = transport::revoke_oauth_app(Some(token_value), tenant_value, app_id).await;
 
             set_submitting.set(false);
             match result {

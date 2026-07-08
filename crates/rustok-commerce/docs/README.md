@@ -11,7 +11,7 @@ This folder contains the documentation for the umbrella module `crates/rustok-co
 ## Responsibilities
 
 - orchestration between `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`;
-- REST/GraphQL transport and transitional orchestration UI surfaces until domain surfaces are moved to ownership boundaries;
+- REST/GraphQL transport and aggregate orchestration UI surfaces that remain commerce-owned after domain surfaces move to ownership boundaries;
 - shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping and admin payment HTTP handlers on a narrow `CommerceHttpRuntime`; remaining admin/storefront REST adapters are cut by separate Loco-exit slices;
 - channel-aware commerce contract over `rustok-channel`, checkout orchestration and cross-domain deliverability semantics;
 - maintaining the thin-host role of `apps/server` without returning commerce business logic to the host.
@@ -75,7 +75,7 @@ for checkout, REST/GraphQL transport and split-module integration in addition to
 - The aggregate storefront UI package `rustok-commerce/storefront` no longer duplicates catalog/pricing discovery and has been reduced to an aggregate checkout workspace: it shows effective storefront context, checkout state by `?cart_id=` and the remaining aggregate actions for seller-aware delivery-group shipping selection, `payment collection` and `complete checkout`, while discovery/edit surfaces already live in split storefront packages.
 - A minimal multivendor foundation has been established in ecommerce: the product create/update contract now accepts nullable `seller_id`, grouping and ownership validation rely on `seller_id`, and seller display data is no longer persisted as a source of truth in ecommerce storage.
 - The module-owned admin UI package `rustok-order/admin` has taken order list/detail/lifecycle UX under the ownership boundary of the `order` module.
-- The module-owned admin UI package `rustok-inventory/admin` has taken inventory visibility and stock-health UX under the ownership boundary of the `inventory` module; the native inventory-owned read path is now primary, the transitional commerce GraphQL adapter remains a read-only compatibility path, and set/adjust/reserve/release quantity and check-availability flows have been moved to an inventory-owned native write/validation surface without a GraphQL selected path.
+- The module-owned admin UI package `rustok-inventory/admin` has taken inventory visibility and stock-health UX under the ownership boundary of the `inventory` module; the inventory-owned native read path is the only admin read transport, the former commerce GraphQL adapter has been removed, and set/adjust/reserve/release quantity and check-availability flows use an inventory-owned native write/validation surface without a GraphQL selected path.
 - The module-owned admin UI package `rustok-pricing/admin` has taken pricing visibility and sale-marker UX under the ownership boundary of the `pricing` module, keeping the transport gap explicitly documented.
 - Publishable UI packages for admin/storefront live inside the module and are connected by host applications through manifest-driven composition.
 

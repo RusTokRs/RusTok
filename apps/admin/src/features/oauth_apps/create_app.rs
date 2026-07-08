@@ -1,8 +1,4 @@
-use crate::features::oauth_apps::api::{
-    CreateOAuthAppInput, CreateOAuthAppResponse, CreateOAuthAppResult, CreateOAuthAppVariables,
-    CREATE_OAUTH_APP_MUTATION,
-};
-use crate::shared::api::request;
+use crate::features::oauth_apps::transport::{self, CreateOAuthAppInput, CreateOAuthAppResult};
 use crate::shared::ui::{Button, Input};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -83,17 +79,11 @@ pub fn CreateAppForm(
         set_error.set(None);
 
         spawn_local(async move {
-            let result = request::<CreateOAuthAppVariables, CreateOAuthAppResponse>(
-                CREATE_OAUTH_APP_MUTATION,
-                CreateOAuthAppVariables { input },
-                Some(token_value),
-                tenant_value,
-            )
-            .await;
+            let result = transport::create_oauth_app(Some(token_value), tenant_value, input).await;
 
             set_submitting.set(false);
             match result {
-                Ok(response) => on_success(response.create_oauth_app),
+                Ok(result) => on_success(result),
                 Err(err) => set_error.set(Some(err.to_string())),
             }
         });

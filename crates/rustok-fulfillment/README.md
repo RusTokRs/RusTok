@@ -13,8 +13,8 @@
 - Keep shipment lifecycle transitions isolated from the ecommerce umbrella.
 - Provide a built-in manual/default fulfillment flow for the current stage.
 - Expose a fulfillment-owned provider SPI registry with external carrier registration validation and side-effect-free runtime-mode guardrails before adapter invocation.
-- Own storefront shipping handoff and seller-aware shipping selection presentation through `rustok-fulfillment/storefront`; commerce may still provide the transitional aggregate checkout SSR endpoint/body adapter until the full fulfillment-owned endpoint cutover lands.
-- Normalize first-class `allowed_shipping_profile_slugs` on shipping-option contracts into the temporary metadata-backed compatibility shape.
+- Own storefront shipping handoff and seller-aware shipping selection presentation through `rustok-fulfillment/storefront`; commerce composes it through the aggregate checkout workspace and the explicit checkout runtime API.
+- Normalize first-class `allowed_shipping_profile_slugs` on shipping-option contracts into the metadata-backed compatibility shape while older stored rows are still read.
 - Provide create/update/lifecycle read-side service operations for shipping-option management that the commerce facade exposes over admin REST and GraphQL.
 - Return typed fulfillment items from `FulfillmentResponse` instead of forcing post-order flows to reconstruct line-item scope from metadata blobs alone.
 - Support partial `ship` / `deliver` adjustments on typed fulfillment items and append language-agnostic audit events to fulfillment/item metadata while keeping `delivered_note` as a typed field.

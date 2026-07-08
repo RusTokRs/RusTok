@@ -1,7 +1,7 @@
 //! Cleanup Task
 //!
 //! Removes old sessions and temporary data.
-//! Run with: `cargo loco task --name cleanup --args "sessions"`
+//! Current legacy server task bridge; target entrypoint: `rustok-cli task cleanup`.
 
 use crate::error::{Error, Result};
 use crate::tasks::{Task, TaskAppContext as AppContext, TaskInfo, Vars};

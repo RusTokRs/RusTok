@@ -21,6 +21,6 @@ pub(crate) use requests::{
 };
 pub(crate) use routing::{
     apply_selected_channel_option, format_channel_option_label, format_channel_scope_text,
-    legacy_channel_option_label, normalize_channel_value, selected_channel_key, GLOBAL_CHANNEL_KEY,
-    LEGACY_CHANNEL_KEY,
+    normalize_channel_value, selected_channel_key, unlisted_channel_option_label,
+    GLOBAL_CHANNEL_KEY, UNLISTED_CHANNEL_KEY,
 };

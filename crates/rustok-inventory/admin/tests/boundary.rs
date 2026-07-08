@@ -25,8 +25,8 @@ fn graphql_runtime_details_are_removed_from_inventory_admin_package() {
         "/api/graphql",
         "RUSTOK_GRAPHQL_URL",
         "CommerceGraphqlInventoryReadAdapter",
-        "transitional_read_transport",
-        "fallback_",
+        "removed_graphql_read_transport",
+        "graphql_selected_path_",
     ];
 
     for source_path in [
@@ -222,8 +222,8 @@ fn native_write_facades_stay_native_without_graphql_fallback() {
         );
 
         for forbidden in [
-            "fallback_",
-            "transitional_read_transport",
+            "graphql_selected_path_",
+            "removed_graphql_read_transport",
             "CommerceGraphqlInventoryReadAdapter",
             "token",
             "tenant_slug",
@@ -270,12 +270,12 @@ fn ui_stock_quantity_controls_use_inventory_transport_facade_only() {
     }
 
     for forbidden in [
-        "crate::native::set_variant_quantity",
-        "crate::native::reserve_variant_quantity",
-        "crate::native::check_variant_availability",
-        "crate::native::release_reservation_quantity",
+        "native_server_adapter::set_variant_quantity",
+        "native_server_adapter::reserve_variant_quantity",
+        "native_server_adapter::check_variant_availability",
+        "native_server_adapter::release_reservation_quantity",
         "CommerceGraphqlInventoryReadAdapter",
-        "transitional_read_transport",
+        "removed_graphql_read_transport",
     ] {
         assert!(
             !ui.contains(forbidden),
@@ -307,7 +307,7 @@ fn native_only_graphql_adapter_removal_is_documented() {
     ] {
         assert!(
             !readme.contains(forbidden),
-            "admin README must not keep stale transitional adapter marker `{forbidden}`"
+            "admin README must not keep removed GraphQL adapter marker `{forbidden}`"
         );
     }
 }

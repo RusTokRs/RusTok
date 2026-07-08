@@ -1,19 +1,12 @@
-use crate::entities::oauth_app::model::{AppType, OAuthApp};
+use crate::entities::oauth_app::model::OAuthApp;
+use crate::features::oauth_apps::model::{
+    CreateOAuthAppInput, CreateOAuthAppResult, UpdateOAuthAppInput,
+};
 use crate::shared::api::{request, ApiError};
-use leptos::prelude::*;
-use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-fn selected_transport_path() -> UiTransportPath {
-    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
-        UiTransportPath::Graphql
-    } else {
-        UiTransportPath::NativeServer
-    }
-}
-
-pub const OAUTH_APPS_QUERY: &str = r#"
+const OAUTH_APPS_QUERY: &str = r#"
 query OAuthApps($limit: Int) {
   oauthApps(limit: $limit) {
     id
@@ -40,7 +33,7 @@ query OAuthApps($limit: Int) {
 }
 "#;
 
-pub const CREATE_OAUTH_APP_MUTATION: &str = r#"
+const CREATE_OAUTH_APP_MUTATION: &str = r#"
 mutation CreateOAuthApp($input: CreateOAuthAppInput!) {
   createOAuthApp(input: $input) {
     app {
@@ -70,7 +63,7 @@ mutation CreateOAuthApp($input: CreateOAuthAppInput!) {
 }
 "#;
 
-pub const UPDATE_OAUTH_APP_MUTATION: &str = r#"
+const UPDATE_OAUTH_APP_MUTATION: &str = r#"
 mutation UpdateOAuthApp($id: UUID!, $input: UpdateOAuthAppInput!) {
   updateOAuthApp(id: $id, input: $input) {
     id
@@ -97,7 +90,7 @@ mutation UpdateOAuthApp($id: UUID!, $input: UpdateOAuthAppInput!) {
 }
 "#;
 
-pub const ROTATE_OAUTH_APP_SECRET_MUTATION: &str = r#"
+const ROTATE_OAUTH_APP_SECRET_MUTATION: &str = r#"
 mutation RotateOAuthAppSecret($id: UUID!) {
   rotateOAuthAppSecret(id: $id) {
     app {
@@ -127,7 +120,7 @@ mutation RotateOAuthAppSecret($id: UUID!) {
 }
 "#;
 
-pub const REVOKE_OAUTH_APP_MUTATION: &str = r#"
+const REVOKE_OAUTH_APP_MUTATION: &str = r#"
 mutation RevokeOAuthApp($id: UUID!) {
   revokeOAuthApp(id: $id) {
     id
@@ -136,93 +129,63 @@ mutation RevokeOAuthApp($id: UUID!) {
 "#;
 
 #[derive(Clone, Debug, Default, Serialize)]
-pub struct OAuthAppsVariables {
-    pub limit: Option<i64>,
+struct OAuthAppsVariables {
+    limit: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct OAuthAppsResponse {
+struct OAuthAppsResponse {
     #[serde(rename = "oauthApps")]
-    pub oauth_apps: Vec<OAuthApp>,
+    oauth_apps: Vec<OAuthApp>,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct CreateOAuthAppVariables {
-    pub input: CreateOAuthAppInput,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateOAuthAppInput {
-    pub name: String,
-    pub slug: String,
-    pub description: Option<String>,
-    pub icon_url: Option<String>,
-    pub app_type: AppType,
-    pub redirect_uris: Option<Vec<String>>,
-    pub scopes: Vec<String>,
-    pub grant_types: Vec<String>,
+struct CreateOAuthAppVariables {
+    input: CreateOAuthAppInput,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct CreateOAuthAppResponse {
+struct CreateOAuthAppResponse {
     #[serde(rename = "createOAuthApp")]
-    pub create_oauth_app: CreateOAuthAppResult,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateOAuthAppResult {
-    pub app: OAuthApp,
-    pub client_secret: String,
+    create_oauth_app: CreateOAuthAppResult,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct UpdateOAuthAppVariables {
-    pub id: Uuid,
-    pub input: UpdateOAuthAppInput,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateOAuthAppInput {
-    pub name: String,
-    pub description: Option<String>,
-    pub icon_url: Option<String>,
-    pub redirect_uris: Vec<String>,
-    pub scopes: Vec<String>,
-    pub grant_types: Vec<String>,
+struct UpdateOAuthAppVariables {
+    id: Uuid,
+    input: UpdateOAuthAppInput,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct UpdateOAuthAppResponse {
+struct UpdateOAuthAppResponse {
     #[serde(rename = "updateOAuthApp")]
-    pub update_oauth_app: OAuthApp,
+    update_oauth_app: OAuthApp,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct OAuthAppIdVariables {
-    pub id: Uuid,
+struct OAuthAppIdVariables {
+    id: Uuid,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct RotateOAuthAppSecretResponse {
+struct RotateOAuthAppSecretResponse {
     #[serde(rename = "rotateOAuthAppSecret")]
-    pub rotate_oauth_app_secret: CreateOAuthAppResult,
+    rotate_oauth_app_secret: CreateOAuthAppResult,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct RevokeOAuthAppResponse {
+struct RevokeOAuthAppResponse {
     #[serde(rename = "revokeOAuthApp")]
-    pub _revoke_oauth_app: RevokeOAuthAppPayload,
+    _revoke_oauth_app: RevokeOAuthAppPayload,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct RevokeOAuthAppPayload {
-    pub id: Uuid,
+struct RevokeOAuthAppPayload {
+    #[serde(rename = "id")]
+    _id: Uuid,
 }
 
-async fn list_oauth_apps_graphql(
+pub async fn list_oauth_apps(
     token: Option<String>,
     tenant: Option<String>,
 ) -> Result<Vec<OAuthApp>, ApiError> {
@@ -237,20 +200,67 @@ async fn list_oauth_apps_graphql(
     Ok(response.oauth_apps)
 }
 
-async fn list_oauth_apps_server(limit: i64) -> Result<Vec<OAuthApp>, ServerFnError> {
-    super::native_server_adapter::list_oauth_apps_native(limit).await
-}
-
-pub async fn list_oauth_apps(
+pub async fn create_oauth_app(
     token: Option<String>,
     tenant: Option<String>,
-) -> Result<Vec<OAuthApp>, String> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => list_oauth_apps_server(100)
-            .await
-            .map_err(|error| error.to_string()),
-        UiTransportPath::Graphql => list_oauth_apps_graphql(token, tenant)
-            .await
-            .map_err(|error| error.to_string()),
-    }
+    input: CreateOAuthAppInput,
+) -> Result<CreateOAuthAppResult, ApiError> {
+    let response = request::<CreateOAuthAppVariables, CreateOAuthAppResponse>(
+        CREATE_OAUTH_APP_MUTATION,
+        CreateOAuthAppVariables { input },
+        token,
+        tenant,
+    )
+    .await?;
+
+    Ok(response.create_oauth_app)
+}
+
+pub async fn update_oauth_app(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: Uuid,
+    input: UpdateOAuthAppInput,
+) -> Result<OAuthApp, ApiError> {
+    let response = request::<UpdateOAuthAppVariables, UpdateOAuthAppResponse>(
+        UPDATE_OAUTH_APP_MUTATION,
+        UpdateOAuthAppVariables { id, input },
+        token,
+        tenant,
+    )
+    .await?;
+
+    Ok(response.update_oauth_app)
+}
+
+pub async fn rotate_oauth_app_secret(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: Uuid,
+) -> Result<CreateOAuthAppResult, ApiError> {
+    let response = request::<OAuthAppIdVariables, RotateOAuthAppSecretResponse>(
+        ROTATE_OAUTH_APP_SECRET_MUTATION,
+        OAuthAppIdVariables { id },
+        token,
+        tenant,
+    )
+    .await?;
+
+    Ok(response.rotate_oauth_app_secret)
+}
+
+pub async fn revoke_oauth_app(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: Uuid,
+) -> Result<(), ApiError> {
+    let _response = request::<OAuthAppIdVariables, RevokeOAuthAppResponse>(
+        REVOKE_OAUTH_APP_MUTATION,
+        OAuthAppIdVariables { id },
+        token,
+        tenant,
+    )
+    .await?;
+
+    Ok(())
 }

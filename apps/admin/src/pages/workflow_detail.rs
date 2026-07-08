@@ -6,7 +6,7 @@ use leptos_router::params::Params;
 
 use crate::entities::workflow::{WorkflowDetail, WorkflowExecution};
 use crate::features::workflow::{
-    api, ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor,
+    transport, ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor,
 };
 use crate::{t_string, use_i18n};
 
@@ -56,8 +56,10 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                 return Err("No workflow id".to_string());
             }
             let workflow =
-                api::fetch_workflow(token_val.clone(), tenant_val.clone(), wf_id.clone()).await?;
-            let executions = api::fetch_workflow_executions(token_val, tenant_val, wf_id).await?;
+                transport::fetch_workflow(token_val.clone(), tenant_val.clone(), wf_id.clone())
+                    .await?;
+            let executions =
+                transport::fetch_workflow_executions(token_val, tenant_val, wf_id).await?;
             Ok::<_, String>(workflow.map(|w| WorkflowPageData {
                 workflow: w,
                 executions,

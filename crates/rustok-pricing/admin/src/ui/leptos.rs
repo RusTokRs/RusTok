@@ -6,10 +6,10 @@ use crate::core::{
     default_variant_price_editor_currency, empty_price_draft, format_adjustment_preview,
     format_channel_option_label, format_channel_scope_text, format_effective_context,
     format_price_list_option_label, format_variant_count_label, format_variant_price_editor_title,
-    legacy_channel_option_label, normalize_channel_value, normalized_currency_code,
-    normalized_price_list_id, normalized_quantity, normalized_region_id, price_draft_from_price,
+    normalize_channel_value, normalized_currency_code, normalized_price_list_id,
+    normalized_quantity, normalized_region_id, price_draft_from_price,
     pricing_product_list_item_class, selected_channel_key, summarize_pricing, text_or_none,
-    GLOBAL_CHANNEL_KEY, LEGACY_CHANNEL_KEY,
+    unlisted_channel_option_label, GLOBAL_CHANNEL_KEY, UNLISTED_CHANNEL_KEY,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -546,13 +546,13 @@ pub fn PricingAdmin() -> impl IntoView {
                                     );
 
                                     let mut views = Vec::new();
-                                    if selected_key == LEGACY_CHANNEL_KEY {
+                                    if selected_key == UNLISTED_CHANNEL_KEY {
                                         let label = format!(
                                             "{}: {}",
                                             t(
                                                 ui_locale_for_channel_select.as_deref(),
-                                                "pricing.channel.legacy",
-                                                "Legacy scope",
+                                                "pricing.channel.unlisted",
+                                                "Unlisted scope",
                                             ),
                                             format_channel_scope_text(
                                                 None,
@@ -574,7 +574,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                             }),
                                         );
                                         views.push(
-                                            view! { <option value=LEGACY_CHANNEL_KEY>{label}</option> }
+                                            view! { <option value=UNLISTED_CHANNEL_KEY>{label}</option> }
                                                 .into_any(),
                                         );
                                     }
@@ -953,15 +953,15 @@ fn VariantDiscountEditor(
     let available_channels_for_value = available_channels.clone();
     let available_channels_for_change = available_channels.clone();
     let available_channels_for_options = available_channels.clone();
-    let available_channels_for_legacy = available_channels.clone();
+    let available_channels_for_unlisted = available_channels.clone();
     let locale_for_preview = locale.clone();
     let locale_for_apply = locale.clone();
     let locale_for_button = locale.clone();
     let locale_for_apply_button = locale.clone();
-    let locale_for_legacy_label = locale.clone();
-    let legacy_option_label = Memo::new(move |_| {
-        legacy_channel_option_label(
-            locale_for_legacy_label.as_deref(),
+    let locale_for_unlisted_label = locale.clone();
+    let unlisted_option_label = Memo::new(move |_| {
+        unlisted_channel_option_label(
+            locale_for_unlisted_label.as_deref(),
             channel_id.get().as_str(),
             channel_slug.get().as_str(),
         )
@@ -1040,11 +1040,11 @@ fn VariantDiscountEditor(
                         selected_channel_key(
                             channel_id.get().as_str(),
                             channel_slug.get().as_str(),
-                            available_channels_for_legacy.as_slice(),
-                        ) == LEGACY_CHANNEL_KEY
+                            available_channels_for_unlisted.as_slice(),
+                        ) == UNLISTED_CHANNEL_KEY
                     }>
-                        <option value=LEGACY_CHANNEL_KEY>
-                            {move || legacy_option_label.get()}
+                        <option value=UNLISTED_CHANNEL_KEY>
+                            {move || unlisted_option_label.get()}
                         </option>
                     </Show>
                 </select>
@@ -1157,11 +1157,11 @@ fn PriceListRuleEditor(
     let available_channels_for_value = available_channels.clone();
     let available_channels_for_change = available_channels.clone();
     let available_channels_for_options = available_channels.clone();
-    let available_channels_for_legacy = available_channels.clone();
-    let locale_for_legacy_label = locale.clone();
-    let legacy_option_label = Memo::new(move |_| {
-        legacy_channel_option_label(
-            locale_for_legacy_label.as_deref(),
+    let available_channels_for_unlisted = available_channels.clone();
+    let locale_for_unlisted_label = locale.clone();
+    let unlisted_option_label = Memo::new(move |_| {
+        unlisted_channel_option_label(
+            locale_for_unlisted_label.as_deref(),
             channel_id.get().as_str(),
             channel_slug.get().as_str(),
         )
@@ -1286,11 +1286,11 @@ fn PriceListRuleEditor(
                         selected_channel_key(
                             channel_id.get().as_str(),
                             channel_slug.get().as_str(),
-                            available_channels_for_legacy.as_slice(),
-                        ) == LEGACY_CHANNEL_KEY
+                            available_channels_for_unlisted.as_slice(),
+                        ) == UNLISTED_CHANNEL_KEY
                     }>
-                        <option value=LEGACY_CHANNEL_KEY>
-                            {move || legacy_option_label.get()}
+                        <option value=UNLISTED_CHANNEL_KEY>
+                            {move || unlisted_option_label.get()}
                         </option>
                     </Show>
                 </select>
@@ -1356,11 +1356,11 @@ fn VariantPriceEditor(
     let available_channels_for_value = available_channels.clone();
     let available_channels_for_change = available_channels.clone();
     let available_channels_for_options = available_channels.clone();
-    let available_channels_for_legacy = available_channels.clone();
-    let locale_for_legacy_label = locale.clone();
-    let legacy_option_label = Memo::new(move |_| {
-        legacy_channel_option_label(
-            locale_for_legacy_label.as_deref(),
+    let available_channels_for_unlisted = available_channels.clone();
+    let locale_for_unlisted_label = locale.clone();
+    let unlisted_option_label = Memo::new(move |_| {
+        unlisted_channel_option_label(
+            locale_for_unlisted_label.as_deref(),
             channel_id.get().as_str(),
             channel_slug.get().as_str(),
         )
@@ -1428,11 +1428,11 @@ fn VariantPriceEditor(
                         selected_channel_key(
                             channel_id.get().as_str(),
                             channel_slug.get().as_str(),
-                            available_channels_for_legacy.as_slice(),
-                        ) == LEGACY_CHANNEL_KEY
+                            available_channels_for_unlisted.as_slice(),
+                        ) == UNLISTED_CHANNEL_KEY
                     }>
-                        <option value=LEGACY_CHANNEL_KEY>
-                            {move || legacy_option_label.get()}
+                        <option value=UNLISTED_CHANNEL_KEY>
+                            {move || unlisted_option_label.get()}
                         </option>
                     </Show>
                 </select>

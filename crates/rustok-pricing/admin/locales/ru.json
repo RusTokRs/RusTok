@@ -11,7 +11,7 @@
   "pricing.channel.default": "default",
   "pricing.channel.global": "Глобальный канал",
   "pricing.channel.inactive": "inactive",
-  "pricing.channel.legacy": "Legacy scope",
+  "pricing.channel.unlisted": "Unlisted scope",
   "pricing.detail.empty": "Откройте товар, чтобы посмотреть цены по variant, покрытие валют и sale markers из pricing route.",
   "pricing.detail.contextTitle": "Контекст effective price",
   "pricing.detail.contextSubtitle": "Задайте валюту, region, price list и quantity, чтобы посмотреть effective price по каждому variant прямо в pricing module.",

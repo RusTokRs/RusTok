@@ -218,6 +218,8 @@ rustok-runtime = { path = "crates/rustok-runtime" }
 rustok-web = { path = "crates/rustok-web" }
 rustok-fba = { path = "crates/rustok-fba" }
 rustok-cli-core = { path = "crates/rustok-cli-core" }
+rustok-cli-registry = { path = "crates/rustok-cli-registry" }
+rustok-cli-platform = { path = "crates/rustok-cli-platform" }
 rustok-graphql = { path = "crates/rustok-graphql" }
 rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
 rustok-ui-core = { path = "crates/rustok-ui-core" }

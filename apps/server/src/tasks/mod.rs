@@ -1,7 +1,7 @@
 //! # RusToK Server Tasks
 //!
 //! Background tasks for maintenance and operations.
-//! Run with: `cargo loco task --name <task_name>`
+//! Current legacy server task bridge; target entrypoints belong to `rustok-cli`.
 
 pub type TaskAppContext = loco_rs::app::AppContext;
 pub use loco_rs::task::{Task, TaskInfo, Tasks, Vars};

@@ -6,7 +6,7 @@ use crate::entities::module::model::{
     RegistryValidationStageLifecycle,
 };
 use crate::entities::module::MarketplaceModule;
-use crate::features::modules::api::RegistryMutationResult;
+use crate::features::modules::transport::RegistryMutationResult;
 use crate::Locale;
 
 #[derive(Clone)]
@@ -2689,7 +2689,7 @@ mod tests {
     }
 
     #[test]
-    fn registry_review_policy_lines_drop_legacy_override_copy() {
+    fn registry_review_policy_lines_drop_operator_override_copy() {
         let owner = sample_owner("owner:module");
         let lines = registry_review_policy_lines(None, None, Some(&owner), Locale::en);
 
@@ -2726,7 +2726,7 @@ mod tests {
     }
 
     #[test]
-    fn live_api_action_hints_use_bearer_auth_instead_of_legacy_actor_headers() {
+    fn live_api_action_hints_use_bearer_auth_without_actor_headers() {
         let module = sample_module();
         let request = sample_request(
             "approved",

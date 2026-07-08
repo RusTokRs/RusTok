@@ -82,12 +82,9 @@ assertAll('crates/rustok-commerce/src/graphql/mod.rs', [
   'is_module_enabled_for_request_channel',
   "Module '{MODULE_SLUG}' is not enabled for channel",
 ]);
-assertAll('crates/rustok-commerce/storefront/src/transport/raw_adapter.rs', [
-  'normalize_public_channel_slug',
+assertAll('crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs', [
   'request_context.channel_slug',
-  '.channel_id',
   'channel_resolution_source',
-  'resolved_price.channel_id',
 ]);
 assertAll('crates/rustok-commerce/storefront/src/core/presentation.rs', [
   'channel_resolution_source',

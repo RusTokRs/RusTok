@@ -29,4 +29,6 @@ pub mod routes;
 pub mod seeds;
 pub mod services;
 pub mod tasks;
+#[cfg(test)]
+pub mod testing;
 pub mod views;

@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 
 use crate::app::modules::core_module_slugs;
-use crate::features::modules::api;
+use crate::features::modules::transport;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -73,7 +73,7 @@ pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
                 return Ok(Vec::new());
             }
 
-            api::fetch_enabled_modules(token_value, tenant_value).await
+            transport::fetch_enabled_modules(token_value, tenant_value).await
         },
     );
 

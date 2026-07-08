@@ -6,7 +6,7 @@ use crate::entities::workflow::{
 };
 use crate::entities::workflow::{WorkflowDetail, WorkflowExecution, WorkflowSummary};
 
-use super::api::{
+use crate::features::workflow::model::{
     CreateStepInput, CreateWorkflowInput, WorkflowTemplateDto, WorkflowVersionSummaryDto,
 };
 

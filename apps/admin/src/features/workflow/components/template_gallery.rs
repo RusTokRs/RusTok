@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::features::workflow::api::{self, WorkflowTemplateDto};
+use crate::features::workflow::transport::{self, WorkflowTemplateDto};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -29,7 +29,7 @@ pub fn TemplateGallery(
     let ts = tenant_slug.clone();
     let templates_resource = local_resource(
         move || (tok.clone(), ts.clone()),
-        move |(tok, ts)| async move { api::fetch_templates(tok, ts).await },
+        move |(tok, ts)| async move { transport::fetch_templates(tok, ts).await },
     );
 
     view! {
@@ -85,7 +85,7 @@ pub fn TemplateGallery(
                                                     } else {
                                                         nm
                                                     };
-                                                    match api::create_from_template(tok3, ts3, id, workflow_name).await {
+                                                    match transport::create_from_template(tok3, ts3, id, workflow_name).await {
                                                         Ok(wf_id) => {
                                                             set_pending_id.set(None);
                                                             on_created.run(wf_id);

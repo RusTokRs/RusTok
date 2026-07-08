@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
 };
-use crate::features::modules::api;
 use crate::features::modules::components::ModulesList;
+use crate::features::modules::transport;
 use crate::shared::api::ApiError;
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
@@ -43,13 +43,13 @@ pub fn Modules() -> impl IntoView {
     let modules_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            let modules = api::fetch_modules(token_value.clone(), tenant_value.clone())
+            let modules = transport::fetch_modules(token_value.clone(), tenant_value.clone())
                 .await
                 .unwrap_or_default();
-            let marketplace_modules = api::fetch_marketplace_modules(
+            let marketplace_modules = transport::fetch_marketplace_modules(
                 token_value.clone(),
                 tenant_value.clone(),
-                api::MarketplaceVariables {
+                transport::MarketplaceVariables {
                     search: None,
                     category: None,
                     tag: None,
@@ -62,21 +62,22 @@ pub fn Modules() -> impl IntoView {
             .await
             .unwrap_or_default();
             let installed_modules =
-                api::fetch_installed_modules(token_value.clone(), tenant_value.clone())
+                transport::fetch_installed_modules(token_value.clone(), tenant_value.clone())
                     .await
                     .unwrap_or_default();
             let tenant_modules =
-                api::fetch_tenant_modules(token_value.clone(), tenant_value.clone())
+                transport::fetch_tenant_modules(token_value.clone(), tenant_value.clone())
                     .await
                     .unwrap_or_default();
-            let active_build = api::fetch_active_build(token_value.clone(), tenant_value.clone())
-                .await
-                .unwrap_or_default();
+            let active_build =
+                transport::fetch_active_build(token_value.clone(), tenant_value.clone())
+                    .await
+                    .unwrap_or_default();
             let active_release =
-                api::fetch_active_release(token_value.clone(), tenant_value.clone())
+                transport::fetch_active_release(token_value.clone(), tenant_value.clone())
                     .await
                     .unwrap_or_default();
-            let build_history = api::fetch_build_history(token_value, tenant_value, 10, 0)
+            let build_history = transport::fetch_build_history(token_value, tenant_value, 10, 0)
                 .await
                 .unwrap_or_default();
 

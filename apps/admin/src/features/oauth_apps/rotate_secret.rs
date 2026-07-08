@@ -1,8 +1,5 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::features::oauth_apps::api::{
-    OAuthAppIdVariables, RotateOAuthAppSecretResponse, ROTATE_OAUTH_APP_SECRET_MUTATION,
-};
-use crate::shared::api::request;
+use crate::features::oauth_apps::transport;
 use crate::shared::ui::Button;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -27,26 +24,18 @@ pub fn RotateSecretDialog(
 
         let tenant_value = tenant.clone();
         let on_success = on_success.clone();
-        let variables = OAuthAppIdVariables { id: app.id };
+        let app_id = app.id;
 
         set_submitting.set(true);
         set_error.set(None);
 
         spawn_local(async move {
-            let result = request::<OAuthAppIdVariables, RotateOAuthAppSecretResponse>(
-                ROTATE_OAUTH_APP_SECRET_MUTATION,
-                variables,
-                Some(token_value),
-                tenant_value,
-            )
-            .await;
+            let result =
+                transport::rotate_oauth_app_secret(Some(token_value), tenant_value, app_id).await;
 
             set_submitting.set(false);
             match result {
-                Ok(response) => on_success(
-                    response.rotate_oauth_app_secret.client_secret.clone(),
-                    response.rotate_oauth_app_secret.app,
-                ),
+                Ok(result) => on_success(result.client_secret.clone(), result.app),
                 Err(err) => set_error.set(Some(err.to_string())),
             }
         });

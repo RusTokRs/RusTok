@@ -1,0 +1,19 @@
+[package]
+name = "rustok-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "User-facing RusToK platform CLI runner"
+
+[dependencies]
+rustok-cli-core.workspace = true
+rustok-cli-registry.workspace = true
+serde_json.workspace = true
+
+[lib]
+name = "rustok_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rustok-cli"
+path = "src/main.rs"

@@ -34,6 +34,23 @@ lives in `src/widgets/app_shell/core.rs` without Leptos dependencies, while `sid
 a Leptos render/bind adapter. This split is enforced by a quick verifier
 `npm run verify:frontend:host-ffa-contract`.
 
+The host-owned workflow feature follows the same host FFA boundary: transport-neutral DTOs live in
+`src/features/workflow/model.rs`, the only data entrypoint is
+`src/features/workflow/transport/mod.rs`, and raw GraphQL/native server-function calls stay in
+`transport/graphql_adapter.rs` and `transport/native_server_adapter.rs`. The removed
+`src/features/workflow/api.rs` facade must not be restored.
+
+The host-owned OAuth apps feature follows the same boundary: DTOs live in
+`src/features/oauth_apps/model.rs`, list transport is selected through
+`src/features/oauth_apps/transport/mod.rs`, GraphQL mutations stay behind
+`transport/graphql_adapter.rs`, and the removed `src/features/oauth_apps/api.rs` facade must not be
+restored.
+
+The host-owned installer feature is a thin REST wizard over the server installer API. Installer DTOs
+live in `src/features/installer/model.rs`, HTTP request code lives only in
+`src/features/installer/transport/mod.rs`, and the page calls that transport facade instead of
+holding raw REST wiring. The removed `src/features/installer/api.rs` facade must not be restored.
+
 ## Boundaries of Responsibility
 
 `apps/admin` is responsible for:
@@ -89,7 +106,7 @@ a Leptos render/bind adapter. This split is enforced by a quick verifier
   `pg_admin_url`.
 - For `module-system` purposes, `/modules` is considered a closed repo-side operator surface: installation, removal, upgrade/deploy of modules and progress feedback are available from the Admin UI without a separate manual backend workflow.
 - Host-owned `/modules` governance UI does not hold local policy heuristics: `registryLifecycle` remains a summary/read-model, but actor-agnostic `governanceActions` there are now limited to release-management hints (`owner-transfer`, `yank`), and the authoritative request-level contract for interactive governance is read by a separate bearer-auth fetch to `GET /v2/catalog/publish/{request_id}`; `reason` / `reason_code` and request-level availability are taken only from this status.
-- `/modules` no longer reads the legacy registry audit shape: the lifecycle/event read-side works only with typed payload (`stage_key`, nested `owner_transition`, structured principal objects) and does not parse historical `*_actor` keys.
+- `/modules` reads the typed registry audit payload only: `stage_key`, nested `owner_transition`, structured principal objects, and the current lifecycle/event read-side fields.
 - For `apps/admin` this is considered the final repo-side contract: no new client-owned lifecycle is needed here going forward, only targeted verification mapping and periodic reconciliation of `/modules` UX with the server-driven policy surface.
 - Toggle/install/uninstall/upgrade module composition must not have a local SSR SQL lifecycle duplicate: the host uses canonical server GraphQL/control-plane entrypoints, where CAS-update `platform_state` and build enqueue are atomic, and `manifest_ref`/`manifest_hash` are taken from the server-side snapshot contract.
 - For module toggle, `apps/admin` maintains a GraphQL-only entrypoint contract (without a native fallback toggle path): error taxonomy, dependency/core checks, and journal semantics (`module_operations`) are defined by the server lifecycle service, not by local Leptos logic. The Leptos SSR adapter and UI must propagate `BAD_USER_INPUT`/`MODULE_HOOK_FAILED`/`INTERNAL_ERROR`, `correlation_id`, `requested_by`, `status`, `retryable_issue`, and related recovery fields without client-side remap.
@@ -142,10 +159,10 @@ discrepancies found are filed as parity debt and fixed on a case-by-case basis.
 - A publishable Leptos admin surface must declare `[provides.admin_ui].leptos_crate`; the presence of `admin/Cargo.toml` alone is not considered integration.
 - The host mounts module-owned pages via `/modules/:module_slug` and nested variant `/modules/:module_slug/*module_path`.
 - The sidebar is built from manifest-driven navigation metadata. `[provides.admin_ui].nav_group` and `nav_order` are optional overrides; if they are not set, the host groups first-party modules into standard buckets `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
-- The canonical source for module submenu is `[[provides.admin_ui.child_pages]]`. Legacy `[[provides.admin_ui.pages]]` is currently read only as a compatibility alias; new manifests must use `child_pages`.
+- The canonical source for module submenu is `[[provides.admin_ui.child_pages]]`.
 - Each module-owned admin surface gets a root `Overview` item; declared child pages become nested links under the module container. The host hides disabled tenant modules and empty containers.
 - Tenant/module settings remain in the host-owned `/modules` governance UI. If `rustok-module.toml` contains `[settings]`, the sidebar adds a contextual link `/modules?module_slug=<slug>`; module-owned packages do not duplicate this editor.
-- Recovery for failed module lifecycle post-hook operations remains a host/control-plane scenario: Leptos admin shows a host-owned `Lifecycle recovery` block, reads `failedModuleOperationRecoveryPlans`, and calls `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` via canonical GraphQL helpers in `features/modules/api.rs`; local SQL, local rollback, and custom lifecycle taxonomy are prohibited.
+- Recovery for failed module lifecycle post-hook operations remains a host/control-plane scenario: Leptos admin shows a host-owned `Lifecycle recovery` block, reads `failedModuleOperationRecoveryPlans`, and calls `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` via canonical GraphQL helpers in `features/modules/transport`; local SQL, local rollback, and custom lifecycle taxonomy are prohibited.
 - The host passes the effective locale via `UiRouteContext.locale`; module-owned Leptos packages must use this value and must not introduce their own query/header/cookie fallback chain.
 - Module-owned admin packages must support the same runtime split: `#[server]` preferred in SSR/hydrate, GraphQL/REST fallback for standalone CSR/debug. The package must become neither GraphQL-only for monolith nor `#[server]`-only for headless/debug.
 - Core modules with UI are subject to the same ownership rule as optional modules: the presence of UI does not make the host the owner of the module surface.

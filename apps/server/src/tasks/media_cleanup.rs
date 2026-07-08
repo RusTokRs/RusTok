@@ -4,10 +4,8 @@
 //! confirmed missing from storage.  Safe to run in production: unknown
 //! errors are treated conservatively (record is kept).
 //!
-//! Run manually:
-//! ```text
-//! cargo loco task --name media_cleanup
-//! ```
+//! Current legacy server task bridge; target entrypoint:
+//! `rustok-cli task media-cleanup`.
 //! Or schedule via `scheduler.yaml`.
 
 use async_trait::async_trait;

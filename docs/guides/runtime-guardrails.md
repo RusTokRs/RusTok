@@ -26,22 +26,22 @@ The current snapshot includes:
 
 ## Endpoints
 
-- `GET /health/runtime` — structured runtime guardrail snapshot;
-- `GET /health/ready` — readiness with aggregated status;
-- `GET /metrics` — Prometheus guardrail metrics.
+- `GET /health/runtime` - structured runtime guardrail snapshot;
+- `GET /health/ready` - readiness with aggregated status;
+- `GET /metrics` - Prometheus guardrail metrics.
 
 ## Snapshot Shape
 
 `GET /health/runtime` returns:
 
-- `status` — effective runtime status after rollout policy;
-- `observed_status` — raw severity before softening in `observe` mode;
-- `rollout` — `observe` or `enforce`;
-- `reasons` — human-readable reasons for degradation;
-- `rate_limits` — per-namespace limiter state (`api`, `auth`, `oauth`);
-- `event_bus` — backpressure budget snapshot;
-- `event_transport` — relay fallback state.
-- `remote_executor` — internal validation runner contract state (`enabled`, token/config, active/expired claims, lease policy).
+- `status` - effective runtime status after rollout policy;
+- `observed_status` - raw severity before softening in `observe` mode;
+- `rollout` - `observe` or `enforce`;
+- `reasons` - human-readable reasons for degradation;
+- `rate_limits` - per-namespace limiter state (`api`, `auth`, `oauth`);
+- `event_bus` - backpressure budget snapshot;
+- `event_transport` - relay fallback state.
+- `remote_executor` - internal validation runner contract state (`enabled`, token/config, active/expired claims, lease policy).
 
 ## How to Read the Snapshot
 
@@ -82,8 +82,8 @@ Event bus backpressure:
 
 Remote executor degradation:
 
-- `remote_executor.enabled = true`, but `token_configured = false` — critical misconfiguration;
-- `remote_executor.expired_claims > 0` — the reaper should already return stage to `queued`, but the operator still needs to look at runner availability and lease policy;
+- `remote_executor.enabled = true`, but `token_configured = false` - critical misconfiguration;
+- `remote_executor.expired_claims > 0` - the reaper should already return stage to `queued`, but the operator still needs to look at runner availability and lease policy;
 - `remote_executor.active_claims` helps distinguish an idle host from a host where thin runners are actually working.
 
 ## Metrics
@@ -133,9 +133,9 @@ node scripts/verify/verify-runtime-context-invariants.mjs
 
 What to check:
 
-1. `modules.toml` — canonical dependency graph.
-2. `apps/server/src/modules/mod.rs` — runtime registry/test evidence.
-3. `docs/modules/registry.md` — central documentation evidence.
+1. `modules.toml` - canonical dependency graph.
+2. `apps/server/src/modules/mod.rs` - runtime registry/test evidence.
+3. `docs/modules/registry.md` - central documentation evidence.
 
 A fix is considered correct only if the manifest, runtime registry, and docs
 again describe the same graph; a manual special-case for one module is not
@@ -159,7 +159,7 @@ node scripts/verify/verify-runtime-context-invariants.mjs
 
 What to check:
 
-1. `apps/server/src/middleware/channel.rs` — `build_request_facts` reads
+1. `apps/server/src/middleware/channel.rs` - `build_request_facts` reads
    `AuthContextExtension` and `ResolvedRequestLocale`.
 2. `ChannelCacheKey` contains `oauth_app_id` and `locale`.
 3. `apps/server/src/services/app_router.rs` preserves the actual execution
@@ -184,9 +184,9 @@ curl -s http://localhost:5150/metrics | rg 'rustok_tenant_locale_(cache|db)'
 
 What to check:
 
-1. `apps/server/src/middleware/locale.rs` — tenant locale policy cache is enabled
+1. `apps/server/src/middleware/locale.rs` - tenant locale policy cache is enabled
    before DB lookup.
-2. `apps/server/src/controllers/metrics.rs` — cache hit/miss/db query/
+2. `apps/server/src/controllers/metrics.rs` - cache hit/miss/db query/
    invalidation counters and entries gauge are exported.
 3. If the policy was changed manually, check the invalidation path or wait for TTL
    snapshot refresh before comparing metrics.
@@ -220,11 +220,12 @@ What to check:
 
 Symptoms:
 
-- the inventory admin write facade starts using a transitional GraphQL
-  fallback;
+- the inventory admin write facade starts using GraphQL or any selected-path
+  fallback instead of the native owner adapter;
 - `set_variant_quantity` / `adjust_variant_quantity` again derive `inStock`
   only from numeric quantity;
-- the transitional adapter contains inventory mutation markers.
+- UI code calls inventory server functions directly instead of going through
+  the module-owned transport facade.
 
 Quick diagnostics:
 
@@ -235,12 +236,13 @@ node scripts/verify/verify-inventory-admin-boundary.mjs
 
 What to check:
 
-1. `crates/rustok-inventory/src/services/inventory.rs` — typed write result
+1. `crates/rustok-inventory/src/services/inventory.rs` - typed write result
    is built from committed quantity + inventory policy.
-2. `crates/rustok-inventory/admin/src/api.rs` — write facades go through
-   `crate::native::*` without `fallback_*`.
-3. `crates/rustok-inventory/admin/src/transport.rs` — transitional GraphQL
-   adapter remains read-only until the adapter is removed.
+2. `crates/rustok-inventory/admin/src/transport/mod.rs` - write facades go
+   through `transport/native_server_adapter.rs` without GraphQL fallback inputs.
+3. `crates/rustok-inventory/admin/src/transport/native_server_adapter.rs` -
+   native server functions consume `HostRuntimeContext` and do not use Loco
+   runtime context or package-local token/tenant fallback chains.
 
 ## Stop-the-Line Conditions
 

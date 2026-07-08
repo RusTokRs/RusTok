@@ -35,7 +35,7 @@
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Let the module-owned Leptos admin UI package keep the typed shipping-profile registry after product CRUD moved into `rustok-product/admin`, shipping-option UI moved into `rustok-fulfillment/admin`, order operations UI moved into `rustok-order/admin`, inventory visibility moved into `rustok-inventory/admin`, and pricing visibility moved into `rustok-pricing/admin`.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
-- Keep the aggregate storefront package transitional while split modules start publishing their own storefront routes, with `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront`, and `rustok-cart/storefront` already owning their public slices.
+- Keep the aggregate storefront package focused on checkout orchestration while split modules publish their own storefront routes, with `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront`, and `rustok-cart/storefront` already owning their public slices.
 - Keep `rustok-commerce/storefront` focused on aggregate checkout workspace concerns such as delivery-group shipping selection, payment-collection reuse, and checkout completion over a selected cart.
 - Publish the typed RBAC surface for commerce resources.
 

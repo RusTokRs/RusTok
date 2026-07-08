@@ -42,7 +42,7 @@ const libPath = "crates/rustok-order/storefront/src/lib.rs";
 const corePath = "crates/rustok-order/storefront/src/core.rs";
 const transportPath = "crates/rustok-order/storefront/src/transport.rs";
 const graphqlPath = "crates/rustok-order/storefront/src/transport/graphql_adapter.rs";
-const nativeRawPath = "crates/rustok-order/storefront/src/transport/native_server_adapter/raw_adapter.rs";
+const nativeServerFunctionsPath = "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
 const cargoPath = "crates/rustok-order/storefront/Cargo.toml";
 const uiPath = "crates/rustok-order/storefront/src/ui/leptos.rs";
 const i18nPath = "crates/rustok-order/storefront/src/i18n.rs";
@@ -53,7 +53,7 @@ const planPath = "crates/rustok-order/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeServerFunctionsPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected order storefront FFA file`);
 }
 
@@ -61,7 +61,7 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const transport = readRepo(transportPath);
 const graphql = readRepo(graphqlPath);
-const nativeRaw = readRepo(nativeRawPath);
+const nativeServerFunctions = readRepo(nativeServerFunctionsPath);
 const cargo = readRepo(cargoPath);
 const ui = readRepo(uiPath);
 const i18n = readRepo(i18nPath);
@@ -100,14 +100,14 @@ for (const marker of ["COMPLETE_STOREFRONT_CHECKOUT_MUTATION", "GraphqlRequest::
   assertContains(graphql, marker, `${graphqlPath}: order must own GraphQL completion marker ${marker}`);
 }
 assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: order GraphQL adapter must not depend on commerce storefront internals`);
-assertContains(nativeRaw, "#[server", `${nativeRawPath}: order native adapter must own a server-function endpoint shell`);
-assertContains(nativeRaw, "endpoint = \"order/complete-checkout\"", `${nativeRawPath}: order native adapter must expose the owner endpoint path`);
-assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: order native adapter must call the explicit commerce checkout runtime API`);
-assertContains(nativeRaw, "expect_context::<HostRuntimeContext>()", `${nativeRawPath}: order native adapter must use the host runtime context`);
-assertContains(nativeRaw, "shared_get::<TransactionalEventBus>()", `${nativeRawPath}: order native adapter must receive the event bus through the host runtime context`);
-assertContains(nativeRaw, "runtime_ctx.db_clone()", `${nativeRawPath}: order native adapter must receive DB through the host runtime context`);
-assertNotContains(nativeRaw, "loco_rs", `${nativeRawPath}: order native adapter must not depend on Loco AppContext`);
-assertNotContains(nativeRaw, "rustok_outbox::loco", `${nativeRawPath}: order native adapter must not use the outbox Loco adapter`);
+assertContains(nativeServerFunctions, "#[server", `${nativeServerFunctionsPath}: order native server-functions adapter must own a server-function endpoint shell`);
+assertContains(nativeServerFunctions, "endpoint = \"order/complete-checkout\"", `${nativeServerFunctionsPath}: order native server-functions adapter must expose the owner endpoint path`);
+assertContains(nativeServerFunctions, "rustok_commerce::storefront_checkout_runtime", `${nativeServerFunctionsPath}: order native server-functions adapter must call the explicit commerce checkout runtime API`);
+assertContains(nativeServerFunctions, "expect_context::<HostRuntimeContext>()", `${nativeServerFunctionsPath}: order native server-functions adapter must use the host runtime context`);
+assertContains(nativeServerFunctions, "shared_get::<TransactionalEventBus>()", `${nativeServerFunctionsPath}: order native server-functions adapter must receive the event bus through the host runtime context`);
+assertContains(nativeServerFunctions, "runtime_ctx.db_clone()", `${nativeServerFunctionsPath}: order native server-functions adapter must receive DB through the host runtime context`);
+assertNotContains(nativeServerFunctions, "loco_rs", `${nativeServerFunctionsPath}: order native server-functions adapter must not depend on Loco AppContext`);
+assertNotContains(nativeServerFunctions, "rustok_outbox::loco", `${nativeServerFunctionsPath}: order native server-functions adapter must not use the outbox Loco adapter`);
 assertNotContains(cargo, "loco-rs", `${cargoPath}: order storefront package must not depend on Loco`);
 assertNotContains(cargo, "loco-adapter", `${cargoPath}: order storefront package must not enable the outbox Loco adapter`);
 
@@ -136,7 +136,7 @@ for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[se
 assertContains(commerceUi, "OrderCheckoutCompleteButton", `${commerceUiPath}: commerce host must render order-owned complete-checkout UI`);
 assertContains(commerceUi, "Callback::new(move |request: CompleteCheckoutRequest|", `${commerceUiPath}: commerce callback must accept order-owned request DTO`);
 assertNotContains(commerceUi, "build_checkout_completion_command_request", `${commerceUiPath}: commerce UI must not rebuild order requests from raw cart ids`);
-assertContains(commerceRequests, "pub type CheckoutCompletionCommandRequest = CompleteCheckoutRequest", `${commerceRequestsPath}: commerce transport may keep transitional alias to owner request`);
+assertContains(commerceRequests, "pub type CheckoutCompletionCommandRequest = CompleteCheckoutRequest", `${commerceRequestsPath}: commerce transport must keep the owner request alias for aggregate checkout composition`);
 assertNotContains(commerceRequests, "build_complete_checkout_request", `${commerceRequestsPath}: commerce core must not wrap order-owned request construction`);
 assertNotContains(commerceRequests, "build_checkout_completion_command_request", `${commerceRequestsPath}: commerce core must not expose an order request builder after owner UI handoff`);
 assertContains(plan, "verify-order-storefront-boundary.mjs", `${planPath}: local plan must mention storefront boundary guardrail`);

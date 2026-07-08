@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::entities::workflow::WorkflowStep;
-use crate::features::workflow::api;
+use crate::features::workflow::transport::{self, CreateStepInput};
 
 const STEP_TYPES: &[&str] = &[
     "ACTION",
@@ -44,11 +44,11 @@ pub fn WorkflowStepEditor(
         set_error_msg.set(None);
 
         leptos::task::spawn_local(async move {
-            let result = api::add_step(
+            let result = transport::add_step(
                 tok,
                 ts,
                 wf_id,
-                api::CreateStepInput {
+                CreateStepInput {
                     position,
                     step_type,
                     config: serde_json::json!({}),
@@ -79,7 +79,7 @@ pub fn WorkflowStepEditor(
         set_error_msg.set(None);
 
         leptos::task::spawn_local(async move {
-            let result = api::delete_step(tok, ts, wf_id, sid.clone()).await;
+            let result = transport::delete_step(tok, ts, wf_id, sid.clone()).await;
             match result {
                 Ok(_) => {
                     set_steps.update(|s| s.retain(|step| step.id != sid));

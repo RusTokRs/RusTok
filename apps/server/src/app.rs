@@ -356,9 +356,10 @@ mod tests {
         known_dev_jwt_fragment, known_sample_superadmin_password,
         sample_database_credentials_pattern, App,
     };
+    use crate::testing::get_server_app_context;
     use axum::body::{to_bytes, Body};
     use axum::http::{Method, Request, StatusCode};
-    use loco_rs::{app::Hooks, tests_cfg::app::get_app_context};
+    use loco_rs::app::Hooks;
     use migration::Migrator;
     use rustok_api::context::{AuthContext, AuthContextExtension};
     #[cfg(feature = "mod-seo")]
@@ -642,7 +643,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn startup_smoke_builds_router_and_runtime_shared_state() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for startup smoke");
@@ -705,7 +706,7 @@ mod tests {
     #[serial]
     #[cfg(feature = "mod-seo")]
     async fn seo_page_context_rest_endpoint_returns_redirect_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for seo page-context route");
@@ -766,7 +767,7 @@ mod tests {
     #[serial]
     #[cfg(feature = "mod-seo")]
     async fn seo_page_context_rest_endpoint_returns_not_found_when_module_is_disabled() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for seo module disabled check");
@@ -804,7 +805,7 @@ mod tests {
     #[serial]
     #[cfg(feature = "mod-seo")]
     async fn seo_page_context_rest_endpoint_rejects_invalid_route_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for seo page-context validation");
@@ -852,7 +853,7 @@ mod tests {
     #[serial]
     #[cfg(feature = "mod-seo")]
     async fn seo_page_context_rest_endpoint_uses_request_channel_for_restricted_forum_topics() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for forum seo page-context route");
@@ -948,7 +949,7 @@ mod tests {
     #[serial]
     #[cfg(feature = "mod-seo")]
     async fn seo_targets_rest_endpoint_returns_registry_descriptors_for_enabled_tenant() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for seo targets route");
@@ -1024,7 +1025,7 @@ mod tests {
     #[serial]
     #[cfg(feature = "mod-seo")]
     async fn seo_targets_rest_endpoint_returns_not_found_when_module_is_disabled() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for seo targets disabled check");
@@ -1073,7 +1074,7 @@ mod tests {
     #[serial]
     #[cfg(feature = "mod-seo")]
     async fn seo_targets_rest_endpoint_requires_manage_permission() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for seo targets permission check");
@@ -1131,7 +1132,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_catalog_endpoint_serves_v1_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry catalog smoke");
@@ -1194,7 +1195,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_catalog_detail_endpoint_serves_module_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry catalog detail smoke");
@@ -1248,7 +1249,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_catalog_endpoint_supports_query_filters() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry catalog filter smoke");
@@ -1314,7 +1315,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_catalog_endpoint_supports_limit_and_offset() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry catalog pagination smoke");
@@ -1376,7 +1377,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_catalog_endpoint_is_sorted_by_slug_for_stable_paging() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry catalog sort smoke");
@@ -1438,7 +1439,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_catalog_endpoint_honors_if_none_match() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry cache smoke");
@@ -1530,7 +1531,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_endpoint_accepts_dry_run_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry publish smoke");
@@ -1609,7 +1610,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_yank_endpoint_accepts_dry_run_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry yank smoke");
@@ -1668,7 +1669,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_owner_transfer_endpoint_accepts_dry_run_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry owner transfer smoke");
@@ -1723,7 +1724,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_reject_endpoint_rejects_invalid_reason_code() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for reject invalid reason_code");
@@ -1775,7 +1776,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_reject_endpoint_rejects_oauth_service_tokens() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for reject service-token validation");
@@ -1827,7 +1828,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_yank_endpoint_rejects_invalid_reason_code() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for yank invalid reason_code");
@@ -1891,7 +1892,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_owner_transfer_endpoint_rejects_invalid_reason_code() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for owner transfer invalid reason_code");
@@ -1947,7 +1948,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_owner_transfer_endpoint_rejects_legacy_headers_without_auth() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for legacy header rejection");
@@ -2003,7 +2004,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_owner_transfer_endpoint_reports_conflict_for_same_owner() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for owner transfer conflict");
@@ -2055,7 +2056,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_validation_stage_endpoint_accepts_dry_run_contract() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry validation stage smoke");
@@ -2159,7 +2160,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_validation_stage_endpoint_persists_live_running_update() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry validation stage live update");
@@ -2244,7 +2245,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_validation_stage_endpoint_rejects_invalid_live_transition() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry validation stage rejection");
@@ -2321,7 +2322,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_reject_endpoint_requires_live_reason_code() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for publish reject reason_code validation");
@@ -2372,7 +2373,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_reject_endpoint_persists_reason_code_in_audit_event() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for publish reject reason_code audit");
@@ -2464,7 +2465,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_request_changes_endpoint_persists_reason_code_in_audit_event() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for request-changes audit");
@@ -2559,7 +2560,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_hold_and_resume_endpoints_round_trip_request_status() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for hold/resume lifecycle");
@@ -2693,7 +2694,7 @@ mod tests {
     #[serial]
     async fn registry_publish_status_actor_filtering_keeps_summary_fields_stable_for_review_actions(
     ) {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for actor-aware publish status");
@@ -2808,7 +2809,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_publish_status_actor_filtering_handles_validate_and_resume_actions() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for validate/resume actor-aware status");
@@ -2954,7 +2955,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_remote_runner_claim_and_complete_round_trip_stage_status() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for remote runner lifecycle");
@@ -3083,7 +3084,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_catalog_detail_excludes_approved_but_unpublished_v2_requests() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None).await.expect(
             "server migrations should apply for approved-but-unpublished v1 projection test",
         );
@@ -3123,7 +3124,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn registry_only_host_mode_limits_exposed_surface() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
             .expect("server migrations should apply for registry-only smoke");

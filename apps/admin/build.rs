@@ -60,7 +60,7 @@ struct LeptosUiContract {
     nav_group: Option<String>,
     #[serde(default)]
     nav_order: Option<usize>,
-    #[serde(default, alias = "pages")]
+    #[serde(default)]
     child_pages: Vec<AdminNestedPageContract>,
 }
 

@@ -7,7 +7,7 @@ use rustok_installer::{
     TenantBootstrap,
 };
 
-use crate::features::installer::api;
+use crate::features::installer::transport;
 use crate::shared::ui::PageHeader;
 
 fn local_resource<S, Fut, T>(
@@ -49,17 +49,18 @@ pub fn InstallerPage() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (status_refresh, set_status_refresh) = signal(0_u64);
     let (preflight_result, set_preflight_result) =
-        signal(None::<Result<api::InstallPreflightResponse, String>>);
+        signal(None::<Result<transport::InstallPreflightResponse, String>>);
     let (apply_result, set_apply_result) =
-        signal(None::<Result<api::InstallApplyJobResponse, String>>);
+        signal(None::<Result<transport::InstallApplyJobResponse, String>>);
     let (job_id, set_job_id) = signal(None::<uuid::Uuid>);
     let (job_status, set_job_status) =
-        signal(None::<Result<api::InstallJobStatusResponse, String>>);
-    let (receipts, set_receipts) = signal(None::<Result<api::InstallReceiptsResponse, String>>);
+        signal(None::<Result<transport::InstallJobStatusResponse, String>>);
+    let (receipts, set_receipts) =
+        signal(None::<Result<transport::InstallReceiptsResponse, String>>);
 
     let status_resource = local_resource(
         move || status_refresh.get(),
-        |_| async move { api::fetch_status().await },
+        |_| async move { transport::fetch_status().await },
     );
     Effect::new(move |_| {
         let Some(Ok(status)) = status_resource.get() else {
@@ -83,7 +84,7 @@ pub fn InstallerPage() -> impl IntoView {
             return;
         }
         spawn_local(async move {
-            set_receipts.set(Some(api::fetch_receipts(session_id, token).await));
+            set_receipts.set(Some(transport::fetch_receipts(session_id, token).await));
         });
     });
 
@@ -122,7 +123,7 @@ pub fn InstallerPage() -> impl IntoView {
         set_busy.set(true);
         set_preflight_result.set(None);
         spawn_local(async move {
-            let result = api::preflight(plan, token).await;
+            let result = transport::preflight(plan, token).await;
             set_preflight_result.set(Some(result));
             set_busy.set(false);
         });
@@ -160,7 +161,7 @@ pub fn InstallerPage() -> impl IntoView {
         } else {
             None
         };
-        let request = api::InstallApplyRequest {
+        let request = transport::InstallApplyRequest {
             plan,
             lock_owner: optional_text(lock_owner.get_untracked()),
             lock_ttl_secs: Some(lock_ttl_secs_value),
@@ -172,10 +173,12 @@ pub fn InstallerPage() -> impl IntoView {
         set_job_status.set(None);
         set_receipts.set(None);
         spawn_local(async move {
-            match api::apply(request, token).await {
+            match transport::apply(request, token).await {
                 Ok(response) => {
                     set_job_id.set(Some(response.job_id));
-                    set_job_status.set(Some(api::fetch_job(response.job_id, status_token).await));
+                    set_job_status.set(Some(
+                        transport::fetch_job(response.job_id, status_token).await,
+                    ));
                     set_apply_result.set(Some(Ok(response)));
                 }
                 Err(error) => {
@@ -206,8 +209,8 @@ pub fn InstallerPage() -> impl IntoView {
     Effect::new(move |_| {
         if matches!(
             job_status.get(),
-            Some(Ok(api::InstallJobStatusResponse {
-                status: api::InstallJobState::Running,
+            Some(Ok(transport::InstallJobStatusResponse {
+                status: transport::InstallJobState::Running,
                 ..
             }))
         ) {
@@ -225,8 +228,8 @@ pub fn InstallerPage() -> impl IntoView {
                 .is_some_and(|status| status.completed)
             || matches!(
                 job_status.get(),
-                Some(Ok(api::InstallJobStatusResponse {
-                    status: api::InstallJobState::Running,
+                Some(Ok(transport::InstallJobStatusResponse {
+                    status: transport::InstallJobState::Running,
                     ..
                 }))
             )
@@ -423,7 +426,7 @@ pub fn InstallerPage() -> impl IntoView {
 
 #[component]
 fn StatusBadge(
-    status_resource: LocalResource<Result<api::InstallStatusResponse, String>>,
+    status_resource: LocalResource<Result<transport::InstallStatusResponse, String>>,
 ) -> impl IntoView {
     view! {
         <Suspense fallback=|| view! { <span class="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">"checking"</span> }>
@@ -458,7 +461,7 @@ fn StatusBadge(
 
 #[component]
 fn PreflightPanel(
-    result: ReadSignal<Option<Result<api::InstallPreflightResponse, String>>>,
+    result: ReadSignal<Option<Result<transport::InstallPreflightResponse, String>>>,
 ) -> impl IntoView {
     view! {
         <section class="rounded-lg border border-border bg-card p-5 shadow-sm">
@@ -516,8 +519,8 @@ fn PreflightPanel(
 
 #[component]
 fn JobPanel(
-    result: ReadSignal<Option<Result<api::InstallApplyJobResponse, String>>>,
-    status: ReadSignal<Option<Result<api::InstallJobStatusResponse, String>>>,
+    result: ReadSignal<Option<Result<transport::InstallApplyJobResponse, String>>>,
+    status: ReadSignal<Option<Result<transport::InstallJobStatusResponse, String>>>,
 ) -> impl IntoView {
     view! {
         <section class="rounded-lg border border-border bg-card p-5 shadow-sm">
@@ -566,7 +569,7 @@ fn JobPanel(
 
 #[component]
 fn ReceiptsPanel(
-    receipts: ReadSignal<Option<Result<api::InstallReceiptsResponse, String>>>,
+    receipts: ReadSignal<Option<Result<transport::InstallReceiptsResponse, String>>>,
 ) -> impl IntoView {
     view! {
         <section class="rounded-lg border border-border bg-card p-5 shadow-sm">
@@ -750,20 +753,22 @@ fn optional_text(value: String) -> Option<String> {
 fn spawn_refresh_job(
     job_id: uuid::Uuid,
     setup_token: String,
-    set_job_status: WriteSignal<Option<Result<api::InstallJobStatusResponse, String>>>,
-    set_receipts: WriteSignal<Option<Result<api::InstallReceiptsResponse, String>>>,
+    set_job_status: WriteSignal<Option<Result<transport::InstallJobStatusResponse, String>>>,
+    set_receipts: WriteSignal<Option<Result<transport::InstallReceiptsResponse, String>>>,
     set_status_refresh: WriteSignal<u64>,
 ) {
     spawn_local(async move {
-        let result = api::fetch_job(job_id, setup_token.clone()).await;
+        let result = transport::fetch_job(job_id, setup_token.clone()).await;
         if let Ok(status) = &result {
             if let Some(session_id) = status.session_id.filter(|_| {
                 matches!(
                     status.status,
-                    api::InstallJobState::Succeeded | api::InstallJobState::Failed
+                    transport::InstallJobState::Succeeded | transport::InstallJobState::Failed
                 )
             }) {
-                set_receipts.set(Some(api::fetch_receipts(session_id, setup_token).await));
+                set_receipts.set(Some(
+                    transport::fetch_receipts(session_id, setup_token).await,
+                ));
                 set_status_refresh.update(|value| *value += 1);
             }
         }

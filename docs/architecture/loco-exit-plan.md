@@ -13,8 +13,8 @@ The plan replaces the previous direction of "integrate Loco deeper". The old `ap
 ## Execution Checkpoint
 
 - Current phase: `phase_1_runtime_context_and_request_extractors`
-- Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin`, `rustok-outbox-admin`, `rustok-channel-admin`, `rustok-ai-admin`, `rustok-product` admin/storefront, `rustok-seo-admin`, `rustok-mcp-admin`, `rustok-inventory-admin` and `rustok-cart-storefront` native transports no longer import `loco_rs::app::AppContext`; `rustok-ai-admin` now resolves DB, `TransactionalEventBus`, `SharedAiModuleRegistry`, `StorageService` and `SharedAlloyRuntime` through `HostRuntimeContext`, with no `loco-rs` or `rustok-outbox/loco-adapter` package dependency; `rustok-commerce-storefront` no longer carries a package-level `loco-rs` dependency after its native code had already moved to owner checkout runtimes; backend foundation crates `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core` were added so executable runtime/web/FBA/CLI helpers do not continue to expand `rustok-api`; `apps/server/src/controllers/health.rs`, `apps/server/src/controllers/users.rs`, `apps/server/src/controllers/channel.rs` and `apps/server/src/controllers/auth.rs` now use `rustok_web::json_response` instead of Loco response formatting while keeping Loco `Routes` for the later Axum router slice; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted.
-- Next step: continue forward with remaining server controller response/error boundary slices through `rustok-web`; do not backfill already-green UI/native adapters unless the same boundary is being changed or a helper has stabilized in multiple new call sites with a guardrail.
+- Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin`, `rustok-outbox-admin`, `rustok-channel-admin`, `rustok-ai-admin`, `rustok-product` admin/storefront, `rustok-seo-admin`, `rustok-mcp-admin`, `rustok-inventory-admin` and `rustok-cart-storefront` native transports no longer import `loco_rs::app::AppContext`; `rustok-ai-admin` now resolves DB, `TransactionalEventBus`, `SharedAiModuleRegistry`, `StorageService` and `SharedAlloyRuntime` through `HostRuntimeContext`, with no `loco-rs` or `rustok-outbox/loco-adapter` package dependency; `rustok-commerce-storefront` no longer carries a package-level `loco-rs` dependency after its native code had already moved to owner checkout runtimes; backend foundation crates `rustok-runtime`, `rustok-web`, `rustok-fba`, `rustok-cli-core`, `rustok-cli`, `rustok-cli-platform` and `rustok-cli-registry` were added so executable runtime/web/FBA/CLI helpers do not continue to expand `rustok-api` or `apps/server`; `rustok-cli-registry` is now backed by generated source from root `cli-registry.toml` and module `[provides.cli]` metadata; `rustok-cli-platform` provides `core version` through `CommandProvider::execute`; `apps/server/src/controllers/health.rs`, `apps/server/src/controllers/users.rs`, `apps/server/src/controllers/channel.rs` and `apps/server/src/controllers/auth.rs` now use `rustok_web::json_response` instead of Loco response formatting while keeping Loco `Routes` for the later Axum router slice; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted.
+- Next step: populate the generated selected-distribution CLI registry with the first module/platform command provider or migrate the first server task/seed into a typed command; continue server controller response/error boundary slices through `rustok-web` when touching controllers.
 - Open blockers: none for Phase 1 planning; before Phase 4, targeted integration smoke for pure Axum startup will be needed.
 - Hand-off notes for next agent: do not add compatibility wrappers and dual execution paths; each cutover must migrate all internal callers to the target contract and remove the replaced Loco path in the same change set.
 - Last updated at (UTC): 2026-07-08T12:29:14Z
@@ -78,10 +78,10 @@ Current classified inventory baseline after the `rustok-ai-admin` native transpo
 | `host_runtime` | 38 | Server bootstrap, app lifecycle, runtime context boundary and mailer/runtime bridges. |
 | `module_ui_adapter` | 90 | Largest remaining non-core surface: module-owned Leptos/native adapters still reading `AppContext`. |
 | `module_controller` | 35 | Mostly controller route/state adapters and remaining Loco controller API usage after handler runtime narrowing. |
-| `server_task` / `server_seed` / `server_schedule` | 11 | Maintenance flows that belong in `rustok-cli`, not the HTTP server binary; task and seed framework imports are now isolated behind local server bridges. |
+| `server_task` / `server_seed` / `server_schedule` | 5 | Maintenance flows that belong in `rustok-cli`, not the HTTP server binary; task and seed framework imports are now isolated behind local server bridges and active server comments no longer advertise `cargo loco` execution. |
 | `server_test` | 16 | Loco test fixtures to replace with `rustok-test-utils` server/runtime fixtures. |
 | `dependency_manifest` / `lockfile` | 47 | Cleanup after code paths stop requiring `loco-rs` and `loco-adapter`. |
-| `verification_guard` / `docs` / `scaffold_template` | 406 | Guardrails, historical docs and generated templates to update/archive last. |
+| `verification_guard` / `docs` / `scaffold_template` | 422 | Guardrails, historical docs and generated templates to update/archive last; crate docs and verifier guardrails grow as boundaries are made explicit. |
 
 Approximate remaining effort:
 
@@ -113,8 +113,8 @@ Some replacement code should not accumulate in `apps/server`. The target archite
 | Target | Proposed Home | Why It Is Separate |
 |---|---|---|
 | CLI capability contract | `crates/rustok-cli-core` | Stable command/provider descriptions without depending on CLI binary, server or domain internals. |
-| CLI runner binary | future `crates/rustok-cli` with binary `rustok-cli` | Maintenance process, argument parsing, help/search UX and runtime construction outside the HTTP server. |
-| CLI registry | generated crate or future `crates/rustok-cli-registry` | Distribution-specific aggregation of selected module command providers. |
+| CLI runner binary | `crates/rustok-cli` with binary `rustok-cli` | Maintenance process, argument parsing, help/search UX and runtime construction outside the HTTP server. |
+| CLI registry | `crates/rustok-cli-registry` | Distribution-specific aggregation of selected module command providers; generated from module `[provides.cli]` metadata and currently empty until provider metadata lands. |
 | Module ops adapters | `crates/rustok-<module>/cli` or external module `cli/` package | Keeps commands beside their owner while keeping executable maintenance code out of domain core and server runtime. |
 | Server runtime foundation | `crates/rustok-runtime` | Shared runtime helpers and typed host handles move out of `rustok-api` as they become executable wiring instead of stable API contracts. |
 | Axum adapter utilities | `crates/rustok-web` | Replacement for Loco `Routes`, response formatting and error mapping that modules can use without depending on `apps/server`. |
@@ -171,9 +171,10 @@ The domain core of a module does not depend on `clap`/stdout/exit-code contracts
 
 `rustok-cli` must not turn into a catalog of hardcoded commands for all modules. Target structure:
 
-- `rustok-cli-core`: small stable contract for describing CLI capabilities, arguments, permissions, dry-run mode, tenant scope and machine-readable result.
-- `rustok-cli`: runner, parser, help/list/search UX, settings loading and CLI runtime context construction.
-- `rustok-cli-registry`: explicit registry of connected command providers for a specific build/distribution.
+- `rustok-cli-core`: small stable contract for describing CLI capabilities, arguments, permissions, dry-run mode, tenant scope, typed execution request and machine-readable result.
+- `rustok-cli`: runner, parser, help/list/search UX, settings loading and CLI runtime context construction. The initial runner crate exists and currently owns built-in help/list behavior, namespace-scoped discovery, namespace command dispatch, normalized command arguments, explicit duplicate command detection and `list --json` machine-readable inventory output only.
+- `rustok-cli-platform`: platform-level command provider crate for commands not owned by a domain module.
+- `rustok-cli-registry`: explicit registry of connected command providers for a specific build/distribution. The crate exists with generated selected-distribution source from root `cli-registry.toml` and module `[provides.cli]` metadata.
 - `crates/rustok-<module>/cli`: module-local ops adapter package that maps an ops command provider to the module's typed API.
 - `integrations/<external-module>/cli`: adapter package for external modules, if the provider does not ship its own module-local CLI adapter.
 
@@ -349,8 +350,15 @@ Exit gate: production HTTP/GraphQL routes are assembled without `loco_rs::contro
 - [x] Introduce `rustok-cli-core` for stable CLI capability/provider contracts.
 - [x] Isolate server task trait, task metadata, variables and task `AppContext` imports behind `apps/server/src/tasks/mod.rs`; concrete Loco task registration remains until the separate `rustok-cli` cutover.
 - [x] Isolate server seed `AppContext` and seed error mapping behind `apps/server/src/seeds/mod.rs`; concrete Loco seed execution remains until the separate `rustok-cli seed` cutover.
-- [ ] Introduce a separate CLI crate/binary (`crates/rustok-cli`, bin `rustok-cli`) for maintenance entrypoints.
-- [ ] Introduce explicit ops registry that aggregates command providers of the selected distribution from module manifests/generated registry.
+- [x] Remove active `cargo loco` execution examples from server task/seed source comments; comments now point at the target `rustok-cli` shape while the legacy bridge remains in code.
+- [x] Introduce a separate CLI crate/binary (`crates/rustok-cli`, bin `rustok-cli`) outside the server/Loco dependency graph; current implementation owns built-in help/list behavior, namespace-scoped discovery, `list --json` inventory output and consumes `rustok-cli-core`.
+- [x] Introduce an initial explicit `rustok-cli::CommandRegistry` that aggregates command providers and rejects duplicate command keys; generated selected-distribution registry remains the next follow-up.
+- [x] Introduce `rustok-cli-registry` as the selected distribution provider registry crate and connect the runner to it.
+- [x] Introduce generated ops registry source that reads module `[provides.cli]` metadata and is checked by `node scripts/generate/generate-cli-registry.mjs --check`.
+- [x] Introduce typed provider execution dispatch through `CommandProvider::execute` and `rustok-cli <namespace> <command>`.
+- [x] Add `rustok-cli-platform` and select it through root `cli-registry.toml` so `rustok-cli core version` is provided through generated registry wiring, not hardcoded runner logic.
+- [x] Normalize CLI command arguments into `CommandRequest.args.options` and `CommandRequest.args.positionals` before provider execution.
+- [ ] Populate the generated registry with the first module-local command provider from a module adapter.
 - [ ] Move module-specific commands to module-local `cli/` adapter packages, not to domain core and not to the central CLI crate.
 - [ ] Migrate `cleanup`, `rebuild`, `profiles_backfill`, `db_baseline`, `media_cleanup`, `create_oauth_app` to typed ops subcommands.
 - [ ] Migrate seed profiles to `rustok-cli seed`.
@@ -365,6 +373,7 @@ Exit gate: all maintenance flows run through `rustok-cli ...`; server binary doe
 - [ ] Dismantle `impl Hooks for App` into explicit bootstrap/lifecycle functions.
 - [ ] Replace Loco initializers with ordered bootstrap phases.
 - [ ] Migrate worker startup/shutdown to own lifecycle manager.
+- [x] Introduce `crate::testing::get_server_app_context` as the local server test fixture bridge and move `app.rs`, `app_runtime` and `app_lifecycle` tests off direct `loco_rs::tests_cfg` imports; guardrails now forbid direct `loco_rs::tests_cfg` anywhere under `apps/server/src` except the bridge.
 - [ ] Migrate tests from `loco_rs::tests_cfg` to `rustok-test-utils`.
 - [ ] Remove dependency on `loco_rs::cli`.
 

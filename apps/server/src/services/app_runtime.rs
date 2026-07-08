@@ -373,7 +373,7 @@ mod tests {
     use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
     use crate::models::build::DeploymentProfile;
     use crate::modules::DeploymentSurfaceContract;
-    use loco_rs::tests_cfg::app::get_app_context;
+    use crate::testing::get_server_app_context;
 
     #[test]
     fn compiled_surface_contract_rejects_missing_embedded_admin() {
@@ -425,7 +425,7 @@ mod tests {
 
     #[tokio::test]
     async fn bootstrap_registry_only_runtime_forces_headless_surfaces() {
-        let ctx = get_app_context().await;
+        let ctx = get_server_app_context().await;
         let settings = RustokSettings {
             runtime: RuntimeSettings {
                 host_mode: RuntimeHostMode::RegistryOnly,

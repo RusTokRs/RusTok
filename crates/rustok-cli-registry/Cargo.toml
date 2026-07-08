@@ -1,0 +1,10 @@
+[package]
+name = "rustok-cli-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Selected distribution command provider registry for the RusToK platform CLI"
+
+[dependencies]
+rustok-cli-core.workspace = true
+rustok-cli-platform.workspace = true

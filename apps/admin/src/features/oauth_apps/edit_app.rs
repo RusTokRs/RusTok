@@ -1,8 +1,5 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::features::oauth_apps::api::{
-    UpdateOAuthAppInput, UpdateOAuthAppResponse, UpdateOAuthAppVariables, UPDATE_OAUTH_APP_MUTATION,
-};
-use crate::shared::api::request;
+use crate::features::oauth_apps::transport::{self, UpdateOAuthAppInput};
 use crate::shared::ui::{Button, Input};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -41,35 +38,28 @@ pub fn EditAppForm(
 
         let tenant_value = tenant.clone();
         let on_success = on_success.clone();
-        let variables = UpdateOAuthAppVariables {
-            id: app.id,
-            input: UpdateOAuthAppInput {
-                name: name.get_untracked().trim().to_string(),
-                description: (!description.get_untracked().trim().is_empty())
-                    .then(|| description.get_untracked().trim().to_string()),
-                icon_url: (!icon_url.get_untracked().trim().is_empty())
-                    .then(|| icon_url.get_untracked().trim().to_string()),
-                redirect_uris: lines_to_vec(&redirect_uris.get_untracked()),
-                scopes: lines_to_vec(&scopes.get_untracked()),
-                grant_types: lines_to_vec(&grant_types.get_untracked()),
-            },
+        let input = UpdateOAuthAppInput {
+            name: name.get_untracked().trim().to_string(),
+            description: (!description.get_untracked().trim().is_empty())
+                .then(|| description.get_untracked().trim().to_string()),
+            icon_url: (!icon_url.get_untracked().trim().is_empty())
+                .then(|| icon_url.get_untracked().trim().to_string()),
+            redirect_uris: lines_to_vec(&redirect_uris.get_untracked()),
+            scopes: lines_to_vec(&scopes.get_untracked()),
+            grant_types: lines_to_vec(&grant_types.get_untracked()),
         };
+        let app_id = app.id;
 
         set_submitting.set(true);
         set_error.set(None);
 
         spawn_local(async move {
-            let result = request::<UpdateOAuthAppVariables, UpdateOAuthAppResponse>(
-                UPDATE_OAUTH_APP_MUTATION,
-                variables,
-                Some(token_value),
-                tenant_value,
-            )
-            .await;
+            let result =
+                transport::update_oauth_app(Some(token_value), tenant_value, app_id, input).await;
 
             set_submitting.set(false);
             match result {
-                Ok(response) => on_success(response.update_oauth_app),
+                Ok(app) => on_success(app),
                 Err(err) => set_error.set(Some(err.to_string())),
             }
         });

@@ -485,7 +485,7 @@ mod tests {
         connect_runtime_workers, should_use_local_sqlite_fallback, BuildWorkerHandle,
         OutboxRelayWorkerHandle,
     };
-    use loco_rs::tests_cfg::app::get_app_context;
+    use crate::testing::get_server_app_context;
     use rustok_core::events::MemoryTransport;
     use rustok_outbox::{OutboxRelay, OutboxTransport};
     use std::{sync::Arc, time::Duration};
@@ -545,7 +545,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_runtime_workers_is_idempotent_for_outbox_relay_handle() {
-        let ctx = get_app_context().await;
+        let ctx = get_server_app_context().await;
         let relay_config = RelayRuntimeConfig {
             interval: Duration::from_secs(60),
             relay: OutboxRelay::new(ctx.db.clone(), Arc::new(MemoryTransport::new())),
@@ -586,7 +586,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_runtime_workers_is_idempotent_for_build_worker_handle() {
-        let mut ctx = get_app_context().await;
+        let mut ctx = get_server_app_context().await;
         ctx.config.settings = Some(serde_json::json!({
             "rustok": {
                 "build": {
