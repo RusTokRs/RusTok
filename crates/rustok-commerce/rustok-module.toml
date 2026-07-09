@@ -2,7 +2,7 @@
 slug = "commerce"
 name = "Ecommerce"
 version = "0.1.0"
-description = "Ecommerce umbrella/root module for the commerce family, compatibility facade, and orchestration surface"
+description = "Ecommerce umbrella/root module for the commerce family and orchestration surface"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "dual_surface"

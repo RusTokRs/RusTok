@@ -12,7 +12,7 @@
 - optional service-level bridge `customer -> user -> profile` that can return a customer together with `ProfileSummary`;
 - FBA provider boundary `CustomerReadPort` for read-projection scenarios in commerce checkout and order customer snapshots.
 
-## Responsibilities
+## Scope
 
 - the module does not depend on the `rustok-commerce` umbrella to avoid creating a cycle;
 - customer profile is stored separately from the auth/user domain;

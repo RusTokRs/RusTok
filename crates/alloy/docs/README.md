@@ -10,7 +10,7 @@ modules, but remains a capability-only layer, not a tenant business domain.
 - keep storage, execution log, scheduler and bridge/helper layer inside the capability crate;
 - provide a unified contract for host integration without spreading script runtime across `apps/server`.
 
-## Area of Responsibility
+## Scope
 
 - `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` and execution lifecycle;
 - storage/migrations for scripts and execution log;
@@ -31,7 +31,7 @@ modules, but remains a capability-only layer, not a tenant business domain.
 - `cargo xtask module test alloy`
 - targeted runtime tests for script execution, scheduler and bridge semantics when changing capability surface
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

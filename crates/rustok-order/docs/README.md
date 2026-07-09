@@ -13,7 +13,7 @@
 - publication of order events through transactional outbox;
 - module-owned admin UI package `rustok-order/admin` for order operations with split `admin/src/core/`, `admin/src/transport/mod.rs`, `admin/src/transport/graphql_adapter.rs` and `admin/src/ui/leptos.rs`.
 
-## Responsibilities
+## Scope
 
 - the module does not depend on the `rustok-commerce` umbrella to avoid creating a cycle;
 - product/variant references in the order are stored as snapshot references, not as

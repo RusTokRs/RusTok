@@ -1,8 +1,10 @@
+use std::fmt;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Тип документа в индексе
+/// Document type stored in the index.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DocumentType {
@@ -11,17 +13,18 @@ pub enum DocumentType {
     Category,
 }
 
-impl ToString for DocumentType {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Node => "node".into(),
-            Self::Product => "product".into(),
-            Self::Category => "category".into(),
-        }
+impl fmt::Display for DocumentType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Node => "node",
+            Self::Product => "product",
+            Self::Category => "category",
+        };
+        formatter.write_str(value)
     }
 }
 
-/// Единый документ для индексации
+/// Canonical document stored for indexing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexDocument {
     pub id: Uuid,
@@ -29,19 +32,19 @@ pub struct IndexDocument {
     pub doc_type: DocumentType,
     pub locale: String,
 
-    // Основные поля для поиска
+    // Search fields.
     pub title: String,
     pub slug: String,
     pub content: Option<String>,
     pub keywords: Vec<String>,
 
-    // Сортировка и фильтрация
+    // Sorting and filtering fields.
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub published_at: Option<DateTime<Utc>>,
     pub status: String,
     pub price: Option<i64>,
 
-    // Полный JSON объект
+    // Full source payload.
     pub payload: serde_json::Value,
 }

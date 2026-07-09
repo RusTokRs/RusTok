@@ -16,14 +16,14 @@ pub use types::*;
 
 fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
     ctx.data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated().into())
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
 }
 
 fn ensure_permission(auth: &AuthContext, permission: Permission, message: &str) -> Result<()> {
     if has_effective_permission(&auth.permissions, &permission) {
         Ok(())
     } else {
-        Err(<FieldError as GraphQLError>::permission_denied(message).into())
+        Err(<FieldError as GraphQLError>::permission_denied(message))
     }
 }
 
@@ -35,7 +35,6 @@ fn runtime(ctx: &Context<'_>) -> Result<McpManagementRuntime> {
             <FieldError as GraphQLError>::internal_error(
                 "McpManagementRuntime is not registered; initialize the server provider",
             )
-            .into()
         })
 }
 

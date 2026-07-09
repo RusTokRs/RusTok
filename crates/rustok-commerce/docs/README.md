@@ -8,7 +8,7 @@ This folder contains the documentation for the umbrella module `crates/rustok-co
 - hold orchestration, transport and cross-domain contracts that have not yet been extracted into split modules;
 - prevent domain ownership from being returned from split modules back to the host layer.
 
-## Responsibilities
+## Scope
 
 - orchestration between `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`;
 - REST/GraphQL transport and aggregate orchestration UI surfaces that remain commerce-owned after domain surfaces move to ownership boundaries;

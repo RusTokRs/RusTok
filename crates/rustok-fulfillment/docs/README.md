@@ -21,7 +21,7 @@
 - built-in manual/default fulfillment flow at the current stage;
 - fulfillment-owned provider SPI registry for external carrier composition: descriptor/adapter id validation, health/degraded-mode registration guards and side-effect-free runtime-mode checks before adapter invocation.
 
-## Responsibilities
+## Scope
 
 - the module does not depend on the `rustok-commerce` umbrella to avoid creating a cycle;
 - the module does not own the order or customer profile, only references them by identifiers;

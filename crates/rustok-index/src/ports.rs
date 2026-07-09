@@ -416,7 +416,7 @@ impl IndexReadModelPort for InProcessIndexReadModelAdapter {
                 request
                     .locale
                     .as_deref()
-                    .map_or(true, |locale| document.locale == locale)
+                    .is_none_or(|locale| document.locale == locale)
             })
             .take(limit)
             .cloned()

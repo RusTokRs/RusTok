@@ -8,7 +8,7 @@
 - keep product-scoped AI contracts (`product_copy`, `product_attributes`) next to the product domain;
 - prepare the module for phased migration of direct handler wiring.
 
-## Area of Responsibility
+## Scope
 
 - registration seam for product AI verticals;
 - typed generated-payload contracts and validators for product AI tasks;
@@ -24,7 +24,7 @@
 
 - `cargo check -p rustok-ai-product`
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

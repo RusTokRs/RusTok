@@ -8,7 +8,7 @@
 - own the generated payload contract and validation for `blog_draft`;
 - prepare a unified policy seam for blog/forum/comment moderation scenarios.
 
-## Area of Responsibility
+## Scope
 
 - registration seam for `content_moderation` and `blog_draft`;
 - typed moderation contracts and approval integration hooks;
@@ -19,7 +19,7 @@
 - `node scripts/verify/verify-ai-content-contract.mjs` — compile-free static gate for domain-owned descriptors, policy matrix and blog draft contract tests.
 - `cargo check -p rustok-ai-content`
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

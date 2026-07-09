@@ -19,7 +19,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 - publish the canonical runtime entry type `AuthModule`;
 - provide the platform with a unified contract for tokens, claims and credential helpers.
 
-## Area of Responsibility
+## Scope
 
 - auth configuration, JWT algorithms and host-provided override assembly/validation;
 - encode/decode helpers for access/reset/invite/email-verification token flows;
@@ -95,7 +95,7 @@ On auth degradation:
 - `cargo xtask module test auth`
 - targeted server tests for auth/RBAC contracts when changing runtime wiring
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

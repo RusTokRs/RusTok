@@ -10,7 +10,7 @@
 - module-owned admin UI package `rustok-inventory/admin` for inventory visibility,
   low-stock triage and variant-level stock inspection.
 
-## Responsibilities
+## Scope
 
 - runtime dependency: `product`;
 - the module owns the inventory/stock boundary and the operator read-side UI surface

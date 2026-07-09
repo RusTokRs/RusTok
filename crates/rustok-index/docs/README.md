@@ -10,7 +10,7 @@ ingestion and cross-module query substrate.
 - keep ingestion, rebuild and consistency semantics inside the module;
 - provide the host and other modules with a stable internal query substrate for cross-module reads.
 
-## Responsibilities
+## Scope
 
 - index storage and denormalized projection records;
 - ingestion lifecycle: bootstrap, incremental sync, rebuild and drift control;

@@ -14,7 +14,7 @@
 
 `flex` defines the custom fields capability layer for RusToK: attached-mode extends donor modules, while standalone mode provides schema/entry runtime for extension scenarios without turning `flex` into a separate business bounded context.
 
-## Area of Responsibility
+## Scope
 
 - transport-agnostic field definition contracts, owner-owned row-to-core/view-source/command conversion mapping, persisted JSON shape helpers, lifecycle guardrails/events, cache invalidation event taxonomy and registry/orchestration helpers;
 - owner-owned attached field-definition and standalone GraphQL query/mutation roots, runtime handle and input/output DTO without server dependencies;
@@ -37,7 +37,7 @@
 - `cargo xtask module validate flex`
 - `node scripts/verify/verify-flex-multilingual-contract.mjs`
 
-## Related Documents
+## Related documents
 
 - [`implementation-plan.md`](./implementation-plan.md)
 - [`../README.md`](../README.md)

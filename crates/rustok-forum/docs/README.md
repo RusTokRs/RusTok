@@ -11,7 +11,7 @@ boundary, not reverting back to the shared storage model.
 - keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles; the current Loco `AppContext` remains only in the route-state adapter until full Axum cutover;
 - evolve the forum as a taxonomy-aware and channel-aware domain with an explicit observability surface.
 
-## Responsibilities
+## Scope
 
 - `CategoryService`, `TopicService`, `ReplyService`, `ModerationService`;
 - forum-owned storage for categories, topics, replies, votes, solutions, subscriptions and user stats;

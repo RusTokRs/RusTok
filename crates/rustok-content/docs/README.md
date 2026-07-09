@@ -10,7 +10,7 @@ conversion contracts that domain modules rely on.
 - keep locale normalization, rich-text validation and conversion semantics inside the module;
 - provide domain modules with a stable orchestration layer without reverting to shared product storage.
 
-## Responsibilities
+## Scope
 
 - `ContentOrchestrationService`, orchestration audit/idempotency and canonical URL state;
 - shared rich-text and locale fallback helpers;

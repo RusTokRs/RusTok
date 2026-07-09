@@ -89,7 +89,7 @@ to the role of model host.
 - browser-target verification for the Leptos package now includes a separate `hydrate` check, so that
   the WebSocket streaming path is tested not only on SSR.
 
-## Responsibility Boundaries
+## Scope
 
 ### What stays in `rustok-ai`
 
@@ -123,7 +123,7 @@ to the role of model host.
 - remote MCP bootstrap beyond the current Rustok server wiring;
 - separate marketplace/publish flow for AI artifacts.
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

@@ -10,7 +10,7 @@ relying on `rustok-storage` as the physical storage layer.
 - keep media metadata, validation and transport surfaces inside the module;
 - provide a platform media capability without diluting domain logic across the host layer.
 
-## Responsibilities
+## Scope
 
 - `MediaService`, media entities/DTOs and the translation update contract with locale/text normalization at the runtime boundary;
 - REST upload/list/get/delete/translation handlers on a narrow `MediaHttpRuntime` with explicit DB/storage handles; the current Loco `AppContext` remains only in the route-state adapter until full Axum cutover;

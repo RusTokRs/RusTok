@@ -13,7 +13,7 @@ taxonomy sync are confirmed by integration and unit tests.
 - keep blog-owned transport surfaces, domain services and UI packages inside the module;
 - evolve the blog as a channel-aware and taxonomy-aware domain without returning to shared storage.
 
-## Area of Responsibility
+## Scope
 
 - `PostService`, `CommentService`, `CategoryService`, `TagService` and blog state machine;
 - blog-owned storage for posts, translations, categories and typed relations;
@@ -55,7 +55,7 @@ Tests in `tests/contract_surface.rs` and `tests/integration.rs` cover:
 - `cargo xtask module test blog`
 - targeted tests for post lifecycle, tag/category sync, channel visibility and public/admin read-path contracts
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

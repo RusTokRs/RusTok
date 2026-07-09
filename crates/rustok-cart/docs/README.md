@@ -17,7 +17,7 @@
   does not drift between effective sale price and base row;
 - module-owned storefront package `rustok-cart/storefront` for cart inspection and safe line-item decrement/remove actions.
 
-## Area of Responsibility
+## Scope
 
 - the module does not depend on the `rustok-commerce` umbrella to avoid creating a cycle;
 - product/variant references in the cart are stored as snapshot references, not as mandatory cross-module foreign keys;
@@ -63,7 +63,7 @@
 - `cargo xtask module test cart`
 - targeted commerce tests for the cart domain when changing runtime wiring
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Development Plan for `rustok-cart`](./implementation-plan.md)

@@ -9,7 +9,7 @@ infrastructure for the platform event runtime.
 - keep the write-side outbox contract and relay semantics outside the host layer;
 - provide the platform with a unified transactional publishing contract for events.
 
-## Responsibilities
+## Scope
 
 - `TransactionalEventBus` and atomic publish-with-transaction semantics;
 - persistence into `sys_events` through transactional transport;

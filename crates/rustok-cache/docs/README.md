@@ -9,7 +9,7 @@ fallback/in-memory cache semantics and cache health contract for the host runtim
 - centralize cache backend selection and lifecycle outside `apps/server`;
 - provide the platform with a unified cache service contract for runtime modules.
 
-## Area of Responsibility
+## Scope
 
 - `CacheService`, `CacheBackendOptions` and backend selection logic;
 - Redis lifecycle, configurable circuit breaker settings, fallback semantics and cache health reporting;
@@ -33,7 +33,7 @@ fallback/in-memory cache semantics and cache health contract for the host runtim
 - `cargo xtask module test cache`
 - targeted runtime tests for cache backend selection, stats instrumentation, load coalescing, invalidation message validation, invalidation publishing/local fan-out, channel-scoped local subscriptions, circuit breaker options and health semantics when changing wiring
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

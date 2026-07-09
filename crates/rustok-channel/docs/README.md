@@ -9,7 +9,7 @@ channel context for delivery surfaces and channel-aware runtime resolution.
 - keep channel resolution logic inside the module, not in `apps/server`;
 - provide the platform with a unified channel-aware contract for host runtime and domain consumers.
 
-## Responsibilities
+## Scope
 
 - storage for `channels`, `channel_targets`, `channel_module_bindings`, `channel_oauth_apps`;
 - storage for `channel_resolution_policy_sets` and `channel_resolution_policy_rules`;

@@ -7,7 +7,7 @@
 - move order AI ownership out of the `rustok-ai` core runtime;
 - keep order-scoped contracts (`order_analytics`, `order_ops_assistant`) in a separate bounded context.
 
-## Area of Responsibility
+## Scope
 
 - registration seam for order AI verticals;
 - typed contracts/policies for recommendation and operator-assist flows.
@@ -16,7 +16,7 @@
 
 - `cargo check -p rustok-ai-order`
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

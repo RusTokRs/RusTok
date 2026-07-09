@@ -11,7 +11,7 @@ module transport adapters, but which should not live in `rustok-core`.
 - give module crates a common transport-adapter foundation without duplicating web-layer contracts;
 - publish neutral port primitives (`PortContext`, `PortError`, `PortCallPolicy`) for transport-agnostic ports.
 
-## Area of Responsibility
+## Scope
 
 - request context types, transport-agnostic port context/error/policy primitives and auth/tenant/channel host contracts;
 - GraphQL helper types and error helpers shared across modules;
@@ -37,7 +37,7 @@ module transport adapters, but which should not live in `rustok-core`.
 - UI route/query/input helpers belong in `rustok-ui-core` and `leptos-ui-routing`.
 - UI message catalog changes should be made in `rustok-ui-i18n` or its framework adapter crates and verified there.
 
-## Related Documents
+## Related documents
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)

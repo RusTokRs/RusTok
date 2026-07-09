@@ -9,7 +9,7 @@ typed email rendering and delivery helpers for auth and operational notification
 - keep SMTP transport and email rendering outside the host layer;
 - provide the platform with a unified delivery contract for typed email payloads.
 
-## Responsibilities
+## Scope
 
 - SMTP configuration and sender wiring at the module level;
 - typed rendering contract for password reset and adjacent email flows;
