@@ -12,7 +12,7 @@ import {
   CardTitle
 } from '@/shared/ui/shadcn/card';
 
-import type { MarketplaceModule } from '../api';
+import type { MarketplaceModule } from '@/shared/api/modules';
 
 function humanizeToken(value: string): string {
   return value

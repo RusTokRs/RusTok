@@ -8,8 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-import type { NavItem } from '../../../src/types';
-import { registerAdminModule } from '../../../src/modules/registry';
+import { registerAdminModule } from '@/modules/registry';
+import type { NavItem } from '@/types';
 
 export const productNavItems: NavItem[] = [
   {

@@ -5,12 +5,12 @@ documentation and runtime boundary are aligned to a unified format.
 
 ## Execution checkpoint
 
-- Current phase: catalog_projection_next_storefront_metadata_connected
-- Last checkpoint: Next storefront host now uses host-owned `src/features/search` composition. Host passes route locale, tenant slug and enabled modules to registry render context, checks `product` is enabled, calls product-owned `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions` over public GraphQL `storefrontCatalogSearchOptions(locale: String!)` and maps safe options into `SearchStorefrontPage`; search package does not import product internals.
+- Current phase: catalog projection and Loco-free native admin runtime
+- Last checkpoint: Next storefront host now uses host-owned `src/features/search` composition. Host passes route locale, tenant slug and enabled modules to registry render context, checks `product` is enabled, calls product-owned `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions` over public GraphQL `storefrontCatalogSearchOptions(locale: String!)` and maps safe options into `SearchStorefrontPage`; search package does not import product internals. `rustok-search-admin` native server functions now use `HostRuntimeContext` for the database and typed `TransactionalEventBus` lookup, removing its Loco and outbox Loco-adapter package dependencies while preserving the GraphQL selected path.
 - Next step: the next blocker before raising FBA above `boundary_ready` remains live runtime contract execution with real provider invocation.
 - Open blockers: None.
 - Hand-off notes for next agent: After each increment, update this block and the central readiness board.
-- Last updated at (UTC): 2026-07-02T00:00:00Z
+- Last updated at (UTC): 2026-07-10T00:00:00Z
 
 
 ## FFA/FBA status
@@ -53,6 +53,7 @@ documentation and runtime boundary are aligned to a unified format.
   - Catalog projection search slice connected `PgSearchEngine` to product-owned highload projections without dependency on Rust types from `rustok-index`: category filters use `index_product_categories`, virtual categories participate as materialized assignments, attribute filters/sorts/facets use `index_product_attribute_values` with explicit `channel_id` scope, detached rows are excluded, and facet buckets preserve stable key and optional localized label.
   - Catalog projection guardrail slice extended `scripts/verify/verify-search-ui-boundary.mjs`: source-lock checks `SearchQuery`/GraphQL optional catalog fields, `SearchAttributeFilter`, facet `label`, reading `index_product_categories`/`index_product_attribute_values`, explicit channel scope, dynamic `attr:<code>` facets and pinned-rule skip with catalog filters; `npm run test:verify:search:ui-boundary` covers missing catalog markers.
   - UI transport parity slice extended Leptos admin/storefront DTO with all optional catalog filters/sort fields, routed them through admin native `#[server]` and parallel GraphQL adapters, added route mapping for storefront category/channel/sort parameters and localized facet label with fallback to stable value. `verify-search-ui-boundary.mjs` source-locks the new contract without package-local locale fallback.
+  - Native admin runtime cutover: `admin/src/transport/native_server_adapter.rs` resolves its database through `HostRuntimeContext` and resolves `TransactionalEventBus` only for the two write flows that publish events. The package no longer depends on `loco-rs` or `rustok-outbox/loco-adapter`; GraphQL remains the parallel selected transport.
 - Last verified at (UTC): 2026-07-02T00:00:00Z
 - Owner: `rustok-search` module team
 

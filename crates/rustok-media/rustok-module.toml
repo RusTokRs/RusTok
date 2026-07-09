@@ -18,6 +18,10 @@ mutation = "graphql::MediaMutation"
 [provides.http]
 routes = "controllers::routes"
 
+[provides.cli]
+namespace = "media"
+factory = "rustok_media_cli::command_provider"
+
 [provides.admin_ui]
 leptos_crate = "rustok-media-admin"
 route_segment = "media"

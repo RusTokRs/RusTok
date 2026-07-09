@@ -1,11 +1,18 @@
-/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
+import { registerAdminModule } from '@/modules/registry';
+import { workflowNavItems } from './nav';
 
-export * from '../../../src/features/workflow';
+registerAdminModule({
+  id: 'workflow',
+  name: 'Workflows',
+  navItems: workflowNavItems
+});
+
+export { workflowNavItems } from './nav';
+export { default as WorkflowsPage } from './pages/workflows-page';
+export { default as WorkflowDetailPage } from './pages/workflow-detail-page';
+export { default as WorkflowFormPage } from './pages/workflow-form-page';
+export { WorkflowStepEditor } from './components/workflow-step-editor';
+export { ExecutionHistory } from './components/execution-history';
+export { TemplateGallery } from './components/template-gallery';
+export { VersionHistory } from './components/version-history';
+export * from './api/workflows';

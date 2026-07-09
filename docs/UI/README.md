@@ -22,23 +22,24 @@ The platform supports host applications for web/headless and mobile slices:
 
 Leptos hosts are the primary runtime path for platform-owned UI within the Rust workspace. Next.js hosts run as a parallel headless path and must maintain parity in transport, auth, i18n, and module contracts.
 
-## FFA Status for Frontend Hosts
+## FFA Status for Leptos Hosts
 
 FFA migration status is maintained for module-owned UI packages in
 [`docs/modules/registry.md`](../modules/registry.md#ffafba-readiness-board-module-owned-ui).
 The frontend applications themselves do not receive a module FFA status because they are not domain UI
-owners. Their target status is **FFA-compatible composition host**:
+owners. FFA host boundaries apply to the Leptos hosts only:
 
 - `apps/admin` and `apps/storefront` remain Leptos SSR/hydrate hosts that mount
   module-owned surfaces and pass host context;
 - `apps/next-admin` and `apps/next-frontend` remain parallel Next.js/headless hosts
-  that maintain route/auth/i18n/transport parity;
+  using package ownership and route/auth/i18n/transport contract parity; they do not use FFA
+  `core/transport/ui` decomposition;
 - host code may contain shell, navigation, routing, install/governance, and other host-owned
   capabilities, but not module-specific CRUD/business workflows;
 - FFA coverage of frontends is verified by host contract and parity gates, not by moving
   the `apps/*` themselves into `core/transport/ui` form.
 
-Current host-level FFA slices are enforced by the fast gate
+Current Leptos host-level FFA slices are enforced by the fast gate
 `npm run verify:frontend:host-ffa-contract`: `apps/admin` holds sidebar navigation policy in
 `src/widgets/app_shell/core.rs`, and `apps/storefront` holds header route/link policy in
 `src/widgets/header/core.rs`; the corresponding Leptos files remain render adapters.

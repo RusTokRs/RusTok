@@ -18,7 +18,7 @@ import {
 } from '@/shared/ui/shadcn/card';
 import { Switch } from '@/shared/ui/shadcn/switch';
 
-import type { MarketplaceModule, ModuleInfo } from '../api';
+import type { MarketplaceModule, ModuleInfo } from '@/shared/api/modules';
 
 function humanizeToken(value: string): string {
   return value

@@ -7,7 +7,7 @@
 ## Current State
 
 - Platform provider crate exists outside the CLI runner.
-- `core version` is implemented through `CommandProvider::execute`.
+- `core version` is implemented through asynchronous `CommandProvider::execute`.
 - The provider is selected through root `cli-registry.toml` and generated into
   `rustok-cli-registry`.
 
@@ -29,4 +29,3 @@
 - `cargo test -p rustok-cli-platform --quiet`
 - `node scripts/generate/generate-cli-registry.mjs --check`
 - `node scripts/verify/verify-api-surface-contract.mjs`
-

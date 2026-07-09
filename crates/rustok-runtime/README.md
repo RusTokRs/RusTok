@@ -15,15 +15,18 @@ adapters away from framework-specific runtime contexts.
 ## Entry Points
 
 - `HostRuntimeContext`
+- `RuntimeComposition` for host-neutral DB, settings and typed-handle composition.
+- `RuntimeComposition::from_environment` for the CLI bootstrap (`RUSTOK_DATABASE_URL` or
+  `DATABASE_URL`, plus optional `RUSTOK_SETTINGS_JSON`).
 - `db_clone`
 - `require_shared`
 - `RuntimeHandleError`
 
 ## Interactions
 
-- Depends on `rustok-api` for the current `HostRuntimeContext` contract.
+- Depends on `rustok-api` for the current `HostRuntimeContext` contract and keeps settings as a
+  host-neutral JSON snapshot rather than depending on server configuration types.
 - Is consumed by server/module adapters as Loco runtime lookups are replaced.
 - Does not own HTTP routing, CLI, FBA provider metadata, domain services, or UI transport.
 
 See [docs](docs/README.md).
-

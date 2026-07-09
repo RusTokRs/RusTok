@@ -93,6 +93,11 @@ After ANY change:
 ```powershell
 npm run typecheck
 npm run lint
+```
+
+From the repository root:
+
+```powershell
 npm run verify:i18n:ui
 npm run verify:i18n:contract
 ```

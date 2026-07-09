@@ -1,5 +1,5 @@
 import "./core";
-import "@/features/blog";
+import "../../packages/rustok-blog/src";
 import "@/features/search";
 
 export * from "./registry";

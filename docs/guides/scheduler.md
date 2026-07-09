@@ -31,10 +31,6 @@ jobs:
     run: "cleanup sessions"
     schedule: "0 0 * * * *"    # every hour
 
-  media_cleanup:
-    run: "media_cleanup"
-    schedule: "0 0 3 * * *"    # daily at 03:00 UTC
-
   rebuild_index:
     run: "rebuild index"
     schedule: "0 0 */6 * * *"  # every 6 hours
@@ -56,7 +52,7 @@ seconds minutes hours day_of_month month day_of_week
 The `run` value is the Loco Task name passed to `--name`:
 
 ```yaml
-run: "media_cleanup"   # → cargo loco task --name media_cleanup
+run: "cleanup sessions"   # → cargo loco task --name "cleanup sessions"
 ```
 
 ## Current Tasks
@@ -64,8 +60,12 @@ run: "media_cleanup"   # → cargo loco task --name media_cleanup
 | Task | Schedule | Description |
 |------|----------|-------------|
 | `cleanup_sessions` | Every hour | Deletes expired sessions from the DB |
-| `media_cleanup` | Daily at 03:00 UTC | Deletes orphaned media records |
 | `rebuild_index` | Every 6 hours | Rebuilds the CQRS read-model index |
+
+Media cleanup is no longer a Loco scheduler task. Schedule the standalone
+`rustok-cli media cleanup [--limit <count>]` binary through the deployment
+platform's cron or job runner, with `RUSTOK_DATABASE_URL` (or `DATABASE_URL`)
+and the optional `RUSTOK_SETTINGS_JSON` storage snapshot supplied explicitly.
 
 ## How to Create a New Task
 
@@ -133,11 +133,8 @@ async fn run(&self, app_context: &AppContext, _vars: &Vars) -> Result<()> {
 ## Manual Execution
 
 ```bash
-# Run a specific task immediately
-cargo loco task --name media_cleanup
-
-# Run with environment variables
-cargo loco task --name media_cleanup VAR_NAME=value
+# Run media cleanup immediately through the standalone platform CLI
+rustok-cli media cleanup --limit 1000
 
 # List available tasks
 cargo loco task
@@ -196,7 +193,7 @@ Task execution results are logged via `tracing`. Levels:
 - `WARN` — non-critical skips (record not processed, dependency unavailable)
 - `ERROR` — only for unrecoverable failures
 
-Example from `media_cleanup`:
+Example from the media cleanup CLI provider:
 
 ```
 INFO rustok: scanned=1024 removed=3 "Media cleanup complete"

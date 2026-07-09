@@ -49,8 +49,7 @@ FFA classification: `apps/next-admin` is an `FFA-compatible composition host`, n
 - global admin search uses `rustok-search` as a host-level capability;
 - shared SEO operator/headless contract must also go through the backend surface:
   registry-backed target descriptors are read from GraphQL `seoTargets`, not from host-local slug mapping;
-- legacy import paths are allowed only as a temporary compatibility layer;
-- new code must go through canonical FSD paths and shared package boundaries.
+- code must go through canonical FSD paths and shared package boundaries.
 
 ## Ownership contract for module UI
 

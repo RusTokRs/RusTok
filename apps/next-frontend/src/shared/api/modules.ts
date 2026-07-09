@@ -22,6 +22,10 @@ export function getStorefrontTenantSlug(): string | null {
   );
 }
 
+export function getStorefrontTenantId(): string | null {
+  return process.env.NEXT_PUBLIC_TENANT_ID ?? null;
+}
+
 export async function fetchEnabledModules(
   tenantSlug = getStorefrontTenantSlug(),
 ): Promise<string[]> {

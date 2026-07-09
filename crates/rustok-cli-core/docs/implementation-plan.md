@@ -3,11 +3,12 @@
 ## Execution checkpoint
 
 - Current phase: typed provider execution
-- Last checkpoint: Created the CLI core contract crate with command descriptors, requests, outcomes, provider trait, shared error type and default provider execution contract; introduced the separate `rustok-cli` binary crate with list/help behavior, namespace dispatch and an explicit duplicate-checking command registry outside the server dependency graph.
-- Next step: connect the first generated selected-distribution provider or move the first legacy task/seed/migration flow out of `apps/server` into a typed `rustok-cli` command.
+- Last checkpoint: Created the CLI core contract crate with command descriptors, requests, outcomes, an asynchronous provider trait, shared error type and default provider execution contract; introduced the separate `rustok-cli` binary crate with list/help behavior, namespace dispatch and an explicit duplicate-checking command registry outside the server dependency graph.
+- Next step: connect the first module-local provider that needs database or storage access
+  through the runtime-aware generated factory contract.
 - Open blockers: none
 - Hand-off notes for next agent: Do not add module-specific commands to this crate; module commands belong in module-local `cli/` adapter packages and are aggregated through a generated registry.
-- Last updated at (UTC): 2026-07-08T07:40:00Z
+- Last updated at (UTC): 2026-07-10T00:00:00Z
 
 ## Quality backlog
 

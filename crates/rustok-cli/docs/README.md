@@ -15,7 +15,8 @@ registries, not through hardcoded server-owned task calls.
 - Exposes `rustok-cli list --json` for automation and generated distribution
   registry checks.
 - Supports namespace-scoped discovery through `rustok-cli list --namespace <name>`.
-- Dispatches `rustok-cli <namespace> <command>` through `CommandProvider::execute`.
+- Dispatches `rustok-cli <namespace> <command>` asynchronously through
+  `CommandProvider::execute`.
 - Normalizes provider input into `CommandRequest.args.options` and
   `CommandRequest.args.positionals`; option names use `snake_case`.
 - Provides `rustok-cli core version` as the first built-in typed execution command.

@@ -8,5 +8,5 @@ description = "Host runtime foundation helpers for RusToK server and module adap
 [dependencies]
 rustok-api = { workspace = true, features = ["server"] }
 sea-orm.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
-

@@ -5,9 +5,9 @@ the module is maintained in the scoped audit path.
 
 ## Execution checkpoint
 
-- Current phase: media GraphQL field owner in `rustok-media`
-- Last checkpoint: REST upload/list/get/delete/translation handlers now accept narrow `MediaHttpRuntime` with explicit DB/storage handles; current Loco `AppContext` is isolated in the route-state adapter until the full Axum cutover. Native admin server functions now consume `rustok_api::HostRuntimeContext`, receive `StorageService` through the neutral typed host-handle snapshot and no longer depend on `loco-rs`. GraphQL field `mediaUsage` and DTO `MediaUsageStats` moved from `apps/server::SystemQuery` to `rustok-media::graphql::MediaQuery`; server is left only as a schema composition point. Boundaries are locked by `apps/server/tests/module_surface_boundary_guard.rs` and `scripts/verify/verify-media-admin-boundary.mjs` without compilation.
-- Next step: continue moving remaining module GraphQL artifacts from the server; for Flex, a separate runtime-handle over `FieldDefinitionCachePort`, `FlexStandaloneService` and event publishing is needed before removing `apps/server/src/graphql/flex`.
+- Current phase: media GraphQL field owner and CLI adapter in `rustok-media`
+- Last checkpoint: REST upload/list/get/delete/translation handlers now accept narrow `MediaHttpRuntime` with explicit DB/storage handles; current Loco `AppContext` is isolated in the route-state adapter until the full Axum cutover. Native admin server functions now consume `rustok_api::HostRuntimeContext`, receive `StorageService` through the neutral typed host-handle snapshot and no longer depend on `loco-rs`. GraphQL field `mediaUsage` and DTO `MediaUsageStats` moved from `apps/server::SystemQuery` to `rustok-media::graphql::MediaQuery`; server is left only as a schema composition point. `rustok-media-cli` now provides `media cleanup`, explicitly composing database and storage from `RuntimeComposition` rather than accessing the server shared store; cleanup policy and persistence stay in `MediaService`.
+- Next step: remove the legacy Loco media cleanup task after targeted CLI/provider verification, then continue moving remaining module GraphQL artifacts from the server; for Flex, a separate runtime-handle over `FieldDefinitionCachePort`, `FlexStandaloneService` and event publishing is needed before removing `apps/server/src/graphql/flex`.
 - Open blockers: compile/test evidence deferred due to explicit iteration constraint: no compilations.
 - Hand-off notes for next agent: keep `MediaImageDescriptor` as the single image payload for cross-module SEO/runtime integrations; admin UI should go through `core` + `transport`, leave Leptos-only code in `ui/leptos.rs`, and transport-specific code in dedicated adapter files.
 - Last updated at (UTC): 2026-07-02T00:00:00Z
@@ -56,6 +56,7 @@ the module is maintained in the scoped audit path.
 ### 2. Runtime hardening
 
 - [~] cover cleanup task, storage failures and translation edge-cases with targeted integration tests; translation boundary has unit coverage for locale/text normalization, upload policy and cleanup probe classification are covered by service-level unit tests, DB-backed cleanup integration remains open;
+- [~] expose owner-owned maintenance through `rustok-media-cli`; `media cleanup` is registered through module metadata, explicitly initializes storage from the CLI settings snapshot, and reports inspected/deleted/kept/retry counts while the legacy Loco task awaits removal after targeted verification;
 - [ ] evolve richer metadata/use-case surfaces only through module-owned service layer; current no-compile slice added `get_asset_summary`/`list_asset_summaries` and DTO-level `MediaAssetSummary`;
 - [ ] clarify long-term policy for public URLs and storage-driver-specific guarantees.
 

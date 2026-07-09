@@ -71,10 +71,11 @@ pub enum CliCoreError {
 
 pub type CliCoreResult<T> = Result<T, CliCoreError>;
 
-pub trait CommandProvider {
+#[async_trait::async_trait]
+pub trait CommandProvider: Send + Sync {
     fn commands(&self) -> Vec<CommandDescriptor>;
 
-    fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
+    async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
         Err(CliCoreError::UnknownCommand {
             namespace: request.namespace,
             name: request.name,
@@ -88,14 +89,15 @@ mod tests {
 
     struct DiscoveryOnlyProvider;
 
+    #[async_trait::async_trait]
     impl CommandProvider for DiscoveryOnlyProvider {
         fn commands(&self) -> Vec<CommandDescriptor> {
             vec![CommandDescriptor::new("test", "noop", "No-op command")]
         }
     }
 
-    #[test]
-    fn discovery_only_provider_reports_unknown_execution_by_default() {
+    #[tokio::test]
+    async fn discovery_only_provider_reports_unknown_execution_by_default() {
         let provider = DiscoveryOnlyProvider;
         let error = provider
             .execute(CommandRequest {
@@ -104,6 +106,7 @@ mod tests {
                 args: serde_json::Value::Null,
                 dry_run: false,
             })
+            .await
             .unwrap_err();
 
         assert!(matches!(

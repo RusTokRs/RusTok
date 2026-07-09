@@ -1,4 +1,5 @@
 use rustok_cli_core::{CommandDescriptor, CommandProvider};
+use rustok_runtime::RuntimeComposition;
 
 mod generated;
 
@@ -42,17 +43,20 @@ impl SelectedDistributionRegistry {
     }
 }
 
-pub fn selected_distribution_registry() -> SelectedDistributionRegistry {
-    SelectedDistributionRegistry::from_providers(generated::generated_providers())
+pub fn selected_distribution_registry(
+    runtime: &RuntimeComposition,
+) -> SelectedDistributionRegistry {
+    SelectedDistributionRegistry::from_providers(generated::generated_providers(runtime))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{selected_distribution_registry, SelectedDistributionRegistry};
+    use super::{selected_distribution_registry, RuntimeComposition, SelectedDistributionRegistry};
     use rustok_cli_core::{CommandDescriptor, CommandProvider};
 
     struct ModuleProvider;
 
+    #[async_trait::async_trait]
     impl CommandProvider for ModuleProvider {
         fn commands(&self) -> Vec<CommandDescriptor> {
             vec![CommandDescriptor::new(
@@ -65,14 +69,19 @@ mod tests {
 
     #[test]
     fn selected_distribution_includes_platform_provider() {
-        let registry = selected_distribution_registry();
+        let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
+        let registry = selected_distribution_registry(&runtime);
 
         assert!(!registry.is_empty());
-        assert_eq!(registry.providers().len(), 1);
+        assert_eq!(registry.providers().len(), 2);
         assert!(registry
             .commands()
             .iter()
             .any(|command| command.namespace == "core" && command.name == "version"));
+        assert!(registry
+            .commands()
+            .iter()
+            .any(|command| command.namespace == "media" && command.name == "cleanup"));
     }
 
     #[test]

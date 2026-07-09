@@ -13,11 +13,12 @@ The plan replaces the previous direction of "integrate Loco deeper". The old `ap
 ## Execution Checkpoint
 
 - Current phase: `phase_1_runtime_context_and_request_extractors`
-- Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin`, `rustok-outbox-admin`, `rustok-channel-admin`, `rustok-ai-admin`, `rustok-product` admin/storefront, `rustok-seo-admin`, `rustok-mcp-admin`, `rustok-inventory-admin` and `rustok-cart-storefront` native transports no longer import `loco_rs::app::AppContext`; `rustok-ai-admin` now resolves DB, `TransactionalEventBus`, `SharedAiModuleRegistry`, `StorageService` and `SharedAlloyRuntime` through `HostRuntimeContext`, with no `loco-rs` or `rustok-outbox/loco-adapter` package dependency; `rustok-commerce-storefront` no longer carries a package-level `loco-rs` dependency after its native code had already moved to owner checkout runtimes; backend foundation crates `rustok-runtime`, `rustok-web`, `rustok-fba`, `rustok-cli-core`, `rustok-cli`, `rustok-cli-platform` and `rustok-cli-registry` were added so executable runtime/web/FBA/CLI helpers do not continue to expand `rustok-api` or `apps/server`; `rustok-cli-registry` is now backed by generated source from root `cli-registry.toml` and module `[provides.cli]` metadata; `rustok-cli-platform` provides `core version` through `CommandProvider::execute`; `apps/server/src/controllers/health.rs`, `apps/server/src/controllers/users.rs`, `apps/server/src/controllers/channel.rs` and `apps/server/src/controllers/auth.rs` now use `rustok_web::json_response` instead of Loco response formatting while keeping Loco `Routes` for the later Axum router slice; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted.
-- Next step: populate the generated selected-distribution CLI registry with the first module/platform command provider or migrate the first server task/seed into a typed command; continue server controller response/error boundary slices through `rustok-web` when touching controllers.
+- Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin`, `rustok-outbox-admin`, `rustok-channel-admin`, `rustok-ai-admin`, `rustok-search-admin`, `rustok-product` admin/storefront, `rustok-seo-admin`, `rustok-mcp-admin`, `rustok-inventory-admin` and `rustok-cart-storefront` native transports no longer import `loco_rs::app::AppContext`. `rustok-ai-admin` and `rustok-search-admin` resolve their required DB/event handles through `HostRuntimeContext`, with no `loco-rs` or `rustok-outbox/loco-adapter` package dependency; `rustok-commerce-storefront` no longer carries a package-level `loco-rs` dependency after its native code had already moved to owner checkout runtimes; backend foundation crates `rustok-runtime`, `rustok-web`, `rustok-fba`, `rustok-cli-core`, `rustok-cli`, `rustok-cli-platform` and `rustok-cli-registry` were added so executable runtime/web/FBA/CLI helpers do not continue to expand `rustok-api` or `apps/server`; `rustok-cli-registry` is now backed by generated source from root `cli-registry.toml` and module `[provides.cli]` metadata; `rustok-cli-platform` provides `core version` through `CommandProvider::execute`; `apps/server/src/controllers/health.rs`, `apps/server/src/controllers/users.rs`, `apps/server/src/controllers/channel.rs` and `apps/server/src/controllers/auth.rs` now use `rustok_web::json_response` instead of Loco response formatting while keeping Loco `Routes` for the later Axum router slice; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted.
+- Runtime composition note: `apps/server` now supplies `Arc<ModuleRuntimeExtensions>` as a typed `HostRuntimeContext` handle to native server functions. `rustok-auth-admin` consumes that handle for owner mutation runtimes and its database handle for owner reads, without accessing the server Loco shared store.
+- Next step: verify the first real module-local provider, `rustok-media-cli` / `media cleanup`, then remove the matching Loco task. Its adapter explicitly bootstraps `StorageService` from the CLI `storage` settings snapshot and uses the database supplied by `RuntimeComposition`; it does not recreate server shared-store initialization. Continue server controller response/error boundary slices through `rustok-web` when touching controllers.
 - Open blockers: none for Phase 1 planning; before Phase 4, targeted integration smoke for pure Axum startup will be needed.
 - Hand-off notes for next agent: do not add compatibility wrappers and dual execution paths; each cutover must migrate all internal callers to the target contract and remove the replaced Loco path in the same change set.
-- Last updated at (UTC): 2026-07-08T12:29:14Z
+- Last updated at (UTC): 2026-07-10T00:00:00Z
 
 ## Goal
 
@@ -171,7 +172,7 @@ The domain core of a module does not depend on `clap`/stdout/exit-code contracts
 
 `rustok-cli` must not turn into a catalog of hardcoded commands for all modules. Target structure:
 
-- `rustok-cli-core`: small stable contract for describing CLI capabilities, arguments, permissions, dry-run mode, tenant scope, typed execution request and machine-readable result.
+- `rustok-cli-core`: small stable contract for describing CLI capabilities, arguments, permissions, dry-run mode, tenant scope, asynchronous typed execution requests and machine-readable results.
 - `rustok-cli`: runner, parser, help/list/search UX, settings loading and CLI runtime context construction. The initial runner crate exists and currently owns built-in help/list behavior, namespace-scoped discovery, namespace command dispatch, normalized command arguments, explicit duplicate command detection and `list --json` machine-readable inventory output only.
 - `rustok-cli-platform`: platform-level command provider crate for commands not owned by a domain module.
 - `rustok-cli-registry`: explicit registry of connected command providers for a specific build/distribution. The crate exists with generated selected-distribution source from root `cli-registry.toml` and module `[provides.cli]` metadata.
@@ -222,7 +223,7 @@ Target commands:
 | `rustok-cli task cleanup ...` | cleanup maintenance | `cargo loco task --name cleanup` |
 | `rustok-cli task rebuild ...` | rebuild/index maintenance | `cargo loco task --name rebuild` |
 | `rustok-cli task db-baseline ...` | DB baseline report | `cargo loco task --name db_baseline` |
-| `rustok-cli task media-cleanup ...` | storage/media cleanup | `cargo loco task --name media_cleanup` |
+| `rustok-cli media cleanup [--limit <count>]` | storage/media cleanup | `cargo loco task --name media_cleanup` |
 | `rustok-cli oauth create-app ...` | OAuth app bootstrap | `cargo loco task --name create_oauth_app` |
 | `rustok-cli install ...` | install/preflight/apply | existing Rustok install CLI path |
 
@@ -308,6 +309,8 @@ Exit gate: inventory script passes, allowlist is fixed, new Loco imports without
 - [x] Migrate `rustok-region-storefront` native region discovery server function to `HostRuntimeContext` and remove its `loco-rs` dependency while preserving GraphQL selected path.
 - [x] Migrate `rustok-channel-admin` native channel management server functions to `HostRuntimeContext` and remove its `loco-rs` dependency while preserving the REST secondary path.
 - [x] Migrate `rustok-ai-admin` native control-plane server functions to `HostRuntimeContext`, provide `TransactionalEventBus`, AI registry, storage and Alloy runtime through neutral typed host handles, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL selected path.
+- [x] Migrate `rustok-search-admin` native search control-plane server functions to `HostRuntimeContext`, provide `TransactionalEventBus` only to event-publishing flows through a neutral typed host handle, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL selected path.
+- [x] Migrate `rustok-auth-admin` native user/OAuth server functions to `HostRuntimeContext`, provide `Arc<ModuleRuntimeExtensions>` through a neutral typed host handle, and remove its `loco-rs` dependency while preserving GraphQL selected path.
 - [x] Migrate `rustok-pages-storefront` native page-read server function to `HostRuntimeContext`, provide `TransactionalEventBus` through the neutral typed host-handle snapshot, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL selected path.
 - [x] Migrate `rustok-blog-storefront` native post-read server function to `HostRuntimeContext`, provide `TransactionalEventBus` through the neutral typed host-handle snapshot, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL selected path.
 - [x] Migrate `rustok-order-storefront` native checkout-completion server function to `HostRuntimeContext`, provide `TransactionalEventBus` through the neutral typed host-handle snapshot, and remove its `loco-rs` / `loco-adapter` dependency while preserving GraphQL selected path.
@@ -357,10 +360,12 @@ Exit gate: production HTTP/GraphQL routes are assembled without `loco_rs::contro
 - [x] Introduce generated ops registry source that reads module `[provides.cli]` metadata and is checked by `node scripts/generate/generate-cli-registry.mjs --check`.
 - [x] Introduce typed provider execution dispatch through `CommandProvider::execute` and `rustok-cli <namespace> <command>`.
 - [x] Add `rustok-cli-platform` and select it through root `cli-registry.toml` so `rustok-cli core version` is provided through generated registry wiring, not hardcoded runner logic.
+- [x] Add host-neutral `rustok-runtime::RuntimeComposition` and pass it into generated CLI provider factories for optional DB, settings and typed-handle composition without `apps/server` coupling.
+- [x] Add standalone CLI runtime bootstrap from environment-provided settings and database URL, while preserving database-free commands.
 - [x] Normalize CLI command arguments into `CommandRequest.args.options` and `CommandRequest.args.positionals` before provider execution.
-- [ ] Populate the generated registry with the first module-local command provider from a module adapter.
-- [ ] Move module-specific commands to module-local `cli/` adapter packages, not to domain core and not to the central CLI crate.
-- [ ] Migrate `cleanup`, `rebuild`, `profiles_backfill`, `db_baseline`, `media_cleanup`, `create_oauth_app` to typed ops subcommands.
+- [x] Populate the generated registry with the first module-local command provider: `rustok-media-cli` provides `media cleanup` through module metadata and an explicit storage bootstrap from `RuntimeComposition` settings.
+- [x] Move the first module-specific command to a module-local `cli/` adapter package, not to domain core and not to the central CLI crate.
+- [~] Migrate `cleanup`, `rebuild`, `profiles_backfill`, `db_baseline`, and `create_oauth_app` to typed ops subcommands; `media_cleanup` is migrated to `rustok-cli media cleanup` and its Loco task/schedule are removed.
 - [ ] Migrate seed profiles to `rustok-cli seed`.
 - [ ] Migrate migration command wrappers to `rustok-cli migrate ...` over `Migrator`.
 - [ ] Design follow-up for distribution-aware builds: module manifests, generated runtime/ops registries, external module packaging.

@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
+use rustok_runtime::RuntimeComposition;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliExit {
@@ -57,6 +58,7 @@ impl CliExit {
 
 pub struct BuiltInProvider;
 
+#[async_trait::async_trait]
 impl CommandProvider for BuiltInProvider {
     fn commands(&self) -> Vec<CommandDescriptor> {
         vec![CommandDescriptor::new(
@@ -169,7 +171,7 @@ impl<'a> CommandRegistry<'a> {
         &self.commands
     }
 
-    pub fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
+    pub async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
         if !self
             .commands
             .iter()
@@ -185,7 +187,7 @@ impl<'a> CommandRegistry<'a> {
             if provider.commands().iter().any(|command| {
                 command.namespace == request.namespace && command.name == request.name
             }) {
-                return provider.execute(request);
+                return provider.execute(request).await;
             }
         }
 
@@ -323,7 +325,30 @@ pub fn usage() -> &'static str {
     "Usage:\n  rustok-cli list [--json] [--namespace <name>]\n  rustok-cli <namespace> <command> [args...]\n  rustok-cli help\n\nCommands are provided by the selected distribution registry.\n"
 }
 
-pub fn run_with_args<I, S>(args: I) -> CliExit
+pub async fn run_with_args<I, S>(args: I) -> CliExit
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    run_with_runtime(
+        args,
+        RuntimeComposition::without_database(serde_json::Value::Null),
+    )
+    .await
+}
+
+pub async fn run_with_environment<I, S>(args: I) -> CliExit
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    match RuntimeComposition::from_environment().await {
+        Ok(runtime) => run_with_runtime(args, runtime).await,
+        Err(error) => CliExit::failure(format!("Failed to initialize CLI runtime: {error}")),
+    }
+}
+
+pub async fn run_with_runtime<I, S>(args: I, runtime: RuntimeComposition) -> CliExit
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
@@ -331,7 +356,7 @@ where
     let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
     let command = args.get(1).map(String::as_str).unwrap_or("help");
     let provider = BuiltInProvider;
-    let distribution = rustok_cli_registry::selected_distribution_registry();
+    let distribution = rustok_cli_registry::selected_distribution_registry(&runtime);
     let mut providers = vec![&provider as &dyn CommandProvider];
     providers.extend(distribution.providers());
     let registry = match CommandRegistry::from_providers(&providers) {
@@ -357,7 +382,7 @@ where
                 args: command_args,
                 dry_run,
             };
-            match registry.execute(request) {
+            match registry.execute(request).await {
                 Ok(outcome) => CliExit::from_outcome(outcome),
                 Err(error) => CliExit::failure(format!("{error}\n\n{}", usage())),
             }
@@ -434,18 +459,18 @@ mod tests {
         assert_eq!(commands[0].name, "list");
     }
 
-    #[test]
-    fn list_command_renders_available_commands() {
-        let exit = run_with_args(["rustok-cli", "list"]);
+    #[tokio::test]
+    async fn list_command_renders_available_commands() {
+        let exit = run_with_args(["rustok-cli", "list"]).await;
 
         assert_eq!(exit.code, 0);
         assert!(exit.stderr.is_empty());
         assert!(exit.stdout.contains("core list"));
     }
 
-    #[test]
-    fn list_command_can_render_json_inventory() {
-        let exit = run_with_args(["rustok-cli", "list", "--json"]);
+    #[tokio::test]
+    async fn list_command_can_render_json_inventory() {
+        let exit = run_with_args(["rustok-cli", "list", "--json"]).await;
 
         assert_eq!(exit.code, 0);
         assert!(exit.stderr.is_empty());
@@ -456,9 +481,9 @@ mod tests {
             .any(|command| command.namespace == "core" && command.name == "list"));
     }
 
-    #[test]
-    fn list_command_can_filter_by_namespace() {
-        let exit = run_with_args(["rustok-cli", "list", "--namespace", "missing"]);
+    #[tokio::test]
+    async fn list_command_can_filter_by_namespace() {
+        let exit = run_with_args(["rustok-cli", "list", "--namespace", "missing"]).await;
 
         assert_eq!(exit.code, 0);
         assert!(exit.stderr.is_empty());
@@ -468,9 +493,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn list_command_can_filter_json_by_namespace() {
-        let exit = run_with_args(["rustok-cli", "list", "--namespace=core", "--json"]);
+    #[tokio::test]
+    async fn list_command_can_filter_json_by_namespace() {
+        let exit = run_with_args(["rustok-cli", "list", "--namespace=core", "--json"]).await;
 
         assert_eq!(exit.code, 0);
         assert!(exit.stderr.is_empty());
@@ -480,9 +505,9 @@ mod tests {
         assert!(commands.iter().any(|command| command.name == "list"));
     }
 
-    #[test]
-    fn core_list_command_uses_namespace_dispatch_alias() {
-        let exit = run_with_args(["rustok-cli", "core", "list", "--json"]);
+    #[tokio::test]
+    async fn core_list_command_uses_namespace_dispatch_alias() {
+        let exit = run_with_args(["rustok-cli", "core", "list", "--json"]).await;
 
         assert_eq!(exit.code, 0);
         assert!(exit.stderr.is_empty());
@@ -492,9 +517,9 @@ mod tests {
         assert_eq!(commands[0].name, "list");
     }
 
-    #[test]
-    fn core_version_command_uses_provider_execution() {
-        let exit = run_with_args(["rustok-cli", "core", "version"]);
+    #[tokio::test]
+    async fn core_version_command_uses_provider_execution() {
+        let exit = run_with_args(["rustok-cli", "core", "version"]).await;
 
         assert_eq!(exit.code, 0);
         assert!(exit.stderr.is_empty());
@@ -502,18 +527,18 @@ mod tests {
         assert!(exit.stdout.contains("\"package\": \"rustok-cli-platform\""));
     }
 
-    #[test]
-    fn list_command_rejects_unknown_options() {
-        let exit = run_with_args(["rustok-cli", "list", "--unknown"]);
+    #[tokio::test]
+    async fn list_command_rejects_unknown_options() {
+        let exit = run_with_args(["rustok-cli", "list", "--unknown"]).await;
 
         assert_eq!(exit.code, 2);
         assert!(exit.stdout.is_empty());
         assert!(exit.stderr.contains("Unknown list option: --unknown"));
     }
 
-    #[test]
-    fn unknown_command_fails_without_panicking() {
-        let exit = run_with_args(["rustok-cli", "missing"]);
+    #[tokio::test]
+    async fn unknown_command_fails_without_panicking() {
+        let exit = run_with_args(["rustok-cli", "missing"]).await;
 
         assert_eq!(exit.code, 2);
         assert!(exit.stdout.is_empty());
@@ -535,6 +560,7 @@ mod tests {
 
     struct DuplicateProvider;
 
+    #[async_trait::async_trait]
     impl CommandProvider for DuplicateProvider {
         fn commands(&self) -> Vec<CommandDescriptor> {
             vec![CommandDescriptor::new("core", "list", "duplicate")]
@@ -552,12 +578,13 @@ mod tests {
 
     struct ExecutingProvider;
 
+    #[async_trait::async_trait]
     impl CommandProvider for ExecutingProvider {
         fn commands(&self) -> Vec<CommandDescriptor> {
             vec![CommandDescriptor::new("ops", "ping", "Ping ops command")]
         }
 
-        fn execute(
+        async fn execute(
             &self,
             request: CommandRequest,
         ) -> rustok_cli_core::CliCoreResult<CommandOutcome> {
@@ -567,8 +594,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn registry_dispatches_typed_command_execution() {
+    #[tokio::test]
+    async fn registry_dispatches_typed_command_execution() {
         let provider = ExecutingProvider;
         let registry = CommandRegistry::from_providers(&[&provider]).unwrap();
         let outcome = registry
@@ -578,6 +605,7 @@ mod tests {
                 args: serde_json::Value::Null,
                 dry_run: false,
             })
+            .await
             .unwrap();
 
         assert_eq!(outcome.exit_code, 0);
@@ -586,12 +614,13 @@ mod tests {
 
     struct ArgsProvider;
 
+    #[async_trait::async_trait]
     impl CommandProvider for ArgsProvider {
         fn commands(&self) -> Vec<CommandDescriptor> {
             vec![CommandDescriptor::new("ops", "args", "Inspect args")]
         }
 
-        fn execute(
+        async fn execute(
             &self,
             request: CommandRequest,
         ) -> rustok_cli_core::CliCoreResult<CommandOutcome> {
@@ -602,8 +631,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn registry_dispatches_normalized_command_args() {
+    #[tokio::test]
+    async fn registry_dispatches_normalized_command_args() {
         let provider = ArgsProvider;
         let registry = CommandRegistry::from_providers(&[&provider]).unwrap();
         let (args, dry_run) = super::parse_command_args(&[
@@ -620,6 +649,7 @@ mod tests {
                 args,
                 dry_run,
             })
+            .await
             .unwrap();
 
         assert_eq!(outcome.message, "args ok");

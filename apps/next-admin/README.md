@@ -37,7 +37,7 @@ Use `localhost`, not `127.0.0.1`, in this Windows debug environment. The local l
 - Works in parallel with `apps/admin` for UI parity and contract validation.
 - Mounts package-owned module UI such as `@rustok/*-admin` instead of owning module business UI inline.
 - Core shell routes are limited to platform host surfaces. Product, blog, workflow, search, AI and similar module/capability UI must be registered by their module package, so a tenant that only enables `blog` does not see ecommerce-only navigation.
-- Legacy feature folders under `src/features/*` may remain as compatibility implementation, but app routes and navigation registration must import them through `packages/*` entrypoints.
+- Package-owned module UI lives under `packages/*`; app routes and navigation registration import package entrypoints, not host-local module feature folders.
 - Starter-only dashboard routes that are not part of the RusTok admin contract should return `notFound()` instead of exposing placeholder UI. Current blocked starter routes include `billing`, `exclusive`, `workspaces`, and nested `workspaces/team`.
 - Implements the same typed snake_case route-selection contract as the Leptos admin host, but through local Next helpers instead of shared Rust code.
 - Shares SEO control-plane API adapters in `src/shared/api/seo.ts` with REST primary (rollout-gated) + GraphQL secondary path reads for targets, diagnostics, sitemap jobs, and bulk jobs.

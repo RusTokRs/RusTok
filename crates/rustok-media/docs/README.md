@@ -22,6 +22,7 @@ relying on `rustok-storage` as the physical storage layer.
 - observability signals for upload, delete and storage health;
 - translation normalization: `locale` trim/lowercase, empty `title`/`alt_text`/`caption` are stored as `None`, translation lists are returned in stable order by locale;
 - conservative cleanup contract: `cleanup_storage_orphans` reads exact `storage_path`, does not delete readable objects, removes only DB rows for `NotFound`/`InvalidPath`, and treats `Io`/`Backend` as retryable failures; `MediaStorageCleanupReport` publishes helpers for empty/change/retry state.
+- `rustok-media-cli` provides `media cleanup [--limit <count>]`; it explicitly builds `StorageService` from the host-neutral CLI `storage` settings snapshot and invokes the owner service across tenants. The default limit is 1,000 records.
 
 ## Integration
 

@@ -99,6 +99,10 @@ function assertSearchAdminBoundary() {
 
   assertContains(native, "#[server", `${nativePath}: admin raw adapter must keep native server-function endpoints`);
   assertContains(native, "rustok_graphql", `${nativePath}: admin raw adapter must keep GraphQL fallback implementation`);
+  assertContains(native, "HostRuntimeContext", `${nativePath}: native adapter must use the neutral host runtime context`);
+  assertContains(native, "shared_get::<rustok_outbox::TransactionalEventBus>()", `${nativePath}: event-publishing flows must use the typed host event-bus handle`);
+  assertNotContains(native, "loco_rs", `${nativePath}: native adapter must not import Loco`);
+  assertNotContains(native, "rustok_outbox::loco", `${nativePath}: native adapter must not use the Loco outbox adapter`);
 }
 
 function assertSearchStorefrontBoundary() {

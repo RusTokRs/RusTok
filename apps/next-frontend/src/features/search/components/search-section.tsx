@@ -6,18 +6,19 @@ import SearchStorefrontPage, {
   type SearchCatalogFilterOption,
 } from "../../../../packages/search/src";
 import { fetchCatalogSearchOptions } from "../../../../packages/rustok-product/src";
-import { storefrontGraphql } from "@/shared/lib/graphql";
 
 export type SearchSectionProps = {
   locale: string;
   enabledModules: string[];
   tenantSlug: string | null;
+  graphql: typeof import("@/shared/lib/graphql").storefrontGraphql;
 };
 
 export function SearchSection({
   locale,
   enabledModules,
   tenantSlug,
+  graphql,
 }: SearchSectionProps): React.JSX.Element {
   const productEnabled = enabledModules.includes("product");
   const [categoryOptions, setCategoryOptions] = React.useState<
@@ -35,7 +36,7 @@ export function SearchSection({
       return;
     }
 
-    void fetchCatalogSearchOptions({ graphql: storefrontGraphql, locale, tenantSlug })
+    void fetchCatalogSearchOptions({ graphql, locale, tenantSlug })
       .then((options) => {
         if (cancelled) {
           return;
@@ -58,7 +59,7 @@ export function SearchSection({
 
   return (
     <SearchStorefrontPage
-      graphql={storefrontGraphql}
+      graphql={graphql}
       locale={locale}
       tenantSlug={tenantSlug}
       categoryOptions={categoryOptions}

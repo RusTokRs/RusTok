@@ -21,6 +21,8 @@ distribution and module command entrypoints.
 - Binary: `rustok-cli`
 - Library helpers: `CommandRegistry`, `run_with_args`, `collect_commands`,
   `render_command_list`, `render_command_list_json`
+- `run_with_environment` builds the host-neutral runtime from environment configuration before
+  dispatching commands.
 
 ## Interactions
 

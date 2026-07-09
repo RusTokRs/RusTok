@@ -20,7 +20,8 @@ does not degrade during FFA decomposition.
 ## Scope
 
 - module-owned UI packages `crates/rustok-*/admin` and `crates/rustok-*/storefront`;
-- host wiring in `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`;
+- host wiring in `apps/admin` and `apps/storefront`; Next.js hosts are checked through
+  package ownership and contract-parity verification instead of FFA decomposition;
 - verify scripts in `scripts/verify/*` when contract rules change.
 
 ## Mandatory Checks for Each Migration Task

@@ -16,14 +16,6 @@ jobs:
     tags:
       - maintenance
 
-  # Purge media records whose storage object is missing (daily at 03:00 UTC).
-  media_cleanup:
-    run: "media_cleanup"
-    schedule: "0 0 3 * * *"
-    tags:
-      - maintenance
-      - media
-
   # Rebuild any stale search index entries (every 6 hours).
   rebuild_index:
     run: "rebuild index"

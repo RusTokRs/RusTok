@@ -1,9 +1,11 @@
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
+use rustok_runtime::RuntimeComposition;
 
 pub struct PlatformCommandProvider;
 
+#[async_trait::async_trait]
 impl CommandProvider for PlatformCommandProvider {
     fn commands(&self) -> Vec<CommandDescriptor> {
         vec![CommandDescriptor::new(
@@ -13,7 +15,7 @@ impl CommandProvider for PlatformCommandProvider {
         )]
     }
 
-    fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
+    async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("core", "version") => Ok(CommandOutcome::success(env!("CARGO_PKG_VERSION"))
                 .with_data(serde_json::json!({
@@ -28,13 +30,13 @@ impl CommandProvider for PlatformCommandProvider {
     }
 }
 
-pub fn command_provider() -> Box<dyn CommandProvider> {
+pub fn command_provider(_runtime: &RuntimeComposition) -> Box<dyn CommandProvider> {
     Box::new(PlatformCommandProvider)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{command_provider, PlatformCommandProvider};
+    use super::{command_provider, PlatformCommandProvider, RuntimeComposition};
     use rustok_cli_core::{CommandProvider, CommandRequest};
 
     #[test]
@@ -47,9 +49,10 @@ mod tests {
         assert_eq!(commands[0].name, "version");
     }
 
-    #[test]
-    fn provider_executes_core_version_command() {
-        let provider = command_provider();
+    #[tokio::test]
+    async fn provider_executes_core_version_command() {
+        let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
+        let provider = command_provider(&runtime);
         let outcome = provider
             .execute(CommandRequest {
                 namespace: "core".to_string(),
@@ -57,6 +60,7 @@ mod tests {
                 args: serde_json::Value::Null,
                 dry_run: false,
             })
+            .await
             .unwrap();
 
         assert_eq!(outcome.exit_code, 0);

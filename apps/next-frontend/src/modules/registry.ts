@@ -1,4 +1,5 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
+import type { storefrontGraphql } from "@/shared/lib/graphql";
 
 export type StorefrontSlot = "home:afterHero";
 
@@ -6,6 +7,8 @@ export type StorefrontRenderContext = {
   locale: string;
   enabledModules: string[];
   tenantSlug: string | null;
+  tenantId: string | null;
+  graphql: typeof storefrontGraphql;
 };
 
 export type StorefrontModule = {
@@ -30,22 +33,14 @@ export function getModulesForSlot(
 
   return Array.from(registry.values())
     .filter((module) => {
-      if (module.slot !== slot) {
-        return false;
-      }
-
-      if (!module.moduleSlug || enabled === null) {
-        return true;
-      }
-
+      if (module.slot !== slot) return false;
+      if (!module.moduleSlug || enabled === null) return true;
       return enabled.has(module.moduleSlug);
     })
     .sort((left, right) => {
       const leftOrder = left.order ?? 0;
       const rightOrder = right.order ?? 0;
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
-      }
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
       return left.id.localeCompare(right.id);
     });
 }

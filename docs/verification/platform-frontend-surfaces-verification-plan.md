@@ -20,7 +20,8 @@ The frontend surfaces verification plan relies on the current-state UI model:
 
 - UI remains module-owned
 - hosts only mount surfaces
-- frontend hosts have the status of `FFA-compatible composition host`, not module FFA status
+- Leptos hosts use FFA host boundaries; Next.js hosts use package ownership and contract parity,
+  without FFA decomposition
 - internal Leptos data layer uses `#[server]`
 - GraphQL remains a parallel transport contract
 - effective locale comes from the host/runtime layer
@@ -55,14 +56,14 @@ The frontend surfaces verification plan relies on the current-state UI model:
 ### 2.1 `apps/next-admin`
 
 - [ ] Next admin host mounts module-owned or capability-owned surfaces without ownership drift.
-- [ ] `apps/next-admin` is documented as an `FFA-compatible composition host`.
+- [ ] `apps/next-admin` is documented as a Next.js composition host, not an FFA host.
 - [ ] Locale/runtime contract matches the common i18n policy.
 - [ ] Frontend build/type/lint path remains reproducible.
 
 ### 2.2 `apps/next-frontend`
 
 - [ ] Next storefront host uses host/runtime locale contract.
-- [ ] `apps/next-frontend` is documented as an `FFA-compatible composition host`.
+- [ ] `apps/next-frontend` is documented as a Next.js composition host, not an FFA host.
 - [ ] Storefront routing is consistent with the common route contract.
 - [ ] Host-only code does not duplicate module-owned domain logic.
 
@@ -94,7 +95,7 @@ The frontend surfaces verification plan relies on the current-state UI model:
 - [ ] `npm run verify:i18n:ui`
 - [ ] `npm run verify:i18n:contract`
 - [ ] `npm.cmd run verify:storefront:routes`
-- [ ] `npm run verify:frontend:host-ffa-contract`
+- [ ] `npm run verify:frontend:host-ffa-contract` for Leptos host FFA changes only
 
 If host wiring or UI contract changed, these checks are considered mandatory.
 

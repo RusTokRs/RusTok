@@ -1,0 +1,12 @@
+{
+  "name": "@rustok/blog-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "dependencies": {
+    "next": "16.3.0-canary.81",
+    "react": "^19.2.7"
+  },
+  "license": "BUSL-1.1"
+}

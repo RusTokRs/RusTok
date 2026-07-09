@@ -1,4 +1,7 @@
 pub mod auth;
+pub mod cache;
+pub mod email;
+pub mod events;
 pub mod installer;
 pub mod modules;
 pub mod oauth_apps;

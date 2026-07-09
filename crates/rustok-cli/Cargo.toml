@@ -6,9 +6,12 @@ license.workspace = true
 description = "User-facing RusToK platform CLI runner"
 
 [dependencies]
+async-trait.workspace = true
 rustok-cli-core.workspace = true
 rustok-cli-registry.workspace = true
+rustok-runtime.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 
 [lib]
 name = "rustok_cli"

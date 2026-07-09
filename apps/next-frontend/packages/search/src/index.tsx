@@ -11,6 +11,7 @@
 'use client';
 
 import React from 'react';
+import type { storefrontGraphql } from "@/shared/lib/graphql";
 
 export type SearchStorefrontPageProps = {
   graphql: StorefrontGraphqlExecutor;
@@ -24,22 +25,7 @@ export type SearchStorefrontPageProps = {
   attributeOptions?: SearchCatalogFilterOption[];
 };
 
-export type StorefrontGraphqlExecutor = <T, V = Record<string, unknown>>(
-  options: StorefrontGraphqlOptions<V>,
-) => Promise<StorefrontGraphqlResponse<T>>;
-
-export type StorefrontGraphqlOptions<V> = {
-  query: string;
-  variables?: V;
-  token?: string;
-  tenant?: string;
-  baseUrl?: string;
-};
-
-export type StorefrontGraphqlResponse<T> = {
-  data?: T;
-  errors?: Array<{ message: string }>;
-};
+export type StorefrontGraphqlExecutor = typeof storefrontGraphql;
 
 export type SearchCatalogFilterOption = {
   value: string;

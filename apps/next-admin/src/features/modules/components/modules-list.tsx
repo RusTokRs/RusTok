@@ -55,7 +55,7 @@ import {
   toggleModule,
   uninstallModule,
   upgradeModule
-} from '../api';
+} from '@/shared/api/modules';
 import { ModuleDetailPanel } from './module-detail-panel';
 import { ModuleCard } from './module-card';
 import { ModuleUpdateCard } from './module-update-card';

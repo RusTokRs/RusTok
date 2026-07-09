@@ -1,20 +1,9 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_ui_transport::UiTransportPath;
-use serde::{Deserialize, Serialize};
 
-use crate::shared::api::queries::CACHE_HEALTH_QUERY;
-use crate::shared::api::{request, ApiError};
+use crate::features::cache::transport;
 use crate::shared::ui::{Alert, AlertVariant, PageHeader};
 use crate::{t_string, use_i18n};
-
-fn selected_transport_path() -> UiTransportPath {
-    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
-        UiTransportPath::Graphql
-    } else {
-        UiTransportPath::NativeServer
-    }
-}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -28,57 +17,6 @@ where
     LocalResource::new(move || fetcher(source()))
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct GraphqlCacheHealthResponse {
-    #[serde(rename = "cacheHealth")]
-    pub(super) cache_health: CacheHealthPayload,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct CacheHealthPayload {
-    #[serde(rename = "redisConfigured")]
-    pub(super) redis_configured: bool,
-    #[serde(rename = "redisHealthy")]
-    pub(super) redis_healthy: bool,
-    #[serde(rename = "redisError")]
-    pub(super) redis_error: Option<String>,
-    pub(super) backend: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct EmptyVariables {}
-
-async fn fetch_cache_health_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<GraphqlCacheHealthResponse, ApiError> {
-    request::<EmptyVariables, GraphqlCacheHealthResponse>(
-        CACHE_HEALTH_QUERY,
-        EmptyVariables {},
-        token,
-        tenant_slug,
-    )
-    .await
-}
-
-async fn fetch_cache_health_server() -> Result<GraphqlCacheHealthResponse, ServerFnError> {
-    super::native_server_adapter::cache_health_native().await
-}
-
-async fn fetch_cache_health(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<GraphqlCacheHealthResponse, String> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => fetch_cache_health_server()
-            .await
-            .map_err(|error| error.to_string()),
-        UiTransportPath::Graphql => fetch_cache_health_graphql(token, tenant_slug)
-            .await
-            .map_err(|error| error.to_string()),
-    }
-}
-
 #[component]
 pub fn CachePage() -> impl IntoView {
     let i18n = use_i18n();
@@ -88,7 +26,7 @@ pub fn CachePage() -> impl IntoView {
     let health_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            fetch_cache_health(token_value, tenant_value).await
+            transport::fetch_cache_health(token_value, tenant_value).await
         },
     );
 

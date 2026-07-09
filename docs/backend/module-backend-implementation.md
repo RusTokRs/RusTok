@@ -99,6 +99,12 @@ Use the narrowest runtime contract that fits the boundary:
   adapters that need explicit handles.
 - `rustok-runtime::require_shared` for repeated typed shared-handle lookup once a helper is
   needed in multiple backend adapters.
+- `rustok-runtime::RuntimeComposition` when an external CLI provider needs a host-neutral
+  composition of an optional DB, typed host handles and settings. The settings value is a
+  JSON snapshot; do not make `rustok-runtime` depend on `apps/server::RustokSettings`.
+- The standalone CLI bootstrap reads `RUSTOK_SETTINGS_JSON` and connects
+  `RUSTOK_DATABASE_URL` or `DATABASE_URL`; a module provider must still fail explicitly when
+  its required handle is absent.
 
 Do not pass full host contexts into domain services. Convert request/runtime state at the
 adapter boundary and pass explicit handles into services.
@@ -183,6 +189,8 @@ If a module needs operational commands:
 - place command adapter code in a separate module-local `cli/` package;
 - depend on `rustok-cli-core` from the adapter, not from domain core;
 - return machine-readable `CommandOutcome` values;
+- expose a factory accepting `&RuntimeComposition` so the provider can capture DB/settings/
+  handles during CLI composition;
 - keep stdout, prompts, `clap` and process exit behavior outside domain services.
 
 The HTTP server must not link module command providers into the production runtime.

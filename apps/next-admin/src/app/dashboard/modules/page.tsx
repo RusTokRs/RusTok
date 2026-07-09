@@ -9,7 +9,7 @@ import {
   listInstalledModules,
   listMarketplaceModules,
   listModules
-} from '@/features/modules/api';
+} from '@/shared/api/modules';
 import { ModulesList } from '@/features/modules/components/modules-list';
 import { PageContainer } from '@/widgets/app-shell';
 

@@ -153,7 +153,7 @@ function parseCliProviders() {
 }
 
 function renderProvider(provider) {
-  if (provider.factory) return `        ${provider.factory}(),`;
+  if (provider.factory) return `        ${provider.factory}(runtime),`;
   return `        Box::new(${provider.provider}::default()),`;
 }
 
@@ -163,8 +163,9 @@ function renderGenerated(providers) {
     '// Do not edit by hand.',
     '',
     'use rustok_cli_core::CommandProvider;',
+    'use rustok_runtime::RuntimeComposition;',
     '',
-    'pub fn generated_providers() -> Vec<Box<dyn CommandProvider>> {',
+    'pub fn generated_providers(runtime: &RuntimeComposition) -> Vec<Box<dyn CommandProvider>> {',
   ];
 
   if (providers.length === 0) {

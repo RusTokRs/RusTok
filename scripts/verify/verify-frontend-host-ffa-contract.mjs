@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Fast source-level guardrail for frontend hosts in the FFA migration.
-// Host apps are FFA-compatible composition roots, not module-owned UI packages.
+// Fast source-level guardrail for Leptos hosts in the FFA migration.
+// Next.js hosts use a separate package-ownership and contract-parity model.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -63,6 +63,14 @@ const docs = [
   "apps/admin/src/features/installer/mod.rs",
   "apps/admin/src/features/installer/model.rs",
   "apps/admin/src/features/installer/transport/mod.rs",
+  "apps/admin/src/features/cache/mod.rs",
+  "apps/admin/src/features/cache/model.rs",
+  "apps/admin/src/features/cache/transport/mod.rs",
+  "apps/admin/src/features/cache/transport/native_server_adapter.rs",
+  "apps/admin/src/features/email/mod.rs",
+  "apps/admin/src/features/email/model.rs",
+  "apps/admin/src/features/email/transport/mod.rs",
+  "apps/admin/src/features/email/transport/native_server_adapter.rs",
   "apps/admin/src/features/modules/mod.rs",
   "apps/admin/src/features/modules/transport/mod.rs",
   "apps/admin/src/features/modules/transport/client.rs",
@@ -71,7 +79,29 @@ const docs = [
   "apps/admin/docs/README.md",
   "apps/storefront/docs/README.md",
   "apps/next-admin/docs/README.md",
+  "apps/next-admin/README.md",
+  "apps/next-admin/docs/implementation-plan.md",
+  "apps/next-admin/packages/blog/src/index.ts",
+  "apps/next-admin/packages/cache/src/index.ts",
+  "apps/next-admin/packages/commerce/src/index.ts",
+  "apps/next-admin/packages/email/src/index.ts",
+  "apps/next-admin/packages/events/src/index.ts",
+  "apps/next-admin/packages/rbac/src/index.ts",
+  "apps/next-admin/packages/rustok-product/src/index.ts",
+  "apps/next-admin/packages/workflow/src/index.ts",
+  "apps/next-admin/src/shared/api/modules.ts",
+  "apps/next-admin/src/shared/api/oauth-apps.ts",
+  "apps/next-admin/src/shared/api/index.ts",
+  "apps/next-admin/src/modules/index.ts",
   "apps/next-frontend/docs/README.md",
+  "apps/next-frontend/docs/implementation-plan.md",
+  "apps/next-frontend/packages/rustok-blog/src/index.tsx",
+  "apps/next-frontend/packages/rustok-blog/src/api/posts.ts",
+  "apps/next-frontend/packages/rustok-product/src/index.ts",
+  "apps/next-frontend/packages/search/src/index.tsx",
+  "apps/next-frontend/src/modules/index.ts",
+  "apps/next-frontend/src/modules/registry.ts",
+  "apps/next-frontend/src/shared/lib/graphql.ts",
 ];
 
 for (const doc of docs) assertExists(doc);
@@ -95,6 +125,16 @@ const adminOauthAppsNativeAdapter = readRepo("apps/admin/src/features/oauth_apps
 const adminInstallerMod = readRepo("apps/admin/src/features/installer/mod.rs");
 const adminInstallerModel = readRepo("apps/admin/src/features/installer/model.rs");
 const adminInstallerTransport = readRepo("apps/admin/src/features/installer/transport/mod.rs");
+const adminCacheMod = readRepo("apps/admin/src/features/cache/mod.rs");
+const adminCacheModel = readRepo("apps/admin/src/features/cache/model.rs");
+const adminCacheTransport = readRepo("apps/admin/src/features/cache/transport/mod.rs");
+const adminCacheNativeAdapter = readRepo("apps/admin/src/features/cache/transport/native_server_adapter.rs");
+const adminCachePage = readRepo("apps/admin/src/pages/cache.rs");
+const adminEmailMod = readRepo("apps/admin/src/features/email/mod.rs");
+const adminEmailModel = readRepo("apps/admin/src/features/email/model.rs");
+const adminEmailTransport = readRepo("apps/admin/src/features/email/transport/mod.rs");
+const adminEmailNativeAdapter = readRepo("apps/admin/src/features/email/transport/native_server_adapter.rs");
+const adminEmailPage = readRepo("apps/admin/src/pages/email_settings.rs");
 const adminInstallerPage = readRepo("apps/admin/src/pages/installer.rs");
 const adminModulesMod = readRepo("apps/admin/src/features/modules/mod.rs");
 const adminModulesTransport = readRepo("apps/admin/src/features/modules/transport/mod.rs");
@@ -104,17 +144,38 @@ const adminBuild = readRepo("apps/admin/build.rs");
 const adminDocs = readRepo("apps/admin/docs/README.md");
 const storefrontDocs = readRepo("apps/storefront/docs/README.md");
 const nextAdminDocs = readRepo("apps/next-admin/docs/README.md");
+const nextAdminReadme = readRepo("apps/next-admin/README.md");
+const nextAdminPlan = readRepo("apps/next-admin/docs/implementation-plan.md");
+const nextAdminPackageEntrypoints = [
+  "apps/next-admin/packages/blog/src/index.ts",
+  "apps/next-admin/packages/cache/src/index.ts",
+  "apps/next-admin/packages/commerce/src/index.ts",
+  "apps/next-admin/packages/email/src/index.ts",
+  "apps/next-admin/packages/events/src/index.ts",
+  "apps/next-admin/packages/rbac/src/index.ts",
+  "apps/next-admin/packages/rustok-product/src/index.ts",
+  "apps/next-admin/packages/workflow/src/index.ts",
+].map((relativePath) => [relativePath, readRepo(relativePath)]);
+const nextAdminSharedApiIndex = readRepo("apps/next-admin/src/shared/api/index.ts");
+const nextAdminModulesIndex = readRepo("apps/next-admin/src/modules/index.ts");
 const nextFrontendDocs = readRepo("apps/next-frontend/docs/README.md");
+const nextFrontendPlan = readRepo("apps/next-frontend/docs/implementation-plan.md");
+const nextFrontendBlogEntrypoint = readRepo("apps/next-frontend/packages/rustok-blog/src/index.tsx");
+const nextFrontendBlogPosts = readRepo("apps/next-frontend/packages/rustok-blog/src/api/posts.ts");
+const nextFrontendProductPackage = readRepo("apps/next-frontend/packages/rustok-product/src/index.ts");
+const nextFrontendSearchPackage = readRepo("apps/next-frontend/packages/search/src/index.tsx");
+const nextFrontendModulesIndex = readRepo("apps/next-frontend/src/modules/index.ts");
+const nextFrontendRegistry = readRepo("apps/next-frontend/src/modules/registry.ts");
 
 assertContains(
   uiReadme,
-  "## FFA Status for Frontend Hosts",
-  "docs/UI/README.md: must explicitly document frontend host FFA status",
+  "## FFA Status for Leptos Hosts",
+  "docs/UI/README.md: must explicitly document Leptos host FFA status",
 );
 assertContains(
   uiReadme,
-  "FFA-compatible composition host",
-  "docs/UI/README.md: host apps must be described as FFA-compatible composition hosts",
+  "Leptos hosts only",
+  "docs/UI/README.md: must scope FFA host status to Leptos hosts",
 );
 assertContains(
   uiReadme,
@@ -127,13 +188,159 @@ for (const [label, text] of [
   ["apps/admin docs", adminDocs],
   ["apps/storefront docs", storefrontDocs],
   ["apps/next-admin docs", nextAdminDocs],
-  ["apps/next-frontend docs", nextFrontendDocs],
 ]) {
   assertContains(
     text,
     "FFA-compatible composition host",
     `${label}: must use the shared frontend-host FFA classification`,
   );
+}
+
+for (const [label, text] of [
+  ["apps/next-admin README.md", nextAdminReadme],
+  ["apps/next-admin docs/README.md", nextAdminDocs],
+  ["apps/next-admin docs/implementation-plan.md", nextAdminPlan],
+]) {
+  assertContains(
+    text,
+    "packages/*",
+    `${label}: Next admin documentation must describe package-owned module surfaces`,
+  );
+  assertNotContains(
+    text,
+    "legacy import paths",
+    `${label}: Next admin documentation must not allow legacy import paths`,
+  );
+  assertNotContains(
+    text,
+    "temporary compatibility",
+    `${label}: Next admin documentation must not describe temporary compatibility layers for package imports`,
+  );
+}
+
+for (const [relativePath, source] of nextAdminPackageEntrypoints) {
+  assertNotContains(
+    source,
+    "../../../src/features",
+    `${relativePath}: package entrypoint must not re-export host src/features`,
+  );
+  assertNotContains(
+    source,
+    /from ['"]\.\.\/\.\.\/\.\.\/src\//,
+    `${relativePath}: package entrypoint must use host aliases instead of relative src imports`,
+  );
+}
+
+assertMissing(
+  "apps/next-admin/src/features/modules/api.ts",
+  "apps/next-admin/src/features/modules/api.ts: module management GraphQL contract belongs in src/shared/api/modules.ts",
+);
+assertMissing(
+  "apps/next-admin/src/features/oauth-apps/api.ts",
+  "apps/next-admin/src/features/oauth-apps/api.ts: OAuth app GraphQL contract belongs in src/shared/api/oauth-apps.ts",
+);
+assertContains(
+  nextAdminSharedApiIndex,
+  "export * from './modules';",
+  "apps/next-admin/src/shared/api/index.ts: module management API must be exported from shared API",
+);
+assertContains(
+  nextAdminSharedApiIndex,
+  "export * from './oauth-apps';",
+  "apps/next-admin/src/shared/api/index.ts: OAuth app API must be exported from shared API",
+);
+
+for (const packageImport of [
+  "../../packages/blog/src",
+  "../../packages/cache/src",
+  "../../packages/commerce/src",
+  "../../packages/email/src",
+  "../../packages/events/src",
+  "../../packages/rbac/src",
+  "../../packages/rustok-product/src",
+  "../../packages/workflow/src",
+]) {
+  assertContains(
+    nextAdminModulesIndex,
+    packageImport,
+    `apps/next-admin/src/modules/index.ts: missing package registry import ${packageImport}`,
+  );
+}
+
+for (const [label, text] of [
+  ["apps/next-frontend docs/README.md", nextFrontendDocs],
+  ["apps/next-frontend docs/implementation-plan.md", nextFrontendPlan],
+]) {
+  assertContains(
+    text,
+    "packages/rustok-blog",
+    `${label}: must describe the blog-owned Next storefront package`,
+  );
+}
+
+assertContains(
+  nextFrontendModulesIndex,
+  '../../packages/rustok-blog/src',
+  "apps/next-frontend/src/modules/index.ts: must register the blog-owned package",
+);
+assertContains(
+  nextFrontendBlogEntrypoint,
+  'from "@/modules/registry"',
+  "apps/next-frontend/packages/rustok-blog/src/index.tsx: must use the host registry alias",
+);
+assertNotContains(
+  nextFrontendBlogEntrypoint,
+  "src/features",
+  "apps/next-frontend/packages/rustok-blog/src/index.tsx: package must not re-export a host feature",
+);
+assertContains(
+  nextFrontendBlogPosts,
+  'import type { storefrontGraphql } from "@/shared/lib/graphql"',
+  "apps/next-frontend/packages/rustok-blog/src/api/posts.ts: blog transport must consume the shared GraphQL executor contract",
+);
+assertContains(
+  nextFrontendRegistry,
+  "graphql: typeof storefrontGraphql;",
+  "apps/next-frontend/src/modules/registry.ts: host must pass the shared GraphQL executor to package surfaces",
+);
+
+for (const [relativePath, source] of [
+  ["apps/next-frontend/packages/rustok-blog/src/api/posts.ts", nextFrontendBlogPosts],
+  ["apps/next-frontend/packages/rustok-product/src/index.ts", nextFrontendProductPackage],
+  ["apps/next-frontend/packages/search/src/index.tsx", nextFrontendSearchPackage],
+]) {
+  assertContains(
+    source,
+    'import type { storefrontGraphql } from "@/shared/lib/graphql"',
+    `${relativePath}: package must consume the shared GraphQL executor contract`,
+  );
+  assertNotContains(
+    source,
+    "StorefrontGraphqlOptions",
+    `${relativePath}: package must not duplicate the shared GraphQL options contract`,
+  );
+  assertNotContains(
+    source,
+    "StorefrontGraphqlResponse",
+    `${relativePath}: package must not duplicate the shared GraphQL response contract`,
+  );
+}
+
+for (const [relativePath, description] of [
+  [
+    "apps/next-frontend/src/features/blog/index.tsx",
+    "apps/next-frontend/src/features/blog/index.tsx: blog UI belongs in packages/rustok-blog",
+  ],
+  [
+    "apps/next-frontend/src/features/blog/api/posts.ts",
+    "apps/next-frontend/src/features/blog/api/posts.ts: blog transport belongs in packages/rustok-blog",
+  ],
+  [
+    "apps/next-frontend/src/lib/graphql.ts",
+    "apps/next-frontend/src/lib/graphql.ts: duplicate host GraphQL client must stay removed",
+  ],
+]) {
+  assertMissing(relativePath, description);
 }
 
 assertContains(
@@ -354,6 +561,36 @@ for (const marker of [
     marker,
     `apps/admin/src/pages/installer.rs: installer page must not use raw installer API wiring (${marker})`,
   );
+}
+
+assertContains(adminCacheMod, "pub mod model;", "apps/admin/src/features/cache/mod.rs: cache host feature must wire a model");
+assertContains(adminCacheMod, "pub mod transport;", "apps/admin/src/features/cache/mod.rs: cache host feature must wire a transport facade");
+for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]"]) {
+  assertNotContains(adminCacheModel, marker, `apps/admin/src/features/cache/model.rs: cache model must stay framework/server-function free (${marker})`);
+}
+assertContains(adminCacheTransport, "UiTransportPath::NativeServer", "apps/admin/src/features/cache/transport/mod.rs: cache transport must select the native path");
+assertContains(adminCacheTransport, "UiTransportPath::Graphql", "apps/admin/src/features/cache/transport/mod.rs: cache transport must keep the GraphQL path");
+assertNotContains(adminCacheTransport, "#[server", "apps/admin/src/features/cache/transport/mod.rs: server functions belong in native_server_adapter.rs");
+assertContains(adminCacheNativeAdapter, "#[server", "apps/admin/src/features/cache/transport/native_server_adapter.rs: native adapter must own server-function endpoints");
+assertContains(adminCachePage, "transport::fetch_cache_health", "apps/admin/src/pages/cache.rs: cache page must use the transport facade");
+for (const marker of ["CACHE_HEALTH_QUERY", "crate::shared::api::{request", "native_server_adapter::cache_health_native"]) {
+  assertNotContains(adminCachePage, marker, `apps/admin/src/pages/cache.rs: cache page must not own raw transport (${marker})`);
+}
+
+assertContains(adminEmailMod, "pub mod model;", "apps/admin/src/features/email/mod.rs: email host feature must wire a model");
+assertContains(adminEmailMod, "pub mod transport;", "apps/admin/src/features/email/mod.rs: email host feature must wire a transport facade");
+for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]"]) {
+  assertNotContains(adminEmailModel, marker, `apps/admin/src/features/email/model.rs: email model must stay framework/server-function free (${marker})`);
+}
+assertContains(adminEmailTransport, "UiTransportPath::NativeServer", "apps/admin/src/features/email/transport/mod.rs: email transport must select the native read path");
+assertContains(adminEmailTransport, "UiTransportPath::Graphql", "apps/admin/src/features/email/transport/mod.rs: email transport must keep the GraphQL read path");
+assertNotContains(adminEmailTransport, "#[server", "apps/admin/src/features/email/transport/mod.rs: server functions belong in native_server_adapter.rs");
+assertContains(adminEmailNativeAdapter, "#[server", "apps/admin/src/features/email/transport/native_server_adapter.rs: native adapter must own server-function endpoints");
+for (const marker of ["transport::fetch_email_settings", "transport::update_email_settings"]) {
+  assertContains(adminEmailPage, marker, `apps/admin/src/pages/email_settings.rs: email page must use ${marker}`);
+}
+for (const marker of ["PLATFORM_SETTINGS_QUERY", "UPDATE_PLATFORM_SETTINGS_MUTATION", "native_server_adapter::email_settings_native"]) {
+  assertNotContains(adminEmailPage, marker, `apps/admin/src/pages/email_settings.rs: email page must not own raw transport (${marker})`);
 }
 
 assertMissing(

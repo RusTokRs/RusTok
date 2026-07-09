@@ -451,6 +451,31 @@ impl MediaService {
             .all(&self.db)
             .await?;
 
+        self.cleanup_storage_rows(rows).await
+    }
+
+    /// Run the same conservative orphan cleanup policy across all tenants.
+    ///
+    /// This is the module-owned maintenance entrypoint for the platform CLI.
+    /// The limit applies to the complete ordered result set, not separately to
+    /// each tenant, so an operator can bound one invocation deterministically.
+    pub async fn cleanup_storage_orphans_all_tenants(
+        &self,
+        limit: u64,
+    ) -> Result<MediaStorageCleanupReport> {
+        let rows = MediaEntity::find()
+            .order_by_asc(MediaCol::CreatedAt)
+            .limit(limit)
+            .all(&self.db)
+            .await?;
+
+        self.cleanup_storage_rows(rows).await
+    }
+
+    async fn cleanup_storage_rows(
+        &self,
+        rows: Vec<media::Model>,
+    ) -> Result<MediaStorageCleanupReport> {
         let mut report = MediaStorageCleanupReport::default();
 
         for row in rows {

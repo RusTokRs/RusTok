@@ -11,6 +11,8 @@ use crate::model::{
     SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
     TriggerSearchRebuildPayload,
 };
+#[cfg(feature = "ssr")]
+use rustok_api::HostRuntimeContext;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -45,6 +47,34 @@ const MAX_FILTER_VALUE_LEN: usize = 64;
 const MAX_ATTRIBUTE_FILTERS: usize = 10;
 #[cfg(feature = "ssr")]
 const MAX_LOCALE_LEN: usize = 16;
+
+#[cfg(feature = "ssr")]
+struct SearchAdminRuntime {
+    db: sea_orm::DatabaseConnection,
+    host: HostRuntimeContext,
+}
+
+#[cfg(feature = "ssr")]
+impl SearchAdminRuntime {
+    fn from_host(host: HostRuntimeContext) -> Self {
+        Self {
+            db: host.db_clone(),
+            host,
+        }
+    }
+
+    fn transactional_event_bus(
+        &self,
+    ) -> Result<rustok_outbox::TransactionalEventBus, ServerFnError> {
+        self.host
+            .shared_get::<rustok_outbox::TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "Search admin requires TransactionalEventBus in host runtime context",
+                )
+            })
+    }
+}
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Serialize)]
@@ -277,10 +307,9 @@ async fn search_admin_bootstrap_native() -> Result<SearchAdminBootstrap, ServerF
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -328,11 +357,10 @@ async fn search_admin_preview_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
         use std::time::Instant;
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -428,10 +456,9 @@ async fn search_admin_filter_presets_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -479,10 +506,9 @@ async fn search_admin_lagging_documents_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -518,10 +544,9 @@ async fn search_admin_consistency_issues_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -558,10 +583,9 @@ async fn search_admin_analytics_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -597,10 +621,9 @@ async fn search_admin_dictionary_snapshot_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -634,10 +657,9 @@ async fn track_search_click_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::TenantContext;
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -687,12 +709,10 @@ async fn update_search_settings_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_events::DomainEvent;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -723,7 +743,7 @@ async fn update_search_settings_native(
         .await
         .map_err(ServerFnError::new)?;
 
-        let event_bus = transactional_event_bus_from_context(&app_ctx);
+        let event_bus = app_ctx.transactional_event_bus()?;
         let _ = event_bus
             .publish(
                 tenant.id,
@@ -755,12 +775,10 @@ async fn trigger_search_rebuild_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_events::DomainEvent;
-        use rustok_outbox::loco::transactional_event_bus_from_context;
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -785,7 +803,7 @@ async fn trigger_search_rebuild_native(
             .filter(|value| !value.trim().is_empty())
             .map(|value| parse_required_uuid(value, "target_id"))
             .transpose()?;
-        let event_bus = transactional_event_bus_from_context(&app_ctx);
+        let event_bus = app_ctx.transactional_event_bus()?;
         event_bus
             .publish(
                 tenant.id,
@@ -834,10 +852,9 @@ async fn upsert_search_synonym_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -874,10 +891,9 @@ async fn delete_search_synonym_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -913,10 +929,9 @@ async fn add_search_stop_word_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -948,10 +963,9 @@ async fn delete_search_stop_word_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -989,10 +1003,9 @@ async fn upsert_search_pin_rule_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1030,10 +1043,9 @@ async fn delete_search_query_rule_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = SearchAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;

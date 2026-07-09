@@ -40,7 +40,7 @@ The registry below is the mandatory entry point for architectural decisions on L
 | Initializers | `apps/server` via Loco initializer runtime | Loco initializer API + project initializers | `apps/server/docs/README.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/initializers/mod.rs`; `apps/server/src/initializers/telemetry.rs`; `apps/server/src/app.rs` |
 | Mailer subsystem | `apps/server` (`services/email.rs` + typed settings) | Server email service with `EmailProvider::{Smtp,Loco,None}` and Loco Mailer adapter | `apps/server/docs/loco/README.md`; `docs/architecture/api.md`; `apps/server/docs/README.md` | Accepted | 2026-06-01 | `apps/server/src/services/email.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/common/settings.rs` |
 | Workers/queue subsystem | `apps/server` + `rustok-outbox` | RusToK event-driven worker runtime (without Loco queue duplication) | `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`; `docs/architecture/event-flow-contract.md`; `docs/standards/transactional-outbox.md` | Accepted | 2026-05-01 | `apps/server/src/app.rs`; `apps/server/src/services/event_transport_factory.rs`; `crates/rustok-outbox/src/relay.rs` |
-| Storage abstraction (uploads/assets) | `apps/server` + `rustok-storage` + `rustok-media` | Shared `StorageService` runtime + media module APIs | `apps/server/docs/README.md`; `docs/architecture/modules.md`; `docs/modules/registry.md` | Accepted | 2026-06-01 | `apps/server/src/services/app_runtime.rs`; `apps/server/src/services/graphql_schema.rs`; `apps/server/src/tasks/media_cleanup.rs` |
+| Storage abstraction (uploads/assets) | `apps/server` + `rustok-storage` + `rustok-media` | Shared `StorageService` runtime + media module APIs; maintenance cleanup is provided by `rustok-media-cli` | `apps/server/docs/README.md`; `docs/architecture/modules.md`; `docs/modules/registry.md` | Accepted | 2026-06-01 | `apps/server/src/services/app_runtime.rs`; `apps/server/src/services/graphql_schema.rs`; `crates/rustok-media/cli/src/lib.rs` |
 | Tenancy caching | `apps/server` + `rustok-core` cache backends | RusToK custom tenancy cache (`tenant.rs`) + shared cache backend contract | `crates/rustok-tenant/docs/README.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-05-01 | `apps/server/src/middleware/tenant.rs`; `apps/server/src/middleware/tenant_cache_v3.rs`; `crates/rustok-core/src/cache.rs` |
 | Event bus / transport (`memory|outbox|iggy`) | `apps/server` + `rustok-events` + `rustok-outbox` | RusToK event transport contract + transactional outbox flow | `DECISIONS/2026-02-19-rustok-events-canonical-contract.md`; `crates/rustok-outbox/docs/README.md`; `apps/server/docs/event-transport.md` | Accepted | 2026-05-01 | `apps/server/src/services/event_transport_factory.rs`; `apps/server/src/services/build_request_events.rs`; `apps/server/src/workers/outbox_relay.rs` |
 
@@ -138,7 +138,7 @@ Implemented and used:
 `WorkflowCronScheduler` remains a separate background runtime path and is not considered
 part of this event-listener contract.
 
-Loco Tasks (CLI): `cleanup`, `rebuild`, `db_baseline`, `media_cleanup`, `create_oauth_app` — are run manually via `cargo loco task`.
+Loco Tasks (CLI): `cleanup`, `rebuild`, `db_baseline`, and `create_oauth_app` remain legacy inventory. Media cleanup has moved to `rustok-cli media cleanup` and no longer has a Loco task.
 
 For slow operations on request path (e.g., SMTP in `forgot_password`) `tokio::spawn` is used — without Sidekiq.
 
@@ -258,4 +258,3 @@ The server uses shared CacheBackend contract with backend selection by feature/r
 - `crates/rustok-core/src/context.rs`
 - `apps/server/Cargo.toml`
 - `Cargo.toml`
-

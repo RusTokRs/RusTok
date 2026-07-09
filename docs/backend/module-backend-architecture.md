@@ -53,13 +53,14 @@ Use the new backend foundation crates by purpose:
 - `rustok-api`: stable contracts that may be shared by modules, hosts and UI adapters.
   Do not put executable runtime wiring or Axum helpers here.
 - `rustok-runtime`: helper APIs for executable runtime access, especially typed shared
-  handle lookup through `HostRuntimeContext`.
+  handle lookup through `HostRuntimeContext` and `RuntimeComposition` for host-neutral
+  DB/settings/handle assembly.
 - `rustok-web`: Axum HTTP boundary helpers such as JSON response mapping and HTTP error
   envelopes. It is not a domain error crate.
 - `rustok-fba`: Fluid Backend Architecture metadata and registry descriptors, not
   transport implementations.
-- `rustok-cli-core`: CLI provider/request/outcome contracts. Domain crates must not depend
-  on `clap`, stdout, process exit semantics or the final CLI binary.
+- `rustok-cli-core`: asynchronous CLI provider/request/outcome contracts. Domain crates must
+  not depend on `clap`, stdout, process exit semantics or the final CLI binary.
 
 If code is repeated in two or more backend modules or hosts, decide whether it belongs in
 one of these crates before adding another local helper.
@@ -97,6 +98,9 @@ Use these contracts instead:
   `ServerAuthRuntime` / `ServerEmailRuntime`;
 - module-owned Leptos server functions receive `rustok_api::HostRuntimeContext`;
 - reusable runtime handle lookup belongs in `rustok-runtime`;
+- CLI providers are constructed with `rustok-runtime::RuntimeComposition`, which may carry
+  a DB-backed `HostRuntimeContext` and a JSON settings snapshot without importing
+  `apps/server` configuration types;
 - typed shared handles must fail explicitly when absent, with an actionable error.
 
 Graceful degradation is allowed only when it is part of the documented module contract, such
@@ -146,6 +150,8 @@ Target shape:
 - module-local `cli/` adapter package, when needed, depends on the domain crate and
   `rustok-cli-core`;
 - future `rustok-cli` aggregates selected providers through an explicit registry;
+- generated provider factories receive `&RuntimeComposition`, so a module CLI adapter can
+  capture the runtime it needs while remaining outside the production server build;
 - `apps/server` does not depend on the CLI binary or module command adapters.
 
 Do not add new maintenance flows through `cargo loco task` or by expanding the HTTP server

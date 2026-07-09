@@ -348,7 +348,7 @@ grep -rn "loco_rs::storage\|StorageService::from_config" apps/server/src/control
 
 ```bash
 # Check that storage is used together with media/runtime cleanup flows
-grep -rn "media_cleanup\|storage_path\|MediaService" apps/server/src/ crates/rustok-media/src/ --include="*.rs"
+grep -rn "media cleanup\|storage_path\|MediaService" crates/rustok-media/src/ crates/rustok-media/cli/src/ --include="*.rs"
 ```
 
 ### 11.4 media_assets table exists
@@ -413,4 +413,3 @@ curl -s http://localhost:5150/api/_metrics | head -20
 > **Rule for agents:** If you are going to add a new dependency, middleware, or
 > infrastructure service to `apps/server/` — **first** check this document
 > to see if it duplicates an already existing solution.
-

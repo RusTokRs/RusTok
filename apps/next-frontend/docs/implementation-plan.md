@@ -44,6 +44,10 @@ Develop `apps/next-frontend` as the primary Next.js storefront with clear API/UI
 
 - [x] `src/features/search` registered as host-owned composition for the `search` storefront module.
 - [x] Product-owned `packages/rustok-product::fetchCatalogSearchOptions` reads public GraphQL `storefrontCatalogSearchOptions(locale: String!)`.
+- [x] Blog-owned storefront surface moved from the host feature layer to `packages/rustok-blog`; the
+  package consumes the host-provided GraphQL executor through `StorefrontRenderContext`.
+- [x] Removed the duplicate host-local GraphQL client; module packages and host composition use
+  `src/shared/lib/graphql.ts`.
 - [x] Route locale, tenant slug, and enabled modules are passed via registry render context; search package receives only category/attribute option props.
 
 ### Feature readiness checklist

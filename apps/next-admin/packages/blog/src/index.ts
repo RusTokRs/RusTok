@@ -1,11 +1,30 @@
-/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
+import { registerAdminModule } from '@/modules/registry';
+import { blogNavItems, forumNavItems } from './nav';
 
-export * from '../../../src/features/blog';
+registerAdminModule({
+  id: 'blog',
+  name: 'Blog',
+  navItems: blogNavItems
+});
+
+registerAdminModule({
+  id: 'forum',
+  name: 'Forum',
+  navItems: forumNavItems
+});
+
+// Re-export everything consumers might need
+export { blogNavItems, forumNavItems } from './nav';
+export { default as PostsPage } from './pages/posts-page';
+export { default as PostDetailPage } from './pages/post-detail-page';
+export { default as PostFormPage } from './pages/post-form-page';
+export { default as PostForm } from './components/post-form';
+export { PostTable } from './components/post-table';
+export { columns as postColumns } from './components/post-table/columns';
+export * from './api/posts';
+
+export { RtJsonEditor } from './components/rt-json-editor';
+export { PageBuilder } from './components/page-builder';
+export { ForumReplyEditor } from './components/forum-reply-editor';
+export * from './api/pages';
+export * from './api/forum';

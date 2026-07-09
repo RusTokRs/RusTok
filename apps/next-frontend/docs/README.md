@@ -13,7 +13,7 @@
 > - **DO NOT hardcode `/en|/ru` in middleware** — get supported locales from message loaders
 >
 > **Related Guides for Rust Module UI Packages:**
-> - [FFA Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture) for Rust module packages
+> - [Module UI Package Guide](../../../docs/UI/module-package-architecture.md) — applies to Rust/Leptos module packages, not this Next.js host
 > - [Storefront Contract](../../../docs/UI/storefront.md) — transport/auth/i18n parity requirements
 
 Local documentation for `apps/next-frontend`.
@@ -22,13 +22,15 @@ Local documentation for `apps/next-frontend`.
 
 `apps/next-frontend` is the Next.js storefront host for RusToK. It provides the React/Next storefront path, runs in parallel with `apps/storefront`, and must maintain parity with the Leptos storefront at the transport/auth/i18n/module contracts level.
 
-FFA classification: `apps/next-frontend` is an `FFA-compatible composition host`, not a module-owned UI package. Its FFA responsibility is to maintain Next storefront route/context/transport parity without transferring module-specific storefront workflows into the host.
+Architecture classification: `apps/next-frontend` is a Next.js composition host, not an FFA host and not a module-owned UI package. It maintains route/context/transport parity through normal Next.js package ownership and shared contracts.
 
 ## Responsibility boundaries
 
 - own the Next.js storefront host and its route composition;
 - use shared frontend contracts for GraphQL, auth, forms and state;
 - assemble the storefront through `src/app`, `src/modules`, `src/shared` and `src/components`;
+- mount module-owned Next storefront surfaces from `packages/*` (currently `rustok-blog`,
+  `rustok-product` and `search`);
 - not duplicate transport/auth code across pages;
 - not replace module-owned storefront UI contracts.
 
@@ -43,7 +45,13 @@ FFA classification: `apps/next-frontend` is an `FFA-compatible composition host`
   filter; supported locales are taken from host-owned message loaders.
 - query semantics for module-owned storefront surfaces must remain in parity with `apps/storefront`;
   host does not invent a separate schema/policy on top of backend and Leptos host contract.
-- Search storefront composition lives in `src/features/search`: host passes route locale, tenant slug and enabled modules, product-owned `packages/rustok-product` reads the public `storefrontCatalogSearchOptions(locale: String!)`, and `packages/search` receives only host-provided category/attribute option props.
+- Search storefront composition lives in `src/features/search`: host passes route locale, tenant slug,
+  enabled modules and the shared GraphQL executor, product-owned `packages/rustok-product` reads the
+  public `storefrontCatalogSearchOptions(locale: String!)`, and `packages/search` receives only
+  host-provided category/attribute option props.
+- Blog storefront composition lives in `packages/rustok-blog`; it receives the host GraphQL executor
+  and tenant context through the registry and must not use a package-local client or env-based tenant
+  resolution/header construction.
 
 ## Frontend contract
 

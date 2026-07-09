@@ -51,6 +51,15 @@ live in `src/features/installer/model.rs`, HTTP request code lives only in
 `src/features/installer/transport/mod.rs`, and the page calls that transport facade instead of
 holding raw REST wiring. The removed `src/features/installer/api.rs` facade must not be restored.
 
+The host-owned cache health operator page keeps its read model in
+`src/features/cache/model.rs` and selects native or GraphQL transport only through
+`src/features/cache/transport/`. The page renders the transport result and does not own a raw
+GraphQL request or server-function call.
+
+The host-owned email settings page keeps its settings DTOs and selected read/write transport in
+`src/features/email/`; its page component owns form state only and does not issue raw GraphQL or
+call a native adapter directly.
+
 ## Boundaries of Responsibility
 
 `apps/admin` is responsible for:

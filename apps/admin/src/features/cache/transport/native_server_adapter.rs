@@ -1,0 +1,45 @@
+use leptos::prelude::*;
+
+use crate::features::cache::model::{CacheHealthPayload, CacheHealthResponse};
+
+#[server(prefix = "/api/fn", endpoint = "admin/cache-health")]
+pub(super) async fn cache_health_native() -> Result<CacheHealthResponse, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_cache::CacheService;
+
+        let app_ctx = expect_context::<AppContext>();
+        let payload = if let Some(cache) = app_ctx.shared_store.get::<CacheService>() {
+            let report = cache.health().await;
+            CacheHealthPayload {
+                redis_configured: report.redis_configured,
+                redis_healthy: report.redis_healthy,
+                redis_error: report.redis_error,
+                backend: if report.redis_configured {
+                    "redis".to_string()
+                } else {
+                    "in-memory".to_string()
+                },
+            }
+        } else {
+            CacheHealthPayload {
+                redis_configured: false,
+                redis_healthy: false,
+                redis_error: None,
+                backend: "none".to_string(),
+            }
+        };
+
+        Ok(CacheHealthResponse {
+            cache_health: payload,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "admin/cache-health requires the `ssr` feature",
+        ))
+    }
+}

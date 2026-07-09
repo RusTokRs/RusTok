@@ -10,6 +10,8 @@ use crate::model::{
 #[cfg(feature = "ssr")]
 use crate::model::{AppType, GraphqlPageInfo, GraphqlUserEdge, GraphqlUsersConnection};
 #[cfg(feature = "ssr")]
+use rustok_api::HostRuntimeContext;
+#[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
@@ -48,6 +50,30 @@ fn server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError(message.into())
 }
 
+#[cfg(feature = "ssr")]
+struct AuthAdminRuntime {
+    db: sea_orm::DatabaseConnection,
+    host: HostRuntimeContext,
+}
+
+#[cfg(feature = "ssr")]
+impl AuthAdminRuntime {
+    fn from_host(host: HostRuntimeContext) -> Self {
+        Self {
+            db: host.db_clone(),
+            host,
+        }
+    }
+
+    fn module_runtime_extensions(
+        &self,
+    ) -> Result<std::sync::Arc<rustok_core::ModuleRuntimeExtensions>, ServerFnError> {
+        self.host
+            .shared_get::<std::sync::Arc<rustok_core::ModuleRuntimeExtensions>>()
+            .ok_or_else(|| server_error("ModuleRuntimeExtensions not initialized"))
+    }
+}
+
 #[server(prefix = "/api/fn", endpoint = "auth/graphql")]
 pub(super) async fn auth_graphql(
     request: super::ServerGraphqlRequest,
@@ -79,7 +105,6 @@ pub async fn list_users_native(
     {
         use base64::{engine::general_purpose::STANDARD, Engine};
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
 
@@ -94,7 +119,7 @@ pub async fn list_users_native(
             return Err(ServerFnError::new("users:list required"));
         }
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = AuthAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let backend = app_ctx.db.get_database_backend();
         let page = page.max(1);
         let limit = limit.clamp(1, 100);
@@ -300,7 +325,6 @@ pub async fn user_details_native(id: String) -> Result<GraphqlUserResponse, Serv
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
 
@@ -317,7 +341,7 @@ pub async fn user_details_native(id: String) -> Result<GraphqlUserResponse, Serv
 
         let user_id =
             Uuid::parse_str(&id).map_err(|err| server_error(format!("invalid user id: {err}")))?;
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = AuthAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
 
         let statement = match app_ctx.db.get_database_backend() {
             DbBackend::Sqlite => Statement::from_sql_and_values(
@@ -454,10 +478,7 @@ async fn user_mutation_context() -> Result<
     ServerFnError,
 > {
     use leptos::prelude::expect_context;
-    use loco_rs::app::AppContext;
     use rustok_api::AuthContext;
-    use rustok_core::ModuleRuntimeExtensions;
-    use std::sync::Arc;
 
     let auth = leptos_axum::extract::<AuthContext>()
         .await
@@ -471,11 +492,8 @@ async fn user_mutation_context() -> Result<
     let locale = request_context
         .map(|request_context| request_context.locale)
         .or_else(|| tenant_context.map(|tenant_context| tenant_context.default_locale));
-    let app_ctx = expect_context::<AppContext>();
-    let extensions = app_ctx
-        .shared_store
-        .get::<Arc<ModuleRuntimeExtensions>>()
-        .ok_or_else(|| server_error("ModuleRuntimeExtensions not initialized"))?;
+    let app_ctx = AuthAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
+    let extensions = app_ctx.module_runtime_extensions()?;
     let runtime = extensions
         .get::<rustok_auth::UserAdminMutationRuntime>()
         .cloned()
@@ -763,7 +781,6 @@ pub async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, ServerF
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
 
@@ -783,7 +800,7 @@ pub async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, ServerF
             ));
         }
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = AuthAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
         let backend = app_ctx.db.get_database_backend();
         let limit = limit.clamp(1, 100);
         let statement = match backend {
@@ -985,19 +1002,13 @@ async fn oauth_mutation_context() -> Result<
     ServerFnError,
 > {
     use leptos::prelude::expect_context;
-    use loco_rs::app::AppContext;
     use rustok_api::AuthContext;
-    use rustok_core::ModuleRuntimeExtensions;
-    use std::sync::Arc;
 
     let auth = leptos_axum::extract::<AuthContext>()
         .await
         .map_err(|error| server_error(error.to_string()))?;
-    let app_ctx = expect_context::<AppContext>();
-    let extensions = app_ctx
-        .shared_store
-        .get::<Arc<ModuleRuntimeExtensions>>()
-        .ok_or_else(|| server_error("ModuleRuntimeExtensions not initialized"))?;
+    let app_ctx = AuthAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
+    let extensions = app_ctx.module_runtime_extensions()?;
     let runtime = extensions
         .get::<rustok_auth::OAuthAdminRuntime>()
         .cloned()

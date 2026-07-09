@@ -11,7 +11,7 @@ import {
   RevokeAppDialog,
   RotateSecretDialog
 } from '@/features/oauth-apps';
-import { listOAuthApps } from '@/features/oauth-apps/api';
+import { listOAuthApps } from '@/shared/api/oauth-apps';
 import { OAuthAppsTable } from '@/widgets/oauth-apps-table';
 import { Button } from '@/shared/ui/shadcn/button';
 

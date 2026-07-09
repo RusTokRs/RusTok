@@ -144,6 +144,7 @@ requireContains('crates/rustok-api/src/runtime.rs', 'pub fn with_shared_value<T>
 requireContains('crates/rustok-api/src/runtime.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'HostRuntimeContext exposes typed shared handles without Loco');
 requireContains('apps/server/src/services/app_router.rs', 'HostRuntimeContext::new(ctx.db.clone())', 'server function context provides neutral runtime context');
 requireContains('apps/server/src/services/app_router.rs', 'with_shared_value(storage)', 'server function context provides storage through neutral host runtime context');
+requireContains('apps/server/src/services/app_router.rs', 'with_shared_value(extensions)', 'server function context provides module runtime extensions through neutral typed handles');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub struct ServerRuntimeContext', 'server owns neutral runtime context for server services');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn db(&self) -> &DatabaseConnection', 'ServerRuntimeContext exposes DB access without service-level Loco dependency');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'ServerRuntimeContext exposes typed shared-store access behind server boundary');
@@ -427,7 +428,6 @@ for (const rel of [
   'apps/server/src/tasks/cleanup.rs',
   'apps/server/src/tasks/create_oauth_app.rs',
   'apps/server/src/tasks/db_baseline.rs',
-  'apps/server/src/tasks/media_cleanup.rs',
   'apps/server/src/tasks/profiles_backfill.rs',
   'apps/server/src/tasks/rebuild.rs',
 ]) {
@@ -436,6 +436,11 @@ for (const rel of [
   requireContains(rel, 'crate::tasks::{', `${rel} uses the server task bridge`);
 }
 requireNotContains('apps/server/src/tasks/mod.rs', 'cargo loco', 'server task registry comments do not advertise cargo-loco execution');
+requireNotContains('apps/server/src/tasks/mod.rs', 'media_cleanup', 'media cleanup is no longer registered as a Loco task');
+requireContains('crates/rustok-media/rustok-module.toml', '[provides.cli]', 'media module declares its CLI provider');
+requireContains('crates/rustok-media/rustok-module.toml', 'factory = "rustok_media_cli::command_provider"', 'media module CLI provider uses its local adapter factory');
+requireContains('crates/rustok-media/cli/src/lib.rs', '"media",\n            "cleanup"', 'media CLI adapter exposes the cleanup command');
+requireContains('crates/rustok-media/cli/src/lib.rs', 'cleanup_storage_orphans_all_tenants', 'media CLI adapter delegates cleanup policy to the domain service');
 for (const rel of [
   'apps/server/src/controllers/admin_events.rs',
   'apps/server/src/controllers/auth.rs',
@@ -487,6 +492,8 @@ for (const rel of [
   'crates/rustok-comments/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-workflow/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-media/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-search/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-auth/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-customer/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-channel/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-ai/admin/src/transport/native_server_adapter.rs',
@@ -509,6 +516,9 @@ requireNotContains('crates/rustok-region/admin/Cargo.toml', 'loco-rs', 'region a
 requireNotContains('crates/rustok-comments/admin/Cargo.toml', 'loco-rs', 'comments admin crate does not depend on Loco');
 requireNotContains('crates/rustok-workflow/admin/Cargo.toml', 'loco-rs', 'workflow admin crate does not depend on Loco');
 requireNotContains('crates/rustok-media/admin/Cargo.toml', 'loco-rs', 'media admin crate does not depend on Loco');
+requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-rs', 'search admin crate does not depend on Loco');
+requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-adapter', 'search admin crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-auth/admin/Cargo.toml', 'loco-rs', 'auth admin crate does not depend on Loco');
 requireNotContains('crates/rustok-customer/admin/Cargo.toml', 'loco-rs', 'customer admin crate does not depend on Loco');
 requireNotContains('crates/rustok-channel/admin/Cargo.toml', 'loco-rs', 'channel admin crate does not depend on Loco');
 requireNotContains('crates/rustok-ai/admin/Cargo.toml', 'loco-rs', 'AI admin crate does not depend on Loco');
@@ -622,18 +632,18 @@ requireContains('crates/rustok-cli-registry/src/lib.rs', 'pub struct SelectedDis
 requireContains('crates/rustok-cli-registry/src/lib.rs', 'selected_distribution_registry', 'rustok-cli-registry exposes selected distribution entrypoint');
 requireContains('crates/rustok-cli-registry/src/lib.rs', 'mod generated;', 'rustok-cli-registry consumes generated selected distribution source');
 requireContains('crates/rustok-cli-registry/src/generated.rs', '@generated by scripts/generate/generate-cli-registry.mjs', 'rustok-cli-registry generated source is marked generated');
-requireContains('crates/rustok-cli-registry/src/generated.rs', 'rustok_cli_platform::command_provider()', 'rustok-cli-registry generated source wires platform provider');
+requireContains('crates/rustok-cli-registry/src/generated.rs', 'rustok_cli_platform::command_provider(runtime)', 'rustok-cli-registry generated source wires runtime-aware platform provider');
 requireContains('scripts/generate/generate-cli-registry.mjs', '[provides.cli]', 'CLI registry generator reads module CLI metadata');
 requireContains('scripts/generate/generate-cli-registry.mjs', 'cli-registry.toml', 'CLI registry generator reads root provider metadata');
 requireContains('scripts/generate/generate-cli-registry.mjs', 'validateRegistryDependencies', 'CLI registry generator validates selected provider dependencies');
 requireContains('package.json', '"generate:cli-registry"', 'package scripts expose CLI registry generation');
 requireContains('package.json', '"verify:cli-registry"', 'package scripts expose CLI registry freshness check');
-requireContains('crates/rustok-cli-core/src/lib.rs', 'fn execute(&self, request: CommandRequest)', 'CLI core provider contract exposes typed execution');
+requireContains('crates/rustok-cli-core/src/lib.rs', 'async fn execute(&self, request: CommandRequest)', 'CLI core provider contract exposes asynchronous typed execution');
 requireContains('crates/rustok-cli-core/src/lib.rs', 'CliCoreError::UnknownCommand', 'CLI core provider default execution is explicit unknown-command behavior');
 requireContains('crates/rustok-cli/src/lib.rs', 'pub struct CommandRegistry', 'rustok-cli owns an explicit command registry');
 requireContains('crates/rustok-cli/src/lib.rs', 'DuplicateCommand', 'rustok-cli rejects duplicate command registrations');
 requireContains('crates/rustok-cli/src/lib.rs', 'CommandRegistry::from_providers', 'rustok-cli aggregates providers through the registry');
-requireContains('crates/rustok-cli/src/lib.rs', 'pub fn execute(&self, request: CommandRequest)', 'rustok-cli command registry dispatches typed execution');
+requireContains('crates/rustok-cli/src/lib.rs', 'pub async fn execute(&self, request: CommandRequest)', 'rustok-cli command registry dispatches asynchronous typed execution');
 requireContains('crates/rustok-cli/src/lib.rs', 'rustok-cli <namespace> <command>', 'rustok-cli documents namespace command execution in usage');
 requireContains('crates/rustok-cli/src/lib.rs', 'pub fn parse_command_args', 'rustok-cli normalizes provider command arguments');
 requireContains('crates/rustok-cli/src/lib.rs', '"positionals"', 'rustok-cli command args include positional values');

@@ -1,7 +1,8 @@
 use std::process::ExitCode;
 
-fn main() -> ExitCode {
-    let exit = rustok_cli::run_with_args(std::env::args());
+#[tokio::main]
+async fn main() -> ExitCode {
+    let exit = rustok_cli::run_with_environment(std::env::args()).await;
     if !exit.stdout.is_empty() {
         print!("{}", exit.stdout);
     }

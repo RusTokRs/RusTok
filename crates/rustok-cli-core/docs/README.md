@@ -14,9 +14,11 @@ Boundary rules:
 - `apps/server` does not depend on CLI code.
 - Parser/output/terminal UX can live in the binary crate, while command metadata and
   machine-readable outcomes live here.
-- Providers expose command discovery and typed execution through the same
-  `CommandProvider` contract; discovery-only providers can rely on the default
-  unknown-command execution result until their command body is implemented.
+- Providers expose command discovery and asynchronous typed execution through the
+  same `CommandProvider` contract. This lets module-local adapters use databases,
+  storage and remote ports without blocking the runner; discovery-only providers can
+  rely on the default unknown-command execution result until their command body is
+  implemented.
 - The runner passes normalized command input in `CommandRequest.args` as an
   object with `options` and `positionals`; provider crates should not parse raw
   terminal tokens themselves.

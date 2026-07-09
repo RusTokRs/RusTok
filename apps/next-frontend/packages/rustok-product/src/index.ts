@@ -26,22 +26,7 @@ export type ProductCatalogSearchOptionsRequest = {
   graphqlUrl?: string;
 };
 
-export type StorefrontGraphqlExecutor = <T, V = Record<string, unknown>>(
-  options: StorefrontGraphqlOptions<V>,
-) => Promise<StorefrontGraphqlResponse<T>>;
-
-export type StorefrontGraphqlOptions<V> = {
-  query: string;
-  variables?: V;
-  token?: string;
-  tenant?: string;
-  baseUrl?: string;
-};
-
-export type StorefrontGraphqlResponse<T> = {
-  data?: T;
-  errors?: Array<{ message: string }>;
-};
+export type StorefrontGraphqlExecutor = typeof storefrontGraphql;
 
 type StorefrontCatalogSearchOptionsResponse = {
   storefrontCatalogSearchOptions: ProductCatalogSearchOptions;
@@ -82,3 +67,4 @@ export async function fetchCatalogSearchOptions(
     }
   );
 }
+import type { storefrontGraphql } from "@/shared/lib/graphql";

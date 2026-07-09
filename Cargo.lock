@@ -5633,7 +5633,6 @@ dependencies = [
  "leptos-use",
  "leptos_axum",
  "leptos_router",
- "loco-rs",
  "reqwest 0.13.2",
  "rustok-graphql",
  "rustok-ui-transport",
@@ -9855,34 +9854,46 @@ dependencies = [
 name = "rustok-cli"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "rustok-cli-core",
  "rustok-cli-registry",
+ "rustok-runtime",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
 name = "rustok-cli-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
 name = "rustok-cli-platform"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "rustok-cli-core",
+ "rustok-runtime",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
 name = "rustok-cli-registry"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "rustok-cli-core",
  "rustok-cli-platform",
+ "rustok-media-cli",
+ "rustok-runtime",
+ "serde_json",
 ]
 
 [[package]]
@@ -10581,6 +10592,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-media-cli"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-cli-core",
+ "rustok-media",
+ "rustok-runtime",
+ "rustok-storage",
+ "sea-orm",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rustok-order"
 version = "0.1.0"
 dependencies = [
@@ -11074,6 +11099,7 @@ version = "0.1.0"
 dependencies = [
  "rustok-api",
  "sea-orm",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -11108,7 +11134,6 @@ dependencies = [
  "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
- "loco-rs",
  "rustok-api",
  "rustok-core",
  "rustok-events",

@@ -1,22 +1,11 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_ui_transport::UiTransportPath;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::shared::api::queries::{PLATFORM_SETTINGS_QUERY, UPDATE_PLATFORM_SETTINGS_MUTATION};
-use crate::shared::api::request;
+use crate::features::email::transport;
 use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
-
-fn selected_transport_path() -> UiTransportPath {
-    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
-        UiTransportPath::Graphql
-    } else {
-        UiTransportPath::NativeServer
-    }
-}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -28,77 +17,6 @@ where
     T: 'static,
 {
     LocalResource::new(move || fetcher(source()))
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct PlatformSettingsVariables {
-    category: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct PlatformSettingsResponse {
-    #[serde(rename = "platformSettings")]
-    pub(super) platform_settings: PlatformSettingsPayload,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct PlatformSettingsPayload {
-    pub(super) settings: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct UpdateSettingsVariables {
-    input: UpdateSettingsInput,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct UpdateSettingsInput {
-    category: String,
-    settings: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct UpdateSettingsResponse {
-    #[serde(rename = "updatePlatformSettings")]
-    update_platform_settings: UpdateSettingsPayload,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct UpdateSettingsPayload {
-    success: bool,
-}
-
-async fn fetch_email_settings_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<PlatformSettingsResponse, crate::shared::api::ApiError> {
-    request::<PlatformSettingsVariables, PlatformSettingsResponse>(
-        PLATFORM_SETTINGS_QUERY,
-        PlatformSettingsVariables {
-            category: "email".to_string(),
-        },
-        token,
-        tenant_slug,
-    )
-    .await
-}
-
-async fn fetch_email_settings_server() -> Result<PlatformSettingsResponse, ServerFnError> {
-    super::native_server_adapter::email_settings_native().await
-}
-
-async fn fetch_email_settings(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<PlatformSettingsResponse, String> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => fetch_email_settings_server()
-            .await
-            .map_err(|error| error.to_string()),
-        UiTransportPath::Graphql => fetch_email_settings_graphql(token, tenant_slug)
-            .await
-            .map_err(|error| error.to_string()),
-    }
 }
 
 #[component]
@@ -118,7 +36,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
     let settings_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            fetch_email_settings(token_value, tenant_value).await
+            transport::fetch_email_settings(token_value, tenant_value).await
         },
     );
 
@@ -166,22 +84,13 @@ pub fn EmailSettingsPage() -> impl IntoView {
             set_save_result.set(None);
 
             spawn_local(async move {
-                let result = request::<UpdateSettingsVariables, UpdateSettingsResponse>(
-                    UPDATE_PLATFORM_SETTINGS_MUTATION,
-                    UpdateSettingsVariables {
-                        input: UpdateSettingsInput {
-                            category: "email".to_string(),
-                            settings: settings.to_string(),
-                        },
-                    },
-                    token_val,
-                    tenant_val,
-                )
-                .await;
+                let result =
+                    transport::update_email_settings(token_val, tenant_val, settings.to_string())
+                        .await;
 
                 match result {
-                    Ok(r) => set_save_result.set(Some(Ok(r.update_platform_settings.success))),
-                    Err(e) => set_save_result.set(Some(Err(format!("{:?}", e)))),
+                    Ok(success) => set_save_result.set(Some(Ok(success))),
+                    Err(error) => set_save_result.set(Some(Err(error))),
                 }
                 set_saving.set(false);
             });

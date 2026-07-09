@@ -1,26 +1,13 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_ui_transport::UiTransportPath;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::app::providers::enabled_modules::use_enabled_modules;
+use crate::features::events::transport;
 
-use crate::shared::api::queries::{
-    EVENTS_STATUS_QUERY, PLATFORM_SETTINGS_QUERY, UPDATE_PLATFORM_SETTINGS_MUTATION,
-};
-use crate::shared::api::request;
 use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
-
-fn selected_transport_path() -> UiTransportPath {
-    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
-        UiTransportPath::Graphql
-    } else {
-        UiTransportPath::NativeServer
-    }
-}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -34,137 +21,6 @@ where
     LocalResource::new(move || fetcher(source()))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct EventsStatusResponse {
-    #[serde(rename = "eventsStatus")]
-    pub(super) events_status: EventsStatus,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct EventsStatus {
-    #[serde(rename = "configuredTransport")]
-    pub(super) configured_transport: String,
-    #[serde(rename = "iggyMode")]
-    pub(super) iggy_mode: String,
-    #[serde(rename = "relayIntervalMs")]
-    pub(super) relay_interval_ms: u64,
-    #[serde(rename = "dlqEnabled")]
-    pub(super) dlq_enabled: bool,
-    #[serde(rename = "maxAttempts")]
-    pub(super) max_attempts: i32,
-    #[serde(rename = "pendingEvents")]
-    pub(super) pending_events: i64,
-    #[serde(rename = "dlqEvents")]
-    pub(super) dlq_events: i64,
-    #[serde(rename = "availableTransports")]
-    pub(super) available_transports: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct PlatformSettingsResponse {
-    #[serde(rename = "platformSettings")]
-    pub(super) platform_settings: PlatformSettingsPayload,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct PlatformSettingsPayload {
-    pub(super) settings: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct UpdateSettingsResponse {
-    #[serde(rename = "updatePlatformSettings")]
-    update_platform_settings: UpdateSettingsPayload,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct UpdateSettingsPayload {
-    success: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct PlatformSettingsVariables {
-    category: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct UpdateSettingsVariables {
-    input: UpdateSettingsInput,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct UpdateSettingsInput {
-    category: String,
-    settings: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct EmptyVariables {}
-
-async fn fetch_events_status_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<EventsStatusResponse, crate::shared::api::ApiError> {
-    request::<EmptyVariables, EventsStatusResponse>(
-        EVENTS_STATUS_QUERY,
-        EmptyVariables {},
-        token,
-        tenant_slug,
-    )
-    .await
-}
-
-async fn fetch_events_status_server() -> Result<EventsStatusResponse, ServerFnError> {
-    super::native_server_adapter::events_status_native().await
-}
-
-async fn fetch_events_status(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<EventsStatusResponse, String> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => fetch_events_status_server()
-            .await
-            .map_err(|error| error.to_string()),
-        UiTransportPath::Graphql => fetch_events_status_graphql(token, tenant_slug)
-            .await
-            .map_err(|error| error.to_string()),
-    }
-}
-
-async fn fetch_platform_settings_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<PlatformSettingsResponse, crate::shared::api::ApiError> {
-    request::<PlatformSettingsVariables, PlatformSettingsResponse>(
-        PLATFORM_SETTINGS_QUERY,
-        PlatformSettingsVariables {
-            category: "events".to_string(),
-        },
-        token,
-        tenant_slug,
-    )
-    .await
-}
-
-async fn fetch_platform_settings_server() -> Result<PlatformSettingsResponse, ServerFnError> {
-    super::native_server_adapter::event_settings_native().await
-}
-
-async fn fetch_platform_settings(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<PlatformSettingsResponse, String> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => fetch_platform_settings_server()
-            .await
-            .map_err(|error| error.to_string()),
-        UiTransportPath::Graphql => fetch_platform_settings_graphql(token, tenant_slug)
-            .await
-            .map_err(|error| error.to_string()),
-    }
-}
-
 #[component]
 pub fn EventsPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -175,13 +31,13 @@ pub fn EventsPage() -> impl IntoView {
     // Runtime status from server
     let status_resource = local_resource(
         move || (token.get(), tenant.get()),
-        move |(t, tn)| async move { fetch_events_status(t, tn).await },
+        move |(t, tn)| async move { transport::fetch_events_status(t, tn).await },
     );
 
     // Desired settings from DB
     let settings_resource = local_resource(
         move || (token.get(), tenant.get()),
-        move |(t, tn)| async move { fetch_platform_settings(t, tn).await },
+        move |(t, tn)| async move { transport::fetch_platform_settings(t, tn).await },
     );
 
     // Form state for desired transport and external Iggy settings.
@@ -310,21 +166,12 @@ pub fn EventsPage() -> impl IntoView {
         set_saving.set(true);
         set_save_result.set(None);
         spawn_local(async move {
-            let result = request::<UpdateSettingsVariables, UpdateSettingsResponse>(
-                UPDATE_PLATFORM_SETTINGS_MUTATION,
-                UpdateSettingsVariables {
-                    input: UpdateSettingsInput {
-                        category: "events".to_string(),
-                        settings: settings.to_string(),
-                    },
-                },
-                token_val,
-                tenant_val,
-            )
-            .await;
+            let result =
+                transport::update_platform_settings(token_val, tenant_val, settings.to_string())
+                    .await;
             match result {
-                Ok(r) => set_save_result.set(Some(Ok(r.update_platform_settings.success))),
-                Err(e) => set_save_result.set(Some(Err(format!("{:?}", e)))),
+                Ok(success) => set_save_result.set(Some(Ok(success))),
+                Err(error) => set_save_result.set(Some(Err(error))),
             }
             set_saving.set(false);
         });

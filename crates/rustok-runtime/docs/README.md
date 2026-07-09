@@ -18,6 +18,9 @@ Boundary rules:
 Current entry points:
 
 - `HostRuntimeContext` re-export for backend adapters that need the neutral host contract.
+- `RuntimeComposition` for optional DB/host handles plus a host-neutral settings snapshot.
+- `RuntimeComposition::from_environment` for the external CLI bootstrap without a server
+  dependency.
 - `db_clone` for explicit DB handle cloning from host runtime context.
 - `require_shared` and `RuntimeHandleError` for typed shared-handle lookup.
 

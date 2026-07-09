@@ -8,8 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-import type { NavItem } from '../../../src/shared/types';
-import { registerAdminModule } from '../../../src/modules/registry';
+import { registerAdminModule } from '@/modules/registry';
+import type { NavItem } from '@/types';
 
 export const commerceNavItems: NavItem[] = [
   {
@@ -51,7 +51,6 @@ registerAdminModule({
   navItems: commerceNavItems
 });
 
-// Re-export all submodules
 export * from './types';
 export * from './api';
 export * from './components/ShippingProfilesTemplate';

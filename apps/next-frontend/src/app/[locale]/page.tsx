@@ -11,6 +11,8 @@ import {
   buildSeoMetadata,
   buildSeoStructuredDataScripts,
 } from "@/shared/seo/metadata";
+import { storefrontGraphql } from "@/shared/lib/graphql";
+import { getStorefrontTenantId } from "@/shared/api/modules";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import { Button } from "@/shared/ui/base/button";
 
@@ -146,7 +148,13 @@ export default async function StorefrontHome({
         </section>
         {moduleSections.map((module) => (
           <section key={module.id} className="mx-auto max-w-6xl px-6 pb-12">
-            {module.render({ locale, enabledModules, tenantSlug })}
+            {module.render({
+              locale,
+              enabledModules,
+              tenantSlug,
+              tenantId: getStorefrontTenantId(),
+              graphql: storefrontGraphql,
+            })}
           </section>
         ))}
       </main>

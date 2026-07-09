@@ -19,6 +19,8 @@ Host-owned features use explicit model/transport boundaries:
 - `features/workflow/model.rs` and `features/workflow/transport/`;
 - `features/oauth_apps/model.rs` and `features/oauth_apps/transport/`;
 - `features/installer/model.rs` and `features/installer/transport/`;
+- `features/cache/model.rs` and `features/cache/transport/`;
+- `features/email/model.rs` and `features/email/transport/`;
 - `features/modules/transport/` for module control-plane transport.
 
 Pages and components call public transport facades only. Raw GraphQL, REST and

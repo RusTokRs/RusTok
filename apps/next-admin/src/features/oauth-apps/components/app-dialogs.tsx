@@ -15,7 +15,7 @@ import {
   revokeOAuthApp,
   rotateOAuthAppSecret,
   updateOAuthApp
-} from '@/features/oauth-apps/api';
+} from '@/shared/api/oauth-apps';
 import { Button } from '@/shared/ui/shadcn/button';
 import {
   Dialog,
