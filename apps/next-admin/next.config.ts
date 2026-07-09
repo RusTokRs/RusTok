@@ -6,6 +6,11 @@ import path from 'path';
 
 // Define the base Next.js configuration
 const baseConfig: NextConfig = {
+  // TypeScript 7 no longer exposes the legacy compiler API that Next uses
+  // during `next build`; CI runs `npm run typecheck` as the canonical TS gate.
+  typescript: {
+    ignoreBuildErrors: true
+  },
   async rewrites() {
     const apiBaseUrl =
       process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';

@@ -866,7 +866,15 @@ export function SearchAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, graphql, token, tenantSlug, graphqlUrl, laggingLimit, refreshNonce]);
+  }, [
+    activeTab,
+    graphql,
+    token,
+    tenantSlug,
+    graphqlUrl,
+    laggingLimit,
+    refreshNonce
+  ]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1905,8 +1913,8 @@ function DictionariesPanel(props: {
       token: props.token,
       tenantSlug: props.tenantSlug,
       graphqlUrl: props.graphqlUrl,
-        graphql: props.graphql
-      })
+      graphql: props.graphql
+    })
       .then((data) => {
         if (!cancelled) setSnapshot(data.searchDictionarySnapshot);
       })
@@ -1920,7 +1928,13 @@ function DictionariesPanel(props: {
     return () => {
       cancelled = true;
     };
-  }, [props.graphql, props.token, props.tenantSlug, props.graphqlUrl, refreshNonce]);
+  }, [
+    props.graphql,
+    props.token,
+    props.tenantSlug,
+    props.graphqlUrl,
+    refreshNonce
+  ]);
 
   async function runMutation<TData>(
     query: string,

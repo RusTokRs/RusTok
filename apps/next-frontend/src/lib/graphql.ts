@@ -8,11 +8,6 @@ const GRAPHQL_URL = process.env.NEXT_PUBLIC_API_URL
 const DEFAULT_TENANT_SLUG = process.env.NEXT_PUBLIC_TENANT_SLUG ?? '';
 const DEFAULT_TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? '';
 
-interface GraphqlRequestBody<V> {
-  query: string;
-  variables?: V;
-}
-
 interface GraphqlResponse<T> {
   data?: T;
   errors?: Array<{ message: string; extensions?: { code?: string } }>;

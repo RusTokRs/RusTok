@@ -430,7 +430,7 @@ impl SeoService {
                 )
             })
             .collect::<Vec<_>>();
-        failure_samples.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        failure_samples.sort_by_key(|delivery| std::cmp::Reverse(delivery.updated_at));
         summary.failure_samples = failure_samples
             .into_iter()
             .take(8)

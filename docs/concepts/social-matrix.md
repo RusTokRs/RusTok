@@ -271,7 +271,7 @@ Technique:
 - face tagging
 - reactions/comments
 - EXIF (hideable)
-- download (togglable)
+- download (toggleable)
 
 10.2. Video
 

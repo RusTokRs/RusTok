@@ -20,7 +20,7 @@ export default auth((req) => {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set(EFFECTIVE_LOCALE_HEADER, resolveEffectiveLocale(req));
 
-  // Защищённые маршруты
+  // Protected routes.
   if (nextUrl.pathname.startsWith('/dashboard')) {
     if (!isAuthenticated) {
       const signInUrl = new URL('/auth/sign-in', nextUrl.origin);
@@ -29,7 +29,7 @@ export default auth((req) => {
     }
   }
 
-  // Корневой редирект
+  // Root redirect.
   if (nextUrl.pathname === '/') {
     return NextResponse.redirect(
       new URL(isAuthenticated ? '/dashboard' : '/auth/sign-in', nextUrl.origin)

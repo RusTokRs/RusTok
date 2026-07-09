@@ -1,4 +1,9 @@
-import { ApolloClient, gql, HttpLink, InMemoryCache } from '@apollo/client/core';
+import {
+  ApolloClient,
+  gql,
+  HttpLink,
+  InMemoryCache
+} from '@apollo/client/core';
 import type { OperationVariables } from '@apollo/client/core';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
@@ -114,7 +119,9 @@ function resolveTenantIdFromVariables(variables: unknown): string | null {
   return typeof tenantId === 'string' && tenantId.length > 0 ? tenantId : null;
 }
 
-function toApolloVariables<V>(variables: V | undefined): OperationVariables | undefined {
+function toApolloVariables<V>(
+  variables: V | undefined
+): OperationVariables | undefined {
   if (variables === undefined) return undefined;
   return variables as OperationVariables;
 }
@@ -162,17 +169,19 @@ export async function graphqlRequest<V, T>(
   const client = apolloClientFor(resolveGraphqlUrl(options?.graphqlUrl));
   const isMutation = query.trimStart().toLowerCase().startsWith('mutation');
   const apolloVariables = toApolloVariables(variables);
-  const result = (isMutation
-    ? await client.mutate<T>({
-        mutation: document,
-        variables: apolloVariables,
-        context
-      })
-    : await client.query<T>({
-        query: document,
-        variables: apolloVariables,
-        context
-      })) as ApolloExecutionResult<T>;
+  const result = (
+    isMutation
+      ? await client.mutate<T>({
+          mutation: document,
+          variables: apolloVariables,
+          context
+        })
+      : await client.query<T>({
+          query: document,
+          variables: apolloVariables,
+          context
+        })
+  ) as ApolloExecutionResult<T>;
 
   const json: GraphqlResponse<T> = {
     data: result.data ?? undefined,

@@ -1907,7 +1907,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       className='border-border rounded-lg border px-3 py-2'
                     >
                       <div className='text-foreground font-medium'>
-                        {run.sessionTitle} В· {run.status} В· {run.durationMs} ms
+                        {run.sessionTitle} В· {run.status} В· {run.durationMs}{' '}
+                        ms
                       </div>
                       <div>
                         {run.providerDisplayName} В·{' '}
@@ -3125,9 +3126,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   >
                     <div className='font-medium'>{session.title}</div>
                     <div className='text-muted-foreground'>
-                      status: {session.status} В· mode: {session.executionMode} В·
-                      latest: {session.latestRunStatus ?? 'idle'} В· approvals:{' '}
-                      {session.pendingApprovals}
+                      status: {session.status} В· mode: {session.executionMode}{' '}
+                      В· latest: {session.latestRunStatus ?? 'idle'} В·
+                      approvals: {session.pendingApprovals}
                     </div>
                   </button>
                 ))}

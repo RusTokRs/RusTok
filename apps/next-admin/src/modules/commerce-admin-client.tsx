@@ -5,7 +5,7 @@ import {
   OrderChangesTemplate,
   ReturnDecisionsTemplate,
   ShippingProfilesTemplate,
-  type GqlOpts,
+  type GqlOpts
 } from '@rustok/commerce-admin';
 import { graphqlRequest } from '@/shared/api/graphql';
 

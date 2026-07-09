@@ -22,37 +22,39 @@
         "name": "next"
       }
     ],
-    "baseUrl": ".",
     "paths": {
+      "*": [
+        "./*"
+      ],
       "react/jsx-runtime": [
         "./node_modules/@types/react/jsx-runtime.d.ts"
       ],
       "@/components/*": [
-        "src/components/*"
+        "./src/components/*"
       ],
       "@/shared/*": [
-        "src/shared/*"
+        "./src/shared/*"
       ],
       "@/entities/*": [
-        "src/entities/*"
+        "./src/entities/*"
       ],
       "@/features/*": [
-        "src/features/*"
+        "./src/features/*"
       ],
       "@/widgets/*": [
-        "src/widgets/*"
+        "./src/widgets/*"
       ],
       "@/modules": [
-        "src/modules/index.ts"
+        "./src/modules/index.ts"
       ],
       "@/modules/*": [
-        "src/modules/*"
+        "./src/modules/*"
       ],
       "@/styles/*": [
-        "src/styles/*"
+        "./src/styles/*"
       ],
       "@/lib/*": [
-        "src/lib/*"
+        "./src/lib/*"
       ]
     }
   },
