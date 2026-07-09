@@ -4,7 +4,7 @@
 # ============================================================================
 # Base stage: Install Rust and dependencies
 # ============================================================================
-FROM rust:1.82-slim AS base
+FROM rust:1.96-slim AS base
 
 WORKDIR /app
 

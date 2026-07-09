@@ -261,16 +261,19 @@ pub(crate) async fn apply_cart_context_patch_for_db(
     )
     .await?;
 
+    let public_channel_slug = storefront_public_channel_slug_for_cart(cart, request_context);
     validate_selected_shipping_option_for_db(
         db,
         tenant_id,
         cart,
-        requested.selected_shipping_option_id,
-        Some(requested.shipping_selections.as_slice()),
-        &cart.currency_code,
-        storefront_public_channel_slug_for_cart(cart, request_context).as_deref(),
-        Some(request_context.locale.as_str()),
-        Some(tenant_default_locale),
+        SelectedShippingOptionValidation {
+            selected_shipping_option_id: requested.selected_shipping_option_id,
+            shipping_selections: Some(requested.shipping_selections.as_slice()),
+            currency_code: &cart.currency_code,
+            public_channel_slug: public_channel_slug.as_deref(),
+            requested_locale: Some(request_context.locale.as_str()),
+            tenant_default_locale: Some(tenant_default_locale),
+        },
     )
     .await?;
 
@@ -499,21 +502,25 @@ pub(crate) fn requested_cart_context(
     }
 }
 
+pub(crate) struct SelectedShippingOptionValidation<'a> {
+    pub(crate) selected_shipping_option_id: Option<Uuid>,
+    pub(crate) shipping_selections: Option<&'a [crate::dto::CartShippingSelectionInput]>,
+    pub(crate) currency_code: &'a str,
+    pub(crate) public_channel_slug: Option<&'a str>,
+    pub(crate) requested_locale: Option<&'a str>,
+    pub(crate) tenant_default_locale: Option<&'a str>,
+}
+
 pub(crate) async fn validate_selected_shipping_option_for_db(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     cart: &CartResponse,
-    selected_shipping_option_id: Option<Uuid>,
-    shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
-    currency_code: &str,
-    public_channel_slug: Option<&str>,
-    requested_locale: Option<&str>,
-    tenant_default_locale: Option<&str>,
+    validation: SelectedShippingOptionValidation<'_>,
 ) -> Result<()> {
     let service = FulfillmentService::new(db.clone());
-    let selections = if let Some(shipping_selections) = shipping_selections {
+    let selections = if let Some(shipping_selections) = validation.shipping_selections {
         shipping_selections.to_vec()
-    } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {
+    } else if let Some(selected_shipping_option_id) = validation.selected_shipping_option_id {
         if cart.delivery_groups.len() > 1 {
             return Err(Error::BadRequest(
                 "selected_shipping_option_id can only be used for carts with a single delivery group"
@@ -547,18 +554,22 @@ pub(crate) async fn validate_selected_shipping_option_for_db(
             .get_shipping_option(
                 tenant_id,
                 selected_shipping_option_id,
-                requested_locale,
-                tenant_default_locale,
+                validation.requested_locale,
+                validation.tenant_default_locale,
             )
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?;
-        if !option.currency_code.eq_ignore_ascii_case(currency_code) {
+        if !option
+            .currency_code
+            .eq_ignore_ascii_case(validation.currency_code)
+        {
             return Err(Error::BadRequest(format!(
                 "Shipping option {} uses currency {}, expected {}",
-                option.id, option.currency_code, currency_code
+                option.id, option.currency_code, validation.currency_code
             )));
         }
-        if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
+        if !is_metadata_visible_for_public_channel(&option.metadata, validation.public_channel_slug)
+        {
             return Err(Error::BadRequest(format!(
                 "Shipping option {} is not available for the current channel",
                 option.id
@@ -604,16 +615,29 @@ pub(crate) fn build_store_pricing_context(
     }
 }
 
+pub(crate) struct StoreLineItemResolution<'a> {
+    pub(crate) pricing_service: &'a PricingService,
+    pub(crate) pricing_context: &'a PriceResolutionContext,
+    pub(crate) locale: &'a str,
+    pub(crate) default_locale: &'a str,
+    pub(crate) public_channel_slug: Option<&'a str>,
+    pub(crate) input: StoreAddCartLineItemInput,
+}
+
 pub(crate) async fn resolve_store_line_item_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
-    pricing_service: &PricingService,
-    pricing_context: &PriceResolutionContext,
-    locale: &str,
-    default_locale: &str,
-    public_channel_slug: Option<&str>,
-    input: StoreAddCartLineItemInput,
+    resolution: StoreLineItemResolution<'_>,
 ) -> Result<ResolvedStoreLineItemInput> {
+    let StoreLineItemResolution {
+        pricing_service,
+        pricing_context,
+        locale,
+        default_locale,
+        public_channel_slug,
+        input,
+    } = resolution;
+
     let variant = product_variant::Entity::find_by_id(input.variant_id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .one(db)

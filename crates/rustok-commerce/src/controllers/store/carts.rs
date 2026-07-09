@@ -226,18 +226,22 @@ pub async fn add_cart_line_item(
     let pricing_service = PricingService::new(runtime.db_clone(), event_bus.clone());
     let pricing_context =
         super::build_store_pricing_context(&existing, &request_context, input.quantity);
+    let public_channel_slug =
+        super::storefront_public_channel_slug_for_cart(&existing, &request_context);
     let resolved_input = super::resolve_store_line_item_input(
         runtime.db(),
         tenant.id,
-        &pricing_service,
-        &pricing_context,
-        existing
-            .locale_code
-            .as_deref()
-            .unwrap_or(request_context.locale.as_str()),
-        tenant.default_locale.as_str(),
-        super::storefront_public_channel_slug_for_cart(&existing, &request_context).as_deref(),
-        input,
+        super::StoreLineItemResolution {
+            pricing_service: &pricing_service,
+            pricing_context: &pricing_context,
+            locale: existing
+                .locale_code
+                .as_deref()
+                .unwrap_or(request_context.locale.as_str()),
+            default_locale: tenant.default_locale.as_str(),
+            public_channel_slug: public_channel_slug.as_deref(),
+            input,
+        },
     )
     .await?;
 

@@ -4,6 +4,8 @@
 
 **Highload platform that lets you build anything with data. Built for longevity.**
 
+**Project status:** RusTok is in active development. It is ready for exploration, local development, and architectural review, but should not be used for production workloads yet.
+
 *Content · Commerce · Community · Workflow · Any Data · One runtime, zero compromises.*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)

@@ -1,7 +1,7 @@
 use super::{
     cart_context_metadata, checkout_actor_id, ensure_store_cart_access, merge_metadata,
     requested_cart_context, resolve_store_line_item_input, RequestedCartContext,
-    StoreAddCartLineItemInput, StoreCartContextPatch, MODULE_SLUG,
+    StoreAddCartLineItemInput, StoreCartContextPatch, StoreLineItemResolution, MODULE_SLUG,
 };
 use axum::body::{to_bytes, Body};
 use axum::extract::{Path, State};

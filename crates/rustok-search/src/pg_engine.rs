@@ -210,13 +210,15 @@ async fn run_fts_search(
 
     finalize_ranked_search(
         db,
-        &cte,
-        build_base_values(tenant_id, locale, trimmed_query, &filters.values),
-        &filters,
-        query,
-        query.ranking_profile,
-        offset,
-        limit,
+        RankedSearchPlan {
+            cte: &cte,
+            base_values: build_base_values(tenant_id, locale, trimmed_query, &filters.values),
+            filters: &filters,
+            query,
+            ranking_profile: query.ranking_profile,
+            offset,
+            limit,
+        },
     )
     .await
 }
@@ -235,32 +237,48 @@ async fn run_typo_tolerant_search(
 
     finalize_ranked_search(
         db,
-        &cte,
-        build_base_values(
-            tenant_id,
-            locale,
-            &trimmed_query.to_ascii_lowercase(),
-            &filters.values,
-        ),
-        &filters,
-        query,
-        query.ranking_profile,
-        offset,
-        limit,
+        RankedSearchPlan {
+            cte: &cte,
+            base_values: build_base_values(
+                tenant_id,
+                locale,
+                &trimmed_query.to_ascii_lowercase(),
+                &filters.values,
+            ),
+            filters: &filters,
+            query,
+            ranking_profile: query.ranking_profile,
+            offset,
+            limit,
+        },
     )
     .await
 }
 
-async fn finalize_ranked_search(
-    db: &DatabaseConnection,
-    cte: &str,
+struct RankedSearchPlan<'a> {
+    cte: &'a str,
     base_values: Vec<Value>,
-    filters: &FilterClause,
-    query: &SearchQuery,
+    filters: &'a FilterClause,
+    query: &'a SearchQuery,
     ranking_profile: SearchRankingProfile,
     offset: i64,
     limit: i64,
+}
+
+async fn finalize_ranked_search(
+    db: &DatabaseConnection,
+    plan: RankedSearchPlan<'_>,
 ) -> Result<SearchResult> {
+    let RankedSearchPlan {
+        cte,
+        base_values,
+        filters,
+        query,
+        ranking_profile,
+        offset,
+        limit,
+    } = plan;
+
     let total_statement = Statement::from_sql_and_values(
         DbBackend::Postgres,
         format!(

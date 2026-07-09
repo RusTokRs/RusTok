@@ -77,11 +77,11 @@ jobs:
         run: python scripts/ci/check-dependabot-directories.py
 
   check-msrv:
-    name: Cargo Check (MSRV 1.85)
+    name: Cargo Check (MSRV 1.96)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.100.0
+      - uses: dtolnay/rust-toolchain@1.96.1
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets --all-features
         env:

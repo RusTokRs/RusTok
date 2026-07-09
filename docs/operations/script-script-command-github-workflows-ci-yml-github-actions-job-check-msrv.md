@@ -9,7 +9,7 @@ last_verified_snapshot: snap_jsonl_00000021
 status: verified
 ---
 
-# Script Command `GitHub Actions job Cargo Check (MSRV 1.85)`
+# Script Command `GitHub Actions job Cargo Check (MSRV 1.96)`
 
 ## Purpose
 

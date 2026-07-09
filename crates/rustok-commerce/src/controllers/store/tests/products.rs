@@ -151,15 +151,17 @@ async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() 
     let resolved = resolve_store_line_item_input(
         &db,
         tenant_id,
-        &pricing_service,
-        &pricing_context,
-        "de",
-        "en",
-        None,
-        StoreAddCartLineItemInput {
-            variant_id: variant.id,
-            quantity: 2,
-            metadata: json!({ "source": "store-line-item-test" }),
+        StoreLineItemResolution {
+            pricing_service: &pricing_service,
+            pricing_context: &pricing_context,
+            locale: "de",
+            default_locale: "en",
+            public_channel_slug: None,
+            input: StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 2,
+                metadata: json!({ "source": "store-line-item-test" }),
+            },
         },
     )
     .await
@@ -212,15 +214,17 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
-        &pricing_service,
-        &pricing_context,
-        "de",
-        "en",
-        None,
-        StoreAddCartLineItemInput {
-            variant_id: variant.id,
-            quantity: 1,
-            metadata: json!({}),
+        StoreLineItemResolution {
+            pricing_service: &pricing_service,
+            pricing_context: &pricing_context,
+            locale: "de",
+            default_locale: "en",
+            public_channel_slug: None,
+            input: StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 1,
+                metadata: json!({}),
+            },
         },
     )
     .await
@@ -264,15 +268,17 @@ async fn storefront_line_item_resolution_falls_back_to_first_product_translation
     let resolved = resolve_store_line_item_input(
         &db,
         tenant_id,
-        &pricing_service,
-        &pricing_context,
-        "fr",
-        "en",
-        None,
-        StoreAddCartLineItemInput {
-            variant_id: variant.id,
-            quantity: 1,
-            metadata: json!({}),
+        StoreLineItemResolution {
+            pricing_service: &pricing_service,
+            pricing_context: &pricing_context,
+            locale: "fr",
+            default_locale: "en",
+            public_channel_slug: None,
+            input: StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 1,
+                metadata: json!({}),
+            },
         },
     )
     .await
@@ -302,15 +308,17 @@ async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant()
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
-        &pricing_service,
-        &pricing_context,
-        "de",
-        "en",
-        None,
-        StoreAddCartLineItemInput {
-            variant_id: Uuid::new_v4(),
-            quantity: 1,
-            metadata: json!({}),
+        StoreLineItemResolution {
+            pricing_service: &pricing_service,
+            pricing_context: &pricing_context,
+            locale: "de",
+            default_locale: "en",
+            public_channel_slug: None,
+            input: StoreAddCartLineItemInput {
+                variant_id: Uuid::new_v4(),
+                quantity: 1,
+                metadata: json!({}),
+            },
         },
     )
     .await
@@ -348,15 +356,17 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
-        &pricing_service,
-        &pricing_context,
-        "de",
-        "en",
-        Some("web-store"),
-        StoreAddCartLineItemInput {
-            variant_id: variant.id,
-            quantity: 1,
-            metadata: json!({}),
+        StoreLineItemResolution {
+            pricing_service: &pricing_service,
+            pricing_context: &pricing_context,
+            locale: "de",
+            default_locale: "en",
+            public_channel_slug: Some("web-store"),
+            input: StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 1,
+                metadata: json!({}),
+            },
         },
     )
     .await
