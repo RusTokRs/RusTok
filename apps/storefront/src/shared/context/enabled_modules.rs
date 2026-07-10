@@ -67,7 +67,7 @@ pub async fn fetch_enabled_modules() -> Result<Vec<String>, ApiError> {
 }
 
 pub async fn fetch_enabled_modules_server(tenant_slug: String) -> Result<Vec<String>, ApiError> {
-    super::native_server_adapter::list_enabled_modules(tenant_slug)
+    super::enabled_modules_native_server_adapter::list_enabled_modules(tenant_slug)
         .await
         .map_err(ApiError::from)
 }

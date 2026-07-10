@@ -6,7 +6,7 @@ const files = {
   adapters: 'crates/rustok-page-builder/src/adapters.rs',
   docs: 'crates/rustok-page-builder/docs/README.md',
   plan: 'crates/rustok-page-builder/docs/implementation-plan.md',
-  centralPlan: 'docs/modules/tiptap-page-builder-implementation-plan.md',
+  centralPlan: 'docs/modules/page-builder-implementation-plan.md',
 };
 
 const read = (path) => readFileSync(path, 'utf8');

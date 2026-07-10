@@ -2,6 +2,8 @@
 
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
+use rustok_api::HostRuntimeContext;
+#[cfg(feature = "ssr")]
 use rustok_ui_core::normalize_optional_ui_text;
 
 #[cfg(feature = "ssr")]
@@ -299,8 +301,21 @@ fn map_adjustment_preview(
 }
 
 #[cfg(feature = "ssr")]
+fn transactional_event_bus_from_runtime(
+    runtime_ctx: &HostRuntimeContext,
+) -> Result<rustok_outbox::TransactionalEventBus, ServerFnError> {
+    runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            ServerFnError::new(
+                "Pricing admin requires TransactionalEventBus in host runtime context",
+            )
+        })
+}
+
+#[cfg(feature = "ssr")]
 async fn update_variant_price_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     variant_id: String,
@@ -327,8 +342,8 @@ async fn update_variant_price_native_with_context(
     let max_quantity = parse_optional_quantity(&payload.max_quantity, "max_quantity")?;
 
     let service = PricingService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
+        app_ctx.db_clone(),
+        transactional_event_bus_from_runtime(app_ctx)?,
     );
     if let Some(price_list_id) = price_list_id {
         service
@@ -370,7 +385,7 @@ async fn update_variant_price_native_with_context(
 
 #[cfg(feature = "ssr")]
 async fn preview_variant_discount_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     variant_id: String,
@@ -392,8 +407,8 @@ async fn preview_variant_discount_native_with_context(
     let channel_id = parse_optional_uuid(&payload.channel_id, "channel_id")?;
     let channel_slug = sanitize_channel_slug(text_or_none(payload.channel_slug));
     let service = PricingService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
+        app_ctx.db_clone(),
+        transactional_event_bus_from_runtime(app_ctx)?,
     );
 
     let preview = if let Some(price_list_id) = price_list_id {
@@ -427,7 +442,7 @@ async fn preview_variant_discount_native_with_context(
 
 #[cfg(feature = "ssr")]
 async fn apply_variant_discount_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     variant_id: String,
@@ -449,8 +464,8 @@ async fn apply_variant_discount_native_with_context(
     let channel_id = parse_optional_uuid(&payload.channel_id, "channel_id")?;
     let channel_slug = sanitize_channel_slug(text_or_none(payload.channel_slug));
     let service = PricingService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
+        app_ctx.db_clone(),
+        transactional_event_bus_from_runtime(app_ctx)?,
     );
 
     let preview = if let Some(price_list_id) = price_list_id {
@@ -525,7 +540,7 @@ fn map_channel_option(value: rustok_channel::ChannelResponse) -> PricingChannelO
 
 #[cfg(feature = "ssr")]
 async fn list_active_price_lists_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     channel_id: Option<String>,
@@ -566,8 +581,8 @@ async fn list_active_price_lists_native_with_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     let service = PricingService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
+        app_ctx.db_clone(),
+        transactional_event_bus_from_runtime(app_ctx)?,
     );
 
     service
@@ -590,7 +605,7 @@ async fn list_active_price_lists_native_with_context(
 
 #[cfg(feature = "ssr")]
 async fn update_price_list_rule_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     price_list_id: String,
@@ -607,12 +622,12 @@ async fn update_price_list_rule_native_with_context(
 
     let price_list_id = Uuid::parse_str(price_list_id.trim())
         .map_err(|_| ServerFnError::new("Invalid price_list_id"))?;
-    validate_active_price_list_for_rule_update(&app_ctx.db, tenant.id, price_list_id).await?;
+    validate_active_price_list_for_rule_update(app_ctx.db(), tenant.id, price_list_id).await?;
     let adjustment_percent =
         parse_optional_decimal(&payload.adjustment_percent, "adjustment_percent")?;
     let service = PricingService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
+        app_ctx.db_clone(),
+        transactional_event_bus_from_runtime(app_ctx)?,
     );
     service
         .set_price_list_percentage_rule(tenant.id, auth.user_id, price_list_id, adjustment_percent)
@@ -688,7 +703,7 @@ async fn validate_active_price_list_for_rule_update(
 
 #[cfg(feature = "ssr")]
 async fn update_price_list_scope_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     price_list_id: String,
@@ -708,8 +723,8 @@ async fn update_price_list_scope_native_with_context(
     let channel_id = parse_optional_uuid(&payload.channel_id, "channel_id")?;
     let channel_slug = sanitize_channel_slug(text_or_none(payload.channel_slug));
     let service = PricingService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
+        app_ctx.db_clone(),
+        transactional_event_bus_from_runtime(app_ctx)?,
     );
 
     service
@@ -841,13 +856,12 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
         use rustok_pricing::PricingService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -866,10 +880,10 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
         )?;
 
         let service = PricingService::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+            app_ctx.db_clone(),
+            transactional_event_bus_from_runtime(&app_ctx)?,
         );
-        let channel_service = ChannelService::new(app_ctx.db.clone());
+        let channel_service = ChannelService::new(app_ctx.db_clone());
         let channel_slug = request_context
             .as_ref()
             .and_then(|ctx| sanitize_channel_slug(ctx.channel_slug.clone()));
@@ -918,10 +932,9 @@ async fn pricing_admin_active_price_lists_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -956,12 +969,11 @@ async fn pricing_admin_products_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_pricing::PricingService;
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -978,8 +990,8 @@ async fn pricing_admin_products_native(
         let requested_locale =
             resolve_requested_locale(Some(locale), None, tenant.default_locale.as_str());
         let service = PricingService::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+            app_ctx.db_clone(),
+            transactional_event_bus_from_runtime(&app_ctx)?,
         );
         let status = status
             .as_deref()
@@ -1031,12 +1043,11 @@ async fn pricing_admin_product_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_pricing::{PriceResolutionContext, PricingService};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1099,8 +1110,8 @@ async fn pricing_admin_product_native(
             }
         });
         let service = PricingService::new(
-            app_ctx.db.clone(),
-            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+            app_ctx.db_clone(),
+            transactional_event_bus_from_runtime(&app_ctx)?,
         );
         let product_id = parse_product_id(&product_id)?;
         let mut detail = match service
@@ -1161,10 +1172,9 @@ async fn pricing_admin_update_variant_price_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1195,10 +1205,9 @@ async fn pricing_admin_preview_variant_discount_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1226,10 +1235,9 @@ async fn pricing_admin_apply_variant_discount_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1257,10 +1265,9 @@ async fn pricing_admin_update_price_list_rule_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1288,10 +1295,9 @@ async fn pricing_admin_update_price_list_scope_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1320,24 +1326,17 @@ async fn pricing_admin_update_price_list_scope_native(
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
     use super::*;
-    use loco_rs::app::{AppContext, SharedStore};
-    use loco_rs::cache;
-    use loco_rs::environment::Environment;
-    use loco_rs::storage::{self, Storage};
-    use loco_rs::tests_cfg::config::test_config;
     use rustok_api::Permission;
-    use rustok_api::{AuthContext, TenantContext};
+    use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
     use rustok_commerce_foundation::dto::{
         CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
     };
-    use rustok_core::events::EventTransport;
     use rustok_product::CatalogService;
     use rustok_test_utils::db::setup_test_db;
-    use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};
+    use rustok_test_utils::mock_transactional_event_bus;
     use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter};
     use serde_json::json;
     use std::str::FromStr;
-    use std::sync::Arc;
 
     mod support {
         include!(concat!(
@@ -1346,21 +1345,8 @@ mod tests {
         ));
     }
 
-    fn test_app_context(db: sea_orm::DatabaseConnection) -> AppContext {
-        let shared_store = Arc::new(SharedStore::default());
-        let event_transport: Arc<dyn EventTransport> = Arc::new(MockEventTransport::new());
-        shared_store.insert(event_transport);
-
-        AppContext {
-            environment: Environment::Test,
-            db,
-            queue_provider: None,
-            config: test_config(),
-            mailer: None,
-            storage: Storage::single(storage::drivers::mem::new()).into(),
-            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
-            shared_store,
-        }
+    fn test_app_context(db: sea_orm::DatabaseConnection) -> HostRuntimeContext {
+        HostRuntimeContext::new(db).with_shared_value(mock_transactional_event_bus())
     }
 
     async fn seed_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {

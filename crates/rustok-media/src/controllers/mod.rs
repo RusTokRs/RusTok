@@ -1,12 +1,13 @@
+use anyhow::Context;
 use axum::{
     extract::{Multipart, Path, Query, State},
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, controller::Routes, Error, Result};
-use rustok_api::{AuthContext, TenantContext};
+use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
 use rustok_storage::StorageService;
 use rustok_telemetry::metrics;
+use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,7 +19,7 @@ use crate::{
 #[derive(Clone)]
 pub struct MediaHttpRuntime {
     db: sea_orm::DatabaseConnection,
-    storage: Option<StorageService>,
+    storage: StorageService,
 }
 
 impl MediaHttpRuntime {
@@ -26,33 +27,40 @@ impl MediaHttpRuntime {
         self.db.clone()
     }
 
-    fn storage(&self) -> Result<StorageService> {
-        self.storage.clone().ok_or(Error::InternalServerError)
+    fn storage(&self) -> StorageService {
+        self.storage.clone()
     }
 }
 
-impl axum::extract::FromRef<AppContext> for MediaHttpRuntime {
-    fn from_ref(input: &AppContext) -> Self {
-        Self {
-            db: input.db.clone(),
-            storage: input.shared_store.get::<StorageService>(),
-        }
+impl MediaHttpRuntime {
+    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+        let storage = runtime
+            .shared_get::<StorageService>()
+            .context("media HTTP routes require StorageService in HostRuntimeContext")?;
+        Ok(Self {
+            db: runtime.db_clone(),
+            storage,
+        })
     }
 }
 
-fn media_error(error: MediaError) -> Error {
+fn media_error(error: MediaError) -> HttpError {
     match error {
-        MediaError::NotFound(_) => Error::NotFound,
-        MediaError::Forbidden => Error::Unauthorized("Access denied".to_string()),
-        MediaError::UnsupportedMimeType(content_type) => {
-            Error::BadRequest(format!("Unsupported media type: {content_type}"))
+        MediaError::NotFound(_) => HttpError::not_found("media_not_found", "Media asset not found"),
+        MediaError::Forbidden => HttpError::unauthorized("media_access_denied", "Access denied"),
+        MediaError::UnsupportedMimeType(content_type) => HttpError::bad_request(
+            "unsupported_media_type",
+            format!("Unsupported media type: {content_type}"),
+        ),
+        MediaError::FileTooLarge { size, max } => HttpError::bad_request(
+            "media_file_too_large",
+            format!("File too large: {size} bytes (max {max} bytes)"),
+        ),
+        MediaError::Storage(error) => HttpError::internal(error.to_string()),
+        MediaError::Db(error) => HttpError::internal(error.to_string()),
+        MediaError::InvalidLocale(locale) => {
+            HttpError::bad_request("invalid_media_locale", format!("Invalid locale: {locale}"))
         }
-        MediaError::FileTooLarge { size, max } => {
-            Error::BadRequest(format!("File too large: {size} bytes (max {max} bytes)"))
-        }
-        MediaError::Storage(error) => Error::Message(error.to_string()),
-        MediaError::Db(error) => Error::Message(error.to_string()),
-        MediaError::InvalidLocale(locale) => Error::BadRequest(format!("Invalid locale: {locale}")),
     }
 }
 
@@ -80,14 +88,12 @@ pub async fn upload(
     tenant: TenantContext,
     auth: AuthContext,
     mut multipart: Multipart,
-) -> Result<(StatusCode, Json<MediaItem>)> {
-    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
+) -> HttpResult<(StatusCode, Json<MediaItem>)> {
+    let service = MediaService::new(runtime.db_clone(), runtime.storage());
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|error| Error::BadRequest(format!("Multipart error: {error}")))?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|error| {
+        HttpError::bad_request("media_bad_request", format!("Multipart error: {error}"))
+    })? {
         let field_name = field.name().unwrap_or("").to_string();
         if field_name != "file" {
             continue;
@@ -99,10 +105,12 @@ pub async fn upload(
             .unwrap_or("application/octet-stream")
             .to_string();
 
-        let data = field
-            .bytes()
-            .await
-            .map_err(|error| Error::BadRequest(format!("Failed to read upload: {error}")))?;
+        let data = field.bytes().await.map_err(|error| {
+            HttpError::bad_request(
+                "media_bad_request",
+                format!("Failed to read upload: {error}"),
+            )
+        })?;
 
         let item = service
             .upload(UploadInput {
@@ -119,7 +127,8 @@ pub async fn upload(
         return Ok((StatusCode::CREATED, Json(item)));
     }
 
-    Err(Error::BadRequest(
+    Err(HttpError::bad_request(
+        "media_bad_request",
         "No `file` field found in multipart body".to_string(),
     ))
 }
@@ -130,8 +139,8 @@ pub async fn list(
     tenant: TenantContext,
     _auth: AuthContext,
     Query(params): Query<ListParams>,
-) -> Result<Json<MediaListResponse>> {
-    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
+) -> HttpResult<Json<MediaListResponse>> {
+    let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let limit = params.limit.clamp(1, 100);
     let (items, total) = service
         .list(tenant.id, limit, params.offset)
@@ -147,8 +156,8 @@ pub async fn get_media(
     tenant: TenantContext,
     _auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<MediaItem>> {
-    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
+) -> HttpResult<Json<MediaItem>> {
+    let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let item = service.get(tenant.id, id).await.map_err(media_error)?;
     Ok(Json(item))
 }
@@ -159,8 +168,8 @@ pub async fn delete_media(
     tenant: TenantContext,
     _auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
-    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
+) -> HttpResult<StatusCode> {
+    let service = MediaService::new(runtime.db_clone(), runtime.storage());
     service.delete(tenant.id, id).await.map_err(media_error)?;
     metrics::record_media_delete(&tenant.id.to_string());
     Ok(StatusCode::NO_CONTENT)
@@ -173,8 +182,8 @@ pub async fn upsert_translation(
     _auth: AuthContext,
     Path((id, locale)): Path<(Uuid, String)>,
     Json(body): Json<UpsertTranslationInput>,
-) -> Result<Json<MediaTranslationItem>> {
-    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
+) -> HttpResult<Json<MediaTranslationItem>> {
+    let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let translation = service
         .upsert_translation(tenant.id, id, UpsertTranslationInput { locale, ..body })
         .await
@@ -183,12 +192,16 @@ pub async fn upsert_translation(
     Ok(Json(translation))
 }
 
-pub fn routes() -> Routes {
+pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
     use axum::routing::{get, put};
 
-    Routes::new()
-        .prefix("api/media")
-        .add("/", get(list).post(upload))
-        .add("/{id}", get(get_media).delete(delete_media))
-        .add("/{id}/translations/{locale}", put(upsert_translation))
+    let state = MediaHttpRuntime::from_host(runtime)?;
+    Ok(axum::Router::new()
+        .route("/api/media/", get(list).post(upload))
+        .route("/api/media/{id}", get(get_media).delete(delete_media))
+        .route(
+            "/api/media/{id}/translations/{locale}",
+            put(upsert_translation),
+        )
+        .with_state(state))
 }

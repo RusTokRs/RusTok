@@ -105,7 +105,7 @@
         "MediaImageDescriptor",
         "missing_image_alt",
         "missing_image_size",
-        "rustok-seo` не читает raw media blobs"
+        "rustok-seo` does not read raw media blobs"
       ]
     }
   ],

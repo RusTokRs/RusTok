@@ -100,6 +100,6 @@ The runtime provider anchors baseline fallback profiles in `src/rollout.rs`; con
 
 ## Related documents
 
-- `docs/modules/tiptap-page-builder-implementation-plan.md` — platform rollout plan for builder-first FBA;
+- `docs/modules/page-builder-implementation-plan.md` — platform rollout plan for builder-first FBA;
 - `docs/modules/manifest.md` — contract for `modules.toml` / `rustok-module.toml`;
 - `crates/rustok-pages/docs/implementation-plan.md` — consumer integration of `pages` with the reference builder module.

@@ -10,7 +10,7 @@ const contractPath = path.join(repoRoot, "crates", "rustok-page-builder", "contr
 const servicePath = path.join(repoRoot, "crates", "rustok-page-builder", "src", "service.rs");
 const readmePath = path.join(repoRoot, "crates", "rustok-page-builder", "docs", "README.md");
 const planPath = path.join(repoRoot, "crates", "rustok-page-builder", "docs", "implementation-plan.md");
-const centralPlanPath = path.join(repoRoot, "docs", "modules", "tiptap-page-builder-implementation-plan.md");
+const centralPlanPath = path.join(repoRoot, "docs", "modules", "page-builder-implementation-plan.md");
 
 function fail(message) {
   console.error(`[verify-page-builder-adapter-seams] ${message}`);

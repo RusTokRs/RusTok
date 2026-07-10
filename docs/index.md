@@ -64,7 +64,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
   - [Architecture Guide](./backend/module-backend-architecture.md) - backend ownership, runtime boundaries, foundation crates and FBA/CLI split
   - [Implementation Guide](./backend/module-backend-implementation.md) - crate layout, runtime helpers, transport adapters, ports and forbidden patterns
   - [Verification Guide](./backend/module-backend-verification.md) - fast guardrails, targeted Rust checks and FBA evidence
-- [Rich-text and Visual Page Builder Special Plan](./modules/tiptap-page-builder-implementation-plan.md)
+- [Rich Text Implementation Plan](./modules/rich-text-implementation-plan.md)
+- [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - AI support adapter plans for `rustok-ai-media` and `rustok-ai-alloy` are available through the [module documentation index](./modules/_index.md).
 
 ## UI and Client Surfaces
@@ -78,7 +79,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [SEO Runtime/Control-plane Contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
 - [SEO Operations Runbook](../crates/rustok-seo/docs/operations-runbook.md)
 - [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
-- [Rich-text and Visual Page Builder Track](./modules/tiptap-page-builder-implementation-plan.md)
+- [Rich Text Track](./modules/rich-text-implementation-plan.md)
+- [Page Builder Track](./modules/page-builder-implementation-plan.md)
 - [i18n Architecture](./architecture/i18n.md)
 - **Module UI Package Guides** (read the relevant one when working on `crates/rustok-*/admin` or `crates/rustok-*/storefront`):
   - [Architecture Guide](./UI/module-package-architecture.md) — FFA, `core/transport/ui` split, dual-path model, Dioxus-readiness

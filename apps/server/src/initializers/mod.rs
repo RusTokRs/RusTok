@@ -1,19 +1,8 @@
 //! # RusToK Server Initializers
 //!
-//! Third-party service initialization and setup.
-//! Run during application startup before routes are mounted.
-
-use loco_rs::{
-    app::{AppContext, Initializer},
-    Result,
-};
-use std::vec::Vec;
+//! Host-owned startup actions.
+//!
+//! These run explicitly from the server bootstrap instead of Loco initializer
+//! hooks, keeping lifecycle ordering visible to the host composition root.
 
 pub mod superadmin;
-
-/// Create and return all initializers
-pub async fn create(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
-    let initializers: Vec<Box<dyn Initializer>> = vec![Box::new(superadmin::SuperAdminInitializer)];
-
-    Ok(initializers)
-}

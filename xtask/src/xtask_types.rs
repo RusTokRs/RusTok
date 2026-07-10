@@ -126,6 +126,8 @@ pub(crate) struct ModuleHttpProvides {
     #[serde(default)]
     pub(crate) routes: Option<String>,
     #[serde(default)]
+    pub(crate) axum_router: Option<String>,
+    #[serde(default)]
     pub(crate) webhook_routes: Option<String>,
 }
 

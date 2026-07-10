@@ -117,7 +117,7 @@ if (arg === "pages") {
     "owner sign-off",
     "preview -> properties -> publish(dry)",
     "publish p95",
-    "<= 10 минут",
+    "<= 10 minutes",
     "npm run verify:page-builder:consumer:pages",
   ];
   for (const marker of rolloutPlanMarkers) {
@@ -155,7 +155,7 @@ if (arg === "forum") {
     "hidden",
     "degraded",
     "npm run verify:page-builder:consumer:forum",
-    "без 5xx",
+    "without 5xx",
     "fw2-fallback-static-matrix.json",
   ];
   for (const marker of forumPlanMarkers) {
@@ -187,8 +187,8 @@ if (arg === "forum") {
 
   const forumRolloutPlanMarkers = [
     "FW-4",
-    "SLO по времени отклика",
-    "<= 10 минут",
+    "SLO response-time",
+    "<= 10 minutes",
     "npm run verify:page-builder:consumer:forum",
     "list -> open -> preview -> save_draft -> publish_dry",
   ];

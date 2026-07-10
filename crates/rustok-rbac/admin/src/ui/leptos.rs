@@ -92,21 +92,22 @@ pub fn RbacAdmin() -> impl IntoView {
 
                                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                                     <h2 class="text-lg font-semibold text-card-foreground">
-                                        {t(locale.as_deref(), "rbac.surfaces.title", "Host Surfaces")}
+                                        {t(locale.as_deref(), "rbac.roles.title", "Built-in Roles")}
                                     </h2>
-                                    <div class="mt-4 flex flex-wrap gap-3">
-                                        {view_model
-                                            .host_surfaces
-                                            .into_iter()
-                                            .map(|surface| view! {
-                                                <a
-                                                    href=surface.href
-                                                    class="inline-flex items-center rounded-lg border border-border bg-background px-4 py-2 text-sm text-card-foreground transition hover:bg-muted"
-                                                >
-                                                    {surface.label}
-                                                </a>
-                                            })
-                                            .collect_view()}
+                                    <div class="mt-4 grid gap-3">
+                                        {view_model.roles.into_iter().map(|role| view! {
+                                            <div class="rounded-xl border border-border bg-background px-4 py-3">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <span class="font-medium text-card-foreground">{role.display_name}</span>
+                                                    <span class="font-mono text-xs text-muted-foreground">{role.slug}</span>
+                                                </div>
+                                                <div class="mt-2 flex flex-wrap gap-2">
+                                                    {role.permissions.into_iter().map(|permission| view! {
+                                                        <span class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{permission}</span>
+                                                    }).collect_view()}
+                                                </div>
+                                            </div>
+                                        }).collect_view()}
                                     </div>
                                 </section>
 

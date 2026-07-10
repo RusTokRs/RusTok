@@ -78,9 +78,13 @@ pub async fn fetch_canonical_route_server(
     locale: String,
     route: String,
 ) -> Result<Option<ResolvedCanonicalRoute>, ApiError> {
-    super::native_server_adapter::resolve_canonical_route(tenant_slug, locale, route)
-        .await
-        .map_err(ApiError::from)
+    super::canonical_route_native_server_adapter::resolve_canonical_route(
+        tenant_slug,
+        locale,
+        route,
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 pub async fn fetch_canonical_route_graphql(

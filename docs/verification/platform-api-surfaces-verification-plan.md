@@ -71,7 +71,7 @@ API surface verification must not break this separation.
 **No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` checks that modules with `[provides.http]` are read from package manifests and reflected in the central registry.
 
 - [ ] Module HTTP routes are consistent with `rustok-module.toml`, if the module publishes a transport surface.
-- [x] The host application only mounts routing, not becomes the owner of module transport logic via the generated `append_optional_module_routes` path.
+- [x] The host application only mounts routing, not becomes the owner of module transport logic via generated legacy-route and Axum-router composition paths. A manifest-declared `axum_router` is mutually exclusive with legacy `routes`.
 - [ ] Presence of a controller-path without a manifest/doc contract is not considered completed wiring.
 
 ## Phase 3. `#[server]` Contract

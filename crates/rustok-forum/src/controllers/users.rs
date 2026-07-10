@@ -2,9 +2,9 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{ForumUserStatsResponse, UserStatsService};
@@ -25,7 +25,7 @@ pub async fn get_user_stats(
     tenant: TenantContext,
     auth: AuthContext,
     Path(user_id): Path<Uuid>,
-) -> Result<Json<ForumUserStatsResponse>> {
+) -> HttpResult<Json<ForumUserStatsResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -42,7 +42,7 @@ pub async fn get_user_stats(
             user_id,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(stats))
 }
 
@@ -50,9 +50,12 @@ fn ensure_forum_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(HttpError::unauthorized(
+            "forum_permission_denied",
+            message.to_string(),
+        ));
     }
 
     Ok(())

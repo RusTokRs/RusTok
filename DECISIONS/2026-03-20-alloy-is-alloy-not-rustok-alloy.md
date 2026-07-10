@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [Single Alloy Capability Module](./2026-03-29-single-alloy-capability-module.md)
 
 ## Context
 

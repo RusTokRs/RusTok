@@ -16,7 +16,7 @@ query = "graphql::MediaQuery"
 mutation = "graphql::MediaMutation"
 
 [provides.http]
-routes = "controllers::routes"
+axum_router = "controllers::axum_router"
 
 [provides.cli]
 namespace = "media"

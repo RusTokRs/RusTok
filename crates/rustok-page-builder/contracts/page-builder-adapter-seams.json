@@ -68,6 +68,6 @@
   "docs": [
     "crates/rustok-page-builder/docs/implementation-plan.md",
     "crates/rustok-page-builder/docs/README.md",
-    "docs/modules/tiptap-page-builder-implementation-plan.md"
+    "docs/modules/page-builder-implementation-plan.md"
   ]
 }

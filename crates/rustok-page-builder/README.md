@@ -17,4 +17,4 @@ It defines capability-first contracts and lifecycle seams for visual page compos
 
 ## Interactions
 - consumed by `rustok-pages` and other potential layout/content modules as builder capability consumers;
-- aligned with central rollout plan in `docs/modules/tiptap-page-builder-implementation-plan.md`.
+- aligned with central rollout plan in `docs/modules/page-builder-implementation-plan.md`.

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use axum::Router as AxumRouter;
 use loco_rs::{
-    app::{AppContext, Hooks, Initializer},
+    app::{AppContext, Hooks},
     boot::{create_app, BootResult, StartMode},
     config::Config,
     environment::Environment,
@@ -26,10 +26,6 @@ use loco_rs::prelude::Queue;
 
 use crate::error::Error;
 use migration::Migrator;
-
-mod routes_codegen {
-    include!(concat!(env!("OUT_DIR"), "/app_routes_codegen.rs"));
-}
 
 pub struct App;
 
@@ -73,6 +69,11 @@ impl Hooks for App {
 
     async fn after_context(mut ctx: AppContext) -> Result<AppContext> {
         check_production_secrets(&ctx)?;
+        let runtime_ctx =
+            crate::services::server_runtime_context::ServerRuntimeContext::from_loco_app_context(
+                &ctx,
+            );
+        initializers::superadmin::ensure_default_superadmin(&runtime_ctx).await?;
 
         // Initialise Loco's ctx.mailer when email.provider = "loco".
         // This must happen before after_routes so every request handler
@@ -153,7 +154,7 @@ impl Hooks for App {
         let mut routes = if registry_only {
             routes
         } else {
-            routes_codegen::append_optional_module_routes(routes)
+            crate::services::app_router::routes_codegen::append_optional_module_routes(routes)
         };
 
         if !registry_only {
@@ -172,7 +173,7 @@ impl Hooks for App {
         connect_runtime_workers(ctx).await?;
         tracing::info!("RusTok runtime workers connected");
 
-        let router = compose_application_router(router, ctx, runtime, &rustok_settings);
+        let router = compose_application_router(router, ctx, runtime, &rustok_settings)?;
         tracing::info!("RusTok application router composed");
 
         Ok(router)
@@ -214,10 +215,6 @@ impl Hooks for App {
 
     fn register_tasks(tasks: &mut Tasks) {
         tasks::register(tasks);
-    }
-
-    async fn initializers(ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
-        initializers::create(ctx).await
     }
 
     async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {

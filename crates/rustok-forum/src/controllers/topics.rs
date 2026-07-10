@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_telemetry::metrics;
+use rustok_web::{HttpError, HttpResult};
 use serde::Deserialize;
 use std::time::Instant;
 use utoipa::{IntoParams, ToSchema};
@@ -69,7 +69,7 @@ pub async fn list_topics(
     auth: AuthContext,
     request_context: RequestContext,
     Query(mut filter): Query<ListTopicsFilter>,
-) -> Result<Json<Vec<TopicListItem>>> {
+) -> HttpResult<Json<Vec<TopicListItem>>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_LIST],
@@ -93,7 +93,7 @@ pub async fn list_topics(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     metrics::record_read_path_query(
         "http",
         "forum.list_topics",
@@ -156,7 +156,7 @@ pub async fn get_topic(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Query(filter): Query<ListTopicsFilter>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -179,7 +179,7 @@ pub async fn get_topic(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -200,7 +200,7 @@ pub async fn create_topic(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateTopicInput>,
-) -> Result<(StatusCode, Json<TopicResponse>)> {
+) -> HttpResult<(StatusCode, Json<TopicResponse>)> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_CREATE],
@@ -218,7 +218,7 @@ pub async fn create_topic(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(topic)))
 }
 
@@ -241,7 +241,7 @@ pub async fn update_topic(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateTopicInput>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_UPDATE],
@@ -260,7 +260,7 @@ pub async fn update_topic(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -281,7 +281,7 @@ pub async fn delete_topic(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_DELETE],
@@ -299,7 +299,7 @@ pub async fn delete_topic(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -323,7 +323,7 @@ pub async fn mark_topic_solution(
     auth: AuthContext,
     request_context: RequestContext,
     Path((topic_id, reply_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[
@@ -346,7 +346,7 @@ pub async fn mark_topic_solution(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = TopicService::new(runtime.db_clone(), event_bus);
     let topic = service
@@ -361,7 +361,7 @@ pub async fn mark_topic_solution(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -382,7 +382,7 @@ pub async fn clear_topic_solution(
     auth: AuthContext,
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[
@@ -404,7 +404,7 @@ pub async fn clear_topic_solution(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = TopicService::new(runtime.db_clone(), event_bus);
     let topic = service
@@ -419,7 +419,7 @@ pub async fn clear_topic_solution(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -443,7 +443,7 @@ pub async fn set_topic_vote(
     auth: AuthContext,
     request_context: RequestContext,
     Path((topic_id, value)): Path<(Uuid, i32)>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -461,7 +461,7 @@ pub async fn set_topic_vote(
             value,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
     let topic = service
@@ -476,7 +476,7 @@ pub async fn set_topic_vote(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -497,7 +497,7 @@ pub async fn clear_topic_vote(
     auth: AuthContext,
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -514,7 +514,7 @@ pub async fn clear_topic_vote(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
     let topic = service
@@ -529,7 +529,7 @@ pub async fn clear_topic_vote(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -550,7 +550,7 @@ pub async fn subscribe_topic(
     auth: AuthContext,
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -567,7 +567,7 @@ pub async fn subscribe_topic(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
     let topic = service
@@ -582,7 +582,7 @@ pub async fn subscribe_topic(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -603,7 +603,7 @@ pub async fn unsubscribe_topic(
     auth: AuthContext,
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
-) -> Result<Json<TopicResponse>> {
+) -> HttpResult<Json<TopicResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -620,7 +620,7 @@ pub async fn unsubscribe_topic(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
     let topic = service
@@ -635,7 +635,7 @@ pub async fn unsubscribe_topic(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(topic))
 }
 
@@ -643,9 +643,12 @@ fn ensure_forum_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(HttpError::unauthorized(
+            "forum_permission_denied",
+            message.to_string(),
+        ));
     }
 
     Ok(())

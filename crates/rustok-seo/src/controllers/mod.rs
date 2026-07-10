@@ -9,13 +9,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use loco_rs::{app::AppContext, controller::Routes};
 use rustok_api::{
-    graphql::ErrorCode, has_any_effective_permission, AuthContext, Permission, RequestContext,
-    TenantContext,
+    graphql::ErrorCode, has_any_effective_permission, AuthContext, HostRuntimeContext, Permission,
+    RequestContext, TenantContext,
 };
 use rustok_core::ModuleRuntimeExtensions;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -75,34 +74,41 @@ pub type SeoHttpResult<T> = std::result::Result<T, SeoHttpError>;
 pub struct SeoHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
-    extensions: Option<Arc<ModuleRuntimeExtensions>>,
+    extensions: Arc<ModuleRuntimeExtensions>,
 }
 
 impl SeoHttpRuntime {
     fn service(&self) -> SeoHttpResult<SeoService> {
-        let extensions = self.extensions.as_ref().ok_or_else(|| {
-            map_seo_http_error(SeoError::configuration(
-                "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
-            ))
-        })?;
-
         SeoService::from_runtime_extensions(
             self.db.clone(),
             self.event_bus.clone(),
-            extensions.as_ref(),
+            self.extensions.as_ref(),
         )
         .map_err(map_seo_http_error)
     }
 }
 
-impl axum::extract::FromRef<AppContext> for SeoHttpRuntime {
-    fn from_ref(input: &AppContext) -> Self {
-        let transport = Arc::new(OutboxTransport::new(input.db.clone()));
-        Self {
-            db: input.db.clone(),
-            event_bus: TransactionalEventBus::new(transport),
-            extensions: input.shared_store.get::<Arc<ModuleRuntimeExtensions>>(),
-        }
+impl SeoHttpRuntime {
+    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+        let event_bus = runtime
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "SEO HTTP routes require TransactionalEventBus in HostRuntimeContext"
+                )
+            })?;
+        let extensions = runtime
+            .shared_get::<Arc<ModuleRuntimeExtensions>>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "SEO HTTP routes require ModuleRuntimeExtensions in HostRuntimeContext"
+                )
+            })?;
+        Ok(Self {
+            db: runtime.db_clone(),
+            event_bus,
+            extensions,
+        })
     }
 }
 
@@ -503,32 +509,34 @@ pub async fn cross_link_suggestions_json(
     Ok(Json(suggestions))
 }
 
-pub fn routes() -> Routes {
+pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
     use axum::routing::get;
 
-    Routes::new()
-        .add("/robots.txt", get(robots_txt))
-        .add("/sitemap.xml", get(sitemap_index))
-        .add("/sitemaps/{name}", get(sitemap_file))
+    let state = SeoHttpRuntime::from_host(runtime)?;
+    Ok(axum::Router::new()
+        .route("/robots.txt", get(robots_txt))
+        .route("/sitemap.xml", get(sitemap_index))
+        .route("/sitemaps/{name}", get(sitemap_file))
         .nest("/api/seo", api_routes())
+        .with_state(state))
 }
 
-fn api_routes() -> Routes {
+fn api_routes() -> axum::Router<SeoHttpRuntime> {
     use axum::routing::{get, post};
 
-    Routes::new()
-        .add("/page-context", get(page_context_json))
-        .add("/diagnostics", get(diagnostics_json))
-        .add("/targets", get(targets_json))
-        .add("/cross-link-suggestions", get(cross_link_suggestions_json))
-        .add("/sitemaps/status", get(sitemap_status_json))
-        .add("/sitemaps/jobs", get(sitemap_jobs_json))
-        .add("/sitemaps/jobs/{job_id}", get(sitemap_job_json))
-        .add("/bulk/jobs", get(bulk_jobs_json))
-        .add("/bulk/jobs/{job_id}", get(bulk_job_json))
-        .add("/index/tracking", get(index_tracking_json))
-        .add("/index/repair-replay", post(index_repair_replay_json))
-        .add(
+    axum::Router::new()
+        .route("/page-context", get(page_context_json))
+        .route("/diagnostics", get(diagnostics_json))
+        .route("/targets", get(targets_json))
+        .route("/cross-link-suggestions", get(cross_link_suggestions_json))
+        .route("/sitemaps/status", get(sitemap_status_json))
+        .route("/sitemaps/jobs", get(sitemap_jobs_json))
+        .route("/sitemaps/jobs/{job_id}", get(sitemap_job_json))
+        .route("/bulk/jobs", get(bulk_jobs_json))
+        .route("/bulk/jobs/{job_id}", get(bulk_job_json))
+        .route("/index/tracking", get(index_tracking_json))
+        .route("/index/repair-replay", post(index_repair_replay_json))
+        .route(
             "/bulk/jobs/{job_id}/artifacts/{artifact_id}",
             get(bulk_artifact_download),
         )

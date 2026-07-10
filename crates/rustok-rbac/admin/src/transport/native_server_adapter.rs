@@ -1,15 +1,15 @@
 use leptos::prelude::*;
 
-use crate::model::RbacAdminBootstrap;
 #[cfg(feature = "ssr")]
-use crate::model::{RbacHostSurfaceLink, RbacModulePermissionGroup};
+use crate::model::RbacModulePermissionGroup;
+use crate::model::{RbacAdminBootstrap, RbacRoleInfo};
 
 #[server(prefix = "/api/fn", endpoint = "rbac/bootstrap")]
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::{infer_user_role_from_permissions, ModuleRegistry};
+        use rustok_core::{infer_user_role_from_permissions, ModuleRegistry, Rbac, UserRole};
 
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -50,22 +50,40 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
         granted_permissions.sort();
         granted_permissions.dedup();
 
+        let roles = [
+            UserRole::SuperAdmin,
+            UserRole::Admin,
+            UserRole::Manager,
+            UserRole::Customer,
+        ]
+        .into_iter()
+        .map(|role| {
+            let mut permissions = Rbac::permissions_for_role(&role)
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            permissions.sort();
+            RbacRoleInfo {
+                slug: role.to_string(),
+                display_name: match role {
+                    UserRole::SuperAdmin => "Super Admin",
+                    UserRole::Admin => "Admin",
+                    UserRole::Manager => "Manager",
+                    UserRole::Customer => "Customer",
+                }
+                .to_string(),
+                permissions,
+            }
+        })
+        .collect();
+
         Ok(RbacAdminBootstrap {
             tenant_slug: tenant.slug,
             current_user_id: auth.user_id.to_string(),
             inferred_role: format!("{:?}", infer_user_role_from_permissions(&auth.permissions)),
             granted_permissions,
             module_permissions,
-            host_surfaces: vec![
-                RbacHostSurfaceLink {
-                    label: "Roles".to_string(),
-                    href: "/roles".to_string(),
-                },
-                RbacHostSurfaceLink {
-                    label: "Users".to_string(),
-                    href: "/users".to_string(),
-                },
-            ],
+            roles,
         })
     }
     #[cfg(not(feature = "ssr"))]

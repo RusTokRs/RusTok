@@ -2,9 +2,9 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{posts::ensure_blog_permission, BlogHttpRuntime};
@@ -33,7 +33,7 @@ pub async fn moderate_comment(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(mut input): Json<ModerateCommentInput>,
-) -> Result<Json<CommentResponse>> {
+) -> HttpResult<Json<CommentResponse>> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_MANAGE],
@@ -62,7 +62,7 @@ pub async fn moderate_comment(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_moderate_comment_failed", err.to_string()))?;
 
     Ok(Json(comment))
 }

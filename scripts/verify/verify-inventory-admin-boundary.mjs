@@ -327,7 +327,7 @@ function assertInventoryDocsBoundaryEvidence() {
 
   assertContains(
     plan,
-    "- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations",
+    "Inventory admin stock operations are owned by native/transport mutations",
     `${planPath}: implementation plan must mark current inventory admin stock operations as native/transport covered`,
   );
   assertContains(

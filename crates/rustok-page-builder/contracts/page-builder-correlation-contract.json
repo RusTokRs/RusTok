@@ -56,7 +56,7 @@
     }
   ],
   "docs": [
-    "docs/modules/tiptap-page-builder-implementation-plan.md",
+    "docs/modules/page-builder-implementation-plan.md",
     "crates/rustok-page-builder/docs/implementation-plan.md",
     "crates/rustok-pages/docs/implementation-plan.md"
   ]

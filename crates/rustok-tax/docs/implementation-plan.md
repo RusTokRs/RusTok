@@ -1,4 +1,4 @@
-﻿# Implementation plan for `rustok-tax`
+# Implementation plan for `rustok-tax`
 
 Status: FBA provider boundary in progress.
 

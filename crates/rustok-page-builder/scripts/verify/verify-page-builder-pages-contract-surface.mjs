@@ -80,7 +80,7 @@ const checks = [
     file: "crates/rustok-pages/docs/implementation-plan.md",
     label: "local implementation plan contract-surface sync",
     tokens: [
-      "контрактные тесты покрывают все публичные use-case",
+      "Contract tests cover all public use cases",
       "verify-page-builder-pages-contract-surface.mjs",
       "contract surface maintenance update",
     ],

@@ -54,27 +54,6 @@
 - Last verified at (UTC): 2026-06-30T14:34:52Z
 - Owner: `rustok-commerce` module team
 
-## Document status
-
-This document captures the current roadmap of the umbrella module `rustok-commerce` after abandoning the legacy REST surface `/api/commerce/*` and after the appearance of the platform-level `rustok-channel`.
-
-This roadmap update was performed on April 8, 2026: the UI split of the ecommerce family
-has moved from a purely planned state to an active execution phase, because `product`
-already received its own module-owned admin route, shipping options moved to
-`fulfillment`, order operations moved to `order`, inventory visibility and targeted stock/reservation/availability actions moved to
-`inventory`, pricing visibility moved to `pricing`, customer operations moved
-to `customer`, region CRUD moved to `region`, and the aggregate `commerce` UI is cleaned up to
-typed shipping-profile registry plus aggregate cart-promotion operator surface.
-
-Original assumptions:
-
-- the live REST contract for ecommerce lives at `/store/*` and `/admin/*`;
-- GraphQL remains a supported transport layer;
-- `rustok-commerce` continues to play the role of the root umbrella module for the ecommerce family;
-- the base split into `cart/customer/product/region/pricing/inventory/order/payment/fulfillment` is already done and deepening;
-- a separate sales-channel domain in `commerce` is not needed: the platform already has `rustok-channel`, and ecommerce should become channel-aware over it, not duplicate its model.
-
-
 ## FFA transition (FBA deferred alignment track)
 
 Status: `in progress`
@@ -760,10 +739,3 @@ Release gates:
 5. Any schema changes go through i18n audit: localized strings are not stored in base tables, display fields live only in `*_translations`.
 6. Module-owned UI packages do not introduce package-local locale override: write-side uses the host-provided effective locale, and edit/detail hydration resolves translations by the same locale, with fallback only after an exact locale match attempt.
 7. Read-side/runtime helpers do not compare locale by raw string: localized data resolution goes through shared locale normalization and a single fallback chain `requested -> tenant default -> first available`.
-
-
-## Quality backlog
-
-- [x] Update test coverage for key module scenarios.
-- [x] Verify completeness and currency of `README.md` and local docs.
-- [x] Lock/update verification gates for current module state.

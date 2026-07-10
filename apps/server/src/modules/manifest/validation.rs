@@ -375,8 +375,18 @@ pub fn merge_module_package_manifest(
         }
     }
     if let Some(http) = package_manifest.provides.http {
+        if http.routes.is_some() && http.axum_router.is_some() {
+            anyhow::bail!(
+                "Module package [provides.http] cannot declare both routes and axum_router"
+            );
+        }
         if let Some(routes_fn) = qualify_module_member_path(&crate_name, http.routes.as_deref()) {
             spec.http_routes_fn = Some(routes_fn);
+        }
+        if let Some(axum_router_fn) =
+            qualify_module_member_path(&crate_name, http.axum_router.as_deref())
+        {
+            spec.http_axum_router_fn = Some(axum_router_fn);
         }
         if let Some(webhook_routes_fn) =
             qualify_module_member_path(&crate_name, http.webhook_routes.as_deref())

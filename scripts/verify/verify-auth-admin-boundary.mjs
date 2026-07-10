@@ -264,7 +264,7 @@ for (const marker of ["err_str.contains(\"Unauthorized\")", "err_str.contains(\"
 assertContains(securityUi, "prepare_change_password_request", `${securityUiPath}: security UI must consume core change-password request helper`);
 assertNotContains(securityUi, "current_password.get().is_empty()", `${securityUiPath}: password validation must remain core-owned`);
 
-for (const marker of ["include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "resolve_ui_message_or_fallback"]) {
+for (const marker of ["include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "MESSAGES.t_for_locale"]) {
   assertContains(i18n, marker, `${i18nPath}: missing host-locale catalog marker ${marker}`);
 }
 assertContains(i18n, "auth_transport_error_message", `${i18nPath}: missing shared localized transport-error mapping`);

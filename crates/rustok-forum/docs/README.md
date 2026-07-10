@@ -8,7 +8,7 @@ boundary, not reverting back to the shared storage model.
 
 - publish the canonical forum runtime contract for categories, topics, replies and moderation;
 - keep forum-owned transport surfaces, Q&A capabilities and UI packages inside the module;
-- keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles; the current Loco `AppContext` remains only in the route-state adapter until full Axum cutover;
+- keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a Loco adapter;
 - evolve the forum as a taxonomy-aware and channel-aware domain with an explicit observability surface.
 
 ## Scope

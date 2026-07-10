@@ -1,5 +1,5 @@
 use crate::i18n::t;
-use crate::model::{RbacAdminBootstrap, RbacHostSurfaceLink, RbacModulePermissionGroup};
+use crate::model::{RbacAdminBootstrap, RbacModulePermissionGroup, RbacRoleInfo};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RbacInfoCardViewModel {
@@ -19,7 +19,7 @@ pub struct RbacPermissionsSectionViewModel {
 pub struct RbacAdminOverviewViewModel {
     pub info_cards: Vec<RbacInfoCardViewModel>,
     pub granted_permissions: RbacPermissionsSectionViewModel,
-    pub host_surfaces: Vec<RbacHostSurfaceLink>,
+    pub roles: Vec<RbacRoleInfo>,
     pub module_permissions: Vec<RbacModulePermissionGroup>,
 }
 
@@ -57,7 +57,7 @@ pub fn build_rbac_admin_overview_view_model(
             ),
             permissions: bootstrap.granted_permissions,
         },
-        host_surfaces: bootstrap.host_surfaces,
+        roles: bootstrap.roles,
         module_permissions: bootstrap.module_permissions,
     }
 }
@@ -93,9 +93,10 @@ mod tests {
                     module_slug: "catalog".to_string(),
                     permissions: vec!["catalog.read".to_string()],
                 }],
-                host_surfaces: vec![RbacHostSurfaceLink {
-                    label: "Roles".to_string(),
-                    href: "/roles".to_string(),
+                roles: vec![RbacRoleInfo {
+                    slug: "admin".to_string(),
+                    display_name: "Admin".to_string(),
+                    permissions: vec!["settings:read".to_string()],
                 }],
             },
         );
@@ -106,6 +107,6 @@ mod tests {
         assert_eq!(view_model.granted_permissions.count_label, "2 permissions");
         assert_eq!(view_model.granted_permissions.permissions.len(), 2);
         assert_eq!(view_model.module_permissions[0].module_slug, "catalog");
-        assert_eq!(view_model.host_surfaces[0].href, "/roles");
+        assert_eq!(view_model.roles[0].slug, "admin");
     }
 }

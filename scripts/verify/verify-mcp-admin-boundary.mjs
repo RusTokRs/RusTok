@@ -303,7 +303,7 @@ for (const marker of [
 }
 
 assertContains(mcpPlan, "mcp_admin_owner_ui_slice", `${mcpPlanPath}: plan must record MCP owner UI checkpoint`);
-assertContains(mcpPlan, "## FFA/FBA status", `${mcpPlanPath}: plan must include FFA/FBA status`);
+assertContains(mcpPlan, "## FFA/FBA boundary", `${mcpPlanPath}: plan must include FFA/FBA status`);
 assertContains(centralRegistry, "| `rustok-mcp` | admin + Next admin |", `${centralRegistryPath}: readiness board must include MCP admin UI row`);
 
 if (failures.length > 0) {

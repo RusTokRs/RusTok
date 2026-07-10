@@ -27,6 +27,9 @@ The first host-level FFA slice has already been applied to the storefront header
 `src/widgets/header/core.rs` without Leptos dependencies, while `header/mod.rs` remains the Leptos
 render adapter. This split is enforced by the fast verifier `npm run verify:frontend:host-ffa-contract`.
 
+Host context server functions are split by concern: enabled-module and canonical-route adapters live
+next to their context contracts, while the remaining shared context adapter owns only SEO page context.
+
 ## Responsibility boundaries
 
 - own the Leptos storefront host and its SSR/runtime wiring;

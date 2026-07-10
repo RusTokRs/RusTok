@@ -101,7 +101,8 @@ Current Leptos host-level FFA slices are enforced by the fast gate
 - [GraphQL Architecture](./graphql-architecture.md)
 - [Admin ↔ Server Quickstart](./admin-server-connection-quickstart.md)
 - [Rust UI Component Catalog](./rust-ui-component-catalog.md)
-- [Rich-text and Visual Page Builder Track](../modules/tiptap-page-builder-implementation-plan.md)
+- [Rich Text Track](../modules/rich-text-implementation-plan.md)
+- [Page Builder Track](../modules/page-builder-implementation-plan.md)
 
 ### Module UI Package Guides
 

@@ -412,8 +412,8 @@ for (const marker of [
 
 for (const marker of [
   'DB-level tenant consistency audit',
-  '[x] Normalize remaining legacy product locale columns to `VARCHAR(32)`',
-  '[x] Connect storefront/admin UI controls to optional catalog filters/sorts.',
+  '`VARCHAR(32)` locale storage',
+  'optional catalog filters/sorts',
   '`VARCHAR(32)`',
   'detached-value marker contract',
   'no-compile schema guardrail',

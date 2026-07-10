@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
+use rustok_api::HostRuntimeContext;
+#[cfg(feature = "ssr")]
 use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -196,7 +198,7 @@ fn normalize_source_id(value: &str) -> Result<String, ServerFnError> {
 
 #[cfg(feature = "ssr")]
 async fn preview_cart_promotion_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     cart_id: String,
@@ -214,7 +216,7 @@ async fn preview_cart_promotion_native_with_context(
     let cart_id = parse_cart_id(&cart_id)?;
     let line_item_id = parse_optional_line_item_id(&payload.line_item_id, &payload.scope)?;
     let source_id = normalize_source_id(&payload.source_id)?;
-    let service = CartService::new(app_ctx.db.clone());
+    let service = CartService::new(app_ctx.db_clone());
 
     let preview = match payload.kind {
         CommerceCartPromotionKind::PercentageDiscount => {
@@ -280,7 +282,7 @@ async fn preview_cart_promotion_native_with_context(
 
 #[cfg(feature = "ssr")]
 async fn apply_cart_promotion_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     cart_id: String,
@@ -299,7 +301,7 @@ async fn apply_cart_promotion_native_with_context(
     let line_item_id = parse_optional_line_item_id(&payload.line_item_id, &payload.scope)?;
     let source_id = normalize_source_id(&payload.source_id)?;
     let metadata = parse_metadata_json(&payload.metadata_json)?;
-    let service = CartService::new(app_ctx.db.clone());
+    let service = CartService::new(app_ctx.db_clone());
 
     let cart = match payload.kind {
         CommerceCartPromotionKind::PercentageDiscount => {
@@ -385,11 +387,20 @@ fn parse_optional_uuid(
 }
 
 #[cfg(feature = "ssr")]
-fn order_service_from_context(app_ctx: &loco_rs::app::AppContext) -> rustok_order::OrderService {
-    rustok_order::OrderService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
-    )
+fn order_service_from_context(
+    runtime_ctx: &HostRuntimeContext,
+) -> Result<rustok_order::OrderService, ServerFnError> {
+    let event_bus = runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            ServerFnError::new(
+                "Commerce admin requires TransactionalEventBus in host runtime context",
+            )
+        })?;
+    Ok(rustok_order::OrderService::new(
+        runtime_ctx.db_clone(),
+        event_bus,
+    ))
 }
 
 #[cfg(feature = "ssr")]
@@ -413,7 +424,7 @@ fn map_order_change(change: rustok_order::dto::OrderChangeResponse) -> CommerceO
 
 #[cfg(feature = "ssr")]
 async fn fetch_order_changes_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     tenant_id: String,
@@ -434,7 +445,7 @@ async fn fetch_order_changes_native_with_context(
         ));
     }
 
-    let (items, total) = order_service_from_context(app_ctx)
+    let (items, total) = order_service_from_context(app_ctx)?
         .list_order_changes(
             tenant.id,
             rustok_order::dto::ListOrderChangesInput {
@@ -459,7 +470,7 @@ async fn fetch_order_changes_native_with_context(
 
 #[cfg(feature = "ssr")]
 async fn apply_order_change_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     tenant_id: String,
@@ -480,7 +491,7 @@ async fn apply_order_change_native_with_context(
         ));
     }
 
-    let change = order_service_from_context(app_ctx)
+    let change = order_service_from_context(app_ctx)?
         .apply_order_change(
             tenant.id,
             parse_uuid(id.as_str(), "order_change_id")?,
@@ -496,7 +507,7 @@ async fn apply_order_change_native_with_context(
 
 #[cfg(feature = "ssr")]
 async fn cancel_order_change_native_with_context(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     tenant_id: String,
@@ -517,7 +528,7 @@ async fn cancel_order_change_native_with_context(
         ));
     }
 
-    let change = order_service_from_context(app_ctx)
+    let change = order_service_from_context(app_ctx)?
         .cancel_order_change(
             tenant.id,
             parse_uuid(id.as_str(), "order_change_id")?,
@@ -593,10 +604,9 @@ async fn commerce_admin_order_changes_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -627,10 +637,9 @@ async fn commerce_admin_apply_order_change_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -658,10 +667,9 @@ async fn commerce_admin_cancel_order_change_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -689,10 +697,9 @@ async fn commerce_admin_preview_cart_promotion_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -719,10 +726,9 @@ async fn commerce_admin_apply_cart_promotion_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -744,23 +750,16 @@ async fn commerce_admin_apply_cart_promotion_native(
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
     use super::*;
-    use loco_rs::app::{AppContext, SharedStore};
-    use loco_rs::cache;
-    use loco_rs::environment::Environment;
-    use loco_rs::storage::{self, Storage};
-    use loco_rs::tests_cfg::config::test_config;
     use rustok_api::Permission;
-    use rustok_api::{AuthContext, TenantContext};
+    use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
     use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
     use rustok_cart::CartService;
-    use rustok_core::events::EventTransport;
     use rustok_fulfillment::dto::CreateShippingOptionInput;
     use rustok_fulfillment::FulfillmentService;
     use rustok_order::dto::{CreateOrderChangeInput, CreateOrderInput, CreateOrderLineItemInput};
     use rustok_test_utils::db::setup_test_db;
-    use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};
+    use rustok_test_utils::mock_transactional_event_bus;
     use serde_json::json;
-    use std::sync::Arc;
 
     mod support {
         include!(concat!(
@@ -769,21 +768,8 @@ mod tests {
         ));
     }
 
-    fn test_app_context(db: sea_orm::DatabaseConnection) -> AppContext {
-        let shared_store = Arc::new(SharedStore::default());
-        let event_transport: Arc<dyn EventTransport> = Arc::new(MockEventTransport::new());
-        shared_store.insert(event_transport);
-
-        AppContext {
-            environment: Environment::Test,
-            db,
-            queue_provider: None,
-            config: test_config(),
-            mailer: None,
-            storage: Storage::single(storage::drivers::mem::new()).into(),
-            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
-            shared_store,
-        }
+    fn test_app_context(db: sea_orm::DatabaseConnection) -> HostRuntimeContext {
+        HostRuntimeContext::new(db).with_shared_value(mock_transactional_event_bus())
     }
 
     fn test_tenant() -> TenantContext {

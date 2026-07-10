@@ -584,15 +584,7 @@ fn map_result_item(value: rustok_search::SearchResultItem) -> SearchPreviewResul
 fn derive_search_result_url(value: &rustok_search::SearchResultItem) -> Option<String> {
     match value.entity_type.as_str() {
         "product" => Some(format!("/store/products/{}", value.id)),
-        "node" => Some(format!(
-            "/modules/content?id={}{}",
-            value.id,
-            if value.source_module.is_empty() || value.source_module == "content" {
-                String::new()
-            } else {
-                format!("&kind={}", value.source_module)
-            }
-        )),
+        "node" => None,
         _ => None,
     }
 }

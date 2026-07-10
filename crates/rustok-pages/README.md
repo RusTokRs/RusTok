@@ -10,7 +10,7 @@
 - Own page storage across `pages`, `page_translations`, `page_bodies`, `page_blocks`, and `page_channel_visibility`.
 - Own menu storage across `menus`, `menu_translations`, `menu_items`, and `menu_item_translations`.
 - Own the Pages GraphQL and REST adapters exported from the module crate.
-- Keep REST page/block handlers on narrow `PagesHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
+- Keep REST page/block handlers on narrow `PagesHttpRuntime` state; the manifest-declared Axum router builds it from `HostRuntimeContext` and a typed transactional event bus.
 - Publish the module-owned Leptos admin and storefront root packages.
 - Keep one real module-owned Leptos vertical slice for pages list/create/edit/update/publish/delete
   in admin and slug-driven published-page rendering in storefront.
@@ -23,7 +23,7 @@
 - Depends on `rustok-channel` for the first public channel-aware gating proof point on pages read paths and typed page-level channel visibility via `channelSlugs`.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request/GraphQL helper contracts.
-- Used by `apps/server` as a composition-root dependency; server now re-exports module-owned pages GraphQL and REST entry points.
+- Used by `apps/server` as a composition-root dependency; generated composition merges its module-owned Axum router and GraphQL entry points.
 - Used by `apps/admin` through `rustok-pages-admin` and by `apps/storefront` through `rustok-pages-storefront`.
 - Pages GraphQL now defaults tenant resolution from `TenantContext`, so module-owned UI packages do
   not need to carry tenant UUIDs through the host boundary.
@@ -57,7 +57,7 @@
 - `MenuService`
 - `graphql::PagesQuery`
 - `graphql::PagesMutation`
-- `controllers::routes`
+- `controllers::axum_router`
 - `rustok-pages-admin::PagesAdmin`
 - `rustok-pages-storefront::PagesView`
 

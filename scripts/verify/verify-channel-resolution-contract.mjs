@@ -51,8 +51,8 @@ for (const source of [plan, docs, readme, registry]) {
   }
 }
 
-if (!plan.includes('- [x] решить, остаётся ли built-in host slice отдельным fast-path после полного policy rollout.')) {
-  fail('implementation plan must mark the built-in host fast-path decision closed');
+if (!plan.includes('The built-in host fast-path is retained: explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved.')) {
+  fail('implementation plan must record the built-in host fast-path decision');
 }
 if (!plan.includes('verify:channel:resolution-contract')) fail('implementation plan must mention the resolution contract verifier');
 if (!registry.includes('verify:channel:resolution-contract')) fail('central registry must mention the resolution contract verifier');

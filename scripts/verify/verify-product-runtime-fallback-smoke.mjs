@@ -179,7 +179,7 @@ for (const consumer of registry.consumers) {
 
 if (!plan.includes('- FBA status: `boundary_ready`')) fail('local plan FBA status drift');
 if (!plan.includes(smokePath)) fail('local plan lacks runtime fallback smoke evidence');
-if (!plan.includes('[x] maintain sync between product runtime contract, commerce transport and module metadata.')) {
+if (!plan.includes('Product runtime contract, commerce transport, and module metadata remain synchronized.')) {
   fail('local plan product runtime/transport/metadata sync marker drift');
 }
 for (const marker of [

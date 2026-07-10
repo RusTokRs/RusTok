@@ -1,30 +1,14 @@
-#[cfg(feature = "ssr")]
-use chrono::Utc;
+use crate::features::dashboard::transport;
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
-use rustok_ui_transport::UiTransportPath;
-#[cfg(feature = "ssr")]
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::app::modules::{components_for_slot, AdminSlot};
 use crate::app::providers::enabled_modules::use_enabled_modules;
-use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
-use crate::shared::api::{request, ApiError};
 use crate::shared::ui::{
     Badge, BadgeVariant, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader,
 };
 use crate::widgets::stats_card::StatsCard;
 use crate::{t_string, use_i18n};
-
-fn selected_transport_path() -> UiTransportPath {
-    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
-        UiTransportPath::Graphql
-    } else {
-        UiTransportPath::NativeServer
-    }
-}
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -38,130 +22,6 @@ where
     LocalResource::new(move || fetcher(source()))
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct DashboardStatsResponse {
-    #[serde(rename = "dashboardStats")]
-    pub(super) dashboard_stats: Option<DashboardStats>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct DashboardStats {
-    #[serde(rename = "totalUsers")]
-    pub(super) total_users: i64,
-    #[serde(rename = "totalPosts")]
-    pub(super) total_posts: i64,
-    #[serde(rename = "totalOrders")]
-    pub(super) total_orders: i64,
-    #[serde(rename = "totalRevenue")]
-    pub(super) total_revenue: i64,
-    #[serde(rename = "usersChange")]
-    pub(super) users_change: f64,
-    #[serde(rename = "postsChange")]
-    pub(super) posts_change: f64,
-    #[serde(rename = "ordersChange")]
-    pub(super) orders_change: f64,
-    #[serde(rename = "revenueChange")]
-    pub(super) revenue_change: f64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct RecentActivityResponse {
-    #[serde(rename = "recentActivity")]
-    pub(super) recent_activity: Vec<ActivityItem>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct ActivityItem {
-    pub(super) id: String,
-    #[serde(rename = "type")]
-    pub(super) r#type: String,
-    pub(super) description: String,
-    pub(super) timestamp: String,
-    pub(super) user: Option<ActivityUser>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct ActivityUser {
-    pub(super) id: String,
-    pub(super) name: Option<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct OrderStatsSnapshot {
-    pub(super) total_orders: i64,
-    pub(super) total_revenue: i64,
-    pub(super) current_orders: i64,
-    pub(super) previous_orders: i64,
-    pub(super) current_revenue: i64,
-    pub(super) previous_revenue: i64,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct PeriodCountSnapshot {
-    pub(super) total_count: i64,
-    pub(super) current_count: i64,
-    pub(super) previous_count: i64,
-}
-
-#[cfg(feature = "ssr")]
-pub(super) fn server_error(message: impl Into<String>) -> ServerFnError {
-    ServerFnError::ServerError(message.into())
-}
-
-async fn fetch_dashboard_stats_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<DashboardStatsResponse, ApiError> {
-    request::<_, DashboardStatsResponse>(DASHBOARD_STATS_QUERY, json!({}), token, tenant_slug).await
-}
-
-async fn fetch_recent_activity_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    limit: i64,
-) -> Result<RecentActivityResponse, ApiError> {
-    request::<_, RecentActivityResponse>(
-        RECENT_ACTIVITY_QUERY,
-        json!({ "limit": limit }),
-        token,
-        tenant_slug,
-    )
-    .await
-}
-
-async fn fetch_dashboard_stats(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<DashboardStatsResponse, String> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => super::native_server_adapter::dashboard_stats_native()
-            .await
-            .map_err(|error| error.to_string()),
-        UiTransportPath::Graphql => fetch_dashboard_stats_graphql(token, tenant_slug)
-            .await
-            .map_err(|error| error.to_string()),
-    }
-}
-
-async fn fetch_recent_activity(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    limit: i64,
-) -> Result<RecentActivityResponse, String> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => {
-            super::native_server_adapter::recent_activity_native(limit)
-                .await
-                .map_err(|error| error.to_string())
-        }
-        UiTransportPath::Graphql => fetch_recent_activity_graphql(token, tenant_slug, limit)
-            .await
-            .map_err(|error| error.to_string()),
-    }
-}
-
 #[component]
 pub fn Dashboard() -> impl IntoView {
     let i18n = use_i18n();
@@ -172,14 +32,14 @@ pub fn Dashboard() -> impl IntoView {
     let dashboard_stats = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            fetch_dashboard_stats(token_value, tenant_value).await
+            transport::fetch_dashboard_stats(token_value, tenant_value).await
         },
     );
 
     let recent_activity = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            fetch_recent_activity(token_value, tenant_value, 10).await
+            transport::fetch_recent_activity(token_value, tenant_value, 10).await
         },
     );
 
@@ -266,7 +126,7 @@ pub fn Dashboard() -> impl IntoView {
                                         <StatsCard
                                             title=title
                                             value=value
-                                            icon=view! { <span class="size-5 text-center text-base leading-5">"•"</span> }.into_any()
+                                            icon=view! { <span class="size-5 text-center text-base leading-5">"вЂў"</span> }.into_any()
                                             trend=hint
                                             trend_label=t_string!(i18n, app.dashboard.stats.vsLastMonth)
                                             trend_up=trend_up
@@ -385,230 +245,4 @@ fn format_time_ago(timestamp: &str) -> String {
     } else {
         dt.format("%d.%m.%Y").to_string()
     }
-}
-
-#[cfg(feature = "ssr")]
-pub(super) fn calculate_percent_change(current: i64, previous: i64) -> f64 {
-    if previous == 0 {
-        if current == 0 {
-            0.0
-        } else {
-            100.0
-        }
-    } else {
-        ((current - previous) as f64 / previous as f64) * 100.0
-    }
-}
-
-#[cfg(feature = "ssr")]
-pub(super) async fn load_period_count_snapshot(
-    db: &sea_orm::DatabaseConnection,
-    table: &str,
-    tenant_id: uuid::Uuid,
-    current_period_start: chrono::DateTime<Utc>,
-    previous_period_start: chrono::DateTime<Utc>,
-    extra_filter_sql: Option<&str>,
-    extra_value: Option<&str>,
-) -> std::result::Result<PeriodCountSnapshot, sea_orm::DbErr> {
-    let backend = db.get_database_backend();
-    let filter_sql = extra_filter_sql.unwrap_or("");
-
-    let statement = match backend {
-        DbBackend::Sqlite => {
-            let sql = format!(
-                r#"
-                SELECT
-                    CAST(COUNT(*) AS INTEGER) AS total_count,
-                    CAST(COALESCE(SUM(CASE WHEN created_at >= ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS current_count,
-                    CAST(COALESCE(SUM(CASE WHEN created_at >= ?3 AND created_at < ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS previous_count
-                FROM {table}
-                WHERE tenant_id = ?1{filter_sql}
-                "#
-            );
-
-            let mut values = vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ];
-            if let Some(extra_value) = extra_value {
-                values.push(extra_value.into());
-            }
-
-            Statement::from_sql_and_values(backend, sql, values)
-        }
-        _ => {
-            let sql = format!(
-                r#"
-                SELECT
-                    COUNT(*)::bigint AS total_count,
-                    COALESCE(SUM(CASE WHEN created_at >= $2 THEN 1 ELSE 0 END), 0)::bigint AS current_count,
-                    COALESCE(SUM(CASE WHEN created_at >= $3 AND created_at < $2 THEN 1 ELSE 0 END), 0)::bigint AS previous_count
-                FROM {table}
-                WHERE tenant_id = $1{filter_sql}
-                "#
-            );
-
-            let mut values = vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ];
-            if let Some(extra_value) = extra_value {
-                values.push(extra_value.into());
-            }
-
-            Statement::from_sql_and_values(backend, sql, values)
-        }
-    };
-
-    let Some(row) = db.query_one(statement).await? else {
-        return Ok(PeriodCountSnapshot::default());
-    };
-
-    Ok(PeriodCountSnapshot {
-        total_count: row.try_get("", "total_count")?,
-        current_count: row.try_get("", "current_count")?,
-        previous_count: row.try_get("", "previous_count")?,
-    })
-}
-
-#[cfg(feature = "ssr")]
-pub(super) async fn load_order_stats_snapshot(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    current_period_start: chrono::DateTime<Utc>,
-    previous_period_start: chrono::DateTime<Utc>,
-) -> std::result::Result<OrderStatsSnapshot, sea_orm::DbErr> {
-    let backend = db.get_database_backend();
-    let tenant_id = tenant_id.to_string();
-
-    let statement = match backend {
-        DbBackend::Sqlite => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT
-                CAST(COUNT(*) AS INTEGER) AS total_orders,
-                CAST(COALESCE(SUM(COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)), 0) AS INTEGER) AS total_revenue,
-                CAST(COALESCE(SUM(CASE WHEN created_at >= ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS current_orders,
-                CAST(COALESCE(SUM(CASE WHEN created_at >= ?3 AND created_at < ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS previous_orders,
-                CAST(COALESCE(SUM(CASE
-                    WHEN created_at >= ?2 THEN COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)
-                    ELSE 0
-                END), 0) AS INTEGER) AS current_revenue,
-                CAST(COALESCE(SUM(CASE
-                    WHEN created_at >= ?3 AND created_at < ?2 THEN COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)
-                    ELSE 0
-                END), 0) AS INTEGER) AS previous_revenue
-            FROM sys_events
-            WHERE event_type = 'order.placed'
-              AND (
-                  json_extract(payload, '$.tenant_id') = ?1
-                  OR json_extract(payload, '$.event.tenant_id') = ?1
-              )
-            "#,
-            vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ],
-        ),
-        _ => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT
-                COUNT(*)::bigint AS total_orders,
-                COALESCE(SUM(COALESCE((payload->'event'->'data'->>'total')::bigint, 0)), 0)::bigint AS total_revenue,
-                COALESCE(SUM(CASE WHEN created_at >= $2 THEN 1 ELSE 0 END), 0)::bigint AS current_orders,
-                COALESCE(SUM(CASE WHEN created_at >= $3 AND created_at < $2 THEN 1 ELSE 0 END), 0)::bigint AS previous_orders,
-                COALESCE(SUM(CASE
-                    WHEN created_at >= $2 THEN COALESCE((payload->'event'->'data'->>'total')::bigint, 0)
-                    ELSE 0
-                END), 0)::bigint AS current_revenue,
-                COALESCE(SUM(CASE
-                    WHEN created_at >= $3 AND created_at < $2 THEN COALESCE((payload->'event'->'data'->>'total')::bigint, 0)
-                    ELSE 0
-                END), 0)::bigint AS previous_revenue
-            FROM sys_events
-            WHERE event_type = 'order.placed'
-              AND (
-                  payload->>'tenant_id' = $1
-                  OR payload->'event'->>'tenant_id' = $1
-              )
-            "#,
-            vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ],
-        ),
-    };
-
-    let Some(row) = db.query_one(statement).await? else {
-        return Ok(OrderStatsSnapshot::default());
-    };
-
-    Ok(OrderStatsSnapshot {
-        total_orders: row.try_get("", "total_orders")?,
-        total_revenue: row.try_get("", "total_revenue")?,
-        current_orders: row.try_get("", "current_orders")?,
-        previous_orders: row.try_get("", "previous_orders")?,
-        current_revenue: row.try_get("", "current_revenue")?,
-        previous_revenue: row.try_get("", "previous_revenue")?,
-    })
-}
-
-#[cfg(feature = "ssr")]
-pub(super) async fn load_recent_activity(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    limit: i64,
-) -> std::result::Result<Vec<ActivityItem>, sea_orm::DbErr> {
-    let backend = db.get_database_backend();
-    let statement = match backend {
-        DbBackend::Sqlite => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT id, email, name, created_at
-            FROM users
-            WHERE tenant_id = ?1
-            ORDER BY created_at DESC
-            LIMIT ?2
-            "#,
-            vec![tenant_id.into(), limit.into()],
-        ),
-        _ => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT id, email, name, created_at
-            FROM users
-            WHERE tenant_id = $1
-            ORDER BY created_at DESC
-            LIMIT $2
-            "#,
-            vec![tenant_id.into(), limit.into()],
-        ),
-    };
-
-    let rows = db.query_all(statement).await?;
-    rows.into_iter()
-        .map(|row| {
-            let id: uuid::Uuid = row.try_get("", "id")?;
-            let email: String = row.try_get("", "email")?;
-            let name: Option<String> = row.try_get("", "name")?;
-            let created_at: chrono::DateTime<chrono::FixedOffset> =
-                row.try_get("", "created_at")?;
-
-            Ok(ActivityItem {
-                id: id.to_string(),
-                r#type: "user.created".to_string(),
-                description: format!("New user {email} joined"),
-                timestamp: created_at.to_rfc3339(),
-                user: Some(ActivityUser {
-                    id: id.to_string(),
-                    name,
-                }),
-            })
-        })
-        .collect()
 }

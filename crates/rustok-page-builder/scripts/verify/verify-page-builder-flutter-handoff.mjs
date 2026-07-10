@@ -36,7 +36,7 @@ const contract = readJson(
 );
 const helper = read("rustok_mobile/packages/app_core/lib/src/page_builder_errors.dart");
 const helperTest = read("rustok_mobile/packages/app_core/test/page_builder_errors_test.dart");
-const centralPlan = read("docs/modules/tiptap-page-builder-implementation-plan.md");
+const centralPlan = read("docs/modules/page-builder-implementation-plan.md");
 const pagesPlan = read("crates/rustok-pages/docs/implementation-plan.md");
 const flutterPlan = read("docs/research/flutter.md");
 

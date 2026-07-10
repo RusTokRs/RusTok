@@ -50,6 +50,8 @@ const docs = [
   "apps/admin/src/widgets/app_shell/sidebar.rs",
   "apps/storefront/src/widgets/header/core.rs",
   "apps/storefront/src/widgets/header/mod.rs",
+  "apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs",
+  "apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs",
   "apps/admin/src/features/workflow/mod.rs",
   "apps/admin/src/features/workflow/model.rs",
   "apps/admin/src/features/workflow/transport/mod.rs",
@@ -67,6 +69,10 @@ const docs = [
   "apps/admin/src/features/cache/model.rs",
   "apps/admin/src/features/cache/transport/mod.rs",
   "apps/admin/src/features/cache/transport/native_server_adapter.rs",
+  "apps/admin/src/features/dashboard/mod.rs",
+  "apps/admin/src/features/dashboard/model.rs",
+  "apps/admin/src/features/dashboard/transport/mod.rs",
+  "apps/admin/src/features/dashboard/transport/native_server_adapter.rs",
   "apps/admin/src/features/email/mod.rs",
   "apps/admin/src/features/email/model.rs",
   "apps/admin/src/features/email/transport/mod.rs",
@@ -112,6 +118,8 @@ const adminShellCore = readRepo("apps/admin/src/widgets/app_shell/core.rs");
 const adminSidebar = readRepo("apps/admin/src/widgets/app_shell/sidebar.rs");
 const storefrontHeaderCore = readRepo("apps/storefront/src/widgets/header/core.rs");
 const storefrontHeader = readRepo("apps/storefront/src/widgets/header/mod.rs");
+const storefrontEnabledModulesAdapter = readRepo("apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs");
+const storefrontCanonicalRouteAdapter = readRepo("apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs");
 const adminWorkflowMod = readRepo("apps/admin/src/features/workflow/mod.rs");
 const adminWorkflowModel = readRepo("apps/admin/src/features/workflow/model.rs");
 const adminWorkflowTransport = readRepo("apps/admin/src/features/workflow/transport/mod.rs");
@@ -130,6 +138,11 @@ const adminCacheModel = readRepo("apps/admin/src/features/cache/model.rs");
 const adminCacheTransport = readRepo("apps/admin/src/features/cache/transport/mod.rs");
 const adminCacheNativeAdapter = readRepo("apps/admin/src/features/cache/transport/native_server_adapter.rs");
 const adminCachePage = readRepo("apps/admin/src/pages/cache.rs");
+const adminDashboardMod = readRepo("apps/admin/src/features/dashboard/mod.rs");
+const adminDashboardModel = readRepo("apps/admin/src/features/dashboard/model.rs");
+const adminDashboardTransport = readRepo("apps/admin/src/features/dashboard/transport/mod.rs");
+const adminDashboardNativeAdapter = readRepo("apps/admin/src/features/dashboard/transport/native_server_adapter.rs");
+const adminDashboardPage = readRepo("apps/admin/src/pages/dashboard.rs");
 const adminEmailMod = readRepo("apps/admin/src/features/email/mod.rs");
 const adminEmailModel = readRepo("apps/admin/src/features/email/model.rs");
 const adminEmailTransport = readRepo("apps/admin/src/features/email/transport/mod.rs");
@@ -385,6 +398,8 @@ assertContains(
   "build_header_links",
   "apps/storefront/src/widgets/header/mod.rs: Leptos adapter must consume storefront header core helper",
 );
+assertContains(storefrontEnabledModulesAdapter, "storefront/list-enabled-modules", "storefront enabled-modules adapter must own its server endpoint");
+assertContains(storefrontCanonicalRouteAdapter, "storefront/resolve-canonical-route", "storefront canonical-route adapter must own its server endpoint");
 
 assertMissing(
   "apps/admin/src/features/workflow/api.rs",
@@ -575,6 +590,21 @@ assertContains(adminCacheNativeAdapter, "#[server", "apps/admin/src/features/cac
 assertContains(adminCachePage, "transport::fetch_cache_health", "apps/admin/src/pages/cache.rs: cache page must use the transport facade");
 for (const marker of ["CACHE_HEALTH_QUERY", "crate::shared::api::{request", "native_server_adapter::cache_health_native"]) {
   assertNotContains(adminCachePage, marker, `apps/admin/src/pages/cache.rs: cache page must not own raw transport (${marker})`);
+}
+
+assertContains(adminDashboardMod, "pub mod model;", "apps/admin/src/features/dashboard/mod.rs: dashboard host feature must wire a model");
+assertContains(adminDashboardMod, "pub mod transport;", "apps/admin/src/features/dashboard/mod.rs: dashboard host feature must wire a transport facade");
+for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]"]) {
+  assertNotContains(adminDashboardModel, marker, `apps/admin/src/features/dashboard/model.rs: dashboard model must stay framework/server-function free (${marker})`);
+}
+assertContains(adminDashboardTransport, "UiTransportPath::NativeServer", "apps/admin/src/features/dashboard/transport/mod.rs: dashboard transport must select the native path");
+assertContains(adminDashboardTransport, "UiTransportPath::Graphql", "apps/admin/src/features/dashboard/transport/mod.rs: dashboard transport must keep the GraphQL path");
+assertContains(adminDashboardNativeAdapter, "#[server", "apps/admin/src/features/dashboard/transport/native_server_adapter.rs: native adapter must own server-function endpoints");
+for (const marker of ["transport::fetch_dashboard_stats", "transport::fetch_recent_activity"]) {
+  assertContains(adminDashboardPage, marker, `apps/admin/src/pages/dashboard.rs: dashboard page must use ${marker}`);
+}
+for (const marker of ["DASHBOARD_STATS_QUERY", "RECENT_ACTIVITY_QUERY", "load_period_count_snapshot", "load_order_stats_snapshot", "load_recent_activity"]) {
+  assertNotContains(adminDashboardPage, marker, `apps/admin/src/pages/dashboard.rs: dashboard page must not own raw transport/runtime helpers (${marker})`);
 }
 
 assertContains(adminEmailMod, "pub mod model;", "apps/admin/src/features/email/mod.rs: email host feature must wire a model");

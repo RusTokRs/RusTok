@@ -18,7 +18,7 @@ taxonomy sync are confirmed by integration and unit tests.
 - `PostService`, `CommentService`, `CategoryService`, `TagService` and blog state machine;
 - blog-owned storage for posts, translations, categories and typed relations;
 - transport surfaces: GraphQL, REST, Leptos admin/storefront packages;
-- REST post/comment handlers consume narrow `BlogHttpRuntime` state with explicit DB/event bus handles; the current Loco `AppContext` remains only in the route-state adapter until the full Axum route cutover;
+- REST post/comment handlers consume narrow `BlogHttpRuntime` state with explicit DB/event bus handles; `controllers::axum_router` builds that state from `HostRuntimeContext` and is mounted by generated host Axum composition without a Loco adapter;
 - moderation REST surface: `POST /api/blog/comments/{id}/moderate` for approve/spam/trash transitions with RBAC `blog_posts:manage`;
 - channel visibility for publications and integration with `rustok-channel`;
 - reuse shared taxonomy dictionary via `blog_post_tags`, without giving attachment ownership outward;

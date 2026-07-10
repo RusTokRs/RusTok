@@ -23,7 +23,7 @@ query = "graphql::SeoQuery"
 mutation = "graphql::SeoMutation"
 
 [provides.http]
-routes = "controllers::routes"
+axum_router = "controllers::axum_router"
 
 [provides.admin_ui]
 leptos_crate = "rustok-seo-admin"

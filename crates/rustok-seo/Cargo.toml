@@ -8,10 +8,10 @@ description = "SEO runtime, metadata, redirects, sitemaps, and robots module"
 [features]
 default = ["server"]
 server = [
+  "dep:anyhow",
   "dep:async-trait",
   "dep:axum",
   "dep:csv",
-  "dep:loco-rs",
   "dep:moka",
   "dep:rustok-api",
   "dep:rustok-blog",
@@ -33,12 +33,12 @@ server = [
 ]
 
 [dependencies]
+anyhow = { workspace = true, optional = true }
 async-graphql.workspace = true
 async-trait = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 chrono.workspace = true
 csv = { workspace = true, optional = true }
-loco-rs = { workspace = true, optional = true }
 moka = { workspace = true, optional = true }
 once_cell.workspace = true
 sea-orm = { workspace = true, optional = true }

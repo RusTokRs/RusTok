@@ -1,15 +1,16 @@
+use anyhow::Context;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, controller::Routes, Error, Result};
+use rustok_api::HostRuntimeContext;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_api::{Action, Permission, Resource};
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_outbox::TransactionalEventBus;
+use rustok_web::{HttpError, HttpResult};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -45,13 +46,15 @@ impl PagesHttpRuntime {
     }
 }
 
-impl axum::extract::FromRef<AppContext> for PagesHttpRuntime {
-    fn from_ref(input: &AppContext) -> Self {
-        let transport = Arc::new(OutboxTransport::new(input.db.clone()));
-        Self {
-            db: input.db.clone(),
-            event_bus: TransactionalEventBus::new(transport),
-        }
+impl PagesHttpRuntime {
+    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+        let event_bus = runtime
+            .shared_get::<TransactionalEventBus>()
+            .context("pages HTTP routes require TransactionalEventBus in HostRuntimeContext")?;
+        Ok(Self {
+            db: runtime.db_clone(),
+            event_bus,
+        })
     }
 }
 
@@ -73,7 +76,7 @@ pub async fn get_page(
     auth: AuthContext,
     request_context: RequestContext,
     Query(params): Query<GetPageParams>,
-) -> Result<Json<PageResponse>> {
+) -> HttpResult<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_READ)?;
 
     let slug = params.slug.unwrap_or_else(|| "home".to_string());
@@ -94,11 +97,11 @@ pub async fn get_page(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
 
     match page {
         Some(page) => Ok(Json(page)),
-        None => Err(Error::NotFound),
+        None => Err(HttpError::not_found("page_not_found", "Page not found")),
     }
 }
 
@@ -119,7 +122,7 @@ pub async fn create_page(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreatePageInput>,
-) -> Result<(StatusCode, Json<PageResponse>)> {
+) -> HttpResult<(StatusCode, Json<PageResponse>)> {
     ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
     if input.publish {
         ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
@@ -136,7 +139,7 @@ pub async fn create_page(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(page)))
 }
 
@@ -159,7 +162,7 @@ pub async fn update_page(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdatePageInput>,
-) -> Result<Json<PageResponse>> {
+) -> HttpResult<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
     if input.status.is_some() {
         ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
@@ -177,7 +180,7 @@ pub async fn update_page(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(Json(page))
 }
 
@@ -197,7 +200,7 @@ pub async fn delete_page(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_pages_permission(&auth, Permission::PAGES_DELETE)?;
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
@@ -211,7 +214,7 @@ pub async fn delete_page(
             id,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -234,7 +237,7 @@ pub async fn create_block(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateBlockInput>,
-) -> Result<(StatusCode, Json<BlockResponse>)> {
+) -> HttpResult<(StatusCode, Json<BlockResponse>)> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
 
     let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
@@ -249,7 +252,7 @@ pub async fn create_block(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(block)))
 }
 
@@ -275,7 +278,7 @@ pub async fn update_block(
     auth: AuthContext,
     Path(path): Path<(Uuid, Uuid)>,
     Json(input): Json<UpdateBlockInput>,
-) -> Result<Json<BlockResponse>> {
+) -> HttpResult<Json<BlockResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
 
     let (_, block_id) = path;
@@ -291,7 +294,7 @@ pub async fn update_block(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(Json(block))
 }
 
@@ -314,7 +317,7 @@ pub async fn delete_block(
     tenant: TenantContext,
     auth: AuthContext,
     Path(path): Path<(Uuid, Uuid)>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_pages_permission(&auth, Permission::PAGES_DELETE)?;
 
     let (_, block_id) = path;
@@ -329,7 +332,7 @@ pub async fn delete_block(
             block_id,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -352,7 +355,7 @@ pub async fn reorder_blocks(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<ReorderBlocksInput>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
 
     let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
@@ -367,37 +370,39 @@ pub async fn reorder_blocks(
             input.block_ids,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api")
-        .add("/pages", axum::routing::get(get_page))
-        .add("/admin/pages", axum::routing::post(create_page))
-        .add(
-            "/admin/pages/{id}",
+pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+    let state = PagesHttpRuntime::from_host(runtime)?;
+    Ok(axum::Router::new()
+        .route("/api/pages", axum::routing::get(get_page))
+        .route("/api/admin/pages", axum::routing::post(create_page))
+        .route(
+            "/api/admin/pages/{id}",
             axum::routing::put(update_page).delete(delete_page),
         )
-        .add(
-            "/admin/pages/{id}/blocks",
+        .route(
+            "/api/admin/pages/{id}/blocks",
             axum::routing::post(create_block),
         )
-        .add(
-            "/admin/pages/{page_id}/blocks/{block_id}",
+        .route(
+            "/api/admin/pages/{page_id}/blocks/{block_id}",
             axum::routing::put(update_block).delete(delete_block),
         )
-        .add(
-            "/admin/pages/{id}/blocks/reorder",
+        .route(
+            "/api/admin/pages/{id}/blocks/reorder",
             axum::routing::post(reorder_blocks),
         )
+        .with_state(state))
 }
 
-fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> Result<()> {
+fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, &[permission]) {
-        return Err(Error::Unauthorized(
-            "Permission denied: pages:* required".to_string(),
+        return Err(HttpError::unauthorized(
+            "pages_permission_denied",
+            "Permission denied: pages:* required",
         ));
     }
 

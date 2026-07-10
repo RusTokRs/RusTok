@@ -84,10 +84,17 @@ If `rustok-module.toml` declares:
 - `[provides.graphql].query`
 - `[provides.graphql].mutation`
 - `[provides.http].routes`
+- `[provides.http].axum_router`
 - `[provides.http].webhook_routes`
 
 then the corresponding type/function symbols must actually exist inside `src/**/*.rs`
 of the module. The manifest must not reference decorative or already removed transport surfaces.
+
+`routes` is the legacy Loco route entrypoint. `axum_router` is the target entrypoint:
+it names a function that accepts `&rustok_api::HostRuntimeContext` and returns the
+module-owned `axum::Router` (or a fallible result containing one). Declare at most
+one of `routes` and `axum_router`; the host code generator mounts exactly the declared
+entrypoint, so a module cannot run both routing models in parallel.
 
 ### `provides.cli`
 
@@ -175,7 +182,7 @@ Additional sections are allowed, but this minimum must be preserved.
 - For `workflow`, webhook ingress remains a module-owned surface: the module holds `controllers::webhook_routes()`, and `apps/server` only re-exports it through a shim; the cron path is not mixed with webhook/event listener wiring;
 - The `index != search` boundary remains a hard runtime contract: `index` publishes indexing/read-model substrate and module-owned listeners, while `search` publishes `SearchEngineKind`, `PgSearchEngine`, `SearchIngestionHandler`, `search_documents` and search UX/diagnostics surfaces, not mixing these layers in one module;
 - `search` holds the operator-plane contract as part of the module surface: `SearchDiagnosticsService`, `SearchAnalyticsService`, `SearchSettingsService`, `SearchDictionaryService`, documented control-plane markers in `README.md` and local `docs/observability-runbook.md` are not considered optional noise and must not be lost during refactoring;
-- If `[provides.graphql]` or `[provides.http]` are declared, the corresponding symbols actually exist in the module code;
+- If `[provides.graphql]` or `[provides.http]` are declared, the corresponding symbols actually exist in the module code; `provides.http.routes` and `provides.http.axum_router` are mutually exclusive;
 - If a server shim exists for a module in `apps/server/src/controllers/<slug>/`, it exports `pub routes()` and/or `pub webhook_routes()` for all declared HTTP surfaces;
 - `package.license` resolves through `Cargo.toml` or workspace inheritance;
 - `module.description` is sufficient for publish readiness;

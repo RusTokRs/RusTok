@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_telemetry::metrics;
+use rustok_web::{HttpError, HttpResult};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -40,7 +40,7 @@ pub async fn list_replies(
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
     Query(mut filter): Query<ListRepliesFilter>,
-) -> Result<Json<Vec<ReplyListItem>>> {
+) -> HttpResult<Json<Vec<ReplyListItem>>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_LIST],
@@ -65,7 +65,7 @@ pub async fn list_replies(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     metrics::record_read_path_query(
         "http",
         "forum.list_replies",
@@ -119,7 +119,7 @@ pub async fn get_reply(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Query(filter): Query<ListRepliesFilter>,
-) -> Result<Json<ReplyResponse>> {
+) -> HttpResult<Json<ReplyResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_READ],
@@ -142,7 +142,7 @@ pub async fn get_reply(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(reply))
 }
 
@@ -165,7 +165,7 @@ pub async fn create_reply(
     auth: AuthContext,
     Path(topic_id): Path<Uuid>,
     Json(input): Json<CreateReplyInput>,
-) -> Result<(StatusCode, Json<ReplyResponse>)> {
+) -> HttpResult<(StatusCode, Json<ReplyResponse>)> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_CREATE],
@@ -184,7 +184,7 @@ pub async fn create_reply(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(reply)))
 }
 
@@ -207,7 +207,7 @@ pub async fn update_reply(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateReplyInput>,
-) -> Result<Json<ReplyResponse>> {
+) -> HttpResult<Json<ReplyResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_UPDATE],
@@ -226,7 +226,7 @@ pub async fn update_reply(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(reply))
 }
 
@@ -247,7 +247,7 @@ pub async fn delete_reply(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_DELETE],
@@ -265,7 +265,7 @@ pub async fn delete_reply(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -289,7 +289,7 @@ pub async fn set_reply_vote(
     auth: AuthContext,
     request_context: RequestContext,
     Path((reply_id, value)): Path<(Uuid, i32)>,
-) -> Result<Json<ReplyResponse>> {
+) -> HttpResult<Json<ReplyResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_READ],
@@ -307,7 +307,7 @@ pub async fn set_reply_vote(
             value,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
@@ -322,7 +322,7 @@ pub async fn set_reply_vote(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(reply))
 }
 
@@ -343,7 +343,7 @@ pub async fn clear_reply_vote(
     auth: AuthContext,
     request_context: RequestContext,
     Path(reply_id): Path<Uuid>,
-) -> Result<Json<ReplyResponse>> {
+) -> HttpResult<Json<ReplyResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_READ],
@@ -360,7 +360,7 @@ pub async fn clear_reply_vote(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
@@ -375,7 +375,7 @@ pub async fn clear_reply_vote(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(reply))
 }
 
@@ -383,9 +383,12 @@ fn ensure_forum_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(HttpError::unauthorized(
+            "forum_permission_denied",
+            message.to_string(),
+        ));
     }
 
     Ok(())

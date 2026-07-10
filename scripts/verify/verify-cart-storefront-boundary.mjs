@@ -97,8 +97,8 @@ assertContains(transport, "mod graphql_adapter;", `${files.transport}: transport
 assertContains(transport, "mod native_server_adapter;", `${files.transport}: transport must wire native server adapter`);
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not import legacy api module`);
 assertContains(graphqlAdapter, "request_graphql_cart", `${files.graphqlAdapter}: GraphQL adapter must keep cart GraphQL read path`);
-assertContains(graphqlAdapter, "update_storefront_cart_line_item_quantity_graphql", `${files.graphqlAdapter}: GraphQL adapter must keep line-item quantity GraphQL path`);
-assertContains(graphqlAdapter, "remove_storefront_cart_line_item_graphql", `${files.graphqlAdapter}: GraphQL adapter must keep line-item removal GraphQL path`);
+assertContains(graphqlAdapter, "update_storefront_cart_line_item_quantity", `${files.graphqlAdapter}: GraphQL adapter must keep line-item quantity GraphQL path`);
+assertContains(graphqlAdapter, "remove_storefront_cart_line_item", `${files.graphqlAdapter}: GraphQL adapter must keep line-item removal GraphQL path`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: GraphQL adapter must keep GraphQL fallback request contract`);
 assertContains(graphqlAdapter, "availableShippingOptions { id name currencyCode amount providerId active }", `${files.graphqlAdapter}: cart owner read query must expose full shipping option summaries`);
 assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: native server adapter must keep server functions`);

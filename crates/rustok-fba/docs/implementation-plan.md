@@ -14,4 +14,3 @@
 - Add JSON fixture tests when the first module registry consumes these types.
 - Add verifier coverage that new FBA registries use `rustok-fba` for shared metadata.
 - Keep `rustok-api::ports` as the canonical call-context/error layer until a separate ports crate is justified.
-

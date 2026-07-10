@@ -56,6 +56,9 @@ The host-owned cache health operator page keeps its read model in
 `src/features/cache/transport/`. The page renders the transport result and does not own a raw
 GraphQL request or server-function call.
 
+The host-owned dashboard keeps its read DTOs, GraphQL selected path, SQL snapshots and native
+server functions in `src/features/dashboard/`. Its page owns only host composition and rendering.
+
 The host-owned email settings page keeps its settings DTOs and selected read/write transport in
 `src/features/email/`; its page component owns form state only and does not issue raw GraphQL or
 call a native adapter directly.

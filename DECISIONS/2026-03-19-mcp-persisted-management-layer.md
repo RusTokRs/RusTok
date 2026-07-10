@@ -1,7 +1,7 @@
 # Persisted MCP management layer in `apps/server`
 
 - Date: 2026-03-19
-- Status: Accepted
+- Status: Superseded by [MCP management owner boundary](./2026-07-10-mcp-management-owner-boundary.md)
 
 ## Context
 

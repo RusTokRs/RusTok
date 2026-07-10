@@ -33,6 +33,7 @@ Leptos admin UI package for the `rustok-commerce` module.
 - Consumes `shippingProfiles`, `shippingProfile`, `createShippingProfile`, `updateShippingProfile`, `deactivateShippingProfile`, and `reactivateShippingProfile`.
 - Consumes `orderChanges`, `applyOrderChange`, and `cancelOrderChange` for post-order operator actions instead of duplicating exchange/claim rules in the UI package.
 - Reuses `rustok-cart::CartService` for typed cart-promotion preview/apply transport with `orders:read` / `orders:update` permission gates instead of introducing a promotion-specific storage path.
+- Native order-change and cart-promotion adapters use `HostRuntimeContext` for DB access and its typed `TransactionalEventBus` handle for order lifecycle writes; the package has no Loco runtime dependency.
 - Should remain compatible with the host `/modules/{module_slug}` contract and generic shell.
 - Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
 

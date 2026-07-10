@@ -44,6 +44,7 @@ Leptos admin UI package for the `rustok-pricing` module.
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Reads tenant-scoped pricing detail and writes base rows, percentage discount adjustments, active price-list overlays, selected active `price_list` rules, and channel scope for both rows and active lists through `rustok-pricing` runtime services over native `#[server]` functions; the parallel `rustok-commerce` GraphQL facade now also exposes admin pricing write mutations for variant-price updates, typed discount preview/apply, and selected active `price_list` rule/scope updates. The current effective `price_list_id` and operator-supplied `channel_id` / `channel_slug` now scope discount preview/apply to the canonical row for that exact override boundary.
 - Reads the effective UI locale from `UiRouteContext.locale`; pricing detail and editor context resolve localized product copy against that host-owned locale and only fall back when that locale is missing.
+- Native price-list, variant-price and discount handlers use `HostRuntimeContext` DB access and its typed `TransactionalEventBus` handle; the package has no Loco runtime dependency.
 
 ## Documentation
 

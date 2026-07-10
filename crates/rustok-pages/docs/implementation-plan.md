@@ -7,7 +7,7 @@ in steady-state hardening + rollout polish.
 ## Execution checkpoint
 
 - Current phase: storefront_native_loco_free
-- Last checkpoint: REST page/block handlers now consume narrow `PagesHttpRuntime` state with explicit DB/event bus handles; the current Loco `AppContext` is isolated to the route-state adapter until the full Axum route cutover. Pages admin and storefront retired legacy `src/api.rs`; admin GraphQL operations live in `admin/src/transport/graphql_adapter.rs`, storefront raw transport is split between `storefront/src/transport/graphql_adapter.rs` and `storefront/src/transport/native_server_adapter.rs`, crate roots no longer wire `mod api`, and `verify-pages-ui-boundary.mjs` rejects reintroducing either legacy API module. Public GraphQL/storefront reads now use `SecurityContext::public_read()` when `AuthContext` is absent, while published/channel visibility filtering stays in the pages read path. Storefront native server functions now consume `HostRuntimeContext` plus a typed `TransactionalEventBus` host handle, no longer import Loco `AppContext`, and no longer depend on `loco-rs` or the outbox `loco-adapter` feature.
+- Last checkpoint: `rustok-module.toml` now declares `controllers::axum_router`, which builds `PagesHttpRuntime` from `HostRuntimeContext` plus its typed `TransactionalEventBus` handle and is merged once by generated host composition. REST page/block handlers use `rustok_web::HttpError`; the domain crate no longer depends on Loco or exposes a Loco route-state adapter. Pages admin and storefront retired legacy `src/api.rs`; admin GraphQL operations live in `admin/src/transport/graphql_adapter.rs`, storefront raw transport is split between `storefront/src/transport/graphql_adapter.rs` and `storefront/src/transport/native_server_adapter.rs`, crate roots no longer wire `mod api`, and `verify-pages-ui-boundary.mjs` rejects reintroducing either legacy API module. Public GraphQL/storefront reads now use `SecurityContext::public_read()` when `AuthContext` is absent, while published/channel visibility filtering stays in the pages read path. Storefront native server functions now consume `HostRuntimeContext` plus a typed `TransactionalEventBus` host handle, no longer import Loco `AppContext`, and no longer depend on `loco-rs` or the outbox `loco-adapter` feature.
 - Dependency evidence: storefront no-feature/hydrate profiles contain neither `rustok-core` nor backend `rustok-pages`; runtime dependencies are optional and enabled only by `ssr`.
 - Next step: Run a real control-plane Wave 0 dry-run on an internal tenant and replace the synthetic packet with actual before/after snapshots; then replace the Wave 1 readiness draft with a real tenant packet only together with owner sign-off and SLO/smoke evidence. For no-compile Wave 1 hold, use `npm run verify:page-builder:wave1-readiness-draft`; for FFA boundary evidence, use the fast `verify-pages-ui-boundary.mjs`; for FBA rollout policy, use `npm run verify:page-builder:consumer:pages`.
 - Open blockers: None.
@@ -15,31 +15,6 @@ in steady-state hardening + rollout polish.
   1. Before any pages changes, first cross-check `docs/research/dioxus-ffa-pilot-connectivity-map.md` and this file; do not open a new slice without a clear goal in the tracker.
   2. For code, follow the current pattern: Leptos UI = thin render/bind, formatting/parsing helpers = `core::*`, dual-path (`native #[server]` + GraphQL selected path) do not change.
   3. If the task is not about pages runtime contract, priority shifts to the next module in the wave; only make bugfix/contract-sync changes to pages.
-- Last updated at (UTC): 2026-05-24T00:40:00Z
-- Last updated at (UTC): 2026-05-24T09:15:00Z
-- Last updated at (UTC): 2026-05-24T10:05:00Z
-- Last updated at (UTC): 2026-05-24T12:20:00Z
-- Last updated at (UTC): 2026-05-25T11:10:00Z
-- Last updated at (UTC): 2026-05-29T00:00:00Z
-- Last updated at (UTC): 2026-06-01T00:00:00Z
-- Last updated at (UTC): 2026-06-01T01:00:00Z
-- Last updated at (UTC): 2026-06-01T02:00:00Z
-- Last updated at (UTC): 2026-06-01T03:00:00Z
-- Last updated at (UTC): 2026-06-01T04:00:00Z
-- Last updated at (UTC): 2026-06-01T04:30:00Z
-- Last updated at (UTC): 2026-06-01T11:45:00Z
-- Last updated at (UTC): 2026-06-07T00:00:00Z
-- Last updated at (UTC): 2026-06-13T00:00:00Z
-- Last updated at (UTC): 2026-06-14T00:00:00Z
-- Last updated at (UTC): 2026-06-14T12:00:00Z
-- Last updated at (UTC): 2026-06-14T18:00:00Z
-- Last updated at (UTC): 2026-06-15T00:00:00Z
-- Last updated at (UTC): 2026-06-20T00:00:00Z
-- Last updated at (UTC): 2026-06-20T01:00:00Z
-- Last updated at (UTC): 2026-06-22T00:00:00Z
-- Last updated at (UTC): 2026-06-23T00:00:00Z
-- Last updated at (UTC): 2026-06-24T00:00:00Z
-- Last updated at (UTC): 2026-06-29T00:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) is fixed for admin UI + service/runtime relying on `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding and `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization now lives in `admin/src/core.rs` and reuses `rustok-api::normalize_ui_text` / `parse_ui_csv`, while the Leptos layer remains a thin bind/render adapter.
@@ -62,7 +37,7 @@ in steady-state hardening + rollout polish.
 - Latest FFA maintenance update: admin properties/compatibility view models (`page_properties_view`, `compatibility_warning_view`) and storefront published-list empty/header view models (`published_pages_empty_state`, `published_pages_header_view`) extracted to `core`; `verify-pages-ui-boundary.mjs` locks these no-compile markers without changing native/GraphQL transport.
 - Latest Loco-exit update: storefront native server function transport reads DB and `TransactionalEventBus` from `HostRuntimeContext`; the package manifest no longer enables `loco-rs` or `rustok-outbox/loco-adapter`, and `verify-pages-ui-boundary.mjs` plus the shared API surface guardrail pin that boundary.
 
-- PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now contains delivery slices and exit criteria for Wave 0 hand-off; pages track should be updated synchronously via dependency notes.
+- PB-FBA-1 platform sync note: [Page Builder Implementation Plan](../../../docs/modules/page-builder-implementation-plan.md) contains delivery slices and exit criteria for Wave 0 hand-off; pages track should be updated synchronously via dependency notes.
 - PB-FBA-1 execution note: sync with central section `8.5 Execution backlog` accepted as active queue (`PB-FBA-1A..1D`, focus Week1=P0/P1, Week2=P2/P3).
 - PB-FBA-1A update: `consumer_min_version = "1.0"` added to `fba.builder_consumer`, and machine-readable registry `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` is now checked via `verify-page-builder-contract-registry.mjs` and aggregate baseline gate.
 - PB-FBA-1B host update: `pages_builder_fallback_*` gate covers all baseline profiles (`all_on`, `publish_off`, `preview_off`, `builder_off`) on service boundary and admin/storefront host helpers: read/list remain stable, disabled capabilities return typed `FeatureDisabled`, storefront render does not require builder capability.
@@ -165,6 +140,8 @@ Operational notes:
 - [x] Storefront read-path does not depend on builder capability endpoint availability.
 - [x] Publish endpoint correctly returns typed runtime error when `builder.publish.enabled=false`.
 - [x] Legacy blocks path works in read/bridge mode without write surface expansion (`verify-page-builder-pages-legacy-bridge.mjs`).
+
+Legacy blocks path works in read/bridge mode; visual-builder body writes must not delete legacy blocks or create a block write surface.
 - [x] Toggling tenant flags does not require redeploy and leaves list/read surfaces accessible.
 
 ### Tenant switch procedure (operational checklist)
@@ -258,10 +235,14 @@ Rollback target: toggling tenant flags back must take <= 10 minutes and does not
 
 - [x] service-level fallback regression checks and admin/storefront host-helper static checks green on current commit; Next/Flutter typed error parity still required for Wave 1.
 - [x] no RBAC regression for editor/moderator/admin in builder-related scenarios: `crates/rustok-pages/tests/rbac.rs` locks manager publish prohibition, customer draft restrictions, admin draft bypass and page-channel allowlist bypass; fast no-compile gate `verify-page-builder-pages-rbac-readiness.mjs` included in FBA baseline; `verify-page-builder-pages-contract-surface.mjs` locks public contract-surface coverage without Cargo compilation.
+
+No RBAC regression for editor, moderator, or admin builder scenarios is required before Wave 1 promotion.
 - [~] confirmed rollback execution <= 10 minutes without `pages` runtime redeploy: manifest target locked, actual tenant evidence expected in real Wave 0 dry-run.
 - [x] Wave 1 readiness draft remains a safe hold artifact: no-compile guardrail checks pending tenant/sign-off/metrics markers and prohibits waivers until actual tenant evidence appears.
 
 ## Verification
+
+Contract tests cover all public use cases for pages, including CRUD, sanitization, builder fallback, legacy blocks, menus, locale fallback, RBAC, and channel visibility.
 
 - `cargo xtask module validate pages`
 - `cargo xtask module test pages`
@@ -273,7 +254,7 @@ Rollback target: toggling tenant flags back must take <= 10 minutes and does not
 2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
 3. When changing dependency graph, UI wiring or visibility semantics, synchronize `rustok-module.toml`.
 4. When changing shared rich-text expectations, also update related docs in `rustok-content`.
-5. When changing page-builder contract, synchronously update dependency-notes in `docs/modules/tiptap-page-builder-implementation-plan.md` and `docs/research/flutter.md`.
+5. When changing page-builder contract, synchronously update dependency-notes in `docs/modules/page-builder-implementation-plan.md` and `docs/research/flutter.md`.
 
 
 ## Quality backlog
@@ -293,58 +274,6 @@ Rollback target: toggling tenant flags back must take <= 10 minutes and does not
 - [x] Integrate verify-page-builder-pages-legacy-bridge.mjs script into pre-commit hooks.
 - [x] Implement verify-pages-ui-boundary.mjs execution in pre-push pipeline.
 - [x] Implement automatic error schema cross-check in CI between backend layer and UI components to prevent error type drift (`npm run verify:page-builder:error-catalog`, also part of FBA baseline).
-
-
-## FFA pilot migration tracker (rustok-pages)
-
-- [x] Slice 1: storefront selected-page core extraction (`selected_page_title/slug/effective_locale`, `summarize_page_content`).
-- [x] Slice 2: admin form helper extraction (`slugify`, `parse_channel_slugs`, `error_with_context`).
-- [x] Storefront + admin surfaces updated for selected slices.
-- [x] `cargo xtask module validate pages` passed.
-- [x] `cargo xtask module test pages` full run evidence attached.
-- [x] Double documentation verification completed.
-- [x] Slice 3: admin status badge class mapping moved to core (`status_badge_class`).
-- [x] Slice 4: admin busy-key composition moved to core (`busy_key_with_id`, `busy_key_for_save`).
-- [x] Slice 5: admin edit-form seed mapping moved to core (`edit_form_seed_from_page`).
-- [x] Slice 6: admin list-load error rendering switched to core error composition (`error_with_context`).
-- [x] Slice 7: admin status badge css composition moved to core (`status_badge_css`).
-- [x] Slice 8: admin busy-key action matching moved to core (`busy_key_matches_action`).
-
-
-## Re-verification after slices #2-#8
-
-- [x] Code/docs consistency check completed for `rustok-pages/admin` and `rustok-pages/storefront`.
-- [x] Tracker wording synced with actual `core` extraction state.
-- [x] No transport-contract changes introduced (`native #[server]` + GraphQL selected path preserved).
-
-- [x] Slice 9: storefront raw-format body summary rendering moved to core (`raw_body_format_summary`).
-
-- [x] Slice 10: pages tracker synchronized after double documentation verification completion.
-- [x] Slice 11: admin reset-form defaults delegated to core (`empty_edit_form_seed`).
-- [x] Slice 12: admin table count-label placeholder rendering moved to core (`count_label`).
-- [x] Slice 13: storefront published-pages total count placeholder rendering moved to core (`count_label`).
-- [x] Slice 14: admin editing-banner `{id}` placeholder rendering moved to core (`label_with_id`).
-- [x] Slice 15: storefront open-link label composition moved to core (`open_link_label`).
-- [x] Slice 16: storefront label/value pair rendering moved to core (`label_value_pair`).
-- [x] Slice 17: storefront core extraction cleanup after full module test evidence (unused import removal).
-- [x] Slice 18: storefront Leptos render/bind code moved to explicit `storefront/src/ui/leptos.rs` adapter; crate root now only wires modules and re-exports `PagesView`.
-- [x] Slice 19: admin capability-card view helpers moved to core (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`).
-- [x] Slice 20: storefront published-page link/status presentation moved to core (`page_link_href`, `page_status_label`).
-- [x] Slice 21: admin save/publish busy-state helpers moved to core (`is_save_action_busy`, `is_publish_action_disabled`).
-- [x] Slice 22: storefront load-error composition moved to core (`load_error_message`).
-- [x] Slice 23: admin table row fallback/state view moved to core (`admin_page_list_item_view`).
-- [x] Slice 25: admin table row action busy/label view moved to core (`admin_page_row_action_state`, `admin_page_row_action_labels`).
-- [x] Slice 24: storefront published list item view moved to core (`storefront_page_list_item_view`).
-
-
-## Phase B pilot closure (rustok-pages)
-
-- [x] Core extraction slices for admin/storefront completed for planned helper scope.
-- [x] Explicit `ui/leptos.rs` adapters exist for both admin and storefront surfaces while dual-path transport remains unchanged.
-- [x] Module validation evidence attached (`cargo xtask module validate pages`).
-- [x] Module test evidence attached (`cargo xtask module test pages`).
-- [x] Double documentation verification completed and synced in central tracker.
-- [x] Ready to move primary focus to next module wave while keeping pages in maintenance mode.
 
 
 ## B3 operability rollout guardrail (2026-06-13)

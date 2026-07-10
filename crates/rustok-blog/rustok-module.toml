@@ -30,7 +30,7 @@ query = "graphql::BlogQuery"
 mutation = "graphql::BlogMutation"
 
 [provides.http]
-routes = "controllers::routes"
+axum_router = "controllers::axum_router"
 
 [provides.admin_ui]
 leptos_crate = "rustok-blog-admin"

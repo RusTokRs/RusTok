@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_telemetry::metrics;
+use rustok_web::{HttpError, HttpResult};
 use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
 
@@ -31,7 +31,7 @@ pub async fn list_posts(
     auth: AuthContext,
     request_context: RequestContext,
     Query(mut query): Query<PostListQuery>,
-) -> Result<Json<crate::PostListResponse>> {
+) -> HttpResult<Json<crate::PostListResponse>> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_LIST],
@@ -54,7 +54,7 @@ pub async fn list_posts(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_list_posts_failed", err.to_string()))?;
     metrics::record_read_path_query(
         "http",
         "blog.list_posts",
@@ -97,7 +97,7 @@ pub async fn get_post(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<PostResponse>> {
+) -> HttpResult<Json<PostResponse>> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_READ],
@@ -121,7 +121,7 @@ pub async fn get_post(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_get_post_failed", err.to_string()))?;
     Ok(Json(post))
 }
 
@@ -143,7 +143,7 @@ pub async fn create_post(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreatePostInput>,
-) -> Result<(StatusCode, Json<Uuid>)> {
+) -> HttpResult<(StatusCode, Json<Uuid>)> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_CREATE],
@@ -161,7 +161,7 @@ pub async fn create_post(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_create_post_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(post_id)))
 }
 
@@ -187,7 +187,7 @@ pub async fn update_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdatePostInput>,
-) -> Result<()> {
+) -> HttpResult<()> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_UPDATE],
@@ -206,7 +206,7 @@ pub async fn update_post(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_update_post_failed", err.to_string()))?;
     Ok(())
 }
 
@@ -230,7 +230,7 @@ pub async fn delete_post(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_DELETE],
@@ -248,7 +248,7 @@ pub async fn delete_post(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_delete_post_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -272,7 +272,7 @@ pub async fn publish_post(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<()> {
+) -> HttpResult<()> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_PUBLISH],
@@ -290,7 +290,7 @@ pub async fn publish_post(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_publish_post_failed", err.to_string()))?;
     Ok(())
 }
 
@@ -314,7 +314,7 @@ pub async fn unpublish_post(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<()> {
+) -> HttpResult<()> {
     ensure_blog_permission(
         &auth,
         &[Permission::BLOG_POSTS_PUBLISH],
@@ -332,7 +332,7 @@ pub async fn unpublish_post(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("blog_unpublish_post_failed", err.to_string()))?;
     Ok(())
 }
 
@@ -340,9 +340,9 @@ pub(super) fn ensure_blog_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(HttpError::unauthorized("blog_permission_denied", message));
     }
 
     Ok(())

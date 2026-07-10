@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, Json};
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext};
+use rustok_web::{HttpError, HttpResult};
 
 use crate::{
     ForumWidgetCatalogResponse, ForumWidgetContractService, ForumWidgetPropsValidationResponse,
@@ -21,7 +21,7 @@ use crate::{
 pub async fn get_widget_catalog(
     _runtime: State<crate::controllers::ForumHttpRuntime>,
     auth: AuthContext,
-) -> Result<Json<ForumWidgetCatalogResponse>> {
+) -> HttpResult<Json<ForumWidgetCatalogResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -47,7 +47,7 @@ pub async fn validate_widget_props(
     _runtime: State<crate::controllers::ForumHttpRuntime>,
     auth: AuthContext,
     Json(input): Json<ValidateForumWidgetPropsInput>,
-) -> Result<(StatusCode, Json<ForumWidgetPropsValidationResponse>)> {
+) -> HttpResult<(StatusCode, Json<ForumWidgetPropsValidationResponse>)> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -68,9 +68,12 @@ fn ensure_forum_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(HttpError::unauthorized(
+            "forum_permission_denied",
+            message.to_string(),
+        ));
     }
 
     Ok(())

@@ -381,8 +381,12 @@ mod ssr_tests {
 
         let html = view! { <RegionRail items=vec![region] total=1 /> }.to_html();
 
+        let expected_href = format!(
+            r#"href="{}?region=eu""#,
+            UiRouteContext::default().module_route_base("regions")
+        );
         assert!(
-            html.contains(r#"href="/modules/regions?region=eu""#),
+            html.contains(expected_href.as_str()),
             "rendered rail link should use core route/query href: {html}"
         );
         assert!(

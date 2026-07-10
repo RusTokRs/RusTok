@@ -9,7 +9,7 @@
 - Provide `BlogModule` metadata for the runtime registry.
 - Own blog-specific post lifecycle, SEO, and localized blog orchestration.
 - Own blog GraphQL and REST transport adapters alongside the domain services, including comment moderation endpoint `POST /api/blog/comments/{id}/moderate`.
-- Keep REST post/comment handlers on narrow `BlogHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
+- Keep REST post/comment handlers on narrow `BlogHttpRuntime` state; the manifest-declared Axum router builds it from `HostRuntimeContext` and a typed transactional event bus.
 - Publish module-owned Leptos admin/storefront packages for installable UI surfaces.
 - Publish schema-driven tenant settings through `rustok-module.toml`, including curated option sets for admin forms.
 - Publish the typed `blog_posts:*` RBAC surface.
@@ -22,7 +22,7 @@
 - Depends on `rustok-taxonomy` for the shared tag dictionary while keeping `blog_post_tags` blog-owned.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
-- Used by `apps/server` through thin GraphQL/REST shims and route composition.
+- Used by `apps/server` through generated GraphQL composition and a manifest-declared Axum router mount.
 - Used by `apps/admin` and `apps/storefront` through manifest-driven Leptos package composition.
 - Public blog read paths can now honor `channel_module_bindings` when a request carries an active
   channel through `RequestContext`; authenticated/admin flows intentionally bypass that pilot gate.
@@ -45,7 +45,7 @@
 - `TagService`
 - `graphql::BlogQuery`
 - `graphql::BlogMutation`
-- `controllers::routes`
+- `controllers::axum_router`
 - `admin::BlogAdmin`
 - `storefront::BlogView`
 

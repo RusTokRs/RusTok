@@ -1,37 +1,13 @@
 # Implementation plan for `rustok-page-builder` (FBA reference module)
 
-## Context
-
-`rustok-page-builder` is created as an independent FBA reference module.
-The first stage is to stabilize capability contracts and runtime seams,
-after which the module is connected as a consumer-dependency in `rustok-pages`.
-
 ## Stages
 
-- [x] Phase 0 — bootstrap module contract (`Cargo.toml`, `rustok-module.toml`, `RusToKModule`).
-- [x] Phase 1 — capability API baseline (`preview/tree/properties/publish`) without vendor lock-in.
-- [x] Phase 2 — observability and module health contract baseline.
 - [ ] Phase 3 — integration contract for `pages` as consumer.
 - [ ] Phase 4 — rollout controls (feature flags / tenant gates / pilot).
 
 ## Current state
 
-- runtime module scaffold is complete;
-- module manifest and docs contracts are created;
-- machine-readable FBA registry (`contracts/page-builder-fba-registry.json`) locks provider version, `consumer_min_version`, consumer contract versions, fallback profile set, provider health states, degradation reasons and pilot SLO thresholds for anti-drift gate, synchronized with owner source markers in `rollout.rs` and `health.rs`;
-- server feature wiring (`mod-page-builder`) is connected;
-- typed provider health/SLO evaluator added to runtime baseline for Wave evidence;
-- transport-neutral DTO metadata (`PageBuilderContractMetadata::BASELINE`), typed provider error catalog (`PageBuilderErrorKind`, `PAGE_BUILDER_ERROR_CATALOG`, `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE`) and typed Wave health evidence (`ProviderHealthEvidence`) are created as publish-ready contract markers;
-- transport-neutral tagged request/response envelope and `AuthorizedPageBuilderHandlers::handle` added as entrypoint seam for future GraphQL/server-function adapters;
-- transport bridge slice added `src/transport.rs` with `dispatch_graphql_envelope` / `dispatch_leptos_server_function_envelope` and canonical success/error envelope over `AuthorizedPageBuilderHandlers::handle`;
-- endpoint adapter seam added `src/adapters.rs` with GraphQL/Leptos payload wrappers and host-facing handler functions over canonical dispatch helpers;
-- machine-readable correlation contract `contracts/page-builder-correlation-contract.json` locks evidence chain `builder write -> pages publish -> storefront read` and source markers for no-compile gate;
-- capability handlers have reference-provider baseline (`ReferencePageBuilderService`) for `preview/tree/properties/publish` with contract validation, sanitize guard and deterministic typed responses;
-- persistence/rendering extension slice added through `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter` and `AdapterBackedPageBuilderService`, so host adapters can connect storage/rendering without changing DTO, `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle` or GraphQL/Leptos endpoint wrappers;
-- adapter lifecycle evidence slice added `PageBuilderAdapterOperation`, `PageBuilderAdapterCallEvidence`, `PageBuilderAdapterTelemetry` and default `NoopPageBuilderAdapterTelemetry` for typed audit/observability markers `load_project`, `save_project` and `render_preview` over `PortContext` without changing capability DTO or transport envelopes; evidence now writes `started/succeeded/failed` outcome and carries `PageBuilderErrorKind` + stable code for failed adapter calls;
-- permission descriptor slice locked serializable `PAGE_BUILDER_CAPABILITY_PERMISSIONS`, so the capability -> permission map from registry/manifest is accessible to host/codegen surfaces from the owner crate;
-- read capability policy slice locked `PageBuilderCapabilityPortPolicies`, serializable `PAGE_BUILDER_CAPABILITY_PORT_POLICIES`, `PortCallPolicy::read()` for `preview`, `tree` and `properties`, so all capability handlers now require deadline semantics, while `publish` preserves write deadline + idempotency enforcement;
-- Control-plane dry run evidence locked in `contracts/page-builder-control-plane-dry-run.json`: atomic change-set for `builder.enabled` and child flags, mandatory profiles `all_on/publish_off/preview_off/builder_off`, before/after snapshots, waiver policy and read-surface guarantees.
+The provider baseline, capability contract, permission map, fallback policy, adapter seams, and evidence contracts are documented in [the module documentation](./README.md). The remaining work is consumer integration and verified tenant rollout.
 
 
 ## FFA/FBA status
@@ -81,12 +57,12 @@ after which the module is connected as a consumer-dependency in `rustok-pages`.
 ## Update rules
 
 - when changing capability contracts, update `docs/README.md` and this plan simultaneously;
-- when changing rollout/ownership, synchronize `docs/modules/tiptap-page-builder-implementation-plan.md`;
+- when changing rollout/ownership, synchronize `docs/modules/page-builder-implementation-plan.md`;
 - do not keep historical changelog: maintain only the current state of stages and upcoming work.
 
 ## Related documents
 
-- `docs/modules/tiptap-page-builder-implementation-plan.md`
+- `docs/modules/page-builder-implementation-plan.md`
 - `docs/modules/manifest.md`
 - `crates/rustok-page-builder/docs/README.md`
 - `crates/rustok-pages/docs/implementation-plan.md`

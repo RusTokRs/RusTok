@@ -223,7 +223,7 @@
   "rollback": {
     "decision": "keep",
     "reason": "Readiness draft keeps Wave 1 on hold until real tenant snapshots, smoke output, SLO observations, and owner signatures replace this packet.",
-    "rollback_reference": "docs/modules/tiptap-page-builder-implementation-plan.md#126-минимальный-evidence-packet-template-для-wave-0wave-1",
+    "rollback_reference": "docs/modules/page-builder-implementation-plan.md#fallback-matrix",
     "timestamp": "2026-06-17T00:00:00Z"
   },
   "approvals": {

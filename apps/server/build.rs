@@ -26,6 +26,8 @@ struct ModuleSpec {
     #[serde(default)]
     http_routes_fn: Option<String>,
     #[serde(default)]
+    http_axum_router_fn: Option<String>,
+    #[serde(default)]
     http_webhook_routes_fn: Option<String>,
 }
 
@@ -36,6 +38,7 @@ struct OptionalModuleEntry {
     graphql_query_expr: Option<String>,
     graphql_mutation_expr: Option<String>,
     routes_expr: Option<String>,
+    axum_router_expr: Option<String>,
     extra_route_exprs: Vec<String>,
 }
 
@@ -73,6 +76,8 @@ struct ModulePackageGraphqlProvides {
 struct ModulePackageHttpProvides {
     #[serde(default)]
     routes: Option<String>,
+    #[serde(default)]
+    axum_router: Option<String>,
     #[serde(default)]
     webhook_routes: Option<String>,
 }
@@ -188,6 +193,11 @@ fn build_optional_module_entry(
             .map(|_| format!("{crate_ident}::graphql::{type_stem}Mutation"))
     });
 
+    let axum_router_expr = spec
+        .http_axum_router_fn
+        .clone()
+        .map(|value| format!("{value}(runtime)"));
+
     let routes_expr = spec
         .http_routes_fn
         .clone()
@@ -195,7 +205,10 @@ fn build_optional_module_entry(
         .or_else(|| {
             crate_root
                 .as_ref()
-                .filter(|root| has_any(root, &["src/controllers/mod.rs", "src/controllers.rs"]))
+                .filter(|root| {
+                    !has_package_manifest
+                        && has_any(root, &["src/controllers/mod.rs", "src/controllers.rs"])
+                })
                 .map(|_| format!("{crate_ident}::controllers::routes()"))
         });
 
@@ -216,6 +229,7 @@ fn build_optional_module_entry(
         graphql_query_expr,
         graphql_mutation_expr,
         routes_expr,
+        axum_router_expr,
         extra_route_exprs,
     }))
 }
@@ -255,9 +269,17 @@ fn apply_module_package_manifest(
         }
     }
     if let Some(http) = package_manifest.provides.http {
+        if http.routes.is_some() && http.axum_router.is_some() {
+            return Err("[provides.http] cannot declare both routes and axum_router".into());
+        }
         if let Some(routes_fn) = qualify_package_type_path(&spec.crate_name, http.routes.as_deref())
         {
             spec.http_routes_fn = Some(routes_fn);
+        }
+        if let Some(axum_router_fn) =
+            qualify_package_type_path(&spec.crate_name, http.axum_router.as_deref())
+        {
+            spec.http_axum_router_fn = Some(axum_router_fn);
         }
         if let Some(webhook_routes_fn) =
             qualify_package_type_path(&spec.crate_name, http.webhook_routes.as_deref())
@@ -385,6 +407,17 @@ fn render_routes_codegen(entries: &[OptionalModuleEntry]) -> String {
         }
     }
     out.push_str("    routes\n}\n");
+    out.push_str("\npub fn append_optional_module_axum_routers(\n    mut router: axum::Router,\n    runtime: &rustok_api::HostRuntimeContext,\n) -> anyhow::Result<axum::Router> {\n");
+    for entry in entries {
+        if let Some(axum_router_expr) = &entry.axum_router_expr {
+            out.push_str(&format!(
+                "    #[cfg(feature = \"{feature}\")]\n    {{\n        router = router.merge({axum_router_expr}?);\n    }}\n",
+                feature = entry.feature,
+                axum_router_expr = axum_router_expr,
+            ));
+        }
+    }
+    out.push_str("    Ok(router)\n}\n");
     out
 }
 

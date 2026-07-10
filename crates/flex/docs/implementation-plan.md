@@ -28,6 +28,8 @@ This plan locks the delivery of `flex` to the target capability-only state in th
 
 ## FFA/FBA status
 
+- FFA status: `not_started`
+- FBA status: `in_progress`
 - UI surfaces: none.
 - FFA: `not_started` — module-owned UI for capability not declared.
 - FBA: `in_progress` — attached field-definition and standalone GraphQL roots/runtime/DTO belong to `flex::graphql`, attached field-definition row/view/command mapping, persisted JSON shape, lifecycle policy helpers and cache invalidation event taxonomy belong to `flex::registry`, standalone REST DTO/command mapping belong to `flex::rest`, standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge belongs to `flex::standalone`, roots are connected via manifest codegen and depend on host-composed `FlexGraphqlRuntime`; server remains the adapter/composition layer for Loco/Axum REST handler, SeaORM persistence, registry/cache/bootstrap wiring and DB/runtime injection.

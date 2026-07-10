@@ -5,8 +5,6 @@ pub mod events;
 pub mod installer;
 pub mod module_admin;
 pub mod modules;
-mod native_server_adapter;
 pub mod not_found;
-pub mod roles;
 pub mod workflow_detail;
 pub mod workflows;

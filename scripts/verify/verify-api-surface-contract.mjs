@@ -128,6 +128,9 @@ requireContains('apps/server/build.rs', 'render_graphql_codegen', 'Build script 
 requireContains('apps/server/build.rs', 'render_routes_codegen', 'Build script renders optional REST route mounting');
 requireContains('apps/server/build.rs', 'provides.graphql', 'Build script schema understands [provides.graphql]');
 requireContains('apps/server/build.rs', 'provides.http', 'Build script schema understands [provides.http]');
+requireContains('apps/server/build.rs', 'axum_router', 'Build script schema understands [provides.http].axum_router');
+requireContains('apps/server/build.rs', 'append_optional_module_axum_routers', 'Build script renders optional Axum router composition');
+requireContains('apps/server/src/services/app_router.rs', 'append_optional_module_axum_routers', 'host merges generated module Axum routers after composing HostRuntimeContext');
 
 // API plan/docs must expose this guardrail as no-compile evidence.
 requireContains('docs/verification/platform-api-surfaces-verification-plan.md', 'verify-api-surface-contract.mjs', 'API verification plan lists no-compile source guardrail');
@@ -178,6 +181,10 @@ requireNotContains('apps/server/src/services/module_event_dispatcher.rs', 'loco_
 requireNotContains('apps/server/src/services/email.rs', 'AppContext', 'email service factory does not depend on Loco AppContext');
 requireContains('apps/server/src/services/email.rs', 'ServerRuntimeContext', 'email service factory consumes server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'pub fn module_runtime_extensions_from_ctx', 'module runtime extensions helper is owned by app runtime');
+requireNotContains('apps/server/src/initializers/superadmin.rs', 'loco_rs', 'superadmin startup action does not depend on Loco initializer contracts');
+requireContains('apps/server/src/initializers/superadmin.rs', 'ServerRuntimeContext', 'superadmin startup action consumes neutral server runtime state');
+requireNotContains('apps/server/src/initializers/mod.rs', 'loco_rs', 'initializer module no longer imports Loco contracts');
+requireContains('apps/server/src/app.rs', 'ensure_default_superadmin(&runtime_ctx)', 'server bootstrap runs the superadmin action explicitly');
 requireContains('apps/server/src/services/app_runtime.rs', 'pub type AppRuntimeHostContext = loco_rs::app::AppContext;', 'app runtime exposes a local host AppContext bridge');
 requireNotContains('apps/server/src/services/app_runtime.rs', 'use loco_rs::app::AppContext', 'app runtime does not import Loco AppContext directly');
 requireContains('apps/server/src/auth.rs', 'pub type AuthHostContext = loco_rs::app::AppContext;', 'auth config exposes a local host AppContext bridge');
@@ -269,9 +276,21 @@ requireNotContains('crates/rustok-blog/src/controllers/comments.rs', 'AppContext
 requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'rustok_outbox::loco', 'blog post HTTP handlers do not consume outbox Loco adapter');
 requireNotContains('crates/rustok-blog/src/controllers/comments.rs', 'rustok_outbox::loco', 'blog comment HTTP handlers do not consume outbox Loco adapter');
 requireContains('crates/rustok-blog/src/controllers/mod.rs', 'pub struct BlogHttpRuntime', 'blog HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-blog/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'blog declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/rustok-blog/src/controllers/mod.rs', 'HostRuntimeContext', 'blog Axum router receives neutral host runtime context');
+requireContains('crates/rustok-blog/src/controllers/mod.rs', 'shared_get::<TransactionalEventBus>()', 'blog Axum router receives its typed event bus from the host runtime context');
+requireNotContains('crates/rustok-blog/src/controllers/mod.rs', 'loco_rs', 'blog Axum router does not import Loco');
+requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'loco_rs', 'blog post handlers use Axum response errors without Loco');
+requireNotContains('crates/rustok-blog/src/controllers/comments.rs', 'loco_rs', 'blog comment handlers use Axum response errors without Loco');
+requireNotContains('crates/rustok-blog/Cargo.toml', 'loco-rs', 'blog domain crate does not depend on Loco after Axum router cutover');
 requireNotContains('crates/rustok-pages/src/controllers/mod.rs', 'rustok_outbox::loco', 'pages HTTP handlers do not consume outbox Loco adapter');
 requireContains('crates/rustok-pages/src/controllers/mod.rs', 'pub struct PagesHttpRuntime', 'pages HTTP controllers use a narrow runtime state');
 requireContains('crates/rustok-pages/src/controllers/mod.rs', 'State(runtime): State<PagesHttpRuntime>', 'pages HTTP handlers consume narrow runtime state');
+requireContains('crates/rustok-pages/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'pages declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/rustok-pages/src/controllers/mod.rs', 'HostRuntimeContext', 'pages Axum router receives neutral host runtime context');
+requireContains('crates/rustok-pages/src/controllers/mod.rs', 'shared_get::<TransactionalEventBus>()', 'pages Axum router receives its typed event bus from the host runtime context');
+requireNotContains('crates/rustok-pages/src/controllers/mod.rs', 'loco_rs', 'pages HTTP controller does not import Loco');
+requireNotContains('crates/rustok-pages/Cargo.toml', 'loco-rs', 'pages domain crate does not depend on Loco after Axum router cutover');
 for (const rel of [
   'crates/rustok-forum/src/controllers/categories.rs',
   'crates/rustok-forum/src/controllers/topics.rs',
@@ -284,11 +303,20 @@ for (const rel of [
   requireContains(rel, 'ForumHttpRuntime', `${rel} handlers consume narrow forum runtime state`);
 }
 requireNotContains('crates/rustok-forum/Cargo.toml', 'loco-adapter', 'forum crate does not depend on the outbox Loco adapter feature');
+requireNotContains('crates/rustok-forum/Cargo.toml', 'loco-rs', 'forum domain crate does not depend on Loco after Axum router cutover');
 requireContains('crates/rustok-forum/src/controllers/mod.rs', 'pub struct ForumHttpRuntime', 'forum HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-forum/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'forum declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/rustok-forum/src/controllers/mod.rs', 'HostRuntimeContext', 'forum Axum router receives neutral host runtime context');
+requireNotContains('crates/rustok-forum/src/controllers/mod.rs', 'loco_rs', 'forum HTTP router does not import Loco');
 requireContains('crates/rustok-media/src/controllers/mod.rs', 'pub struct MediaHttpRuntime', 'media HTTP controllers use a narrow runtime state');
 requireContains('crates/rustok-media/src/controllers/mod.rs', 'State(runtime): State<MediaHttpRuntime>', 'media HTTP handlers consume narrow runtime state');
 requireNotContains('crates/rustok-media/src/controllers/mod.rs', 'State(ctx): State<AppContext>', 'media HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-media/src/controllers/mod.rs', 'ctx.shared_store', 'media HTTP handlers do not use Loco shared store as service locator');
+requireContains('crates/rustok-media/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'media declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/rustok-media/src/controllers/mod.rs', 'HostRuntimeContext', 'media Axum router receives neutral host runtime context');
+requireContains('crates/rustok-media/src/controllers/mod.rs', 'shared_get::<StorageService>()', 'media Axum router receives typed storage from the host runtime context');
+requireNotContains('crates/rustok-media/src/controllers/mod.rs', 'loco_rs', 'media HTTP router does not import Loco');
+requireNotContains('crates/rustok-media/Cargo.toml', 'loco-rs', 'media domain crate does not depend on Loco after Axum router cutover');
 for (const rel of [
   'crates/rustok-workflow/src/controllers/workflows.rs',
   'crates/rustok-workflow/src/controllers/steps.rs',
@@ -303,6 +331,10 @@ requireContains('crates/rustok-seo/src/controllers/mod.rs', 'pub struct SeoHttpR
 requireContains('crates/rustok-seo/src/controllers/mod.rs', 'State(runtime): State<SeoHttpRuntime>', 'SEO HTTP handlers consume narrow runtime state');
 requireNotContains('crates/rustok-seo/src/controllers/mod.rs', 'State(ctx): State<AppContext>', 'SEO HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-seo/src/controllers/mod.rs', 'rustok_outbox::loco', 'SEO HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-seo/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'SEO declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/rustok-seo/src/controllers/mod.rs', 'HostRuntimeContext', 'SEO Axum router receives neutral host runtime context');
+requireNotContains('crates/rustok-seo/src/controllers/mod.rs', 'loco_rs', 'SEO HTTP router does not import Loco');
+requireNotContains('crates/rustok-seo/Cargo.toml', 'loco-rs', 'SEO domain crate does not depend on Loco after Axum router cutover');
 requireNotContains('crates/rustok-seo/Cargo.toml', 'loco-adapter', 'SEO crate does not depend on the outbox Loco adapter feature');
 requireContains('apps/server/src/services/app_lifecycle.rs', 'let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);', 'runtime worker lifecycle isolates current Loco boundary adapter');
 requireNotContains('apps/server/src/services/app_lifecycle.rs', 'RustokSettings::from_settings(&ctx.config.settings)', 'runtime worker lifecycle does not parse settings from Loco config directly');
@@ -494,6 +526,8 @@ for (const rel of [
   'crates/rustok-media/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-search/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-auth/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-commerce/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-pricing/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-customer/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-channel/admin/src/transport/native_server_adapter.rs',
   'crates/rustok-ai/admin/src/transport/native_server_adapter.rs',
@@ -519,6 +553,10 @@ requireNotContains('crates/rustok-media/admin/Cargo.toml', 'loco-rs', 'media adm
 requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-rs', 'search admin crate does not depend on Loco');
 requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-adapter', 'search admin crate does not enable the outbox Loco adapter feature');
 requireNotContains('crates/rustok-auth/admin/Cargo.toml', 'loco-rs', 'auth admin crate does not depend on Loco');
+requireNotContains('crates/rustok-commerce/admin/Cargo.toml', 'loco-rs', 'commerce admin crate does not depend on Loco');
+requireNotContains('crates/rustok-commerce/admin/Cargo.toml', 'loco-adapter', 'commerce admin crate does not enable the outbox Loco adapter feature');
+requireNotContains('crates/rustok-pricing/admin/Cargo.toml', 'loco-rs', 'pricing admin crate does not depend on Loco');
+requireNotContains('crates/rustok-pricing/admin/Cargo.toml', 'loco-adapter', 'pricing admin crate does not enable the outbox Loco adapter feature');
 requireNotContains('crates/rustok-customer/admin/Cargo.toml', 'loco-rs', 'customer admin crate does not depend on Loco');
 requireNotContains('crates/rustok-channel/admin/Cargo.toml', 'loco-rs', 'channel admin crate does not depend on Loco');
 requireNotContains('crates/rustok-ai/admin/Cargo.toml', 'loco-rs', 'AI admin crate does not depend on Loco');

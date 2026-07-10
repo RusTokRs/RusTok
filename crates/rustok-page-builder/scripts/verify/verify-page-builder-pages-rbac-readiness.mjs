@@ -28,7 +28,7 @@ const checks = [
     label: "local pages implementation plan RBAC readiness sync",
     tokens: [
       "verify-page-builder-pages-rbac-readiness.mjs",
-      "нет RBAC regression для editor/moderator/admin",
+      "No RBAC regression for editor, moderator, or admin builder scenarios",
       "RBAC Wave 1 readiness update",
     ],
   },

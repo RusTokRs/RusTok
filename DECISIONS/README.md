@@ -13,6 +13,7 @@ All significant architectural choices should be recorded as ADRs.
 | ADR | Title | Status |
 |-----|-------|--------|
 | [2026-07-02](./2026-07-02-axum-runtime-and-ops-cli-boundary.md) | Axum runtime and platform CLI boundary | Accepted |
+| [2026-07-10](./2026-07-10-mcp-management-owner-boundary.md) | MCP management owner boundary | Accepted |
 | [2026-07-01](./2026-07-01-product-category-bound-attribute-schemas.md) | Product category-bound attribute schemas | Accepted |
 | [2026-07-01](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) | Port contract ownership and runtime feature boundary | Accepted |
 | [2026-05-22](./2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) | Module lifecycle hook phases and retry contract | Accepted |
@@ -38,11 +39,11 @@ All significant architectural choices should be recorded as ADRs.
 | [2026-03-23](./2026-03-23-rustok-api-thin-shared-host-api-layer.md) | `rustok-api` as a thin and unified shared host/API layer | Accepted |
 | [2026-03-20](./2026-03-20-mcp-runtime-scaffold-store-binding.md) | Live MCP scaffold flow via pluggable persisted draft store | Accepted |
 | [2026-03-20](./2026-03-20-persisted-alloy-scaffold-drafts-in-server-control-plane.md) | Persisted Alloy scaffold drafts in server control plane | Accepted |
-| [2026-03-20](./2026-03-20-alloy-is-alloy-not-rustok-alloy.md) | Alloy is called `alloy`, not `rustok-alloy` | Accepted |
+| [2026-03-20](./2026-03-20-alloy-is-alloy-not-rustok-alloy.md) | Alloy is called `alloy`, not `rustok-alloy` | Superseded |
 | [2026-03-20](./2026-03-20-alloy-scaffold-review-apply-boundary.md) | Review/apply boundary for Alloy scaffold flow in `rustok-mcp` | Accepted |
 | [2026-03-19](./2026-03-19-alloy-module-scaffold-via-mcp.md) | Alloy module scaffold as the first real MCP product slice | Accepted |
 | [2026-03-19](./2026-03-19-mcp-runtime-binding-through-server-bridge.md) | MCP runtime binding through server-owned bridge | Accepted |
-| [2026-03-19](./2026-03-19-mcp-persisted-management-layer.md) | Persisted MCP management layer in `apps/server` | Accepted |
+| [2026-03-19](./2026-03-19-mcp-persisted-management-layer.md) | Persisted MCP management layer in `apps/server` | Superseded |
 | [2026-03-19](./2026-03-19-mcp-identity-and-tool-policy-foundation.md) | MCP identity and tool policy foundation in `rustok-mcp` | Accepted |
 | [2026-03-11](./2026-03-11-queue-runtime-source-of-truth-outbox.md) | Queue runtime source of truth: rustok-outbox + event_transport_factory | Accepted |
 | [2026-03-11](./2026-03-11-loco-mailer-storage-as-server-infra.md) | Loco Mailer and Storage as server-infra layer (without a separate module) | Accepted |

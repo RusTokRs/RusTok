@@ -175,6 +175,8 @@ pub struct ManifestModuleSpec {
     #[serde(default)]
     pub http_routes_fn: Option<String>,
     #[serde(default)]
+    pub http_axum_router_fn: Option<String>,
+    #[serde(default)]
     pub http_webhook_routes_fn: Option<String>,
     #[serde(default)]
     pub recommended_admin_surfaces: Vec<String>,
@@ -364,6 +366,8 @@ pub struct ModulePackageGraphqlProvides {
 pub struct ModulePackageHttpProvides {
     #[serde(default)]
     pub routes: Option<String>,
+    #[serde(default)]
+    pub axum_router: Option<String>,
     #[serde(default)]
     pub webhook_routes: Option<String>,
 }

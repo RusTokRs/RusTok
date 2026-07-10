@@ -172,7 +172,7 @@ Baseline gate composition:
 2. required fallback/toggle profile structure;
 3. toggle profile value consistency (`all_on/publish_off/preview_off/builder_off`).
 
-This baseline gate is used as a mandatory artifact for Sprint/Wave evidence in `docs/modules/tiptap-page-builder-implementation-plan.md`.
+This baseline gate is used as a mandatory artifact for Sprint/Wave evidence in `docs/modules/page-builder-implementation-plan.md`.
 
 ## What Is Considered Mandatory for Module Unification
 

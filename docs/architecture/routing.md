@@ -81,6 +81,11 @@ If a module publishes HTTP routes or UI surfaces:
 - the host application only mounts the surface and provides runtime/request context;
 - the source of truth for wiring lives in the manifest and local docs of the module
 
+The target HTTP declaration is `[provides.http].axum_router`. Its entrypoint receives
+`HostRuntimeContext`; the module constructs its own narrow route state and returns its
+own `axum::Router`. The generated host composition merges that router once. A module
+must not declare both `axum_router` and legacy `routes`.
+
 The presence of a controller or UI sub-crate without manifest wiring is not considered a complete
 contract.
 
@@ -93,7 +98,8 @@ For backend implementation details, read the backend module guides:
 New HTTP response formatting must use `rustok-web` helpers such as
 `rustok_web::json_response`. Do not add new `loco_rs::controller::format` usage. Current
 `loco_rs::controller::Routes` occurrences are temporary route-mounting inventory until the
-Axum router cutover, not a model for new module routing.
+Axum router cutover, not a model for new module routing. `rustok-blog` is the first
+manifest-driven Axum route provider and has no Loco route-state adapter.
 
 ## Route-selection Contract for Module-owned Admin UI
 

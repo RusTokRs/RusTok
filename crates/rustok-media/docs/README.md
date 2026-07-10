@@ -13,7 +13,7 @@ relying on `rustok-storage` as the physical storage layer.
 ## Scope
 
 - `MediaService`, media entities/DTOs and the translation update contract with locale/text normalization at the runtime boundary;
-- REST upload/list/get/delete/translation handlers on a narrow `MediaHttpRuntime` with explicit DB/storage handles; the current Loco `AppContext` remains only in the route-state adapter until full Axum cutover;
+- REST upload/list/get/delete/translation handlers on a narrow `MediaHttpRuntime` with explicit DB/storage handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a Loco adapter;
 - typed cross-module image contract `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile`, `MediaImagePublicUrlPolicy` and `proxy_path` helper for explicit direct-public/proxy-required/not-addressable URL policy;
 - FBA provider contract `MediaAssetReadPort` / `media.asset_read.v1` with source-locked evidence for deadline/context guards, typed `PortError` retryability and `MediaAssetSummary` kind/usage metadata;
 - GraphQL and REST adapters of the module;

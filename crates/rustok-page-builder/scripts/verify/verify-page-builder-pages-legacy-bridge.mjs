@@ -94,7 +94,7 @@ for (const [docKey, docPath] of [
 ]) {
   assertContains(source[docKey], "legacy", `${docPath}: must document the legacy blocks bridge`);
 }
-assertContains(source.plan, "Legacy blocks path работает в режиме read/bridge", `${files.plan}: hand-off acceptance must mark/read legacy bridge status`);
+assertContains(source.plan, "Legacy blocks path works in read/bridge mode", `${files.plan}: hand-off acceptance must mark/read legacy bridge status`);
 assertContains(source.plan, "verify-page-builder-pages-legacy-bridge.mjs", `${files.plan}: plan must mention this no-compile legacy bridge guardrail`);
 assertContains(source.registry, "verify-page-builder-pages-legacy-bridge.mjs", `${files.registry}: readiness board must mention this no-compile legacy bridge guardrail`);
 

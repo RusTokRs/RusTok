@@ -60,19 +60,6 @@ Status: SEO Suite v1 is assembled as an optional platform module. Phase A–C (t
   - D5 closed: schema/index cursor foundation, repair path and historical replay mode complete (`run_index_repair_replay` + forward-only cursor replay transitions);
   - `apps/next-admin` API helper expanded to control-plane read/write surfaces (including index tracking/replay) and error mapping parity; owner-side observability/remediation widgets through `rustok-seo-admin-support` and wiring in `pages/product/blog/forum` are closed, open focus shifted to Next storefront runtime parity.
 
-## Summary of last exploration session
-
-- baseline runtime and control-plane for templates/bulk/diagnostics confirmed as complete;
-- C1 closed: sitemap submit has adapter seam + telemetry-friendly per-endpoint aggregation;
-- C2 closed: read-only cross-link suggestions available through GraphQL/REST, diagnostics includes `cross_link_gap`;
-- C3 closed: `rustok-media` ↔ `rustok-seo` image boundary moved to typed descriptors;
-- D2 closed: publish path writes delivery tracker (`seo_event_deliveries`), links to outbox envelope id and maintains duplicate guard by idempotency key;
-- D3 closed: SEO->index seam publishes selective `index.reindex_requested` triggers and writes retry/DLQ tracking in `seo_index_deliveries` with cursor/high-water state in `seo_index_cursors`;
-- D4 closed: REST control-plane parity endpoints and GraphQL surfaces supplemented with unified error envelope (`errors[].extensions.code`) and Next admin error mapping parity;
-- D5 closed: operator-triggered replay path and control-plane surface already live (`runSeoIndexRepairReplay`, `/api/seo/index/repair-replay`), cursor replay mode maintains forward-only transitions and is covered by targeted tests;
-- D6 closed end-to-end: owner-side reusable control-plane widgets + typed remediation mapping + host-locale wiring in `pages/product/blog/forum` + Next admin operator parity;
-- guardrail for Next route coverage remains deferred until a real route ownership surface beyond home route appears;
-- for the next execution wave priority: D7 storefront parity -> D8 verification matrix -> D9 runbooks/docs closeout.
 
 ## Compatibility contract (Phase D freeze)
 
@@ -108,63 +95,11 @@ All flags are tenant-aware, default `false` for safe staged rollout.
 
 ### Closed
 
-#### Core runtime
+Completed core runtime, public surfaces, template, bulk-remediation, diagnostics, rich-snippet, and Phase C implementation details are maintained in [the module documentation](./README.md).
 
-- [x] Module bootstrap and manifest-driven wiring.
-- [x] Canonical target contract through `SeoTargetSlug` and registry-backed providers.
-- [x] Metadata precedence: explicit SEO > template-generated SEO > domain/entity fallback.
-- [x] Locale storage widening to `VARCHAR(32)`.
-- [x] Internal `SeoService` split into `meta`, `routing`, `redirects`, `sitemaps`, `robots`, `targets`, `templates`, `diagnostics`, `bulk`.
+### Phase C — indexing and linking automation
 
-#### Public surfaces
-
-- [x] GraphQL contract for metadata, redirects, sitemap lifecycle, target registry and diagnostics.
-- [x] HTTP endpoints `/robots.txt`, `/sitemap.xml`, `/sitemaps/{name}`.
-- [x] Headless REST read path `GET /api/seo/page-context?route=...`.
-- [x] Forum topic SEO resolution considers host-provided request channel slug.
-- [x] Leptos `#[server]` functions for module-owned admin flows.
-- [x] Nested storefront contract `route + document` with typed robots/OG/Twitter/verification/JSON-LD blocks.
-- [x] Admin route uses URL-owned `tab` query key.
-
-#### Templates first
-
-- [x] `SeoModuleSettings` holds `template_defaults` and `template_overrides`.
-- [x] `rustok-seo-targets` returns typed `template_fields`.
-- [x] Owner modules do not render templates themselves and do not pass raw HTML/JSON to template runtime.
-- [x] `SeoPageContext.document.effective_state` and `seoMeta.effective_state` show `explicit` / `generated` / `fallback`.
-- [x] `rustok-seo-admin` has defaults/template control-plane.
-
-#### Bulk remediation
-
-- [x] Bulk editor works by one `SeoTargetSlug` and one locale per job.
-- [x] Async apply/export/import flow goes through `seo_bulk_jobs`, `seo_bulk_job_items`, `seo_bulk_job_artifacts`.
-- [x] Bulk source filter distinguishes `explicit`, `generated`, `fallback`, `any`.
-- [x] Apply mode contract implemented: `preview_only`, `apply_missing_only`, `overwrite_generated_only`, `force_overwrite_explicit`.
-
-#### Diagnostics
-
-- [x] `seoDiagnostics` returns readiness score, issue list and source counts.
-- [x] `seoDiagnostics` returns counts by issue code and target kind for admin filters/remediation entrypoints.
-- [x] Diagnostics catches canonical redirect targets/chains/loops.
-- [x] Diagnostics catches missing hreflang alternates and missing `x-default` for localized targets.
-- [x] Diagnostics distinguishes absent typed schema blocks from present-but-unknown schema.org type.
-- [x] Admin diagnostics pane shows tenant SEO health without moving entity editors into SEO module.
-
-#### Rich snippets foundation
-
-- [x] `SeoSchemaBlockKind` locks canonical typed kinds for Product/Offer/Rating/Breadcrumb/ItemList/Organization/LocalBusiness/WebSite/SearchAction/Article/FAQ/HowTo/media/forum shapes.
-- [x] `SeoStructuredDataBlock` returns `schema_kind`, `schema_type`, legacy `kind`, `source` and JSON-LD payload without changing storage schema.
-- [x] JSON-LD `@graph` expands into separate typed blocks with `@context` inheritance.
-- [x] `rustok-seo-render`, Leptos storefront GraphQL/server-function contract and Next shared SEO type know about typed schema-block metadata.
-- [x] Explicit `structured_data` writes validate JSON-LD shape: object/array/`@graph` with at least one non-empty `@type`.
-- [x] Built-in owner providers (`pages/product/blog/forum`) use `rustok-seo-targets::schema` builders for fallback JSON-LD.
-
-### Phase C — indexing and linking automation (closed)
-
-- [x] C1 external submission adapters.
-- [x] C2 cross-linking foundation (read-only suggestions).
-- [x] C3 image SEO hooks through `rustok-media`.
-- [ ] Next route coverage to be expanded only when real Next storefront route owners appear (guardrail remains deferred-with-reason).
+- [ ] Expand Next route coverage only when real Next storefront route owners appear; the guardrail remains deferred with an explicit reason.
 
 ### Phase D — Productionization & Integration Parity
 

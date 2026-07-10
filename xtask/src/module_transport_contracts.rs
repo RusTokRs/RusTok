@@ -31,12 +31,27 @@ pub(crate) fn validate_module_transport_surface_contract(
     }
 
     if let Some(http) = manifest.provides.http.as_ref() {
+        if http.routes.is_some() && http.axum_router.is_some() {
+            anyhow::bail!(
+                "Module '{slug}' declares both provides.http.routes and provides.http.axum_router; choose one transport entrypoint"
+            );
+        }
         if let Some(routes) = http.routes.as_deref() {
             let symbol = provided_path_symbol(routes)?;
             validate_declared_symbol_exists(
                 slug,
                 "provides.http.routes",
                 routes,
+                symbol,
+                &source_files,
+            )?;
+        }
+        if let Some(axum_router) = http.axum_router.as_deref() {
+            let symbol = provided_path_symbol(axum_router)?;
+            validate_declared_symbol_exists(
+                slug,
+                "provides.http.axum_router",
+                axum_router,
                 symbol,
                 &source_files,
             )?;

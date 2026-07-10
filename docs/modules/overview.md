@@ -150,5 +150,6 @@ optional module.
 - [Module Documentation Index](./_index.md)
 - [Module Platform Crate Registry](./crates-registry.md)
 - [`rustok-module.toml` Contract](./manifest.md)
-- [Rich-text and Visual Page Builder Special Plan](./tiptap-page-builder-implementation-plan.md)
+- [Rich Text Implementation Plan](./rich-text-implementation-plan.md)
+- [Page Builder Implementation Plan](./page-builder-implementation-plan.md)
 - [Module Architecture](../architecture/modules.md)

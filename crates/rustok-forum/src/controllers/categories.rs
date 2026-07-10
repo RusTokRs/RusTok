@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_telemetry::metrics;
+use rustok_web::{HttpError, HttpResult};
 use serde::Deserialize;
 use std::time::Instant;
 use utoipa::IntoParams;
@@ -41,7 +41,7 @@ pub async fn list_categories(
     auth: AuthContext,
     request_context: RequestContext,
     Query(params): Query<CategoryListParams>,
-) -> Result<Json<Vec<CategoryListItem>>> {
+) -> HttpResult<Json<Vec<CategoryListItem>>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_LIST],
@@ -71,7 +71,7 @@ pub async fn list_categories(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     metrics::record_read_path_query(
         "http",
         "forum.list_categories",
@@ -113,7 +113,7 @@ pub async fn get_category(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Query(params): Query<CategoryListParams>,
-) -> Result<Json<CategoryResponse>> {
+) -> HttpResult<Json<CategoryResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_LIST],
@@ -136,7 +136,7 @@ pub async fn get_category(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(category))
 }
 
@@ -157,7 +157,7 @@ pub async fn create_category(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateCategoryInput>,
-) -> Result<(StatusCode, Json<CategoryResponse>)> {
+) -> HttpResult<(StatusCode, Json<CategoryResponse>)> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_CREATE],
@@ -175,7 +175,7 @@ pub async fn create_category(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(category)))
 }
 
@@ -198,7 +198,7 @@ pub async fn update_category(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
-) -> Result<Json<CategoryResponse>> {
+) -> HttpResult<Json<CategoryResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_UPDATE],
@@ -217,7 +217,7 @@ pub async fn update_category(
             input,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(category))
 }
 
@@ -238,7 +238,7 @@ pub async fn delete_category(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_DELETE],
@@ -256,7 +256,7 @@ pub async fn delete_category(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -277,7 +277,7 @@ pub async fn subscribe_category(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<CategoryResponse>> {
+) -> HttpResult<Json<CategoryResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_READ],
@@ -294,7 +294,7 @@ pub async fn subscribe_category(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
@@ -308,7 +308,7 @@ pub async fn subscribe_category(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(category))
 }
 
@@ -329,7 +329,7 @@ pub async fn unsubscribe_category(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<CategoryResponse>> {
+) -> HttpResult<Json<CategoryResponse>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_READ],
@@ -346,7 +346,7 @@ pub async fn unsubscribe_category(
             ),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
@@ -360,7 +360,7 @@ pub async fn unsubscribe_category(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(category))
 }
 
@@ -368,9 +368,12 @@ fn ensure_forum_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(HttpError::unauthorized(
+            "forum_permission_denied",
+            message.to_string(),
+        ));
     }
 
     Ok(())
