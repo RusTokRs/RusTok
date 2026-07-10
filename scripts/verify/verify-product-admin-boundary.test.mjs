@@ -31,6 +31,7 @@ function coreSource({ includeLeptos = false, omitOpenProduct = false } = {}) {
   return `
 ${includeLeptos ? "use leptos::prelude::*;" : ""}
 pub(crate) struct ProductAdminSaveCommand;
+pub(crate) struct StatusResultViewModel;
 pub(crate) struct ProductAdminEditorFormState;
 pub(crate) struct ProductAdminStatusMutationResultViewModel;
 pub(crate) struct ProductAdminDeleteResultViewModel;
@@ -49,6 +50,7 @@ pub(crate) fn product_admin_selected_product_query_state() -> ProductAdminSelect
 pub(crate) fn product_admin_products_load_view_from_result() -> ProductAdminProductsLoadViewModel { ProductAdminProductsLoadViewModel::State }
 pub(crate) fn product_admin_shipping_profiles_load_view_from_result() -> ProductAdminShippingProfilesLoadViewModel { ProductAdminShippingProfilesLoadViewModel }
 pub(crate) fn build_product_admin_summary_panel_copy() -> ProductAdminSummaryPanelCopy { ProductAdminSummaryPanelCopy }
+pub(crate) fn build_save_command() -> ProductAdminSaveCommand { ProductAdminSaveCommand }
 `;
 }
 
@@ -67,7 +69,7 @@ use crate::transport;
 
 pub fn ProductAdmin() {
     let _transport = transport::fetch_products;
-    let _save = build_product_admin_save_command;
+    let _save = build_save_command;
     let _open = ProductAdminOpenProductViewModel::Empty;
     let _pricing = product_admin_pricing_preview_state_from_result;
     let _summary = build_product_admin_summary_panel_copy;
@@ -126,6 +128,9 @@ function nativeAdapterSource() {
   return `
 use leptos::prelude::*;
 use rustok_product::ProductCatalogSchemaService;
+expect_context::<rustok_api::HostRuntimeContext>();
+shared_get::<rustok_outbox::TransactionalEventBus>();
+runtime_ctx.db_clone();
 
 pub async fn fetch_effective_product_form(locale: String) {}
 pub async fn fetch_product_attribute_values(locale: String) {}
@@ -281,6 +286,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-product/admin/src/transport.rs", transportSource(options));
   writeFixtureFile(root, "crates/rustok-product/admin/src/transport/graphql_adapter.rs", apiSource(options));
   writeFixtureFile(root, "crates/rustok-product/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
+  writeFixtureFile(root, "crates/rustok-product/admin/Cargo.toml", "[package]\nname = \"rustok-product-admin-fixture\"\nversion = \"0.1.0\"\n");
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-product/admin/src/api.rs", apiSource(options));
   writeFixtureFile(root, "crates/rustok-commerce/src/graphql/query.rs", commerceQuerySource());
   writeFixtureFile(root, "crates/rustok-commerce/src/graphql/mutations/catalog.rs", commerceCatalogMutationSource());

@@ -26,7 +26,7 @@ pub mod utils;
 pub use api::{create_router, AppState};
 pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
-pub use controllers::{routes, LOCO_EXECUTION_HISTORY_ROUTES};
+pub use controllers::{axum_router, LOCO_EXECUTION_HISTORY_ROUTES};
 pub use engine::{EngineConfig, ScriptEngine};
 pub use error::{ScriptError, ScriptResult};
 pub use execution_log::{

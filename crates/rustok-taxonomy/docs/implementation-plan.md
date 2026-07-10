@@ -1,67 +1,54 @@
 # Implementation plan for `rustok-taxonomy`
 
-Status: shared dictionary baseline is already working; the module is used by several
-domains and is maintained as a vocabulary layer without capturing attachment ownership.
-
-## Execution checkpoint
-
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Synchronize the plan with the current code and select the first incomplete item.
-- Open blockers: None.
-- Hand-off notes for next agent: After each increment, update this block.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
-
-## Scope of work
-
-- maintain `rustok-taxonomy` as a shared vocabulary module;
-- synchronize dictionary contracts, scope rules and local docs;
-- do not let taxonomy turn into shared product storage.
-
 ## Current state
 
-- term dictionary, translations and aliases are already implemented as module-owned storage;
-- term identity remains tenant-scoped and locale-independent;
-- blog, forum, product and profiles already use taxonomy-backed relations through their own attachment tables;
-- locale normalization and fallback already rely on the shared content contract.
+`rustok-taxonomy` owns tenant-scoped dictionary terms, translations, aliases,
+canonical keys, and global/module scope rules. It is a vocabulary layer, not
+shared product storage: blog, forum, product, and profiles retain their own
+attachment tables and public domain contracts.
 
-## Stages
+Term identity is locale-independent. Locale normalization and fallback use the
+shared content contract. New consumers must attach terms through an explicit
+owner-module relation table.
 
-### 1. Contract stability
+## FFA/FBA boundary
 
-- [x] lock dictionary baseline for `kind = tag`;
-- [x] maintain scope model `global | module`;
-- [x] introduce taxonomy-backed relations in the first consumer modules;
-- [ ] maintain sync between dictionary contracts, consumer integrations and module metadata.
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- This dictionary module has no module-owned UI or FBA provider port.
 
-### 2. Expansion
+## Open results
 
-- [ ] expand kinds and lookup semantics only when there is real domain pressure;
-- [ ] add new consumer modules only through explicit module-owned attachment tables;
-- [ ] keep alias/slug uniqueness and locale fallback guarantees covered by targeted tests.
+1. **Keep dictionary and consumer contracts synchronized.** Update taxonomy
+   terms, scope rules, consumer integrations, and manifest metadata atomically.
+   **Depends on:** the change-owning consumer module.
+   **Done when:** an owning module, rather than taxonomy, owns each attachment
+   table and public relation contract.
 
-### 3. Operability
+2. **Expand kinds and lookup semantics only for demonstrated domain pressure.**
+   Do not add speculative vocabulary kinds or polymorphic attachment storage.
+   **Depends on:** a concrete domain requirement and scope decision.
+   **Done when:** canonical-key, alias/slug, tenant, module-scope, and locale
+   fallback semantics are defined and tested.
 
-- [ ] document new dictionary guarantees concurrently with runtime surface changes;
-- [ ] develop runbooks for dictionary drift and integration incidents as pressure arises;
-- [ ] synchronize local docs, README and central references when module role changes.
+3. **Maintain dictionary operational guidance.** Add documentation and runbooks
+   when a changed vocabulary contract introduces drift or integration recovery
+   risk.
+   **Depends on:** an actual runtime or consumer incident class.
+   **Done when:** operators can reconcile terms, aliases, and owner attachments
+   without inventing shared relation ownership.
 
 ## Verification
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
-- targeted tests for CRUD, alias lookup, scope restrictions and consumer-module sync
+- Targeted term CRUD, alias lookup, scope restriction, locale fallback, and
+  consumer-integration tests.
 
-## Update rules
+## Change rules
 
-1. When changing taxonomy contract, first update this file.
-2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
-3. When changing module metadata, synchronize `rustok-module.toml`.
-4. When changing consumer-module integration rules, update related docs of owning modules.
-
-
-## Quality backlog
-
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and accuracy of `README.md` and local docs.
-- [ ] Lock/update verification gates for current module state.
+1. Keep dictionary terms and scope policy in this module.
+2. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
+   contract change.
+3. Update `docs/modules/registry.md` with any ownership or module-status change.

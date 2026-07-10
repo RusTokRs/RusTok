@@ -39,7 +39,7 @@ pub fn prepare_region_admin_submit() {}
 pub fn region_admin_submit_error_message() {}
 pub fn region_admin_save_region_error_message() {}
 pub enum RegionAdminRouteQueryUpdate { ClearSelected }
-${omitRouteWriter ? "" : "pub struct RegionAdminRouteQueryWrite;\npub fn region_admin_route_query_write() {}\npub fn optional_region_admin_route_query_write() {}"}
+${omitRouteWriter ? "" : "pub fn region_admin_open_query_update() {}\npub fn region_admin_saved_query_update() {}\npub fn region_admin_new_query_update() {}"}
 pub enum RegionAdminDetailPanelViewModel { Empty }
 pub struct RegionAdminOpenDetailViewModel;
 pub struct RegionAdminSaveSuccessViewModel;
@@ -108,7 +108,7 @@ ${omitGuardrail ? "" : "- Fast guardrail: scripts/verify/verify-region-admin-bou
 function registrySource({ staleSlice = false, omitGuardrail = false } = {}) {
   return `
 | Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |
-| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "slice #42" : "slice #43"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
+| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "" : "region-fba-registry.json"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
 `;
 }
 
@@ -196,14 +196,14 @@ test("region admin boundary verifier rejects legacy admin api module", () => {
 test("region admin boundary verifier rejects missing route writer core helper", () => {
   withTempFixture({ omitRouteWriter: true }, (result) => {
     assert.notEqual(result.status, 0, "Expected missing route writer fixture to fail");
-    assert.match(result.stderr, /expected core-owned FFA helper RegionAdminRouteQueryWrite/);
+    assert.match(result.stderr, /expected core-owned FFA helper region_admin_open_query_update/);
   });
 });
 
 test("region admin boundary verifier rejects stale central readiness board", () => {
   withTempFixture({ staleSlice: true }, (result) => {
     assert.notEqual(result.status, 0, "Expected stale registry fixture to fail");
-    assert.match(result.stderr, /central readiness board must record slice #43/);
+    assert.match(result.stderr, /central readiness board must record region provider evidence/);
   });
 });
 

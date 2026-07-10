@@ -302,7 +302,8 @@ for (const marker of [
   assertNotContains(aiLeptosUi, marker, `${aiLeptosUiPath}: MCP draft UI must not live in rustok-ai (${marker})`);
 }
 
-assertContains(mcpPlan, "mcp_admin_owner_ui_slice", `${mcpPlanPath}: plan must record MCP owner UI checkpoint`);
+assertContains(mcpPlan, "McpManagementPort", `${mcpPlanPath}: plan must record the MCP management owner contract`);
+assertContains(mcpPlan, "HostRuntimeContext", `${mcpPlanPath}: plan must record the native host-runtime boundary`);
 assertContains(mcpPlan, "## FFA/FBA status", `${mcpPlanPath}: plan must include FFA/FBA status`);
 assertContains(centralRegistry, "| `rustok-mcp` | admin + Next admin |", `${centralRegistryPath}: readiness board must include MCP admin UI row`);
 

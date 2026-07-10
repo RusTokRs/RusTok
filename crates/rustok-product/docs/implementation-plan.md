@@ -105,7 +105,7 @@ while transport and part of orchestration remain with umbrella `rustok-commerce`
 - storefront UI continues FFA decomposition: route/query normalization, typed fetch request shape, shell copy, selected-product view-model composition, selected-card labels/empty state, catalog rail view-model, pricing/seller labels, pricing deep-link state and pricing-context sanitization/defaulting are extracted to framework-agnostic `storefront/src/core.rs`, catalog rail label construction moved into `build_product_catalog_rail_labels`, selected-product metadata row construction moved into `SelectedProductViewModel.metadata_items`, catalog route segment fallback moved into `resolve_route_segment`, catalog rail empty-state branching moved into `ProductCatalogRailViewModel.show_empty_state`, native/GraphQL storefront fetch paths are structured as `storefront/src/transport/` adapters with serializable fallback error evidence, `ProductTransportErrorDomEvidence` composes host-visible failure attributes in core, and the Leptos layer is isolated in `storefront/src/ui/leptos.rs` as a thin render/host-context adapter;
 - transport-level validation and public transport are still published through the `rustok-commerce` facade.
 
-## Open work
+## Stages
 
 Product runtime contract, commerce transport, and module metadata remain synchronized. Verified catalog guarantees include the DB-level tenant consistency audit, `VARCHAR(32)` locale storage, detached-value marker contract, optional catalog filters/sorts, and the no-compile schema guardrail.
 

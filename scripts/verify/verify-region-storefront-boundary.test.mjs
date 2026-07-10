@@ -12,7 +12,7 @@ function put(root, file, content) {
   mkdirSync(path.dirname(target), { recursive: true });
   writeFileSync(target, content);
 }
-function fixture({ graphqlFirst = false, rawUi = false, leptosCore = false, legacyApi = false } = {}) {
+function fixture({ missingSelectedTransport = false, rawUi = false, leptosCore = false, legacyApi = false } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "region-storefront-"));
   put(root, "crates/rustok-region/storefront/src/lib.rs", `${legacyApi ? "mod api;" : ""} mod core; mod transport; mod ui; pub use ui::RegionView;`);
   if (legacyApi) put(root, "crates/rustok-region/storefront/src/api.rs", "legacy api module");
@@ -20,11 +20,12 @@ function fixture({ graphqlFirst = false, rawUi = false, leptosCore = false, lega
   put(root, "crates/rustok-region/storefront/src/ui/leptos.rs", `transport::fetch_regions data-region-error-status data-region-error-locale-key ${rawUi ? "graphql_adapter::" : ""}`);
   const native = "native_server_adapter::fetch_regions";
   const graphql = "graphql_adapter::fetch_regions";
-  put(root, "crates/rustok-region/storefront/src/transport/mod.rs", `mod graphql_adapter; mod native_server_adapter; RegionFetchFallbackPolicy::NativeThenGraphql ${graphqlFirst ? `${graphql} ${native}` : `${native} ${graphql}`} RegionTransportError::fallback_failed`);
-  put(root, "crates/rustok-region/storefront/src/transport/native_server_adapter.rs", "fetch_storefront_regions_server");
+  put(root, "crates/rustok-region/storefront/src/transport/mod.rs", `mod graphql_adapter; mod native_server_adapter; UiTransportPath::NativeServer UiTransportPath::Graphql ${native} ${graphql} ${missingSelectedTransport ? "" : "execute_selected_transport"}`);
+  put(root, "crates/rustok-region/storefront/src/transport/native_server_adapter.rs", "fetch_storefront_regions_server HostRuntimeContext runtime_ctx.db_clone()");
   put(root, "crates/rustok-region/storefront/src/transport/graphql_adapter.rs", "fetch_storefront_regions_graphql");
   put(root, "crates/rustok-region/docs/implementation-plan.md", "verify-region-storefront-boundary.mjs");
   put(root, "docs/modules/registry.md", "verify-region-storefront-boundary.mjs");
+  put(root, "crates/rustok-region/storefront/Cargo.toml", "[package]\nname = \"rustok-region-storefront-fixture\"\nversion = \"0.1.0\"\n");
   put(root, "package.json", JSON.stringify({ scripts: {
     "verify:region:storefront-boundary": "node verifier",
     "test:verify:region:storefront-boundary": "node tests",
@@ -45,7 +46,7 @@ function verifyFailure(options, pattern) {
     rmSync(root, { recursive: true, force: true });
   }
 }
-test("region storefront boundary verifier passes native-first fixture", () => {
+test("region storefront boundary verifier passes build-profile-selected fixture", () => {
   const root = fixture();
   try {
     const result = run(root);
@@ -54,7 +55,7 @@ test("region storefront boundary verifier passes native-first fixture", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
-test("rejects GraphQL-first fallback", () => verifyFailure({ graphqlFirst: true }, /fallback order must remain native then GraphQL/));
+test("rejects missing selected transport helper", () => verifyFailure({ missingSelectedTransport: true }, /missing parity marker execute_selected_transport/));
 test("rejects raw adapter calls from UI", () => verifyFailure({ rawUi: true }, /UI must not call raw adapter/));
 test("rejects Leptos-specific core", () => verifyFailure({ leptosCore: true }, /core must stay Leptos\/runtime free/));
 test("rejects legacy storefront api module", () => verifyFailure({ legacyApi: true }, /legacy api/));

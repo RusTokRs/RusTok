@@ -138,10 +138,9 @@ assertContains(nativeServerAdapter, "HostRuntimeContext", `${nativeServerAdapter
 assertNotContains(nativeServerAdapter, "loco_rs", `${nativeServerAdapterPath}: native adapter must not depend on Loco runtime context`);
 assertNotContains(cargoToml, "loco-rs", `${cargoPath}: region admin must not depend on Loco`);
 
-assertContains(implementationPlan, "FFA slice #31", `${implementationPlanPath}: local plan must record slice #31`);
-assertContains(implementationPlan, "Loco-free native admin transport", `${implementationPlanPath}: local plan must record Loco-free native transport evidence`);
+assertContains(implementationPlan, "HostRuntimeContext", `${implementationPlanPath}: local plan must record the neutral native runtime boundary`);
 assertContains(implementationPlan, "verify-region-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the fast boundary guardrail`);
-assertContains(registry, "slice #43", `${registryPath}: central readiness board must record slice #43`);
+assertContains(registry, "region-fba-registry.json", `${registryPath}: central readiness board must record region provider evidence`);
 assertContains(registry, "verify-region-admin-boundary.mjs", `${registryPath}: central readiness board must mention the fast boundary guardrail`);
 assertContains(packageJson, "test:verify:region:admin-boundary", `${packagePath}: package scripts must expose region boundary fixture tests`);
 assertContains(packageJson, "test:verify:ffa:ui:migration", `${packagePath}: package scripts must expose aggregate FFA fixture tests`);

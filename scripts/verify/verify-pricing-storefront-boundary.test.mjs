@@ -38,15 +38,19 @@ mod graphql_adapter;
 mod native_server_adapter;
 pub async fn fetch_storefront_pricing() {}
 `);
-  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs", "pub async fn fetch_storefront_pricing_graphql() {}\n");
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_pricing_graphql() {}\n");
   writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs", `
-use rustok_graphql::GraphqlRequest;
 #[server(prefix = "/api/fn", endpoint = "pricing/storefront-data")]
-async fn storefront_pricing_native() {}
+async fn storefront_pricing_native() {
+  expect_context::<HostRuntimeContext>();
+  runtime_ctx.shared_get::<TransactionalEventBus>();
+  runtime_ctx.db_clone();
+}
 `);
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-pricing/storefront/src/api.rs", "pub async fn fetch_storefront_pricing_graphql() {}\n");
   writeFixtureFile(root, "crates/rustok-pricing/docs/implementation-plan.md", "verify-pricing-storefront-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-pricing-storefront-boundary.mjs");
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/Cargo.toml", "[package]\nname = \"rustok-pricing-storefront-fixture\"\nversion = \"0.1.0\"\n");
   writeFixtureFile(root, "package.json", JSON.stringify({
     scripts: {
       "verify:pricing:storefront-boundary": "node scripts/verify/verify-pricing-storefront-boundary.mjs",

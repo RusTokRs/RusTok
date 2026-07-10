@@ -1,69 +1,58 @@
 # Implementation plan for `rustok-profiles`
 
-Status: storage/service/GraphQL foundation is already up; the module is in
-rollout hardening mode around profile summary, backfill and UI/read-model
-further development.
-
-## Execution checkpoint
-
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Synchronize the plan with the current code and select the first incomplete item.
-- Open blockers: None.
-- Hand-off notes for next agent: After each increment, update this block.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
-
-## Scope of work
-
-- maintain `rustok-profiles` as a separate public profile domain;
-- synchronize storage, summary contracts, GraphQL surfaces and local docs;
-- prevent collapsing `profiles`, `users`, `customer` and future seller surfaces.
-
 ## Current state
 
-- `ProfilesModule`, `rustok-module.toml` and permission surface `profiles:*` already exist;
-- `profiles` and `profile_translations` already live in module-owned storage;
-- `ProfileService`, `ProfilesReader`, batched summary lookup and GraphQL transport are already implemented;
-- `blog` and `forum` already use the module as an author presentation boundary;
-- taxonomy-backed `profile_tags`, `profile.updated` and explicit backfill path are already part of the live contract.
+`rustok-profiles` owns the public profile domain over platform users: profile
+storage/translations, profile tags, handle and visibility policy,
+`ProfileService`, `ProfilesReader`, summary batching, GraphQL read/self-service
+write surfaces, `profile.updated`, and backfill helpers.
 
-## Stages
+It is not an auth identity, customer, seller, or staff-role aggregate. Blog and
+forum consume `ProfilesReader` for author presentation; taxonomy supplies the
+tag dictionary while profile-tag bindings remain module-owned.
 
-### 1. Contract stability
+## FFA/FBA boundary
 
-- [x] lock profile boundary over `users`;
-- [x] bring up module-owned storage, service layer and GraphQL baseline;
-- [x] introduce `ProfilesReader` as downstream integration contract;
-- [ ] maintain sync between runtime contracts, GraphQL surface and module metadata.
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- The module has GraphQL and reader contracts but no module-owned UI or FBA
+  provider port yet.
 
-### 2. Rollout hardening
+## Open results
 
-- [ ] decide whether a separate projection/read-model is needed beyond direct reading from `profiles + profile_translations`;
-- [ ] finalize visibility/media policy and remaining storage decisions around handle uniqueness;
-- [ ] keep profile backfill and `profile.updated` semantics compatible with downstream consumers.
+1. **Decide and implement the required read model.** Determine whether direct
+   profile/translations reads remain sufficient for downstream summaries or a
+   dedicated projection is needed.
+   **Depends on:** measured consumer query patterns and summary latency needs.
+   **Done when:** the selected model has tenant/locale semantics, batching
+   behavior, and a documented ownership boundary.
 
-### 3. UI and operability
+2. **Finish profile visibility, media, and handle policy.** Resolve remaining
+   public/private visibility, avatar/banner reference, and tenant-scoped handle
+   uniqueness decisions without merging customer or seller concerns.
+   **Depends on:** public-profile product requirements and media contract.
+   **Done when:** GraphQL, `ProfilesReader`, backfill, and downstream author
+   cards expose the same policy with targeted tests.
 
-- [ ] add module-owned UI packages after profile-domain contract is locked;
-- [ ] develop audit trail, observability and runbook guidance for profile conflicts and rollout effects;
-- [ ] document new guarantees concurrently with runtime/API surface changes.
+3. **Add UI and operational capabilities only after the domain stabilizes.**
+   Introduce a module-owned profile UI, audit trail, observability, and rollout
+   runbook only from a defined profile contract.
+   **Depends on:** approved UI/operational requirements.
+   **Done when:** the new surface has an owner package, public transport
+   contract, profile-conflict recovery guidance, and no auth/customer leakage.
 
 ## Verification
 
 - `cargo xtask module validate profiles`
 - `cargo xtask module test profiles`
-- targeted tests for handle policy, locale fallback, summary batching, GraphQL path and backfill/events
+- Targeted handle policy, locale fallback, summary batching, GraphQL
+  self-service, backfill, and event tests.
 
-## Update rules
+## Change rules
 
-1. When changing profile runtime contract, first update this file.
-2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
-3. When changing module metadata, synchronize `rustok-module.toml`.
-4. When changing downstream integration expectations, update consumer docs for `blog`, `forum` and other modules.
-
-
-## Quality backlog
-
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and accuracy of `README.md` and local docs.
-- [ ] Lock/update verification gates for current module state.
+1. Keep public profile policy and storage in this module.
+2. Update local docs, `rustok-module.toml`, and blog/forum consumer docs with a
+   public-profile contract change.
+3. Update `docs/modules/registry.md` and this status block with an FFA/FBA or
+   module-owned UI boundary change.

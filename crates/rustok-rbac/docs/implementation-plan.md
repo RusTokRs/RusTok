@@ -1,82 +1,68 @@
 # Implementation plan for `rustok-rbac`
 
-Status: transition to single-engine tenant policy runtime is complete; the module is maintained in
-steady-state hardening and drift-prevention mode.
+## Current state
 
-## Execution checkpoint
+`rustok-rbac` is the single tenant-policy runtime for permission decisions,
+role/permission assignments, and authorization policy. The relation store is
+the assignment source of truth; `apps/server` provides adapters and
+observability only. No shadow policy engine or presentation-only role inference
+may participate in live authorization.
 
-- Current phase: phase_b_in_progress
-- Last checkpoint: RBAC admin package owns the built-in role catalog together with the runtime overview; the host `/roles` page, route and native endpoint are removed. Fast boundary verifier `scripts/verify/verify-rbac-admin-boundary.mjs` and fixture suite `scripts/verify/verify-rbac-admin-boundary.test.mjs` guard the canonical split.
-- Next step: Expand operator flows/verification for role and permission management surfaces; add GraphQL/REST secondary path only if such a remote/headless admin contract is approved, and keep the current native-only overview with fast boundary guardrails.
-- Open blockers: None.
-- Hand-off notes for next agent: After each increment, update this block and the central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-19T00:00:00Z
+The admin overview is an intentional native-only surface with a module-owned
+core, transport facade, and UI adapter. It shows the built-in role catalog and
+runtime overview; a GraphQL/REST secondary path requires an approved remote or
+headless operator contract.
 
-## FFA/FBA status
+## FFA/FBA boundary
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
-- Evidence:
-  - batch no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` checks `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`: read policy precedes request validation and claims evaluation, and fallback/degraded metadata remains in sync with registry; status remains `in_progress` until live host execution;
-  - admin package split introduced `admin/src/core.rs` for Leptos-free overview view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
-  - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-rbac` had no legacy GraphQL/REST operator contract for this overview;
-  - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;
-  - FBA provider slice: `crates/rustok-rbac/src/ports.rs` declares `RbacPermissionDecisionPort` / `rbac.permission_decision.v1` for admin permission-decision consumers with typed `PortContext`/`PortError`, read deadline semantics, claims-scope preservation and serializable DTOs; `crates/rustok-rbac/contracts/rbac-fba-registry.json` plus `crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:rbac:fba` while runtime fallback smoke remains pending before `boundary_ready`;
-  - `scripts/verify/verify-rbac-admin-boundary.mjs` and `scripts/verify/verify-rbac-admin-boundary.test.mjs` enforce Leptos-free core, facade-only UI transport calls, native-only overview exception, typed transport error envelope and server-function adapter placement without full Rust compilation.
+- FBA provider contract: `RbacPermissionDecisionPort` /
+  `rbac.permission_decision.v1` in
+  `crates/rustok-rbac/contracts/rbac-fba-registry.json`.
+- Static and runtime-order evidence:
+  `crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json`
+  and `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
+- `scripts/verify/verify-rbac-admin-boundary.mjs` and `npm run verify:rbac:fba`
+  lock the native-only boundary, provider metadata, and authorization order.
 
-## Scope of work
+## Open results
 
-- maintain `rustok-rbac` as the single canonical RBAC runtime boundary;
-- synchronize permission contracts, integration events and server adapters;
-- prevent reversion to shadow-runtime, rollout-mode or server-owned policy logic.
+1. **Collect live host evidence for permission decisions.** Exercise
+   `RbacPermissionDecisionPort` with tenant scope, claims, deadline, cache, and
+   degraded behavior before promoting FBA.
+   **Depends on:** composed host execution and representative identities.
+   **Done when:** targeted runtime tests prove the module evaluator is the only
+   decision engine for allowed and denied requests.
 
-## Current state
+2. **Expand operator role/permission flows through the owner package.** Add
+   management actions only with module-owned validation, authorization evidence,
+   and a decision on whether a headless transport contract is needed.
+   **Depends on:** approved operator requirements and policy mutation contract.
+   **Done when:** UI actions use the facade, role changes publish the expected
+   integration events, and no host-owned `/roles` surface reappears.
 
-- relation-store remains the source of truth for role/permission assignments;
-- live authorization executes only through the tenant policy evaluator;
-- `RuntimePermissionResolver` and related contracts already live in the module, while `apps/server` only holds adapters and observability;
-- operator-facing admin overview is already published through `rustok-rbac-admin` and split across FFA layers (`core`, native-only `transport`, `ui/leptos`);
-- local docs, root `README.md` and manifest metadata are part of the scoped audit path.
-
-## Stages
-
-### 1. Contract stability
-
-- [x] lock single-engine runtime contract;
-- [x] move policy/evaluator semantics and resolver APIs into the module;
-- [x] standardize integration events for role-assignment changes;
-- [ ] maintain sync between runtime contracts, server adapters and module metadata (tenant module adapters aligned: `module_registry`/`tenant_modules` and tenant admin bootstrap now check tenant-scoped read/list/manage permissions);
-- [ ] contract tests cover all public use-cases for permission resolution, authorization decisions, cache semantics and integration events.
-
-### 2. Drift prevention
-
-- [ ] keep periodic verification green for RBAC/server integration;
-- [ ] continue cleaning up presentation-only role inference outside primary authorization path;
-- [~] expand guardrails as new RBAC-managed surfaces appear; current admin overview already shows live permission snapshot and module-declared catalog through FFA native-only transport.
-
-### 3. Operability
-
-- [ ] keep decision/cache/latency telemetry as part of the live contract;
-- [ ] document runbooks and adapter expectations together with runtime surface changes;
-- [ ] cover new event contracts and resolver paths with targeted integration tests.
+3. **Keep drift prevention and operability current.** Cover new resolver/event
+   paths with integration tests and synchronize telemetry, cache, adapter, and
+   runbook expectations with each live policy change.
+   **Depends on:** the change-owning authorization surface.
+   **Done when:** a policy incident can be traced to one evaluator, cache state,
+   and recovery procedure.
 
 ## Verification
 
+- `npm run verify:rbac:admin-boundary`
+- `npm run verify:rbac:fba`
 - `cargo xtask module validate rbac`
 - `cargo xtask module test rbac`
-- targeted tests for permission resolution, authorization decisions, cache semantics and integration events
+- Targeted permission-resolution, authorization-decision, cache, and
+  integration-event tests.
 
-## Update rules
+## Change rules
 
-1. When changing RBAC runtime contract, first update this file.
-2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
-3. When changing module metadata, dependency graph or verification expectations, synchronize `rustok-module.toml` and relevant verification docs.
-4. When changing live contract, also update `apps/server/docs/README.md`.
-
-
-## Quality backlog
-
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and accuracy of `README.md` and local docs.
-- [ ] Lock/update verification gates for current module state.
+1. Keep policy evaluation and assignments in this module.
+2. Update local docs, `rustok-module.toml`, and server adapter documentation
+   with a public authorization contract change.
+3. Update this status block and `docs/modules/registry.md` with an FFA/FBA
+   boundary change.

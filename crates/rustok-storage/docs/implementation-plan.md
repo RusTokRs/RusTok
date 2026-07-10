@@ -1,65 +1,55 @@
 # Implementation plan for `rustok-storage`
 
-Status: storage abstraction baseline is already working; further work involves
-maintaining the backend boundary and carefully expanding the backend-support matrix.
-
-## Execution checkpoint
-
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Synchronize the plan with the current code and select the first incomplete item.
-- Open blockers: None.
-- Hand-off notes for next agent: After each increment, update this block.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
-
-## Scope of work
-
-- maintain `rustok-storage` as a shared storage abstraction layer;
-- synchronize backend contracts, path-safety guarantees and local docs;
-- do not allow domain logic to blur into the storage layer.
-
 ## Current state
 
-- `StorageBackend`, `UploadedObject` and `StorageService` already form the base contract;
-- local backend is already implemented and used by the platform;
-- path generation, public URL construction and basic health semantics are already part of the live surface;
-- future S3-compatible backends are treated as additive extensions, not as a reason to break the existing contract.
+`rustok-storage` owns the shared `StorageBackend`, `UploadedObject`, and
+`StorageService` contracts, backend selection/configuration, path generation,
+public URL construction, and path-safety guarantees. The local backend is the
+current implementation. Domain modules, including `rustok-media`, must not
+bypass this boundary with backend-specific logic.
 
-## Stages
+The server is a composition layer for `StorageService`; storage does not own
+media metadata or other domain business rules.
 
-### 1. Contract stability
+## FFA/FBA boundary
 
-- [x] lock a single storage backend contract;
-- [x] maintain path traversal protection and backend abstraction inside the crate;
-- [ ] maintain sync between storage surface, host wiring and local docs.
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- This shared infrastructure module has no module-owned UI or FBA provider port.
 
-### 2. Backend expansion
+## Open results
 
-- [ ] add production-grade external backends as additive feature-based extensions;
-- [ ] cover backend-specific failure semantics and config edge-cases with targeted integration tests;
-- [ ] keep public URL and deletion semantics compatible across backends.
+1. **Restore the required crate README.** Add the root `README.md` describing
+   purpose, responsibilities, interactions, entry points, and links to local
+   documentation, then keep it synchronized with the existing docs.
+   **Depends on:** the established crate documentation contract.
+   **Done when:** the crate root and local docs give consumers one consistent
+   storage ownership and integration map.
 
-### 3. Operability
+2. **Add external backends as additive contract extensions.** Introduce
+   S3-compatible or other production backends behind `StorageBackend` without
+   breaking local-backend callers.
+   **Depends on:** backend configuration, credentials, and deployment policy.
+   **Done when:** backend-specific failure/configuration integration tests prove
+   compatible upload, public URL, deletion, and path-safety semantics.
 
-- [ ] evolve storage health, metrics and runbook guidance together with backend expansion;
-- [ ] keep local docs synchronized with `rustok-media` and host/runtime docs;
-- [ ] document new guarantees concurrently with storage contract changes.
+3. **Publish operational storage guarantees.** Evolve health, metrics, and
+   runbook guidance alongside backend support and synchronize them with media
+   and host runtime documentation.
+   **Depends on:** the selected backend and observability requirements.
+   **Done when:** operators can identify backend health, configuration, and
+   failure recovery without domain-specific storage workarounds.
 
 ## Verification
 
-- structural verification for docs and storage boundary;
-- targeted compile/tests when changing `StorageBackend`, `StorageService` or config contracts;
-- integration checks for backend implementations and health semantics.
+- Structural checks for storage contract and documentation sync.
+- Targeted compile/tests when changing `StorageBackend`, `StorageService`, path
+  safety, or backend configuration.
+- Backend integration and health checks when an implementation changes.
 
-## Update rules
+## Change rules
 
-1. When changing storage contract, first update this file.
-2. When changing public surface, synchronize `docs/README.md` and related consumer docs.
-3. When changing host/storage wiring expectations, update consumer runtime docs.
-
-
-## Quality backlog
-
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and accuracy of `README.md` and local docs.
-- [ ] Lock/update verification gates for current module state.
+1. Keep backend abstraction, path safety, and URL policy in this module.
+2. Update local docs and media/host runtime docs with a storage contract change.
+3. Update `docs/modules/registry.md` with an ownership or module-status change.

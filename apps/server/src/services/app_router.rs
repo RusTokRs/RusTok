@@ -18,12 +18,12 @@ use rustok_admin as _;
 use rustok_storefront as _;
 
 use crate::common::settings::RustokSettings;
+use crate::error::{Error, Result};
 use crate::middleware;
 use crate::middleware::rate_limit::rate_limit_for_paths;
 use crate::services::app_runtime::AppRuntimeBootstrap;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
-use crate::{error::Error, Result};
 
 pub(crate) mod routes_codegen {
     include!(concat!(env!("OUT_DIR"), "/app_routes_codegen.rs"));
@@ -179,6 +179,14 @@ pub fn compose_application_router(
         } else {
             runtime_ctx
         }
+    };
+    #[cfg(feature = "mod-alloy")]
+    let server_fn_runtime_ctx = if let Some(alloy_runtime) =
+        middleware_runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()
+    {
+        server_fn_runtime_ctx.with_shared_value(alloy_runtime)
+    } else {
+        server_fn_runtime_ctx
     };
     let server_fn_registry = runtime.registry.clone();
 

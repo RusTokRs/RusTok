@@ -168,14 +168,13 @@ assertNotIncludes(alloyBinding, '"alloy_code"', 'alloy runtime binding must not 
 assertIncludes(alloyPlan, 'ai-alloy-policy-registry.json', 'alloy plan policy evidence');
 
 for (const [label, plan] of [['product plan', productPlan], ['content plan', contentPlan], ['order plan', orderPlan], ['media plan', mediaPlan], ['alloy plan', alloyPlan]]) {
-  assertIncludes(plan, 'Execution checkpoint', label);
   assertIncludes(plan, 'rustok-ai', label);
 }
-assertIncludes(productPlan, 'compile-free static verification', 'product plan evidence');
-assertIncludes(contentPlan, 'compile-free static verification', 'content plan evidence');
-assertIncludes(orderPlan, 'compile-free static verification', 'order plan evidence');
-assertIncludes(mediaPlan, 'static evidence', 'media plan evidence');
-assertIncludes(alloyPlan, 'static evidence', 'alloy plan evidence');
+assertIncludes(productPlan, 'verify-ai-product-fba.mjs', 'product plan evidence');
+assertIncludes(contentPlan, 'verify-ai-content-contract.mjs', 'content plan evidence');
+assertIncludes(orderPlan, 'verify-ai-fba-baseline.mjs', 'order plan evidence');
+assertIncludes(mediaPlan, 'Static evidence', 'media plan evidence');
+assertIncludes(alloyPlan, 'Evidence:', 'alloy plan evidence');
 assertIncludes(aiPlan, 'scripts/verify/verify-ai-domain-verticals.mjs', 'rustok-ai plan evidence');
 
 if (failures.length > 0) {

@@ -40,7 +40,6 @@ pub async fn fetch_bootstrap() {
 }
 `);
   writeFixtureFile(root, "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs", `
-use rustok_graphql::GraphqlRequest;
 pub enum ApiError { ServerFn(String) }
 #[server(prefix = "/api/fn", endpoint = "pricing/admin-bootstrap")]
 pub async fn fetch_bootstrap() {}

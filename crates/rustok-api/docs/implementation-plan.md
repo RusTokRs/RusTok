@@ -1,67 +1,57 @@
-# `rustok-api` - Implementation Plan
-
-Status: shared host/API layer already serves as the foundation for `apps/server` and
-module-owned transport adapters; the main task is to prevent it from growing into a
-parallel application layer.
-
-## Execution checkpoint
-
-- Current phase: neutral contract ownership hardening
-- Last checkpoint: `Port*`, permission and locale contracts moved into `rustok-api`; API no longer depends on core in any feature, core compatibility exports were deleted, and outbox Loco composition moved to `rustok-outbox::loco`.
-- Next step: Keep new module ports on `rustok_api::ports` and reject runtime-specific dependencies in the default contract surface.
-- Open blockers: None.
-- Hand-off notes for next agent: Update this block after each increment.
-- Last updated at (UTC): 2026-07-01T00:00:00Z
-
-## Scope of work
-
-- maintain `rustok-api` as the shared web/API adapter foundation;
-- synchronize request/auth/tenant/channel/GraphQL/port contracts and local docs;
-- prevent module-specific business logic from being pulled into the shared API layer.
+# Implementation plan for `rustok-api`
 
 ## Current state
 
-- crate already provides shared request/auth/tenant/channel contexts and GraphQL helpers;
-- `PortContext`/`PortError` set the shared baseline for transport-agnostic ports, and `PortCallPolicy` fixes reusable read/write/event-replay/best-effort enforcement without module-specific logic; `rustok-region`, tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay and page-builder publish paths already consume the shared policy baseline (`PortCallPolicy::read()` for read projections, `PortCallPolicy::write()` for write control);
-- default and `server` feature sets own neutral API contracts without dependency on `rustok-core`; runtime RBAC/security lives in core, which depends on API;
-- `apps/server` remains the composition root above this layer, not a second parallel shared API framework;
-- module transport adapters use `rustok-api` for shared host/API contracts without duplicating them locally.
+`rustok-api` owns neutral shared host/API contracts: request, auth, tenant,
+channel, GraphQL, route, locale, permission, and transport-agnostic port
+primitives. `PortContext`, `PortError`, and `PortCallPolicy` provide shared
+read/write/replay/best-effort policy without module business logic.
 
-## Stages
+The crate has no dependency on `rustok-core`; core owns runtime RBAC/security
+and consumes API contracts. `apps/server` is the composition root, not a second
+shared API framework. Module resolvers, controllers, and domain ports remain
+with their owners.
 
-### 1. Contract stability
+## FFA/FBA boundary
 
-- [x] lock `rustok-api` as the shared host/API layer;
-- [x] maintain reusable request/auth/channel/GraphQL/port contracts outside `rustok-core`;
-- [~] maintain sync between public surface, host wiring and local docs; (updated: UI helper ownership moved to `rustok-ui-core`, `leptos-ui-routing` and `rustok-ui-i18n`)
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- This shared-contract crate has no module-owned UI or FBA provider port.
 
-### 2. Boundary hardening
+## Open results
 
-- [~] continue extracting truly shared transport/port helpers from host/module-specific layers; (continued: neutral port context/error primitives, port call policies, typed error constructors and expanded multi-module read/write-port consumer migration)
-- [ ] do not pull module-owned resolvers and controllers here;
-- [ ] cover new shared contracts with targeted compile/tests when changing surface.
+1. **Keep shared contract extraction evidence-based.** Move a helper into this
+   crate only when it is framework-neutral and needed by independent consumers;
+   keep module resolvers, controllers, and domain policy with their owners.
+   **Depends on:** demonstrated multi-module use and owner approval.
+   **Done when:** the shared API is dependency-neutral, consumers remove local
+   duplicates, and no domain behavior enters the crate.
 
-### 3. Operability
+2. **Preserve port-policy consistency across consumers.** Evolve `PortContext`,
+   `PortError`, and `PortCallPolicy` atomically for read, write, replay, and
+   best-effort semantics.
+   **Depends on:** all registered port consumers and their public contracts.
+   **Done when:** targeted migration tests prove identical deadline, idempotency,
+   actor, and typed-error behavior without local policy forks.
 
-- [~] document host/API contract changes simultaneously with runtime surface changes; (updated for shared write-policy migration across inventory/comments/fulfillment/order/payment/page-builder and previous read-policy cleanup)
-- [~] keep local docs and `README.md` synchronized; (updated for shared write-policy migration across inventory/comments/fulfillment/order/payment/page-builder and previous read-policy cleanup)
-- [ ] update consumer-module docs if shared transport expectations change.
+3. **Maintain composition and documentation boundaries.** Update API docs,
+   server composition docs, and module transport docs with a changed shared
+   contract, and run the focused surface verification.
+   **Depends on:** the changed public contract.
+   **Done when:** the documentation and `verify:api:surface-contract` describe
+   the same dependency direction and owner responsibilities.
 
 ## Verification
 
-- structural verification for local docs and host/API boundary;
-- targeted compile/tests when changing shared request/auth/channel/GraphQL contracts;
-- docs sync for `apps/server` and module-owned transport crates.
+- `npm run verify:api:surface-contract`
+- Targeted compile/tests when changing shared request, auth, tenant, channel,
+  GraphQL, route, locale, permission, or port contracts.
+- Documentation synchronization for `apps/server` and module-owned transports.
 
-## Update rules
+## Change rules
 
-1. When changing a shared host/API contract, first update this file.
-2. When changing the public/runtime surface, synchronize `README.md` and `docs/README.md`.
-3. When changing consumer expectations, update related host/module docs.
-
-
-## Quality backlog
-
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and relevance of `README.md` and local docs.
-- [ ] Lock/update verification gates for the current module state.
+1. Keep this crate neutral and dependency-light; do not add module business
+   logic, resolver ownership, or runtime composition.
+2. Update the root README and local docs with a public contract change.
+3. Update host and consumer-module documentation with changed shared semantics.

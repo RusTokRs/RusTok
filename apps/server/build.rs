@@ -427,7 +427,7 @@ fn render_routes_codegen(entries: &[OptionalModuleEntry]) -> String {
         }
     }
     out.push_str("    routes\n}\n");
-    out.push_str("\npub fn append_optional_module_axum_routers(\n    mut router: axum::Router,\n    runtime: &rustok_api::HostRuntimeContext,\n) -> anyhow::Result<axum::Router> {\n");
+    out.push_str("\n#[allow(unused_mut, unused_variables)]\npub fn append_optional_module_axum_routers(\n    mut router: axum::Router,\n    runtime: &rustok_api::HostRuntimeContext,\n) -> anyhow::Result<axum::Router> {\n");
     for entry in entries {
         if let Some(axum_router_expr) = &entry.axum_router_expr {
             out.push_str(&format!(

@@ -324,7 +324,9 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
 }
 
-pub(crate) fn map_payment_orchestration_error(error: crate::PaymentOrchestrationError) -> Error {
+pub(crate) fn map_payment_orchestration_error(
+    error: crate::PaymentOrchestrationError,
+) -> HttpError {
     match error {
         crate::PaymentOrchestrationError::Payment(error) => map_payment_error(error),
         crate::PaymentOrchestrationError::Provider(error) => {
@@ -333,7 +335,7 @@ pub(crate) fn map_payment_orchestration_error(error: crate::PaymentOrchestration
     }
 }
 
-pub(crate) fn map_payment_error(error: rustok_payment::error::PaymentError) -> Error {
+pub(crate) fn map_payment_error(error: rustok_payment::error::PaymentError) -> HttpError {
     match error {
         rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)
         | rustok_payment::error::PaymentError::RefundNotFound(_) => {
@@ -343,7 +345,7 @@ pub(crate) fn map_payment_error(error: rustok_payment::error::PaymentError) -> E
     }
 }
 
-pub(crate) fn map_order_error(error: rustok_order::error::OrderError) -> Error {
+pub(crate) fn map_order_error(error: rustok_order::error::OrderError) -> HttpError {
     match error {
         rustok_order::error::OrderError::OrderNotFound(_)
         | rustok_order::error::OrderError::OrderReturnNotFound(_)
@@ -354,7 +356,9 @@ pub(crate) fn map_order_error(error: rustok_order::error::OrderError) -> Error {
     }
 }
 
-pub(crate) fn map_fulfillment_error(error: rustok_fulfillment::error::FulfillmentError) -> Error {
+pub(crate) fn map_fulfillment_error(
+    error: rustok_fulfillment::error::FulfillmentError,
+) -> HttpError {
     match error {
         rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_) => {
             HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
@@ -363,7 +367,9 @@ pub(crate) fn map_fulfillment_error(error: rustok_fulfillment::error::Fulfillmen
     }
 }
 
-pub(crate) fn map_fulfillment_orchestration_error(error: FulfillmentOrchestrationError) -> Error {
+pub(crate) fn map_fulfillment_orchestration_error(
+    error: FulfillmentOrchestrationError,
+) -> HttpError {
     match error {
         FulfillmentOrchestrationError::OrderNotFound(_) => {
             HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
@@ -372,7 +378,7 @@ pub(crate) fn map_fulfillment_orchestration_error(error: FulfillmentOrchestratio
     }
 }
 
-pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationError) -> Error {
+pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationError) -> HttpError {
     match error {
         PostOrderOrchestrationError::Order(
             rustok_order::error::OrderError::OrderNotFound(_)
@@ -403,7 +409,7 @@ pub(crate) fn decision_requires_payments_update(action: &str, has_refund_payload
     action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
 }
 
-pub(crate) fn map_shipping_profile_error(error: crate::CommerceError) -> Error {
+pub(crate) fn map_shipping_profile_error(error: crate::CommerceError) -> HttpError {
     match error {
         crate::CommerceError::ShippingProfileNotFound(_) => {
             HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")

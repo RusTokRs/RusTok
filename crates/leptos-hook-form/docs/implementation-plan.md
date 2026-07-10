@@ -1,20 +1,50 @@
-# leptos-hook-form — implementation plan
+# Implementation plan for `leptos-hook-form`
 
-_No planned tasks._
+## Current state
 
-## Execution checkpoint
+`leptos-hook-form` owns lightweight, serializable form-state helpers for Leptos
+surfaces: `FormState`, `FieldError`, `ValidationIssue`, and
+`issues_to_field_errors`. It represents submission state, form errors, and
+field errors without owning a form schema, transport client, route, or domain
+validation policy.
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Synchronize the plan with the current code and select the first incomplete item.
-- Open blockers: None.
-- Hand-off notes for next agent: Update this block after each increment.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+## FFA/FBA boundary
 
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `shared_ui_support`
+- This UI support crate is not a module-owned FBA provider.
 
+## Open results
 
-## Quality backlog
+1. **Validate the form-state contract with consumers.** Confirm how host and
+   module UI packages apply submission transitions, field paths, and form-level
+   errors before adding helper behavior.
+   **Depends on:** concrete Leptos form consumers and validation adapters.
+   **Done when:** consumers use the same serializable state shape without
+   embedding domain schema or transport policy in this crate.
 
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and relevance of `README.md` and local docs.
-- [ ] Lock/update verification gates for the current module state.
+2. **Add focused form-state tests.** Cover idle/submitting/error transitions,
+   error clearing, error detection, nested field-path mapping, and serde
+   roundtrips.
+   **Depends on:** agreed public DTO semantics.
+   **Done when:** a compact test suite locks the shared behavior independently
+   of individual forms.
+
+3. **Keep schema and transport ownership external.** Extend the crate only for
+   cross-surface form-state behavior; retain schema validation in adapters such
+   as `leptos-zod` and transport/domain errors with their owners.
+   **Depends on:** demonstrated duplication across independent forms.
+   **Done when:** the public API remains generic and does not import domain,
+   route, or client-specific contracts.
+
+## Verification
+
+- Targeted unit tests for state transitions, issue mapping, and serde.
+- Consumer tests in adopting Leptos hosts or module UI packages.
+
+## Change rules
+
+1. Do not add domain form schemas, route state, or transport clients here.
+2. Update the local README with a changed shared form-state contract.
+3. Update consumers if the serialized public DTOs change.

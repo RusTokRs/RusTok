@@ -360,10 +360,8 @@ mod tests {
     use migration::Migrator;
     use rustok_api::context::{AuthContext, AuthContextExtension};
     #[cfg(feature = "mod-seo")]
-    use rustok_api::context::{
-        ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContext,
-        TenantContextExtension,
-    };
+    use rustok_api::context::{ChannelContext, ChannelContextExtension, ChannelResolutionSource};
+    use rustok_api::context::{TenantContext, TenantContextExtension};
     use rustok_api::Permission;
     #[cfg(feature = "mod-seo")]
     use rustok_core::{events::EventTransport, MemoryTransport, ModuleRuntimeExtensions};
@@ -377,7 +375,6 @@ mod tests {
     use tokio::time::{timeout, Duration};
     use tower::ServiceExt;
 
-    #[cfg(feature = "mod-seo")]
     async fn enable_test_module(ctx: &loco_rs::app::AppContext, tenant_id: uuid::Uuid, slug: &str) {
         let registry = crate::modules::build_registry();
         crate::services::module_lifecycle::ModuleLifecycleService::toggle_module_with_actor(
@@ -498,7 +495,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "mod-seo")]
     async fn insert_tenant(
         ctx: &loco_rs::app::AppContext,
         slug: &str,
@@ -521,7 +517,6 @@ mod tests {
         .expect("tenant should insert")
     }
 
-    #[cfg(feature = "mod-seo")]
     fn tenant_context(model: &crate::models::_entities::tenants::Model) -> TenantContext {
         TenantContext {
             id: model.id,
@@ -697,6 +692,103 @@ mod tests {
             "unexpected /health/live response body: {}",
             String::from_utf8_lossy(&body)
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(all(feature = "mod-workflow", feature = "embed-admin"))]
+    async fn workflow_list_native_and_graphql_paths_preserve_tenant_and_permission_parity() {
+        let mut ctx = get_server_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for workflow parity");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": { "transport": "memory" },
+                "rate_limit": { "enabled": false }
+            }
+        }));
+
+        let tenant = insert_tenant(&ctx, "ffa-smoke-workflow", None).await;
+        enable_test_module(&ctx, tenant.id, "workflow").await;
+        let auth = AuthContext {
+            user_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            tenant_id: tenant.id,
+            permissions: vec![Permission::WORKFLOWS_LIST],
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "ffa_smoke".to_string(),
+        };
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("after_routes should wire workflow parity runtime");
+
+        let native = workflow_parity_request(
+            app.clone(),
+            "/api/fn/workflow-admin/list-workflows",
+            serde_json::json!({}),
+            auth.clone(),
+            tenant_context(&tenant),
+        )
+        .await;
+        let graphql = workflow_parity_request(
+            app,
+            "/api/graphql",
+            serde_json::json!({
+                "query": "query WorkflowParity { workflows { id tenantId name status failureCount createdAt updatedAt } }"
+            }),
+            auth,
+            tenant_context(&tenant),
+        )
+        .await;
+
+        assert_eq!(native.status(), StatusCode::OK);
+        assert_eq!(graphql.status(), StatusCode::OK);
+        let native_body = to_bytes(native.into_body(), usize::MAX)
+            .await
+            .expect("native workflow body should read");
+        let graphql_body = to_bytes(graphql.into_body(), usize::MAX)
+            .await
+            .expect("graphql workflow body should read");
+        let native_payload: Value =
+            serde_json::from_slice(&native_body).expect("native workflow response should be json");
+        let graphql_payload: Value = serde_json::from_slice(&graphql_body)
+            .expect("graphql workflow response should be json");
+
+        assert_eq!(native_payload, serde_json::json!([]));
+        assert_eq!(
+            graphql_payload,
+            serde_json::json!({ "data": { "workflows": [] } })
+        );
+    }
+
+    #[cfg(all(feature = "mod-workflow", feature = "embed-admin"))]
+    async fn workflow_parity_request(
+        router: axum::Router,
+        uri: &str,
+        payload: Value,
+        auth: AuthContext,
+        tenant: TenantContext,
+    ) -> axum::response::Response {
+        let mut request = Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .expect("workflow parity request should build");
+        request.extensions_mut().insert(AuthContextExtension(auth));
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant));
+        router
+            .oneshot(request)
+            .await
+            .expect("workflow parity request should complete")
     }
 
     #[tokio::test]

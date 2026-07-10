@@ -1,20 +1,49 @@
-# leptos-shadcn-pagination — implementation plan
+# Implementation plan for `leptos-shadcn-pagination`
 
-_No planned tasks._
+## Current state
 
-## Execution checkpoint
+`leptos-shadcn-pagination` owns presentation-only Leptos pagination primitives:
+container/content/item/link/previous/next/ellipsis markup, active state, and
+basic accessibility attributes. It does not own page calculation, data fetching,
+route/query policy, or domain list behavior.
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Synchronize the plan with the current code and select the first incomplete item.
-- Open blockers: None.
-- Hand-off notes for next agent: Update this block after each increment.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+## FFA/FBA boundary
 
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `shared_ui_support`
+- This presentation support crate is not a module-owned FBA provider.
 
+## Open results
 
-## Quality backlog
+1. **Remove package-local pagination copy.** Require host-provided localized
+   previous/next content or a host-owned label contract; do not retain English
+   defaults or add package-local i18n fallback chains.
+   **Depends on:** the shared UI i18n/host composition contract.
+   **Done when:** pagination labels use the host effective locale and every
+   consumer can supply accessible localized content.
 
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and relevance of `README.md` and local docs.
-- [ ] Lock/update verification gates for the current module state.
+2. **Validate reusable accessibility and interaction markup.** Cover active,
+   disabled, href, `aria-current`, `aria-disabled`, and ellipsis semantics in
+   focused component tests and consuming hosts.
+   **Depends on:** agreed presentation/accessibility expectations.
+   **Done when:** primitives render stable semantic markup without embedding
+   page-navigation policy.
+
+3. **Keep pagination policy outside the primitive crate.** Add props only for
+   reusable presentation; retain page calculation, route/query writing, data
+   fetching, and domain-specific labels with the host or owner package.
+   **Depends on:** demonstrated cross-surface presentation reuse.
+   **Done when:** the public component API remains generic and consumers do not
+   need local forks for their navigation policy.
+
+## Verification
+
+- Focused component tests for active, disabled, and accessibility markup.
+- Host/module UI tests for route/query and localized label composition.
+
+## Change rules
+
+1. Do not add data fetching, page calculation, route/query, or i18n ownership.
+2. Update the local README with a changed component/accessibility contract.
+3. Update consumers if component props or markup semantics change.

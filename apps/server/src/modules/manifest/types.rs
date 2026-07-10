@@ -584,4 +584,6 @@ pub enum ManifestError {
         surface: String,
         reason: String,
     },
+    #[error("Module '{slug}' has invalid HTTP wiring: {reason}")]
+    InvalidModuleHttpWiring { slug: String, reason: String },
 }

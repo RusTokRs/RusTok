@@ -1,40 +1,52 @@
-# `rustok-ai-content` — Implementation Plan
+# rustok-ai-content implementation plan
 
-## Goal
+## Current state
 
-Make `rustok-ai-content` the owner layer for content AI verticals: content moderation and blog draft generated payload contracts.
+`rustok-ai-content` owns descriptors, generated-payload validation, and
+approval policy for `content_moderation` and `blog_draft`. `rustok-ai`
+composes the registered handlers and consumes the sensitive-tool defaults; it
+must not own content task identity or policy. The supported field rules are
+maintained in the crate and module README.
 
-## Stages
+## FFA/FBA readiness
 
-1. Scaffold crate + docs.
-2. Move `content_moderation` direct wiring.
-3. Move `blog_draft` task/tool identity and generated payload validation to content-owned support crate.
-4. Add policy matrix and approval routing integration. ✅
+- FFA status: `in_progress`.
+- FBA status: `boundary_ready` (`core_transport_ui`).
+- The module-owned admin package separates core, selected transport, and
+  Leptos UI, but its concrete host rendering remains incomplete.
+- `content_ai_policy_matrix` is the canonical source of moderation approval
+  defaults and must remain consumed by `rustok-ai` rather than duplicated
+  there. Its degraded modes are `require_operator_review` and
+  `skip_publish_and_keep_draft_review`.
+- Evidence: `crates/rustok-ai-content/contracts/ai-content-fba-registry.json`,
+  `crates/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json`,
+  `crates/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json`,
+  `scripts/verify/verify-ai-content-contract.mjs`, and
+  `scripts/verify/verify-ai-fba-baseline.mjs`.
 
-## Execution checkpoint
+## Next results
 
-- Current phase: blog_contract_static_evidence_added
-- Last checkpoint: Added compile-free static verification for the content AI contract and expanded blog draft contract tests to cover full payloads, patch-style empty payloads, and blank-value rejection across every optional generated text field.
-- Next step: Add executable targeted verification evidence when compilations are allowed.
-- Open blockers: compile/test evidence deferred by explicit iteration constraint: no compilations.
-- Hand-off notes for next agent: Do not move executable runtime composition from `rustok-ai`; support crate owns descriptors/policy/validation, host crate only consumes defaults.
-- Last updated at (UTC): 2026-06-22T00:00:00Z
+1. **Exercise content policy through the composed AI runtime.** Add an
+   executable host/direct-path test for moderation approval routing and the
+   `blog_draft` degraded path that preserves review rather than publishing.
+   Done when evidence covers the support adapter and its `rustok-ai` consumer.
+2. **Render the owned admin surface in its hosts.** Connect the existing
+   core/transport/UI package to the appropriate admin route and verify native
+   server-function selection with parallel GraphQL/headless parity. Done when
+   a host-level test or runtime evidence covers both selected paths.
+3. **Add only product-approved content verticals.** Any new task must add a
+   content-owned descriptor, generated-payload validation, approval policy,
+   and composed evidence before registration in `rustok-ai`. Done when no
+   content task identity or policy is hard-coded by the runtime.
 
-## FFA/FBA status
+## Verification
 
-- FFA status: `in_progress`
-- FBA status: `boundary_ready`
-- Structural shape: `core_transport_ui`
-- Evidence:
-  - `admin/src/core.rs`, `admin/src/transport.rs`, and `admin/src/ui/leptos.rs` provide the module-owned admin FFA split.
-  - Transport exposes a build-profile-selected native-server plus GraphQL selected-path profile; concrete host rendering remains a follow-up.
-  - FBA support-consumer metadata is locked in `crates/rustok-ai-content/contracts/ai-content-fba-registry.json` for content moderation/blog draft task identity, `content_ai_policy_matrix` policy ownership and generated-payload validation, including `require_operator_review` and `skip_publish_and_keep_draft_review` degraded modes, mirrored by `crates/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json` and source-smoke `crates/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json`, and checked by `scripts/verify/verify-ai-fba-baseline.mjs`.
-  - Boundary readiness is backed by executable `cargo test -p rustok-ai-content --lib` coverage for content-owned descriptors, policy matrix and generated payload validation.
-  - The global readiness board uses the canonical hyphenated module slug `ai-content`.
+- `npm run verify:ai-content:fba`
+- `npm run verify:ai:domain-verticals`
+- `cargo test -p rustok-ai-content --lib`
 
-## Quality backlog
+## References
 
-- [x] Domain-owned policy matrix for content moderation/blog draft approval routing.
-- [x] Runtime policy integration consumes content-owned sensitive-tool defaults from `rustok-ai`.
-- [x] Expand blog generated payload contract with tests.
-- [ ] Run `cargo test -p rustok-ai-content --lib` and `cargo test -p rustok-ai --lib` when compilations are allowed.
+- [Crate README](../README.md)
+- [Module documentation](./README.md)
+- [AI content FBA registry](../contracts/ai-content-fba-registry.json)

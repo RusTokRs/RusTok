@@ -1,33 +1,49 @@
-# `rustok-ai-order` — Implementation Plan
+# rustok-ai-order implementation plan
 
-## Goal
+## Current state
 
-Move order AI vertical wiring to a domain-owned crate.
+`rustok-ai-order` owns descriptors and generated-payload validation for
+`order_analytics` and the sensitive `order_ops_assistant` flow. `rustok-ai`
+consumes its registration API; order status remains owned by `rustok-order`
+through `CheckoutCompletionPort`. The crate does not directly depend on an
+order runtime or execute provider calls.
 
-## Stages
+## FFA/FBA readiness
 
-1. Scaffold crate + docs.
-2. Move `order_analytics` direct wiring.
-3. Move `order_ops_assistant` direct wiring.
-4. Add targeted verification.
+- FFA status: `in_progress`.
+- FBA status: `boundary_ready` (`core_transport_ui`).
+- `CheckoutCompletionPort` / `order.checkout_completion.v1` supports
+  `read_order_status`. Degraded behavior is
+  `generate_summary_without_live_status`, `require_operator_review`, and
+  `skip_prefill_execution`.
+- Evidence: `crates/rustok-ai-order/contracts/ai-order-fba-registry.json`,
+  `crates/rustok-ai-order/contracts/evidence/ai-order-consumer-static-matrix.json`,
+  `crates/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json`,
+  and `scripts/verify/verify-ai-fba-baseline.mjs`.
 
-## Execution checkpoint
+## Next results
 
-- Initial scaffold crate and documentation created.
-- Domain-owned registration metadata API (`order_ai_verticals`) added for `order_analytics` / `order_ops_assistant`; runtime handler registration in `rustok-ai` uses these task/tool constants.
-- Domain-owned generated payload contract validation tightened: `order_analytics` rejects blank items in string arrays, and `order_ops_assistant` rejects null `prefill`.
-- Last updated at (UTC): 2026-06-19T06:15:00Z
-- Added compile-free static verification gate `scripts/verify/verify-ai-domain-verticals.mjs` for order descriptors, runtime binding seam, generated payload validators, and sensitive ops-assistant metadata.
-- Last updated at (UTC): 2026-06-23T00:00:00Z
+1. **Exercise the composed order-status boundary.** Add a direct-runtime test
+   that consumes `CheckoutCompletionPort`, preserves the request deadline and
+   typed error mapping, and proves each declared degraded behavior. Done when
+   `rustok-ai` and the support adapter are covered together.
+2. **Render the owner-admin package in its hosts.** Connect its existing
+   core/selected-transport/UI layers to the admin route and prove native
+   server-function selection with parallel GraphQL/headless parity. Done when
+   host-level evidence covers both transport paths.
+3. **Keep AI output advisory until a product workflow approves execution.** A
+   new action must remain review-gated and have a structured prefill contract
+   before it can leave the operator flow. Done when no generated
+   `order_ops_assistant` output can invoke an order mutation implicitly.
 
-## FFA/FBA status
+## Verification
 
-- FFA status: `in_progress`
-- FBA status: `boundary_ready`
-- Structural shape: `core_transport_ui`
-- Evidence:
-  - `admin/src/core.rs`, `admin/src/transport.rs`, and `admin/src/ui/leptos.rs` provide the module-owned admin FFA split.
-  - Transport exposes a build-profile-selected native-server plus GraphQL selected-path profile; concrete host rendering remains a follow-up.
-  - FBA support-consumer metadata is locked in `crates/rustok-ai-order/contracts/ai-order-fba-registry.json` for the `CheckoutCompletionPort` / `order.checkout_completion.v1` `read_order_status` dependency and order analytics/ops assistant generated-payload validation, including `generate_summary_without_live_status`, `require_operator_review`, and `skip_prefill_execution` degraded modes, mirrored by `crates/rustok-ai-order/contracts/evidence/ai-order-consumer-static-matrix.json` and source-smoke `crates/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json`, and checked by `scripts/verify/verify-ai-fba-baseline.mjs`.
-  - Boundary readiness is backed by executable `cargo test -p rustok-ai-order --lib` coverage for order-owned descriptors, sensitive ops assistant metadata and generated payload validation.
-  - The global readiness board uses the canonical hyphenated module slug `ai-order`.
+- `npm run verify:ai-order:fba`
+- `npm run verify:ai:domain-verticals`
+- `cargo test -p rustok-ai-order --lib`
+
+## References
+
+- [Crate README](../README.md)
+- [Module documentation](./README.md)
+- [AI order FBA registry](../contracts/ai-order-fba-registry.json)

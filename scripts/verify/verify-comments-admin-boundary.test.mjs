@@ -30,25 +30,25 @@ pub(crate) struct CommentThreadsRequest;
 pub(crate) struct SetCommentStatusCommand;
 pub(crate) const COMMENTS_ADMIN_THREAD_QUERY_KEY: &str = "thread_id";
 pub(crate) const COMMENTS_ADMIN_LOCALE_QUERY_KEY: &str = "locale";
-pub(crate) struct UiRouteQueryUpdate;
-pub(crate) fn comments_admin_select_thread_query_write() -> UiRouteQueryUpdate { UiRouteQueryUpdate }
-pub(crate) fn comments_admin_locale_query_write() -> UiRouteQueryUpdate { UiRouteQueryUpdate }
+pub(crate) struct UiRouteQueryIntent;
+pub(crate) fn comments_admin_select_thread_query_intent() -> UiRouteQueryIntent { UiRouteQueryIntent }
+pub(crate) fn comments_admin_locale_query_intent() -> UiRouteQueryIntent { UiRouteQueryIntent }
 `);
   writeFixtureFile(root, "crates/rustok-comments/admin/src/ui/leptos.rs", `
-use crate::core::{comments_admin_locale_query_write, comments_admin_select_thread_query_write};
+use crate::core::{comments_admin_locale_query_intent, comments_admin_select_thread_query_intent};
 use crate::transport;
 
 pub fn CommentsAdmin() {
-    let _ = comments_admin_select_thread_query_write;
-    let _ = comments_admin_locale_query_write;
+    let _ = comments_admin_select_thread_query_intent;
+    let _ = comments_admin_locale_query_intent;
     let _ = transport::fetch_threads;
-    let _ = apply_comments_route_query_update;
+    let _ = apply_query_intent;
     ${options.rawRoutePolicy ? 'let _ = AdminQueryKey::new("thread_id"); push_value("thread_id", "1");' : ""}
     ${options.rawTransport ? "let _ = native_server_adapter::fetch_threads;" : ""}
     ${options.rawApi ? "crate::api::fetch_threads().await;" : ""}
     ${options.serverInUi ? "#[server] async fn bad() {}" : ""}
 }
-fn apply_comments_route_query_update() {}
+fn apply_query_intent() {}
 `);
   writeFixtureFile(root, "crates/rustok-comments/admin/src/transport/mod.rs", `
 pub(crate) mod native_server_adapter;
@@ -89,7 +89,7 @@ rustok-api = { workspace = true, default-features = false }
   writeFixtureFile(root, "crates/rustok-comments/docs/implementation-plan.md", `
 native-only comments admin exception
 Loco-free native admin transport
-UiRouteQueryUpdate
+UiRouteQueryIntent
 verify-comments-admin-boundary.mjs
 `);
   writeFixtureFile(root, "docs/modules/registry.md", "verify-comments-admin-boundary.mjs\n");

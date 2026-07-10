@@ -77,13 +77,13 @@ pub async fn fetch_products() {}
 
 function graphqlAdapterSource() {
   return `
-pub async fn fetch_storefront_products_graphql() {}
+use rustok_graphql::GraphqlRequest;
+pub async fn fetch_storefront_products() {}
 `;
 }
 
 function nativeServerAdapterSource() {
   return `
-use rustok_graphql::GraphqlRequest;
 use rustok_api::HostRuntimeContext;
 use rustok_outbox::TransactionalEventBus;
 #[server(prefix = "/api/fn", endpoint = "product/storefront-data")]

@@ -92,7 +92,7 @@ expectContains(
 );
 expectContains(
   "crates/flex/docs/README.md",
-  "runtime path не должен читать donor/base-row inline localized JSON как канонический fallback",
+  "runtime path must not read donor/base-row inline localized JSON as a canonical fallback",
   "flex docs to ban inline localized runtime fallback",
 );
 

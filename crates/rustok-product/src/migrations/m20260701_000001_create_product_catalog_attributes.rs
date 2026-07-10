@@ -18,6 +18,26 @@ impl MigrationTrait for Migration {
 ALTER TABLE products
     ADD COLUMN IF NOT EXISTS primary_category_id UUID;
 
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'product_categories'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'product_categories'
+          AND column_name = 'category_id'
+    ) THEN
+        ALTER TABLE product_categories
+            RENAME TO legacy_product_categories_pre_catalog;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS product_attributes (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

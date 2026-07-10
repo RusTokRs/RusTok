@@ -851,7 +851,7 @@ pub(crate) async fn validate_store_variant_inventory(
     Ok(())
 }
 
-pub(crate) fn map_cart_error(error: CartError) -> Error {
+pub(crate) fn map_cart_error(error: CartError) -> HttpError {
     match error {
         CartError::CartNotFound(_) | CartError::CartLineItemNotFound(_) => {
             HttpError::not_found("commerce_store_not_found", "Commerce resource not found")
@@ -866,7 +866,7 @@ pub(crate) fn default_metadata() -> Value {
 
 pub(crate) fn deserialize_patch_field<'de, D, T>(
     deserializer: D,
-) -> HttpResult<Option<Option<T>>, D::Error>
+) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

@@ -1,66 +1,49 @@
-# Implementation plan for `rustok-commerce-foundation`
-
-Status: support crate already serves as shared substrate for the split commerce family;
-the key task is to keep it minimal and prevent rebuilding
-the monolith in the foundation layer.
-
-## Execution checkpoint
-
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Synchronize the plan with the current code and select the first incomplete item.
-- Open blockers: None.
-- Hand-off notes for next agent: Update this block after each increment.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
-
-## Scope of work
-
-- keep `rustok-commerce-foundation` as a dependency-only support crate;
-- synchronize shared DTO/entities/error contracts and local docs;
-- prevent moving domain/runtime logic from split commerce modules into the foundation layer.
+# rustok-commerce-foundation implementation plan
 
 ## Current state
 
-- crate already contains shared DTOs, entities, errors and search/query helpers;
-- consumer modules already use it as a common reuse layer;
-- umbrella `rustok-commerce` relies on this crate for common contracts of the split family;
-- the crate has no standalone transport/runtime surface and should not acquire one.
+`rustok-commerce-foundation` is the dependency-only shared contract layer for
+the split commerce family. It contains common DTOs, SeaORM entities, errors,
+and the product-translation search helper used by product, pricing, inventory,
+cart, region, and the commerce umbrella. It owns no transport, runtime,
+service orchestration, or UI boundary.
 
-## Stages
+## Readiness
 
-### 1. Contract stability
+- FFA/FBA status: `not_started` — the crate has no UI or transport surface.
+- Owner: commerce platform.
+- Boundary: a type belongs here only when two or more stable commerce owners
+  need the same contract. Domain services, workflow policy, and host adapters
+  remain with their bounded-context owner.
+- Existing guard: `product_translation_title_search_condition` remains outside
+  `apps/server`, protected by
+  `product_translation_search_helper_is_not_server_owned` in
+  `apps/server/tests/module_surface_boundary_guard.rs`.
 
-- [x] lock foundation crate as a common dependency layer for commerce family;
-- [x] keep shared error/entity/DTO surface unified for consumer crates;
-- [ ] maintain sync between foundation contracts, consumer crates and local docs.
+## Next results
 
-### 2. Boundary hardening
-
-- [ ] move only truly shared contracts here;
-- [ ] do not pull domain-owned services and orchestration logic here;
-- [ ] cover incompatible changes with targeted compile/tests in consumer crates.
-
-### 3. Operability
-
-- [ ] document foundation surface changes simultaneously with changing consumer expectations;
-- [ ] keep local docs and `README.md` synchronized;
-- [ ] update umbrella commerce docs when split-family contracts change.
+1. **Define consumer acceptance for public contract changes.** Maintain the
+   affected-consumer matrix for DTO, entity, error, and search-helper changes;
+   run the targeted compile/test set before merging incompatible updates. Done
+   when a foundation change identifies its consumers and verifies their public
+   use of the modified contract.
+2. **Reconcile ownership before adding shared surface.** Move a type here only
+   after confirming genuine multi-owner reuse; return domain-specific services,
+   policy, and persistence orchestration to product, pricing, inventory,
+   region, or the commerce umbrella. Done when new foundation additions have a
+   named consumer set and no domain execution logic.
+3. **Keep the search-helper boundary executable.** Extend the module-surface
+   guard whenever shared query helpers are added or relocated. Done when no
+   commerce query helper has a duplicate server-owned implementation.
 
 ## Verification
 
-- structural verification for docs and shared boundary;
-- targeted compile/tests when DTO/entity/error surface changes;
-- consumer sync across split commerce crates.
+- `cargo check -p rustok-commerce-foundation`
+- `cargo test -p rustok-server product_translation_search_helper_is_not_server_owned`
+- Targeted consumer checks for the crates affected by a changed public type.
 
-## Update rules
+## References
 
-1. When changing shared commerce foundation contract, update this file first.
-2. When changing public surface, synchronize `README.md` and `docs/README.md`.
-3. When changing consumer expectations, update related docs in split commerce crates.
-
-
-## Quality backlog
-
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and currency of `README.md` and local docs.
-- [ ] Lock/update verification gates for current module state.
+- [Crate README](../README.md)
+- [Module documentation](./README.md)
+- [Commerce umbrella plan](../../rustok-commerce/docs/implementation-plan.md)

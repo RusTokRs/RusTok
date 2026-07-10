@@ -191,10 +191,12 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-pages/storefront/src/ui/leptos.rs", storefrontUiSource(options));
   writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/mod.rs", storefrontTransportSource(options));
   writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs", adminApiSource());
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs", storefrontApiSource());
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs", `${storefrontApiSource()}\nexpect_context::<HostRuntimeContext>()\nshared_get::<TransactionalEventBus>()\nruntime_ctx.db_clone()`);
   if (options.storefrontLegacyApi) writeFixtureFile(root, "crates/rustok-pages/storefront/src/api.rs", storefrontApiSource());
   writeFixtureFile(root, "crates/rustok-pages/docs/implementation-plan.md", "verify-pages-ui-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-pages-ui-boundary.mjs");
+  writeFixtureFile(root, "crates/rustok-pages/admin/Cargo.toml", "[package]\nname = \"rustok-pages-admin-fixture\"\nversion = \"0.1.0\"\n");
+  writeFixtureFile(root, "crates/rustok-pages/storefront/Cargo.toml", "[package]\nname = \"rustok-pages-storefront-fixture\"\nversion = \"0.1.0\"\n");
   return root;
 }
 

@@ -1,77 +1,56 @@
 # Implementation plan for `rustok-core`
 
-Status: foundation crate serves as shared contract layer; sweep boundary hardening is complete — domain-specific auth logic cleaned out, docs and public surface synchronized.
-
-## Execution checkpoint
-
-- Current phase: quality_backlog_hardening
-- Last checkpoint: Neutral `Port*`, permission and locale contracts and all compatibility exports were removed from `rustok-core`; core now consumes them from `rustok-api` and owns only runtime RBAC/security policy.
-- Next step: Run the documented module verification gates when compilation is allowed and continue extending targeted coverage around dispatcher latency metric hooks.
-- Open blockers: None.
-- Hand-off notes for next agent: Update this block after each increment.
-- Last updated at (UTC): 2026-07-01T00:00:00Z
-
-## Scope of work
-
-- keep `rustok-core` as the minimally necessary shared foundation layer;
-- synchronize typed primitives, validation/security contracts and local docs;
-- prevent `rustok-core` from becoming a dumping ground for host- or domain-owned logic.
-
 ## Current state
 
-- crate is used as a base dependency for platform and domain modules;
-- shared typed contracts and foundation helpers are part of the live surface;
-- other modules build their integration contracts on top of `rustok-core`, without spreading base types across the workspace;
-- **boundary hardening**: auth module (user entity, repository, service, migrations) removed from `rustok-core` — canonical auth lifecycle lives in `rustok-auth`;
-- **port boundary hardening**: `PortContext`/`PortError`/`PortCallPolicy` removed from core and its prelude; canonical contract lives only in `rustok-api`;
-- **shared API boundary**: `Permission`/`Action`/`Resource` and locale helpers removed from core; `SecurityContext::try_from_port_context` strictly validates non-system actors, `SecurityActorKind` separates `System`/`User`/`Service`/`Public`, and anonymous storefront reads use `SecurityContext::public_read()` instead of trusted runtime authority;
-- **contract sync**: `CRATE_API.md`, `README.md`, `docs/README.md` synchronized with the current public surface;
-- **deps cleanup**: `jsonwebtoken` and `argon2` removed from `Cargo.toml` (no longer needed after auth removal);
-- **targeted tests**: added `tests/foundation_primitives.rs` with coverage for `UserRole`/`UserStatus` (display, parse, serde), `generate_id`/`parse_id`, locale normalization and field-schema guardrails;
-- **security/validation tests**: added `tests/security_validation.rs` with coverage for `SecurityHeaders`, `RateLimiter`, `InputValidator`, `SsrfProtection` and utils (`is_valid_email`, `is_valid_uuid`, `html_escape`, `slugify`);
-- **contract tests**: expanded `tests/contract_surface.rs` with checks for absence of auth re-exports and unnecessary auth dependencies in `Cargo.toml`;
-- **cache/resilience tests**: added `tests/cache_resilience_contract.rs` with coverage for in-memory cache TTL/invalidation, retry predicates/backoff caps, circuit breaker manual/half-open controls, bulkhead metrics and timeout errors;
-- **event observability tests**: added `tests/events_observability_contract.rs` with coverage for saturating backpressure release, warning/critical metrics, EventBus publish/drop stats and MemoryTransport batch stats;
-- **dispatcher retry tests**: expanded unit tests `src/events/handler.rs` for retry success, retry exhaustion with `on_error`, no-handler backpressure release and concurrent handler completion release;
-- local docs and root `README.md` are maintained as part of the scoped audit path.
+`rustok-core` is the minimal shared foundation layer for runtime RBAC/security
+policy, typed primitives, validation, resilience, event-dispatch helpers, and
+foundation utilities. It must not become a host or domain dumping ground.
 
-## Stages
+Auth lifecycle belongs to `rustok-auth`; canonical `Port*`, permission, and
+locale contracts belong to `rustok-api`. Core consumes those contracts where
+needed and keeps no compatibility exports for their former locations.
 
-### 1. Contract stability
+## FFA/FBA boundary
 
-- [x] lock `rustok-core` as shared foundation layer;
-- [x] keep typed primitives and shared helpers outside host/domain buckets;
-- [x] maintain sync between public surface, compatibility exports and module metadata.
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- This foundation crate has no module-owned UI or FBA provider port.
 
-### 2. Boundary hardening
+## Open results
 
-- [x] continue cleaning domain-specific logic from foundation layer;
-- [x] move shared primitives here only when real cross-module necessity arises;
-- [x] cover new foundation contracts with targeted tests and compatibility checks.
+1. **Execute the documented foundation verification suite.** Run module and
+   targeted primitive/security/resilience/event-dispatch checks in an available
+   compilation environment.
+   **Depends on:** a build environment with the relevant workspace dependencies.
+   **Done when:** current public contracts, compatibility removals, dispatcher
+   retry/backpressure behavior, and latency metric hooks have compiled evidence.
 
-### 3. Operability
+2. **Extend foundation behavior only for real cross-module need.** Add a shared
+   primitive or helper only when at least two independent consumers need the
+   same contract; otherwise keep it with the owning module.
+   **Depends on:** demonstrated cross-module usage and an owner decision.
+   **Done when:** the public surface, consumer migration, and targeted contract
+   tests prove the addition does not reintroduce domain ownership.
 
-- [x] document foundation contract changes simultaneously with changing runtime surface;
-- [x] keep local docs and `README.md` synchronized;
-- [x] update consumer-module docs if base typed contracts change.
+3. **Maintain foundation contract discipline.** Synchronize public API, local
+   docs, module metadata, and consumer docs with a changed core behavior.
+   **Depends on:** the change-owning foundation contract.
+   **Done when:** no removed auth/API/locale/port export or domain dependency
+   returns through compatibility code.
 
 ## Verification
 
-- contract tests cover all public use-cases
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
-- targeted tests for primitives, validation, security, permissions, rt_json sanitization, cache/resilience contracts, event observability contracts, dispatcher retry/backpressure-release contracts and compatibility exports
+- Targeted primitives, validation, security, RT JSON sanitization, cache/
+  resilience, event observability, dispatcher retry/backpressure, and public
+  compatibility tests.
 
-## Update rules
+## Change rules
 
-1. When changing foundation contract, update this file first.
-2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
-3. When changing module metadata, synchronize `rustok-module.toml`.
-4. When changing shared contracts, update related consumer docs where it affects live behavior.
-
-
-## Quality backlog
-
-- [x] Update test coverage for key module scenarios — added permission/rt_json/cache/resilience/event-observability and dispatcher retry/backpressure-release contract tests.
-- [x] Verify completeness and currency of `README.md` and local docs — README/docs remain aligned with foundation-only surface; no runtime changes introduced.
-- [x] Lock/update verification gates for current module state — documented gates preserved; execution deferred due to compilation prohibition in this iteration.
+1. Keep domain behavior in its owner module and shared contracts in their
+   canonical foundation crate.
+2. Update the root README, local docs, and `rustok-module.toml` with a core
+   contract change.
+3. Update consumer docs whenever a shared behavior changes live semantics.

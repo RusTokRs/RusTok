@@ -1,15 +1,19 @@
 use leptos::prelude::*;
 
 use crate::features::dashboard::model::{
-    DashboardStats, DashboardStatsResponse, RecentActivityResponse,
+    ActivityItem, ActivityUser, DashboardStats, DashboardStatsResponse, RecentActivityResponse,
 };
+
+#[cfg(feature = "ssr")]
+use chrono::Utc;
+#[cfg(feature = "ssr")]
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 #[server(prefix = "/api/fn", endpoint = "admin/dashboard-stats")]
 pub(super) async fn dashboard_stats_native() -> Result<DashboardStatsResponse, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use chrono::{Duration, Utc};
-        use sea_orm::DbBackend;
+        use chrono::Duration;
 
         let _auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await

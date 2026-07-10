@@ -221,7 +221,7 @@ fn catalog_controls() {
 }
 `);
   writeFixtureFile(root, "crates/rustok-search/admin/src/transport/mod.rs", "mod native_server_adapter;\npub type TransportError = native_server_adapter::ApiError;\npub async fn fetch_bootstrap() {}\npub async fn fetch_search_preview() { let _ = native_server_adapter::fetch_search_preview; }\npub async fn fetch_search_analytics() {}\npub async fn fetch_dictionary_snapshot() {}\npub async fn update_search_settings() {}\n");
-  writeFixtureFile(root, "crates/rustok-search/admin/src/transport/native_server_adapter.rs", "use rustok_graphql as graphql;\npub enum ApiError {}\npub struct SearchAttributeFilterInput {}\n#[server]\npub async fn endpoint() {}\npub fn fetch_search_preview() { let _ = \"value label count\"; let _ = channel_id: filters.channel_id; let _ = parse_optional_uuid(input.channel_id.as_deref()); let _ = normalize_uuid_values(\"category_ids\", input.category_ids); let _ = normalize_attribute_filters(input.attribute_filters); let _ = normalize_attribute_code(input.sort_attribute_code); let _ = sort_desc: input.sort_desc.unwrap_or(false); let _ = label: bucket.label; }\n");
+  writeFixtureFile(root, "crates/rustok-search/admin/src/transport/native_server_adapter.rs", "pub enum ApiError {}\npub struct SearchAttributeFilterInput {}\n#[server]\npub async fn endpoint() {}\nexpect_context::<HostRuntimeContext>();\nshared_get::<rustok_outbox::TransactionalEventBus>();\npub fn fetch_search_preview() { let _ = channel_id: filters.channel_id; let _ = parse_optional_uuid(input.channel_id.as_deref()); let _ = normalize_uuid_values(\"category_ids\", input.category_ids); let _ = normalize_attribute_filters(input.attribute_filters); let _ = normalize_attribute_code(input.sort_attribute_code); let _ = sort_desc: input.sort_desc.unwrap_or(false); let _ = label: bucket.label; let _ = count: bucket.count; }\n");
   if (options.legacyAdminApi) {
     writeFixtureFile(root, "crates/rustok-search/admin/src/api.rs", "pub async fn fetch_search_preview() {}\n");
   }
@@ -252,7 +252,7 @@ fn catalog_route_controls() {
 `);
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/mod.rs", "pub mod graphql_adapter;\npub mod native_server_adapter;\npub async fn fetch_search() { let _ = native_server_adapter::fetch_search; let _ = graphql_adapter::fetch_search; }\npub async fn fetch_suggestions() { let _ = native_server_adapter::fetch_suggestions; let _ = graphql_adapter::fetch_suggestions; }\n");
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/native_server_adapter.rs", "pub fn fetch_storefront_search_server() {}\npub fn fetch_storefront_suggestions_server() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub struct SearchAttributeFilterInput {}\npub fn fetch_storefront_search_graphql() { let _ = \"value label count\"; let _ = channel_id: filters.channel_id; let _ = category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids); let _ = attribute_filters: (!filters.attribute_filters.is_empty()); let _ = sort_attribute_code: filters.sort_attribute_code; let _ = sort_desc: filters.sort_desc.then_some(true); }\npub fn fetch_storefront_suggestions_graphql() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
+  writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub struct SearchAttributeFilterInput {}\nconst QUERY: &str = \"facets { name buckets { value label count } }\";\npub fn fetch_storefront_search_graphql() { let _ = channel_id: filters.channel_id; let _ = category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids); let _ = attribute_filters: (!filters.attribute_filters.is_empty()); let _ = sort_attribute_code: filters.sort_attribute_code; let _ = sort_desc: filters.sort_desc.then_some(true); }\npub fn fetch_storefront_suggestions_graphql() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
   writeFixtureFile(root, "crates/rustok-search/src/engine.rs", searchEngine(options));
   writeFixtureFile(root, "crates/rustok-search/src/pg_engine.rs", pgEngine(options));
   writeFixtureFile(root, "crates/rustok-search/src/dictionaries.rs", dictionaries());
@@ -360,7 +360,7 @@ async function Page({ params }) {
   const { locale } = await params;
   const tenantSlug = getStorefrontTenantSlug();
   const enabledModules = await fetchEnabledModules(tenantSlug);
-  return module.render({ locale, enabledModules, tenantSlug });
+  return module.render({ locale, enabledModules, tenantSlug, tenantId: getStorefrontTenantId() });
 }
 `);
   writeFixtureFile(root, "crates/rustok-product/admin/src/model.rs", `
@@ -432,12 +432,8 @@ pub struct ProductCatalogSearchOptions {
 `);
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", `
 pub async fn fetch_catalog_search_options(locale: String) {
-  match native_server_adapter::fetch_catalog_search_options(locale.clone()).await {
-    Ok(data) => Ok(data),
-    Err(native_error) => match graphql_adapter::fetch_catalog_search_options(locale).await {
-      Err(graphql_error) => Err(ProductTransportError::fallback_failed(native_error, graphql_error)),
-    }
-  }
+  let native_locale = locale.clone();
+  execute_selected_transport("product", selected_transport_path(), move || native_server_adapter::fetch_catalog_search_options(native_locale), move || graphql_adapter::fetch_catalog_search_options(locale))
 }
 `);
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs", `

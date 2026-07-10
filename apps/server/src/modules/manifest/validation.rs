@@ -260,9 +260,10 @@ pub fn validate_module_ui_i18n_contract(
 pub fn merge_module_package_manifest(
     mut spec: ManifestModuleSpec,
     package_manifest: ModulePackageManifest,
-) -> ManifestModuleSpec {
+) -> Result<ManifestModuleSpec, ManifestError> {
     let crate_name = spec.crate_name.clone();
     let metadata = package_manifest.module;
+    let module_slug = metadata.slug.clone().unwrap_or_else(|| crate_name.clone());
 
     if let Some(version) = metadata
         .version
@@ -376,12 +377,18 @@ pub fn merge_module_package_manifest(
     }
     if let Some(http) = package_manifest.provides.http {
         if http.routes.is_some() && http.axum_router.is_some() {
-            anyhow::bail!(
-                "Module package [provides.http] cannot declare both routes and axum_router"
-            );
+            return Err(ManifestError::InvalidModuleHttpWiring {
+                slug: module_slug.clone(),
+                reason: "[provides.http] cannot declare both routes and axum_router".to_string(),
+            });
         }
         if http.webhook_routes.is_some() && http.axum_webhook_router.is_some() {
-            anyhow::bail!("Module package [provides.http] cannot declare both webhook_routes and axum_webhook_router");
+            return Err(ManifestError::InvalidModuleHttpWiring {
+                slug: module_slug,
+                reason:
+                    "[provides.http] cannot declare both webhook_routes and axum_webhook_router"
+                        .to_string(),
+            });
         }
         if let Some(routes_fn) = qualify_module_member_path(&crate_name, http.routes.as_deref()) {
             spec.http_routes_fn = Some(routes_fn);
@@ -438,7 +445,7 @@ pub fn merge_module_package_manifest(
     spec.conflicts_with.sort();
     spec.conflicts_with.dedup();
 
-    spec
+    Ok(spec)
 }
 
 pub fn qualify_module_type_path(crate_name: &str, value: Option<&str>) -> Option<String> {
@@ -1303,10 +1310,7 @@ pub fn apply_module_package_manifest(
         validate_module_ui_wiring(slug, &module_root, &package_manifest)?;
     }
 
-    Ok(merge_module_package_manifest(
-        spec.clone(),
-        package_manifest,
-    ))
+    merge_module_package_manifest(spec.clone(), package_manifest)
 }
 
 pub fn first_party_module(

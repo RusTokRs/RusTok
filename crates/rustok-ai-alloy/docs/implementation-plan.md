@@ -1,29 +1,46 @@
-# `rustok-ai-alloy` — Implementation Plan
+# rustok-ai-alloy implementation plan
 
-## Goal
+## Current state
 
-Make `rustok-ai-alloy` the domain-owned adapter crate for Alloy scripting AI verticals, starting with `alloy_code` task/tool identity and runtime payload validation.
+`rustok-ai-alloy` owns the `alloy_code` descriptor, runtime-payload validation,
+and Alloy script execution policy. `rustok-ai` consumes its registration API
+and remains the runtime and transport composition owner. The supported
+operations and payload rules are documented in the crate README and policy
+registry.
 
-## Stages
+## FFA/FBA readiness
 
-1. Scaffold crate + docs.
-2. Move `alloy_code` task/tool identity from `rustok-ai` to alloy-owned descriptor API.
-3. Move validation helpers for runtime payload JSON.
-4. Add targeted verification and synchronize central registry evidence.
+- FFA status: `not_started` — this support adapter owns no UI surface.
+- FBA status: `in_progress` (`domain_support_adapter`).
+- `alloy_script_execution_policy` records `allowed_operations`,
+  `runtime_operation`, and the current remote transport status. It must remain
+  domain-owned; provider routing and execution transport remain in
+  `rustok-ai`.
+- Evidence: `crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json`,
+  `crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json`,
+  and `scripts/verify/verify-ai-alloy-policy.mjs`.
 
-## Execution checkpoint
+## Next results
 
-- Support crate `rustok-ai-alloy` created with local docs.
-- `ALLOY_CODE_TASK_SLUG`, `ALLOY_CODE_TOOL_NAME`, descriptor registry and `register_alloy_ai_vertical_handlers` adapter API moved.
-- Canonical runtime payload validation (`runtime_payload_json` must be absent/blank or a JSON object) moved to alloy-owned pure helper, consumed by `rustok-ai` direct alloy runtime.
-- Alloy-owned script execution policy metadata (`alloy_script_execution_policy`) with `allowed_operations`, descriptor-level `runtime_operation`/`transport_owner`, registry `contracts/ai-alloy-policy-registry.json`, static evidence `contracts/evidence/ai-alloy-policy-static-matrix.json` and fast verifier `scripts/verify/verify-ai-alloy-policy.mjs` added without compilation.
-- Next step: when compilations are allowed, run targeted Rust tests for `validate_runtime_payload`, descriptor policy and `allowed_operations`; until then, source/static evidence lock remains the primary gate.
-- Added compile-free static evidence coverage in the unified `scripts/verify/verify-ai-domain-verticals.mjs` gate for descriptor ownership, runtime binding seams, and validation/policy tests without compilation.
-- Last updated at (UTC): 2026-06-24T00:00:00Z
+1. **Exercise the policy through the composed direct-execution path.** Add a
+   targeted integration test that proves `rustok-ai` consumes the registered
+   descriptor, rejects invalid payloads, and admits only policy operations.
+   Done when the test covers the composed boundary rather than source markers
+   alone.
+2. **Specify the remote Alloy transport only when its product owner selects
+   it.** Define authentication, operation mapping, failures, and evidence
+   before changing `remote_transport` from `not_started`. Done when the
+   transport contract has a named owner and no alternate transport path is
+   implied.
 
-## FFA/FBA status
+## Verification
 
-- FFA status: `not_started`
-- FBA status: `in_progress`
-- Structural shape: `domain_support_adapter`
-- Evidence: crate owns Alloy AI vertical task/tool identity, handler adapter API, pure runtime payload validation, and script execution policy metadata through `alloy_script_execution_policy`, including `allowed_operations` plus descriptor `runtime_operation`/`transport_owner`; registry `crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json` and static matrix `crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json` are checked by `scripts/verify/verify-ai-alloy-policy.mjs` while executable provider/runtime composition remains in `rustok-ai`.
+- `npm run verify:ai-alloy:policy`
+- `npm run verify:ai:domain-verticals`
+- `cargo test -p rustok-ai-alloy --lib`
+
+## References
+
+- [Crate README](../README.md)
+- [Module documentation](./README.md)
+- [AI FBA registry](../contracts/ai-alloy-policy-registry.json)
