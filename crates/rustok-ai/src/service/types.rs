@@ -2,15 +2,18 @@ use chrono::{DateTime, Utc};
 use rustok_api::Permission;
 use rustok_core::registry::ModuleRegistry;
 use rustok_outbox::TransactionalEventBus;
+use rustok_secrets::{SecretRef, SecretResolverRegistry};
 use rustok_storage::StorageService;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::model::{
     AiRunDecisionTrace, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderCapability,
-    ProviderKind, ProviderUsagePolicy, ToolCall, ToolTrace,
+    ProviderUsagePolicy, ToolCall, ToolTrace,
 };
+use crate::ProviderSlug;
 
 #[derive(Clone)]
 pub struct SharedAiModuleRegistry(pub ModuleRegistry);
@@ -22,6 +25,7 @@ pub struct AiHostRuntime {
     module_registry: ModuleRegistry,
     storage: Option<StorageService>,
     alloy_runtime: Option<alloy::SharedAlloyRuntime>,
+    secret_registry: SecretResolverRegistry,
 }
 
 impl AiHostRuntime {
@@ -36,6 +40,7 @@ impl AiHostRuntime {
             module_registry,
             storage: None,
             alloy_runtime: None,
+            secret_registry: SecretResolverRegistry::builder().build(),
         }
     }
 
@@ -47,6 +52,15 @@ impl AiHostRuntime {
     pub fn with_alloy_runtime(mut self, alloy_runtime: Option<alloy::SharedAlloyRuntime>) -> Self {
         self.alloy_runtime = alloy_runtime;
         self
+    }
+
+    pub fn with_secret_registry(mut self, secret_registry: SecretResolverRegistry) -> Self {
+        self.secret_registry = secret_registry;
+        self
+    }
+
+    pub fn secret_registry(&self) -> &SecretResolverRegistry {
+        &self.secret_registry
     }
 
     pub fn db(&self) -> &DatabaseConnection {
@@ -89,10 +103,10 @@ pub struct AiOperatorContext {
 pub struct CreateAiProviderProfileInput {
     pub slug: String,
     pub display_name: String,
-    pub provider_kind: ProviderKind,
-    pub base_url: String,
+    pub provider_slug: ProviderSlug,
     pub model: String,
-    pub api_key_secret: Option<String>,
+    pub settings: BTreeMap<String, serde_json::Value>,
+    pub credential_refs: BTreeMap<String, SecretRef>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub capabilities: Vec<ProviderCapability>,
@@ -103,8 +117,9 @@ pub struct CreateAiProviderProfileInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAiProviderProfileInput {
     pub display_name: String,
-    pub base_url: String,
     pub model: String,
+    pub settings: BTreeMap<String, serde_json::Value>,
+    pub credential_refs: BTreeMap<String, SecretRef>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub capabilities: Vec<ProviderCapability>,
@@ -207,13 +222,14 @@ pub struct AiProviderProfileRecord {
     pub id: Uuid,
     pub slug: String,
     pub display_name: String,
-    pub provider_kind: ProviderKind,
-    pub base_url: String,
+    pub provider_slug: ProviderSlug,
     pub model: String,
+    pub settings: BTreeMap<String, serde_json::Value>,
+    pub credential_refs: BTreeMap<String, SecretRef>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub is_active: bool,
-    pub has_secret: bool,
+    pub has_credentials: bool,
     pub capabilities: Vec<ProviderCapability>,
     pub usage_policy: ProviderUsagePolicy,
     pub metadata: serde_json::Value,
@@ -303,7 +319,7 @@ pub struct AiRecentRunRecord {
     pub session_title: String,
     pub provider_profile_id: Uuid,
     pub provider_display_name: String,
-    pub provider_kind: ProviderKind,
+    pub provider_slug: ProviderSlug,
     pub task_profile_id: Option<Uuid>,
     pub task_profile_slug: Option<String>,
     pub status: String,

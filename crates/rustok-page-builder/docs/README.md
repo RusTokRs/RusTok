@@ -56,6 +56,8 @@ The endpoint adapter seam is now established in `src/adapters.rs`: `PageBuilderG
 
 `AdapterBackedPageBuilderService` now creates `PageBuilderAdapterCallEvidence` before invoking persistence/rendering seams and passes it to `PageBuilderAdapterTelemetry` as `started`, then writes `succeeded` or `failed` outcome. Failed evidence carries `PageBuilderErrorKind` and stable code from `PageBuilderServiceError`. Default `NoopPageBuilderAdapterTelemetry` preserves the previous behavior, and host wiring can connect a recorder for the audit/observability layer around `PageBuilderProjectStore` and `PageBuilderRenderingAdapter`. Evidence is not published as a new transport response and does not change `PageBuilderCapabilityRequest/Response`.
 
+Adapters must not introduce transport-local capability aliases, transport-local error kind aliases, pages-local visual builder ownership, or vendor-specific required project payloads.
+
 ## Provider health and SLO baseline
 
 Machine-readable provider metadata includes health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) and pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. The runtime code exposes the same baseline through `ProviderHealthState`, `ProviderDegradationReason`, `ProviderSloThresholds::PILOT`, `ProviderHealthSnapshot::evaluate` and `ProviderHealthEvidence::from_observations`, so Wave evidence can be formed without transport-specific adapters. Registry and Wave evidence packet gates keep these thresholds synchronized with the owner source until Wave 1 promotion.

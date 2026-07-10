@@ -7,11 +7,10 @@ pub(crate) async fn list_enabled_modules(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_tenant::TenantService;
 
-        let ctx = expect_context::<AppContext>();
-        let service = TenantService::new(ctx.db.clone());
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let service = TenantService::new(runtime.db_clone());
         let tenant = service
             .get_tenant_by_slug(tenant_slug.as_str())
             .await

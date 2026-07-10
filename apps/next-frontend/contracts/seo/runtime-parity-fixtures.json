@@ -430,13 +430,20 @@
       ]
     },
     {
-      "name": "leptos_storefront_runtime_contract",
+      "name": "leptos_storefront_runtime_core_contract",
       "path": "apps/storefront/src/shared/context/seo_page_context.rs",
       "mustContain": [
-        "storefront/seo-page-context",
         "fetch_seo_page_context_server",
         "fetch_seo_page_context_graphql",
         "to_seo_page_context"
+      ]
+    },
+    {
+      "name": "leptos_storefront_runtime_native_adapter",
+      "path": "apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs",
+      "mustContain": [
+        "storefront/seo-page-context",
+        "resolve_seo_page_context"
       ]
     }
   ],

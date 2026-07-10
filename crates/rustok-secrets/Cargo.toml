@@ -1,0 +1,17 @@
+[package]
+name = "rustok-secrets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Runtime secret-reference contracts and resolver registry for RusToK"
+
+[dependencies]
+async-trait.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "sync", "time"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+

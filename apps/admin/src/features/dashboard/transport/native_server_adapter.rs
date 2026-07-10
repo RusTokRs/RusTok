@@ -21,12 +21,12 @@ pub(super) async fn dashboard_stats_native() -> Result<DashboardStatsResponse, S
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|err| server_error(err.to_string()))?;
-        let app_ctx = expect_context::<loco_rs::app::AppContext>();
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let now = Utc::now();
         let current_period_start = now - Duration::days(30);
         let previous_period_start = current_period_start - Duration::days(30);
         let user_stats = load_period_count_snapshot(
-            &app_ctx.db,
+            runtime.db(),
             "users",
             tenant.id,
             current_period_start,
@@ -37,12 +37,12 @@ pub(super) async fn dashboard_stats_native() -> Result<DashboardStatsResponse, S
         .await
         .map_err(|err| server_error(err.to_string()))?;
         let post_stats = load_period_count_snapshot(
-            &app_ctx.db,
+            runtime.db(),
             "nodes",
             tenant.id,
             current_period_start,
             previous_period_start,
-            Some(match app_ctx.db.get_database_backend() {
+            Some(match runtime.db().get_database_backend() {
                 DbBackend::Sqlite => " AND kind = ?4",
                 _ => " AND kind = $4",
             }),
@@ -51,7 +51,7 @@ pub(super) async fn dashboard_stats_native() -> Result<DashboardStatsResponse, S
         .await
         .map_err(|err| server_error(err.to_string()))?;
         let order_stats = load_order_stats_snapshot(
-            &app_ctx.db,
+            runtime.db(),
             tenant.id,
             current_period_start,
             previous_period_start,
@@ -103,9 +103,9 @@ pub(super) async fn recent_activity_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|err| server_error(err.to_string()))?;
-        let app_ctx = expect_context::<loco_rs::app::AppContext>();
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         Ok(RecentActivityResponse {
-            recent_activity: load_recent_activity(&app_ctx.db, tenant.id, limit.clamp(1, 50))
+            recent_activity: load_recent_activity(runtime.db(), tenant.id, limit.clamp(1, 50))
                 .await
                 .map_err(|err| server_error(err.to_string()))?,
         })

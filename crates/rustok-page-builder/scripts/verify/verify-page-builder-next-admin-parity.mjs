@@ -23,10 +23,10 @@ function read(relativePath) {
 }
 
 const errorHelper = read(
-  "apps/next-admin/src/features/blog/api/page-builder-errors.ts",
+  "apps/next-admin/packages/blog/src/api/page-builder-errors.ts",
 );
 const pageBuilder = read(
-  "apps/next-admin/src/features/blog/components/page-builder.tsx",
+  "apps/next-admin/packages/blog/src/components/page-builder.tsx",
 );
 const consumerManifest = read("crates/rustok-pages/rustok-module.toml");
 

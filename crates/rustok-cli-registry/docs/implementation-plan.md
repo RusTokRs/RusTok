@@ -1,33 +1,44 @@
-# Implementation plan for `rustok-cli-registry`
+# Implementation Plan for `rustok-cli-registry`
 
-## Status
+## Current state
 
-`in_progress`
+`rustok-cli-registry` owns selected-distribution provider aggregation outside
+the runner and server. Generated source currently composes the platform
+provider and `rustok-media-cli`; the latter exposes the owner-local
+`media cleanup` workflow through `RuntimeComposition`. The generator checks
+manifest selection and required registry dependencies.
 
-## Current State
+## FFA/FBA boundary
 
-- Selected distribution registry crate exists outside the runner and server.
-- `selected_distribution_registry()` loads providers from generated source.
-- Generated source is produced by `scripts/generate/generate-cli-registry.mjs`.
-- Root `cli-registry.toml` selects the platform provider for `core version`.
-- Generator freshness checks also verify selected provider dependencies in
-  `rustok-cli-registry/Cargo.toml`.
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- The registry selects provider adapters. It must not own terminal parsing,
+  server runtime, or domain command logic.
 
-## Target State
+## Open results
 
-- The registry is generated from `modules.toml` and module-local `rustok-module.toml` metadata.
-- Module-local `cli/` adapter crates are connected through `[provides.cli]`.
-- The registry depends only on selected command provider crates and `rustok-cli-core`; it does not depend on the runner, server runtime or domain crates without an adapter boundary.
-- Production HTTP builds remain independent from CLI provider aggregation.
-
-## Next Steps
-
-1. Add the first module-local or platform ops provider metadata through `[provides.cli]`.
-2. Add generator validation for selected provider crate dependencies once real providers exist.
-3. Use the generated registry when migrating the first legacy task, seed or migration command.
+1. **Register the next approved module-local or platform operations provider.**
+   Done when `[provides.cli]`, generated source, and registry dependencies add
+   an owner adapter without introducing a runner/server/domain dependency leak.
+   **Depends on:** an approved workflow owner and adapter crate.
+   **Verification:** `node scripts/generate/generate-cli-registry.mjs --check`
+   and `cargo test -p rustok-cli-registry --quiet`.
+2. **Collect runtime evidence for the selected media cleanup command.** Done
+   when a database-backed run proves settings parsing, bounded cleanup, typed
+   failure output, and structured outcome data through the generated registry.
+   **Depends on:** an approved non-production runtime environment and media
+   storage configuration. **Verification:** targeted provider integration test
+   plus `rustok-cli media cleanup --limit <n>` in that environment.
 
 ## Verification
 
 - `node scripts/generate/generate-cli-registry.mjs --check`
 - `cargo test -p rustok-cli-registry --quiet`
 - `node scripts/verify/verify-api-surface-contract.mjs`
+
+## Change rules
+
+1. Keep provider implementation in the owner-local adapter crate.
+2. Regenerate `src/generated.rs`; never hand-edit selected provider wiring.
+3. Keep production HTTP builds independent from CLI provider aggregation.

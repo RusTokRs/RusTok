@@ -34,8 +34,13 @@ host integration.
    serialization fixture or contract test. Done when a breaking field or
    naming change fails a repeatable check.
 
-## Documentation
+## Verification
 
-The package purpose and current limitations are documented in the module
-README. Product state policy remains owned by the consuming host, not by this
-shared DTO crate.
+- `cargo test -p leptos-zustand`
+- Targeted host-consumer and Rust/Next wire-contract tests after adoption.
+
+## Change rules
+
+1. Keep product state policy in the consuming host.
+2. Do not add a runtime store without an approved owner and lifecycle contract.
+3. Update the README and host documentation with a public DTO shape change.

@@ -7,11 +7,10 @@ pub(super) async fn cache_health_native() -> Result<CacheHealthResponse, ServerF
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_cache::CacheService;
 
-        let app_ctx = expect_context::<AppContext>();
-        let payload = if let Some(cache) = app_ctx.shared_store.get::<CacheService>() {
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let payload = if let Some(cache) = runtime.shared_get::<CacheService>() {
             let report = cache.health().await;
             CacheHealthPayload {
                 redis_configured: report.redis_configured,

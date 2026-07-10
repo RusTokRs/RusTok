@@ -1,9 +1,10 @@
 use uuid::Uuid;
 
 use crate::{
+    engine::{provider_catalog_entry, ProviderFeature, ProviderSlug},
     error::{AiError, AiResult},
     model::{
-        AiRunDecisionTrace, ExecutionMode, ExecutionOverride, ProviderCapability, ProviderKind,
+        AiRunDecisionTrace, ExecutionMode, ExecutionOverride, ProviderCapability,
         ProviderUsagePolicy, TaskProfile,
     },
 };
@@ -12,7 +13,7 @@ use crate::{
 pub struct RouterProviderProfile {
     pub id: Uuid,
     pub slug: String,
-    pub provider_kind: ProviderKind,
+    pub provider_slug: ProviderSlug,
     pub model: String,
     pub capabilities: Vec<ProviderCapability>,
     pub usage_policy: ProviderUsagePolicy,
@@ -25,6 +26,7 @@ pub enum RouterCandidateStatus {
     Eligible,
     Inactive,
     MissingCapability,
+    MissingIntegrationFeature,
     NotInTaskAllowList,
     TaskDeniedByProviderPolicy,
     NotInProviderAllowList,
@@ -38,6 +40,7 @@ impl RouterCandidateStatus {
             Self::Eligible => "eligible",
             Self::Inactive => "inactive",
             Self::MissingCapability => "missing_capability",
+            Self::MissingIntegrationFeature => "missing_integration_feature",
             Self::NotInTaskAllowList => "not_in_task_allow_list",
             Self::TaskDeniedByProviderPolicy => "task_denied_by_provider_policy",
             Self::NotInProviderAllowList => "not_in_provider_allow_list",
@@ -50,7 +53,7 @@ impl RouterCandidateStatus {
 pub struct RouterCandidateDecision {
     pub provider_profile_id: Uuid,
     pub provider_slug: String,
-    pub provider_kind: ProviderKind,
+    pub integration_slug: ProviderSlug,
     pub status: RouterCandidateStatus,
     pub preferred_by_task: bool,
     pub reason: String,
@@ -194,8 +197,7 @@ impl AiRouter {
                 task_profile_id: task_profile.map(|profile| profile.id),
                 task_profile_slug: task_profile.map(|profile| profile.slug.clone()),
                 provider_profile_id: Some(provider.id),
-                provider_slug: Some(provider.slug.clone()),
-                provider_kind: Some(provider.provider_kind),
+                provider_slug: Some(provider.provider_slug.as_str().to_string()),
                 selected_model: Some(model),
                 execution_mode: Some(execution_mode),
                 execution_target: None,
@@ -232,7 +234,7 @@ pub fn explain_provider_candidates(
             RouterCandidateDecision {
                 provider_profile_id: provider.id,
                 provider_slug: provider.slug.clone(),
-                provider_kind: provider.provider_kind,
+                integration_slug: provider.provider_slug.clone(),
                 status,
                 preferred_by_task,
                 reason,
@@ -272,6 +274,26 @@ fn provider_candidate_status(
             format!(
                 "provider lacks required `{}` capability",
                 task_profile.target_capability.slug()
+            ),
+        );
+    }
+    let required_feature = match task_profile.target_capability {
+        ProviderCapability::TextGeneration | ProviderCapability::CodeGeneration => {
+            ProviderFeature::Chat
+        }
+        ProviderCapability::StructuredGeneration => ProviderFeature::StructuredOutput,
+        ProviderCapability::ImageGeneration => ProviderFeature::Image,
+        ProviderCapability::MultimodalUnderstanding => ProviderFeature::Multimodal,
+        ProviderCapability::AlloyAssist => ProviderFeature::Tools,
+    };
+    let supports_feature = provider_catalog_entry(&provider.provider_slug)
+        .is_some_and(|descriptor| descriptor.features.contains(&required_feature));
+    if !supports_feature {
+        return (
+            RouterCandidateStatus::MissingIntegrationFeature,
+            format!(
+                "provider integration `{}` does not implement required {:?} feature",
+                provider.provider_slug, required_feature
             ),
         );
     }
@@ -336,14 +358,14 @@ mod tests {
     fn provider(
         id: u128,
         slug: &str,
-        kind: ProviderKind,
+        integration_slug: ProviderSlug,
         capabilities: Vec<ProviderCapability>,
         usage_policy: ProviderUsagePolicy,
     ) -> RouterProviderProfile {
         RouterProviderProfile {
             id: Uuid::from_u128(id),
             slug: slug.to_string(),
-            provider_kind: kind,
+            provider_slug: integration_slug,
             model: format!("{slug}-model"),
             capabilities,
             usage_policy,
@@ -381,14 +403,14 @@ mod tests {
         let first = provider(
             1,
             "openai-default",
-            ProviderKind::OpenAiCompatible,
+            ProviderSlug::openai_compatible(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy::default(),
         );
         let preferred = provider(
             2,
             "anthropic-copy",
-            ProviderKind::Anthropic,
+            ProviderSlug::anthropic(),
             vec![
                 ProviderCapability::TextGeneration,
                 ProviderCapability::CodeGeneration,
@@ -427,7 +449,7 @@ mod tests {
         let restricted = provider(
             1,
             "gemini-vision",
-            ProviderKind::Gemini,
+            ProviderSlug::gemini(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy {
                 allowed_task_profiles: vec![],
@@ -438,7 +460,7 @@ mod tests {
         let fallback = provider(
             2,
             "openai-general",
-            ProviderKind::OpenAiCompatible,
+            ProviderSlug::openai_compatible(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy::default(),
         );
@@ -468,7 +490,7 @@ mod tests {
         let denied = provider(
             1,
             "gemini-image",
-            ProviderKind::Gemini,
+            ProviderSlug::gemini(),
             vec![ProviderCapability::ImageGeneration],
             ProviderUsagePolicy {
                 allowed_task_profiles: vec![],
@@ -506,7 +528,7 @@ mod tests {
             ..provider(
                 1,
                 "inactive",
-                ProviderKind::OpenAiCompatible,
+                ProviderSlug::openai_compatible(),
                 vec![ProviderCapability::TextGeneration],
                 ProviderUsagePolicy::default(),
             )
@@ -514,14 +536,14 @@ mod tests {
         let missing_capability = provider(
             2,
             "vision-only",
-            ProviderKind::Gemini,
+            ProviderSlug::gemini(),
             vec![ProviderCapability::MultimodalUnderstanding],
             ProviderUsagePolicy::default(),
         );
         let restricted = provider(
             3,
             "restricted",
-            ProviderKind::Anthropic,
+            ProviderSlug::anthropic(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy {
                 allowed_task_profiles: vec![],
@@ -532,7 +554,7 @@ mod tests {
         let selected = provider(
             4,
             "selected",
-            ProviderKind::OpenAiCompatible,
+            ProviderSlug::openai_compatible(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy::default(),
         );
@@ -569,7 +591,7 @@ mod tests {
         let restricted = provider(
             1,
             "restricted",
-            ProviderKind::Anthropic,
+            ProviderSlug::anthropic(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy {
                 allowed_task_profiles: vec![],
@@ -580,7 +602,7 @@ mod tests {
         let fallback = provider(
             2,
             "fallback",
-            ProviderKind::OpenAiCompatible,
+            ProviderSlug::openai_compatible(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy::default(),
         );
@@ -617,7 +639,7 @@ mod tests {
         let provider = provider(
             1,
             "openai-direct",
-            ProviderKind::OpenAiCompatible,
+            ProviderSlug::openai_compatible(),
             vec![ProviderCapability::TextGeneration],
             ProviderUsagePolicy::default(),
         );

@@ -103,6 +103,8 @@ Rules:
   module-owned Leptos UI
 - server-side native adapters receive host runtime data through
   `rustok_api::HostRuntimeContext`, not through framework-specific application context
+- host configuration needed by a native adapter is supplied as the typed
+  `rustok_api::HostSettingsSnapshot` handle, not by extracting a framework app context
 - GraphQL is preserved in parallel
 - external integrations do not depend on `#[server]`
 

@@ -290,7 +290,6 @@ fn render_cargo_toml(crate_name: &str, with_graphql: bool, with_rest: bool) -> S
     }
     if with_rest {
         dependencies.push("axum.workspace = true".to_string());
-        dependencies.push("loco-rs.workspace = true".to_string());
     }
 
     format!(
@@ -339,7 +338,7 @@ fn render_readme(
         entry_points.push("- `graphql::*`".to_string());
     }
     if request.with_rest {
-        entry_points.push("- `controllers::routes`".to_string());
+        entry_points.push("- `controllers::axum_router`".to_string());
     }
 
     format!(
@@ -406,7 +405,7 @@ fn render_lib_rs(
     let mut re_exports = Vec::new();
     if with_rest {
         mod_decls.push("pub mod controllers;".to_string());
-        re_exports.push("pub use controllers::routes;".to_string());
+        re_exports.push("pub use controllers::axum_router;".to_string());
     }
     if with_graphql {
         mod_decls.push("pub mod graphql;".to_string());
@@ -456,7 +455,7 @@ fn render_graphql_mutation(slug: &str, mutation_type: &str) -> String {
 
 fn render_controllers_mod(route_prefix: &str) -> String {
     format!(
-        "use axum::routing::get;\nuse loco_rs::controller::Routes;\n\nasync fn health() -> &'static str {{\n    \"draft\"\n}}\n\npub fn routes() -> Routes {{\n    Routes::new()\n        .prefix(\"{route_prefix}\")\n        .add(\"/health\", get(health))\n}}\n"
+        "use axum::routing::get;\n\nasync fn health() -> &'static str {{\n    \"draft\"\n}}\n\npub fn axum_router() -> axum::Router {{\n    axum::Router::new().route(\"{route_prefix}/health\", get(health))\n}}\n"
     )
 }
 
@@ -548,6 +547,22 @@ mod tests {
         assert!(paths.contains(&"src/lib.rs"));
         assert!(paths.contains(&"src/graphql/query.rs"));
         assert!(paths.contains(&"src/controllers/mod.rs"));
+
+        let cargo = response
+            .files
+            .iter()
+            .find(|file| file.path == "Cargo.toml")
+            .expect("Cargo.toml should be present");
+        assert!(cargo.content.contains("axum.workspace = true"));
+        assert!(!cargo.content.contains("loco-rs"));
+
+        let controllers = response
+            .files
+            .iter()
+            .find(|file| file.path == "src/controllers/mod.rs")
+            .expect("controllers module should be present");
+        assert!(controllers.content.contains("pub fn axum_router()"));
+        assert!(!controllers.content.contains("loco_rs"));
     }
 
     #[test]

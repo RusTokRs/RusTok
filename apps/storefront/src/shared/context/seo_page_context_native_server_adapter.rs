@@ -17,31 +17,38 @@ pub(crate) async fn resolve_seo_page_context(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_core::ModuleRuntimeExtensions;
         use rustok_tenant::TenantService;
 
-        let ctx = expect_context::<AppContext>();
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
-        let tenant = TenantService::new(ctx.db.clone())
+        let tenant = TenantService::new(runtime.db_clone())
             .get_tenant_by_slug(tenant_slug.as_str())
             .await
             .map_err(ServerFnError::new)?;
 
-        let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(&ctx);
-        let extensions = ctx
-            .shared_store
-            .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
+        let event_bus = runtime
+            .shared_get::<rustok_outbox::TransactionalEventBus>()
             .ok_or_else(|| {
                 ServerFnError::new(
-                    "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
+                    "SEO transactional event bus is not initialized; host bootstrap must provide TransactionalEventBus",
                 )
             })?;
-        let service =
-            rustok_seo::SeoService::from_runtime_extensions(ctx.db.clone(), event_bus, &extensions)
-                .map_err(|err| ServerFnError::new(err.to_string()))?;
+        let extensions = runtime
+            .shared_get::<std::sync::Arc<ModuleRuntimeExtensions>>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "SEO runtime extensions are not initialized; host bootstrap must provide ModuleRuntimeExtensions",
+                )
+            })?;
+        let service = rustok_seo::SeoService::from_runtime_extensions(
+            runtime.db_clone(),
+            event_bus,
+            &extensions,
+        )
+        .map_err(|err| ServerFnError::new(err.to_string()))?;
         let default_locale = tenant
             .settings
             .get("default_locale")

@@ -1,5 +1,6 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::AiGraphqlRoleSlugProviderHandle;
@@ -57,22 +58,25 @@ impl AiMutation {
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
-        let provider_kind: crate::ProviderKind = input.provider_kind.into();
+        let provider_slug =
+            crate::ProviderSlug::new(input.provider_slug).map_err(async_graphql::Error::new)?;
         let capabilities = if input.capabilities.is_empty() {
-            default_capabilities_for_kind(provider_kind)
+            default_capabilities_for_provider(&provider_slug)
         } else {
             input.capabilities.into_iter().map(Into::into).collect()
         };
+        let settings = provider_settings(input.settings)?;
+        let credential_refs = credential_refs(input.credential_refs)?;
         let item = crate::AiManagementService::create_provider_profile(
             db,
             &operator,
             crate::CreateAiProviderProfileInput {
                 slug: input.slug,
                 display_name: input.display_name,
-                provider_kind,
-                base_url: input.base_url,
+                provider_slug,
                 model: input.model,
-                api_key_secret: input.api_key_secret,
+                settings,
+                credential_refs,
                 temperature: input.temperature,
                 max_tokens: input.max_tokens,
                 capabilities,
@@ -96,14 +100,17 @@ impl AiMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
+        let settings = provider_settings(input.settings)?;
+        let credential_refs = credential_refs(input.credential_refs)?;
         let item = crate::AiManagementService::update_provider_profile(
             db,
             &operator,
             id,
             crate::UpdateAiProviderProfileInput {
                 display_name: input.display_name,
-                base_url: input.base_url,
                 model: input.model,
+                settings,
+                credential_refs,
                 temperature: input.temperature,
                 max_tokens: input.max_tokens,
                 capabilities,
@@ -117,22 +124,6 @@ impl AiMutation {
         Ok(item.into())
     }
 
-    async fn rotate_ai_provider_secret(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-        secret: Option<String>,
-    ) -> Result<AiProviderProfileGql> {
-        let auth = require_auth_context(ctx)?;
-        ensure_ai_provider_manage(auth)?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, auth).await?;
-        let item = crate::AiManagementService::rotate_provider_secret(db, &operator, id, secret)
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-        Ok(item.into())
-    }
-
     async fn test_ai_provider_profile(
         &self,
         ctx: &Context<'_>,
@@ -141,9 +132,15 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let item = crate::AiManagementService::test_provider_profile(db, auth.tenant_id, id)
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let item = crate::AiManagementService::test_provider_profile(
+            db,
+            runtime.secret_registry(),
+            auth.tenant_id,
+            id,
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.into())
     }
 
@@ -419,25 +416,77 @@ impl AiMutation {
     }
 }
 
-fn default_capabilities_for_kind(
-    provider_kind: crate::ProviderKind,
-) -> Vec<crate::ProviderCapability> {
-    match provider_kind {
-        crate::ProviderKind::OpenAiCompatible => vec![
-            crate::ProviderCapability::TextGeneration,
-            crate::ProviderCapability::StructuredGeneration,
-            crate::ProviderCapability::ImageGeneration,
-            crate::ProviderCapability::CodeGeneration,
-        ],
-        crate::ProviderKind::Anthropic => vec![
-            crate::ProviderCapability::TextGeneration,
-            crate::ProviderCapability::CodeGeneration,
-            crate::ProviderCapability::AlloyAssist,
-        ],
-        crate::ProviderKind::Gemini => vec![
-            crate::ProviderCapability::TextGeneration,
-            crate::ProviderCapability::ImageGeneration,
-            crate::ProviderCapability::MultimodalUnderstanding,
-        ],
+fn provider_settings(
+    inputs: Vec<super::types::AiProviderSettingInputGql>,
+) -> Result<BTreeMap<String, serde_json::Value>> {
+    let mut settings = BTreeMap::new();
+    for input in inputs {
+        let values = [
+            input.text_value.map(serde_json::Value::String),
+            input.integer_value.map(serde_json::Value::from),
+            input.boolean_value.map(serde_json::Value::from),
+        ];
+        let mut values = values.into_iter().flatten();
+        let value = values.next().ok_or_else(|| {
+            async_graphql::Error::new(format!("setting `{}` has no typed value", input.key))
+        })?;
+        if values.next().is_some() {
+            return Err(async_graphql::Error::new(format!(
+                "setting `{}` has more than one typed value",
+                input.key
+            )));
+        }
+        if settings.insert(input.key.clone(), value).is_some() {
+            return Err(async_graphql::Error::new(format!(
+                "setting `{}` is duplicated",
+                input.key
+            )));
+        }
     }
+    Ok(settings)
+}
+
+fn credential_refs(
+    inputs: Vec<super::types::AiCredentialRefInputGql>,
+) -> Result<BTreeMap<String, rustok_secrets::SecretRef>> {
+    let mut refs = BTreeMap::new();
+    for input in inputs {
+        let reference = rustok_secrets::SecretRef {
+            resolver: input.resolver,
+            key: input.secret_key,
+        };
+        if refs.insert(input.key.clone(), reference).is_some() {
+            return Err(async_graphql::Error::new(format!(
+                "credential `{}` is duplicated",
+                input.key
+            )));
+        }
+    }
+    Ok(refs)
+}
+
+fn default_capabilities_for_provider(
+    provider_slug: &crate::ProviderSlug,
+) -> Vec<crate::ProviderCapability> {
+    let Some(descriptor) = crate::provider_catalog_entry(provider_slug) else {
+        return Vec::new();
+    };
+    let mut capabilities = Vec::new();
+    for feature in descriptor.features {
+        let capability = match feature {
+            crate::ProviderFeature::Chat => Some(crate::ProviderCapability::TextGeneration),
+            crate::ProviderFeature::StructuredOutput => {
+                Some(crate::ProviderCapability::StructuredGeneration)
+            }
+            crate::ProviderFeature::Image => Some(crate::ProviderCapability::ImageGeneration),
+            crate::ProviderFeature::Multimodal => {
+                Some(crate::ProviderCapability::MultimodalUnderstanding)
+            }
+            _ => None,
+        };
+        if let Some(capability) = capability.filter(|value| !capabilities.contains(value)) {
+            capabilities.push(capability);
+        }
+    }
+    capabilities
 }

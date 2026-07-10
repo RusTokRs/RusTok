@@ -10,15 +10,15 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 
 const checks = [
   {
-    file: "apps/next-admin/src/features/blog/components/post-form.tsx",
+    file: "apps/next-admin/packages/blog/src/components/post-form.tsx",
     forbidden: ["Legacy content warning", "Legacy markdown detected"],
   },
   {
-    file: "apps/next-admin/src/features/blog/components/page-builder.tsx",
+    file: "apps/next-admin/packages/blog/src/components/page-builder.tsx",
     forbidden: ["hasLegacyBlocks", "Legacy block payload"],
   },
   {
-    file: "apps/next-admin/src/features/blog/api/posts.ts",
+    file: "apps/next-admin/packages/blog/src/api/posts.ts",
     forbidden: ["Example (legacy):"],
   },
   {

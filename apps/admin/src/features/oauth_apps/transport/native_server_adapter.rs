@@ -71,7 +71,6 @@ pub(super) async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, 
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
 
@@ -91,8 +90,8 @@ pub(super) async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, 
             ));
         }
 
-        let app_ctx = expect_context::<AppContext>();
-        let backend = app_ctx.db.get_database_backend();
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let backend = runtime.db().get_database_backend();
         let limit = limit.clamp(1, 100);
         let statement = match backend {
             DbBackend::Sqlite => Statement::from_sql_and_values(
@@ -171,8 +170,8 @@ pub(super) async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, 
             ),
         };
 
-        app_ctx
-            .db
+        runtime
+            .db()
             .query_all(statement)
             .await
             .map_err(|err| server_error(err.to_string()))?

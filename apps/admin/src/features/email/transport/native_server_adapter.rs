@@ -12,9 +12,8 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-        use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{HostSettingsSnapshot, Permission};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
         use serde_json::Value;
 
@@ -28,8 +27,8 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
             return Err(ServerFnError::new("settings:read required"));
         }
 
-        let app_ctx = expect_context::<AppContext>();
-        let statement = match app_ctx.db.get_database_backend() {
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let statement = match runtime.db().get_database_backend() {
             DbBackend::Sqlite => Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1",
@@ -41,8 +40,8 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
                 vec![tenant.id.into(), "email".into()],
             ),
         };
-        let settings = match app_ctx
-            .db
+        let settings = match runtime
+            .db()
             .query_one(statement)
             .await
             .map_err(|err| server_error(err.to_string()))?
@@ -53,10 +52,9 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
                 .or_else(|_| row.try_get::<String>("", "settings"))
                 .map_err(|err| server_error(err.to_string()))?,
             None => {
-                let root = app_ctx
-                    .config
-                    .settings
-                    .clone()
+                let root = runtime
+                    .shared_get::<HostSettingsSnapshot>()
+                    .map(|snapshot| snapshot.value().clone())
                     .unwrap_or_else(|| serde_json::json!({}));
                 let email = root
                     .get("rustok")

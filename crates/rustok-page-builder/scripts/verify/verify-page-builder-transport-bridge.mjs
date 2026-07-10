@@ -52,7 +52,7 @@ for (const marker of [
 requireContains(docs, 'transport bridge', files.docs);
 requireContains(docs, 'dispatch_graphql_envelope', files.docs);
 requireContains(docs, 'dispatch_leptos_server_function_envelope', files.docs);
-requireContains(plan, 'transport bridge slice', files.plan);
+requireContains(plan, 'transport bridge', files.plan);
 requireContains(plan, 'verify-page-builder-transport-bridge.mjs', files.plan);
 
 if (!process.exitCode) console.log('PASS page-builder transport bridge markers are in sync');

@@ -27,6 +27,8 @@ the same typed request/result contract.
   `scripts/verify/verify-order-storefront-boundary.mjs`, and
   `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` lock the
   module/commerce UI and transport ownership split.
+- Storefront owner transport uses `execute_selected_transport` with native
+  `#[server]` selected first and GraphQL retained as the parallel fallback.
 
 ## Open results
 

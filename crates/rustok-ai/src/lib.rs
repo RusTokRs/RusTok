@@ -1,5 +1,6 @@
 #[cfg(feature = "server")]
 pub mod direct;
+pub mod engine;
 #[cfg(feature = "server")]
 pub mod entities;
 pub mod error;
@@ -10,10 +11,12 @@ pub mod graphql_runtime;
 pub mod mcp;
 #[cfg(feature = "server")]
 pub mod metrics;
+#[cfg(feature = "server")]
+pub mod migrations;
 pub mod model;
 pub mod policy;
-pub mod provider;
 pub mod router;
+#[cfg(feature = "server")]
 pub mod runtime;
 #[cfg(feature = "server")]
 pub mod service;
@@ -24,6 +27,12 @@ pub mod streaming;
 pub use direct::{
     AlloyScriptAssistHandler, BlogDraftHandler, DirectExecutionRegistry, DirectExecutionRequest,
     DirectExecutionResult, DirectTaskHandler, MediaImageAssetHandler, ProductCopyHandler,
+};
+#[cfg(feature = "server")]
+pub use engine::{inference_for_slug, InferenceEngine};
+pub use engine::{
+    provider_catalog, provider_catalog_entry, ProviderCatalogEntry, ProviderConfigField,
+    ProviderFeature, ProviderFieldKind, ProviderSlug,
 };
 pub use error::{AiError, AiResult};
 #[cfg(feature = "graphql")]
@@ -36,15 +45,13 @@ pub use model::{
     AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage,
     ChatMessageRole, DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval,
     ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
-    ProviderImageResponse, ProviderKind, ProviderStreamEmitter, ProviderStreamEvent,
-    ProviderTestResult, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall,
-    ToolDefinition, ToolTrace,
+    ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent, ProviderTestResult,
+    ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall, ToolDefinition,
+    ToolTrace,
 };
 pub use policy::ToolExecutionPolicy;
-pub use provider::{
-    provider_for_kind, AnthropicProvider, GeminiProvider, ModelProvider, OpenAiCompatibleProvider,
-};
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
+#[cfg(feature = "server")]
 pub use runtime::AiRuntime;
 #[cfg(feature = "server")]
 pub use service::{

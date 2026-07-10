@@ -28,8 +28,9 @@ async fn workflow_server_context(
     ServerFnError,
 > {
     use leptos::prelude::expect_context;
-    use loco_rs::app::AppContext;
-    use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+    use rustok_api::{
+        has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+    };
 
     let auth = leptos_axum::extract::<AuthContext>()
         .await
@@ -42,8 +43,8 @@ async fn workflow_server_context(
         return Err(ServerFnError::new(permission_error));
     }
 
-    let app_ctx = expect_context::<AppContext>();
-    Ok((app_ctx.db.clone(), auth, tenant))
+    let runtime_ctx = expect_context::<HostRuntimeContext>();
+    Ok((runtime_ctx.db_clone(), auth, tenant))
 }
 
 #[cfg(feature = "ssr")]
@@ -194,9 +195,10 @@ pub(super) async fn list_workflows_native() -> Result<Vec<WorkflowSummary>, Serv
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -209,8 +211,8 @@ pub(super) async fn list_workflows_native() -> Result<Vec<WorkflowSummary>, Serv
             return Err(ServerFnError::new("workflows:list required"));
         }
 
-        let app_ctx = expect_context::<AppContext>();
-        rustok_workflow::WorkflowService::new(app_ctx.db.clone())
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
             .list(tenant.id)
             .await
             .map(|items| items.into_iter().map(map_workflow_summary).collect())
@@ -229,9 +231,10 @@ pub(super) async fn workflow_native(id: String) -> Result<Option<WorkflowDetail>
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -246,8 +249,8 @@ pub(super) async fn workflow_native(id: String) -> Result<Option<WorkflowDetail>
 
         let workflow_id = uuid::Uuid::parse_str(&id)
             .map_err(|err| server_error(format!("invalid workflow id: {err}")))?;
-        let app_ctx = expect_context::<AppContext>();
-        match rustok_workflow::WorkflowService::new(app_ctx.db.clone())
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        match rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
             .get(tenant.id, workflow_id)
             .await
         {
@@ -272,9 +275,10 @@ pub(super) async fn workflow_executions_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -290,8 +294,8 @@ pub(super) async fn workflow_executions_native(
 
         let workflow_id = uuid::Uuid::parse_str(&workflow_id)
             .map_err(|err| server_error(format!("invalid workflow id: {err}")))?;
-        let app_ctx = expect_context::<AppContext>();
-        rustok_workflow::WorkflowService::new(app_ctx.db.clone())
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
             .list_executions(tenant.id, workflow_id)
             .await
             .map(|items| items.into_iter().map(map_workflow_execution).collect())
@@ -561,9 +565,10 @@ pub(super) async fn workflow_versions_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -578,8 +583,8 @@ pub(super) async fn workflow_versions_native(
 
         let workflow_id = uuid::Uuid::parse_str(&workflow_id)
             .map_err(|err| server_error(format!("invalid workflow id: {err}")))?;
-        let app_ctx = expect_context::<AppContext>();
-        rustok_workflow::WorkflowService::new(app_ctx.db.clone())
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
             .list_versions(tenant.id, workflow_id)
             .await
             .map(|items| {

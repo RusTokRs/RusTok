@@ -34,11 +34,15 @@ lives in `src/widgets/app_shell/core.rs` without Leptos dependencies, while `sid
 a Leptos render/bind adapter. This split is enforced by a quick verifier
 `npm run verify:frontend:host-ffa-contract`.
 
-The host-owned workflow feature follows the same host FFA boundary: transport-neutral DTOs live in
-`src/features/workflow/model.rs`, the only data entrypoint is
-`src/features/workflow/transport/mod.rs`, and raw GraphQL/native server-function calls stay in
-`transport/graphql_adapter.rs` and `transport/native_server_adapter.rs`. The removed
-`src/features/workflow/api.rs` facade must not be restored.
+The host still composes the workflow detail editor, execution history, and version history through
+`src/features/workflow/`; its native server-function adapter uses `HostRuntimeContext`, not Loco.
+The corresponding owner-owned overview and template surface is in
+`crates/rustok-workflow/admin/`. The outstanding ownership transfer must move the remaining detail
+surface atomically into that package and delete the host feature; no second transport path is to be
+introduced.
+
+The host-owned `/modules` control plane also receives only a narrow database snapshot from
+`HostRuntimeContext`; `apps/admin` has no Loco dependency.
 
 The host-owned OAuth apps feature follows the same boundary: DTOs live in
 `src/features/oauth_apps/model.rs`, list transport is selected through

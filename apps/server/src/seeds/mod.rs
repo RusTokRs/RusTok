@@ -1,17 +1,18 @@
 //! # RusToK Database Seeds
 //!
 //! Seed data for development and testing.
-//! Current legacy server seed bridge; target entrypoint: `rustok-cli seed <profile>`.
+//! The Loco hook is an adapter in `app`; seed execution itself accepts the neutral
+//! server runtime. A later CLI provider must depend on an owner-owned seed
+//! service rather than on this server package.
 
-pub type SeedAppContext = loco_rs::app::AppContext;
-
-use crate::error::{Error, Result};
+use anyhow::Result;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use std::path::Path;
 
 use crate::auth::hash_password;
 use crate::models::{tenants, users};
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const DEFAULT_DEV_SEED_PASSWORD: &str = "dev-password-123";
 
@@ -68,7 +69,7 @@ fn superadmin_tenant_name() -> String {
 }
 
 /// Seed the database with initial data
-pub async fn seed(ctx: &SeedAppContext, path: &Path) -> Result<()> {
+pub async fn seed(runtime: &ServerRuntimeContext, path: &Path) -> Result<()> {
     let seed_name = path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -77,12 +78,12 @@ pub async fn seed(ctx: &SeedAppContext, path: &Path) -> Result<()> {
     tracing::info!(seed = %seed_name, "Running database seed...");
 
     match seed_name {
-        "default" | "dev" => seed_development(ctx).await?,
-        "test" => seed_test(ctx).await?,
-        "minimal" => seed_minimal(ctx).await?,
+        "default" | "dev" => seed_development(runtime).await?,
+        "test" => seed_test().await?,
+        "minimal" => seed_minimal(runtime).await?,
         _ => {
             tracing::warn!(seed = %seed_name, "Unknown seed file, using default");
-            seed_development(ctx).await?;
+            seed_development(runtime).await?;
         }
     }
 
@@ -91,14 +92,14 @@ pub async fn seed(ctx: &SeedAppContext, path: &Path) -> Result<()> {
 }
 
 /// Development seed data
-async fn seed_development(ctx: &SeedAppContext) -> Result<()> {
+async fn seed_development(runtime: &ServerRuntimeContext) -> Result<()> {
     tracing::info!("Seeding development data...");
 
     let tenant_slug = superadmin_tenant_slug();
     let tenant_name = superadmin_tenant_name();
 
     let demo_tenant = tenants::Entity::find_or_create(
-        &ctx.db,
+        runtime.db(),
         &tenant_name,
         &tenant_slug,
         Some("demo.localhost"),
@@ -108,7 +109,7 @@ async fn seed_development(ctx: &SeedAppContext) -> Result<()> {
     let admin_email = superadmin_email().unwrap_or_else(|| "admin@demo.local".to_string());
 
     seed_user(
-        ctx,
+        runtime,
         demo_tenant.id,
         &admin_email,
         "Super Admin",
@@ -117,7 +118,7 @@ async fn seed_development(ctx: &SeedAppContext) -> Result<()> {
     .await?;
 
     seed_user(
-        ctx,
+        runtime,
         demo_tenant.id,
         "customer@demo.local",
         "Demo Customer",
@@ -128,15 +129,14 @@ async fn seed_development(ctx: &SeedAppContext) -> Result<()> {
     let registry = crate::modules::build_registry();
     for module in ["content", "commerce", "pages", "blog", "forum", "index"] {
         crate::services::module_lifecycle::ModuleLifecycleService::toggle_module_with_actor(
-            &ctx.db,
+            runtime.db(),
             &registry,
             demo_tenant.id,
             module,
             true,
             Some("seed".to_string()),
         )
-        .await
-        .map_err(|error| Error::Message(error.to_string()))?;
+        .await?;
     }
 
     tracing::info!(tenant_id = %demo_tenant.id, "Development seed data ensured");
@@ -145,13 +145,13 @@ async fn seed_development(ctx: &SeedAppContext) -> Result<()> {
 }
 
 async fn seed_user(
-    ctx: &SeedAppContext,
+    runtime: &ServerRuntimeContext,
     tenant_id: uuid::Uuid,
     email: &str,
     name: &str,
     role: rustok_core::UserRole,
 ) -> Result<()> {
-    if users::Entity::find_by_email(&ctx.db, tenant_id, email)
+    if users::Entity::find_by_email(runtime.db(), tenant_id, email)
         .await?
         .is_some()
     {
@@ -162,15 +162,15 @@ async fn seed_user(
     let password_hash = hash_password(&seed_password)?;
     let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
     user.name = Set(Some(name.to_string()));
-    let user = user.insert(&ctx.db).await?;
+    let user = user.insert(runtime.db()).await?;
 
-    RbacService::assign_role_permissions(&ctx.db, &user.id, &tenant_id, role).await?;
+    RbacService::assign_role_permissions(runtime.db(), &user.id, &tenant_id, role).await?;
 
     Ok(())
 }
 
 /// Test seed data
-async fn seed_test(_ctx: &SeedAppContext) -> Result<()> {
+async fn seed_test() -> Result<()> {
     tracing::info!("Seeding test data...");
 
     // Minimal data for tests
@@ -179,7 +179,7 @@ async fn seed_test(_ctx: &SeedAppContext) -> Result<()> {
 }
 
 /// Minimal seed data — creates only the default superadmin from env vars
-async fn seed_minimal(ctx: &SeedAppContext) -> Result<()> {
+async fn seed_minimal(runtime: &ServerRuntimeContext) -> Result<()> {
     tracing::info!("Seeding minimal data...");
 
     let Some(email) = superadmin_email() else {
@@ -190,10 +190,11 @@ async fn seed_minimal(ctx: &SeedAppContext) -> Result<()> {
     let tenant_slug = superadmin_tenant_slug();
     let tenant_name = superadmin_tenant_name();
 
-    let tenant = tenants::Entity::find_or_create(&ctx.db, &tenant_name, &tenant_slug, None).await?;
+    let tenant =
+        tenants::Entity::find_or_create(runtime.db(), &tenant_name, &tenant_slug, None).await?;
 
     seed_user(
-        ctx,
+        runtime,
         tenant.id,
         &email,
         "Super Admin",

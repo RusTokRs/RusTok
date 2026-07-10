@@ -179,6 +179,12 @@ reqwest-middleware = "0.3.3"
 reqwest-retry = "0.5.0"
 prometheus = "0.14"
 lazy_static = "1.5"
+secrecy = { version = "0.10", features = ["serde"] }
+rig = { package = "rig-core", version = "=0.39.0", features = ["audio", "image", "rmcp"] }
+rig-bedrock = "=0.39.0"
+rig-fastembed = "=0.39.0"
+rig-gemini-grpc = "=0.39.0"
+rig-vertexai = "=0.39.0"
 
 # Internal crates
 rustok-core = { path = "crates/rustok-core" }
@@ -247,6 +253,7 @@ rustok-ai-alloy = { path = "crates/rustok-ai-alloy" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
+rustok-secrets = { path = "crates/rustok-secrets" }
 rustok-media = { path = "crates/rustok-media" }
 rustok-media-cli = { path = "crates/rustok-media/cli" }
 flex = { path = "crates/flex" }

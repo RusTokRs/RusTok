@@ -112,7 +112,7 @@ rustok-mcp = { workspace = true, features = ["graphql"] }
 rustok-ai = { workspace = true, features = ["graphql"] }
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
-rustok-outbox = { workspace = true, features = ["loco-adapter"] }
+rustok-outbox.workspace = true
 rustok-installer = { path = "../../crates/rustok-installer" }
 alloy            = { workspace = true, optional = true }
 rustok-workflow  = { workspace = true, optional = true }

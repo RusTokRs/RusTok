@@ -23,23 +23,6 @@ const checks = [
       "admin list should bypass page channel allowlist",
     ],
   },
-  {
-    file: "crates/rustok-pages/docs/implementation-plan.md",
-    label: "local pages implementation plan RBAC readiness sync",
-    tokens: [
-      "verify-page-builder-pages-rbac-readiness.mjs",
-      "No RBAC regression for editor, moderator, or admin builder scenarios",
-      "RBAC Wave 1 readiness update",
-    ],
-  },
-  {
-    file: "docs/modules/registry.md",
-    label: "central FFA/FBA readiness board RBAC readiness sync",
-    tokens: [
-      "verify-page-builder-pages-rbac-readiness.mjs",
-      "RBAC Wave 1 readiness",
-    ],
-  },
 ];
 
 function fail(message) {

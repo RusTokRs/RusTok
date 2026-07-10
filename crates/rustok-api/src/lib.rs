@@ -46,5 +46,5 @@ pub use ports::{
 #[cfg(feature = "server")]
 pub use request::RequestContext;
 #[cfg(feature = "server")]
-pub use runtime::HostRuntimeContext;
+pub use runtime::{HostRuntimeContext, HostSettingsSnapshot};
 pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};

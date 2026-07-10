@@ -6,6 +6,23 @@ use std::{
 
 use sea_orm::DatabaseConnection;
 
+/// Immutable host configuration snapshot provided to internal server-function
+/// adapters. It keeps adapters independent of a framework-specific app context.
+#[derive(Clone, Debug)]
+pub struct HostSettingsSnapshot {
+    value: serde_json::Value,
+}
+
+impl HostSettingsSnapshot {
+    pub fn new(value: serde_json::Value) -> Self {
+        Self { value }
+    }
+
+    pub fn value(&self) -> &serde_json::Value {
+        &self.value
+    }
+}
+
 #[derive(Clone)]
 pub struct HostRuntimeContext {
     db: DatabaseConnection,

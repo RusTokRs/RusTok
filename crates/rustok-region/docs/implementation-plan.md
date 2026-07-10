@@ -37,7 +37,7 @@ adapters bind and render prepared state.
   contract, so its native `#[server]` adapter is intentional and no
   package-local GraphQL fallback is added.
 
-## Stages
+## Open results
 
 1. **Collect live RegionReadPort and storefront transport evidence.** Exercise
    shared-context reads plus native success/failure, GraphQL success, and

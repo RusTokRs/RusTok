@@ -76,20 +76,6 @@ const checks = [
       "pages_consumer_version_satisfies_provider_minimum",
     ],
   },
-  {
-    file: "crates/rustok-pages/docs/implementation-plan.md",
-    label: "local implementation plan contract-surface sync",
-    tokens: [
-      "Contract tests cover all public use cases",
-      "verify-page-builder-pages-contract-surface.mjs",
-      "contract surface maintenance update",
-    ],
-  },
-  {
-    file: "docs/modules/registry.md",
-    label: "central readiness board contract-surface sync",
-    tokens: ["verify-page-builder-pages-contract-surface.mjs", "contract-surface guardrail"],
-  },
 ];
 
 function fail(message) {

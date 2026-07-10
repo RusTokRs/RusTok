@@ -29,6 +29,8 @@ call, while `FulfillmentService` remains the lifecycle owner.
 - `scripts/verify/verify-fulfillment-admin-boundary.mjs` and
   `scripts/verify/verify-fulfillment-storefront-boundary.mjs` lock the
   owner-admin/storefront split and Loco-free native shipping-selection path.
+- Storefront owner transport uses `execute_selected_transport` with native
+  `#[server]` selected first and GraphQL retained as the parallel fallback.
 
 ## Open results
 

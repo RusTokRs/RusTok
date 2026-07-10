@@ -1,65 +1,47 @@
-# Implementation plan for `rustok-seo-render`
-
-Status: renderer crate is stable as the canonical Rust-side SSR adapter for `SeoPageContext`. The next wave is parity hardening with host integrations within SEO Phase D (`D7`, `D8`, `D9`).
-
-## Execution checkpoint
-
-- Current phase: `phase_d7_renderer_parity_alignment`
-- Last checkpoint: Added snapshot batch D7.1: deterministic primary snapshot assertion + nondeterministic-token normalization comparison test for parity tooling.
-- Next step: Close D7.2 — expand cross-host fixture matrix Rust renderer vs Next metadata adapter.
-- Open blockers:
-  - This VM does not have `cargo` in `PATH`, local checks were not run.
-  - Cross-host parity requires a stable REST/GraphQL `SeoPageContext` contract after SEO Batch D4.
-- Hand-off notes for next agent:
-  - Do not move SEO business logic into the renderer crate.
-  - Any renderer changes must remain pure serialization over backend-provided `SeoPageContext`.
-  - Maintain parity evidence between Rust storefront renderer and Next metadata adapter.
-- Last updated at (UTC): 2026-06-07T17:45:00Z
-
-## Scope of work
-
-- keep a single Rust-side renderer over canonical `rustok-seo::SeoPageContext`;
-- do not allow host applications to duplicate robots/meta/link/JSON-LD serialization;
-- leave all SEO business logic in `rustok-seo`, not in the adapter crate.
+# rustok-seo-render implementation plan
 
 ## Current state
 
-- crate already publishes `render_head_html` and `robots_directives`;
-- `apps/storefront` uses this crate instead of local `build_seo_head`;
-- renderer covers canonical, hreflang, typed robots, Open Graph, Twitter, verification, pagination, generic meta/link tags and JSON-LD blocks.
+`rustok-seo-render` is the pure Rust-host last-mile renderer for canonical
+`rustok-seo::SeoPageContext`. It serializes canonical URLs, robots, alternates,
+Open Graph, Twitter, verification, pagination, generic tags, and JSON-LD in
+deterministic order. `apps/storefront` consumes it instead of implementing a
+second Rust renderer. The crate owns no SEO resolution, locale policy, storage,
+or Next.js metadata mapping.
 
-## Phase D backlog (renderer-side)
+## Boundary
 
-- [x] **D7.1 — Parity snapshots**
-  - [ ] Add snapshot/unit tests for combinations: canonical + alternates + noindex + verification tags + multi-block JSON-LD.
-  - [ ] Lock deterministic ordering for meta/link/script tags.
+- Canonical SEO resolution and field precedence remain in `rustok-seo`.
+- Rust hosts consume `render_head_html`; Next remains a separate TypeScript
+  adapter over the same `SeoPageContext` contract.
+- Parity compares semantic output, with explicit normalization only for
+  documented nondeterministic fixture values.
 
-- [ ] **D7.2 — Cross-host contract parity**
-  - [ ] Add contract tests comparing Rust renderer output and Next metadata adapter behavior on the same `SeoPageContext` fixture set.
-  - [ ] Lock acceptable discrepancies (e.g., unsupported long-tail tags in Next API).
+## Next results
 
-- [ ] **D8 — Verification matrix**
-  - [ ] Integration smoke with `apps/storefront` SSR path and `storefront/seo-page-context` server function.
-  - [ ] Regression tests on `SeoStructuredDataBlock` serialization (`schema_kind`, `schema_type`, `source`, payload).
-
-- [ ] **D9 — Docs/DoD sync**
-  - [ ] Update README/docs on parity rules and renderer/non-renderer boundary.
-  - [ ] Add mini-runbook for drift between Rust renderer and Next metadata adapter.
-
-## Update rules
-
-1. Canonical SEO contract changes are first locked in `rustok-seo`.
-2. Then the renderer crate and Rust-host consumers are synchronized.
-3. If renderer ownership or public API changes, update `README.md`, `docs/README.md` and central registry docs.
+1. **Lock cross-host semantic fixtures.** Compare Rust rendering and Next
+   metadata output over the shared runtime-parity fixture set, including the
+   documented allowlist for host-specific long-tail differences. Done when a
+   canonical, robots, hreflang, social, verification, pagination, or JSON-LD
+   drift fails one cross-host contract check.
+2. **Exercise the storefront SSR path.** Run `SeoPageContext` through
+   `storefront/seo-page-context` and head rendering under tenant/module/locale
+   and fallback scenarios. Done when an SSR integration test proves the host
+   uses this renderer and cannot fall back to a local serializer.
+3. **Harden renderer safety regressions.** Add focused cases for escaping,
+   malformed structured-data payloads, deterministic ordering, and multi-block
+   JSON-LD metadata preservation. Done when unsafe or non-deterministic output
+   is rejected by renderer self-tests.
 
 ## Verification
 
-- `cargo check -p rustok-seo-render --tests --config profile.dev.debug=0`
+- `cargo test -p rustok-seo-render --lib`
 - `cargo check -p rustok-storefront --config profile.dev.debug=0`
-- `npm --prefix apps/next-frontend run lint && npm --prefix apps/next-frontend run typecheck`
+- Next storefront lint/typecheck and shared SEO runtime-parity fixture checks.
 
-## Quality backlog
+## References
 
-- [ ] Add snapshot coverage for parity-critical tag combinations.
-- [ ] Maintain contract fixtures for Rust/Next parity.
-- [ ] Update execution checkpoint after each D7/D8 increment.
+- [Crate README](../README.md)
+- [Module documentation](./README.md)
+- [SEO module plan](../../docs/implementation-plan.md)
+- [Next runtime parity fixtures](../../../../apps/next-frontend/contracts/seo/runtime-parity-fixtures.json)

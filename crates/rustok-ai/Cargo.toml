@@ -8,6 +8,7 @@ description = "AI orchestration capability for RusToK"
 [features]
 default = []
 graphql = ["server", "dep:async-graphql", "rustok-api/server"]
+fastembed = ["server", "dep:rig-fastembed"]
 server = [
   "dep:alloy",
   "dep:bytes",
@@ -27,9 +28,16 @@ server = [
   "dep:rustok-outbox",
   "dep:rustok-product",
   "dep:rustok-storage",
+  "dep:rustok-secrets",
   "dep:rustok-telemetry",
+  "dep:rig",
+  "dep:rig-bedrock",
+  "dep:rig-gemini-grpc",
+  "dep:rig-vertexai",
   "dep:schemars",
+  "dep:secrecy",
   "dep:sea-orm",
+  "dep:sea-orm-migration",
   "dep:tokio",
 ]
 
@@ -45,6 +53,11 @@ once_cell = { workspace = true, optional = true }
 futures-util = { version = "0.3" }
 reqwest = { workspace = true, features = ["json", "stream"] }
 rhai = { workspace = true, optional = true }
+rig = { workspace = true, optional = true }
+rig-bedrock = { workspace = true, optional = true }
+rig-fastembed = { workspace = true, optional = true }
+rig-gemini-grpc = { workspace = true, optional = true }
+rig-vertexai = { workspace = true, optional = true }
 rustok-ai-content = { workspace = true, optional = true }
 rustok-ai-order = { workspace = true, optional = true }
 rustok-ai-product = { workspace = true, optional = true }
@@ -59,9 +72,12 @@ rustok-mcp = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
+rustok-secrets = { workspace = true, optional = true }
 rustok-telemetry = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
+secrecy = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

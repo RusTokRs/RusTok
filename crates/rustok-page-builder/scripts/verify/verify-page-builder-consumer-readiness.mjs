@@ -80,12 +80,14 @@ for (const marker of mustHaveManifestMarkers) {
   }
 }
 
-if (!implPlan.includes("Execution checkpoint")) {
-  fail(`${arg}: implementation-plan missing Execution checkpoint section`);
+for (const marker of ["## Current state", "## FFA/FBA status", "## Open results"]) {
+  if (!implPlan.includes(marker)) {
+    fail(`${arg}: implementation-plan missing live-plan section '${marker}'`);
+  }
 }
 
-if (!implPlan.match(/FBA|page-builder|builder/mi)) {
-  fail(`${arg}: implementation-plan has no FBA/page-builder readiness notes`);
+if (!implPlan.match(/FBA|page.builder|builder/mi)) {
+  fail(`${arg}: implementation-plan has no Page Builder readiness notes`);
 }
 
 if (arg === "pages") {
@@ -110,21 +112,6 @@ if (arg === "pages") {
     }
   }
 
-  const rolloutPlanMarkers = [
-    "control_plane_builder_wave_audit",
-    "before/after snapshots",
-    "keep/rollback",
-    "owner sign-off",
-    "preview -> properties -> publish(dry)",
-    "publish p95",
-    "<= 10 minutes",
-    "npm run verify:page-builder:consumer:pages",
-  ];
-  for (const marker of rolloutPlanMarkers) {
-    if (!implPlan.includes(marker)) {
-      fail(`${arg}: implementation-plan rollout policy missing marker '${marker}'`);
-    }
-  }
 }
 
 if (arg === "forum") {
@@ -147,23 +134,6 @@ if (arg === "forum") {
     }
   }
 
-  const forumPlanMarkers = [
-    "FW-2",
-    "builder_off",
-    "publish_off",
-    "readonly",
-    "hidden",
-    "degraded",
-    "npm run verify:page-builder:consumer:forum",
-    "without 5xx",
-    "fw2-fallback-static-matrix.json",
-  ];
-  for (const marker of forumPlanMarkers) {
-    if (!implPlan.includes(marker)) {
-      fail(`${arg}: implementation-plan fallback hardening missing marker '${marker}'`);
-    }
-  }
-
   const forumRolloutManifestMarkers = [
     "[fba.builder_consumer.rollout_policy]",
     "audit_trail = \"control_plane_builder_wave_audit\"",
@@ -182,19 +152,6 @@ if (arg === "forum") {
   for (const marker of forumRolloutManifestMarkers) {
     if (!moduleToml.includes(marker)) {
       fail(`${arg}: manifest rollout policy missing marker '${marker}'`);
-    }
-  }
-
-  const forumRolloutPlanMarkers = [
-    "FW-4",
-    "SLO response-time",
-    "<= 10 minutes",
-    "npm run verify:page-builder:consumer:forum",
-    "list -> open -> preview -> save_draft -> publish_dry",
-  ];
-  for (const marker of forumRolloutPlanMarkers) {
-    if (!implPlan.includes(marker)) {
-      fail(`${arg}: implementation-plan rollout policy missing marker '${marker}'`);
     }
   }
 

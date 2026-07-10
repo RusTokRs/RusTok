@@ -41,7 +41,6 @@ ssr = [
   "leptos/ssr",
   "leptos_i18n/ssr",
   "dep:leptos_axum",
-  "dep:loco-rs",
   "dep:sea-orm",
   "dep:rustok-cache",
   "dep:rustok-comments",
@@ -119,7 +118,6 @@ web-sys = { version = "0.3", features = ["Clipboard", "CloseEvent", "ErrorEvent"
 rustok-api = { path = "../../crates/rustok-api", default-features = false }
 
 rustok-installer = { path = "../../crates/rustok-installer" }
-loco-rs = { workspace = true, optional = true }
 rustok-cache = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }

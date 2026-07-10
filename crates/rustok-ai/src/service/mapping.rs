@@ -6,14 +6,13 @@ use crate::entities::{
     ai_task_profiles, ai_tool_profiles, ai_tool_traces,
 };
 use crate::model::{
-    AiRunDecisionTrace, ChatMessage, ChatMessageRole, ProviderKind, ProviderUsagePolicy,
-    TaskProfile, ToolTrace,
+    AiRunDecisionTrace, ChatMessage, ChatMessageRole, ProviderUsagePolicy, TaskProfile, ToolTrace,
 };
-use crate::{AiError, AiResult};
+use crate::{AiError, AiResult, ProviderSlug};
 
 use super::helpers::{
     capability_from_slug, capability_list, execution_mode_from_slug, json_err,
-    provider_kind_from_slug, string_list, to_utc, uuid_list,
+    provider_slug_from_str, string_list, to_utc, uuid_list,
 };
 use super::types::{
     AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiProviderProfileRecord,
@@ -27,17 +26,17 @@ pub fn map_provider_profile(
         id: model.id,
         slug: model.slug,
         display_name: model.display_name,
-        provider_kind: provider_kind_from_slug(&model.provider_kind)?,
-        base_url: model.base_url,
+        provider_slug: provider_slug_from_str(&model.provider_slug)?,
         model: model.model,
+        settings: serde_json::from_value(model.settings).map_err(json_err)?,
+        credential_refs: serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?,
         temperature: model.temperature,
         max_tokens: model.max_tokens,
         is_active: model.is_active,
-        has_secret: model
-            .api_key_secret
-            .as_ref()
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false),
+        has_credentials: model
+            .credential_refs
+            .as_object()
+            .is_some_and(|value| !value.is_empty()),
         capabilities: capability_list(&model.capabilities)?,
         usage_policy: ProviderUsagePolicy {
             allowed_task_profiles: string_list(&model.allowed_task_profiles),
@@ -173,9 +172,9 @@ pub fn map_recent_run_record(
     let decision_trace: AiRunDecisionTrace =
         serde_json::from_value(model.decision_trace).unwrap_or_default();
 
-    let provider_kind = match provider {
-        Some(value) => provider_kind_from_slug(&value.provider_kind)?,
-        None => ProviderKind::OpenAiCompatible,
+    let provider_slug = match provider {
+        Some(value) => provider_slug_from_str(&value.provider_slug)?,
+        None => ProviderSlug::openai_compatible(),
     };
 
     Ok(AiRecentRunRecord {
@@ -186,7 +185,7 @@ pub fn map_recent_run_record(
         provider_display_name: provider
             .map(|value| value.display_name.clone())
             .unwrap_or_else(|| model.provider_profile_id.to_string()),
-        provider_kind,
+        provider_slug,
         task_profile_id: model.task_profile_id,
         task_profile_slug: task.map(|value| value.slug.clone()),
         status: model.status,

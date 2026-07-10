@@ -16,11 +16,11 @@ use crate::entities::{
 };
 use crate::model::{
     AiProviderConfig, AiRunDecisionTrace, ChatMessage, ChatMessageRole, ExecutionMode,
-    PendingApproval, ProviderCapability, ProviderKind, ProviderUsagePolicy, ToolTrace,
+    PendingApproval, ProviderCapability, ProviderUsagePolicy, ToolTrace,
 };
 use crate::policy::ToolExecutionPolicy;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind};
-use crate::{AiError, AiResult};
+use crate::{AiError, AiResult, ProviderSlug};
 
 use super::mapping::role_slug;
 use super::types::AiOperatorContext;
@@ -62,23 +62,8 @@ pub fn parse_uuid_str(value: Option<&str>) -> AiResult<Uuid> {
     Uuid::parse_str(value).map_err(|error| AiError::Runtime(format!("invalid uuid: {error}")))
 }
 
-pub fn provider_kind_slug(kind: ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::OpenAiCompatible => "openai_compatible",
-        ProviderKind::Anthropic => "anthropic",
-        ProviderKind::Gemini => "gemini",
-    }
-}
-
-pub fn provider_kind_from_slug(value: &str) -> AiResult<ProviderKind> {
-    match value {
-        "openai_compatible" => Ok(ProviderKind::OpenAiCompatible),
-        "anthropic" => Ok(ProviderKind::Anthropic),
-        "gemini" => Ok(ProviderKind::Gemini),
-        other => Err(AiError::Runtime(format!(
-            "invalid provider kind slug: {other}"
-        ))),
-    }
+pub fn provider_slug_from_str(value: &str) -> AiResult<ProviderSlug> {
+    ProviderSlug::new(value).map_err(AiError::Validation)
 }
 
 pub fn capability_from_slug(value: &str) -> AiResult<ProviderCapability> {
@@ -108,10 +93,10 @@ pub fn execution_mode_from_slug(value: &str) -> AiResult<ExecutionMode> {
 
 pub fn provider_config(model: &ai_provider_profiles::Model) -> AiResult<AiProviderConfig> {
     Ok(AiProviderConfig {
-        provider_kind: provider_kind_from_slug(&model.provider_kind)?,
-        base_url: model.base_url.clone(),
-        api_key: model.api_key_secret.clone(),
+        provider_slug: provider_slug_from_str(&model.provider_slug)?,
         model: model.model.clone(),
+        settings: serde_json::from_value(model.settings.clone()).map_err(json_err)?,
+        credential_refs: serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?,
         temperature: model.temperature,
         max_tokens: model.max_tokens.map(|value| value.max(0) as u32),
         capabilities: capability_list(&model.capabilities)?,
@@ -524,7 +509,7 @@ pub async fn list_router_provider_profiles(
             Ok(crate::router::RouterProviderProfile {
                 id: model.id,
                 slug: model.slug,
-                provider_kind: provider_kind_from_slug(&model.provider_kind)?,
+                provider_slug: provider_slug_from_str(&model.provider_slug)?,
                 model: model.model,
                 capabilities: capability_list(&model.capabilities)?,
                 usage_policy: ProviderUsagePolicy {

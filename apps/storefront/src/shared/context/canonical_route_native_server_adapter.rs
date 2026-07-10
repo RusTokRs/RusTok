@@ -11,16 +11,15 @@ pub(crate) async fn resolve_canonical_route(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_content::CanonicalUrlService;
         use rustok_tenant::TenantService;
 
-        let ctx = expect_context::<AppContext>();
-        let tenant = TenantService::new(ctx.db.clone())
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let tenant = TenantService::new(runtime.db_clone())
             .get_tenant_by_slug(tenant_slug.as_str())
             .await
             .map_err(ServerFnError::new)?;
-        let resolved = CanonicalUrlService::new(ctx.db.clone())
+        let resolved = CanonicalUrlService::new(runtime.db_clone())
             .resolve_route(tenant.id, locale.as_str(), route.as_str())
             .await
             .map_err(ServerFnError::new)?;

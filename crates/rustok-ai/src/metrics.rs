@@ -9,7 +9,8 @@ use rustok_api::{locale_tags_match, normalize_locale_tag};
 use rustok_telemetry::metrics as telemetry_metrics;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{AiRunDecisionTrace, ExecutionMode, ProviderKind};
+use crate::model::{AiRunDecisionTrace, ExecutionMode};
+use crate::ProviderSlug;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct AiMetricBucket {
@@ -30,7 +31,7 @@ pub struct AiRuntimeMetricsSnapshot {
     pub locale_fallback_total: u64,
     pub run_latency_ms_total: u64,
     pub run_latency_samples: u64,
-    pub provider_kind_totals: Vec<AiMetricBucket>,
+    pub provider_slug_totals: Vec<AiMetricBucket>,
     pub execution_target_totals: Vec<AiMetricBucket>,
     pub task_profile_totals: Vec<AiMetricBucket>,
     pub resolved_locale_totals: Vec<AiMetricBucket>,
@@ -70,8 +71,8 @@ pub fn observe_router_resolution(entry_point: &str, trace: &AiRunDecisionTrace) 
         None => 0,
     };
 
-    if let Some(kind) = trace.provider_kind {
-        increment_bucket(&AI_PROVIDER_KIND_TOTALS, kind.slug());
+    if let Some(slug) = trace.provider_slug.as_deref() {
+        increment_bucket(&AI_PROVIDER_KIND_TOTALS, slug);
     }
 
     telemetry_metrics::record_module_entrypoint_call(
@@ -93,7 +94,7 @@ pub fn observe_locale_resolution(requested_locale: Option<&str>, resolved_locale
 pub fn observe_run_outcome(
     execution_mode: ExecutionMode,
     execution_target: Option<&str>,
-    provider_kind: ProviderKind,
+    provider_slug: &ProviderSlug,
     task_profile_slug: Option<&str>,
     resolved_locale: Option<&str>,
     status: &str,
@@ -101,7 +102,7 @@ pub fn observe_run_outcome(
 ) {
     AI_RUN_LATENCY_MS_TOTAL.fetch_add(latency_ms, Ordering::Relaxed);
     AI_RUN_LATENCY_SAMPLES.fetch_add(1, Ordering::Relaxed);
-    increment_bucket(&AI_PROVIDER_KIND_TOTALS, provider_kind.slug());
+    increment_bucket(&AI_PROVIDER_KIND_TOTALS, provider_slug.as_str());
     increment_bucket(
         &AI_EXECUTION_TARGET_TOTALS,
         execution_target.unwrap_or_else(|| execution_mode.slug()),
@@ -161,7 +162,7 @@ pub fn metrics_snapshot() -> AiRuntimeMetricsSnapshot {
         locale_fallback_total: AI_LOCALE_FALLBACK_TOTAL.load(Ordering::Relaxed),
         run_latency_ms_total: AI_RUN_LATENCY_MS_TOTAL.load(Ordering::Relaxed),
         run_latency_samples: AI_RUN_LATENCY_SAMPLES.load(Ordering::Relaxed),
-        provider_kind_totals: snapshot_buckets(&AI_PROVIDER_KIND_TOTALS),
+        provider_slug_totals: snapshot_buckets(&AI_PROVIDER_KIND_TOTALS),
         execution_target_totals: snapshot_buckets(&AI_EXECUTION_TARGET_TOTALS),
         task_profile_totals: snapshot_buckets(&AI_TASK_PROFILE_TOTALS),
         resolved_locale_totals: snapshot_buckets(&AI_RESOLVED_LOCALE_TOTALS),
@@ -219,7 +220,7 @@ fn snapshot_buckets(store: &Lazy<Mutex<BTreeMap<String, u64>>>) -> Vec<AiMetricB
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AiRunDecisionTrace, ExecutionMode, ProviderKind};
+    use crate::model::{AiRunDecisionTrace, ExecutionMode};
 
     #[test]
     fn metrics_snapshot_tracks_router_and_outcomes() {
@@ -227,7 +228,7 @@ mod tests {
         observe_router_resolution(
             "run_task_job",
             &AiRunDecisionTrace {
-                provider_kind: Some(ProviderKind::Gemini),
+                provider_slug: Some("gemini".to_string()),
                 execution_mode: Some(ExecutionMode::Direct),
                 used_override: true,
                 ..AiRunDecisionTrace::default()
@@ -238,7 +239,7 @@ mod tests {
         observe_run_outcome(
             ExecutionMode::Direct,
             Some("direct:media"),
-            ProviderKind::Gemini,
+            &ProviderSlug::gemini(),
             Some("image_asset"),
             Some("fr"),
             "completed",
@@ -247,7 +248,7 @@ mod tests {
         observe_run_outcome(
             ExecutionMode::McpTooling,
             Some("mcp:rustok-mcp"),
-            ProviderKind::Anthropic,
+            &ProviderSlug::anthropic(),
             Some("operator_chat"),
             Some("en"),
             "waiting_approval",
@@ -264,7 +265,7 @@ mod tests {
         assert_eq!(snapshot.run_latency_ms_total, 165);
         assert_eq!(snapshot.run_latency_samples, 2);
         assert!(snapshot
-            .provider_kind_totals
+            .provider_slug_totals
             .iter()
             .any(|bucket| bucket.label == "gemini" && bucket.total == 2));
         assert!(snapshot

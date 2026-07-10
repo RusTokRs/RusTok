@@ -9,9 +9,9 @@ use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,
     ensure_ai_task_profile_read,
     types::{
-        AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderProfileGql, AiRecentRunGql,
-        AiRunStreamEventGql, AiRuntimeMetricsGql, AiTaskProfileGql, AiToolProfileGql,
-        AiToolTraceGql,
+        AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderCatalogEntryGql,
+        AiProviderProfileGql, AiRecentRunGql, AiRunStreamEventGql, AiRuntimeMetricsGql,
+        AiTaskProfileGql, AiToolProfileGql, AiToolTraceGql,
     },
 };
 
@@ -25,6 +25,15 @@ fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
 
 #[Object]
 impl AiQuery {
+    async fn ai_provider_catalog(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<AiProviderCatalogEntryGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_read(auth)?;
+        Ok(crate::provider_catalog().iter().map(Into::into).collect())
+    }
+
     async fn ai_runtime_metrics(&self, ctx: &Context<'_>) -> Result<AiRuntimeMetricsGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_overview_read(auth)?;

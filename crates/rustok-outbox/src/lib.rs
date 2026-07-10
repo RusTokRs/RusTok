@@ -3,8 +3,6 @@ use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModul
 use sea_orm_migration::MigrationTrait;
 
 pub mod entity;
-#[cfg(feature = "loco-adapter")]
-pub mod loco;
 pub mod migration;
 pub mod ports;
 pub mod relay;

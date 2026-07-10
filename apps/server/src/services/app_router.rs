@@ -4,7 +4,7 @@ use axum::Extension;
 use axum::Router as AxumRouter;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
-use rustok_api::HostRuntimeContext;
+use rustok_api::{HostRuntimeContext, HostSettingsSnapshot};
 use rustok_core::ModuleRuntimeExtensions;
 use std::sync::Arc;
 
@@ -165,9 +165,16 @@ pub fn compose_application_router(
     let middleware_runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
     let auth_runtime = ServerAuthRuntime::from_loco_app_context(ctx);
     let server_fn_runtime_ctx = {
-        let runtime_ctx = HostRuntimeContext::new(ctx.db.clone()).with_shared_value(
-            transactional_event_bus_from_context(&middleware_runtime_ctx),
-        );
+        let runtime_ctx = HostRuntimeContext::new(ctx.db.clone())
+            .with_shared_value(transactional_event_bus_from_context(
+                &middleware_runtime_ctx,
+            ))
+            .with_shared_value(HostSettingsSnapshot::new(
+                ctx.config
+                    .settings
+                    .clone()
+                    .unwrap_or_else(|| serde_json::json!({})),
+            ));
         let runtime_ctx =
             if let Some(storage) = ctx.shared_store.get::<rustok_storage::StorageService>() {
                 runtime_ctx.with_shared_value(storage)

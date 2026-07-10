@@ -1,31 +1,37 @@
-# Implementation plan for `rustok-cli-platform`
+# Implementation Plan for `rustok-cli-platform`
 
-## Status
+## Current state
 
-`in_progress`
+`rustok-cli-platform` owns platform-level providers that do not belong to a
+domain module. `core version` is registered through the generated selected
+distribution registry and executes through the typed `CommandProvider` path.
+The crate remains independent of `apps/server`, the runner, and domain crates.
 
-## Current State
+## FFA/FBA boundary
 
-- Platform provider crate exists outside the CLI runner.
-- `core version` is implemented through asynchronous `CommandProvider::execute`.
-- The provider is selected through root `cli-registry.toml` and generated into
-  `rustok-cli-registry`.
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- Terminal parsing belongs to `rustok-cli`; module maintenance commands belong
+  in owner-local `cli/` adapters; this crate is only for true platform commands.
 
-## Target State
+## Open results
 
-- Platform CLI commands live here only when they are not owned by a domain module.
-- Module-specific maintenance commands live in module-local `cli/` adapter
-  packages.
-- The production HTTP server does not depend on this crate.
-
-## Next Steps
-
-1. Add the first module-local provider through `[provides.cli]`.
-2. Move the first server task or seed into a typed provider command.
-3. Keep generated registry checks strict as selected providers grow.
+1. **Select the next platform-owned command only after an ownership decision.**
+   Done when the command cannot belong to an existing module, is implemented as
+   a typed provider here, and is selected through generated registry metadata.
+   **Depends on:** platform ownership approval. **Verification:**
+   `cargo test -p rustok-cli-platform --quiet` and
+   `node scripts/generate/generate-cli-registry.mjs --check`.
 
 ## Verification
 
 - `cargo test -p rustok-cli-platform --quiet`
 - `node scripts/generate/generate-cli-registry.mjs --check`
 - `node scripts/verify/verify-api-surface-contract.mjs`
+
+## Change rules
+
+1. Do not add module-specific maintenance commands to this crate.
+2. Keep runner output, parsing, and exit policy in `rustok-cli`.
+3. Keep selected provider wiring generated through `rustok-cli-registry`.

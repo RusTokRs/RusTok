@@ -76,7 +76,7 @@ Short list of typical mistakes before making code changes.
 - Do not store JWT manually in localStorage — use `leptos-auth`.
 - Do not copy components between admin and storefront — use `iu-leptos` design system.
 - Do not use SSR for admin panel (use CSR/WASM) and do not use CSR for storefront (use SSR for SEO).
-- Do not thread props through 5+ levels — use `leptos-zustand` for global state.
+- Do not introduce a shared global-state dependency to avoid prop drilling: `leptos-zustand` currently provides DTOs only, so use host-local state until its runtime contract is approved.
 
 ## Frontend / Next.js
 

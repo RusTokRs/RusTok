@@ -6,16 +6,9 @@ use crate::{
     AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
     AiChatSessionSummary, AiMetricBucket, AiProviderProfileRecord, AiRecentRunRecord,
     AiRunStreamEvent, AiRunStreamEventKind, AiRuntimeMetricsSnapshot, AiTaskProfileRecord,
-    AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability, ProviderKind,
-    ProviderUsagePolicy, ToolCall, ToolTrace,
+    AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability, ProviderConfigField,
+    ProviderFeature, ProviderFieldKind, ProviderUsagePolicy, ToolCall, ToolTrace,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
-pub enum AiProviderKindGql {
-    OpenAiCompatible,
-    Anthropic,
-    Gemini,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 pub enum AiProviderCapabilityGql {
@@ -25,6 +18,108 @@ pub enum AiProviderCapabilityGql {
     MultimodalUnderstanding,
     CodeGeneration,
     AlloyAssist,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiProviderFeatureGql {
+    Chat,
+    Streaming,
+    Tools,
+    StructuredOutput,
+    Embeddings,
+    Rerank,
+    Image,
+    Audio,
+    Transcription,
+    Multimodal,
+}
+
+impl From<ProviderFeature> for AiProviderFeatureGql {
+    fn from(value: ProviderFeature) -> Self {
+        match value {
+            ProviderFeature::Chat => Self::Chat,
+            ProviderFeature::Streaming => Self::Streaming,
+            ProviderFeature::Tools => Self::Tools,
+            ProviderFeature::StructuredOutput => Self::StructuredOutput,
+            ProviderFeature::Embeddings => Self::Embeddings,
+            ProviderFeature::Rerank => Self::Rerank,
+            ProviderFeature::Image => Self::Image,
+            ProviderFeature::Audio => Self::Audio,
+            ProviderFeature::Transcription => Self::Transcription,
+            ProviderFeature::Multimodal => Self::Multimodal,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiProviderFieldKindGql {
+    Text,
+    Url,
+    Integer,
+    Boolean,
+    SecretRef,
+}
+
+impl From<ProviderFieldKind> for AiProviderFieldKindGql {
+    fn from(value: ProviderFieldKind) -> Self {
+        match value {
+            ProviderFieldKind::Text => Self::Text,
+            ProviderFieldKind::Url => Self::Url,
+            ProviderFieldKind::Integer => Self::Integer,
+            ProviderFieldKind::Boolean => Self::Boolean,
+            ProviderFieldKind::SecretRef => Self::SecretRef,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderConfigFieldGql {
+    pub key: String,
+    pub label: String,
+    pub kind: AiProviderFieldKindGql,
+    pub required: bool,
+}
+
+impl From<&ProviderConfigField> for AiProviderConfigFieldGql {
+    fn from(value: &ProviderConfigField) -> Self {
+        Self {
+            key: value.key.to_string(),
+            label: value.label.to_string(),
+            kind: value.kind.into(),
+            required: value.required,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderSettingDefaultGql {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderCatalogEntryGql {
+    pub slug: String,
+    pub display_name: String,
+    pub features: Vec<AiProviderFeatureGql>,
+    pub settings_schema: Vec<AiProviderConfigFieldGql>,
+    pub credential_schema: Vec<AiProviderConfigFieldGql>,
+    pub default_settings: Vec<AiProviderSettingDefaultGql>,
+    pub compiled_in: bool,
+}
+
+impl From<&crate::ProviderCatalogEntry> for AiProviderCatalogEntryGql {
+    fn from(value: &crate::ProviderCatalogEntry) -> Self {
+        Self {
+            slug: value.slug.to_string(),
+            display_name: value.display_name.to_string(),
+            features: value.features.iter().copied().map(Into::into).collect(),
+            settings_schema: value.settings.iter().map(Into::into).collect(),
+            credential_schema: value.credentials.iter().map(Into::into).collect(),
+            default_settings: Vec::new(),
+            compiled_in: value.compiled_in,
+        }
+    }
 }
 
 impl From<AiProviderCapabilityGql> for ProviderCapability {
@@ -120,7 +215,7 @@ pub struct AiRuntimeMetricsGql {
     pub locale_fallback_total: i64,
     pub run_latency_ms_total: i64,
     pub run_latency_samples: i64,
-    pub provider_kind_totals: Vec<AiMetricBucketGql>,
+    pub provider_slug_totals: Vec<AiMetricBucketGql>,
     pub execution_target_totals: Vec<AiMetricBucketGql>,
     pub task_profile_totals: Vec<AiMetricBucketGql>,
     pub resolved_locale_totals: Vec<AiMetricBucketGql>,
@@ -144,7 +239,7 @@ pub struct AiRecentRunGql {
     pub session_title: String,
     pub provider_profile_id: Uuid,
     pub provider_display_name: String,
-    pub provider_kind: AiProviderKindGql,
+    pub provider_slug: String,
     pub task_profile_id: Option<Uuid>,
     pub task_profile_slug: Option<String>,
     pub status: String,
@@ -169,7 +264,7 @@ impl From<AiRecentRunRecord> for AiRecentRunGql {
             session_title: value.session_title,
             provider_profile_id: value.provider_profile_id,
             provider_display_name: value.provider_display_name,
-            provider_kind: value.provider_kind.into(),
+            provider_slug: value.provider_slug.to_string(),
             task_profile_id: value.task_profile_id,
             task_profile_slug: value.task_profile_slug,
             status: value.status,
@@ -217,8 +312,8 @@ impl From<AiRuntimeMetricsSnapshot> for AiRuntimeMetricsGql {
             locale_fallback_total: value.locale_fallback_total.min(i64::MAX as u64) as i64,
             run_latency_ms_total: value.run_latency_ms_total.min(i64::MAX as u64) as i64,
             run_latency_samples: value.run_latency_samples.min(i64::MAX as u64) as i64,
-            provider_kind_totals: value
-                .provider_kind_totals
+            provider_slug_totals: value
+                .provider_slug_totals
                 .into_iter()
                 .map(Into::into)
                 .collect(),
@@ -288,26 +383,6 @@ impl From<ExecutionMode> for AiExecutionModeGql {
     }
 }
 
-impl From<AiProviderKindGql> for ProviderKind {
-    fn from(value: AiProviderKindGql) -> Self {
-        match value {
-            AiProviderKindGql::OpenAiCompatible => ProviderKind::OpenAiCompatible,
-            AiProviderKindGql::Anthropic => ProviderKind::Anthropic,
-            AiProviderKindGql::Gemini => ProviderKind::Gemini,
-        }
-    }
-}
-
-impl From<ProviderKind> for AiProviderKindGql {
-    fn from(value: ProviderKind) -> Self {
-        match value {
-            ProviderKind::OpenAiCompatible => Self::OpenAiCompatible,
-            ProviderKind::Anthropic => Self::Anthropic,
-            ProviderKind::Gemini => Self::Gemini,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 pub enum AiChatMessageRoleGql {
     System,
@@ -348,17 +423,62 @@ impl TryFrom<ToolCall> for AiToolCallGql {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderSettingGql {
+    pub key: String,
+    pub text_value: Option<String>,
+    pub integer_value: Option<i64>,
+    pub boolean_value: Option<bool>,
+}
+
+impl AiProviderSettingGql {
+    fn new(key: String, value: serde_json::Value) -> Self {
+        let text_value = value.as_str().map(ToString::to_string);
+        let integer_value = value.as_i64();
+        let boolean_value = value.as_bool();
+        Self {
+            key,
+            text_value,
+            integer_value,
+            boolean_value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiCredentialRefGql {
+    pub key: String,
+    pub resolver: String,
+    pub secret_key: String,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct AiProviderSettingInputGql {
+    pub key: String,
+    pub text_value: Option<String>,
+    pub integer_value: Option<i64>,
+    pub boolean_value: Option<bool>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct AiCredentialRefInputGql {
+    pub key: String,
+    pub resolver: String,
+    pub secret_key: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
 pub struct AiProviderProfileGql {
     pub id: Uuid,
     pub slug: String,
     pub display_name: String,
-    pub provider_kind: AiProviderKindGql,
-    pub base_url: String,
+    pub provider_slug: String,
     pub model: String,
+    pub settings: Vec<AiProviderSettingGql>,
+    pub credential_refs: Vec<AiCredentialRefGql>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub is_active: bool,
-    pub has_secret: bool,
+    pub has_credentials: bool,
     pub capabilities: Vec<AiProviderCapabilityGql>,
     pub usage_policy: AiProviderUsagePolicyGql,
     pub metadata: String,
@@ -372,13 +492,26 @@ impl From<AiProviderProfileRecord> for AiProviderProfileGql {
             id: value.id,
             slug: value.slug,
             display_name: value.display_name,
-            provider_kind: value.provider_kind.into(),
-            base_url: value.base_url,
+            provider_slug: value.provider_slug.to_string(),
             model: value.model,
+            settings: value
+                .settings
+                .into_iter()
+                .map(|(key, value)| AiProviderSettingGql::new(key, value))
+                .collect(),
+            credential_refs: value
+                .credential_refs
+                .into_iter()
+                .map(|(key, value)| AiCredentialRefGql {
+                    key,
+                    resolver: value.resolver,
+                    secret_key: value.key,
+                })
+                .collect(),
             temperature: value.temperature,
             max_tokens: value.max_tokens,
             is_active: value.is_active,
-            has_secret: value.has_secret,
+            has_credentials: value.has_credentials,
             capabilities: value.capabilities.into_iter().map(Into::into).collect(),
             usage_policy: value.usage_policy.into(),
             metadata: value.metadata.to_string(),
@@ -728,10 +861,10 @@ impl From<crate::ProviderTestResult> for AiProviderTestResultGql {
 pub struct CreateAiProviderProfileInputGql {
     pub slug: String,
     pub display_name: String,
-    pub provider_kind: AiProviderKindGql,
-    pub base_url: String,
+    pub provider_slug: String,
     pub model: String,
-    pub api_key_secret: Option<String>,
+    pub settings: Vec<AiProviderSettingInputGql>,
+    pub credential_refs: Vec<AiCredentialRefInputGql>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub capabilities: Vec<AiProviderCapabilityGql>,
@@ -742,8 +875,9 @@ pub struct CreateAiProviderProfileInputGql {
 #[derive(Debug, Clone, InputObject)]
 pub struct UpdateAiProviderProfileInputGql {
     pub display_name: String,
-    pub base_url: String,
     pub model: String,
+    pub settings: Vec<AiProviderSettingInputGql>,
+    pub credential_refs: Vec<AiCredentialRefInputGql>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub capabilities: Vec<AiProviderCapabilityGql>,

@@ -14,13 +14,12 @@ pub(super) async fn events_status_native() -> Result<EventsStatusResponse, Serve
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostSettingsSnapshot;
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
-        let app_ctx = expect_context::<AppContext>();
-        let root = app_ctx
-            .config
-            .settings
-            .clone()
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let root = runtime
+            .shared_get::<HostSettingsSnapshot>()
+            .map(|snapshot| snapshot.value().clone())
             .unwrap_or_else(|| serde_json::json!({}));
         let events = root
             .get("rustok")
@@ -43,11 +42,11 @@ pub(super) async fn events_status_native() -> Result<EventsStatusResponse, Serve
             _ => "memory",
         }
         .to_string();
-        let statement = match app_ctx.db.get_database_backend() {
+        let statement = match runtime.db().get_database_backend() {
             DbBackend::Sqlite => Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT COALESCE(SUM(CASE WHEN status = ?1 THEN 1 ELSE 0 END), 0) AS pending_events, COALESCE(SUM(CASE WHEN status = ?2 THEN 1 ELSE 0 END), 0) AS dlq_events FROM sys_events", vec!["pending".into(), "failed".into()]),
             _ => Statement::from_sql_and_values(DbBackend::Postgres, "SELECT COALESCE(SUM(CASE WHEN status = $1 THEN 1 ELSE 0 END), 0) AS pending_events, COALESCE(SUM(CASE WHEN status = $2 THEN 1 ELSE 0 END), 0) AS dlq_events FROM sys_events", vec!["pending".into(), "failed".into()]),
         };
-        let (pending_events, dlq_events) = match app_ctx.db.query_one(statement).await {
+        let (pending_events, dlq_events) = match runtime.db().query_one(statement).await {
             Ok(Some(row)) => (
                 row.try_get("", "pending_events").unwrap_or(0),
                 row.try_get("", "dlq_events").unwrap_or(0),
@@ -94,7 +93,7 @@ pub(super) async fn event_settings_native() -> Result<PlatformSettingsResponse, 
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
+        use rustok_api::HostSettingsSnapshot;
         use rustok_api::{has_effective_permission, AuthContext, Permission, TenantContext};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
         use serde_json::Value;
@@ -107,10 +106,10 @@ pub(super) async fn event_settings_native() -> Result<PlatformSettingsResponse, 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new("settings:read required"));
         }
-        let app_ctx = expect_context::<AppContext>();
-        let statement = match app_ctx.db.get_database_backend() { DbBackend::Sqlite => Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1", vec![tenant.id.into(), "events".into()]), _ => Statement::from_sql_and_values(DbBackend::Postgres, "SELECT settings FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1", vec![tenant.id.into(), "events".into()]) };
-        let settings = match app_ctx
-            .db
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+        let statement = match runtime.db().get_database_backend() { DbBackend::Sqlite => Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1", vec![tenant.id.into(), "events".into()]), _ => Statement::from_sql_and_values(DbBackend::Postgres, "SELECT settings FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1", vec![tenant.id.into(), "events".into()]) };
+        let settings = match runtime
+            .db()
             .query_one(statement)
             .await
             .map_err(|err| server_error(err.to_string()))?
@@ -121,10 +120,9 @@ pub(super) async fn event_settings_native() -> Result<PlatformSettingsResponse, 
                 .or_else(|_| row.try_get::<String>("", "settings"))
                 .map_err(|err| server_error(err.to_string()))?,
             None => {
-                let root = app_ctx
-                    .config
-                    .settings
-                    .clone()
+                let root = runtime
+                    .shared_get::<HostSettingsSnapshot>()
+                    .map(|snapshot| snapshot.value().clone())
                     .unwrap_or_else(|| serde_json::json!({}));
                 let events = root
                     .get("rustok")

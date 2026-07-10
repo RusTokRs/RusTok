@@ -465,11 +465,11 @@ requireNotContains('apps/server/build.rs', '.add_route(', 'generated optional ro
 requireContains('apps/server/build.rs', 'crate::routes::mount_route', 'generated optional route composition uses the route isolation helper');
 requireContains('apps/server/src/tasks/mod.rs', 'pub type TaskAppContext = loco_rs::app::AppContext;', 'server tasks expose a local task AppContext bridge');
 requireContains('apps/server/src/tasks/mod.rs', 'pub use loco_rs::task::{Task, TaskInfo, Tasks, Vars};', 'server tasks expose a local Loco task bridge');
-requireContains('apps/server/src/seeds/mod.rs', 'pub type SeedAppContext = loco_rs::app::AppContext;', 'server seeds expose a local seed AppContext bridge');
-requireNotContains('apps/server/src/seeds/mod.rs', 'use loco_rs::app::AppContext', 'server seeds do not import Loco AppContext directly');
-requireNotContains('apps/server/src/seeds/mod.rs', 'loco_rs::Error', 'server seeds map errors through the server error bridge');
+requireContains('apps/server/src/seeds/mod.rs', 'ServerRuntimeContext', 'server seed service consumes neutral runtime state');
+requireContains('apps/server/src/seeds/mod.rs', 'use anyhow::Result;', 'server seed service returns a neutral error type');
+requireNotContains('apps/server/src/seeds/mod.rs', 'loco_rs', 'server seed service does not import Loco');
 requireNotContains('apps/server/src/seeds/mod.rs', 'cargo loco', 'server seed comments do not advertise cargo-loco execution');
-requireContains('apps/server/src/seeds/mod.rs', 'SeedAppContext', 'server seeds use the local seed AppContext bridge');
+requireContains('apps/server/src/app.rs', 'seeds::seed(&runtime_ctx, path)', 'Loco Hooks::seed is a thin adapter to the neutral seed service');
 for (const rel of [
   'apps/server/src/tasks/cleanup.rs',
   'apps/server/src/tasks/create_oauth_app.rs',
@@ -559,14 +559,22 @@ for (const rel of [
   requireNotContains(rel, 'rustok_outbox::loco', `${rel} does not consume the outbox Loco adapter`);
   requireContains(rel, 'HostRuntimeContext', `${rel} consumes neutral host runtime context`);
 }
+for (const rel of [
+  'apps/admin/src/features/workflow/transport/native_server_adapter.rs',
+]) {
+  requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
+  requireContains(rel, 'HostRuntimeContext', `${rel} consumes neutral host runtime context`);
+}
 requireNotContains('crates/rustok-tenant/admin/Cargo.toml', 'loco-rs', 'tenant admin crate does not depend on Loco');
 requireNotContains('crates/rustok-region/admin/Cargo.toml', 'loco-rs', 'region admin crate does not depend on Loco');
 requireNotContains('crates/rustok-comments/admin/Cargo.toml', 'loco-rs', 'comments admin crate does not depend on Loco');
 requireNotContains('crates/rustok-workflow/admin/Cargo.toml', 'loco-rs', 'workflow admin crate does not depend on Loco');
+requireNotContains('apps/admin/Cargo.toml', 'loco-rs', 'admin host does not depend on Loco after native adapter migration');
 requireNotContains('crates/rustok-media/admin/Cargo.toml', 'loco-rs', 'media admin crate does not depend on Loco');
 requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-rs', 'search admin crate does not depend on Loco');
 requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-adapter', 'search admin crate does not enable the outbox Loco adapter feature');
 requireNotContains('crates/rustok-auth/admin/Cargo.toml', 'loco-rs', 'auth admin crate does not depend on Loco');
+requireNotContains('crates/leptos-auth/Cargo.toml', 'loco-rs', 'shared Leptos auth crate does not retain an unused Loco SSR dependency');
 requireNotContains('crates/rustok-commerce/admin/Cargo.toml', 'loco-rs', 'commerce admin crate does not depend on Loco');
 requireNotContains('crates/rustok-commerce/admin/Cargo.toml', 'loco-adapter', 'commerce admin crate does not enable the outbox Loco adapter feature');
 requireNotContains('crates/rustok-pricing/admin/Cargo.toml', 'loco-rs', 'pricing admin crate does not depend on Loco');
@@ -663,7 +671,34 @@ if (exists('crates/rustok-seo-admin-support/src/locale.rs')) fail('SEO admin sup
 else pass('SEO admin support locale duplicate is absent');
 requireContains('crates/rustok-outbox/src/ports.rs', 'use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};', 'outbox consumes canonical rustok-api Port contracts');
 requireContains('crates/rustok-outbox/Cargo.toml', 'rustok-api.workspace = true', 'outbox depends on the neutral API contract layer');
-requireContains('crates/rustok-outbox/src/lib.rs', 'pub mod loco;', 'outbox owns its Loco composition adapter');
+requireNotContains('crates/rustok-outbox/src/lib.rs', 'pub mod loco;', 'outbox does not retain a Loco composition adapter');
+requireNotContains('crates/rustok-outbox/Cargo.toml', 'loco-rs', 'outbox crate does not depend on Loco');
+requireNotContains('crates/rustok-outbox/Cargo.toml', 'loco-adapter', 'outbox crate does not expose a Loco adapter feature');
+requireNotContains('crates/rustok-mcp/src/alloy_scaffold.rs', 'loco-rs.workspace', 'MCP module scaffold does not generate a Loco dependency');
+requireNotContains('crates/rustok-mcp/src/alloy_scaffold.rs', 'loco_rs::controller::Routes', 'MCP module scaffold does not generate Loco routes');
+requireContains('crates/rustok-mcp/src/alloy_scaffold.rs', 'pub fn axum_router() -> axum::Router', 'MCP module scaffold generates an Axum router entrypoint');
+requireContains('apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs', 'HostRuntimeContext', 'storefront SEO native server function consumes neutral host runtime context');
+requireNotContains('apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs', 'loco_rs', 'storefront SEO native server function does not import Loco');
+requireContains('apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs', 'HostRuntimeContext', 'storefront module-list native server function consumes neutral host runtime context');
+requireNotContains('apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs', 'loco_rs', 'storefront module-list native server function does not import Loco');
+requireContains('apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs', 'HostRuntimeContext', 'storefront canonical-route native server function consumes neutral host runtime context');
+requireNotContains('apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs', 'loco_rs', 'storefront canonical-route native server function does not import Loco');
+requireNotContains('apps/storefront/Cargo.toml', 'loco-rs', 'storefront does not retain a Loco dependency after native SEO context cutover');
+requireNotContains('apps/storefront/Cargo.toml', 'loco-adapter', 'storefront does not enable the outbox Loco adapter feature');
+requireContains('apps/admin/src/features/cache/transport/native_server_adapter.rs', 'HostRuntimeContext', 'admin cache native server function consumes neutral host runtime context');
+requireNotContains('apps/admin/src/features/cache/transport/native_server_adapter.rs', 'loco_rs', 'admin cache native server function does not import Loco');
+requireContains('apps/admin/src/widgets/app_shell/native_server_adapter.rs', 'HostRuntimeContext', 'admin global-search native server function consumes neutral host runtime context');
+requireNotContains('apps/admin/src/widgets/app_shell/native_server_adapter.rs', 'loco_rs', 'admin global-search native server function does not import Loco');
+requireContains('apps/admin/src/features/dashboard/transport/native_server_adapter.rs', 'HostRuntimeContext', 'admin dashboard native server functions consume neutral host runtime context');
+requireNotContains('apps/admin/src/features/dashboard/transport/native_server_adapter.rs', 'loco_rs', 'admin dashboard native server functions do not import Loco');
+requireContains('apps/admin/src/features/oauth_apps/transport/native_server_adapter.rs', 'HostRuntimeContext', 'admin OAuth apps native server function consumes neutral host runtime context');
+requireNotContains('apps/admin/src/features/oauth_apps/transport/native_server_adapter.rs', 'loco_rs', 'admin OAuth apps native server function does not import Loco');
+requireContains('crates/rustok-api/src/runtime.rs', 'pub struct HostSettingsSnapshot', 'rustok-api owns the neutral host settings snapshot contract');
+requireContains('apps/server/src/services/app_router.rs', 'HostSettingsSnapshot::new(', 'server function composition provides the neutral host settings snapshot');
+requireContains('apps/admin/src/features/events/transport/native_server_adapter.rs', 'HostSettingsSnapshot', 'admin events native server functions consume neutral host settings');
+requireNotContains('apps/admin/src/features/events/transport/native_server_adapter.rs', 'loco_rs', 'admin events native server functions do not import Loco');
+requireContains('apps/admin/src/features/email/transport/native_server_adapter.rs', 'HostSettingsSnapshot', 'admin email native server function consumes neutral host settings');
+requireNotContains('apps/admin/src/features/email/transport/native_server_adapter.rs', 'loco_rs', 'admin email native server function does not import Loco');
 requireContains('DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md', 'Status: Accepted', 'Port contract ownership ADR is accepted');
 requireContains('crates/rustok-cli/Cargo.toml', 'name = "rustok-cli"', 'rustok-cli binary crate exists');
 requireContains('crates/rustok-cli/Cargo.toml', 'rustok-cli-core.workspace = true', 'rustok-cli consumes CLI core contracts');

@@ -1,12 +1,11 @@
 #[test]
-fn crate_api_defines_minimal_contract_sections() {
+fn crate_api_defines_public_contract_sections() {
     let api = include_str!("../CRATE_API.md");
     for marker in [
-        "## Минимальный набор контрактов",
-        "### Входные DTO/команды",
-        "### Доменные инварианты",
-        "### События / outbox-побочные эффекты",
-        "### Ошибки / коды отказов",
+        "## Public modules",
+        "## Primary public types and functions",
+        "## Contract invariants",
+        "## Errors",
     ] {
         assert!(
             api.contains(marker),

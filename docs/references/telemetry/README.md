@@ -16,10 +16,15 @@ Last updated: **2026-02-19**.
 ## 1) Minimal working example: telemetry initialization
 
 ```rust
-use rustok_telemetry::{init, TelemetryConfig};
+use rustok_telemetry::{init, LogFormat, TelemetryConfig};
 
-let handles = init(TelemetryConfig::default())?;
-let _guard = handles.guard;
+let handles = init(TelemetryConfig {
+    service_name: "rustok-server".to_string(),
+    log_format: LogFormat::Json,
+    metrics: true,
+    otel: None,
+})?;
+let metrics = handles.metrics;
 ```
 
 ## 2) Minimal working example: metrics rendering

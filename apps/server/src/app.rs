@@ -223,7 +223,10 @@ impl Hooks for App {
     }
 
     async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
-        seeds::seed(ctx, path).await
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+        seeds::seed(&runtime_ctx, path)
+            .await
+            .map_err(|error| Error::Message(format!("Seed execution failed: {error}")))
     }
 
     /// Graceful shutdown: stop background workers and flush telemetry.
@@ -761,9 +764,14 @@ mod tests {
             .expect("graphql workflow response should be json");
 
         assert_eq!(native_payload, serde_json::json!([]));
+        assert!(
+            graphql_payload.get("errors").is_none(),
+            "workflow GraphQL path must not return errors: {graphql_payload}"
+        );
         assert_eq!(
-            graphql_payload,
-            serde_json::json!({ "data": { "workflows": [] } })
+            graphql_payload.pointer("/data/workflows"),
+            Some(&serde_json::json!([])),
+            "workflow GraphQL path must return the same empty workflow list"
         );
     }
 

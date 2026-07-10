@@ -16,12 +16,11 @@ pub(crate) async fn admin_global_search_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
         use std::time::Instant;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -36,12 +35,15 @@ pub(crate) async fn admin_global_search_native(
         let query = normalize_admin_search_query(&query)?;
         let limit = limit.clamp(1, 20) as usize;
         let offset = offset.max(0) as usize;
-        let transform =
-            rustok_search::SearchDictionaryService::transform_query(&app_ctx.db, tenant.id, &query)
-                .await
-                .map_err(ServerFnError::new)?;
+        let transform = rustok_search::SearchDictionaryService::transform_query(
+            runtime.db(),
+            tenant.id,
+            &query,
+        )
+        .await
+        .map_err(ServerFnError::new)?;
         let settings =
-            rustok_search::SearchSettingsService::load_effective(&app_ctx.db, Some(tenant.id))
+            rustok_search::SearchSettingsService::load_effective(runtime.db(), Some(tenant.id))
                 .await
                 .map_err(ServerFnError::new)?;
         let ranking_profile = rustok_search::SearchRankingProfile::resolve(
@@ -71,13 +73,13 @@ pub(crate) async fn admin_global_search_native(
             sort_attribute_code: None,
             sort_desc: false,
         };
-        let engine = rustok_search::PgSearchEngine::new(app_ctx.db.clone());
+        let engine = rustok_search::PgSearchEngine::new(runtime.db_clone());
         let started_at = Instant::now();
         let result = rustok_search::SearchEngine::search(&engine, search_query.clone()).await;
         let result = match result {
             Ok(result) => {
                 rustok_search::SearchDictionaryService::apply_query_rules(
-                    &app_ctx.db,
+                    runtime.db(),
                     &search_query,
                     result,
                 )
@@ -88,7 +90,7 @@ pub(crate) async fn admin_global_search_native(
         .map_err(ServerFnError::new)?;
 
         let query_log_id = record_admin_search_query_log(
-            &app_ctx.db,
+            runtime.db(),
             &search_query,
             result.engine.as_str(),
             result.total,

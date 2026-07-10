@@ -149,7 +149,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 |---|-------------|---------------|--------|--------|
 | 8.1.1 | `rustok-graphql` for Rust FFA GraphQL adapters; host-injected Apollo executor for Next UI packages | Manual fetch + manual JSON parsing | No typing, manual error handling | — |
 | 8.1.2 | `leptos-auth` for auth state management | Manual JWT management in localStorage | Race conditions, no refresh logic | — |
-| 8.1.3 | `leptos-zustand` for global state | Props drilling through 5+ levels | Unreadable code, component recreation | — |
+| 8.1.3 | Host-local state; adopt `leptos-zustand` only after its shared runtime contract is approved | Adding an unimplemented shared-state dependency to avoid prop drilling | `leptos-zustand` currently provides serializable DTOs, not a state container | [plan](../../crates/leptos-zustand/docs/implementation-plan.md) |
 | 8.1.4 | `leptos-hook-form` for forms | Manual form state + onChange handlers | Boilerplate, no validation | — |
 | 8.1.5 | `iu-leptos` components from design system | Custom components with own styles | Visual inconsistency | — |
 | 8.1.6 | SSR for storefront (SEO) | CSR-only storefront | No SEO, slow First Contentful Paint | — |

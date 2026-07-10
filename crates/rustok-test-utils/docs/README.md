@@ -1,39 +1,9 @@
-# `rustok-test-utils` Documentation
+# rustok-test-utils documentation
 
-`rustok-test-utils` — shared support crate for the RusToK testing infrastructure.
-It holds reusable fixtures, mocks and helpers that should reduce
-local duplication in unit/integration/contract tests.
+`rustok-test-utils` provides shared fixtures, mocks, database setup, and
+helpers for RusToK unit, integration, and contract tests. It is test-time
+support only and must not contain production runtime or domain behavior.
 
-## Purpose
-
-- publish a canonical shared testing helper surface;
-- standardize test setup patterns for platform and module tests;
-- reduce the number of ad-hoc fixtures and local mock implementations in the workspace.
-
-## Scope
-
-- database setup helpers;
-- mock event bus/transport utilities;
-- fixtures/builders for common domain entities;
-- helper functions and test context shortcuts;
-- no production runtime logic or domain-owned behavior.
-
-## Integration
-
-- used as `dev-dependencies` in crates and app test targets;
-- relies on `rustok-core`/`rustok-events` contracts for test doubles and fixtures;
-- the testing guide and module-level verification docs must remain synchronized with this crate;
-- extension of helpers must go through reusable patterns, not through random one-off fixtures.
-
-## Verification
-
-- structural verification for local docs and the public test-utils surface;
-- targeted self-tests needed when changing fixtures, mocks and helper contracts;
-- consumer-module docs updated when changing recommended testing patterns.
-
-## Related documents
-
-- [README crate](../README.md)
-- [Implementation plan](./implementation-plan.md)
-- [Platform documentation map](../../../docs/index.md)
-- [Testing guide](../../../docs/guides/testing.md)
+Use it from test/dev dependencies for database, event/outbox, tenancy/RBAC, and
+common fixture setup. The active migration and contract work is recorded in the
+[implementation plan](./implementation-plan.md).

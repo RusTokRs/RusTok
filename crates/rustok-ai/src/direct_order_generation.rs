@@ -5,11 +5,11 @@ use std::sync::Arc;
 use serde_json::{json, Value};
 
 use crate::direct::parse_json_object_from_text;
+use crate::engine::InferenceEngine;
 use crate::model::{
     AiOrderAnalyticsTaskInput, AiOrderOpsAssistantTaskInput, AiProviderConfig, ChatMessage,
     ChatMessageRole, ProviderChatRequest,
 };
-use crate::provider::ModelProvider;
 use crate::{AiError, AiResult};
 use rustok_ai_order::{
     validate_order_analytics_payload, validate_order_ops_assistant_payload,
@@ -17,7 +17,7 @@ use rustok_ai_order::{
 };
 
 async fn complete_direct_order_json(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
@@ -79,7 +79,7 @@ async fn complete_direct_order_json(
 }
 
 pub(crate) async fn generate_order_analytics(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
@@ -106,7 +106,7 @@ pub(crate) async fn generate_order_analytics(
 }
 
 pub(crate) async fn generate_order_ops_assistant(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,

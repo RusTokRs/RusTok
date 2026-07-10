@@ -1,26 +1,42 @@
-# `rustok-graphql` Implementation Plan
+# Implementation Plan for `rustok-graphql`
 
-## Focus
+## Current state
 
-Keep `rustok-graphql` as the canonical framework-agnostic GraphQL HTTP client
-boundary for Leptos, future Dioxus adapters and host/shared transport code.
+`rustok-graphql` owns the framework-agnostic GraphQL HTTP client boundary:
+request/response/error types, persisted-query extensions, and HTTP execution.
+Module transport adapters use this crate directly. Leptos reactivity lives in
+the separate `rustok-graphql-leptos` adapter crate.
 
-## Current State
+## FFA/FBA boundary
 
-- The crate owns GraphQL request/response/error types, persisted-query extension
-  payloads and HTTP execution.
-- Current module GraphQL transport adapters import `rustok_graphql` directly.
-- Leptos reactive hooks live in the sibling `rustok-graphql-leptos` adapter crate.
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- This shared client owns neither UI nor a domain provider/consumer port. It
+  must not absorb schema ownership, module query documents, DTO mapping, or
+  native server-function fallback policy.
 
-## Improvements
+## Open results
 
-- Add `rustok-graphql-dioxus` only when Dioxus enters the workspace and a real
-  Dioxus hook/context integration is needed.
-- Keep verification strict so new transport adapters do not reintroduce raw HTTP
-  clients or framework-specific GraphQL core dependencies.
+1. **Keep the GraphQL client boundary framework-neutral.** Done when new
+   adapters reuse the shared request, error, and persisted-query contracts
+   without adding raw HTTP clients or framework dependencies to this crate.
+   **Depends on:** a concrete adapter change. **Verification:**
+   `cargo test -p rustok-graphql --lib` and the changed adapter's focused test.
+2. **Add a Dioxus adapter only for a real host integration.** Done when a
+   Dioxus host needs reactive GraphQL hooks/context and the new adapter keeps
+   `rustok-graphql` framework-agnostic.
+   **Depends on:** Dioxus entering the workspace with an approved consumer.
+   **Verification:** targeted adapter integration tests and a dependency audit.
 
-## Non-Goals
+## Verification
 
-- No Leptos, Dioxus, Next.js or `async-graphql` schema ownership.
-- No native `#[server]` fallback policy.
-- No module-specific query documents or DTO mapping.
+- `cargo test -p rustok-graphql --lib`
+- Review dependency direction when changing GraphQL transport contracts.
+
+## Change rules
+
+1. Keep Leptos, Dioxus, Next.js, and `async-graphql` schema dependencies out
+   of this crate.
+2. Update the root README and local docs with a public client-contract change.
+3. Keep module-specific query documents and DTO mapping with their owners.

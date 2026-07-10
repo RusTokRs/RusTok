@@ -16,6 +16,7 @@ use uuid::Uuid;
 use rustok_api::Permission;
 
 use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
+use crate::engine::{inference_for_slug, InferenceEngine};
 use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
     ai_task_profiles, ai_tool_profiles, ai_tool_traces,
@@ -25,7 +26,6 @@ use crate::model::{
     ChatMessage, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderStreamEmitter,
     ProviderStreamEvent, ProviderTestResult, RuntimeOutcome, ToolTrace,
 };
-use crate::provider::{provider_for_kind, ModelProvider};
 use crate::router::AiRouter;
 use crate::runtime::AiRuntime;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
@@ -146,12 +146,10 @@ impl AiManagementService {
             tenant_id: Set(operator.tenant_id),
             slug: Set(input.slug),
             display_name: Set(input.display_name),
-            provider_kind: Set(provider_kind_slug(input.provider_kind).to_string()),
-            base_url: Set(normalize_base_url(&input.base_url)),
+            provider_slug: Set(input.provider_slug.to_string()),
             model: Set(input.model),
-            api_key_secret: Set(input
-                .api_key_secret
-                .filter(|value| !value.trim().is_empty())),
+            settings: Set(serde_json::to_value(input.settings).map_err(json_err)?),
+            credential_refs: Set(serde_json::to_value(input.credential_refs).map_err(json_err)?),
             temperature: Set(input.temperature),
             max_tokens: Set(input.max_tokens),
             is_active: Set(true),
@@ -180,8 +178,10 @@ impl AiManagementService {
         let profile = require_provider_profile(db, operator.tenant_id, id).await?;
         let mut active: ai_provider_profiles::ActiveModel = profile.into();
         active.display_name = Set(input.display_name);
-        active.base_url = Set(normalize_base_url(&input.base_url));
         active.model = Set(input.model);
+        active.settings = Set(serde_json::to_value(input.settings).map_err(json_err)?);
+        active.credential_refs =
+            Set(serde_json::to_value(input.credential_refs).map_err(json_err)?);
         active.temperature = Set(input.temperature);
         active.max_tokens = Set(input.max_tokens);
         active.is_active = Set(input.is_active);
@@ -192,21 +192,6 @@ impl AiManagementService {
         active.restricted_role_slugs =
             Set(to_json_array(input.usage_policy.restricted_role_slugs)?);
         active.metadata = Set(normalize_metadata(input.metadata));
-        active.updated_by = Set(Some(operator.user_id));
-        active.updated_at = Set(Utc::now().into());
-        let saved = active.update(db).await.map_err(db_err)?;
-        map_provider_profile(saved)
-    }
-
-    pub async fn rotate_provider_secret(
-        db: &DatabaseConnection,
-        operator: &AiOperatorContext,
-        id: Uuid,
-        secret: Option<String>,
-    ) -> AiResult<AiProviderProfileRecord> {
-        let profile = require_provider_profile(db, operator.tenant_id, id).await?;
-        let mut active: ai_provider_profiles::ActiveModel = profile.into();
-        active.api_key_secret = Set(secret.filter(|value| !value.trim().is_empty()));
         active.updated_by = Set(Some(operator.user_id));
         active.updated_at = Set(Utc::now().into());
         let saved = active.update(db).await.map_err(db_err)?;
@@ -229,12 +214,14 @@ impl AiManagementService {
 
     pub async fn test_provider_profile(
         db: &DatabaseConnection,
+        secrets: &rustok_secrets::SecretResolverRegistry,
         tenant_id: Uuid,
         id: Uuid,
     ) -> AiResult<ProviderTestResult> {
         let profile = require_provider_profile(db, tenant_id, id).await?;
-        let provider = provider_for_kind(provider_kind_from_slug(&profile.provider_kind)?);
-        provider.test_connection(&provider_config(&profile)?).await
+        let config = provider_config(&profile)?;
+        let provider = inference_for_slug(&config.provider_slug, &config, secrets).await?;
+        provider.test_connection(&config).await
     }
 
     pub async fn list_task_profiles(
@@ -1153,7 +1140,7 @@ impl AiManagementService {
     ) -> AiResult<AiSendMessageResult> {
         let db = runtime.db();
         let run_started = std::time::Instant::now();
-        let provider_kind = provider_kind_from_slug(&provider_profile.provider_kind)?;
+        let provider_slug = provider_slug_from_str(&provider_profile.provider_slug)?;
         publish_ai_run_stream_event(
             session_id,
             run_id,
@@ -1213,7 +1200,11 @@ impl AiManagementService {
                             )
                         })?,
                 };
-                let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind));
+                let provider_config = provider_config(&provider_profile)?;
+                let provider = Arc::<dyn InferenceEngine>::from(
+                    inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry())
+                        .await?,
+                );
                 let direct_result = match handler
                     .execute(
                         runtime,
@@ -1224,7 +1215,7 @@ impl AiManagementService {
                             requested_locale: requested_locale.clone(),
                             resolved_locale: resolved_locale.clone(),
                             system_prompt: task_profile.system_prompt.clone(),
-                            provider_config: provider_config(&provider_profile)?,
+                            provider_config: provider_config.clone(),
                             provider,
                             stream_emitter: Some(stream_emitter),
                         },
@@ -1245,7 +1236,7 @@ impl AiManagementService {
                         ai_metrics::observe_run_outcome(
                             ExecutionMode::Direct,
                             Some("direct"),
-                            provider_kind,
+                            &provider_slug,
                             Some(task_profile.slug.as_str()),
                             Some(resolved_locale.as_str()),
                             "failed",
@@ -1292,7 +1283,7 @@ impl AiManagementService {
                 ai_metrics::observe_run_outcome(
                     ExecutionMode::Direct,
                     Some(execution_target.as_str()),
-                    provider_kind,
+                    &provider_slug,
                     Some(task_profile.slug.as_str()),
                     Some(resolved_locale.as_str()),
                     "completed",
@@ -1313,7 +1304,10 @@ impl AiManagementService {
             }
         }
 
-        let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind));
+        let provider_config = provider_config(&provider_profile)?;
+        let provider = Arc::<dyn InferenceEngine>::from(
+            inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry()).await?,
+        );
         let access_context = access_context_for_operator(operator);
         let adapter = Arc::new(InProcessMcpAdapter::new(runtime, access_context)?);
         let policy = policy_from_model(tool_profile.as_ref());
@@ -1339,7 +1333,7 @@ impl AiManagementService {
         });
         let outcome = match runtime
             .run(
-                &provider_config(&provider_profile)?,
+                &provider_config,
                 crate::model::RuntimeRequest {
                     model: provider_profile.model.clone(),
                     messages,
@@ -1370,7 +1364,7 @@ impl AiManagementService {
                 ai_metrics::observe_run_outcome(
                     execution_mode,
                     Some(runtime_execution_target(execution_mode)),
-                    provider_kind,
+                    &provider_slug,
                     task_profile.as_ref().map(|value| value.slug.as_str()),
                     Some(resolved_locale.as_str()),
                     "failed",
@@ -1404,7 +1398,7 @@ impl AiManagementService {
                 ai_metrics::observe_run_outcome(
                     execution_mode,
                     Some(runtime_execution_target(execution_mode)),
-                    provider_kind,
+                    &provider_slug,
                     task_profile.as_ref().map(|value| value.slug.as_str()),
                     Some(resolved_locale.as_str()),
                     "completed",
@@ -1442,7 +1436,7 @@ impl AiManagementService {
                 ai_metrics::observe_run_outcome(
                     execution_mode,
                     Some(runtime_execution_target(execution_mode)),
-                    provider_kind,
+                    &provider_slug,
                     task_profile.as_ref().map(|value| value.slug.as_str()),
                     Some(resolved_locale.as_str()),
                     "failed",
@@ -1482,7 +1476,7 @@ impl AiManagementService {
                 ai_metrics::observe_run_outcome(
                     execution_mode,
                     Some(runtime_execution_target(execution_mode)),
-                    provider_kind,
+                    &provider_slug,
                     task_profile.as_ref().map(|value| value.slug.as_str()),
                     Some(resolved_locale.as_str()),
                     "waiting_approval",

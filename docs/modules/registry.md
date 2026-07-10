@@ -416,6 +416,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 - `product`: `scripts/verify/verify-product-admin-boundary.mjs`; category-bound admin transport evidence.
 - `product`: `scripts/verify/verify-product-storefront-boundary.mjs`.
 - `cart`: `scripts/verify/verify-cart-storefront-boundary.mjs`.
+- `commerce`: `scripts/verify/verify-commerce-admin-boundary.mjs`; removed root GraphQL/state-machine aliases; `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`; `storefront/src/transport/native_server_adapter.rs`.
 - `blog`: `scripts/verify/verify-blog-admin-boundary.mjs`; `scripts/verify/verify-blog-storefront-boundary.mjs`.
 - `blog`: `crates/rustok-blog/contracts/blog-fba-registry.json`.
 - `blog`: `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`.

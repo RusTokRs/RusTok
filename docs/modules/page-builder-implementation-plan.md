@@ -12,7 +12,7 @@ status: active
 
 ## Next priorities
 
-1. Replace synthetic Page Builder Wave evidence with a real tenant control-plane dry run and correlation packet. Completion: the provider and `pages` consumer verifiers accept the packet without waiver.
+1. Replace synthetic Page Builder Wave evidence with a real tenant control-plane dry run and correlation packet. When Flutter joins a Wave 1 rollout, attach Flutter device/runtime evidence without duplicating provider FBA metadata. Completion: the provider and `pages` consumer verifiers accept the packet without waiver.
 2. Complete persistence and rendering adapters behind the existing capability contract, then expose owner-owned GraphQL and native server-function endpoints. Completion: tenant-scoped preview, save, publish, and fallback behavior have targeted runtime evidence.
 3. Start the `forum` consumer only after the `pages` reference integration has a verified fallback and rollout profile. Completion: forum widgets consume the public builder contract without importing provider internals.
 

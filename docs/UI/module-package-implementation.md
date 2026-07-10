@@ -300,7 +300,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | `leptos-table` | Table component with pagination | List/data table views |
 | `leptos-shadcn-pagination` | Pagination UI | List pagination |
 | `leptos-zod` | Schema validation (Zod-style) | Client-side schema validation |
-| `leptos-zustand` | Cross-component state (Zustand-style) | Shared state across subtrees |
+| `leptos-zustand` | Serializable `StoreSnapshot` / `StoreUpdate` DTOs; no runtime store yet | Only after an approved shared-state consumer defines the runtime contract |
 
 ### Platform crates
 

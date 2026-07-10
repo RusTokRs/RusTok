@@ -1,25 +1,11 @@
 use chrono::{DateTime, Utc};
+use rustok_secrets::SecretRef;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderKind {
-    OpenAiCompatible,
-    Anthropic,
-    Gemini,
-}
-
-impl ProviderKind {
-    pub const fn slug(self) -> &'static str {
-        match self {
-            Self::OpenAiCompatible => "openai_compatible",
-            Self::Anthropic => "anthropic",
-            Self::Gemini => "gemini",
-        }
-    }
-}
+use crate::engine::ProviderSlug;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -75,10 +61,12 @@ pub struct ProviderUsagePolicy {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderConfig {
-    pub provider_kind: ProviderKind,
-    pub base_url: String,
-    pub api_key: Option<String>,
+    pub provider_slug: ProviderSlug,
     pub model: String,
+    #[serde(default)]
+    pub settings: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub credential_refs: BTreeMap<String, SecretRef>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     #[serde(default)]
@@ -286,7 +274,6 @@ pub struct AiRunDecisionTrace {
     pub task_profile_slug: Option<String>,
     pub provider_profile_id: Option<Uuid>,
     pub provider_slug: Option<String>,
-    pub provider_kind: Option<ProviderKind>,
     pub selected_model: Option<String>,
     pub execution_mode: Option<ExecutionMode>,
     pub execution_target: Option<String>,

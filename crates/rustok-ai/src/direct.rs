@@ -27,13 +27,13 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::engine::InferenceEngine;
 use crate::model::{
     AiAlloyOperation, AiAlloyTaskInput, AiBlogDraftTaskInput, AiContentModerationTaskInput,
     AiImageAssetTaskInput, AiProductAttributesTaskInput, AiProductCopyTaskInput, AiProviderConfig,
     ChatMessage, ChatMessageRole, DirectExecutionTarget, ProviderChatRequest, ProviderImageRequest,
     ProviderStreamEmitter, ToolTrace,
 };
-use crate::provider::ModelProvider;
 use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
 use rustok_core::{SecurityContext, CONTENT_FORMAT_MARKDOWN};
@@ -69,7 +69,7 @@ pub struct DirectExecutionRequest {
     pub resolved_locale: String,
     pub system_prompt: Option<String>,
     pub provider_config: AiProviderConfig,
-    pub provider: Arc<dyn ModelProvider>,
+    pub provider: Arc<dyn InferenceEngine>,
     pub stream_emitter: Option<ProviderStreamEmitter>,
 }
 
@@ -449,7 +449,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
                 "caption": translation.caption,
             },
             "image_generation": {
-                "provider_kind": request.provider_config.provider_kind.slug(),
+                "provider_slug": request.provider_config.provider_slug.as_str(),
                 "model": request.provider_config.model,
                 "size": rustok_ai_media::normalize_image_size(input.size.clone()).map_err(AiError::Validation)?.unwrap_or_else(|| "1024x1024".to_string()),
                 "revised_prompt": provider_image.revised_prompt,
@@ -1017,7 +1017,7 @@ fn resolve_blog_source_content(
 }
 
 async fn generate_blog_draft(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
@@ -1098,7 +1098,7 @@ async fn generate_blog_draft(
 }
 
 pub(crate) async fn generate_content_moderation(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
@@ -1184,7 +1184,7 @@ pub(crate) async fn generate_content_moderation(
 }
 
 pub(crate) async fn generate_product_attributes(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
@@ -1259,7 +1259,7 @@ pub(crate) async fn generate_product_attributes(
 
 #[allow(clippy::too_many_arguments)]
 async fn generate_product_copy(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
@@ -1497,7 +1497,7 @@ fn parse_runtime_payload(payload: Option<String>) -> AiResult<serde_json::Map<St
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn explain_result(
-    provider: &Arc<dyn ModelProvider>,
+    provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     locale: &str,

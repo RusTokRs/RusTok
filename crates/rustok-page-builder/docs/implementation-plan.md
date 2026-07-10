@@ -1,68 +1,67 @@
-# Implementation plan for `rustok-page-builder` (FBA reference module)
-
-## Stages
-
-- [ ] Phase 3 — integration contract for `pages` as consumer.
-- [ ] Phase 4 — rollout controls (feature flags / tenant gates / pilot).
+# Implementation Plan for `rustok-page-builder`
 
 ## Current state
 
-The provider baseline, capability contract, permission map, fallback policy, adapter seams, and evidence contracts are documented in [the module documentation](./README.md). The remaining work is consumer integration and verified tenant rollout.
+`rustok-page-builder` owns the `grapesjs_v1` capability provider for preview,
+tree, properties, and publish. The provider has a versioned registry,
+permission map, typed error catalog, fallback profiles, control-plane evidence
+contracts, and framework-neutral endpoint adapter seam in `src/adapters.rs`.
+`handle_page_builder_graphql_endpoint` and
+`handle_page_builder_leptos_server_function_endpoint` delegate through the
+canonical request, authorization, policy, and error envelopes.
+The transport bridge is source-locked by
+`scripts/verify/verify-page-builder-transport-bridge.mjs`.
 
+The provider has adapter extension points and source-locked dry-run evidence,
+but no selected persistence/rendering adapter or observed tenant rollout. Pages
+is the reference consumer; consumer fallback and migration safety stay owned by
+the relevant consumer plan and contracts.
+Control-plane dry run evidence defines the required flags, snapshots, decisions,
+and waiver policy before a tenant can be promoted.
 
 ## FFA/FBA status
 
-- FFA status: `not_started` (the reference provider does not yet have a module-owned UI)
-- FBA status: `in_progress`
-- Structural shape: `no_ui_boundary`
-- Evidence:
-  - module exists as an independent reference provider for `preview/tree/properties/publish`;
-  - machine-readable registry locks provider/consumer versions, fallback profiles, health states, degradation reasons and SLO thresholds, and the contract-registry guardrail source-locks these values in `BuilderToggleProfile` / `fallback_matrix` and `ProviderHealthState` / `ProviderDegradationReason` / `ProviderSloThresholds::PILOT`;
-  - baseline verification gates cover provider/consumer anti-drift, Wave evidence template, synthetic Wave 0 packet, Wave 1 readiness draft and correlation evidence `builder write -> pages publish -> storefront read`;
-  - runtime health contract locks `ready/degraded/unavailable`, degradation reasons, pilot SLO thresholds and typed SLO evaluation evidence in code;
-  - migration slice moved `PageBuilderCapabilityService` to explicit `PortContext`, shared `PageBuilderCapabilityPortPolicies` / `PAGE_BUILDER_CAPABILITY_PORT_POLICIES`, `PortCallPolicy::read()` for `preview/tree/properties` and `PortCallPolicy::write()` for `publish` without changing DTO contract.
-  - server-side handler seam added permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` with `pages:manage` override, serializable `PAGE_BUILDER_CAPABILITY_PERMISSIONS` and registry/manifest anti-drift check.
-  - provider runtime now exposes typed error catalog `validation/sanitize/runtime/feature-disabled`, source-locked through `PageBuilderErrorKind` / `PAGE_BUILDER_ERROR_CATALOG`, and stable degraded-mode code `FEATURE_DISABLED` for transport adapters.
-  - transport bridge slice locks canonical dispatch helpers for GraphQL and Leptos server-function adapters; no-compile guardrail `verify-page-builder-transport-bridge.mjs` checks that adapters do not bypass `AuthorizedPageBuilderHandlers::handle` and typed error mapping.
-  - endpoint adapter seam locks framework-neutral GraphQL/Leptos endpoint payloads and `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`; no-compile guardrail `verify-page-builder-endpoint-adapters.mjs` keeps endpoint wrappers on canonical request/response envelopes.
-  - capability API baseline is closed with a reference provider without persistence side effects: `preview` renders a deterministic wrapper, `properties` returns canonical node properties, `publish` returns typed publish result after `grapesjs_v1` validation, and forbidden preview HTML is mapped to typed `sanitize` error.
-  - Control-plane dry run evidence contract and runtime `BuilderControlPlaneChangeSet::dry_run` lock atomic toggle change-set, mandatory profile snapshots, rollback decision marker and waiver policy; aggregate no-compile baseline includes `verify-page-builder-control-plane-dry-run.mjs`.
-  - adapter seam contract `contracts/page-builder-adapter-seams.json` and runtime traits `PageBuilderProjectStore` / `PageBuilderRenderingAdapter` lock extension-point for persistence/rendering without transport-local capability aliases, transport-local error kind aliases, pages-local visual builder ownership or vendor-specific required project payloads.
-  - adapter operation evidence (`PageBuilderAdapterCallEvidence` + `PageBuilderAdapterTelemetry`) locks `module_slug`, `grapesjs_v1` contract, operation, `started/succeeded/failed` status, tenant/page/revision ids, correlation id and typed failure markers around host persistence/rendering adapters, so the audit/observability layer remains on the owner-side FBA contract, not a transport-local convention.
-  - runtime-order smoke `contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json` and the common no-compile gate `scripts/verify/verify-orchestrator-fba-runtime-order.mjs` lock the order of capability flag -> `PortCallPolicy` -> owner service call, authorization -> service call, fallback profiles and GraphQL/Leptos endpoint dispatch seams without running Cargo.
-- Last verified at (UTC): 2026-06-30T00:00:00Z
-- Owner: `rustok-page-builder` module team
+- FFA status: `not_started` — this provider has no module-owned UI surface.
+- FBA status: `in_progress` — the provider contract, endpoint adapter seam,
+  and no-compile evidence are ready; runtime integration and live evidence are
+  still open.
+- Evidence: `contracts/page-builder-fba-registry.json`,
+  `contracts/page-builder-adapter-seams.json`,
+  `scripts/verify/verify-page-builder-endpoint-adapters.mjs`, and
+  `scripts/verify/verify-page-builder-transport-bridge.mjs`, and
+  `npm run verify:page-builder:fba:baseline`.
 
-## Immediate next steps
+## Open results
 
-1. Connect host GraphQL resolvers and Leptos `#[server]` wrappers to `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`, preserving `PageBuilderCapabilityRequest/Response`, `PageBuilderServiceError::kind()` and `stable_code()` as the canonical transport bridge without transport-local capability/error aliases.
-2. Replace draft dry-run snapshots with actual tenant evidence packet without waivers before Wave 1 promotion.
-3. Keep `verify-page-builder-transport-bridge.mjs`, `verify-page-builder-endpoint-adapters.mjs`, `verify-page-builder-control-plane-dry-run.mjs`, `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs`, `verify-page-builder-correlation-evidence.mjs`, `verify-page-builder-adapter-seams.mjs` and aggregate `verify-page-builder-fba-baseline.mjs` in the baseline gate for provider/consumer anti-drift, health/SLO/fallback source sync, permission-map/port-policy/error-catalog sync, Wave evidence form and correlation chain `builder write -> pages publish -> storefront read`.
-4. Connect specific host persistence/rendering adapter to `AdapterBackedPageBuilderService` in server/consumer wiring, preserving `CapabilityGuardedService` for rollout flags and `PortCallPolicy::write()` enforcement.
-5. Describe sunset path for legacy block-driven compatibility.
-
-## Scope of work
-
-- runtime capability contract (`preview/tree/properties/publish`);
-- permission/RBAC enforcement for builder lifecycle actions;
-- observability and health contracts for control-plane rollout;
-- consumer-integration protocol for `rustok-pages` and other modules.
+1. Bind a selected persistence and rendering adapter to the provider and wire
+   owner-owned GraphQL and Leptos server-function endpoints. Done when preview,
+   save, publish, and typed fallback behaviour execute against a tenant-scoped
+   adapter without transport-local capability or error aliases.
+   Dependency: the chosen persistence/rendering implementation and host
+   composition. Verification: `npm run verify:page-builder:fba:baseline` plus
+   targeted adapter runtime tests.
+2. Replace synthetic Wave evidence with observed tenant control-plane packets.
+   Done when Wave 0 and Wave 1 carry correlation from builder write through
+   Pages publish to storefront read across required profiles, owner approval,
+   and no waiver; Flutter Wave 1 participation also supplies device/runtime
+   evidence.
+   Dependency: priority 1 and Pages reference-consumer readiness. Verification:
+   `npm run verify:page-builder:fba:baseline`.
+3. Agree the legacy-block bridge exit with the Pages owner. Done when supported
+   migration, removal preconditions, and an owner outcome are recorded without
+   deleting existing blocks through builder body writes.
+   Dependency: legacy content inventory and Pages migration approval.
+   Verification: `npm run verify:page-builder:pages:legacy-bridge`.
 
 ## Verification
 
-- `cargo xtask module validate page_builder`
-- `cargo test -p rustok-page-builder --lib`
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs pages` (no-compile baseline gate for contract/evidence/fallback source markers; does not replace Cargo checks when compilations are allowed)
+- `npm run verify:page-builder:fba:baseline`
+- Targeted adapter runtime tests after a persistence/rendering adapter is chosen.
 
-## Update rules
+## Boundaries
 
-- when changing capability contracts, update `docs/README.md` and this plan simultaneously;
-- when changing rollout/ownership, synchronize `docs/modules/page-builder-implementation-plan.md`;
-- do not keep historical changelog: maintain only the current state of stages and upcoming work.
-
-## Related documents
-
-- `docs/modules/page-builder-implementation-plan.md`
-- `docs/modules/manifest.md`
-- `crates/rustok-page-builder/docs/README.md`
-- `crates/rustok-pages/docs/implementation-plan.md`
+- Page Builder owns capability delivery, provider contracts, endpoint envelopes,
+  feature profiles, and rollout mechanics.
+- Pages owns page lifecycle and legacy block migration safety; forum remains a
+  later consumer of the public capability contract.
+- Hosts compose provider endpoints and do not define provider-local contracts.

@@ -24,7 +24,7 @@ Before writing reusable code, check whether it already exists in shared librarie
 - `leptos-forms` - form state management
 - `leptos-table` - table with pagination
 - `leptos-zod` - schema validation
-- `leptos-zustand` - cross-component state
+- `leptos-zustand` - serializable state DTOs only; do not treat it as a runtime store before owner approval
 
 ### 2. Do Not Invent Custom i18n
 

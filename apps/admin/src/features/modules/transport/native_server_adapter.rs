@@ -168,9 +168,15 @@ pub fn default_module_trust_level() -> String {
 }
 
 #[cfg(feature = "ssr")]
-pub async fn modules_server_context() -> Result<
+#[derive(Clone)]
+struct ModulesServerRuntime {
+    db: sea_orm::DatabaseConnection,
+}
+
+#[cfg(feature = "ssr")]
+async fn modules_server_context() -> Result<
     (
-        loco_rs::app::AppContext,
+        ModulesServerRuntime,
         rustok_api::AuthContext,
         rustok_api::TenantContext,
     ),
@@ -178,11 +184,12 @@ pub async fn modules_server_context() -> Result<
 > {
     use leptos::prelude::expect_context;
     use leptos_axum::extract;
-    use loco_rs::app::AppContext;
     use rustok_api::Permission;
-    use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+    use rustok_api::{
+        has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+    };
 
-    let app_ctx = expect_context::<AppContext>();
+    let runtime_ctx = expect_context::<HostRuntimeContext>();
     let auth = extract::<AuthContext>()
         .await
         .map_err(|err| server_error(err.to_string()))?;
@@ -203,7 +210,13 @@ pub async fn modules_server_context() -> Result<
         ));
     }
 
-    Ok((app_ctx, auth, tenant))
+    Ok((
+        ModulesServerRuntime {
+            db: runtime_ctx.db_clone(),
+        },
+        auth,
+        tenant,
+    ))
 }
 
 #[cfg(feature = "ssr")]
@@ -1315,7 +1328,7 @@ pub fn derive_registry_follow_up_gates(
 
 #[cfg(feature = "ssr")]
 pub async fn load_registry_module_lifecycle(
-    app_ctx: &loco_rs::app::AppContext,
+    app_ctx: &ModulesServerRuntime,
     slug: &str,
 ) -> Result<Option<RegistryModuleLifecycle>, ServerFnError> {
     use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -1622,12 +1635,15 @@ pub async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError>
     {
         use leptos::prelude::expect_context;
         use leptos_axum::extract;
-        use loco_rs::app::AppContext;
         use rustok_api::Permission;
-        use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{
+            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        };
         use rustok_core::ModuleRegistry;
 
-        let app_ctx = expect_context::<AppContext>();
+        let app_ctx = ModulesServerRuntime {
+            db: expect_context::<HostRuntimeContext>().db_clone(),
+        };
         let auth = extract::<AuthContext>().await.map_err(ServerFnError::new)?;
         let tenant = extract::<TenantContext>()
             .await

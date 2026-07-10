@@ -1,7 +1,7 @@
 # Deployment Profiles and UI Stack Selection
 
 - Date: 2026-03-07
-- Status: Partially superseded by `2026-03-29-leptos-server-functions-as-internal-data-layer.md`
+- Status: Partially superseded by [Leptos server functions as the internal data layer](./2026-03-29-leptos-server-functions-as-internal-data-layer.md)
   (composable deployment profiles remain in effect; transport between Leptos UI and server is revised)
 
 > Clarification after `#[server]` implementation: for Leptos UI, native server functions and GraphQL live in parallel. `#[server]` became the preferred internal path, but `/api/graphql` is not removed.
