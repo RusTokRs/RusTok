@@ -3,7 +3,6 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::locale_tags_match;
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
@@ -12,6 +11,7 @@ use rustok_product::{
     CatalogService,
 };
 use rustok_telemetry::metrics;
+use rustok_web::{HttpError, HttpResult};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
@@ -33,7 +33,7 @@ pub async fn list_products(
     auth: AuthContext,
     request_context: RequestContext,
     Query(params): Query<ListProductsParams>,
-) -> Result<Json<PaginatedResponse<ProductListItem>>> {
+) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
     ensure_permissions(
         &auth,
         &[Permission::PRODUCTS_LIST],
@@ -74,7 +74,7 @@ pub async fn list_products(
         .clone()
         .count(runtime.db())
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     metrics::record_read_path_query(
         "http",
         "commerce.list_products",
@@ -90,7 +90,7 @@ pub async fn list_products(
         .limit(pagination.limit())
         .all(runtime.db())
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     metrics::record_read_path_query(
         "http",
         "commerce.list_products",
@@ -111,7 +111,7 @@ pub async fn list_products(
             .filter(product_translation::Column::ProductId.is_in(product_ids))
             .all(runtime.db())
             .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?;
+            .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
         metrics::record_read_path_query(
             "http",
             "commerce.list_products",
@@ -138,7 +138,7 @@ pub async fn list_products(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     let items = products
         .into_iter()
@@ -208,7 +208,7 @@ pub async fn show_product(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PRODUCTS_READ],
@@ -224,7 +224,7 @@ pub async fn show_product(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(product))
 }
@@ -235,7 +235,7 @@ pub async fn delete_product(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     ensure_permissions(
         &auth,
         &[Permission::PRODUCTS_DELETE],
@@ -246,7 +246,7 @@ pub async fn delete_product(
     service
         .delete_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -257,7 +257,7 @@ pub async fn publish_product(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PRODUCTS_UPDATE],
@@ -268,7 +268,7 @@ pub async fn publish_product(
     let product = service
         .publish_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(product))
 }
@@ -279,7 +279,7 @@ pub async fn unpublish_product(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PRODUCTS_UPDATE],
@@ -290,7 +290,7 @@ pub async fn unpublish_product(
     let product = service
         .unpublish_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(product))
 }

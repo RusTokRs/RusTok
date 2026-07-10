@@ -86,7 +86,7 @@ assertNotContains(transport, "crate::api", `${files.transport}: transport facade
 assertNotContains(transport, "#[server", `${files.transport}: transport facade must not own server functions`);
 assertContains(nativeServerAdapter, "pub enum ApiError", `${files.nativeServerAdapter}: adapter must own shared ApiError envelope`);
 assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: native server adapter must keep server functions`);
-assertContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAdapter}: moved adapter must keep GraphQL fallback request contract until split further`);
+assertNotContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAdapter}: native adapter must not execute the parallel GraphQL contract`);
 
 assertContains(implementationPlan, "verify-pricing-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention pricing admin guardrail`);
 assertContains(registry, "verify-pricing-admin-boundary.mjs", `${files.registry}: central readiness board must mention pricing admin guardrail`);

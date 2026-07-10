@@ -39,7 +39,7 @@ for (const marker of ['trait IndexReadModelPort', 'trait IndexRebuildPort', 'Por
 if (!ports.includes('Serialize, Deserialize')) fail('index FBA DTOs must be serializable');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('IndexReadModelPort') || !plan.includes('index-contract-test-static-matrix.json') || !plan.includes('index-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
 if (!central.includes('| `index` | admin | `in_progress` | `boundary_ready`') || !central.includes(registryPath) || !central.includes('index-runtime-fallback-smoke.json')) fail('central readiness board drift');
-if (!unified.includes('`index` добавлен как provider track') || !unified.includes(registryPath)) fail('unified FBA plan drift');
+if (!unified.includes('`index` added as a provider track') || !unified.includes(registryPath)) fail('unified FBA plan drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'index' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-index-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

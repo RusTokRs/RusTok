@@ -11,7 +11,6 @@ pub use products::*;
 #[cfg(test)]
 mod tests;
 
-use loco_rs::{controller::Routes, Error, Result};
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::RequestContext;
@@ -25,6 +24,7 @@ use rustok_pricing::{PriceResolutionContext, PricingService};
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
 };
+use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
@@ -52,50 +52,50 @@ use crate::{
 
 pub const MODULE_SLUG: &str = "commerce";
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .add("/products", axum::routing::get(products::list_products))
-        .add("/products/{id}", axum::routing::get(products::show_product))
-        .add("/regions", axum::routing::get(products::list_regions))
-        .add(
+pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
+    axum::Router::new()
+        .route("/products", axum::routing::get(products::list_products))
+        .route("/products/{id}", axum::routing::get(products::show_product))
+        .route("/regions", axum::routing::get(products::list_regions))
+        .route(
             "/shipping-options",
             axum::routing::get(products::list_shipping_options),
         )
-        .add("/carts", axum::routing::post(carts::create_cart))
-        .add(
+        .route("/carts", axum::routing::post(carts::create_cart))
+        .route(
             "/carts/{id}",
             axum::routing::get(carts::get_cart).post(carts::update_cart_context),
         )
-        .add(
+        .route(
             "/carts/{id}/line-items",
             axum::routing::post(carts::add_cart_line_item),
         )
-        .add(
+        .route(
             "/carts/{id}/line-items/{line_id}",
             axum::routing::post(carts::update_cart_line_item).delete(carts::remove_cart_line_item),
         )
-        .add(
+        .route(
             "/carts/{id}/complete",
             axum::routing::post(checkout::complete_cart_checkout),
         )
-        .add(
+        .route(
             "/payment-collections",
             axum::routing::post(checkout::create_payment_collection),
         )
-        .add("/orders/{id}", axum::routing::get(orders::get_order))
-        .add(
+        .route("/orders/{id}", axum::routing::get(orders::get_order))
+        .route(
             "/orders/{id}/returns",
             axum::routing::get(orders::list_order_returns).post(orders::create_order_return),
         )
-        .add(
+        .route(
             "/orders/{id}/refunds",
             axum::routing::get(orders::list_order_refunds),
         )
-        .add(
+        .route(
             "/orders/{id}/changes",
             axum::routing::get(orders::list_order_changes),
         )
-        .add("/customers/me", axum::routing::get(orders::get_me))
+        .route("/customers/me", axum::routing::get(orders::get_me))
 }
 
 pub(crate) async fn resolve_context_for_db(
@@ -106,7 +106,7 @@ pub(crate) async fn resolve_context_for_db(
     country_code: Option<String>,
     locale: Option<String>,
     currency_code: Option<String>,
-) -> Result<StoreContextResponse> {
+) -> HttpResult<StoreContextResponse> {
     let service = StoreContextService::new(
         db.clone(),
         std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
@@ -122,7 +122,7 @@ pub(crate) async fn resolve_context_for_db(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))
 }
 
 pub(crate) async fn resolve_context_from_cart_for_db(
@@ -130,7 +130,7 @@ pub(crate) async fn resolve_context_from_cart_for_db(
     tenant_id: Uuid,
     request_context: &RequestContext,
     cart: &CartResponse,
-) -> Result<StoreContextResponse> {
+) -> HttpResult<StoreContextResponse> {
     resolve_context_for_db(
         db,
         tenant_id,
@@ -149,17 +149,23 @@ pub(crate) async fn ensure_customer_owns_order_for_db(
     tenant_id: Uuid,
     auth: Option<&rustok_api::AuthContext>,
     order_id: Uuid,
-) -> Result<()> {
+) -> HttpResult<()> {
     let customer_id = current_customer_id_for_db(db, tenant_id, auth)
         .await?
-        .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
+        .ok_or_else(|| {
+            HttpError::unauthorized(
+                "commerce_store_denied",
+                "Customer account required".to_string(),
+            )
+        })?;
     let order = OrderService::new(db.clone(), event_bus)
         .get_order(tenant_id, order_id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
 
     if order.customer_id != Some(customer_id) {
-        return Err(Error::Unauthorized(
+        return Err(HttpError::unauthorized(
+            "commerce_store_denied",
             "Order does not belong to the current customer".to_string(),
         ));
     }
@@ -171,7 +177,7 @@ pub(crate) async fn current_customer_id_for_db(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     auth: Option<&rustok_api::AuthContext>,
-) -> Result<Option<Uuid>> {
+) -> HttpResult<Option<Uuid>> {
     let Some(auth) = auth else {
         return Ok(None);
     };
@@ -180,23 +186,29 @@ pub(crate) async fn current_customer_id_for_db(
     match service.get_customer_by_user(tenant_id, auth.user_id).await {
         Ok(customer) => Ok(Some(customer.id)),
         Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
-        Err(err) => Err(Error::BadRequest(err.to_string())),
+        Err(err) => Err(HttpError::bad_request(
+            "commerce_store_invalid",
+            err.to_string(),
+        )),
     }
 }
 
 pub(crate) async fn ensure_storefront_channel_enabled_for_db(
     db: &DatabaseConnection,
     request_context: &RequestContext,
-) -> Result<()> {
+) -> HttpResult<()> {
     let enabled = is_module_enabled_for_request_channel(db, request_context, MODULE_SLUG)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
 
     if !enabled {
-        return Err(Error::Unauthorized(format!(
-            "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
-            request_context.channel_slug.as_deref().unwrap_or("current"),
-        )));
+        return Err(HttpError::unauthorized(
+            "commerce_store_denied",
+            format!(
+                "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
+                request_context.channel_slug.as_deref().unwrap_or("current"),
+            ),
+        ));
     }
 
     Ok(())
@@ -213,10 +225,11 @@ pub(crate) fn storefront_public_channel_slug_for_cart(
 pub(crate) fn ensure_store_cart_access(
     cart: &CartResponse,
     customer_id: Option<Uuid>,
-) -> Result<()> {
+) -> HttpResult<()> {
     if let Some(expected_customer_id) = cart.customer_id {
         if customer_id != Some(expected_customer_id) {
-            return Err(Error::Unauthorized(
+            return Err(HttpError::unauthorized(
+                "commerce_store_denied",
                 "Cart belongs to another customer".to_string(),
             ));
         }
@@ -225,9 +238,10 @@ pub(crate) fn ensure_store_cart_access(
     Ok(())
 }
 
-pub(crate) fn ensure_cart_allows_payment_collection(cart: &CartResponse) -> Result<()> {
+pub(crate) fn ensure_cart_allows_payment_collection(cart: &CartResponse) -> HttpResult<()> {
     if cart.status == "completed" {
-        return Err(Error::BadRequest(
+        return Err(HttpError::bad_request(
+            "commerce_store_invalid",
             "Cannot create payment collection for completed cart".to_string(),
         ));
     }
@@ -247,7 +261,7 @@ pub(crate) async fn apply_cart_context_patch_for_db(
     tenant_default_locale: &str,
     cart: &CartResponse,
     patch: StoreCartContextPatch,
-) -> Result<StoreCartResponse> {
+) -> HttpResult<StoreCartResponse> {
     let requested = requested_cart_context(cart, request_context, patch);
 
     let context = resolve_context_for_db(
@@ -324,7 +338,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
     request_context: &RequestContext,
     cart_service: &CartService,
     cart: CartResponse,
-) -> Result<CartResponse> {
+) -> HttpResult<CartResponse> {
     if cart.line_items.is_empty() {
         return Ok(cart);
     }
@@ -340,12 +354,15 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
         let resolved_price = pricing_service
             .resolve_variant_price(tenant_id, variant_id, pricing_context)
             .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?
+            .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
             .ok_or_else(|| {
-                Error::BadRequest(format!(
-                    "No storefront price for variant {} in currency {}",
-                    variant_id, cart.currency_code
-                ))
+                HttpError::bad_request(
+                    "commerce_store_invalid",
+                    format!(
+                        "No storefront price for variant {} in currency {}",
+                        variant_id, cart.currency_code
+                    ),
+                )
             })?;
         updates.push(storefront_cart_pricing_update(
             line_item.id,
@@ -460,7 +477,7 @@ pub(crate) async fn enrich_storefront_cart_for_db(
     request_context: &RequestContext,
     tenant_default_locale: &str,
     cart: CartResponse,
-) -> Result<CartResponse> {
+) -> HttpResult<CartResponse> {
     let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, request_context);
     enrich_cart_delivery_groups(
         db,
@@ -471,7 +488,7 @@ pub(crate) async fn enrich_storefront_cart_for_db(
         Some(tenant_default_locale),
     )
     .await
-    .map_err(|err| Error::BadRequest(err.to_string()))
+    .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))
 }
 
 pub(crate) fn requested_cart_context(
@@ -516,13 +533,13 @@ pub(crate) async fn validate_selected_shipping_option_for_db(
     tenant_id: Uuid,
     cart: &CartResponse,
     validation: SelectedShippingOptionValidation<'_>,
-) -> Result<()> {
+) -> HttpResult<()> {
     let service = FulfillmentService::new(db.clone());
     let selections = if let Some(shipping_selections) = validation.shipping_selections {
         shipping_selections.to_vec()
     } else if let Some(selected_shipping_option_id) = validation.selected_shipping_option_id {
         if cart.delivery_groups.len() > 1 {
-            return Err(Error::BadRequest(
+            return Err(HttpError::bad_request("commerce_store_invalid",
                 "selected_shipping_option_id can only be used for carts with a single delivery group"
                     .to_string(),
             ));
@@ -558,28 +575,37 @@ pub(crate) async fn validate_selected_shipping_option_for_db(
                 validation.tenant_default_locale,
             )
             .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?;
+            .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
         if !option
             .currency_code
             .eq_ignore_ascii_case(validation.currency_code)
         {
-            return Err(Error::BadRequest(format!(
-                "Shipping option {} uses currency {}, expected {}",
-                option.id, option.currency_code, validation.currency_code
-            )));
+            return Err(HttpError::bad_request(
+                "commerce_store_invalid",
+                format!(
+                    "Shipping option {} uses currency {}, expected {}",
+                    option.id, option.currency_code, validation.currency_code
+                ),
+            ));
         }
         if !is_metadata_visible_for_public_channel(&option.metadata, validation.public_channel_slug)
         {
-            return Err(Error::BadRequest(format!(
-                "Shipping option {} is not available for the current channel",
-                option.id
-            )));
+            return Err(HttpError::bad_request(
+                "commerce_store_invalid",
+                format!(
+                    "Shipping option {} is not available for the current channel",
+                    option.id
+                ),
+            ));
         }
         if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
-            return Err(Error::BadRequest(format!(
-                "Shipping option {} is not compatible with shipping profile {}",
-                option.id, selection.shipping_profile_slug
-            )));
+            return Err(HttpError::bad_request(
+                "commerce_store_invalid",
+                format!(
+                    "Shipping option {} is not compatible with shipping profile {}",
+                    option.id, selection.shipping_profile_slug
+                ),
+            ));
         }
     }
 
@@ -628,7 +654,7 @@ pub(crate) async fn resolve_store_line_item_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     resolution: StoreLineItemResolution<'_>,
-) -> Result<ResolvedStoreLineItemInput> {
+) -> HttpResult<ResolvedStoreLineItemInput> {
     let StoreLineItemResolution {
         pricing_service,
         pricing_context,
@@ -642,42 +668,54 @@ pub(crate) async fn resolve_store_line_item_input(
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .one(db)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?
-        .ok_or(Error::NotFound)?;
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
+        .ok_or(HttpError::not_found(
+            "commerce_store_not_found",
+            "Commerce resource not found",
+        ))?;
 
     let product_model = product::Entity::find_by_id(variant.product_id)
         .filter(product::Column::TenantId.eq(tenant_id))
         .one(db)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?
-        .ok_or(Error::NotFound)?;
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
+        .ok_or(HttpError::not_found(
+            "commerce_store_not_found",
+            "Commerce resource not found",
+        ))?;
     if product_model.status != product::ProductStatus::Active
         || product_model.published_at.is_none()
         || !is_metadata_visible_for_public_channel(&product_model.metadata, public_channel_slug)
     {
-        return Err(Error::NotFound);
+        return Err(HttpError::not_found(
+            "commerce_store_not_found",
+            "Commerce resource not found",
+        ));
     }
 
     let product_translation_models = product_translation::Entity::find()
         .filter(product_translation::Column::ProductId.eq(product_model.id))
         .all(db)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
     let variant_translation_models = variant_translation::Entity::find()
         .filter(variant_translation::Column::VariantId.eq(variant.id))
         .all(db)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?;
 
     let resolved_price = pricing_service
         .resolve_variant_price(tenant_id, variant.id, pricing_context.clone())
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
         .ok_or_else(|| {
-            Error::BadRequest(format!(
-                "No storefront price for variant {} in currency {}",
-                variant.id, pricing_context.currency_code
-            ))
+            HttpError::bad_request(
+                "commerce_store_invalid",
+                format!(
+                    "No storefront price for variant {} in currency {}",
+                    variant.id, pricing_context.currency_code
+                ),
+            )
         })?;
     let (base_unit_price, pricing_adjustment) =
         storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
@@ -765,7 +803,7 @@ pub(crate) async fn validate_store_line_item_quantity(
     variant_id: Uuid,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
-) -> Result<()> {
+) -> HttpResult<()> {
     validate_store_variant_inventory(
         db,
         tenant_id,
@@ -773,8 +811,11 @@ pub(crate) async fn validate_store_line_item_quantity(
             .filter(product_variant::Column::TenantId.eq(tenant_id))
             .one(db)
             .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?
-            .ok_or(Error::NotFound)?,
+            .map_err(|err| HttpError::bad_request("commerce_store_invalid", err.to_string()))?
+            .ok_or(HttpError::not_found(
+                "commerce_store_not_found",
+                "Commerce resource not found",
+            ))?,
         requested_quantity,
         public_channel_slug,
     )
@@ -787,7 +828,7 @@ pub(crate) async fn validate_store_variant_inventory(
     variant: &product_variant::Model,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
-) -> Result<()> {
+) -> HttpResult<()> {
     let available = check_variant_availability_for_public_channel(
         db,
         tenant_id,
@@ -796,12 +837,15 @@ pub(crate) async fn validate_store_variant_inventory(
         public_channel_slug,
     )
     .await
-    .map_err(|error| Error::BadRequest(error.to_string()))?;
+    .map_err(|error| HttpError::bad_request("commerce_store_invalid", error.to_string()))?;
     if !available {
-        return Err(Error::BadRequest(format!(
-            "Variant {} does not have enough available inventory for the current channel",
-            variant.id
-        )));
+        return Err(HttpError::bad_request(
+            "commerce_store_invalid",
+            format!(
+                "Variant {} does not have enough available inventory for the current channel",
+                variant.id
+            ),
+        ));
     }
 
     Ok(())
@@ -809,8 +853,10 @@ pub(crate) async fn validate_store_variant_inventory(
 
 pub(crate) fn map_cart_error(error: CartError) -> Error {
     match error {
-        CartError::CartNotFound(_) | CartError::CartLineItemNotFound(_) => Error::NotFound,
-        other => Error::BadRequest(other.to_string()),
+        CartError::CartNotFound(_) | CartError::CartLineItemNotFound(_) => {
+            HttpError::not_found("commerce_store_not_found", "Commerce resource not found")
+        }
+        other => HttpError::bad_request("commerce_store_invalid", other.to_string()),
     }
 }
 
@@ -820,7 +866,7 @@ pub(crate) fn default_metadata() -> Value {
 
 pub(crate) fn deserialize_patch_field<'de, D, T>(
     deserializer: D,
-) -> Result<Option<Option<T>>, D::Error>
+) -> HttpResult<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

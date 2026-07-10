@@ -50,7 +50,7 @@ pub(crate) fn validate_module_event_listener_contract(
 }
 
 pub(crate) fn validate_module_event_ingress_contract(
-    manifest_path: &Path,
+    _manifest_path: &Path,
     slug: &str,
     module_root: &Path,
 ) -> Result<()> {
@@ -68,15 +68,15 @@ pub(crate) fn validate_module_event_ingress_contract(
     let trigger_handler = fs::read_to_string(&trigger_handler_path)
         .with_context(|| format!("Failed to read {}", trigger_handler_path.display()))?;
 
-    if !controllers_mod.contains("pub fn webhook_routes()") {
+    if !controllers_mod.contains("pub fn axum_webhook_router(") {
         anyhow::bail!(
-            "Module '{slug}' event ingress contract drift: {} must export webhook_routes()",
+            "Module '{slug}' event ingress contract drift: {} must export axum_webhook_router()",
             controllers_mod_path.display()
         );
     }
-    if !controllers_mod.contains(".prefix(\"webhooks\")") {
+    if !controllers_mod.contains("/webhooks/{tenant_slug}/{webhook_slug}") {
         anyhow::bail!(
-            "Module '{slug}' event ingress contract drift: {} must keep webhook ingress under the 'webhooks' prefix",
+            "Module '{slug}' event ingress contract drift: {} must keep webhook ingress under the '/webhooks' path",
             controllers_mod_path.display()
         );
     }
@@ -84,28 +84,6 @@ pub(crate) fn validate_module_event_ingress_contract(
         anyhow::bail!(
             "Module '{slug}' event ingress contract drift: {} must implement EventHandler for WorkflowTriggerHandler",
             trigger_handler_path.display()
-        );
-    }
-
-    let workspace_root = manifest_path.parent().with_context(|| {
-        format!(
-            "Failed to resolve workspace root from modules manifest {}",
-            manifest_path.display()
-        )
-    })?;
-    let server_shim_path = workspace_root
-        .join("apps")
-        .join("server")
-        .join("src")
-        .join("controllers")
-        .join("workflow")
-        .join("mod.rs");
-    let server_shim = fs::read_to_string(&server_shim_path)
-        .with_context(|| format!("Failed to read {}", server_shim_path.display()))?;
-    if !server_shim.contains("rustok_workflow::controllers::webhook_routes()") {
-        anyhow::bail!(
-            "Module '{slug}' event ingress contract drift: {} must re-export rustok_workflow::controllers::webhook_routes()",
-            server_shim_path.display()
         );
     }
 

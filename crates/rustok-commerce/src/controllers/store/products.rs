@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::CartService;
 use rustok_fulfillment::FulfillmentService;
@@ -11,6 +10,7 @@ use rustok_product::{
     CatalogService,
 };
 use rustok_region::{RegionListRequest, RegionReadPort};
+use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
@@ -47,7 +47,7 @@ pub async fn list_products(
     tenant: TenantContext,
     request_context: RequestContext,
     Query(params): Query<StoreListProductsParams>,
-) -> Result<Json<PaginatedResponse<ProductListItem>>> {
+) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let _requested_limit = params
@@ -85,7 +85,7 @@ pub async fn list_products(
         .order_by_desc(product::Column::CreatedAt)
         .all(runtime.db())
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
         .into_iter()
         .filter(|product| {
             is_metadata_visible_for_public_channel(
@@ -112,7 +112,7 @@ pub async fn list_products(
             .filter(product_translation::Column::ProductId.is_in(product_ids))
             .all(runtime.db())
             .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?
+            .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
     };
 
     let mut translation_map =
@@ -132,7 +132,7 @@ pub async fn list_products(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     let items = products
         .into_iter()
@@ -184,7 +184,7 @@ pub async fn show_product(
     tenant: TenantContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
@@ -197,7 +197,7 @@ pub async fn show_product(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     if product.status != product::ProductStatus::Active
         || product.published_at.is_none()
@@ -206,7 +206,10 @@ pub async fn show_product(
             public_channel_slug.as_deref(),
         )
     {
-        return Err(Error::NotFound);
+        return Err(HttpError::not_found(
+            "commerce_store_not_found",
+            "Commerce resource not found",
+        ));
     }
 
     apply_public_channel_inventory_to_product(
@@ -216,7 +219,7 @@ pub async fn show_product(
         public_channel_slug.as_deref(),
     )
     .await
-    .map_err(|err| Error::BadRequest(err.to_string()))?;
+    .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(product))
 }
@@ -234,7 +237,7 @@ pub async fn list_regions(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
-) -> Result<Json<Vec<RegionResponse>>> {
+) -> HttpResult<Json<Vec<RegionResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let service = rustok_region::RegionService::new(runtime.db_clone());
@@ -253,7 +256,12 @@ pub async fn list_regions(
             },
         )
         .await
-        .map_err(|error| Error::BadRequest(format!("{}: {}", error.code, error.message)))?;
+        .map_err(|error| {
+            HttpError::bad_request(
+                "commerce_operation_failed",
+                format!("{}: {}", error.code, error.message),
+            )
+        })?;
     Ok(Json(
         regions
             .into_iter()
@@ -278,7 +286,7 @@ pub async fn list_shipping_options(
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Query(query): Query<StoreContextQuery>,
-) -> Result<Json<Vec<ShippingOptionResponse>>> {
+) -> HttpResult<Json<Vec<ShippingOptionResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -294,7 +302,9 @@ pub async fn list_shipping_options(
             let required_shipping_profiles =
                 load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
                     .await
-                    .map_err(|err| Error::BadRequest(err.to_string()))?;
+                    .map_err(|err| {
+                        HttpError::bad_request("commerce_operation_failed", err.to_string())
+                    })?;
             (
                 super::resolve_context_from_cart_for_db(
                     runtime.db(),
@@ -331,7 +341,7 @@ pub async fn list_shipping_options(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     if let Some(currency_code) = context.currency_code.as_deref() {
         options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));

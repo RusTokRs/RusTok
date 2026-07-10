@@ -4,11 +4,6 @@ use axum::http::{Request, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::Response;
 use axum::Router;
-use loco_rs::app::{AppContext, SharedStore};
-use loco_rs::cache;
-use loco_rs::environment::Environment;
-use loco_rs::storage::{self, Storage};
-use loco_rs::tests_cfg::config::test_config;
 use rust_decimal::Decimal;
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
@@ -39,20 +34,12 @@ mod support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
 }
 
-pub(crate) fn test_app_context(db: sea_orm::DatabaseConnection) -> AppContext {
-    let shared_store = Arc::new(SharedStore::default());
-    let event_transport: Arc<dyn EventTransport> = Arc::new(MockEventTransport::new());
-    shared_store.insert(event_transport);
-
-    AppContext {
-        environment: Environment::Test,
+pub(crate) fn test_app_context(
+    db: sea_orm::DatabaseConnection,
+) -> crate::controllers::CommerceHttpRuntime {
+    crate::controllers::CommerceHttpRuntime {
         db,
-        queue_provider: None,
-        config: test_config(),
-        mailer: None,
-        storage: Storage::single(storage::drivers::mem::new()).into(),
-        cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
-        shared_store,
+        event_bus: mock_transactional_event_bus(),
     }
 }
 
@@ -109,15 +96,11 @@ pub(crate) async fn inject_transport_context(
 }
 
 pub(crate) fn admin_transport_router(
-    ctx: AppContext,
+    ctx: crate::controllers::CommerceHttpRuntime,
     tenant: TenantContext,
     auth: AuthContext,
 ) -> Router {
-    let routes = crate::controllers::routes();
-    let mut router = Router::new();
-    for handler in routes.handlers {
-        router = router.route(&handler.uri, handler.method.with_state(ctx.clone()));
-    }
+    let router = crate::controllers::admin::axum_router().with_state(ctx);
 
     router.layer(from_fn_with_state(
         TransportRequestContext { tenant, auth },

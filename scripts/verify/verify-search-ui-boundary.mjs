@@ -98,7 +98,7 @@ function assertSearchAdminBoundary() {
   assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 
   assertContains(native, "#[server", `${nativePath}: admin raw adapter must keep native server-function endpoints`);
-  assertContains(native, "rustok_graphql", `${nativePath}: admin raw adapter must keep GraphQL fallback implementation`);
+  assertNotContains(native, "rustok_graphql", `${nativePath}: admin native adapter must not execute the parallel GraphQL contract`);
   assertContains(native, "HostRuntimeContext", `${nativePath}: native adapter must use the neutral host runtime context`);
   assertContains(native, "shared_get::<rustok_outbox::TransactionalEventBus>()", `${nativePath}: event-publishing flows must use the typed host event-bus handle`);
   assertNotContains(native, "loco_rs", `${nativePath}: native adapter must not import Loco`);
@@ -450,7 +450,7 @@ function assertSearchUiCatalogTransportContract() {
   assertNotContains(storefrontUi, "rustok_product", `${storefrontUiPath}: search storefront UI must consume host-provided catalog metadata, not product internals`);
 
   for (const marker of [
-    "value label count",
+    "facets { name buckets { value label count } }",
     "channel_id: filters.channel_id",
     "category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids)",
     "attribute_filters: (!filters.attribute_filters.is_empty())",
@@ -462,7 +462,8 @@ function assertSearchUiCatalogTransportContract() {
   }
 
   for (const marker of [
-    "value label count",
+    "label: bucket.label",
+    "count: bucket.count",
     "channel_id: filters.channel_id",
     "parse_optional_uuid(input.channel_id.as_deref())",
     "normalize_uuid_values(\"category_ids\", input.category_ids)",
@@ -574,7 +575,8 @@ function assertSearchUiCatalogTransportContract() {
   for (const marker of [
     "getStorefrontTenantSlug",
     "fetchEnabledModules(tenantSlug)",
-    "module.render({ locale, enabledModules, tenantSlug })",
+    "module.render({",
+    "tenantId: getStorefrontTenantId()",
   ]) {
     assertContains(nextStorefrontHome, marker, `${nextStorefrontHomePath}: Next storefront home render context marker missing ${marker}`);
   }
@@ -660,9 +662,9 @@ function assertSearchUiCatalogTransportContract() {
 
   for (const marker of [
     "pub async fn fetch_catalog_search_options",
-    "native_server_adapter::fetch_catalog_search_options(locale.clone())",
+    "native_server_adapter::fetch_catalog_search_options(native_locale)",
     "graphql_adapter::fetch_catalog_search_options(locale)",
-    "ProductTransportError::fallback_failed",
+    "execute_selected_transport",
   ]) {
     assertContains(productStorefrontTransport, marker, `${productStorefrontTransportPath}: product storefront metadata transport marker missing ${marker}`);
   }

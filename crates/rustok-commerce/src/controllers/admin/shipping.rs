@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -40,7 +40,7 @@ pub async fn list_shipping_profiles(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     Query(params): Query<ListShippingProfilesParams>,
-) -> Result<Json<PaginatedResponse<ShippingProfileResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<ShippingProfileResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_READ],
@@ -86,7 +86,7 @@ pub async fn create_shipping_profile(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateShippingProfileInput>,
-) -> Result<(StatusCode, Json<ShippingProfileResponse>)> {
+) -> HttpResult<(StatusCode, Json<ShippingProfileResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_CREATE],
@@ -119,7 +119,7 @@ pub async fn show_shipping_profile(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ShippingProfileResponse>> {
+) -> HttpResult<Json<ShippingProfileResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_READ],
@@ -158,7 +158,7 @@ pub async fn update_shipping_profile(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateShippingProfileInput>,
-) -> Result<Json<ShippingProfileResponse>> {
+) -> HttpResult<Json<ShippingProfileResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -190,7 +190,7 @@ pub async fn deactivate_shipping_profile(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ShippingProfileResponse>> {
+) -> HttpResult<Json<ShippingProfileResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -222,7 +222,7 @@ pub async fn reactivate_shipping_profile(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ShippingProfileResponse>> {
+) -> HttpResult<Json<ShippingProfileResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -254,7 +254,7 @@ pub async fn list_shipping_options(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     Query(params): Query<ListShippingOptionsParams>,
-) -> Result<Json<PaginatedResponse<ShippingOptionResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<ShippingOptionResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_READ],
@@ -269,7 +269,7 @@ pub async fn list_shipping_options(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     if let Some(active) = params.active {
         items.retain(|option| option.active == active);
     }
@@ -314,7 +314,7 @@ pub async fn create_shipping_option(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateShippingOptionInput>,
-) -> Result<(StatusCode, Json<ShippingOptionResponse>)> {
+) -> HttpResult<(StatusCode, Json<ShippingOptionResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_CREATE],
@@ -331,7 +331,7 @@ pub async fn create_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .create_shipping_option(tenant.id, input)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok((StatusCode::CREATED, Json(option)))
 }
@@ -354,7 +354,7 @@ pub async fn show_shipping_option(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ShippingOptionResponse>> {
+) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_READ],
@@ -371,9 +371,9 @@ pub async fn show_shipping_option(
         .await
         .map_err(|err| match err {
             rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                Error::NotFound
+                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
             }
-            other => Error::BadRequest(other.to_string()),
+            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
         })?;
 
     Ok(Json(option))
@@ -398,7 +398,7 @@ pub async fn update_shipping_option(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateShippingOptionInput>,
-) -> Result<Json<ShippingOptionResponse>> {
+) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -417,9 +417,9 @@ pub async fn update_shipping_option(
         .await
         .map_err(|err| match err {
             rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                Error::NotFound
+                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
             }
-            other => Error::BadRequest(other.to_string()),
+            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
         })?;
 
     Ok(Json(option))
@@ -442,7 +442,7 @@ pub async fn deactivate_shipping_option(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ShippingOptionResponse>> {
+) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -454,9 +454,9 @@ pub async fn deactivate_shipping_option(
         .await
         .map_err(|err| match err {
             rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                Error::NotFound
+                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
             }
-            other => Error::BadRequest(other.to_string()),
+            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
         })?;
 
     Ok(Json(option))
@@ -479,7 +479,7 @@ pub async fn reactivate_shipping_option(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ShippingOptionResponse>> {
+) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -491,9 +491,9 @@ pub async fn reactivate_shipping_option(
         .await
         .map_err(|err| match err {
             rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                Error::NotFound
+                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
             }
-            other => Error::BadRequest(other.to_string()),
+            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
         })?;
 
     Ok(Json(option))

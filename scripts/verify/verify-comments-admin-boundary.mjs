@@ -88,9 +88,9 @@ for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]", "Local
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
 }
 for (const marker of [
-  "UiRouteQueryUpdate",
-  "comments_admin_select_thread_query_write",
-  "comments_admin_locale_query_write",
+  "UiRouteQueryIntent",
+  "comments_admin_select_thread_query_intent",
+  "comments_admin_locale_query_intent",
   "COMMENTS_ADMIN_THREAD_QUERY_KEY",
   "COMMENTS_ADMIN_LOCALE_QUERY_KEY",
 ]) {
@@ -102,7 +102,7 @@ assertContains(core, "SetCommentStatusCommand", `${corePath}: core must own comm
 assertContains(ui, "use crate::core::", `${uiPath}: Leptos adapter must consume core helpers`);
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_threads", `${uiPath}: Leptos adapter must call module-owned transport facade`);
-assertContains(ui, "apply_comments_route_query_update", `${uiPath}: Leptos adapter must apply prepared route-query writes`);
+assertContains(ui, "apply_query_intent", `${uiPath}: Leptos adapter must apply prepared route-query writes`);
 for (const marker of [
   "AdminQueryKey",
   "push_value(",
@@ -133,7 +133,7 @@ assertNotContains(cargoToml, "loco-rs", `${cargoPath}: comments admin must not d
 
 assertContains(localPlan, "native-only comments admin exception", `${localPlanPath}: local plan must document native-only exception`);
 assertContains(localPlan, "Loco-free native admin transport", `${localPlanPath}: local plan must record Loco-free native transport evidence`);
-assertContains(localPlan, "UiRouteQueryUpdate", `${localPlanPath}: local plan must document shared route-query contract`);
+assertContains(localPlan, "UiRouteQueryIntent", `${localPlanPath}: local plan must document shared route-query contract`);
 assertContains(localPlan, "verify-comments-admin-boundary.mjs", `${localPlanPath}: local plan must record fast boundary guardrail evidence`);
 assertContains(registry, "verify-comments-admin-boundary.mjs", `${registryPath}: central registry must record comments admin boundary guardrail`);
 

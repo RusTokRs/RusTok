@@ -3,8 +3,8 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -32,7 +32,7 @@ pub async fn create_cart(
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Json(input): Json<StoreCreateCartInput>,
-) -> Result<(StatusCode, Json<StoreCartResponse>)> {
+) -> HttpResult<(StatusCode, Json<StoreCartResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -52,7 +52,8 @@ pub async fn create_cart(
         .clone()
         .or(input.currency_code.clone())
         .ok_or_else(|| {
-            Error::BadRequest(
+            HttpError::bad_request(
+                "commerce_operation_failed",
                 "currency_code is required unless it can be resolved from region/country"
                     .to_string(),
             )
@@ -76,7 +77,7 @@ pub async fn create_cart(
             request_context.channel_slug.clone(),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     let cart = super::enrich_storefront_cart_for_db(
         runtime.db(),
         tenant.id,
@@ -110,7 +111,7 @@ pub async fn get_cart(
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<CartResponse>> {
+) -> HttpResult<Json<CartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -119,7 +120,7 @@ pub async fn get_cart(
     let cart = service
         .get_cart(tenant.id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
@@ -153,7 +154,7 @@ pub async fn update_cart_context(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<StoreUpdateCartInput>,
-) -> Result<Json<StoreCartResponse>> {
+) -> HttpResult<Json<StoreCartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -211,7 +212,7 @@ pub async fn add_cart_line_item(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<StoreAddCartLineItemInput>,
-) -> Result<Json<CartResponse>> {
+) -> HttpResult<Json<CartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -289,7 +290,7 @@ pub async fn update_cart_line_item(
     request_context: RequestContext,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<StoreUpdateCartLineItemInput>,
-) -> Result<Json<CartResponse>> {
+) -> HttpResult<Json<CartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -327,12 +328,15 @@ pub async fn update_cart_line_item(
         let resolved_price = pricing_service
             .resolve_variant_price(tenant.id, variant_id, pricing_context)
             .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?
+            .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
             .ok_or_else(|| {
-                Error::BadRequest(format!(
-                    "No storefront price for variant {} in currency {}",
-                    variant_id, existing.currency_code
-                ))
+                HttpError::bad_request(
+                    "commerce_operation_failed",
+                    format!(
+                        "No storefront price for variant {} in currency {}",
+                        variant_id, existing.currency_code
+                    ),
+                )
             })?;
 
         let pricing_update =
@@ -387,7 +391,7 @@ pub async fn remove_cart_line_item(
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<CartResponse>> {
+) -> HttpResult<Json<CartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =

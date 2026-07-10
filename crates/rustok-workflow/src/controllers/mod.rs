@@ -1,5 +1,5 @@
 use axum::routing::{get, post, put};
-use loco_rs::{app::AppContext, controller::Routes};
+use rustok_api::HostRuntimeContext;
 use sea_orm::DatabaseConnection;
 
 pub mod executions;
@@ -18,38 +18,55 @@ impl WorkflowHttpRuntime {
     }
 }
 
-impl axum::extract::FromRef<AppContext> for WorkflowHttpRuntime {
-    fn from_ref(input: &AppContext) -> Self {
+impl WorkflowHttpRuntime {
+    fn from_host(runtime: &HostRuntimeContext) -> Self {
         Self {
-            db: input.db.clone(),
+            db: runtime.db_clone(),
         }
     }
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/workflows")
-        .add("/", get(workflows::list).post(workflows::create))
-        .add(
-            "/{id}",
+pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+    let state = WorkflowHttpRuntime::from_host(runtime);
+    Ok(axum::Router::new()
+        .route(
+            "/api/workflows/",
+            get(workflows::list).post(workflows::create),
+        )
+        .route(
+            "/api/workflows/{id}",
             get(workflows::get)
                 .put(workflows::update)
                 .delete(workflows::delete_workflow),
         )
-        .add("/{id}/activate", post(workflows::activate))
-        .add("/{id}/pause", post(workflows::pause))
-        .add("/{id}/trigger", post(workflows::trigger_manual))
-        .add("/{id}/steps", post(steps::add_step))
-        .add(
-            "/{id}/steps/{step_id}",
+        .route("/api/workflows/{id}/activate", post(workflows::activate))
+        .route("/api/workflows/{id}/pause", post(workflows::pause))
+        .route(
+            "/api/workflows/{id}/trigger",
+            post(workflows::trigger_manual),
+        )
+        .route("/api/workflows/{id}/steps", post(steps::add_step))
+        .route(
+            "/api/workflows/{id}/steps/{step_id}",
             put(steps::update_step).delete(steps::delete_step),
         )
-        .add("/{id}/executions", get(executions::list_executions))
-        .add("/executions/{execution_id}", get(executions::get_execution))
+        .route(
+            "/api/workflows/{id}/executions",
+            get(executions::list_executions),
+        )
+        .route(
+            "/api/workflows/executions/{execution_id}",
+            get(executions::get_execution),
+        )
+        .with_state(state))
 }
 
-pub fn webhook_routes() -> Routes {
-    Routes::new()
-        .prefix("webhooks")
-        .add("/{tenant_slug}/{webhook_slug}", post(webhook::receive))
+pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+    let state = WorkflowHttpRuntime::from_host(runtime);
+    Ok(axum::Router::new()
+        .route(
+            "/webhooks/{tenant_slug}/{webhook_slug}",
+            post(webhook::receive),
+        )
+        .with_state(state))
 }

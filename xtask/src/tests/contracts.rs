@@ -2421,7 +2421,7 @@ fn validate_module_event_listener_contract_accepts_index_runtime_registration() 
 }
 
 #[test]
-fn validate_module_event_ingress_contract_rejects_workflow_without_webhook_routes() {
+fn validate_module_event_ingress_contract_rejects_workflow_without_axum_webhook_router() {
     let base = env::temp_dir().join(format!(
         "xtask-event-ingress-missing-{}",
         std::process::id()
@@ -2436,21 +2436,13 @@ fn validate_module_event_ingress_contract_rejects_workflow_without_webhook_route
         .join("rustok-workflow")
         .join("src")
         .join("services");
-    let server_workflow_dir = base
-        .join("apps")
-        .join("server")
-        .join("src")
-        .join("controllers")
-        .join("workflow");
     std::fs::create_dir_all(&workflow_controllers_dir)
         .expect("temporary workflow controllers dir should exist");
     std::fs::create_dir_all(&workflow_services_dir)
         .expect("temporary workflow services dir should exist");
-    std::fs::create_dir_all(&server_workflow_dir)
-        .expect("temporary server workflow dir should exist");
     std::fs::write(
         workflow_controllers_dir.join("mod.rs"),
-        "pub fn routes() {}\n",
+        "pub fn axum_router() {}\n",
     )
     .expect("temporary workflow controllers mod.rs should be writable");
     std::fs::write(
@@ -2458,44 +2450,28 @@ fn validate_module_event_ingress_contract_rejects_workflow_without_webhook_route
         "impl EventHandler for WorkflowTriggerHandler {}\n",
     )
     .expect("temporary trigger_handler.rs should be writable");
-    std::fs::write(
-        server_workflow_dir.join("mod.rs"),
-        "pub fn webhook_routes() -> Routes { rustok_workflow::controllers::webhook_routes() }\n",
-    )
-    .expect("temporary server workflow shim should be writable");
     let manifest_path = base.join("modules.toml");
     std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
         .expect("temporary modules.toml should be writable");
     let module_root = base.join("crates").join("rustok-workflow");
 
     let error = validate_module_event_ingress_contract(&manifest_path, "workflow", &module_root)
-        .expect_err("missing workflow webhook routes must fail");
-    assert!(error.to_string().contains("webhook_routes"));
+        .expect_err("missing workflow Axum webhook router must fail");
+    assert!(error.to_string().contains("axum_webhook_router"));
 
     let _ = std::fs::remove_file(workflow_controllers_dir.join("mod.rs"));
     let _ = std::fs::remove_file(workflow_services_dir.join("trigger_handler.rs"));
-    let _ = std::fs::remove_file(server_workflow_dir.join("mod.rs"));
     let _ = std::fs::remove_file(&manifest_path);
     let _ = std::fs::remove_dir(&workflow_controllers_dir);
     let _ = std::fs::remove_dir(&workflow_services_dir);
     let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow").join("src"));
     let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow"));
     let _ = std::fs::remove_dir(base.join("crates"));
-    let _ = std::fs::remove_dir(&server_workflow_dir);
-    let _ = std::fs::remove_dir(
-        base.join("apps")
-            .join("server")
-            .join("src")
-            .join("controllers"),
-    );
-    let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
-    let _ = std::fs::remove_dir(base.join("apps").join("server"));
-    let _ = std::fs::remove_dir(base.join("apps"));
     let _ = std::fs::remove_dir(&base);
 }
 
 #[test]
-fn validate_module_event_ingress_contract_accepts_workflow_webhook_shim() {
+fn validate_module_event_ingress_contract_accepts_workflow_axum_webhook_router() {
     let base = env::temp_dir().join(format!("xtask-event-ingress-ok-{}", std::process::id()));
     let workflow_controllers_dir = base
         .join("crates")
@@ -2507,21 +2483,13 @@ fn validate_module_event_ingress_contract_accepts_workflow_webhook_shim() {
         .join("rustok-workflow")
         .join("src")
         .join("services");
-    let server_workflow_dir = base
-        .join("apps")
-        .join("server")
-        .join("src")
-        .join("controllers")
-        .join("workflow");
     std::fs::create_dir_all(&workflow_controllers_dir)
         .expect("temporary workflow controllers dir should exist");
     std::fs::create_dir_all(&workflow_services_dir)
         .expect("temporary workflow services dir should exist");
-    std::fs::create_dir_all(&server_workflow_dir)
-        .expect("temporary server workflow dir should exist");
     std::fs::write(
         workflow_controllers_dir.join("mod.rs"),
-        "pub fn routes() {}\npub fn webhook_routes() { Routes::new().prefix(\"webhooks\"); }\n",
+        "pub fn axum_router() {}\npub fn axum_webhook_router() { axum::Router::new().route(\"/webhooks/{tenant_slug}/{webhook_slug}\", axum::routing::post(todo!())); }\n",
     )
     .expect("temporary workflow controllers mod.rs should be writable");
     std::fs::write(
@@ -2529,38 +2497,22 @@ fn validate_module_event_ingress_contract_accepts_workflow_webhook_shim() {
         "impl EventHandler for WorkflowTriggerHandler {}\n",
     )
     .expect("temporary trigger_handler.rs should be writable");
-    std::fs::write(
-        server_workflow_dir.join("mod.rs"),
-        "pub fn webhook_routes() -> Routes { rustok_workflow::controllers::webhook_routes() }\n",
-    )
-    .expect("temporary server workflow shim should be writable");
     let manifest_path = base.join("modules.toml");
     std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
         .expect("temporary modules.toml should be writable");
     let module_root = base.join("crates").join("rustok-workflow");
 
     validate_module_event_ingress_contract(&manifest_path, "workflow", &module_root)
-        .expect("workflow event ingress contract should validate");
+        .expect("workflow Axum event ingress contract should validate");
 
     let _ = std::fs::remove_file(workflow_controllers_dir.join("mod.rs"));
     let _ = std::fs::remove_file(workflow_services_dir.join("trigger_handler.rs"));
-    let _ = std::fs::remove_file(server_workflow_dir.join("mod.rs"));
     let _ = std::fs::remove_file(&manifest_path);
     let _ = std::fs::remove_dir(&workflow_controllers_dir);
     let _ = std::fs::remove_dir(&workflow_services_dir);
     let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow").join("src"));
     let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow"));
     let _ = std::fs::remove_dir(base.join("crates"));
-    let _ = std::fs::remove_dir(&server_workflow_dir);
-    let _ = std::fs::remove_dir(
-        base.join("apps")
-            .join("server")
-            .join("src")
-            .join("controllers"),
-    );
-    let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
-    let _ = std::fs::remove_dir(base.join("apps").join("server"));
-    let _ = std::fs::remove_dir(base.join("apps"));
     let _ = std::fs::remove_dir(&base);
 }
 

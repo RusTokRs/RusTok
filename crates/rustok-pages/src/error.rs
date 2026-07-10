@@ -42,6 +42,9 @@ pub enum PagesError {
     #[error("Content error: {0}")]
     Content(#[from] rustok_content::ContentError),
 
+    #[error("Tenant contract error: {0}")]
+    Tenant(#[from] rustok_tenant::TenantError),
+
     #[error("Rich error: {0}")]
     Rich(#[from] Box<RichError>),
 }
@@ -142,6 +145,12 @@ impl From<PagesError> for RichError {
             .with_field("feature", feature)
             .with_error_code(BUILDER_FEATURE_DISABLED_ERROR_CODE),
             PagesError::Content(content_err) => content_err.into(),
+            PagesError::Tenant(tenant_err) => RichError::new(
+                ErrorKind::Database,
+                "Unable to read tenant module configuration",
+            )
+            .with_user_message("Unable to resolve the current feature configuration")
+            .with_source(tenant_err),
             PagesError::Rich(rich) => *rich,
         }
     }

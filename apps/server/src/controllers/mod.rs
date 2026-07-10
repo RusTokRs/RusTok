@@ -12,4 +12,3 @@ pub mod oauth;
 pub mod oauth_metadata;
 pub mod swagger;
 pub mod users;
-pub mod workflow;

@@ -14,7 +14,7 @@ modules, but remains a capability-only layer, not a tenant business domain.
 
 - `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` and execution lifecycle;
 - storage/migrations for scripts and execution log;
-- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`), including tenant-scoped execution history;
+- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::axum_router`), including tenant-scoped execution history;
 - integration contracts `ScriptableEntity` and `HookExecutor` for host modules;
 - no transformation of the script runtime into a separate tenant business domain.
 

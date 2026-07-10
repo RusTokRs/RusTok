@@ -3,12 +3,12 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::{RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::CustomerService;
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -38,14 +38,14 @@ pub async fn get_me(
     tenant: TenantContext,
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
-) -> Result<Json<CustomerResponse>> {
+) -> HttpResult<Json<CustomerResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let service = CustomerService::new(runtime.db_clone());
     let customer = service
         .get_customer_by_user(tenant.id, auth.user_id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     Ok(Json(customer))
 }
 
@@ -67,12 +67,17 @@ pub async fn get_order(
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<OrderResponse>> {
+) -> HttpResult<Json<OrderResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id = super::current_customer_id_for_db(runtime.db(), tenant.id, Some(&auth))
         .await?
-        .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
+        .ok_or_else(|| {
+            HttpError::unauthorized(
+                "commerce_permission_denied",
+                "Customer account required".to_string(),
+            )
+        })?;
     let service = OrderService::new(runtime.db_clone(), runtime.event_bus());
     let order = service
         .get_order_with_locale_fallback(
@@ -82,10 +87,11 @@ pub async fn get_order(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     if order.customer_id != Some(customer_id) {
-        return Err(Error::Unauthorized(
+        return Err(HttpError::unauthorized(
+            "commerce_permission_denied",
             "Order does not belong to the current customer".to_string(),
         ));
     }
@@ -113,7 +119,7 @@ pub async fn create_order_return(
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateOrderReturnInput>,
-) -> Result<(StatusCode, Json<OrderReturnResponse>)> {
+) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     super::ensure_customer_owns_order_for_db(
@@ -128,7 +134,7 @@ pub async fn create_order_return(
     let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_return(tenant.id, id, input)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok((StatusCode::CREATED, Json(created)))
 }
@@ -156,7 +162,7 @@ pub async fn list_order_returns(
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderReturnsParams>,
-) -> Result<Json<PaginatedResponse<OrderReturnResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     super::ensure_customer_owns_order_for_db(
@@ -179,7 +185,7 @@ pub async fn list_order_returns(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -210,19 +216,25 @@ pub async fn list_order_refunds(
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderRefundsParams>,
-) -> Result<Json<PaginatedResponse<RefundResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id = super::current_customer_id_for_db(runtime.db(), tenant.id, Some(&auth))
         .await?
-        .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
+        .ok_or_else(|| {
+            HttpError::unauthorized(
+                "commerce_permission_denied",
+                "Customer account required".to_string(),
+            )
+        })?;
     let order_service = OrderService::new(runtime.db_clone(), runtime.event_bus());
     let order = order_service
         .get_order(tenant.id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     if order.customer_id != Some(customer_id) {
-        return Err(Error::Unauthorized(
+        return Err(HttpError::unauthorized(
+            "commerce_permission_denied",
             "Order does not belong to the current customer".to_string(),
         ));
     }
@@ -240,7 +252,7 @@ pub async fn list_order_refunds(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -272,7 +284,7 @@ pub async fn list_order_changes(
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderChangesParams>,
-) -> Result<Json<PaginatedResponse<OrderChangeResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<OrderChangeResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     super::ensure_customer_owns_order_for_db(
@@ -296,7 +308,7 @@ pub async fn list_order_changes(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: items,

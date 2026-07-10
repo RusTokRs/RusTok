@@ -50,8 +50,12 @@ const docs = [
   "apps/admin/src/widgets/app_shell/sidebar.rs",
   "apps/storefront/src/widgets/header/core.rs",
   "apps/storefront/src/widgets/header/mod.rs",
+  "apps/storefront/src/shared/context/enabled_modules.rs",
   "apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs",
+  "apps/storefront/src/shared/context/canonical_route.rs",
   "apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs",
+  "apps/storefront/src/shared/context/seo_page_context.rs",
+  "apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs",
   "apps/admin/src/features/workflow/mod.rs",
   "apps/admin/src/features/workflow/model.rs",
   "apps/admin/src/features/workflow/transport/mod.rs",
@@ -118,8 +122,12 @@ const adminShellCore = readRepo("apps/admin/src/widgets/app_shell/core.rs");
 const adminSidebar = readRepo("apps/admin/src/widgets/app_shell/sidebar.rs");
 const storefrontHeaderCore = readRepo("apps/storefront/src/widgets/header/core.rs");
 const storefrontHeader = readRepo("apps/storefront/src/widgets/header/mod.rs");
+const storefrontEnabledModulesContext = readRepo("apps/storefront/src/shared/context/enabled_modules.rs");
 const storefrontEnabledModulesAdapter = readRepo("apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs");
+const storefrontCanonicalRouteContext = readRepo("apps/storefront/src/shared/context/canonical_route.rs");
 const storefrontCanonicalRouteAdapter = readRepo("apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs");
+const storefrontSeoPageContext = readRepo("apps/storefront/src/shared/context/seo_page_context.rs");
+const storefrontSeoPageContextAdapter = readRepo("apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs");
 const adminWorkflowMod = readRepo("apps/admin/src/features/workflow/mod.rs");
 const adminWorkflowModel = readRepo("apps/admin/src/features/workflow/model.rs");
 const adminWorkflowTransport = readRepo("apps/admin/src/features/workflow/transport/mod.rs");
@@ -200,7 +208,6 @@ for (const [label, text] of [
   ["frontend plan", frontendPlan],
   ["apps/admin docs", adminDocs],
   ["apps/storefront docs", storefrontDocs],
-  ["apps/next-admin docs", nextAdminDocs],
 ]) {
   assertContains(
     text,
@@ -208,6 +215,17 @@ for (const [label, text] of [
     `${label}: must use the shared frontend-host FFA classification`,
   );
 }
+
+assertNotContains(
+  nextAdminDocs,
+  "FFA-compatible composition host",
+  "apps/next-admin docs: Next.js host must not be classified as an FFA-compatible composition host",
+);
+assertContains(
+  nextAdminDocs,
+  "Next.js composition host",
+  "apps/next-admin docs: must describe the package-ownership composition model",
+);
 
 for (const [label, text] of [
   ["apps/next-admin README.md", nextAdminReadme],
@@ -376,8 +394,8 @@ for (const marker of [
   "href_is_active",
   "module_group_icon",
 ]) {
-  assertContains(
-    adminShellCore,
+assertContains(
+  adminShellCore,
     marker,
     `apps/admin/src/widgets/app_shell/core.rs: missing host navigation core helper ${marker}`,
   );
@@ -393,13 +411,48 @@ assertContains(
   "build_header_links",
   "apps/storefront/src/widgets/header/core.rs: missing storefront header link core helper",
 );
+const adminHeader = readRepo("apps/admin/src/widgets/app_shell/header.rs");
+assertContains(adminHeader, "UiTransportPath::NativeServer", "apps/admin/src/widgets/app_shell/header.rs: global search must select the native transport path");
+assertContains(adminHeader, "UiTransportPath::Graphql", "apps/admin/src/widgets/app_shell/header.rs: global search must keep the GraphQL transport path");
+assertNotContains(adminHeader, "Err(_) => request", "apps/admin/src/widgets/app_shell/header.rs: global search must not fall back from native to GraphQL");
 assertContains(
   storefrontHeader,
   "build_header_links",
   "apps/storefront/src/widgets/header/mod.rs: Leptos adapter must consume storefront header core helper",
 );
+
+for (const [contextPath, contextSource, adapterPath, adapterSource] of [
+  [
+    "apps/storefront/src/shared/context/enabled_modules.rs",
+    storefrontEnabledModulesContext,
+    "apps/storefront/src/shared/context/enabled_modules_native_server_adapter.rs",
+    storefrontEnabledModulesAdapter,
+  ],
+  [
+    "apps/storefront/src/shared/context/canonical_route.rs",
+    storefrontCanonicalRouteContext,
+    "apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs",
+    storefrontCanonicalRouteAdapter,
+  ],
+  [
+    "apps/storefront/src/shared/context/seo_page_context.rs",
+    storefrontSeoPageContext,
+    "apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs",
+    storefrontSeoPageContextAdapter,
+  ],
+]) {
+  assertContains(contextSource, "UiTransportPath", `${contextPath}: context must select its transport path`);
+  assertNotContains(contextSource, "#[server", `${contextPath}: server functions belong in its native adapter`);
+  assertContains(adapterSource, "#[server", `${adapterPath}: native adapter must own its server function`);
+}
+
+assertMissing(
+  "apps/storefront/src/shared/context/native_server_adapter.rs",
+  "apps/storefront/src/shared/context/native_server_adapter.rs: aggregate context adapter must stay removed",
+);
 assertContains(storefrontEnabledModulesAdapter, "storefront/list-enabled-modules", "storefront enabled-modules adapter must own its server endpoint");
 assertContains(storefrontCanonicalRouteAdapter, "storefront/resolve-canonical-route", "storefront canonical-route adapter must own its server endpoint");
+assertContains(storefrontSeoPageContextAdapter, "storefront/seo-page-context", "storefront SEO adapter must own its server endpoint");
 
 assertMissing(
   "apps/admin/src/features/workflow/api.rs",

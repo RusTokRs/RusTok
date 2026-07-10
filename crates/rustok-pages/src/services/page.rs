@@ -29,7 +29,7 @@ use crate::error::{
 };
 use crate::services::rbac::{can_read_non_public_pages, enforce_owned_scope, enforce_scope};
 use crate::services::BlockService;
-use rustok_tenant::entities::tenant_module;
+use rustok_tenant::TenantService;
 
 const PAGE_KIND: &str = "page";
 struct PageResponseParts {
@@ -560,7 +560,7 @@ impl PageService {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
-            .map(|m| is_builder_preview_enabled(&m.settings))
+            .map(|settings| is_builder_preview_enabled(settings))
             .unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(
@@ -578,7 +578,7 @@ impl PageService {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
-            .map(|m| is_builder_properties_enabled(&m.settings))
+            .map(|settings| is_builder_properties_enabled(settings))
             .unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(
@@ -682,7 +682,7 @@ impl PageService {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
-            .map(|m| is_builder_publish_enabled(&m.settings))
+            .map(|settings| is_builder_publish_enabled(settings))
             .unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(
@@ -696,7 +696,7 @@ impl PageService {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
-            .map(|m| is_builder_enabled(&m.settings))
+            .map(|settings| is_builder_enabled(settings))
             .unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(FEATURE_BUILDER_ENABLED));
@@ -732,13 +732,12 @@ impl PageService {
     async fn load_tenant_pages_module(
         &self,
         tenant_id: Uuid,
-    ) -> PagesResult<Option<tenant_module::Model>> {
-        let module = tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq("pages"))
-            .one(&self.db)
-            .await?;
-        Ok(module)
+    ) -> PagesResult<Option<serde_json::Value>> {
+        TenantService::new(self.db.clone())
+            .find_tenant_module(tenant_id, "pages")
+            .await
+            .map(|module| module.map(|module| module.settings))
+            .map_err(Into::into)
     }
 
     async fn find_page(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<page::Model> {

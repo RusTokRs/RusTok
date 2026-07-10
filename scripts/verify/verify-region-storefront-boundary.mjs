@@ -57,11 +57,8 @@ has("ui", "data-region-error-locale-key", `${files.ui}: missing stable error loc
 for (const marker of ["crate::api", "native_server_adapter::", "graphql_adapter::", "#[server"]) {
   lacks("ui", marker, `${files.ui}: UI must not call raw adapter (${marker})`);
 }
-for (const marker of ["mod graphql_adapter;", "mod native_server_adapter;", "RegionFetchFallbackPolicy::NativeThenGraphql", "native_server_adapter::fetch_regions", "graphql_adapter::fetch_regions", "RegionTransportError::fallback_failed"]) {
+for (const marker of ["mod graphql_adapter;", "mod native_server_adapter;", "UiTransportPath::NativeServer", "UiTransportPath::Graphql", "native_server_adapter::fetch_regions", "graphql_adapter::fetch_regions", "execute_selected_transport"]) {
   has("transport", marker, `${files.transport}: missing parity marker ${marker}`);
-}
-if (source.transport.indexOf("native_server_adapter::fetch_regions") > source.transport.indexOf("graphql_adapter::fetch_regions")) {
-  failures.push(`${files.transport}: fallback order must remain native then GraphQL`);
 }
 has("native", "fetch_storefront_regions_server", `${files.native}: missing native endpoint call`);
 has("native", "HostRuntimeContext", `${files.native}: native adapter must consume neutral host runtime context`);

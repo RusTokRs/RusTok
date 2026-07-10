@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_payment::PaymentService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -36,7 +36,7 @@ pub async fn list_payment_collections(
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListPaymentCollectionsParams>,
-) -> Result<Json<PaginatedResponse<PaymentCollectionResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<PaymentCollectionResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_READ],
@@ -57,7 +57,7 @@ pub async fn list_payment_collections(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: collections,
@@ -82,7 +82,7 @@ pub async fn show_payment_collection(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<PaymentCollectionResponse>> {
+) -> HttpResult<Json<PaymentCollectionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_READ],
@@ -116,7 +116,7 @@ pub async fn authorize_payment_collection(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<AuthorizePaymentInput>,
-) -> Result<Json<PaymentCollectionResponse>> {
+) -> HttpResult<Json<PaymentCollectionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_UPDATE],
@@ -150,7 +150,7 @@ pub async fn capture_payment_collection(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CapturePaymentInput>,
-) -> Result<Json<PaymentCollectionResponse>> {
+) -> HttpResult<Json<PaymentCollectionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_UPDATE],
@@ -184,7 +184,7 @@ pub async fn cancel_payment_collection(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CancelPaymentInput>,
-) -> Result<Json<PaymentCollectionResponse>> {
+) -> HttpResult<Json<PaymentCollectionResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_UPDATE],
@@ -218,7 +218,7 @@ pub async fn create_refund(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateRefundInput>,
-) -> Result<(StatusCode, Json<RefundResponse>)> {
+) -> HttpResult<(StatusCode, Json<RefundResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_UPDATE],
@@ -249,7 +249,7 @@ pub async fn list_refunds(
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListRefundsParams>,
-) -> Result<Json<PaginatedResponse<RefundResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_READ],
@@ -294,7 +294,7 @@ pub async fn show_refund(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<RefundResponse>> {
+) -> HttpResult<Json<RefundResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_READ],
@@ -328,7 +328,7 @@ pub async fn complete_refund(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CompleteRefundInput>,
-) -> Result<Json<RefundResponse>> {
+) -> HttpResult<Json<RefundResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_UPDATE],
@@ -362,7 +362,7 @@ pub async fn cancel_refund(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CancelRefundInput>,
-) -> Result<Json<RefundResponse>> {
+) -> HttpResult<Json<RefundResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PAYMENTS_UPDATE],

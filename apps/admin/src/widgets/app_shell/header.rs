@@ -6,6 +6,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_location, use_navigate};
 use leptos_router::NavigateOptions;
 use leptos_use::use_debounce_fn;
+use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 
 use crate::features::auth::UserMenu;
@@ -57,6 +58,14 @@ struct AdminGlobalSearchInput {
     query: String,
     limit: i32,
     offset: i32,
+}
+
+fn selected_transport_path() -> UiTransportPath {
+    if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
+        UiTransportPath::Graphql
+    } else {
+        UiTransportPath::NativeServer
+    }
 }
 
 #[component]
@@ -202,28 +211,33 @@ fn HeaderGlobalSearch() -> impl IntoView {
         set_error.set(None);
 
         spawn_local(async move {
-            let response = match super::native_server_adapter::admin_global_search_native(
-                search_value.clone(),
-                8,
-                0,
-            )
-            .await
-            {
-                Ok(payload) => Ok(payload),
-                Err(_) => request::<AdminGlobalSearchVariables, AdminGlobalSearchResponse>(
-                    ADMIN_GLOBAL_SEARCH_QUERY,
-                    AdminGlobalSearchVariables {
-                        input: AdminGlobalSearchInput {
-                            query: search_value.clone(),
-                            limit: 8,
-                            offset: 0,
+            let response = match selected_transport_path() {
+                UiTransportPath::NativeServer => {
+                    super::native_server_adapter::admin_global_search_native(
+                        search_value.clone(),
+                        8,
+                        0,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())
+                }
+                UiTransportPath::Graphql => {
+                    request::<AdminGlobalSearchVariables, AdminGlobalSearchResponse>(
+                        ADMIN_GLOBAL_SEARCH_QUERY,
+                        AdminGlobalSearchVariables {
+                            input: AdminGlobalSearchInput {
+                                query: search_value.clone(),
+                                limit: 8,
+                                offset: 0,
+                            },
                         },
-                    },
-                    token_value,
-                    tenant_value,
-                )
-                .await
-                .map(|payload| payload.admin_global_search),
+                        token_value,
+                        tenant_value,
+                    )
+                    .await
+                    .map(|payload| payload.admin_global_search)
+                    .map_err(|error| error.to_string())
+                }
             };
 
             if request_seq.get_untracked() != current_request {

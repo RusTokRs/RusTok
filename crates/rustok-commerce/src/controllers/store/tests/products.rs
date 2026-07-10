@@ -422,11 +422,7 @@ async fn store_product_transport_uses_channel_visible_inventory() {
         locale: "de".to_string(),
     };
 
-    let ctx = test_app_context(db);
-    let runtime =
-        <crate::controllers::CommerceHttpRuntime as axum::extract::FromRef<AppContext>>::from_ref(
-            &ctx,
-        );
+    let runtime = test_app_context(db);
     let product = super::super::products::show_product(
         State(runtime),
         tenant,

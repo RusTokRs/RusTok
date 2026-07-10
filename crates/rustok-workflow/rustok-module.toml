@@ -16,8 +16,8 @@ query = "graphql::WorkflowQuery"
 mutation = "graphql::WorkflowMutation"
 
 [provides.http]
-routes = "controllers::routes"
-webhook_routes = "controllers::webhook_routes"
+axum_router = "controllers::axum_router"
+axum_webhook_router = "controllers::axum_webhook_router"
 
 [provides.admin_ui]
 leptos_crate = "rustok-workflow-admin"

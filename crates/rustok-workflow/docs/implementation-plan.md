@@ -7,7 +7,7 @@ capability integrations without drift and broken documentation.
 ## Execution checkpoint
 
 - Current phase: phase_b_ready + fba_provider_static_evidence + compile_free_runtime_smoke
-- Last checkpoint: workflow admin native server-function transport now consumes host-provided `rustok_api::HostRuntimeContext` for DB access and `rustok-workflow-admin` no longer depends on `loco-rs`; REST workflow/step/execution handlers and webhook ingress already accept a narrow `WorkflowHttpRuntime` with explicit DB handle, with the current Loco `AppContext` isolated in the route-state adapter until the full Axum cutover. Workflow admin FFA Phase B is considered closed; FBA slice #1 added `WorkflowReadPort` / `workflow.read_projection.v1`, provider registry `crates/rustok-workflow/contracts/workflow-fba-registry.json`, static matrix `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`, compile-free runtime/fallback smoke packet `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json` and fast gate `npm run verify:workflow:fba` without long compilation.
+- Last checkpoint: workflow admin native server-function transport and all workflow HTTP/webhook ingress now consume host-provided `rustok_api::HostRuntimeContext`; REST workflow/step/execution and webhook handlers use narrow `WorkflowHttpRuntime`, published through manifest-owned Axum routers without a server shim or `loco-rs` dependency. Workflow admin FFA Phase B is considered closed; FBA slice #1 added `WorkflowReadPort` / `workflow.read_projection.v1`, provider registry `crates/rustok-workflow/contracts/workflow-fba-registry.json`, static matrix `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`, compile-free runtime/fallback smoke packet `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json` and fast gate `npm run verify:workflow:fba` without long compilation.
 - Next step: Replace compile-free runtime smoke with live backend evidence: native server-function `list_workflows` over `HostRuntimeContext`, GraphQL selected-path execution and typed PortError mapping; do not promote FBA above `in_progress` until live evidence.
 - Open blockers: None.
 - Hand-off notes for next agent: After each increment, update this block; avoid long full-workspace compilations, use targeted checks/timeouts.
@@ -44,7 +44,7 @@ capability integrations without drift and broken documentation.
 - workflow storage and execution journal are already defined inside the module;
 - engine, trigger handlers, cron/manual/webhook/event triggers and base step types already form a working baseline;
 - GraphQL, REST/webhook ingress and module-owned admin UI already live inside the module;
-- webhook ingress is already locked as a module-owned transport surface, and the cron path is kept separate from `event_listener` and from server webhook shim;
+- webhook ingress is locked as a module-owned Axum transport surface, and the cron path is kept separate from `event_listener`;
 - integration with `alloy` is already a capability-level step integration, not a registry-level hard dependency.
 
 ## Stages

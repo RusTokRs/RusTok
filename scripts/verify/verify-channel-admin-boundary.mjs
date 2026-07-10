@@ -199,7 +199,8 @@ function assertChannelServerBoundary() {
   }
 
   for (const marker of [
-    "ChannelBootstrapResponse::<crate::context::ChannelContext>",
+    "ChannelBootstrapResponse::<",
+    "crate::context::ChannelContext",
     "create_resolution_policy_set_input(tenant.id, input)",
     "create_resolution_rule_input(input)",
     "update_resolution_rule_input(input)",

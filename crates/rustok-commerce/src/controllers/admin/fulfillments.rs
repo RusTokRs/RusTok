@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -39,7 +39,7 @@ pub async fn list_fulfillments(
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListFulfillmentsParams>,
-) -> Result<Json<PaginatedResponse<FulfillmentResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<FulfillmentResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_READ],
@@ -59,7 +59,7 @@ pub async fn list_fulfillments(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: fulfillments,
@@ -84,7 +84,7 @@ pub async fn create_fulfillment(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateFulfillmentInput>,
-) -> Result<(StatusCode, Json<FulfillmentResponse>)> {
+) -> HttpResult<(StatusCode, Json<FulfillmentResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_CREATE],
@@ -116,7 +116,7 @@ pub async fn show_fulfillment(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<FulfillmentResponse>> {
+) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_READ],
@@ -150,7 +150,7 @@ pub async fn ship_fulfillment(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<ShipFulfillmentInput>,
-) -> Result<Json<FulfillmentResponse>> {
+) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -184,7 +184,7 @@ pub async fn deliver_fulfillment(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<DeliverFulfillmentInput>,
-) -> Result<Json<FulfillmentResponse>> {
+) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -218,7 +218,7 @@ pub async fn reopen_fulfillment(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<ReopenFulfillmentInput>,
-) -> Result<Json<FulfillmentResponse>> {
+) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -252,7 +252,7 @@ pub async fn reship_fulfillment(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<ReshipFulfillmentInput>,
-) -> Result<Json<FulfillmentResponse>> {
+) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],
@@ -286,7 +286,7 @@ pub async fn cancel_fulfillment(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CancelFulfillmentInput>,
-) -> Result<Json<FulfillmentResponse>> {
+) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::FULFILLMENTS_UPDATE],

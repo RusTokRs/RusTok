@@ -213,6 +213,10 @@ requireContains('crates/alloy/src/controllers/mod.rs', 'pub struct AlloyHttpRunt
 requireContains('crates/alloy/src/controllers/mod.rs', 'State(runtime): State<AlloyHttpRuntime>', 'Alloy HTTP handlers consume narrow runtime state');
 requireNotContains('crates/alloy/src/controllers/mod.rs', 'State(ctx): State<AppContext>', 'Alloy HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/alloy/src/controllers/mod.rs', 'ctx.shared_store', 'Alloy HTTP handlers do not use Loco shared store as service locator');
+requireContains('crates/alloy/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'Alloy declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/alloy/src/controllers/mod.rs', 'HostRuntimeContext', 'Alloy Axum router receives neutral host runtime context');
+requireNotContains('crates/alloy/src/controllers/mod.rs', 'loco_rs', 'Alloy HTTP router does not import Loco');
+requireNotContains('crates/alloy/Cargo.toml', 'loco-rs', 'Alloy crate does not depend on Loco after Axum router cutover');
 requireNotContains('crates/rustok-ai/Cargo.toml', 'loco-rs', 'AI capability crate does not depend on Loco');
 requireNotContains('crates/rustok-ai/src/graphql/mutation.rs', 'loco_rs', 'AI GraphQL mutations do not consume Loco AppContext');
 requireNotContains('crates/rustok-ai/src/service.rs', 'AppContext', 'AI management service does not consume Loco AppContext');
@@ -271,6 +275,10 @@ requireContains('crates/rustok-commerce/src/controllers/admin/changes.rs', 'Stat
 requireNotContains('crates/rustok-commerce/src/controllers/admin/returns.rs', 'AppContext', 'commerce admin return HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-commerce/src/controllers/admin/returns.rs', 'rustok_outbox::loco', 'commerce admin return HTTP handlers do not consume outbox Loco adapter');
 requireContains('crates/rustok-commerce/src/controllers/admin/returns.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin return HTTP handlers consume narrow runtime state');
+requireContains('crates/rustok-commerce/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'commerce declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/rustok-commerce/src/controllers/mod.rs', 'HostRuntimeContext', 'commerce Axum router receives neutral host runtime context');
+requireNotContains('crates/rustok-commerce/src/controllers/mod.rs', 'loco_rs', 'commerce HTTP router does not import Loco');
+requireNotContains('crates/rustok-commerce/Cargo.toml', 'loco-rs', 'commerce domain crate does not depend on Loco after Axum router cutover');
 requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'AppContext', 'blog post HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-blog/src/controllers/comments.rs', 'AppContext', 'blog comment HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'rustok_outbox::loco', 'blog post HTTP handlers do not consume outbox Loco adapter');
@@ -327,6 +335,12 @@ for (const rel of [
   requireContains(rel, 'WorkflowHttpRuntime', `${rel} handlers consume narrow workflow runtime state`);
 }
 requireContains('crates/rustok-workflow/src/controllers/mod.rs', 'pub struct WorkflowHttpRuntime', 'workflow HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-workflow/rustok-module.toml', 'axum_router = "controllers::axum_router"', 'workflow declares the Axum HTTP entrypoint in its module manifest');
+requireContains('crates/rustok-workflow/rustok-module.toml', 'axum_webhook_router = "controllers::axum_webhook_router"', 'workflow declares the Axum webhook entrypoint in its module manifest');
+requireContains('crates/rustok-workflow/src/controllers/mod.rs', 'HostRuntimeContext', 'workflow Axum routers receive neutral host runtime context');
+requireContains('crates/rustok-workflow/src/controllers/mod.rs', 'pub fn axum_webhook_router(', 'workflow owns its Axum webhook router');
+requireNotContains('crates/rustok-workflow/src/controllers/mod.rs', 'loco_rs', 'workflow HTTP router does not import Loco');
+requireNotContains('crates/rustok-workflow/Cargo.toml', 'loco-rs', 'workflow domain crate does not depend on Loco after Axum router cutover');
 requireContains('crates/rustok-seo/src/controllers/mod.rs', 'pub struct SeoHttpRuntime', 'SEO HTTP controllers use a narrow runtime state');
 requireContains('crates/rustok-seo/src/controllers/mod.rs', 'State(runtime): State<SeoHttpRuntime>', 'SEO HTTP handlers consume narrow runtime state');
 requireNotContains('crates/rustok-seo/src/controllers/mod.rs', 'State(ctx): State<AppContext>', 'SEO HTTP handlers do not consume Loco AppContext');

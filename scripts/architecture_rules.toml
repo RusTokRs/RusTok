@@ -24,6 +24,7 @@ allowed_edges = [
   "rustok-blog -> rustok-content",
   "rustok-forum -> rustok-content",
   "rustok-pages -> rustok-content",
+  "rustok-pages -> rustok-tenant",
 ]
 
 [imports]
@@ -49,4 +50,3 @@ explicitly_allowed_paths = [
   "rustok_content::entities",
   "rustok_outbox::entity",
 ]
-

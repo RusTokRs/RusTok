@@ -15,4 +15,4 @@ query = "graphql::AlloyQuery"
 mutation = "graphql::AlloyMutation"
 
 [provides.http]
-routes = "controllers::routes"
+axum_router = "controllers::axum_router"

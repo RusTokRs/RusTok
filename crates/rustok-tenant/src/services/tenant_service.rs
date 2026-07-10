@@ -241,6 +241,25 @@ impl TenantService {
         Ok(modules.into_iter().map(to_module_response).collect())
     }
 
+    /// Returns one tenant module configuration for an owner-module read path.
+    ///
+    /// This read deliberately does not require an existing tenant row because
+    /// callers may use the absence of both records as the default feature
+    /// configuration during bootstrap and isolated module tests.
+    pub async fn find_tenant_module(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> TenantResult<Option<TenantModuleResponse>> {
+        tenant_module::Entity::find()
+            .filter(tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(tenant_module::Column::ModuleSlug.eq(module_slug))
+            .one(&self.db)
+            .await
+            .map(|module| module.map(to_module_response))
+            .map_err(Into::into)
+    }
+
     async fn publish_event_in_tx<C>(
         &self,
         txn: &C,

@@ -2,9 +2,9 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+use rustok_web::{HttpError, HttpResult};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
@@ -18,7 +18,7 @@ pub async fn list(
     State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-) -> Result<Json<Vec<WorkflowSummary>>> {
+) -> HttpResult<Json<Vec<WorkflowSummary>>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_LIST],
@@ -29,7 +29,7 @@ pub async fn list(
     let workflows = service
         .list(tenant.id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(workflows))
 }
 
@@ -38,7 +38,7 @@ pub async fn get(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<WorkflowResponse>> {
+) -> HttpResult<Json<WorkflowResponse>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_READ],
@@ -49,7 +49,7 @@ pub async fn get(
     let workflow = service
         .get(tenant.id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(workflow))
 }
 
@@ -58,7 +58,7 @@ pub async fn create(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateWorkflowInput>,
-) -> Result<Json<serde_json::Value>> {
+) -> HttpResult<Json<serde_json::Value>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_CREATE],
@@ -69,7 +69,7 @@ pub async fn create(
     let id = service
         .create(tenant.id, Some(auth.user_id), input)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "id": id })))
 }
 
@@ -79,7 +79,7 @@ pub async fn update(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateWorkflowInput>,
-) -> Result<Json<serde_json::Value>> {
+) -> HttpResult<Json<serde_json::Value>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_UPDATE],
@@ -90,7 +90,7 @@ pub async fn update(
     service
         .update(tenant.id, id, Some(auth.user_id), input)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -99,7 +99,7 @@ pub async fn delete_workflow(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<serde_json::Value>> {
+) -> HttpResult<Json<serde_json::Value>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_DELETE],
@@ -110,7 +110,7 @@ pub async fn delete_workflow(
     service
         .delete(tenant.id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -119,7 +119,7 @@ pub async fn activate(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<serde_json::Value>> {
+) -> HttpResult<Json<serde_json::Value>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_UPDATE],
@@ -138,7 +138,7 @@ pub async fn activate(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -147,7 +147,7 @@ pub async fn pause(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<serde_json::Value>> {
+) -> HttpResult<Json<serde_json::Value>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_UPDATE],
@@ -166,7 +166,7 @@ pub async fn pause(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -184,7 +184,7 @@ pub async fn trigger_manual(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<TriggerManualInput>,
-) -> Result<Json<serde_json::Value>> {
+) -> HttpResult<Json<serde_json::Value>> {
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_EXECUTE],
@@ -201,7 +201,7 @@ pub async fn trigger_manual(
             input.force,
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "execution_id": execution_id })))
 }
 
@@ -209,9 +209,12 @@ fn ensure_workflow_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(HttpError::unauthorized(
+            "workflow_permission_denied",
+            message.to_string(),
+        ));
     }
 
     Ok(())

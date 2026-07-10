@@ -7,8 +7,8 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use loco_rs::{app::AppContext, controller::Routes, Error, Result};
-use rustok_api::TenantContext;
+use rustok_api::{HostRuntimeContext, TenantContext};
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
@@ -28,33 +28,35 @@ pub const LOCO_EXECUTION_HISTORY_ROUTES: &[&str] = &["/executions", "/scripts/{i
 
 #[derive(Clone)]
 pub struct AlloyHttpRuntime {
-    runtime: Option<SharedAlloyRuntime>,
+    runtime: SharedAlloyRuntime,
 }
 
 impl AlloyHttpRuntime {
-    fn scoped(&self, tenant_id: Uuid) -> Result<ScopedAlloyRuntime> {
-        self.runtime
-            .as_ref()
-            .map(|runtime| runtime.0.scoped(tenant_id))
-            .ok_or_else(|| Error::Message("Alloy runtime not initialised".to_string()))
+    fn scoped(&self, tenant_id: Uuid) -> HttpResult<ScopedAlloyRuntime> {
+        Ok(self.runtime.0.scoped(tenant_id))
     }
 }
 
-impl axum::extract::FromRef<AppContext> for AlloyHttpRuntime {
-    fn from_ref(input: &AppContext) -> Self {
-        Self {
-            runtime: input.shared_store.get::<SharedAlloyRuntime>(),
-        }
+impl AlloyHttpRuntime {
+    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+        let runtime = runtime.shared_get::<SharedAlloyRuntime>().ok_or_else(|| {
+            anyhow::anyhow!("Alloy HTTP routes require SharedAlloyRuntime in HostRuntimeContext")
+        })?;
+        Ok(Self { runtime })
     }
 }
 
-fn script_error(error: ScriptError) -> Error {
+fn script_error(error: ScriptError) -> HttpError {
     match error {
-        ScriptError::NotFound { .. } => Error::NotFound,
+        ScriptError::NotFound { .. } => {
+            HttpError::not_found("alloy_script_not_found", "Script not found")
+        }
         ScriptError::Compilation(message)
         | ScriptError::InvalidTrigger(message)
-        | ScriptError::InvalidStatus(message) => Error::BadRequest(message),
-        other => Error::Message(other.to_string()),
+        | ScriptError::InvalidStatus(message) => {
+            HttpError::bad_request("invalid_alloy_script", message)
+        }
+        other => HttpError::internal(other.to_string()),
     }
 }
 
@@ -72,9 +74,12 @@ pub async fn list_scripts(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Query(query): Query<ListScriptsQuery>,
-) -> Result<Json<ListScriptsResponse>> {
+) -> HttpResult<Json<ListScriptsResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
-    let script_query = match query.status_filter().map_err(Error::BadRequest)? {
+    let script_query = match query
+        .status_filter()
+        .map_err(|error| HttpError::bad_request("invalid_alloy_script_status", error))?
+    {
         Some(status) => crate::storage::ScriptQuery::ByStatus(status),
         None => crate::storage::ScriptQuery::All,
     };
@@ -99,7 +104,7 @@ pub async fn get_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ScriptResponse>> {
+) -> HttpResult<Json<ScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
     Ok(Json(script.into()))
@@ -109,14 +114,14 @@ pub async fn create_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Json(req): Json<CreateScriptRequest>,
-) -> Result<(StatusCode, Json<ScriptResponse>)> {
+) -> HttpResult<(StatusCode, Json<ScriptResponse>)> {
     let runtime = runtime.scoped(tenant.id)?;
 
     if runtime.storage.get_by_name(&req.name).await.is_ok() {
-        return Err(Error::BadRequest(format!(
-            "Script with name '{}' already exists",
-            req.name
-        )));
+        return Err(HttpError::bad_request(
+            "invalid_alloy_request",
+            format!("Script with name '{}' already exists", req.name),
+        ));
     }
 
     let mut script = Script::new(req.name, req.code, req.trigger);
@@ -134,7 +139,7 @@ pub async fn update_script(
     tenant: TenantContext,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateScriptRequest>,
-) -> Result<Json<ScriptResponse>> {
+) -> HttpResult<Json<ScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
 
@@ -167,7 +172,7 @@ pub async fn delete_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
     runtime.engine.invalidate(&script.name);
@@ -180,7 +185,7 @@ pub async fn run_script(
     tenant: TenantContext,
     Path(id): Path<Uuid>,
     Json(req): Json<RunScriptRequest>,
-) -> Result<Json<RunScriptResponse>> {
+) -> HttpResult<Json<RunScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
 
@@ -205,7 +210,7 @@ pub async fn run_script_by_name(
     tenant: TenantContext,
     Path(name): Path<String>,
     Json(req): Json<RunScriptRequest>,
-) -> Result<Json<RunScriptResponse>> {
+) -> HttpResult<Json<RunScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime
         .storage
@@ -233,7 +238,7 @@ pub async fn list_recent_executions(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Query(query): Query<ListExecutionLogQuery>,
-) -> Result<Json<ListExecutionLogResponse>> {
+) -> HttpResult<Json<ListExecutionLogResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let offset = query.offset();
     let limit = query.limit();
@@ -265,7 +270,7 @@ pub async fn list_script_executions(
     tenant: TenantContext,
     Path(id): Path<Uuid>,
     Query(query): Query<ListExecutionLogQuery>,
-) -> Result<Json<ListExecutionLogResponse>> {
+) -> HttpResult<Json<ListExecutionLogResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let offset = query.offset();
     let limit = query.limit();
@@ -296,7 +301,7 @@ pub async fn validate_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Json(req): Json<CreateScriptRequest>,
-) -> Result<Json<serde_json::Value>> {
+) -> HttpResult<Json<serde_json::Value>> {
     let runtime = runtime.scoped(tenant.id)?;
     let mut scope = rhai_full::Scope::new();
 
@@ -359,7 +364,7 @@ pub async fn activate_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ScriptResponse>> {
+) -> HttpResult<Json<ScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
     script.activate();
@@ -371,7 +376,7 @@ pub async fn pause_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<ScriptResponse>> {
+) -> HttpResult<Json<ScriptResponse>> {
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
     script.status = ScriptStatus::Paused;
@@ -380,27 +385,28 @@ pub async fn pause_script(
     Ok(Json(saved.into()))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/alloy")
-        .add("/scripts", get(list_scripts).post(create_script))
-        .add(
-            LOCO_EXECUTION_HISTORY_ROUTES[0],
-            get(list_recent_executions),
-        )
-        .add("/scripts/validate", post(validate_script))
-        .add(
-            "/scripts/{id}",
+pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+    let state = AlloyHttpRuntime::from_host(runtime)?;
+    Ok(axum::Router::new()
+        .route("/api/alloy/scripts", get(list_scripts).post(create_script))
+        .route("/api/alloy/executions", get(list_recent_executions))
+        .route("/api/alloy/scripts/validate", post(validate_script))
+        .route(
+            "/api/alloy/scripts/{id}",
             get(get_script).put(update_script).delete(delete_script),
         )
-        .add("/scripts/{id}/run", post(run_script))
-        .add(
-            LOCO_EXECUTION_HISTORY_ROUTES[1],
+        .route("/api/alloy/scripts/{id}/run", post(run_script))
+        .route(
+            "/api/alloy/scripts/{id}/executions",
             get(list_script_executions),
         )
-        .add("/scripts/name/{name}/run", post(run_script_by_name))
-        .add("/scripts/{id}/activate", post(activate_script))
-        .add("/scripts/{id}/pause", post(pause_script))
+        .route(
+            "/api/alloy/scripts/name/{name}/run",
+            post(run_script_by_name),
+        )
+        .route("/api/alloy/scripts/{id}/activate", post(activate_script))
+        .route("/api/alloy/scripts/{id}/pause", post(pause_script))
+        .with_state(state))
 }
 
 #[cfg(test)]

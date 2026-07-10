@@ -36,6 +36,11 @@ pub(crate) fn validate_module_transport_surface_contract(
                 "Module '{slug}' declares both provides.http.routes and provides.http.axum_router; choose one transport entrypoint"
             );
         }
+        if http.webhook_routes.is_some() && http.axum_webhook_router.is_some() {
+            anyhow::bail!(
+                "Module '{slug}' declares both provides.http.webhook_routes and provides.http.axum_webhook_router; choose one webhook transport entrypoint"
+            );
+        }
         if let Some(routes) = http.routes.as_deref() {
             let symbol = provided_path_symbol(routes)?;
             validate_declared_symbol_exists(
@@ -62,6 +67,16 @@ pub(crate) fn validate_module_transport_surface_contract(
                 slug,
                 "provides.http.webhook_routes",
                 webhook_routes,
+                symbol,
+                &source_files,
+            )?;
+        }
+        if let Some(axum_webhook_router) = http.axum_webhook_router.as_deref() {
+            let symbol = provided_path_symbol(axum_webhook_router)?;
+            validate_declared_symbol_exists(
+                slug,
+                "provides.http.axum_webhook_router",
+                axum_webhook_router,
                 symbol,
                 &source_files,
             )?;

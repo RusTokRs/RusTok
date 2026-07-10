@@ -330,9 +330,13 @@ pub async fn fetch_seo_page_context_server(
     locale: String,
     route: String,
 ) -> Result<Option<ResolvedSeoPageContext>, ApiError> {
-    super::native_server_adapter::resolve_seo_page_context(tenant_slug, locale, route)
-        .await
-        .map_err(ApiError::from)
+    super::seo_page_context_native_server_adapter::resolve_seo_page_context(
+        tenant_slug,
+        locale,
+        route,
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 pub async fn fetch_seo_page_context_graphql(

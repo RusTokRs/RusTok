@@ -135,9 +135,9 @@ assertContains(transport, "fetch_products", `${transportPath}: transport facade 
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
 assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must wire native server adapter`);
 assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not import legacy api module`);
-assertContains(graphqlAdapter, "fetch_storefront_products_graphql", `${graphqlAdapterPath}: GraphQL adapter must expose GraphQL request path`);
+assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: GraphQL adapter must expose GraphQL request path`);
 assertContains(nativeServerAdapter, "#[server", `${nativeServerAdapterPath}: native server adapter must keep native server-function endpoint`);
-assertContains(nativeServerAdapter, "GraphqlRequest", `${nativeServerAdapterPath}: moved adapter must keep GraphQL fallback request contract until split further`);
+assertNotContains(nativeServerAdapter, "GraphqlRequest", `${nativeServerAdapterPath}: native adapter must not execute the parallel GraphQL contract`);
 assertContains(nativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${nativeServerAdapterPath}: native server adapter must use host runtime context`);
 assertContains(nativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${nativeServerAdapterPath}: native server adapter must receive event bus through host runtime context`);
 assertContains(nativeServerAdapter, "runtime_ctx.db_clone()", `${nativeServerAdapterPath}: native server adapter must receive DB through host runtime context`);

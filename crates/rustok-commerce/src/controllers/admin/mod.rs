@@ -17,9 +17,9 @@ pub use shipping::*;
 #[cfg(test)]
 mod tests;
 
-use loco_rs::{controller::Routes, Error, Result};
 use rust_decimal::Decimal;
 use rustok_payment::PaymentService;
+use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -147,178 +147,178 @@ pub struct ListShippingProfilesParams {
     pub active: Option<bool>,
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .add(
+pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
+    axum::Router::new()
+        .route(
             "/products",
             axum::routing::get(products::list_products).post(products::create_product),
         )
-        .add(
+        .route(
             "/products/{id}",
             axum::routing::get(products::show_product)
                 .post(products::update_product)
                 .delete(products::delete_product),
         )
-        .add(
+        .route(
             "/products/{id}/publish",
             axum::routing::post(products::publish_product),
         )
-        .add(
+        .route(
             "/products/{id}/unpublish",
             axum::routing::post(products::unpublish_product),
         )
-        .add("/orders", axum::routing::get(orders::list_orders))
-        .add("/orders/{id}", axum::routing::get(orders::show_order))
-        .add(
+        .route("/orders", axum::routing::get(orders::list_orders))
+        .route("/orders/{id}", axum::routing::get(orders::show_order))
+        .route(
             "/orders/{id}/mark-paid",
             axum::routing::post(orders::mark_order_paid),
         )
-        .add("/orders/{id}/ship", axum::routing::post(orders::ship_order))
-        .add(
+        .route("/orders/{id}/ship", axum::routing::post(orders::ship_order))
+        .route(
             "/orders/{id}/deliver",
             axum::routing::post(orders::deliver_order),
         )
-        .add(
+        .route(
             "/orders/{id}/cancel",
             axum::routing::post(orders::cancel_order),
         )
-        .add(
+        .route(
             "/orders/{id}/returns",
             axum::routing::post(returns::create_order_return),
         )
-        .add(
+        .route(
             "/orders/{id}/returns/decision",
             axum::routing::post(returns::create_order_return_decision),
         )
-        .add(
+        .route(
             "/orders/{id}/changes",
             axum::routing::post(changes::create_order_change),
         )
-        .add(
+        .route(
             "/order-changes",
             axum::routing::get(changes::list_order_changes),
         )
-        .add(
+        .route(
             "/order-changes/{id}",
             axum::routing::get(changes::show_order_change),
         )
-        .add(
+        .route(
             "/order-changes/{id}/apply",
             axum::routing::post(changes::apply_order_change),
         )
-        .add(
+        .route(
             "/order-changes/{id}/cancel",
             axum::routing::post(changes::cancel_order_change),
         )
-        .add("/returns", axum::routing::get(returns::list_order_returns))
-        .add(
+        .route("/returns", axum::routing::get(returns::list_order_returns))
+        .route(
             "/returns/{id}",
             axum::routing::get(returns::show_order_return),
         )
-        .add(
+        .route(
             "/returns/{id}/complete",
             axum::routing::post(returns::complete_order_return),
         )
-        .add(
+        .route(
             "/returns/{id}/cancel",
             axum::routing::post(returns::cancel_order_return),
         )
-        .add(
+        .route(
             "/payment-collections",
             axum::routing::get(payments::list_payment_collections),
         )
-        .add(
+        .route(
             "/payment-collections/{id}",
             axum::routing::get(payments::show_payment_collection),
         )
-        .add(
+        .route(
             "/payment-collections/{id}/authorize",
             axum::routing::post(payments::authorize_payment_collection),
         )
-        .add(
+        .route(
             "/payment-collections/{id}/capture",
             axum::routing::post(payments::capture_payment_collection),
         )
-        .add(
+        .route(
             "/payment-collections/{id}/cancel",
             axum::routing::post(payments::cancel_payment_collection),
         )
-        .add(
+        .route(
             "/payment-collections/{id}/refunds",
             axum::routing::post(payments::create_refund),
         )
-        .add("/refunds", axum::routing::get(payments::list_refunds))
-        .add("/refunds/{id}", axum::routing::get(payments::show_refund))
-        .add(
+        .route("/refunds", axum::routing::get(payments::list_refunds))
+        .route("/refunds/{id}", axum::routing::get(payments::show_refund))
+        .route(
             "/refunds/{id}/complete",
             axum::routing::post(payments::complete_refund),
         )
-        .add(
+        .route(
             "/refunds/{id}/cancel",
             axum::routing::post(payments::cancel_refund),
         )
-        .add(
+        .route(
             "/shipping-profiles",
             axum::routing::get(shipping::list_shipping_profiles)
                 .post(shipping::create_shipping_profile),
         )
-        .add(
+        .route(
             "/shipping-profiles/{id}",
             axum::routing::get(shipping::show_shipping_profile)
                 .post(shipping::update_shipping_profile),
         )
-        .add(
+        .route(
             "/shipping-profiles/{id}/deactivate",
             axum::routing::post(shipping::deactivate_shipping_profile),
         )
-        .add(
+        .route(
             "/shipping-profiles/{id}/reactivate",
             axum::routing::post(shipping::reactivate_shipping_profile),
         )
-        .add(
+        .route(
             "/shipping-options",
             axum::routing::get(shipping::list_shipping_options)
                 .post(shipping::create_shipping_option),
         )
-        .add(
+        .route(
             "/shipping-options/{id}",
             axum::routing::get(shipping::show_shipping_option)
                 .post(shipping::update_shipping_option),
         )
-        .add(
+        .route(
             "/shipping-options/{id}/deactivate",
             axum::routing::post(shipping::deactivate_shipping_option),
         )
-        .add(
+        .route(
             "/shipping-options/{id}/reactivate",
             axum::routing::post(shipping::reactivate_shipping_option),
         )
-        .add(
+        .route(
             "/fulfillments",
             axum::routing::get(fulfillments::list_fulfillments)
                 .post(fulfillments::create_fulfillment),
         )
-        .add(
+        .route(
             "/fulfillments/{id}",
             axum::routing::get(fulfillments::show_fulfillment),
         )
-        .add(
+        .route(
             "/fulfillments/{id}/ship",
             axum::routing::post(fulfillments::ship_fulfillment),
         )
-        .add(
+        .route(
             "/fulfillments/{id}/deliver",
             axum::routing::post(fulfillments::deliver_fulfillment),
         )
-        .add(
+        .route(
             "/fulfillments/{id}/reopen",
             axum::routing::post(fulfillments::reopen_fulfillment),
         )
-        .add(
+        .route(
             "/fulfillments/{id}/reship",
             axum::routing::post(fulfillments::reship_fulfillment),
         )
-        .add(
+        .route(
             "/fulfillments/{id}/cancel",
             axum::routing::post(fulfillments::cancel_fulfillment),
         )
@@ -327,15 +327,19 @@ pub fn routes() -> Routes {
 pub(crate) fn map_payment_orchestration_error(error: crate::PaymentOrchestrationError) -> Error {
     match error {
         crate::PaymentOrchestrationError::Payment(error) => map_payment_error(error),
-        crate::PaymentOrchestrationError::Provider(error) => Error::BadRequest(error.to_string()),
+        crate::PaymentOrchestrationError::Provider(error) => {
+            HttpError::bad_request("commerce_admin_invalid", error.to_string())
+        }
     }
 }
 
 pub(crate) fn map_payment_error(error: rustok_payment::error::PaymentError) -> Error {
     match error {
         rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)
-        | rustok_payment::error::PaymentError::RefundNotFound(_) => Error::NotFound,
-        other => Error::BadRequest(other.to_string()),
+        | rustok_payment::error::PaymentError::RefundNotFound(_) => {
+            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+        }
+        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
     }
 }
 
@@ -343,22 +347,28 @@ pub(crate) fn map_order_error(error: rustok_order::error::OrderError) -> Error {
     match error {
         rustok_order::error::OrderError::OrderNotFound(_)
         | rustok_order::error::OrderError::OrderReturnNotFound(_)
-        | rustok_order::error::OrderError::OrderChangeNotFound(_) => Error::NotFound,
-        other => Error::BadRequest(other.to_string()),
+        | rustok_order::error::OrderError::OrderChangeNotFound(_) => {
+            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+        }
+        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
     }
 }
 
 pub(crate) fn map_fulfillment_error(error: rustok_fulfillment::error::FulfillmentError) -> Error {
     match error {
-        rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_) => Error::NotFound,
-        other => Error::BadRequest(other.to_string()),
+        rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_) => {
+            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+        }
+        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
     }
 }
 
 pub(crate) fn map_fulfillment_orchestration_error(error: FulfillmentOrchestrationError) -> Error {
     match error {
-        FulfillmentOrchestrationError::OrderNotFound(_) => Error::NotFound,
-        other => Error::BadRequest(other.to_string()),
+        FulfillmentOrchestrationError::OrderNotFound(_) => {
+            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+        }
+        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
     }
 }
 
@@ -372,10 +382,16 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
         | PostOrderOrchestrationError::Payment(
             rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)
             | rustok_payment::error::PaymentError::RefundNotFound(_),
-        ) => Error::NotFound,
-        PostOrderOrchestrationError::Order(other) => Error::BadRequest(other.to_string()),
-        PostOrderOrchestrationError::Payment(other) => Error::BadRequest(other.to_string()),
-        PostOrderOrchestrationError::Validation(message) => Error::BadRequest(message),
+        ) => HttpError::not_found("commerce_admin_not_found", "Commerce resource not found"),
+        PostOrderOrchestrationError::Order(other) => {
+            HttpError::bad_request("commerce_admin_invalid", other.to_string())
+        }
+        PostOrderOrchestrationError::Payment(other) => {
+            HttpError::bad_request("commerce_admin_invalid", other.to_string())
+        }
+        PostOrderOrchestrationError::Validation(message) => {
+            HttpError::bad_request("commerce_admin_invalid", message)
+        }
     }
 }
 
@@ -389,8 +405,10 @@ pub(crate) fn decision_requires_payments_update(action: &str, has_refund_payload
 
 pub(crate) fn map_shipping_profile_error(error: crate::CommerceError) -> Error {
     match error {
-        crate::CommerceError::ShippingProfileNotFound(_) => Error::NotFound,
-        other => Error::BadRequest(other.to_string()),
+        crate::CommerceError::ShippingProfileNotFound(_) => {
+            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+        }
+        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
     }
 }
 
@@ -398,7 +416,7 @@ pub(crate) async fn validate_product_shipping_profile_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     shipping_profile_slug: Option<&str>,
-) -> Result<()> {
+) -> HttpResult<()> {
     let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
         return Ok(());
     };
@@ -415,7 +433,7 @@ pub(crate) async fn validate_shipping_option_profile_inputs(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     allowed_shipping_profile_slugs: Option<&Vec<String>>,
-) -> Result<()> {
+) -> HttpResult<()> {
     let Some(slugs) = allowed_shipping_profile_slugs else {
         return Ok(());
     };
@@ -433,16 +451,17 @@ pub(crate) async fn resolve_return_refund_collection_id(
     tenant_id: Uuid,
     order_id: Uuid,
     explicit_collection_id: Option<Uuid>,
-) -> Result<Uuid> {
+) -> HttpResult<Uuid> {
     if let Some(collection_id) = explicit_collection_id {
         let collection = payment_service
             .get_collection(tenant_id, collection_id)
             .await
             .map_err(map_payment_error)?;
         if collection.order_id != Some(order_id) {
-            return Err(Error::BadRequest(format!(
-                "payment collection {collection_id} is not attached to order {order_id}"
-            )));
+            return Err(HttpError::bad_request(
+                "commerce_admin_invalid",
+                format!("payment collection {collection_id} is not attached to order {order_id}"),
+            ));
         }
         return Ok(collection_id);
     }
@@ -453,8 +472,9 @@ pub(crate) async fn resolve_return_refund_collection_id(
         .map_err(map_payment_error)?
         .map(|collection| collection.id)
         .ok_or_else(|| {
-            Error::BadRequest(format!(
-                "order {order_id} has no payment collection for return refund"
-            ))
+            HttpError::bad_request(
+                "commerce_admin_invalid",
+                format!("order {order_id} has no payment collection for return refund"),
+            )
         })
 }

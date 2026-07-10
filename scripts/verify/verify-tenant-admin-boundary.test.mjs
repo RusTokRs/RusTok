@@ -50,8 +50,17 @@ ${options.serverInFacade ? "#[server] async fn bad() {}" : ""}
 `);
   writeFixtureFile(root, "crates/rustok-tenant/admin/src/transport/native_server_adapter.rs", `
 use leptos::prelude::*;
+use rustok_api::HostRuntimeContext;
 #[server]
-pub async fn tenant_bootstrap_native() -> Result<(), ServerFnError> { Ok(()) }
+pub async fn tenant_bootstrap_native() -> Result<(), ServerFnError> {
+    let _runtime: Option<HostRuntimeContext> = None;
+    Ok(())
+}
+`);
+  writeFixtureFile(root, "crates/rustok-tenant/admin/Cargo.toml", `
+[package]
+name = "rustok-tenant-admin-fixture"
+version = "0.1.0"
 `);
   if (options.legacyApiFile) {
     writeFixtureFile(root, "crates/rustok-tenant/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");

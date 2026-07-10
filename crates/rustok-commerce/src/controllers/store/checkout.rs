@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::CartService;
 use rustok_payment::PaymentService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -34,7 +34,7 @@ pub async fn create_payment_collection(
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Json(input): Json<StoreCreatePaymentCollectionInput>,
-) -> Result<(StatusCode, Json<PaymentCollectionResponse>)> {
+) -> HttpResult<(StatusCode, Json<PaymentCollectionResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -63,7 +63,7 @@ pub async fn create_payment_collection(
     if let Some(existing) = service
         .find_reusable_collection_by_cart(tenant.id, cart.id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
     {
         return Ok((StatusCode::OK, Json(existing)));
     }
@@ -83,7 +83,7 @@ pub async fn create_payment_collection(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok((StatusCode::CREATED, Json(collection)))
 }
@@ -108,14 +108,14 @@ pub async fn complete_cart_checkout(
     request_context: RequestContext,
     Path(cart_id): Path<Uuid>,
     Json(input): Json<StoreCompleteCartInput>,
-) -> Result<Json<CompleteCheckoutResponse>> {
+) -> HttpResult<Json<CompleteCheckoutResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let cart_service = CartService::new(runtime.db_clone());
     let mut cart = cart_service
         .get_cart(tenant.id, cart_id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
     super::ensure_store_cart_access(&cart, customer_id)?;
@@ -187,7 +187,7 @@ pub async fn complete_cart_checkout(
             },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(response))
 }

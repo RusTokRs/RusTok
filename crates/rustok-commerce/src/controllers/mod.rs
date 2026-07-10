@@ -3,10 +3,9 @@ mod common;
 pub mod products;
 pub mod store;
 
-use loco_rs::{app::AppContext, controller::Routes};
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_api::HostRuntimeContext;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct CommerceHttpRuntime {
@@ -28,18 +27,26 @@ impl CommerceHttpRuntime {
     }
 }
 
-impl axum::extract::FromRef<AppContext> for CommerceHttpRuntime {
-    fn from_ref(input: &AppContext) -> Self {
-        let transport = Arc::new(OutboxTransport::new(input.db.clone()));
-        Self {
-            db: input.db.clone(),
-            event_bus: TransactionalEventBus::new(transport),
-        }
+impl CommerceHttpRuntime {
+    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+        let event_bus = runtime
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require TransactionalEventBus in HostRuntimeContext"
+                )
+            })?;
+        Ok(Self {
+            db: runtime.db_clone(),
+            event_bus,
+        })
     }
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .nest("/store", store::routes())
-        .nest("/admin", admin::routes())
+pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
+    let state = CommerceHttpRuntime::from_host(runtime)?;
+    Ok(axum::Router::new()
+        .nest("/store", store::axum_router())
+        .nest("/admin", admin::axum_router())
+        .with_state(state))
 }

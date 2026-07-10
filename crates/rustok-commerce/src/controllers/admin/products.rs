@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_product::CatalogService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::super::{
@@ -33,7 +33,7 @@ pub async fn list_products(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     query: Query<ListProductsParams>,
-) -> Result<Json<PaginatedResponse<ProductListItem>>> {
+) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
     super::super::products::list_products(state, tenant, auth, request_context, query).await
 }
 
@@ -53,7 +53,7 @@ pub async fn create_product(
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateProductInput>,
-) -> Result<(StatusCode, Json<ProductResponse>)> {
+) -> HttpResult<(StatusCode, Json<ProductResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::PRODUCTS_CREATE],
@@ -71,7 +71,7 @@ pub async fn create_product(
     let product = service
         .create_product(tenant.id, auth.user_id, input)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok((StatusCode::CREATED, Json(product)))
 }
@@ -93,7 +93,7 @@ pub async fn show_product(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     path: Path<Uuid>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     super::super::products::show_product(state, tenant, auth, request_context, path).await
 }
 
@@ -115,7 +115,7 @@ pub async fn update_product(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateProductInput>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::PRODUCTS_UPDATE],
@@ -133,7 +133,7 @@ pub async fn update_product(
     let product = service
         .update_product(tenant.id, auth.user_id, id, input)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(product))
 }
@@ -154,7 +154,7 @@ pub async fn delete_product(
     tenant: TenantContext,
     auth: AuthContext,
     path: Path<Uuid>,
-) -> Result<StatusCode> {
+) -> HttpResult<StatusCode> {
     super::super::products::delete_product(state, tenant, auth, path).await
 }
 
@@ -174,7 +174,7 @@ pub async fn publish_product(
     tenant: TenantContext,
     auth: AuthContext,
     path: Path<Uuid>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     super::super::products::publish_product(state, tenant, auth, path).await
 }
 
@@ -194,6 +194,6 @@ pub async fn unpublish_product(
     tenant: TenantContext,
     auth: AuthContext,
     path: Path<Uuid>,
-) -> Result<Json<ProductResponse>> {
+) -> HttpResult<Json<ProductResponse>> {
     super::super::products::unpublish_product(state, tenant, auth, path).await
 }

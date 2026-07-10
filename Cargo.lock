@@ -141,19 +141,20 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "alloy"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-graphql",
  "async-trait",
  "axum",
  "chrono",
  "cron 0.17.0",
  "email_address",
- "loco-rs",
  "parking_lot",
  "reqwest 0.13.2",
  "rhai",
  "rustok-api",
  "rustok-core",
  "rustok-telemetry",
+ "rustok-web",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -9937,11 +9938,11 @@ dependencies = [
 name = "rustok-commerce"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-graphql",
  "async-trait",
  "axum",
  "chrono",
- "loco-rs",
  "proptest",
  "rust_decimal",
  "rust_decimal_macros",
@@ -9964,6 +9965,7 @@ dependencies = [
  "rustok-telemetry",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-web",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -11592,18 +11594,19 @@ dependencies = [
 name = "rustok-workflow"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-graphql",
  "async-trait",
  "axum",
  "chrono",
  "cron 0.17.0",
- "loco-rs",
  "reqwest 0.13.2",
  "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
  "rustok-tenant",
+ "rustok-web",
  "sea-orm",
  "sea-orm-migration",
  "serde",

@@ -2,7 +2,7 @@
 
 ## Current Contract
 
-`apps/next-admin` is an FFA-compatible Next.js composition host. It owns the
+`apps/next-admin` is a Next.js composition host. It owns the
 Next App Router shell, shared runtime context, host navigation and package
 registration. Module and capability UI lives in package-owned surfaces under
 `apps/next-admin/packages/*` or external `@rustok/*-admin` packages.

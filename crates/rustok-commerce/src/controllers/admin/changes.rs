@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
+use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -44,7 +44,7 @@ pub async fn create_order_change(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateOrderChangeInput>,
-) -> Result<(StatusCode, Json<OrderChangeResponse>)> {
+) -> HttpResult<(StatusCode, Json<OrderChangeResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -76,7 +76,7 @@ pub async fn list_order_changes(
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListOrderChangesParams>,
-) -> Result<Json<PaginatedResponse<OrderChangeResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<OrderChangeResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_READ],
@@ -121,7 +121,7 @@ pub async fn show_order_change(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<OrderChangeResponse>> {
+) -> HttpResult<Json<OrderChangeResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_READ],
@@ -162,7 +162,7 @@ pub async fn apply_order_change(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<AdminApplyOrderChangeInput>,
-) -> Result<Json<ApplyOrderChangeResult>> {
+) -> HttpResult<Json<ApplyOrderChangeResult>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -192,7 +192,9 @@ pub async fn apply_order_change(
             .map_err(|err| match err {
                 PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
                 PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
-                PostOrderOrchestrationError::Validation(msg) => Error::BadRequest(msg),
+                PostOrderOrchestrationError::Validation(msg) => {
+                    HttpError::bad_request("commerce_operation_failed", msg)
+                }
             })?,
         "claim" => orchestration_service
             .apply_claim_order_change(tenant.id, id, input.metadata)
@@ -200,7 +202,9 @@ pub async fn apply_order_change(
             .map_err(|err| match err {
                 PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
                 PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
-                PostOrderOrchestrationError::Validation(msg) => Error::BadRequest(msg),
+                PostOrderOrchestrationError::Validation(msg) => {
+                    HttpError::bad_request("commerce_operation_failed", msg)
+                }
             })?,
         _ => {
             let item = order_service
@@ -242,7 +246,7 @@ pub async fn cancel_order_change(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CancelOrderChangeInput>,
-) -> Result<Json<OrderChangeResponse>> {
+) -> HttpResult<Json<OrderChangeResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],

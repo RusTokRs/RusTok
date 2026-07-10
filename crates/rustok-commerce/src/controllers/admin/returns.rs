@@ -3,11 +3,11 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -44,7 +44,7 @@ pub async fn create_order_return(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateOrderReturnInput>,
-) -> Result<(StatusCode, Json<OrderReturnResponse>)> {
+) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -78,7 +78,7 @@ pub async fn create_order_return_decision(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateReturnDecisionInput>,
-) -> Result<(StatusCode, Json<ReturnDecisionResponse>)> {
+) -> HttpResult<(StatusCode, Json<ReturnDecisionResponse>)> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -121,7 +121,7 @@ pub async fn list_order_returns(
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListOrderReturnsParams>,
-) -> Result<Json<PaginatedResponse<OrderReturnResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_READ],
@@ -165,7 +165,7 @@ pub async fn show_order_return(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<OrderReturnResponse>> {
+) -> HttpResult<Json<OrderReturnResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_READ],
@@ -184,11 +184,16 @@ fn attach_return_order_change_context(
     value: serde_json::Value,
     return_id: Uuid,
     change_type: &str,
-) -> Result<serde_json::Value> {
+) -> HttpResult<serde_json::Value> {
     let mut object = match value {
         serde_json::Value::Null => serde_json::Map::new(),
         serde_json::Value::Object(obj) => obj,
-        _ => return Err(Error::BadRequest("Value must be a JSON object".to_string())),
+        _ => {
+            return Err(HttpError::bad_request(
+                "commerce_operation_failed",
+                "Value must be a JSON object".to_string(),
+            ))
+        }
     };
     object.insert(
         "order_return_id".to_string(),
@@ -224,7 +229,7 @@ pub async fn complete_order_return(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<AdminCompleteOrderReturnInput>,
-) -> Result<Json<OrderReturnResponse>> {
+) -> HttpResult<Json<OrderReturnResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -255,7 +260,8 @@ pub async fn complete_order_return(
 
     if let Some(refund_input) = input.refund {
         if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
-            return Err(Error::BadRequest(
+            return Err(HttpError::bad_request(
+                "commerce_operation_failed",
                 "refund helper cannot be combined with explicit refund_id or order_change_id"
                     .to_string(),
             ));
@@ -266,7 +272,8 @@ pub async fn complete_order_return(
             .map(|value| value.trim().eq_ignore_ascii_case("refund"))
             == Some(false)
         {
-            return Err(Error::BadRequest(
+            return Err(HttpError::bad_request(
+                "commerce_operation_failed",
                 "refund helper requires resolution_type to be omitted or `refund`".to_string(),
             ));
         }
@@ -323,7 +330,7 @@ pub async fn complete_order_return(
             || has_refund_helper
             || has_claim_helper
         {
-            return Err(Error::BadRequest(
+            return Err(HttpError::bad_request("commerce_operation_failed",
                 "exchange helper cannot be combined with explicit refund_id, order_change_id, refund helper, or claim helper"
                     .to_string(),
             ));
@@ -334,7 +341,8 @@ pub async fn complete_order_return(
             .map(|value| value.trim().eq_ignore_ascii_case("exchange"))
             == Some(false)
         {
-            return Err(Error::BadRequest(
+            return Err(HttpError::bad_request(
+                "commerce_operation_failed",
                 "exchange helper requires resolution_type to be omitted or `exchange`".to_string(),
             ));
         }
@@ -372,7 +380,7 @@ pub async fn complete_order_return(
             || has_refund_helper
             || has_exchange_helper
         {
-            return Err(Error::BadRequest(
+            return Err(HttpError::bad_request("commerce_operation_failed",
                 "claim helper cannot be combined with explicit refund_id, order_change_id, refund helper, or exchange helper"
                     .to_string(),
             ));
@@ -383,7 +391,8 @@ pub async fn complete_order_return(
             .map(|value| value.trim().eq_ignore_ascii_case("claim"))
             == Some(false)
         {
-            return Err(Error::BadRequest(
+            return Err(HttpError::bad_request(
+                "commerce_operation_failed",
                 "claim helper requires resolution_type to be omitted or `claim`".to_string(),
             ));
         }
@@ -442,7 +451,7 @@ pub async fn cancel_order_return(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CancelOrderReturnInput>,
-) -> Result<Json<OrderReturnResponse>> {
+) -> HttpResult<Json<OrderReturnResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],

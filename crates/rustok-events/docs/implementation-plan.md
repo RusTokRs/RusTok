@@ -1,69 +1,55 @@
 # Implementation plan for `rustok-events`
 
-Status: canonical ownership event contracts have already been moved to a separate module;
-current work is to maintain the compatibility path and schema discipline without drift.
-
-## Execution checkpoint
-
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Synchronize the plan with the current code and select the first incomplete item.
-- Open blockers: None.
-- Hand-off notes for next agent: Update this block after each increment.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
-
-## Scope of work
-
-- keep `rustok-events` as the only canonical source for event contracts;
-- synchronize schema registry, envelope shape and local docs;
-- do not return ownership event contracts back to `rustok-core`.
-
 ## Current state
 
-- `DomainEvent` and `EventEnvelope` already live in `rustok-events`;
-- `rustok-core::events` already works as a compatibility re-export layer;
-- internal `rustok-*` crates should already import event contracts directly from `rustok-events`;
-- schema coverage, versioning guidance and contract tests already form the base release gate.
+`rustok-events` is the canonical source of `DomainEvent`, `EventEnvelope`,
+schema metadata, validation, and event versioning policy. `rustok-core::events`
+is a compatibility re-export only; domain, outbox, runtime, and test crates
+should import event contracts from this module.
 
-## Stages
+Schema validation and JSON roundtrip coverage exist for the public event
+surface, including tenant lifecycle events. Transport-specific delivery logic
+does not belong here.
 
-### 1. Contract stability
+## FFA/FBA boundary
 
-- [x] move canonical ownership event contracts to a separate crate;
-- [x] preserve compatibility path through `rustok-core::events`;
-- [x] cover schema registry, validation and roundtrip contract tests;
-- [ ] maintain sync between event types, registry and consumer imports (tenant lifecycle family updated: added `tenant.module.toggled`).
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Structural shape: `no_ui_boundary`
+- This module publishes shared contracts, not a UI or FBA provider port.
 
-### 2. Release discipline
+## Open results
 
-- [ ] bring documented release gate to a sustainable process around schema changes;
-- [ ] continue cleaning residual direct imports from compatibility path;
-- [ ] document breaking/deprecating changes together with versioning plan.
+1. **Keep event types, schema registry, and consumer imports synchronized.**
+   Add an event family only with canonical schema/validation coverage and direct
+   consumer imports from `rustok-events`.
+   **Depends on:** the change-owning domain module and its outbox path.
+   **Done when:** the event, registry metadata, consumer imports, and contract
+   tests describe the same payload and tenant behavior.
 
-### 3. Operability
+2. **Make schema-change release discipline executable.** Document and enforce
+   version bump, compatibility, deprecation, and dual-read/migration decisions
+   for breaking payload changes; continue removing residual compatibility imports.
+   **Depends on:** the affected event consumer release plan.
+   **Done when:** a breaking change has an explicit migration owner, supported
+   reader versions, and a testable compatibility strategy.
 
-- [ ] keep outbox/replay/reindex guidance synchronized with event contracts;
-- [ ] synchronize local docs and `README.md` when schema surface changes;
-- [ ] expand compatibility checks as new event families appear.
+3. **Synchronize event contracts with recovery guidance.** Update outbox,
+   replay, reindex, and DLQ documentation with a schema or versioning change.
+   **Depends on:** the relevant runtime/operational contract.
+   **Done when:** recovery procedures name the correct event schema and do not
+   rely on transport-owned copies of event payloads.
 
 ## Verification
 
-<!-- compatibility anchor: contract tests cover all public use-cases -->
-- [ ] Contract tests cover public event-contract use cases.
 - `cargo xtask module validate events`
 - `cargo xtask module test events`
-- targeted tests for schema coverage, validation, compatibility aliases and JSON roundtrip
+- Targeted schema coverage, validation, compatibility-alias, and envelope JSON
+  roundtrip tests.
 
-## Update rules
+## Change rules
 
-1. When changing event contract, update this file first.
-2. When changing public/runtime surface, synchronize `README.md` and `docs/README.md`.
-3. When changing module metadata, synchronize `rustok-module.toml`.
-4. When changing event versioning policy, update related architecture/outbox docs.
-
-
-## Quality backlog
-
-- [ ] Update test coverage for key module scenarios.
-- [ ] Verify completeness and currency of `README.md` and local docs.
-- [ ] Lock/update verification gates for current module state.
+1. Keep canonical event payloads and schemas in this module.
+2. Update local docs, `rustok-module.toml`, event-flow documentation, and
+   outbox/replay guidance with a contract change.
+3. Update `docs/modules/registry.md` if ownership or module status changes.

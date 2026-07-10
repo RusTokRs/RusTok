@@ -27,8 +27,8 @@ The first host-level FFA slice has already been applied to the storefront header
 `src/widgets/header/core.rs` without Leptos dependencies, while `header/mod.rs` remains the Leptos
 render adapter. This split is enforced by the fast verifier `npm run verify:frontend:host-ffa-contract`.
 
-Host context server functions are split by concern: enabled-module and canonical-route adapters live
-next to their context contracts, while the remaining shared context adapter owns only SEO page context.
+Host context server functions are split by concern: enabled-module, canonical-route and SEO page-context
+adapters live next to their context contracts.
 
 ## Responsibility boundaries
 
@@ -45,6 +45,10 @@ next to their context contracts, while the remaining shared context adapter owns
 - CSR/WASM for Leptos storefront packages is a compatibility/debug profile. If a package must run standalone, it must have a GraphQL/REST fallback and not require `/api/fn/*`.
 - Generic storefront routes live under the `/modules/{route_segment}` and `/{locale}/modules/{route_segment}` families.
 - The host selects the transport path by build/runtime profile: native `#[server]` for SSR/hydrate and GraphQL for headless/CSR.
+- Host routing contexts keep their native adapters separate: enabled-module resolution,
+  canonical-route resolution and SEO page-context resolution live in their respective
+  `shared/context/*_native_server_adapter.rs` files. The context modules select the
+  native or GraphQL path and do not share an aggregate adapter.
 - Generated search mount uses host-owned `SearchStorefrontComposition`: the adapter checks tenant enablement of the `product` module, passes `UiRouteContext.locale` to a public-safe product metadata helper, and maps owner DTO to search props without moving product/search domain logic into the host.
 - Module-owned storefront packages must build internal links through `UiRouteContext::module_route_base()`, not through hardcoded route strings.
 - Module-owned storefront packages do not define their own locale negotiation policy; the effective locale comes from the host/runtime contract.

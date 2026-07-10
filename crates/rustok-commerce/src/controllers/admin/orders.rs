@@ -2,12 +2,12 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
@@ -36,7 +36,7 @@ pub async fn list_orders(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     Query(params): Query<ListOrdersParams>,
-) -> Result<Json<PaginatedResponse<OrderResponse>>> {
+) -> HttpResult<Json<PaginatedResponse<OrderResponse>>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_LIST],
@@ -57,7 +57,7 @@ pub async fn list_orders(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: orders,
@@ -82,7 +82,7 @@ pub async fn show_order(
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
     Path(id): Path<Uuid>,
-) -> Result<Json<AdminOrderDetailResponse>> {
+) -> HttpResult<Json<AdminOrderDetailResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_READ],
@@ -100,17 +100,19 @@ pub async fn show_order(
         .map_err(|err| match err {
             rustok_order::error::OrderError::OrderNotFound(_)
             | rustok_order::error::OrderError::OrderReturnNotFound(_)
-            | rustok_order::error::OrderError::OrderChangeNotFound(_) => Error::NotFound,
-            other => Error::BadRequest(other.to_string()),
+            | rustok_order::error::OrderError::OrderChangeNotFound(_) => {
+                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+            }
+            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
         })?;
     let payment_collection = PaymentService::new(runtime.db_clone())
         .find_latest_collection_by_order(tenant.id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
     let fulfillment = FulfillmentService::new(runtime.db_clone())
         .find_by_order(tenant.id, id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
 
     Ok(Json(AdminOrderDetailResponse {
         order,
@@ -138,7 +140,7 @@ pub async fn mark_order_paid(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<MarkPaidOrderInput>,
-) -> Result<Json<OrderResponse>> {
+) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -178,7 +180,7 @@ pub async fn ship_order(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<ShipOrderInput>,
-) -> Result<Json<OrderResponse>> {
+) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -218,7 +220,7 @@ pub async fn deliver_order(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<DeliverOrderInput>,
-) -> Result<Json<OrderResponse>> {
+) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],
@@ -252,7 +254,7 @@ pub async fn cancel_order(
     auth: AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CancelOrderInput>,
-) -> Result<Json<OrderResponse>> {
+) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
         &auth,
         &[Permission::ORDERS_UPDATE],

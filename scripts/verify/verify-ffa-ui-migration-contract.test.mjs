@@ -69,6 +69,11 @@ function withFixture({
   );
 
   writeFileSync(
+    path.join(root, "docs", "research", "dioxus-ffa-ui-migration-plan.md"),
+    ["## Implementation Phases", "## Backlog Execution Principle (One Task Per Iteration)", "## Standard for minimal FFA slice and anti-over-extraction", "An FFA slice should reduce coupling", "request/command construction, normalization and validation", "simple i18n label bindings", "reset/refresh side effects after mutation", "mechanical wrappers over a single formatting line", "If a change adds more boilerplate than it removes coupling", "if over-extraction is detected, revert it in the same iteration", "## Verification Script Update Policy", "## Phase-Gate Criteria (mandatory transitions between phases)", "## KPI Parity (measurable thresholds)", "Functional parity", "Error parity", "Performance guard", "Contract guard", "Docs guard", "## RACI (who approves phase-gates)"].join("\n"),
+  );
+
+  writeFileSync(
     path.join(root, "docs", "verification", "ffa-ui-parity-checklist.md"),
     [
       "- [ ] Native path (Leptos SSR/hydrate) работает для целевого сценария.",
@@ -86,8 +91,14 @@ function withFixture({
   );
 
   writeFileSync(
+    path.join(root, "docs", "verification", "ffa-ui-parity-checklist.md"),
+    ["- [ ] Native path (Leptos SSR/hydrate) works for the target scenario.", "- [ ] GraphQL selected path works for the same scenario.", "- [ ] Headless host path (Next/mobile/external) is not broken.", "- [ ] GraphQL/REST surface is not removed or weakened.", "- [ ] UI layer does not own transport/business logic.", "- [ ] UI adapter accesses transport only through module-owned facade; request/command/state construction and business/policy remain in core ports/helpers.", "- [ ] Core layer does not depend on `leptos*`.", "- [ ] Transport adapters are separated by role: native and GraphQL selected path, or a temporary single-adapter state with a next-step parity plan is explicitly documented.", "- [ ] Host-visible UI status/error contracts have stable machine-readable codes and documented locale keys.", "- [ ] `npm run verify:ffa:ui:migration` executed.", "- [ ] For changed error/status contracts, a list of stable codes and locale keys is attached."].join("\n"),
+  );
+
+  writeFileSync(
     path.join(root, "docs", "modules", "registry.md"),
     [
+      "Structural shape captures the depth of the code-level FFA split.",
       "Structural shape фиксирует глубину code-level FFA split.",
       "- `none`",
       "- `docs_boundary`",
@@ -147,19 +158,19 @@ function withFixture({
     path.join(root, "crates", "rustok-product", "storefront", "src", "core.rs"),
     [
       "pub struct ProductTransportErrorDomEvidence;",
-      "pub fn build_product_transport_error_dom_evidence() {}",
+      "pub fn build_transport_error_dom_evidence() {}",
     ].join("\n"),
   );
 
   writeFileSync(
     path.join(root, "crates", "rustok-product", "storefront", "src", "transport", "mod.rs"),
-    "pub struct ProductTransportError; ProductTransportPath NativeServer Graphql native_server graphql fallback_attempted native_error graphql_error",
+    "pub struct ProductTransportError; UiTransportPath NativeServer Graphql native_server graphql fallback_attempted native_error graphql_error",
   );
 
   writeFileSync(
     path.join(root, "crates", "rustok-product", "storefront", "src", "ui", "leptos.rs"),
     [
-      "build_product_transport_error_dom_evidence",
+      "build_transport_error_dom_evidence",
       "data-product-transport-failed-path",
       "data-product-transport-fallback-attempted",
       "data-product-transport-native-error",
@@ -245,6 +256,8 @@ function withFixture({
       "#[server(prefix = \"/api/fn\", endpoint = \"customer/detail\")]",
       "#[server(prefix = \"/api/fn\", endpoint = \"customer/create\")]",
       "#[server(prefix = \"/api/fn\", endpoint = \"customer/update\")]",
+      "HostRuntimeContext",
+      "runtime_ctx.db_clone()",
     ].join("\n"),
   );
 
@@ -258,20 +271,25 @@ function withFixture({
     "admin/src/core.rs submit-command admin/src/transport/mod.rs admin/src/transport/native_server_adapter.rs admin/src/ui/leptos.rs",
   );
 
+  writeFileSync(
+    path.join(root, "crates", "rustok-customer", "admin", "Cargo.toml"),
+    "[package]\nname = \"rustok-customer-admin-fixture\"\nversion = \"0.1.0\"\n",
+  );
+
 
   writeFileSync(
     path.join(root, "crates", "rustok-region", "storefront", "src", "core.rs"),
     [
-      "pub enum RegionErrorStatusCode { NativeUnavailable, FallbackUnavailable }",
+      "pub enum RegionErrorStatusCode { NativeUnavailable, GraphqlUnavailable }",
       "pub struct RegionErrorStatusDescriptor { pub stable_code: &'static str, pub locale_key: &'static str }",
       "const REGION_ERROR_STATUS_DESCRIPTORS: [RegionErrorStatusDescriptor; 2] = [",
       "  RegionErrorStatusDescriptor { stable_code: \"native_unavailable\", locale_key: \"region.error.status.nativeUnavailable\" },",
-      "  RegionErrorStatusDescriptor { stable_code: \"fallback_unavailable\", locale_key: \"region.error.status.fallbackUnavailable\" },",
+      "  RegionErrorStatusDescriptor { stable_code: \"graphql_unavailable\", locale_key: \"region.error.status.graphqlUnavailable\" },",
       "];",
       "pub const SELECTED_REGION_QUERY_KEY: &str = \"region\";",
       "pub struct RegionRouteState;",
       "pub struct RegionRouteSelectionUpdate;",
-      "fn _uses_variants() { let _ = RegionErrorStatusCode::NativeUnavailable; let _ = RegionErrorStatusCode::FallbackUnavailable; }",
+      "fn _uses_variants() { let _ = RegionErrorStatusCode::NativeUnavailable; let _ = RegionErrorStatusCode::GraphqlUnavailable; }",
     ].join("\n"),
   );
 
@@ -284,7 +302,7 @@ function withFixture({
     path.join(root, "crates", "rustok-region", "storefront", "README.md"),
     [
       "native_unavailable region.error.status.nativeUnavailable",
-      "fallback_unavailable region.error.status.fallbackUnavailable",
+      "graphql_unavailable region.error.status.graphqlUnavailable",
       "data-region-error-status data-region-error-locale-key data-region-route-query-key data-region-route-query-value",
       "RegionRouteState RegionRouteSelectionUpdate SELECTED_REGION_QUERY_KEY",
     ].join("\n"),
@@ -295,7 +313,7 @@ function withFixture({
       path.join(root, "crates", "rustok-region", "storefront", "locales", `${locale}.json`),
       JSON.stringify({
         "region.error.status.nativeUnavailable": "Native unavailable",
-        "region.error.status.fallbackUnavailable": "Fallback unavailable",
+        "region.error.status.graphqlUnavailable": "GraphQL unavailable",
       }),
     );
   });
@@ -470,7 +488,7 @@ test("fails when contract script command is drifted", () => {
   try {
     const result = runVerifier(fixture.root);
     assert.notEqual(result.status, 0, "Expected drifted contract command fixture to fail");
-    assert.match(result.stderr, /должен быть одним из/);
+    assert.match(result.stderr, /must be one of/);
   } finally {
     fixture.cleanup();
   }
@@ -504,7 +522,7 @@ test("fails when structural shape has no matching code layout", () => {
     rmSync(path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true, force: true });
     const result = runVerifier(fixture.root);
     assert.notEqual(result.status, 0, "Expected missing ui adapter fixture to fail");
-    assert.match(result.stderr, /требует ui\/leptos\.rs или ui\/leptos\//);
+    assert.match(result.stderr, /requires ui\/leptos\.rs or ui\/leptos\//);
   } finally {
     fixture.cleanup();
   }
@@ -599,6 +617,6 @@ test("fails on unknown cli arguments", () => {
   });
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Неизвестные аргументы/);
+  assert.match(result.stderr, /Unknown arguments/);
 });
 
