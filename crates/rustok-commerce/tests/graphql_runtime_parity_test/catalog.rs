@@ -1,6 +1,97 @@
 use super::*;
 
 #[tokio::test]
+async fn admin_graphql_rejects_product_read_tenant_substitution() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let substituted_tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              product(tenantId: "{substituted_tenant_id}", id: "{product_id}", locale: "en") {{ id }}
+              products(tenantId: "{substituted_tenant_id}", locale: "en", filter: {{ page: 1, perPage: 20 }}) {{ total }}
+              productAttributes(tenantId: "{substituted_tenant_id}", locale: "en") {{ total }}
+              catalogCategories(tenantId: "{substituted_tenant_id}", locale: "en") {{ total }}
+              productAttributeSchemas(tenantId: "{substituted_tenant_id}", locale: "en") {{ total }}
+              productEffectiveForm(tenantId: "{substituted_tenant_id}", productId: "{product_id}", locale: "en") {{ categoryId }}
+              productAttributeValues(tenantId: "{substituted_tenant_id}", productId: "{product_id}", locale: "en") {{ attributeId }}
+              storefrontProduct(tenantId: "{substituted_tenant_id}", id: "{product_id}") {{ id }}
+              storefrontProducts(tenantId: "{substituted_tenant_id}") {{ total }}
+            }}
+            "#,
+            product_id = Uuid::new_v4(),
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 9, "{:#?}", response.errors);
+    let messages = response
+        .errors
+        .into_iter()
+        .map(|error| error.message)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| message.as_str() == "Product reads must use the current tenant")
+            .count(),
+        7,
+        "{messages:#?}"
+    );
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| message.as_str()
+                == "Storefront catalog reads must use the current tenant")
+            .count(),
+        2,
+        "{messages:#?}"
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_rejects_product_write_actor_from_another_tenant() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let mut foreign_auth = auth_context(Uuid::new_v4());
+    foreign_auth.permissions = vec![Permission::PRODUCTS_CREATE];
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(foreign_auth),
+    );
+    let response = schema
+        .execute(Request::new(
+            r#"
+            mutation {
+              createProduct(input: {
+                translations: [{ locale: "en", title: "Unreachable", handle: "unreachable" }]
+                variants: [{ sku: "UNREACHABLE", prices: [{ currencyCode: "EUR", amount: "1.00" }] }]
+              }) { id }
+            }
+            "#,
+        ))
+        .await;
+
+    assert_eq!(response.errors.len(), 1, "{:#?}", response.errors);
+    assert_eq!(
+        response.errors[0].message,
+        "Authenticated actor is not bound to the current tenant"
+    );
+}
+
+#[tokio::test]
 async fn storefront_graphql_filters_channel_hidden_products() {
     let (db, catalog, _) = setup().await;
     let tenant_id = Uuid::new_v4();

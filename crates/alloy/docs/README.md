@@ -58,6 +58,11 @@ without depending on Rhai internals. `PhaseCapabilities` fixes the helper famili
 allowed for each execution phase, so integrations do not infer bridge
 availability from side effects of registration.
 
+`HttpCapabilityBridge` is installed only on the request-scoped Rhai sandbox
+executor. It has no network client: its `http_*` helpers create
+`platform.http` calls for `SandboxHost`, so the host broker applies the same
+allowlist, credential and audit policy to Alloy drafts and marketplace artifacts.
+
 ## Runbook for Scheduler and Hook Debugging
 
 1. Check `execution_id`, `script.id`, `script.name` and `execution.phase` in

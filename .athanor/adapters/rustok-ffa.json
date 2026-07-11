@@ -1,0 +1,10 @@
+{
+  "schema": "athanor.adapter_manifest",
+  "name": "rustok-ffa",
+  "version": "0.1.0",
+  "adapters": [
+    { "id": "builtin.extractor.rustok_ffa", "kind": "extractor", "enabled": true },
+    { "id": "builtin.linker.rustok_ffa", "kind": "linker", "enabled": true },
+    { "id": "builtin.checker.rustok_ffa", "kind": "checker", "enabled": true }
+  ]
+}

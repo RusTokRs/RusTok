@@ -9,6 +9,8 @@ mod types;
 
 #[cfg(feature = "rhai")]
 pub mod rhai;
+#[cfg(feature = "wasm-component")]
+pub mod wasm;
 
 pub use capability::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityName, CapabilityResponse,

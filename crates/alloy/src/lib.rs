@@ -24,11 +24,14 @@ pub mod scheduler;
 pub mod storage;
 pub mod utils;
 
-pub use api::{create_router, AppState};
-pub use artifact::{fork_rhai_module_release, stage_rhai_module_release, AlloyArtifactError};
-pub use bridge::{Bridge, PhaseCapabilities};
+pub use api::{AppState, create_router};
+pub use artifact::{
+    AlloyArtifactError, fork_rhai_module_release, package_rhai_module_release,
+    stage_rhai_module_release,
+};
+pub use bridge::{Bridge, HttpCapabilityBridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
-pub use controllers::{axum_router, LOCO_EXECUTION_HISTORY_ROUTES};
+pub use controllers::{LOCO_EXECUTION_HISTORY_ROUTES, axum_router};
 pub use engine::{RhaiConfig, RhaiLimits, ScriptEngine};
 pub use error::{ScriptError, ScriptResult};
 pub use execution_log::{
@@ -38,13 +41,13 @@ pub use graphql::{AlloyMutation, AlloyQuery};
 pub use integration::{BeforeHookResult, HookExecutor, ScriptableEntity};
 pub use migration::ScriptsMigration;
 pub use model::{
-    register_entity_proxy, EntityProxy, EventType, HttpMethod, Script, ScriptId, ScriptStatus,
-    ScriptTrigger,
+    EntityProxy, EventType, HttpMethod, Script, ScriptId, ScriptStatus, ScriptTrigger,
+    register_entity_proxy,
 };
 pub use runner::{
     ExecutionOutcome, ExecutionResult, HookOutcome, ScriptExecutor, ScriptOrchestrator,
 };
-pub use runtime::{build_alloy_runtime, AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime};
+pub use runtime::{AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime, build_alloy_runtime};
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
 
@@ -72,6 +75,13 @@ pub fn create_engine_for_phase(phase: context::ExecutionPhase) -> ScriptEngine {
     register_entity_proxy(engine.engine_mut());
 
     engine
+}
+
+/// Builds the Rhai executor used for Alloy drafts and marketplace Rhai
+/// artifacts. HTTP is available only through `SandboxHost` capability grants.
+pub fn create_sandbox_rhai_executor() -> rustok_sandbox::rhai::RhaiExecutor {
+    rustok_sandbox::rhai::RhaiExecutor::new()
+        .with_extension(std::sync::Arc::new(HttpCapabilityBridge))
 }
 
 pub fn create_orchestrator<R: ScriptRegistry>(

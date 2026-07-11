@@ -3,8 +3,8 @@ mod query;
 mod types;
 
 use async_graphql::{Context, FieldError, Result};
-use rustok_api::{graphql::GraphQLError, has_any_effective_permission, AuthContext, TenantContext};
 use rustok_api::{Action, Permission, Resource};
+use rustok_api::{AuthContext, TenantContext, graphql::GraphQLError, has_any_effective_permission};
 
 pub use mutation::AlloyMutation;
 pub use query::{AlloyQuery, EXECUTION_HISTORY_GRAPHQL_FIELDS};

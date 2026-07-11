@@ -16,6 +16,9 @@ const fail = (message) => {
 const requireSource = (source, marker, label) => {
   if (!source.includes(marker)) fail(`${label} missing marker: ${marker}`);
 };
+const forbidSource = (source, marker, label) => {
+  if (source.includes(marker)) fail(`${label} must not contain marker: ${marker}`);
+};
 
 const productMigrationPath =
   'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs';
@@ -24,6 +27,14 @@ const productLocaleExpansionMigrationPath =
   'crates/rustok-product/src/migrations/m20260405_000007_expand_product_locale_storage_columns.rs';
 const productTenantConsistencyMigrationPath =
   'crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs';
+const productStatusMigrationPath =
+  'crates/rustok-product/src/migrations/m20260711_000001_product_status_enum.rs';
+const productIntegrityMigrationPath =
+  'crates/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs';
+const productValueInvariantMigrationPath =
+  'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs';
+const productChannelVisibilityMigrationPath =
+  'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs';
 const legacyProductMigrationPaths = [
   'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
@@ -32,30 +43,54 @@ const legacyProductMigrationPaths = [
 const indexMigrationPath =
   'crates/rustok-index/src/migrations/m20260701_000001_create_index_product_attribute_facets.rs';
 const schemaServicePath = 'crates/rustok-product/src/services/catalog_schema_service.rs';
+const schemaAttributesPath = 'crates/rustok-product/src/services/catalog_schema_service/attributes.rs';
+const schemaCategoriesPath = 'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
+const schemaSchemasPath = 'crates/rustok-product/src/services/catalog_schema_service/schemas.rs';
 const schemaResolverPath = 'crates/rustok-product/src/services/catalog_schema.rs';
 const catalogServicePath = 'crates/rustok-product/src/services/catalog.rs';
+const catalogTagsServicePath = 'crates/rustok-product/src/services/catalog/tags.rs';
+const productManifestPath = 'crates/rustok-product/Cargo.toml';
+const inventoryBootstrapPath = 'crates/rustok-inventory/src/services/bootstrap.rs';
+const inventoryServicesModPath = 'crates/rustok-inventory/src/services/mod.rs';
+const productWriteTransactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
 const indexerPath = 'crates/rustok-index/src/product/indexer.rs';
 const productTagsTestPath = 'crates/rustok-commerce/tests/product_taxonomy_tags.rs';
 const shippingGraphqlTestPath = 'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs';
 const productEventTestPath = 'crates/rustok-commerce/tests/product_event_index_integration_test.rs';
 const commerceMutationHelpersPath = 'crates/rustok-commerce/src/graphql/mutations/helpers.rs';
 const commerceCatalogMutationPath = 'crates/rustok-commerce/src/graphql/mutations/catalog.rs';
+const commerceGraphqlModulePath = 'crates/rustok-commerce/src/graphql/mod.rs';
+const commerceGraphqlQueryPath = 'crates/rustok-commerce/src/graphql/query.rs';
 
 const productMigration = read(productMigrationPath);
 const productMigrationsMod = read(productMigrationsModPath);
 const productLocaleExpansionMigration = read(productLocaleExpansionMigrationPath);
 const productTenantConsistencyMigration = read(productTenantConsistencyMigrationPath);
+const productStatusMigration = read(productStatusMigrationPath);
+const productIntegrityMigration = read(productIntegrityMigrationPath);
+const productValueInvariantMigration = read(productValueInvariantMigrationPath);
+const productChannelVisibilityMigration = read(productChannelVisibilityMigrationPath);
 const legacyProductMigrations = legacyProductMigrationPaths.map((path) => [path, read(path)]);
 const indexMigration = read(indexMigrationPath);
 const schemaService = read(schemaServicePath);
+const schemaAttributes = read(schemaAttributesPath);
+const schemaCategories = read(schemaCategoriesPath);
+const schemaSchemas = read(schemaSchemasPath);
 const schemaResolver = read(schemaResolverPath);
 const catalogService = read(catalogServicePath);
+const catalogTagsService = read(catalogTagsServicePath);
+const productManifest = read(productManifestPath);
+const inventoryBootstrap = read(inventoryBootstrapPath);
+const inventoryServicesMod = read(inventoryServicesModPath);
+const productWriteTransaction = read(productWriteTransactionPath);
 const indexer = read(indexerPath);
 const productTagsTest = read(productTagsTestPath);
 const shippingGraphqlTest = read(shippingGraphqlTestPath);
 const productEventTest = read(productEventTestPath);
 const commerceMutationHelpers = read(commerceMutationHelpersPath);
 const commerceCatalogMutation = read(commerceCatalogMutationPath);
+const commerceGraphqlModule = read(commerceGraphqlModulePath);
+const commerceGraphqlQuery = read(commerceGraphqlQueryPath);
 const plan = read('crates/rustok-product/docs/implementation-plan.md');
 const docsReadme = read('crates/rustok-product/docs/README.md');
 const productReadme = read('crates/rustok-product/README.md');
@@ -139,8 +174,64 @@ for (const marker of [
   'Box::new(m20260405_000007_expand_product_locale_storage_columns::Migration)',
   'mod m20260701_000002_add_product_catalog_tenant_consistency_constraints;',
   'Box::new(m20260701_000002_add_product_catalog_tenant_consistency_constraints::Migration)',
+  'mod m20260711_000001_product_status_enum;',
+  'Box::new(m20260711_000001_product_status_enum::Migration)',
+  'mod m20260711_000002_enforce_product_tenant_integrity;',
+  'Box::new(m20260711_000002_enforce_product_tenant_integrity::Migration)',
+  'mod m20260711_000003_enforce_catalog_value_invariants;',
+  'Box::new(m20260711_000003_enforce_catalog_value_invariants::Migration)',
+  'mod m20260711_000004_normalize_product_channel_visibility;',
+  'Box::new(m20260711_000004_normalize_product_channel_visibility::Migration)',
 ]) {
   requireSource(productMigrationsMod, marker, productMigrationsModPath);
+}
+for (const marker of [
+  'CREATE TYPE product_status_enum AS ENUM',
+  'ALTER COLUMN status TYPE product_status_enum',
+  'rustok-product migrations require PostgreSQL',
+]) {
+  requireSource(productStatusMigration, marker, productStatusMigrationPath);
+}
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS tenant_id UUID',
+  'fk_product_translations_product_tenant',
+  'uq_product_translations_tenant_locale_handle',
+  'uq_product_variants_tenant_sku',
+  'uq_catalog_categories_tenant_root_slug',
+  'idx_products_storefront_published',
+  'fk_product_tags_product_tenant',
+  'FOREIGN KEY (tenant_id, term_id)\n            REFERENCES taxonomy_terms(tenant_id, id)',
+  'idx_product_tags_tenant_product',
+  'DROP COLUMN IF EXISTS manage_inventory',
+  'DROP COLUMN IF EXISTS allow_backorder',
+  'DROP COLUMN IF EXISTS variant_rank',
+]) {
+  requireSource(productIntegrityMigration, marker, productIntegrityMigrationPath);
+}
+for (const marker of [
+  'cannot migrate product_categories: multiple primary assignments exist',
+  'ADD CONSTRAINT chk_product_categories_no_primary_assignment',
+  'chk_product_attribute_values_one_scalar',
+  'chk_product_variant_attribute_values_one_scalar',
+  'chk_product_attribute_values_detached_storage',
+  'chk_product_variant_attribute_values_detached_storage',
+  'rustok_product_validate_attribute_value',
+  'rustok_product_validate_attribute_option',
+  'pg_advisory_xact_lock',
+  'trg_product_attribute_values_validate_type',
+  'trg_product_variant_attribute_value_options_validate',
+]) {
+  requireSource(productValueInvariantMigration, marker, productValueInvariantMigrationPath);
+}
+for (const marker of [
+  'rustok_product_normalize_channel_visibility',
+  'trg_products_normalize_channel_visibility',
+  'chk_products_metadata_object',
+  'chk_products_metadata_size',
+  'CREATE INDEX idx_products_channel_visibility_jsonb',
+  'metadata jsonb_path_ops',
+]) {
+  requireSource(productChannelVisibilityMigration, marker, productChannelVisibilityMigrationPath);
 }
 for (const marker of [
   'ALTER TABLE product_translations',
@@ -243,11 +334,9 @@ for (const marker of [
 }
 
 for (const marker of [
-  'parse_virtual_category_rule_v1(&input.rule_config)',
-  'validate_virtual_category_rule_references',
-  'ensure_structural_category(&txn, tenant_id, input.category_id)',
-  'load_effective_form_for_category(tenant_id, source_category_id, &[])',
-  'serde_json::to_value(form.attributes)',
+  'mod attributes;',
+  'mod categories;',
+  'mod schemas;',
   'ProductAttributeValuesChanged',
   'load_effective_product_form_from_storage',
   'record.detached = detached_attribute_ids.contains(&record.attribute_id);',
@@ -264,17 +353,101 @@ for (const marker of [
 ]) {
   requireSource(schemaService, marker, schemaServicePath);
 }
+for (const marker of [
+  'pub async fn list_attributes',
+  'pub async fn list_attribute_options',
+  'pub async fn create_attribute',
+  'pub async fn create_attribute_option',
+  'ProductAttributeOptionListRow::find_by_statement',
+  'DomainEvent::ProductAttributeCreated { attribute_id }',
+  'DomainEvent::ProductAttributeOptionCreated',
+  'options can only be created for select or multiselect attributes',
+]) {
+  requireSource(schemaAttributes, marker, schemaAttributesPath);
+}
+for (const marker of [
+  'pub async fn create_category',
+  'pub async fn create_category_group',
+  'pub async fn set_category_schema_mode',
+  'pub async fn bind_category_attribute',
+  'pub async fn list_categories',
+  'parse_virtual_category_rule_v1(&input.rule_config)',
+  'validate_virtual_category_rule_references',
+  'load_effective_form_for_category(tenant_id, source_category_id, &[])',
+  'serde_json::to_value(form.attributes)',
+  'ensure_structural_category(&txn, tenant_id, input.category_id)',
+  'INSERT INTO catalog_category_closure',
+  'DomainEvent::CatalogCategoryCreated { category_id }',
+  'DomainEvent::CatalogCategoryAttributesChanged',
+  'DomainEvent::CatalogCategorySchemaModeChanged',
+  'load_category_group_id(&txn, tenant_id, input.category_id, code)',
+]) {
+  requireSource(schemaCategories, marker, schemaCategoriesPath);
+}
+for (const marker of [
+  'pub async fn create_schema',
+  'pub async fn list_schemas',
+  'pub async fn create_schema_group',
+  'pub async fn bind_schema_attribute',
+  'DomainEvent::ProductAttributeSchemaCreated { schema_id }',
+  'DomainEvent::ProductAttributeSchemaBindingsChanged',
+  'INSERT INTO product_attribute_schema_translations',
+  'load_schema_group_id(&txn, tenant_id, input.schema_id, code)',
+]) {
+  requireSource(schemaSchemas, marker, schemaSchemasPath);
+}
 
 for (const marker of [
+  'mod tags;',
   'Primary category must be structural',
   'DomainEvent::ProductPrimaryCategoryChanged',
   'validate_product_publish_requirements',
   'validate_new_product_publish_requirements',
   'DomainEvent::ProductPublished { product_id }',
-  'publish_in_tx',
+  'product_option::Entity::insert_many(option_models)',
+  'product_option_translation::Entity::insert_many(option_translation_models)',
+  'product_option_value::Entity::insert_many(option_value_models)',
+  'product_option_value_translation::Entity::insert_many(',
+  'variant_translation::Entity::insert_many(variant_translation_models)',
+  'price::Entity::insert_many(price_models)',
 ]) {
   requireSource(catalogService, marker, catalogServicePath);
 }
+for (const marker of [
+  'pub async fn load_product_tag_map',
+  'pub(crate) async fn load_product_tags',
+  'pub(crate) async fn sync_product_tags_in_tx',
+  'TaxonomyTermKind::Tag,',
+]) {
+  requireSource(catalogTagsService, marker, catalogTagsServicePath);
+}
+for (const marker of [
+  'rustok-inventory.workspace = true',
+]) {
+  requireSource(productManifest, marker, productManifestPath);
+}
+for (const marker of [
+  'use rustok_inventory::{BootstrapService, InitialInventory};',
+  'BootstrapService::ensure_default_location_in_tx(&txn, tenant_id)',
+  'BootstrapService::create_initial_records_in_tx(',
+  'BootstrapService::load_available_quantities(&self.db, &variant_ids)',
+  'BootstrapService::delete_records_for_variants_in_tx(&txn, &variant_ids)',
+]) {
+  requireSource(catalogService, marker, catalogServicePath);
+}
+for (const marker of [
+  'pub struct BootstrapService;',
+  'pub struct InitialInventory',
+  'ensure_default_location_in_tx',
+  'create_initial_records_in_tx',
+  'load_available_quantities',
+  'delete_records_for_variants_in_tx',
+]) {
+  requireSource(inventoryBootstrap, marker, inventoryBootstrapPath);
+}
+requireSource(inventoryServicesMod, 'pub mod bootstrap;', inventoryServicesModPath);
+forbidSource(catalogService, 'entities::inventory_item', catalogServicePath);
+forbidSource(catalogService, 'entities::inventory_level', catalogServicePath);
 
 for (const marker of [
   'product_tags_are_synced_into_product_tags_without_metadata_mirror',
@@ -320,9 +493,39 @@ for (const marker of [
 for (const marker of [
   'validate_product_shipping_profile_input(',
   'input.shipping_profile_slug.as_deref()',
-  'catalog.publish_product(tenant_id, user_id, id).await?',
+  '.publish_product(tenant_id, user_id, id)',
+  'PRODUCT_MODULE_SLUG as MODULE_SLUG',
+  'product_mutation_actor(ctx)',
 ]) {
   requireSource(commerceCatalogMutation, marker, commerceCatalogMutationPath);
+}
+for (const marker of [
+  'struct ProductWriteTransaction',
+  'publish_in_tx(&self.transaction',
+  'async fn commit(self)',
+]) {
+  requireSource(productWriteTransaction, marker, productWriteTransactionPath);
+}
+for (const source of [catalogService, schemaService]) {
+  requireSource(source, 'ProductWriteTransaction::begin', 'product write service');
+  forbidSource(source, 'self.db.begin().await?', 'product write service');
+}
+for (const marker of [
+  'fn map_product_service_error(',
+  '"PRODUCT_OPERATION_FAILED"',
+  '"product service operation failed"',
+]) {
+  requireSource(commerceGraphqlModule, marker, commerceGraphqlModulePath);
+}
+for (const marker of [
+  'map_product_service_error(error, "product_catalog_mutation")',
+  'map_product_service_error(error, "product_query")',
+]) {
+  requireSource(
+    marker.includes('mutation') ? commerceCatalogMutation : commerceGraphqlQuery,
+    marker,
+    marker.includes('mutation') ? commerceCatalogMutationPath : commerceGraphqlQueryPath,
+  );
 }
 
 for (const marker of [
@@ -414,6 +617,7 @@ for (const marker of [
   'DB-level tenant consistency audit',
   '`VARCHAR(32)` locale storage',
   'optional catalog filters/sorts',
+  '[x] Connect storefront/admin UI controls to optional catalog filters/sorts.',
   '`VARCHAR(32)`',
   'detached-value marker contract',
   'no-compile schema guardrail',

@@ -99,6 +99,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [ADR: Axum Runtime and Platform CLI Boundary](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md) — pure Axum server binary without maintenance CLI code, separate `rustok-cli`, module-local `cli/` adapters and generated registries for distribution-aware builds
 - [ADR: Lifecycle Hook Phases/Retry Contract](../DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) — `validated/running/committed/failed`, explicit `pre/post` hooks and retryable post-hook failures without partial rollback
 - [ADR: Neutral Sandbox Foundation](../DECISIONS/2026-07-11-neutral-sandbox-foundation.md) — one sandbox contract for Alloy-authored Rhai, WebAssembly module artifacts and future sidecars
+- [ADR: Product Storage Integrity and Request Trust](../DECISIONS/2026-07-11-product-storage-integrity-and-request-trust.md) — PostgreSQL product storage, tenant-composite integrity, canonical primary category and request-bound product writes
 - [ADR: Shared API Contract Ownership](../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) — `Port*`, permission and locale contracts in `rustok-api`, one-way graph `rustok-core -> rustok-api` and owner-owned Loco adapter in `rustok-outbox`
 - [Channels](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)

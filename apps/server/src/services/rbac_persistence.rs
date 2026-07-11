@@ -1,8 +1,6 @@
 use crate::error::Error;
 use crate::error::Result;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use rustok_core::UserRole;
 use rustok_telemetry::metrics;
@@ -12,17 +10,13 @@ use crate::models::_entities::{roles, user_roles};
 use super::rbac_runtime::invalidate_user_rbac_caches;
 
 pub(crate) async fn assign_role_permissions_via_store(
-    db: &impl ConnectionTrait,
+    db: &DatabaseConnection,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
     role: UserRole,
 ) -> Result<()> {
     record_authz_entrypoint_call("assign_role_permissions_via_store", "core_runtime");
-    let db = db
-        .as_database_connection()
-        .ok_or(Error::InternalServerError)?
-        .clone();
-    rustok_rbac::RbacRoleAssignmentDbWriter::new(db)
+    rustok_rbac::RbacRoleAssignmentDbWriter::new(db.clone())
         .assign_role_permissions(*tenant_id, *user_id, role)
         .await
         .map_err(|error| Error::Message(error.to_string()))?;
@@ -33,7 +27,7 @@ pub(crate) async fn assign_role_permissions_via_store(
 }
 
 pub(crate) async fn replace_user_role_via_store(
-    db: &impl ConnectionTrait,
+    db: &DatabaseConnection,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
     role: UserRole,
@@ -45,7 +39,7 @@ pub(crate) async fn replace_user_role_via_store(
 }
 
 pub(crate) async fn remove_tenant_role_assignments_via_store(
-    db: &impl ConnectionTrait,
+    db: &DatabaseConnection,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
 ) -> Result<()> {
@@ -74,7 +68,7 @@ pub(crate) async fn remove_tenant_role_assignments_via_store(
 }
 
 pub(crate) async fn remove_user_role_assignment_via_store(
-    db: &impl ConnectionTrait,
+    db: &DatabaseConnection,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
     role: UserRole,

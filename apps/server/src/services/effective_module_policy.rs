@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use rustok_core::ModuleRegistry;
+use rustok_modules::{resolve_effective_modules, TenantModuleOverride};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::models::_entities::tenant_modules::{
@@ -15,35 +14,21 @@ impl EffectiveModulePolicyService {
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
-    ) -> Result<HashSet<String>, PlatformCompositionError> {
+    ) -> Result<std::collections::HashSet<String>, PlatformCompositionError> {
         let manifest = PlatformCompositionService::active_manifest(db).await?;
-        let mut enabled = registry
-            .list()
-            .into_iter()
-            .filter(|module| registry.is_core(module.slug()))
-            .map(|module| module.slug().to_string())
-            .collect::<HashSet<_>>();
-
-        for slug in manifest.settings.default_enabled {
-            if registry.get(&slug).is_some() {
-                enabled.insert(slug);
-            }
-        }
-
         let overrides = TenantModulesEntity::find()
             .filter(TenantModulesColumn::TenantId.eq(tenant_id))
             .all(db)
             .await?;
 
-        for module in overrides {
-            if module.enabled {
-                enabled.insert(module.module_slug);
-            } else {
-                enabled.remove(&module.module_slug);
-            }
-        }
-
-        Ok(enabled)
+        Ok(resolve_effective_modules(
+            registry,
+            manifest.settings.default_enabled,
+            overrides.into_iter().map(|module| TenantModuleOverride {
+                module_slug: module.module_slug,
+                enabled: module.enabled,
+            }),
+        ))
     }
 
     pub async fn list_enabled(

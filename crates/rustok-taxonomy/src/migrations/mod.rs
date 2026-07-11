@@ -1,7 +1,11 @@
 mod m20260329_000001_create_taxonomy_tables;
+mod m20260711_000001_add_tenant_identity_key;
 
 use sea_orm_migration::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(m20260329_000001_create_taxonomy_tables::Migration)]
+    vec![
+        Box::new(m20260329_000001_create_taxonomy_tables::Migration),
+        Box::new(m20260711_000001_add_tenant_identity_key::Migration),
+    ]
 }

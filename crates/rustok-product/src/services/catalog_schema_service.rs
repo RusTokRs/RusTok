@@ -2,7 +2,6 @@ use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, FromQueryResult, Statement,
-    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,6 +13,10 @@ use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
+mod attributes;
+mod categories;
+mod schemas;
+
 use super::catalog_schema::{
     parse_virtual_category_rule_v1, resolve_effective_product_form, AttributeBinding,
     AttributeValueType, AttributeVisibilityOverrides, CatalogCategoryKind, CatalogCategorySchema,
@@ -21,6 +24,7 @@ use super::catalog_schema::{
     EffectiveAttributeSource, EffectiveProductForm, ProductAttributeSchema, SchemaResolutionError,
     VirtualCategoryAttributeCondition, VirtualCategoryRuleV1,
 };
+use super::write_transaction::ProductWriteTransaction;
 
 #[derive(Clone)]
 pub struct ProductCatalogSchemaService {
@@ -31,759 +35,6 @@ pub struct ProductCatalogSchemaService {
 impl ProductCatalogSchemaService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
-    }
-
-    pub async fn create_attribute(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: CreateProductAttributeInput,
-    ) -> CommerceResult<ProductAttributeRecord> {
-        input.validate()?;
-        let attribute_id = generate_id();
-        let txn = self.db.begin().await?;
-
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO product_attributes (
-                id, tenant_id, code, value_type, scope, is_localized,
-                is_filterable, is_searchable, is_sortable, is_comparable,
-                show_on_storefront, show_in_admin_grid, search_weight,
-                filter_display, facet_mode, position, validation, default_value, metadata
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6,
-                $7, $8, $9, $10,
-                $11, $12, $13,
-                $14, $15, $16, $17, $18, $19
-            )
-            "#,
-            vec![
-                attribute_id.into(),
-                tenant_id.into(),
-                input.code.clone().into(),
-                input.value_type.as_str().into(),
-                input.scope.clone().into(),
-                input.is_localized.into(),
-                input.is_filterable.into(),
-                input.is_searchable.into(),
-                input.is_sortable.into(),
-                input.is_comparable.into(),
-                input.show_on_storefront.into(),
-                input.show_in_admin_grid.into(),
-                input.search_weight.into(),
-                input.filter_display.clone().into(),
-                input.facet_mode.clone().into(),
-                input.position.into(),
-                input.validation.clone().into(),
-                input.default_value.clone().into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-
-        for translation in &input.translations {
-            txn.execute(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                r#"
-                INSERT INTO product_attribute_translations (
-                    id, attribute_id, locale, label, help_text, facet_label, seo_label
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                "#,
-                vec![
-                    generate_id().into(),
-                    attribute_id.into(),
-                    translation.locale.clone().into(),
-                    translation.label.clone().into(),
-                    translation.help_text.clone().into(),
-                    translation.facet_label.clone().into(),
-                    translation.seo_label.clone().into(),
-                ],
-            ))
-            .await?;
-        }
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeCreated { attribute_id },
-            )
-            .await?;
-        txn.commit().await?;
-
-        Ok(ProductAttributeRecord {
-            id: attribute_id,
-            code: input.code,
-            value_type: input.value_type,
-        })
-    }
-
-    pub async fn create_attribute_option(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: CreateProductAttributeOptionInput,
-    ) -> CommerceResult<ProductAttributeOptionRecord> {
-        input.validate()?;
-        let txn = self.db.begin().await?;
-        let attribute =
-            load_attribute_write_definition(&txn, tenant_id, input.attribute_id).await?;
-        let value_type = AttributeValueType::from_storage(&attribute.value_type)
-            .map_err(map_schema_resolution_error)?;
-        if !matches!(
-            value_type,
-            AttributeValueType::Select | AttributeValueType::Multiselect
-        ) {
-            return Err(CommerceError::Validation(
-                "options can only be created for select or multiselect attributes".into(),
-            ));
-        }
-
-        let option_id = generate_id();
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO product_attribute_options (
-                id, tenant_id, attribute_id, code, position, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
-            vec![
-                option_id.into(),
-                tenant_id.into(),
-                input.attribute_id.into(),
-                input.code.clone().into(),
-                input.position.into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-        for translation in &input.translations {
-            txn.execute(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                r#"
-                INSERT INTO product_attribute_option_translations (
-                    id, option_id, locale, label
-                ) VALUES ($1, $2, $3, $4)
-                "#,
-                vec![
-                    generate_id().into(),
-                    option_id.into(),
-                    translation.locale.clone().into(),
-                    translation.label.clone().into(),
-                ],
-            ))
-            .await?;
-        }
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeOptionCreated {
-                    option_id,
-                    attribute_id: input.attribute_id,
-                },
-            )
-            .await?;
-        txn.commit().await?;
-        Ok(ProductAttributeOptionRecord {
-            id: option_id,
-            attribute_id: input.attribute_id,
-            code: input.code,
-        })
-    }
-
-    pub async fn create_category(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: CreateCatalogCategoryInput,
-    ) -> CommerceResult<CatalogCategoryRecord> {
-        input.validate()?;
-        let category_id = generate_id();
-        let txn = self.db.begin().await?;
-
-        if input.kind == CatalogCategoryKind::Virtual {
-            let rule = parse_virtual_category_rule_v1(&input.rule_config)
-                .map_err(CommerceError::Validation)?;
-            validate_virtual_category_rule_references(&txn, tenant_id, &rule).await?;
-        }
-
-        let parent = match input.parent_id {
-            Some(parent_id) => Some(load_category_parent(&txn, tenant_id, parent_id).await?),
-            None => None,
-        };
-        let level = parent.as_ref().map(|row| row.level + 1).unwrap_or(0);
-        let path = parent
-            .as_ref()
-            .map(|row| format!("{}/{}", row.path, input.slug))
-            .unwrap_or_else(|| input.slug.clone());
-
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO catalog_categories (
-                id, tenant_id, parent_id, code, slug, kind, path, level, position,
-                is_active, rule_config, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10, $11)
-            "#,
-            vec![
-                category_id.into(),
-                tenant_id.into(),
-                input.parent_id.into(),
-                input.code.clone().into(),
-                input.slug.clone().into(),
-                input.kind.as_str().into(),
-                path.clone().into(),
-                level.into(),
-                input.position.into(),
-                input.rule_config.clone().into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO catalog_category_closure (tenant_id, ancestor_id, descendant_id, depth)
-            VALUES ($1, $2, $2, 0)
-            "#,
-            vec![tenant_id.into(), category_id.into()],
-        ))
-        .await?;
-
-        if let Some(parent_id) = input.parent_id {
-            txn.execute(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                r#"
-                INSERT INTO catalog_category_closure (
-                    tenant_id, ancestor_id, descendant_id, depth
-                )
-                SELECT tenant_id, ancestor_id, $3, depth + 1
-                FROM catalog_category_closure
-                WHERE tenant_id = $1 AND descendant_id = $2
-                "#,
-                vec![tenant_id.into(), parent_id.into(), category_id.into()],
-            ))
-            .await?;
-        }
-
-        for translation in &input.translations {
-            txn.execute(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                r#"
-                INSERT INTO catalog_category_translations (
-                    id, category_id, locale, name, description, meta_title, meta_description
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                "#,
-                vec![
-                    generate_id().into(),
-                    category_id.into(),
-                    translation.locale.clone().into(),
-                    translation.name.clone().into(),
-                    translation.description.clone().into(),
-                    translation.meta_title.clone().into(),
-                    translation.meta_description.clone().into(),
-                ],
-            ))
-            .await?;
-        }
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategoryCreated { category_id },
-            )
-            .await?;
-        txn.commit().await?;
-
-        Ok(CatalogCategoryRecord {
-            id: category_id,
-            code: input.code,
-            slug: input.slug,
-            path,
-            kind: input.kind,
-        })
-    }
-
-    pub async fn create_schema(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: CreateProductAttributeSchemaInput,
-    ) -> CommerceResult<ProductAttributeSchemaRecord> {
-        input.validate()?;
-        let schema_id = generate_id();
-        let txn = self.db.begin().await?;
-
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO product_attribute_schemas (id, tenant_id, code, metadata)
-            VALUES ($1, $2, $3, $4)
-            "#,
-            vec![
-                schema_id.into(),
-                tenant_id.into(),
-                input.code.clone().into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-
-        for translation in &input.translations {
-            txn.execute(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                r#"
-                INSERT INTO product_attribute_schema_translations (
-                    id, schema_id, locale, name, description
-                ) VALUES ($1, $2, $3, $4, $5)
-                "#,
-                vec![
-                    generate_id().into(),
-                    schema_id.into(),
-                    translation.locale.clone().into(),
-                    translation.name.clone().into(),
-                    translation.description.clone().into(),
-                ],
-            ))
-            .await?;
-        }
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeSchemaCreated { schema_id },
-            )
-            .await?;
-        txn.commit().await?;
-
-        Ok(ProductAttributeSchemaRecord {
-            id: schema_id,
-            code: input.code,
-        })
-    }
-
-    pub async fn create_schema_group(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: CreateProductAttributeSchemaGroupInput,
-    ) -> CommerceResult<ProductAttributeGroupRecord> {
-        input.validate()?;
-        let txn = self.db.begin().await?;
-        ensure_schema(&txn, tenant_id, input.schema_id).await?;
-        let group_id = generate_id();
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO product_attribute_schema_groups (
-                id, tenant_id, schema_id, code, position, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
-            vec![
-                group_id.into(),
-                tenant_id.into(),
-                input.schema_id.into(),
-                input.code.clone().into(),
-                input.position.into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-        for translation in &input.translations {
-            insert_schema_group_translation(&txn, group_id, translation).await?;
-        }
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeSchemaBindingsChanged {
-                    schema_id: input.schema_id,
-                },
-            )
-            .await?;
-        txn.commit().await?;
-        Ok(ProductAttributeGroupRecord {
-            id: group_id,
-            owner_id: input.schema_id,
-            code: input.code,
-        })
-    }
-
-    pub async fn create_category_group(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: CreateCategoryAttributeGroupInput,
-    ) -> CommerceResult<ProductAttributeGroupRecord> {
-        input.validate()?;
-        let txn = self.db.begin().await?;
-        ensure_structural_category(&txn, tenant_id, input.category_id).await?;
-        let group_id = generate_id();
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO category_attribute_groups (
-                id, tenant_id, category_id, code, inherited_from_group_id, position, metadata
-            ) VALUES ($1, $2, $3, $4, NULL, $5, $6)
-            "#,
-            vec![
-                group_id.into(),
-                tenant_id.into(),
-                input.category_id.into(),
-                input.code.clone().into(),
-                input.position.into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-        for translation in &input.translations {
-            insert_category_group_translation(&txn, group_id, translation).await?;
-        }
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategoryAttributesChanged {
-                    category_id: input.category_id,
-                },
-            )
-            .await?;
-        txn.commit().await?;
-        Ok(ProductAttributeGroupRecord {
-            id: group_id,
-            owner_id: input.category_id,
-            code: input.code,
-        })
-    }
-
-    pub async fn list_attributes(
-        &self,
-        tenant_id: Uuid,
-        locale: &str,
-    ) -> CommerceResult<Vec<ProductAttributeListRecord>> {
-        ProductAttributeListRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
-            r#"
-            SELECT
-                a.id,
-                a.code,
-                a.value_type,
-                a.is_localized,
-                a.is_filterable,
-                a.is_searchable,
-                a.is_sortable,
-                a.show_on_storefront,
-                COALESCE(t.label, a.code) AS label
-            FROM product_attributes a
-            LEFT JOIN product_attribute_translations t
-                ON t.attribute_id = a.id AND t.locale = $2
-            WHERE a.tenant_id = $1 AND a.archived_at IS NULL
-            ORDER BY a.position ASC, a.code ASC
-            "#,
-            vec![tenant_id.into(), locale.to_string().into()],
-        ))
-        .all(&self.db)
-        .await
-        .map_err(Into::into)
-        .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
-    }
-
-    pub async fn list_attribute_options(
-        &self,
-        tenant_id: Uuid,
-        attribute_ids: &[Uuid],
-        locale: &str,
-    ) -> CommerceResult<Vec<ProductAttributeOptionListRecord>> {
-        validate_locale(locale)?;
-        if attribute_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-        let (placeholders, mut values) = uuid_filter_values(tenant_id, attribute_ids);
-        let locale_placeholder = format!("${}", values.len() + 1);
-        values.push(locale.trim().to_string().into());
-        ProductAttributeOptionListRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
-            format!(
-                r#"
-                SELECT o.id, o.attribute_id, o.code, o.position,
-                       COALESCE(t.label, o.code) AS label
-                FROM product_attribute_options o
-                LEFT JOIN product_attribute_option_translations t
-                  ON t.option_id = o.id AND t.locale = {locale_placeholder}
-                WHERE o.tenant_id = $1
-                  AND o.archived_at IS NULL
-                  AND o.attribute_id IN ({placeholders})
-                ORDER BY o.attribute_id, o.position, o.code
-                "#
-            ),
-            values,
-        ))
-        .all(&self.db)
-        .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
-        .map_err(Into::into)
-    }
-
-    pub async fn list_categories(
-        &self,
-        tenant_id: Uuid,
-        locale: &str,
-    ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
-        CatalogCategoryListRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
-            r#"
-            SELECT
-                c.id,
-                c.parent_id,
-                c.code,
-                c.slug,
-                c.path,
-                c.kind,
-                COALESCE(t.name, c.code) AS name
-            FROM catalog_categories c
-            LEFT JOIN catalog_category_translations t
-                ON t.category_id = c.id AND t.locale = $2
-            WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
-            ORDER BY c.path ASC
-            "#,
-            vec![tenant_id.into(), locale.to_string().into()],
-        ))
-        .all(&self.db)
-        .await
-        .map_err(Into::into)
-        .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
-    }
-
-    pub async fn list_schemas(
-        &self,
-        tenant_id: Uuid,
-        locale: &str,
-    ) -> CommerceResult<Vec<ProductAttributeSchemaListRecord>> {
-        ProductAttributeSchemaListRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
-            r#"
-            SELECT
-                s.id,
-                s.code,
-                COALESCE(t.name, s.code) AS name
-            FROM product_attribute_schemas s
-            LEFT JOIN product_attribute_schema_translations t
-                ON t.schema_id = s.id AND t.locale = $2
-            WHERE s.tenant_id = $1 AND s.archived_at IS NULL
-            ORDER BY s.code ASC
-            "#,
-            vec![tenant_id.into(), locale.to_string().into()],
-        ))
-        .all(&self.db)
-        .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
-        .map_err(Into::into)
-    }
-
-    pub async fn set_category_schema_mode(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: SetCategorySchemaModeInput,
-    ) -> CommerceResult<()> {
-        input.validate()?;
-        let txn = self.db.begin().await?;
-        ensure_structural_category(&txn, tenant_id, input.category_id).await?;
-        if let Some(schema_id) = input.schema_id {
-            ensure_schema(&txn, tenant_id, schema_id).await?;
-        }
-
-        let snapshot = if let Some(source_category_id) = input.clone_from_category_id {
-            let form = self
-                .load_effective_form_for_category(tenant_id, source_category_id, &[])
-                .await?;
-            serde_json::to_value(form.attributes)
-                .map_err(|error| CommerceError::Validation(error.to_string()))?
-        } else {
-            Value::Object(Default::default())
-        };
-
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO category_attribute_schema_assignments (
-                id, tenant_id, category_id, mode, schema_id, cloned_from_category_id, snapshot
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (tenant_id, category_id) DO UPDATE SET
-                mode = EXCLUDED.mode,
-                schema_id = EXCLUDED.schema_id,
-                cloned_from_category_id = EXCLUDED.cloned_from_category_id,
-                snapshot = EXCLUDED.snapshot,
-                updated_at = now()
-            "#,
-            vec![
-                generate_id().into(),
-                tenant_id.into(),
-                input.category_id.into(),
-                input.mode.as_str().into(),
-                input.schema_id.into(),
-                input.clone_from_category_id.into(),
-                snapshot.into(),
-            ],
-        ))
-        .await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategorySchemaModeChanged {
-                    category_id: input.category_id,
-                },
-            )
-            .await?;
-        txn.commit().await?;
-        Ok(())
-    }
-
-    pub async fn bind_schema_attribute(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: BindSchemaAttributeInput,
-    ) -> CommerceResult<()> {
-        input.validate()?;
-        let txn = self.db.begin().await?;
-        ensure_attribute(&txn, tenant_id, input.attribute_id).await?;
-        ensure_schema(&txn, tenant_id, input.schema_id).await?;
-        let group_id = match input.group_code.as_deref() {
-            Some(code) => Some(
-                load_schema_group_id(&txn, tenant_id, input.schema_id, code)
-                    .await?
-                    .ok_or_else(|| CommerceError::Validation("schema group not found".into()))?,
-            ),
-            None => None,
-        };
-
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO product_attribute_schema_attributes (
-                id, tenant_id, schema_id, attribute_id, group_id, is_required,
-                is_disabled, position, visibility_overrides, validation_overrides, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (schema_id, attribute_id) DO UPDATE SET
-                group_id = EXCLUDED.group_id,
-                is_required = EXCLUDED.is_required,
-                is_disabled = EXCLUDED.is_disabled,
-                position = EXCLUDED.position,
-                visibility_overrides = EXCLUDED.visibility_overrides,
-                validation_overrides = EXCLUDED.validation_overrides,
-                metadata = EXCLUDED.metadata
-            "#,
-            vec![
-                generate_id().into(),
-                tenant_id.into(),
-                input.schema_id.into(),
-                input.attribute_id.into(),
-                group_id.into(),
-                input.is_required.into(),
-                input.is_disabled.into(),
-                input.position.into(),
-                input.visibility_overrides.clone().into(),
-                input.validation_overrides.clone().into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeSchemaBindingsChanged {
-                    schema_id: input.schema_id,
-                },
-            )
-            .await?;
-        txn.commit().await?;
-        Ok(())
-    }
-
-    pub async fn bind_category_attribute(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        input: BindCategoryAttributeInput,
-    ) -> CommerceResult<()> {
-        input.validate()?;
-        let txn = self.db.begin().await?;
-        ensure_structural_category(&txn, tenant_id, input.category_id).await?;
-        ensure_attribute(&txn, tenant_id, input.attribute_id).await?;
-        let group_id = match input.group_code.as_deref() {
-            Some(code) => Some(
-                load_category_group_id(&txn, tenant_id, input.category_id, code)
-                    .await?
-                    .ok_or_else(|| CommerceError::Validation("category group not found".into()))?,
-            ),
-            None => None,
-        };
-
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO category_attributes (
-                id, tenant_id, category_id, attribute_id, group_id, binding_kind,
-                is_required, is_disabled, position, visibility_overrides,
-                validation_overrides, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            ON CONFLICT (category_id, attribute_id) DO UPDATE SET
-                group_id = EXCLUDED.group_id,
-                binding_kind = EXCLUDED.binding_kind,
-                is_required = EXCLUDED.is_required,
-                is_disabled = EXCLUDED.is_disabled,
-                position = EXCLUDED.position,
-                visibility_overrides = EXCLUDED.visibility_overrides,
-                validation_overrides = EXCLUDED.validation_overrides,
-                metadata = EXCLUDED.metadata
-            "#,
-            vec![
-                generate_id().into(),
-                tenant_id.into(),
-                input.category_id.into(),
-                input.attribute_id.into(),
-                group_id.into(),
-                input.binding_kind.as_str().into(),
-                input.is_required.into(),
-                input.is_disabled.into(),
-                input.position.into(),
-                input.visibility_overrides.clone().into(),
-                input.validation_overrides.clone().into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::CatalogCategoryAttributesChanged {
-                    category_id: input.category_id,
-                },
-            )
-            .await?;
-        txn.commit().await?;
-        Ok(())
     }
 
     pub async fn load_effective_form_for_product(
@@ -1240,7 +491,7 @@ impl ProductCatalogSchemaService {
             validate_product_value_patch(definition, patch, &options)?;
         }
 
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_product(&txn, tenant_id, product_id).await?;
         for patch in &patches {
             let definition = definitions
@@ -1257,14 +508,12 @@ impl ProductCatalogSchemaService {
             .await?;
         }
         if !patches.is_empty() {
-            self.event_bus
-                .publish_in_tx(
-                    &txn,
-                    tenant_id,
-                    Some(actor_id),
-                    DomainEvent::ProductAttributeValuesChanged { product_id },
-                )
-                .await?;
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductAttributeValuesChanged { product_id },
+            )
+            .await?;
         }
         txn.commit().await?;
 
@@ -1329,7 +578,7 @@ impl ProductCatalogSchemaService {
                 .await;
         }
 
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
         let product_placeholder = format!("${}", values.len() + 1);
         values.push(product_id.into());
@@ -1346,14 +595,12 @@ impl ProductCatalogSchemaService {
             values,
         ))
         .await?;
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductAttributeValuesChanged { product_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductAttributeValuesChanged { product_id },
+        )
+        .await?;
         txn.commit().await?;
 
         self.load_product_attribute_values(tenant_id, product_id, locale)
@@ -1682,6 +929,11 @@ pub struct CreateProductAttributeInput {
 impl CreateProductAttributeInput {
     fn validate(&self) -> CommerceResult<()> {
         validate_code("attribute code", &self.code)?;
+        validate_bounded_json_object("validation", &self.validation)?;
+        if let Some(default_value) = &self.default_value {
+            validate_bounded_json("default_value", default_value)?;
+        }
+        validate_bounded_json_object("metadata", &self.metadata)?;
         if !matches!(self.scope.as_str(), "product" | "variant" | "both") {
             return Err(CommerceError::Validation(
                 "attribute scope must be product, variant, or both".into(),
@@ -1747,6 +999,7 @@ impl CreateProductAttributeOptionInput {
     fn validate(&self) -> CommerceResult<()> {
         validate_uuid("attribute_id", self.attribute_id)?;
         validate_code("attribute option code", &self.code)?;
+        validate_bounded_json_object("metadata", &self.metadata)?;
         if self.translations.is_empty() {
             return Err(CommerceError::Validation(
                 "attribute option requires at least one translation".into(),
@@ -1805,6 +1058,8 @@ impl CreateCatalogCategoryInput {
     fn validate(&self) -> CommerceResult<()> {
         validate_code("category code", &self.code)?;
         validate_slug("category slug", &self.slug)?;
+        validate_bounded_json_object("metadata", &self.metadata)?;
+        validate_bounded_json_object("rule_config", &self.rule_config)?;
         if self.translations.is_empty() {
             return Err(CommerceError::Validation(
                 "category requires at least one translation".into(),
@@ -1869,6 +1124,7 @@ pub struct CreateProductAttributeSchemaInput {
 impl CreateProductAttributeSchemaInput {
     fn validate(&self) -> CommerceResult<()> {
         validate_code("schema code", &self.code)?;
+        validate_bounded_json_object("metadata", &self.metadata)?;
         if self.translations.is_empty() {
             return Err(CommerceError::Validation(
                 "schema requires at least one translation".into(),
@@ -1910,6 +1166,7 @@ impl CreateProductAttributeSchemaGroupInput {
     fn validate(&self) -> CommerceResult<()> {
         validate_uuid("schema_id", self.schema_id)?;
         validate_code("group code", &self.code)?;
+        validate_bounded_json_object("metadata", &self.metadata)?;
         validate_group_translations(&self.translations)
     }
 }
@@ -1927,6 +1184,7 @@ impl CreateCategoryAttributeGroupInput {
     fn validate(&self) -> CommerceResult<()> {
         validate_uuid("category_id", self.category_id)?;
         validate_code("group code", &self.code)?;
+        validate_bounded_json_object("metadata", &self.metadata)?;
         validate_group_translations(&self.translations)
     }
 }
@@ -1981,7 +1239,9 @@ impl BindSchemaAttributeInput {
             validate_code("group_code", group_code)?;
         }
         parse_visibility_overrides(self.visibility_overrides.clone())?;
+        validate_bounded_json_object("visibility_overrides", &self.visibility_overrides)?;
         validate_override_object("validation_overrides", &self.validation_overrides)?;
+        validate_bounded_json_object("metadata", &self.metadata)?;
         Ok(())
     }
 }
@@ -2050,7 +1310,9 @@ impl BindCategoryAttributeInput {
             validate_code("group_code", group_code)?;
         }
         parse_visibility_overrides(self.visibility_overrides.clone())?;
+        validate_bounded_json_object("visibility_overrides", &self.visibility_overrides)?;
         validate_override_object("validation_overrides", &self.validation_overrides)?;
+        validate_bounded_json_object("metadata", &self.metadata)?;
         Ok(())
     }
 }
@@ -2382,6 +1644,43 @@ fn validate_override_object(field: &str, value: &Value) -> CommerceResult<()> {
         Err(CommerceError::Validation(format!(
             "{field} must be a JSON object"
         )))
+    }
+}
+
+const MAX_PRODUCT_JSON_BYTES: usize = 64 * 1024;
+const MAX_PRODUCT_JSON_DEPTH: usize = 32;
+
+fn validate_bounded_json_object(field: &str, value: &Value) -> CommerceResult<()> {
+    if !value.is_object() {
+        return Err(CommerceError::Validation(format!(
+            "{field} must be a JSON object"
+        )));
+    }
+    validate_bounded_json(field, value)
+}
+
+fn validate_bounded_json(field: &str, value: &Value) -> CommerceResult<()> {
+    let serialized = serde_json::to_vec(value).map_err(|error| {
+        CommerceError::Validation(format!("{field} is not serializable: {error}"))
+    })?;
+    if serialized.len() > MAX_PRODUCT_JSON_BYTES {
+        return Err(CommerceError::Validation(format!(
+            "{field} must not exceed {MAX_PRODUCT_JSON_BYTES} bytes"
+        )));
+    }
+    if json_depth(value) > MAX_PRODUCT_JSON_DEPTH {
+        return Err(CommerceError::Validation(format!(
+            "{field} must not exceed {MAX_PRODUCT_JSON_DEPTH} nesting levels"
+        )));
+    }
+    Ok(())
+}
+
+fn json_depth(value: &Value) -> usize {
+    match value {
+        Value::Array(items) => 1 + items.iter().map(json_depth).max().unwrap_or(0),
+        Value::Object(values) => 1 + values.values().map(json_depth).max().unwrap_or(0),
+        _ => 0,
     }
 }
 
@@ -2734,6 +2033,9 @@ fn validate_product_value_patch(
             value_type.as_str()
         )));
     }
+    if let ProductAttributeValuePatchValue::Json(value) = &patch.value {
+        validate_bounded_json("attribute JSON value", value)?;
+    }
 
     let selected_options: &[Uuid] = match &patch.value {
         ProductAttributeValuePatchValue::Select(option_id) => std::slice::from_ref(option_id),
@@ -2962,6 +2264,29 @@ fn validate_group_translations(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounded_json_rejects_excessive_size_and_depth() {
+        let oversized = Value::String("x".repeat(MAX_PRODUCT_JSON_BYTES + 1));
+        assert!(validate_bounded_json("metadata", &oversized).is_err());
+
+        let mut nested = Value::Null;
+        for _ in 0..=MAX_PRODUCT_JSON_DEPTH {
+            nested = serde_json::json!({ "nested": nested });
+        }
+        assert!(validate_bounded_json("metadata", &nested).is_err());
+    }
+
+    #[test]
+    fn bounded_json_object_requires_an_object() {
+        assert!(validate_bounded_json_object("metadata", &Value::Array(Vec::new())).is_err());
+        assert!(validate_bounded_json_object("metadata", &serde_json::json!({})).is_ok());
+    }
 }
 
 fn map_schema_resolution_error(error: SchemaResolutionError) -> CommerceError {

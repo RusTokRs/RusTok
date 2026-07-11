@@ -42,6 +42,7 @@ if (contract.sandbox_contract?.profiles?.strict?.max_operations !== 10000 || con
 if (contract.sandbox_contract?.profiles?.relaxed?.max_operations !== 500000 || contract.sandbox_contract?.profiles?.relaxed?.timeout_ms !== 5000) fail('relaxed sandbox profile drift');
 if (contract.sandbox_contract?.operator_surface !== 'rustok_sandbox::rhai::RhaiConfig::limits') fail('sandbox operator surface drift');
 if (contract.sandbox_contract?.owner !== 'rustok-sandbox') fail('sandbox owner drift');
+if (contract.sandbox_contract?.brokered_capability_adapter !== 'alloy::HttpCapabilityBridge via SandboxHost platform.http') fail('sandbox brokered capability adapter drift');
 if (contract.sandbox_contract?.timeout_enforcement !== 'progress_callback_interrupts_execution_with_timeout') fail('sandbox timeout enforcement drift');
 sameArray(contract.sandbox_contract?.rhai_native_limit_mapping, ['ErrorTooManyOperations_to_OperationLimit', 'ErrorDataTooLarge_to_ResourceLimit'], 'rhai native limit mapping');
 if (contract.scheduler_hook_contract?.scheduler_phase !== 'Scheduled' || contract.scheduler_hook_contract?.scheduler_tenant_context !== 'script_tenant_id') fail('scheduler context drift');
@@ -132,6 +133,16 @@ hasAll(alloyEngineAdapter, [
   'inner: RhaiEngine',
   '.map_err(ScriptError::from)'
 ], 'Alloy sandbox adapter');
+
+const httpBridge = read('crates/alloy/src/bridge/http.rs');
+hasAll(httpBridge, [
+  'pub struct HttpCapabilityBridge',
+  'impl RhaiHostExtension for HttpCapabilityBridge',
+  'host.invoke_blocking(&call)',
+  'const HTTP_CAPABILITY: &str = "platform.http"'
+], 'Alloy brokered HTTP bridge');
+if (httpBridge.includes('reqwest::')) fail('Alloy HTTP bridge must not own a direct HTTP client');
+if (read('crates/alloy/Cargo.toml').includes('reqwest')) fail('Alloy must not depend on a direct HTTP client');
 
 const handlers = read('crates/alloy/src/api/handlers.rs');
 hasAll(handlers, [

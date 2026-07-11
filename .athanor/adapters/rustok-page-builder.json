@@ -1,0 +1,10 @@
+{
+  "schema": "athanor.adapter_manifest",
+  "name": "rustok-page-builder",
+  "version": "0.1.0",
+  "adapters": [
+    { "id": "builtin.extractor.rustok_page_builder", "kind": "extractor", "enabled": true },
+    { "id": "builtin.linker.rustok_page_builder", "kind": "linker", "enabled": true },
+    { "id": "builtin.checker.rustok_page_builder", "kind": "checker", "enabled": true }
+  ]
+}

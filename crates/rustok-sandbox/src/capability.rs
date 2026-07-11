@@ -17,9 +17,11 @@ impl CapabilityName {
         let value = value.into();
         let valid = !value.is_empty()
             && value.len() <= 96
-            && value
-                .chars()
-                .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || matches!(character, '_' | '.' | ':'));
+            && value.chars().all(|character| {
+                character.is_ascii_lowercase()
+                    || character.is_ascii_digit()
+                    || matches!(character, '_' | '.' | ':')
+            });
         if !valid {
             return Err(SandboxError::InvalidRequest(format!(
                 "invalid capability name `{value}`"
@@ -102,5 +104,27 @@ impl SandboxHost {
             .grant(&call.capability)
             .ok_or_else(|| SandboxError::CapabilityDenied(call.capability.clone()))?;
         self.broker.invoke(call, grant).await
+    }
+
+    /// Calls an async broker from a synchronous language binding.
+    ///
+    /// Rhai and synchronous Component Model imports use this bridge instead of
+    /// opening their own network or storage clients. It requires an active
+    /// Tokio runtime because the broker may perform async host I/O.
+    pub fn invoke_blocking(&self, call: &CapabilityCall) -> SandboxResult<CapabilityResponse> {
+        let handle = tokio::runtime::Handle::try_current().map_err(|error| {
+            SandboxError::Internal(format!(
+                "sandbox host capability requires an active Tokio runtime: {error}"
+            ))
+        })?;
+        let host = self.clone();
+        std::thread::scope(|scope| {
+            scope
+                .spawn(|| handle.block_on(host.invoke(call)))
+                .join()
+                .map_err(|_| {
+                    SandboxError::Internal("sandbox host capability thread panicked".to_string())
+                })?
+        })
     }
 }

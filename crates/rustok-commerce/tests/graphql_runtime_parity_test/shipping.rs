@@ -574,8 +574,6 @@ async fn admin_graphql_rejects_unknown_shipping_profile_references() {
             r#"
             mutation {{
               createProduct(
-                tenantId: "{tenant_id}",
-                userId: "{actor_id}",
                 input: {{
                   translations: [{{
                     locale: "en"

@@ -8,18 +8,16 @@ artifact execution.
 ## Current State
 
 The foundation contracts, default-deny capability broker, executor registry and
-execution observer pipeline are implemented. Language-specific executors have not
-yet been moved behind the contract.
+execution observer pipeline are implemented. The generic Rhai engine is behind
+the contract. The optional Wasmtime component executor has a default-deny v1
+ABI with fuel and epoch deadline enforcement. Its sole typed WIT capability
+import delegates to `SandboxHost`; WASI and all other imports remain disabled.
 
 ## Milestones
 
-1. Move the generic Rhai engine and its resource limits from Alloy into a Rhai
-   executor adapter while keeping Alloy bridges outside the foundation.
-2. Add the Wasmtime Component Model executor with equivalent timeout, memory,
-   instruction and capability outcomes.
-3. Connect artifact installation and Alloy draft execution to the same runtime.
-4. Add production audit persistence, cancellation and concurrency admission.
-5. Add a sidecar executor only after its isolation and protocol contract is
+1. Connect artifact installation and Alloy draft execution to the same runtime.
+2. Add production audit persistence, cancellation and concurrency admission.
+3. Add a sidecar executor only after its isolation and protocol contract is
    approved.
 
 ## Verification
@@ -33,4 +31,3 @@ yet been moved behind the contract.
 
 Update this plan, the ADR and consumer plans whenever sandbox ownership,
 capability semantics or executor failure taxonomy changes.
-

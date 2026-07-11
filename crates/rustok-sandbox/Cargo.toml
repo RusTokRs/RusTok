@@ -9,6 +9,7 @@ description = "Neutral sandbox execution foundation for RusToK"
 [features]
 default = []
 rhai = ["dep:rhai-full", "dep:parking_lot"]
+wasm-component = ["dep:wasmtime"]
 
 [dependencies]
 async-trait.workspace = true
@@ -17,8 +18,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 rhai-full = { package = "rhai", version = "=1.24.0", features = ["sync", "metadata"], optional = true }
 parking_lot = { version = "0.12", optional = true }
-
-[dev-dependencies]
-tokio.workspace = true
+wasmtime = { version = "46.0.1", default-features = false, features = ["runtime", "component-model", "cranelift"], optional = true }

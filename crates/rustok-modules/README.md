@@ -2,13 +2,17 @@
 
 ## Purpose
 
-`rustok-modules` is the mandatory Core owner of module artifacts, marketplace
-governance, installation lifecycle and tenant module policy.
+`rustok-modules` is the mandatory Core owner of module artifact, marketplace,
+installation and tenant-policy contracts. Its persistent control-plane adapters
+are being moved here from the server incrementally.
 
 ## Responsibilities
 
 - Define immutable module artifact identity, payload kind and source lineage.
-- Own marketplace publication, installation, activation, rollback and policy.
+- Verify digest-pinned OCI packages before installation and admit only isolated
+  payload kinds to the sandbox.
+- Define the owner ports for marketplace publication, installation, activation,
+  rollback and policy.
 - Map installed artifacts to neutral sandbox requests and capability grants.
 - Keep marketplace release, platform installation and tenant enablement separate.
 
@@ -18,12 +22,17 @@ governance, installation lifecycle and tenant module policy.
 - `ModuleArtifactDescriptor`
 - `ArtifactReleaseDraft`
 - `ArtifactRelease`
+- `ModuleInstaller`
+- `ArtifactRuntime`
+- `OciArtifactReference`
+- `OciDistributionArtifactRegistry`
+- `SeaOrmArtifactInstallationStore`
 
 ## Interactions
 
-- Uses `rustok-sandbox` for Rhai, WebAssembly and future sidecar execution.
+- Resolves and verifies installed artifacts before executing them through
+  `rustok-sandbox` for Rhai, WebAssembly and future sidecar execution.
 - Alloy creates and evolves source-backed release drafts through these contracts.
 - `apps/server` bootstraps this Core module without owning marketplace policy.
 
 See the [local documentation](./docs/README.md).
-

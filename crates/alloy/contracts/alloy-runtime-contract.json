@@ -89,7 +89,8 @@
       "ErrorDataTooLarge_to_ResourceLimit"
     ],
     "executor_timeout_observability": "alloy_adapter_records_timeout_outcome",
-    "owner": "rustok-sandbox"
+    "owner": "rustok-sandbox",
+    "brokered_capability_adapter": "alloy::HttpCapabilityBridge via SandboxHost platform.http"
   },
   "scheduler_hook_contract": {
     "scheduler_phase": "Scheduled",

@@ -12,8 +12,11 @@ status: verified
 
 - Current phase: `architecture_fixed`
 - Last checkpoint: neutral sandbox ownership and the Alloy/module-platform boundary were accepted in the 2026-07-11 ADR.
-- Next step: introduce `rustok-sandbox` contracts and move the generic Rhai execution kernel behind them.
-- Open blockers: none for the foundation slice; OCI and Wasmtime dependency selection belongs to the artifact-executor stage.
+- Next step: move recovery/control-plane ownership and server transport adapters
+  behind the `rustok-modules` facade; OCI artifact execution now resolves and
+  verifies the installed digest-pinned package before using the shared sandbox.
+- Open blockers: none for the artifact-runtime slice; OCI publication,
+  signature/SBOM verification and native static promotion remain open.
 - Hand-off notes for next agent: Alloy and `rustok-modules` are peer consumers of `rustok-sandbox`; neither may implement a parallel production sandbox.
 - Last updated at (UTC): 2026-07-11T00:00:00Z
 
@@ -80,11 +83,11 @@ module identity, installation or Alloy authoring state.
 
 ### 0A. Neutral Sandbox Foundation
 
-- [ ] Introduce one execution subject/envelope, capability broker, sandbox policy and typed outcome taxonomy.
-- [ ] Register `rhai` and `wasm_component` executors behind one executor interface; reserve `sidecar` without a placeholder implementation.
-- [ ] Move generic Rhai execution and resource limits from Alloy into `rustok-sandbox`; retain Alloy-specific bridges in Alloy adapters.
-- [ ] Route Alloy draft execution and installed module execution through the same sandbox with distinct typed subjects and grants.
-- [ ] Preserve immutable marketplace releases: Alloy changes create a new version and digest with explicit source lineage.
+- [x] Introduce one execution subject/envelope, capability broker, sandbox policy and typed outcome taxonomy.
+- [x] Register `rhai` and `wasm_component` executors behind one executor interface; reserve `sidecar` without a placeholder implementation. The Wasmtime v1 ABI is importless/default-deny until typed WIT broker adapters are added.
+- [x] Move generic Rhai execution and resource limits from Alloy into `rustok-sandbox`; retain Alloy-specific bridges in Alloy adapters.
+- [ ] Route Alloy draft execution and installed module execution through the same sandbox with distinct typed subjects and grants. Installed artifact execution is now wired; Alloy draft execution still needs an explicit `AlloyDraft` request path.
+- [x] Preserve immutable marketplace releases: Alloy changes create a new version and digest with explicit source lineage.
 
 ### 1. Shared Contracts
 
@@ -131,8 +134,8 @@ module identity, installation or Alloy authoring state.
 
 ### 7. Artifact Executors and Alloy Evolution
 
-- [ ] Package Rhai modules as immutable artifacts with source lineage and canonical descriptors.
-- [ ] Add the Wasmtime component executor under the same sandbox policy and capability broker.
+- [x] Package Rhai modules as immutable artifacts with source lineage, canonical descriptors and digest-pinned OCI references.
+- [x] Add the Wasmtime component executor under the same sandbox policy and typed WIT broker import. Its only import is `rustok:module/host.invoke`; WASI and all other imports remain default-deny.
 - [ ] Add OCI publication, signature/SBOM verification and digest-pinned installation.
 - [ ] Support importing or forking a marketplace Rhai release into Alloy and publishing changes as a new version.
 - [ ] Move trusted native composition into the explicit static-promotion adapter.

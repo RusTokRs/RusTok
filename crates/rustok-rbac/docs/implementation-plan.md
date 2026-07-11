@@ -13,6 +13,11 @@ core, transport facade, and UI adapter. It shows the built-in role catalog and
 runtime overview; a GraphQL/REST secondary path requires an approved remote or
 headless operator contract.
 
+`RbacRoleAssignmentDbWriter` owns idempotent built-in role, permission, and
+relation persistence for bootstrap consumers with an explicit database handle.
+Host adapters invalidate process-local authorization caches after it succeeds;
+they do not duplicate RBAC relation writes.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`

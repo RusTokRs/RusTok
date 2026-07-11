@@ -12,12 +12,12 @@ mod tests {
     use rhai::Dynamic;
     use uuid::Uuid;
 
+    use crate::EntityProxy;
     use crate::create_default_engine;
     use crate::integration::ScriptableEntity;
     use crate::model::{EventType, Script, ScriptTrigger};
     use crate::runner::{ExecutionOutcome, ScriptOrchestrator};
     use crate::storage::{InMemoryStorage, ScriptRegistry};
-    use crate::EntityProxy;
 
     #[derive(Debug, Clone)]
     struct Deal {

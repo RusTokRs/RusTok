@@ -23,12 +23,18 @@
   `PublicChannelInventoryProjection` / `PublicChannelInventoryVariantProjectionInput`) consumed
   by the umbrella commerce storefront/checkout compatibility layer so commerce adapters do not
   duplicate backorder policy branching.
+- Own the transaction-aware `BootstrapService` contract used when product creates a new variant:
+  default location creation, initial item/level creation, variant-record cleanup, and batched
+  available-quantity reads stay in the inventory module even when the caller owns the
+  surrounding transaction.
 
 ## Interactions
 
 - Depends on `rustok-commerce-foundation` for shared commerce DTOs, entities, and errors.
 - Depends on `rustok-product` data model through variant references.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
+- Used by `rustok-product` only through the native `BootstrapService` exception while no
+  GraphQL/REST bootstrap contract exists; the product creation transaction remains atomic.
 - `apps/admin` consumes `rustok-inventory-admin` through manifest-driven composition;
   the admin package now routes Leptos UI through a private `transport/` facade and explicit native server-function adapter backed by `AdminInventoryReadService`, with the previous transitional commerce GraphQL adapter and pre-FFA `api.rs` facade removed, and uses native inventory-owned set/adjust/reserve/release
   quantity write endpoints plus check-availability validation for targeted stock corrections,

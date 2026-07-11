@@ -13,10 +13,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 uuid.workspace = true
-tokio = { workspace = true, features = ["sync", "time", "rt"] }
+tokio = { workspace = true, features = ["sync", "time", "rt", "rt-multi-thread", "macros"] }
 async-trait.workspace = true
 async-graphql.workspace = true
-reqwest.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 anyhow.workspace = true

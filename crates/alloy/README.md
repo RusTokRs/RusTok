@@ -38,6 +38,8 @@
 - `PhaseCapabilities`
 - `stage_rhai_module_release`
 - `fork_rhai_module_release`
+- `HttpCapabilityBridge`
+- `create_sandbox_rhai_executor`
 
 ## Runtime guarantees
 
@@ -47,6 +49,11 @@ and map-size limits. Runs that exceed the wall-clock budget return
 `ScriptError::Timeout`; Rhai operation pressure returns `ScriptError::OperationLimit`;
 data-size pressure returns `ScriptError::ResourceLimit`. Use
 `RhaiConfig::limits()` to expose the effective sandbox profile to operators. The machine-readable runtime contract now also source-locks the default/strict/relaxed sandbox profiles, timeout mapping, native Rhai limit-error mapping, scheduler tenant/phase semantics, running-flag recovery, and typed hook outcomes so these guarantees can be checked without compiling. Runtime-created orchestrators and the scheduler attach `SeaOrmExecutionLog` directly to `ScriptExecutor`, so manual GraphQL/HTTP runs, hooks, on-commit scripts, and cron jobs persist one canonical execution-history row with user and tenant context when available. Operators can inspect the same tenant-scoped history through GraphQL `scriptExecutionHistory(scriptId, pagination)` / `recentScriptExecutions(pagination)` or REST `GET /api/alloy/executions`. History reads use DB-level `page`/`per_page` inputs normalized to `page >= 1` and `per_page` 1..100 before DB-level offset/limit pagination, keep tenant filtering ahead of offset application, and expose exact scoped total metadata from the database. `PhaseCapabilities` exposes the helper families enabled for each execution phase so integrations do not infer bridge availability from registration side effects.
+
+External `http_*` functions are not registered on reusable Alloy engines:
+`create_sandbox_rhai_executor()` adds them per sandbox request through
+`HttpCapabilityBridge`, which delegates every call to the shared `SandboxHost`
+broker under the `platform.http` grant.
 
 Script-list REST reads use the same `page >= 1` and `per_page` 1..100
 normalization before storage pagination. If callers provide a `status` query

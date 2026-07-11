@@ -1,23 +1,34 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::graphql::require_module_enabled;
 use rustok_api::Permission;
 use uuid::Uuid;
 
 use rustok_product::{CatalogService, ProductCatalogSchemaService};
 
-use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::{
+    map_product_service_error, product_mutation_actor, require_commerce_permission, types::*,
+    PRODUCT_MODULE_SLUG as MODULE_SLUG,
+};
 use super::helpers::*;
 
 #[derive(Default)]
 pub struct CommerceCatalogMutation;
+
+fn invalid_catalog_input(error: impl std::fmt::Debug) -> async_graphql::Error {
+    tracing::warn!(
+        error = ?error,
+        operation = "product_catalog_mutation",
+        "invalid product catalog mutation input"
+    );
+    async_graphql::Error::new("Invalid product catalog input")
+        .extend_with(|_, extensions| extensions.set("code", "INVALID_PRODUCT_CATALOG_INPUT"))
+}
 
 #[Object]
 impl CommerceCatalogMutation {
     async fn create_product(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         input: CreateProductInput,
     ) -> Result<GqlProduct> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -26,6 +37,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_CREATE],
             "Permission denied: products:create required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -39,7 +51,8 @@ impl CommerceCatalogMutation {
         let domain_input = convert_create_product_input(input)?;
         let product = catalog
             .create_product(tenant_id, user_id, domain_input)
-            .await?;
+            .await
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(product.into())
     }
@@ -47,8 +60,6 @@ impl CommerceCatalogMutation {
     async fn update_product(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         id: Uuid,
         input: UpdateProductInput,
     ) -> Result<GqlProduct> {
@@ -58,6 +69,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_UPDATE],
             "Permission denied: products:update required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -94,51 +106,48 @@ impl CommerceCatalogMutation {
 
         let product = catalog
             .update_product(tenant_id, user_id, id, domain_input)
-            .await?;
+            .await
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(product.into())
     }
 
-    async fn publish_product(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
-        id: Uuid,
-    ) -> Result<GqlProduct> {
+    async fn publish_product(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlProduct> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_UPDATE],
             "Permission denied: products:update required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
-        let product = catalog.publish_product(tenant_id, user_id, id).await?;
+        let product = catalog
+            .publish_product(tenant_id, user_id, id)
+            .await
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(product.into())
     }
 
-    async fn delete_product(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
-        id: Uuid,
-    ) -> Result<bool> {
+    async fn delete_product(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_DELETE],
             "Permission denied: products:delete required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
-        catalog.delete_product(tenant_id, user_id, id).await?;
+        catalog
+            .delete_product(tenant_id, user_id, id)
+            .await
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(true)
     }
@@ -146,8 +155,6 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         locale: String,
         input: CreateProductAttributeInput,
     ) -> Result<bool> {
@@ -157,6 +164,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -193,7 +201,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(true)
     }
@@ -201,8 +209,6 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute_option(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         locale: String,
         input: CreateProductAttributeOptionInput,
     ) -> Result<bool> {
@@ -212,6 +218,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
@@ -230,15 +237,13 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
         Ok(true)
     }
 
     async fn create_catalog_category(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         locale: String,
         input: CreateCatalogCategoryInput,
     ) -> Result<bool> {
@@ -248,6 +253,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -274,7 +280,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(true)
     }
@@ -282,8 +288,6 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute_schema(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         locale: String,
         input: CreateProductAttributeSchemaInput,
     ) -> Result<bool> {
@@ -293,6 +297,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -312,7 +317,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(true)
     }
@@ -320,8 +325,6 @@ impl CommerceCatalogMutation {
     async fn create_product_attribute_schema_group(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         locale: String,
         input: CreateProductAttributeSchemaGroupInput,
     ) -> Result<bool> {
@@ -331,6 +334,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -350,15 +354,13 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
         Ok(true)
     }
 
     async fn create_catalog_category_attribute_group(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         locale: String,
         input: CreateCategoryAttributeGroupInput,
     ) -> Result<bool> {
@@ -368,6 +370,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -387,15 +390,13 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
         Ok(true)
     }
 
     async fn set_catalog_category_schema_mode(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         input: SetCategorySchemaModeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -404,6 +405,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -420,7 +422,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(true)
     }
@@ -428,8 +430,6 @@ impl CommerceCatalogMutation {
     async fn bind_product_attribute_schema_attribute(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         input: BindSchemaAttributeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -438,6 +438,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -459,7 +460,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(true)
     }
@@ -467,8 +468,6 @@ impl CommerceCatalogMutation {
     async fn bind_catalog_category_attribute(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         input: BindCategoryAttributeInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -477,6 +476,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -499,7 +499,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))?;
 
         Ok(true)
     }
@@ -507,8 +507,6 @@ impl CommerceCatalogMutation {
     async fn save_product_attribute_values(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         product_id: Uuid,
         locale: String,
         patches: Vec<ProductAttributeValuePatchInput>,
@@ -519,6 +517,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let patches = patches
             .into_iter()
@@ -529,15 +528,13 @@ impl CommerceCatalogMutation {
         ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
             .save_product_attribute_values(tenant_id, user_id, product_id, locale.trim(), patches)
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))
             .map(|items| items.into_iter().map(Into::into).collect())
     }
 
     async fn clear_detached_product_attribute_values(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
-        user_id: Uuid,
         product_id: Uuid,
         locale: String,
         attribute_ids: Vec<Uuid>,
@@ -548,6 +545,7 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
@@ -560,7 +558,7 @@ impl CommerceCatalogMutation {
                 attribute_ids,
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))
+            .map_err(|error| map_product_service_error(error, "product_catalog_mutation"))
             .map(|items| items.into_iter().map(Into::into).collect())
     }
 }
@@ -636,24 +634,24 @@ fn parse_product_attribute_value_patch(
 
 fn parse_attribute_value_type(value: &str) -> Result<rustok_product::services::AttributeValueType> {
     rustok_product::services::AttributeValueType::from_storage(value.trim())
-        .map_err(|err| async_graphql::Error::new(format!("{err:?}")))
+        .map_err(invalid_catalog_input)
 }
 
 fn parse_catalog_category_kind(
     value: &str,
 ) -> Result<rustok_product::services::CatalogCategoryKind> {
     rustok_product::services::CatalogCategoryKind::from_storage(value.trim())
-        .map_err(|err| async_graphql::Error::new(format!("{err:?}")))
+        .map_err(invalid_catalog_input)
 }
 
 fn parse_category_schema_mode(value: &str) -> Result<rustok_product::services::CategorySchemaMode> {
     rustok_product::services::CategorySchemaMode::from_storage(value.trim())
-        .map_err(|err| async_graphql::Error::new(format!("{err:?}")))
+        .map_err(invalid_catalog_input)
 }
 
 fn parse_category_attribute_binding_kind(
     value: &str,
 ) -> Result<rustok_product::services::CategoryAttributeBindingKind> {
     rustok_product::services::CategoryAttributeBindingKind::from_storage(value.trim())
-        .map_err(|err| async_graphql::Error::new(format!("{err:?}")))
+        .map_err(invalid_catalog_input)
 }

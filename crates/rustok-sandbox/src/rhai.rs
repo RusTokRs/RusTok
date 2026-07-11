@@ -8,13 +8,13 @@ pub use config::{RhaiConfig, RhaiLimits};
 pub use engine::{CompiledRhai, RhaiEngine, RhaiScopeProvider};
 pub use error::{RhaiError, RhaiResult};
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use async_trait::async_trait;
-use rhai_full as rhai;
 use rhai::{Dynamic, Engine, EvalAltResult, Map, Scope};
+use rhai_full as rhai;
 use serde_json::Value;
 
 use crate::{
@@ -29,11 +29,30 @@ const TIMEOUT_MARKER: &str = "__RUSTOK_SANDBOX_TIMEOUT__";
 /// Host functions are intentionally absent from this baseline executor. Consumers
 /// must add broker-backed capabilities through an approved adapter rather than
 /// registering direct network, storage or secret access.
-pub struct RhaiExecutor;
+pub struct RhaiExecutor {
+    extensions: Vec<Arc<dyn RhaiHostExtension>>,
+}
+
+/// Language-specific adapter boundary for broker-backed host capabilities.
+///
+/// The sandbox remains independent from application capabilities. An adapter
+/// can register Rhai functions for one request only, capturing the request's
+/// `SandboxHost` and typed subject rather than opening direct infrastructure
+/// access from script code.
+pub trait RhaiHostExtension: Send + Sync {
+    fn register(&self, engine: &mut Engine, request: &SandboxRequest, host: SandboxHost);
+}
 
 impl RhaiExecutor {
     pub fn new() -> Self {
-        Self
+        Self {
+            extensions: Vec::new(),
+        }
+    }
+
+    pub fn with_extension(mut self, extension: Arc<dyn RhaiHostExtension>) -> Self {
+        self.extensions.push(extension);
+        self
     }
 
     fn build_engine(request: &SandboxRequest, operations: Arc<AtomicU64>) -> Engine {
@@ -107,12 +126,15 @@ impl SandboxExecutor for RhaiExecutor {
     async fn execute(
         &self,
         request: &SandboxRequest,
-        _host: SandboxHost,
+        host: SandboxHost,
     ) -> SandboxResult<SandboxOutcome> {
         let source = std::str::from_utf8(&request.payload.bytes)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let operations = Arc::new(AtomicU64::new(0));
-        let engine = Self::build_engine(request, Arc::clone(&operations));
+        let mut engine = Self::build_engine(request, Arc::clone(&operations));
+        for extension in &self.extensions {
+            extension.register(&mut engine, request, host.clone());
+        }
         let mut scope = Self::build_scope(request);
         let ast = engine
             .compile_with_scope(&scope, source)

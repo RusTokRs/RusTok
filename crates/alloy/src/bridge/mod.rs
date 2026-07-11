@@ -5,6 +5,7 @@ use crate::context::ExecutionPhase;
 use email_address::EmailAddress;
 use rhai::Engine;
 
+pub use http::HttpCapabilityBridge;
 pub use utils::register_utils;
 
 fn validate_email_address(email: &str) -> bool {
@@ -62,9 +63,9 @@ impl Bridge {
         if capabilities.db_services {
             Self::register_db_services(engine);
         }
-        if capabilities.external_services {
-            Self::register_external_services(engine);
-        }
+        // External services are exposed only by `HttpCapabilityBridge` while a
+        // script runs inside `rustok-sandbox`; phase eligibility alone never
+        // registers direct infrastructure access on a reusable Alloy engine.
     }
 
     fn register_validation_helpers(engine: &mut Engine) {
@@ -97,10 +98,6 @@ impl Bridge {
     }
 
     fn register_db_services(_engine: &mut Engine) {}
-
-    fn register_external_services(engine: &mut Engine) {
-        http::register_http(engine);
-    }
 }
 
 #[cfg(test)]

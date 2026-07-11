@@ -1,8 +1,10 @@
 pub mod admin_read;
+pub mod bootstrap;
 pub mod inventory;
 mod policy;
 pub mod public_channel;
 
+pub use bootstrap::{BootstrapService, InitialInventory};
 pub use inventory::{
     InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
     InventoryReservationReleaseWriteResult, InventoryReservationWriteResult, InventoryService,

@@ -13,6 +13,12 @@ availability. The admin package uses `HostRuntimeContext` and a typed
 transactional event bus, is Loco-free, and intentionally has no GraphQL
 fallback for this current operator surface.
 
+`BootstrapService` owns default-location creation, initial item/level creation,
+variant-record cleanup, and batched available-quantity reads when product
+creates or deletes variants. This is a native transaction-sharing bootstrap
+exception: no GraphQL/REST bootstrap contract exists, while public availability
+and reservation contracts remain inventory-owned.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`

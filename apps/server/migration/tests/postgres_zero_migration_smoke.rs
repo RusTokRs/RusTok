@@ -89,6 +89,28 @@ async fn apply_migrations_and_assert_schema(
         assert_table_exists(&db, table).await?;
     }
 
+    for constraint in [
+        "uq_product_translations_tenant_id",
+        "fk_product_translations_product_tenant",
+        "fk_product_tags_product_tenant",
+        "fk_product_tags_term_tenant",
+        "chk_product_categories_no_primary_assignment",
+        "chk_product_attribute_values_one_scalar",
+        "chk_product_variant_attribute_values_one_scalar",
+    ] {
+        assert_constraint_exists(&db, constraint).await?;
+    }
+    for index in [
+        "uq_product_translations_tenant_locale_handle",
+        "uq_product_variants_tenant_sku",
+        "uq_catalog_categories_tenant_root_slug",
+        "idx_products_storefront_published",
+        "idx_products_channel_visibility_jsonb",
+    ] {
+        assert_index_exists(&db, index).await?;
+    }
+    assert_trigger_exists(&db, "trg_products_normalize_channel_visibility").await?;
+
     Ok(())
 }
 
@@ -172,6 +194,66 @@ async fn assert_table_exists(
         .map_err(|error| format!("table existence result for {table} must decode: {error}"))?;
     if !exists {
         return Err(format!("expected table {table} to exist after migrations").into());
+    }
+    Ok(())
+}
+
+async fn assert_constraint_exists(
+    db: &DatabaseConnection,
+    constraint: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_catalog_object_exists(
+        db,
+        "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = $1) AS exists",
+        constraint,
+        "constraint",
+    )
+    .await
+}
+
+async fn assert_index_exists(
+    db: &DatabaseConnection,
+    index: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_catalog_object_exists(
+        db,
+        "SELECT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = $1) AS exists",
+        index,
+        "index",
+    )
+    .await
+}
+
+async fn assert_trigger_exists(
+    db: &DatabaseConnection,
+    trigger: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_catalog_object_exists(
+        db,
+        "SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = $1 AND NOT tgisinternal) AS exists",
+        trigger,
+        "trigger",
+    )
+    .await
+}
+
+async fn assert_catalog_object_exists(
+    db: &DatabaseConnection,
+    query: &str,
+    name: &str,
+    kind: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            query,
+            [name.to_owned().into()],
+        ))
+        .await?
+        .ok_or_else(|| format!("{kind} existence query returned no row"))?;
+    let exists: bool = row.try_get("", "exists")?;
+    if !exists {
+        return Err(format!("expected {kind} `{name}` after migrations").into());
     }
     Ok(())
 }

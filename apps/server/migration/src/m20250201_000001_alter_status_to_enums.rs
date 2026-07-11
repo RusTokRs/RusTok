@@ -11,25 +11,6 @@ impl MigrationTrait for Migration {
             return Ok(());
         }
 
-        // Create Product Status Enum
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "CREATE TYPE product_status_enum AS ENUM ('draft', 'active', 'archived');",
-            )
-            .await?;
-
-        // Alter Products table
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "ALTER TABLE products 
-                 ALTER COLUMN status DROP DEFAULT,
-                 ALTER COLUMN status TYPE product_status_enum USING status::product_status_enum,
-                 ALTER COLUMN status SET DEFAULT 'draft'::product_status_enum;",
-            )
-            .await?;
-
         // Create Content Status Enum
         manager
             .get_connection()
@@ -71,22 +52,6 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared("DROP TYPE content_status_enum;")
-            .await?;
-
-        // Revert Products table
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "ALTER TABLE products 
-                 ALTER COLUMN status DROP DEFAULT,
-                 ALTER COLUMN status TYPE varchar(32) USING status::varchar,
-                 ALTER COLUMN status SET DEFAULT 'draft';",
-            )
-            .await?;
-
-        manager
-            .get_connection()
-            .execute_unprepared("DROP TYPE product_status_enum;")
             .await?;
 
         Ok(())

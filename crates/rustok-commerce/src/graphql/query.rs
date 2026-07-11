@@ -11,6 +11,7 @@ use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
 use rustok_pricing::PricingService;
+use rustok_product::services::catalog::helpers::product_channel_visibility_condition;
 use rustok_product::{CatalogService, ProductCatalogSchemaService};
 use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
 use rustok_telemetry::metrics;
@@ -35,7 +36,10 @@ use crate::{
 };
 use rustok_product::entities::{product, product_translation};
 
-use super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::{
+    map_product_service_error, product_query_tenant, require_commerce_permission, types::*,
+    MODULE_SLUG, PRODUCT_MODULE_SLUG,
+};
 
 #[derive(Default)]
 pub struct CommerceQuery;
@@ -110,7 +114,7 @@ impl CommerceQuery {
         {
             Ok(detail) => Some(detail),
             Err(CommerceError::ProductNotFound(_)) => None,
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(map_product_service_error(err, "pricing_query")),
         };
 
         match detail {
@@ -135,7 +139,12 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Storefront catalog reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
         let channel_service = rustok_channel::ChannelService::new(db.clone());
         let (channels, _) = channel_service
             .list_channels(tenant_id, 1, 250)
@@ -158,7 +167,12 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Storefront catalog reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
         let request_context = ctx.data_opt::<RequestContext>();
         let selected_channel_id =
             channel_id.or_else(|| request_context.and_then(|item| item.channel_id));
@@ -204,7 +218,12 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Storefront catalog reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
         let request_context = ctx.data_opt::<RequestContext>();
         let requested_locale = locale
             .as_deref()
@@ -1354,7 +1373,8 @@ impl CommerceQuery {
         id: Uuid,
         locale: Option<String>,
     ) -> Result<Option<GqlProduct>> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        let tenant_id = product_query_tenant(ctx, tenant_id)?;
         super::require_storefront_channel_enabled(ctx).await?;
         require_commerce_permission(
             ctx,
@@ -1380,7 +1400,7 @@ impl CommerceQuery {
         {
             Ok(product) => product,
             Err(CommerceError::ProductNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(map_product_service_error(err, "product_query")),
         };
 
         Ok(Some(
@@ -1395,7 +1415,8 @@ impl CommerceQuery {
         locale: Option<String>,
         filter: Option<ProductsFilter>,
     ) -> Result<GqlProductList> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        let tenant_id = product_query_tenant(ctx, tenant_id)?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_LIST],
@@ -1478,7 +1499,8 @@ impl CommerceQuery {
         tenant_id: Uuid,
         locale: String,
     ) -> Result<GqlProductAttributeList> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        let tenant_id = product_query_tenant(ctx, tenant_id)?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
@@ -1491,7 +1513,7 @@ impl CommerceQuery {
         let items = service
             .list_attributes(tenant_id, locale.trim())
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .map_err(|error| map_product_service_error(error, "product_query"))?
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>();
@@ -1508,7 +1530,8 @@ impl CommerceQuery {
         tenant_id: Uuid,
         locale: String,
     ) -> Result<GqlCatalogCategoryList> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        let tenant_id = product_query_tenant(ctx, tenant_id)?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
@@ -1521,7 +1544,7 @@ impl CommerceQuery {
         let items = service
             .list_categories(tenant_id, locale.trim())
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .map_err(|error| map_product_service_error(error, "product_query"))?
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>();
@@ -1538,7 +1561,8 @@ impl CommerceQuery {
         tenant_id: Uuid,
         locale: String,
     ) -> Result<GqlProductAttributeSchemaList> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        let tenant_id = product_query_tenant(ctx, tenant_id)?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
@@ -1551,7 +1575,7 @@ impl CommerceQuery {
         let items = service
             .list_schemas(tenant_id, locale.trim())
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .map_err(|error| map_product_service_error(error, "product_query"))?
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>();
@@ -1570,7 +1594,8 @@ impl CommerceQuery {
         category_id: Option<Uuid>,
         locale: String,
     ) -> Result<Option<GqlProductEffectiveForm>> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        let tenant_id = product_query_tenant(ctx, tenant_id)?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
@@ -1585,12 +1610,12 @@ impl CommerceQuery {
             (Some(product_id), _) => service
                 .load_effective_form_for_product(tenant_id, product_id)
                 .await
-                .map_err(|err| async_graphql::Error::new(err.to_string()))?,
+                .map_err(|error| map_product_service_error(error, "product_query"))?,
             (None, Some(category_id)) => Some(
                 service
                     .load_effective_form_for_category(tenant_id, category_id, &[])
                     .await
-                    .map_err(|err| async_graphql::Error::new(err.to_string()))?,
+                    .map_err(|error| map_product_service_error(error, "product_query"))?,
             ),
             (None, None) => {
                 return Err(async_graphql::Error::new(
@@ -1604,12 +1629,12 @@ impl CommerceQuery {
         let group_labels = service
             .load_effective_form_group_labels(tenant_id, form.category_id, locale)
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| map_product_service_error(error, "product_query"))?;
 
         let definitions = service
             .list_attributes(tenant_id, locale)
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .map_err(|error| map_product_service_error(error, "product_query"))?
             .into_iter()
             .map(|attribute| (attribute.id, attribute))
             .collect::<HashMap<_, _>>();
@@ -1621,7 +1646,7 @@ impl CommerceQuery {
         let mut options_by_attribute = service
             .list_attribute_options(tenant_id, &effective_attribute_ids, locale)
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .map_err(|error| map_product_service_error(error, "product_query"))?
             .into_iter()
             .fold(
                 HashMap::<Uuid, Vec<GqlProductAttributeOption>>::new(),
@@ -1684,7 +1709,8 @@ impl CommerceQuery {
         product_id: Uuid,
         locale: String,
     ) -> Result<Vec<GqlProductAttributeValue>> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        let tenant_id = product_query_tenant(ctx, tenant_id)?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
@@ -1696,7 +1722,7 @@ impl CommerceQuery {
         ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
             .load_product_attribute_values(tenant_id, product_id, locale.trim())
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))
+            .map_err(|error| map_product_service_error(error, "product_query"))
             .map(|items| items.into_iter().map(Into::into).collect())
     }
 
@@ -1718,7 +1744,7 @@ impl CommerceQuery {
         let category_options = service
             .list_categories(tenant.id, locale.trim())
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .map_err(|error| map_product_service_error(error, "product_query"))?
             .into_iter()
             .map(|category| GqlProductCatalogSearchOption {
                 value: category.id.to_string(),
@@ -1728,7 +1754,7 @@ impl CommerceQuery {
         let attribute_options = service
             .list_attributes(tenant.id, locale.trim())
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .map_err(|error| map_product_service_error(error, "product_query"))?
             .into_iter()
             .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
             .map(|attribute| {
@@ -1758,13 +1784,18 @@ impl CommerceQuery {
         locale: Option<String>,
         tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlProduct>> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Storefront catalog reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
         let locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
 
@@ -1805,7 +1836,7 @@ impl CommerceQuery {
         {
             Ok(product) => product,
             Err(CommerceError::ProductNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(map_product_service_error(err, "product_query")),
         };
 
         if product.status != rustok_product::entities::product::ProductStatus::Active
@@ -1839,13 +1870,18 @@ impl CommerceQuery {
         tenant_id: Option<Uuid>,
         filter: Option<StorefrontProductsFilter>,
     ) -> Result<GqlProductList> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Storefront catalog reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
         let locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
         let filter = filter.unwrap_or(StorefrontProductsFilter {
@@ -1856,11 +1892,15 @@ impl CommerceQuery {
             per_page: Some(12),
         });
         let requested_limit = filter.per_page;
-        let page = filter.page.unwrap_or(1).max(1);
-        let per_page = filter.per_page.unwrap_or(12).clamp(1, 48);
+        let page = filter.page.unwrap_or(1);
+        let per_page = filter.per_page.unwrap_or(12);
+        if page == 0 || per_page == 0 || per_page > 48 {
+            return Err(async_graphql::Error::new(
+                "page must be at least 1 and per_page must be between 1 and 48",
+            ));
+        }
         let offset = (page.saturating_sub(1)) * per_page;
         let public_channel_slug = request_public_channel_slug(ctx);
-        const MAX_PREFILTER_FETCH: u64 = 5000;
 
         let mut query = product::Entity::find()
             .filter(product::Column::TenantId.eq(tenant_id))
@@ -1868,7 +1908,11 @@ impl CommerceQuery {
                 product::Column::Status
                     .eq(rustok_product::entities::product::ProductStatus::Active),
             )
-            .filter(product::Column::PublishedAt.is_not_null());
+            .filter(product::Column::PublishedAt.is_not_null())
+            .filter(product_channel_visibility_condition(
+                db.get_database_backend(),
+                public_channel_slug.as_deref(),
+            ));
 
         if let Some(vendor) = &filter.vendor {
             query = query.filter(product::Column::Vendor.eq(vendor));
@@ -1884,26 +1928,14 @@ impl CommerceQuery {
             ));
         }
 
-        let visible_products = query
+        let total = query.clone().count(db).await?;
+        let products = query
             .order_by_desc(product::Column::PublishedAt)
             .order_by_desc(product::Column::CreatedAt)
-            .limit(MAX_PREFILTER_FETCH)
+            .offset(offset)
+            .limit(per_page)
             .all(db)
-            .await?
-            .into_iter()
-            .filter(|product| {
-                is_metadata_visible_for_public_channel(
-                    &product.metadata,
-                    public_channel_slug.as_deref(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let total = visible_products.len() as u64;
-        let products = visible_products
-            .into_iter()
-            .skip(offset as usize)
-            .take(per_page as usize)
-            .collect::<Vec<_>>();
+            .await?;
 
         let items = load_product_list_items(
             db,
@@ -2086,7 +2118,8 @@ async fn load_product_list_items(
     let product_tags_started_at = std::time::Instant::now();
     let product_tags = CatalogService::new(db.clone(), event_bus.clone())
         .load_product_tag_map(tenant_id, &products, locale, Some(default_locale))
-        .await?;
+        .await
+        .map_err(|error| map_product_service_error(error, "product_query"))?;
     metrics::record_read_path_query(
         "graphql",
         metric_path,

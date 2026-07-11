@@ -1,7 +1,6 @@
 use eyre::{bail, eyre, Result};
 use migration::Migrator;
 use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
-use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_installer::{
     evaluate_preflight, execute_seed_profile, redact_install_plan, AdminBootstrap, DatabaseConfig,
     DatabaseEngine, InstallEnvironment, InstallPlan, InstallProfile, InstallReceipt, InstallState,
@@ -9,6 +8,7 @@ use rustok_installer::{
     SeedExecutionRequest, SeedIdentityPort, SeedModulePort, SeedProfile, SeedRolePort, SeedTenant,
     SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest, TenantBootstrap,
 };
+use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
     PortActor, PortContext, PortErrorKind, TenantReadPort, TenantReadProjection, TenantReadRequest,
     TenantReadSelector, TenantService,

@@ -20,6 +20,7 @@ Alloy drafts and installed module artifacts.
 - `SandboxPolicy`
 - `CapabilityBroker`
 - `ExecutionObserver`
+- `wasm::WasmComponentExecutor` (feature `wasm-component`)
 
 ## Interactions
 
@@ -28,4 +29,3 @@ Alloy drafts and installed module artifacts.
 - The server supplies host capability implementations through narrow ports.
 
 See the [local documentation](./docs/README.md).
-

@@ -115,6 +115,36 @@ When reindexing a product, `rustok-index` first completely replaces its rows in 
 - `rustok-product/admin` already keeps an owner-side product SEO panel via
   `rustok-seo-admin-support`, without moving product metadata editing into `rustok-seo-admin`.
 
+## Storage ownership and ER summary
+
+`rustok-product` owns the catalog rows, product translations, variants, options,
+catalog categories, EAV schema/value tables, and `product_tags`. `rustok-taxonomy`
+owns term identity; `rustok-inventory` owns stock quantities; `rustok-pricing`
+owns resolved prices; `rustok-media` owns media assets; and shipping-profile
+identity belongs to the commerce shipping capability. `products.primary_category_id`
+is the only canonical primary-category source.
+
+```mermaid
+erDiagram
+    products ||--o{ product_translations : localized_as
+    products ||--o{ product_variants : has
+    products ||--o{ product_categories : navigates
+    catalog_categories ||--o{ product_categories : classifies
+    products }o--o| catalog_categories : primary_category
+    products ||--o{ product_attribute_values : has
+    product_attributes ||--o{ product_attribute_values : defines
+    product_attribute_values ||--o{ product_attribute_value_options : selects
+    product_attribute_options ||--o{ product_attribute_value_options : chosen_by
+    products ||--o{ product_tags : tagged_with
+    taxonomy_terms ||--o{ product_tags : attached_by
+```
+
+All product tenant-bearing references use `(tenant_id, id)` composite foreign
+keys where the referenced table can be independently tenant-scoped. Product
+handle and SKU identities are tenant-scoped; root-category slugs are tenant-
+scoped through a partial unique index. Product status, primary-category, EAV,
+and tag constraints are specified in product-owned migrations.
+
 ## Verification
 
 - `npm.cmd run verify:product:runtime-fallback-smoke`

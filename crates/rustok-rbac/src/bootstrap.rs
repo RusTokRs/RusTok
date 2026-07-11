@@ -50,12 +50,13 @@ impl RbacRoleAssignmentDbWriter {
         role: &UserRole,
     ) -> Result<Uuid, RbacRoleAssignmentError> {
         let slug = role.to_string();
-        if let Some(id) = self.find_id(
-            "SELECT id FROM roles WHERE tenant_id = {tenant} AND slug = {slug} LIMIT 1",
-            tenant_id,
-            &slug,
-        )
-        .await?
+        if let Some(id) = self
+            .find_id(
+                "SELECT id FROM roles WHERE tenant_id = {tenant} AND slug = {slug} LIMIT 1",
+                tenant_id,
+                &slug,
+            )
+            .await?
         {
             return Ok(id);
         }
@@ -93,7 +94,14 @@ impl RbacRoleAssignmentDbWriter {
             _ => "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1",
         };
         if let Some(id) = self
-            .query_id(select, vec![tenant_id.into(), resource.clone().into(), action.clone().into()])
+            .query_id(
+                select,
+                vec![
+                    tenant_id.into(),
+                    resource.clone().into(),
+                    action.clone().into(),
+                ],
+            )
             .await?
         {
             return Ok(id);
@@ -110,9 +118,14 @@ impl RbacRoleAssignmentDbWriter {
         )
         .await?;
 
-        self.query_id(select, vec![tenant_id.into(), resource.into(), action.into()])
-            .await?
-            .ok_or(RbacRoleAssignmentError::MissingPersistedRecord("permission"))
+        self.query_id(
+            select,
+            vec![tenant_id.into(), resource.into(), action.into()],
+        )
+        .await?
+        .ok_or(RbacRoleAssignmentError::MissingPersistedRecord(
+            "permission",
+        ))
     }
 
     async fn ensure_user_role(
@@ -151,12 +164,8 @@ impl RbacRoleAssignmentDbWriter {
     ) -> Result<Option<Uuid>, RbacRoleAssignmentError> {
         let backend = self.db.get_database_backend();
         let sql = match backend {
-            DbBackend::Sqlite => template
-                .replace("{tenant}", "?1")
-                .replace("{slug}", "?2"),
-            _ => template
-                .replace("{tenant}", "$1")
-                .replace("{slug}", "$2"),
+            DbBackend::Sqlite => template.replace("{tenant}", "?1").replace("{slug}", "?2"),
+            _ => template.replace("{tenant}", "$1").replace("{slug}", "$2"),
         };
         self.query_id(sql.as_str(), vec![tenant_id.into(), slug.into()])
             .await

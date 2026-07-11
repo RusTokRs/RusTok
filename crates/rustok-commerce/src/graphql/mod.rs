@@ -5,7 +5,7 @@ mod types;
 use async_graphql::{Context, ErrorExtensions, FieldError, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::GraphQLError, has_any_effective_permission, AuthContext, RequestContext,
+    graphql::GraphQLError, has_any_effective_permission, AuthContext, RequestContext, TenantContext,
 };
 use sea_orm::DatabaseConnection;
 
@@ -16,6 +16,28 @@ pub use query::CommerceQuery;
 pub use types::*;
 
 pub(crate) const MODULE_SLUG: &str = "commerce";
+pub(crate) const PRODUCT_MODULE_SLUG: &str = "product";
+
+pub(crate) fn map_product_service_error(
+    error: rustok_commerce_foundation::CommerceError,
+    operation: &'static str,
+) -> async_graphql::Error {
+    use rustok_core::error::RichError;
+
+    tracing::error!(error = %error, operation, "product service operation failed");
+    let rich: RichError = error.into();
+    let public_message = rich
+        .user_message
+        .clone()
+        .unwrap_or_else(|| "Product operation failed".to_owned());
+    let code = rich
+        .error_code
+        .clone()
+        .unwrap_or_else(|| "PRODUCT_OPERATION_FAILED".to_owned());
+
+    async_graphql::Error::new(public_message)
+        .extend_with(|_, extensions| extensions.set("code", code))
+}
 
 pub(crate) fn require_commerce_permission(
     ctx: &Context<'_>,
@@ -32,6 +54,38 @@ pub(crate) fn require_commerce_permission(
     }
 
     Ok(auth)
+}
+
+pub(crate) fn product_mutation_actor(ctx: &Context<'_>) -> Result<(uuid::Uuid, uuid::Uuid)> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let tenant = ctx.data::<TenantContext>().map_err(|_| {
+        <FieldError as GraphQLError>::permission_denied("Tenant context is required")
+    })?;
+
+    if tenant.id != auth.tenant_id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Authenticated actor is not bound to the current tenant",
+        ));
+    }
+
+    Ok((tenant.id, auth.user_id))
+}
+
+pub(crate) fn product_query_tenant(
+    ctx: &Context<'_>,
+    requested_tenant_id: uuid::Uuid,
+) -> Result<uuid::Uuid> {
+    let tenant = ctx.data::<TenantContext>().map_err(|_| {
+        <FieldError as GraphQLError>::permission_denied("Tenant context is required")
+    })?;
+    if requested_tenant_id != tenant.id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Product reads must use the current tenant",
+        ));
+    }
+    Ok(tenant.id)
 }
 
 pub(crate) async fn require_storefront_channel_enabled(ctx: &Context<'_>) -> Result<()> {

@@ -1,356 +1,117 @@
-# План устранения недостатков `rustok-product`
-
-**Репозиторий:** `RusTokRs/RusTok`  
-**Область:** `crates/rustok-product` и связанные product GraphQL/migrations  
-**Проверено на:** `main`, commit `a1032998adfbccacc1679e11a67edcd9fc04c109`
-
-## Обозначения
-
-- **Приоритет:** Critical / High / Medium / Low
-- **Трудоёмкость:** S / M / L / XL
-- **⚠ Требуется перепроверка:** вывод нельзя считать окончательно подтверждённым без проверки runtime, данных или внешних потребителей.
-
----
-
-## 1. Архитектура
-
-- [ ] Перенести product DTO, entities и ошибки из `rustok-commerce-foundation` в `rustok-product` либо отдельный `rustok-product-contracts`. В foundation временно оставить совместимые re-export.  
-  **Приоритет:** High · **Трудоёмкость:** L
-
-- [ ] Разделить `CatalogService` на отдельные компоненты:
-  - product commands;
-  - product queries;
-  - inventory integration;
-  - tags;
-  - projection builder.  
-  **Приоритет:** High · **Трудоёмкость:** XL
-
-- [ ] Разделить `ProductCatalogSchemaService` на сервисы:
-  - attributes;
-  - schemas;
-  - categories;
-  - values;
-  - virtual categories.  
-  **Приоритет:** High · **Трудоёмкость:** XL
-
-- [ ] Оставить одного владельца product-миграций. Удалить или отключить копии миграций из `rustok-commerce`.  
-  **Приоритет:** High · **Трудоёмкость:** M  
-  **⚠ Требуется перепроверка:** зарегистрированы ли одновременно оба migration source.
-
-- [ ] Зафиксировать поддержку только PostgreSQL либо реализовать product-миграции для остальных backend. При PostgreSQL-only завершать запуск ошибкой, а не успешно пропускать миграции.  
-  **Приоритет:** High · **Трудоёмкость:** M  
-  **⚠ Требуется перепроверка:** заявлена ли поддержка SQLite/MySQL.
-
-- [ ] Перенести product GraphQL surface владельцу `rustok-product` либо заменить проверку `commerce` module slug на `product` module slug.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
----
-
-## 2. База данных и таблицы
-
-- [ ] Перенести создание `product_status_enum` и изменение `products.status` из миграций приложения в миграции `rustok-product`. Модуль должен разворачиваться независимо от `apps/server`.  
-  **Приоритет:** Critical · **Трудоёмкость:** M
-
-- [ ] Добавить `tenant_id` в `product_translations`, выполнить backfill и создать уникальное ограничение `(tenant_id, locale, handle)`. Заменить глобальную проверку handle на tenant-scoped.  
-  **Приоритет:** Critical · **Трудоёмкость:** L
-
-- [ ] Создать частичный уникальный индекс:
-  ```sql
-  CREATE UNIQUE INDEX ... ON product_variants (tenant_id, sku)
-  WHERE sku IS NOT NULL;
-  ```
-  Ошибку `unique_violation` преобразовывать в `DuplicateSku`.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
-- [ ] Исправить уникальность корневых категорий:
-  - отдельный unique index `(tenant_id, slug) WHERE parent_id IS NULL`;
-  - для дочерних оставить `(tenant_id, parent_id, slug)`.  
-  **Приоритет:** High · **Трудоёмкость:** S
-
-- [ ] Добавить ограничения для EAV-значений:
-  - запрет нескольких одновременно заполненных `value_*`;
-  - проверку допустимого типа значения;
-  - правила для `detached_at`;
-  - валидацию option values для `select/multiselect`.  
-  **Приоритет:** High · **Трудоёмкость:** L
-
-- [ ] Устранить два источника primary category:
-  - `products.primary_category_id`;
-  - `product_categories.assignment_kind = 'primary'`.  
-  Оставить один источник либо обеспечить транзакционную синхронизацию и partial unique index на одну primary-категорию продукта.  
-  **Приоритет:** High · **Трудоёмкость:** M  
-  **⚠ Требуется перепроверка:** какой источник считается каноническим.
-
-- [ ] Добавить индекс для storefront-выборки:
-  ```sql
-  (tenant_id, status, published_at DESC, created_at DESC)
-  ```
-  **Приоритет:** High · **Трудоёмкость:** S
-
-- [ ] Провести миграцию очистки переходных колонок в:
-  - `products`;
-  - `product_options`;
-  - `product_images`;
-  - translations;
-  - variants.  
-  Перед удалением проверить внешних потребителей.  
-  **Приоритет:** Medium · **Трудоёмкость:** L  
-  **⚠ Требуется перепроверка.**
-
-- [ ] Мигрировать и удалить устаревшие поля `product_variants`:
-  - `manage_inventory`;
-  - `allow_backorder`;
-  - `variant_rank`.  
-  Предлагаемое соответствие:
-  - `manage_inventory` → `inventory_management`;
-  - `allow_backorder` → `inventory_policy`;
-  - `variant_rank` → `position`.  
-  **Приоритет:** High · **Трудоёмкость:** M  
-  **⚠ Требуется перепроверка:** точная семантика преобразования данных и наличие внешних потребителей.
-
-- [ ] Обеспечить tenant-целостность `product_tags`:
-  - проверить и backfill `tenant_id`;
-  - добавить `UNIQUE (tenant_id, id)` для `taxonomy_terms`;
-  - добавить composite FK `(tenant_id, product_id) → products(tenant_id, id)`;
-  - добавить composite FK `(tenant_id, term_id) → taxonomy_terms(tenant_id, id)`;
-  - добавить индекс `(tenant_id, product_id)`.  
-  **Приоритет:** Critical · **Трудоёмкость:** M
-
-- [ ] Добавить автоматический schema-тест, проверяющий composite FK для всех таблиц с `tenant_id`.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
----
-
-## 3. Код и ORM
-
-- [ ] Добавить в `product_tag::Relation` связь `Term` с `rustok_taxonomy::entities::taxonomy_term::Entity` и реализацию `Related`.  
-  **Приоритет:** Low · **Трудоёмкость:** S
-
-- [ ] Удалить проверки уникальности по схеме `SELECT → INSERT` после добавления DB constraints. Обрабатывать конфликт вставки, исключив race condition.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
-- [ ] Пакетно вставлять:
-  - translations;
-  - options;
-  - option values;
-  - variants;
-  - prices.  
-  Убрать последовательные `INSERT` в циклах там, где допустим bulk insert.  
-  **Приоритет:** Medium · **Трудоёмкость:** M
-
-- [ ] Выделить единый transaction helper для записи сущности и outbox-события.  
-  **Приоритет:** Medium · **Трудоёмкость:** M
-
-- [ ] Заменить `expect` при регистрации SEO provider на контролируемую ошибку инициализации модуля.  
-  **Приоритет:** Medium · **Трудоёмкость:** S
-
----
-
-## 4. API и доступ
-
-- [ ] Получать `tenant_id` и actor/user ID только из доверенных `AuthContext` / `TenantContext`.  
-  Не принимать `userId` как доверенный аргумент GraphQL mutation.  
-  Проверять, что запрошенный tenant совпадает с tenant из auth context.  
-  **Приоритет:** Critical · **Трудоёмкость:** M
-
-- [ ] Сохранить существующие RBAC-проверки для product mutations и дополнить их tenant-binding проверкой.  
-  **Приоритет:** Critical · **Трудоёмкость:** S
-
-- [ ] Не возвращать текст внутренних ошибок БД через `PortError` и GraphQL `err.to_string()`.  
-  Ввести единый mapper:
-  - стабильный публичный error code;
-  - безопасное клиентское сообщение;
-  - полная внутренняя ошибка только в логах;
-  - correlation ID.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
-- [ ] Добавить явное отображение всех `CommerceError` в стабильные API-коды вместо общего `invariant_violation`.  
-  **Приоритет:** Medium · **Трудоёмкость:** S
-
-- [ ] Использовать одинаковую валидацию пагинации во всех точках входа. Убрать молчаливые `max/clamp` внутри сервиса.  
-  **Приоритет:** Medium · **Трудоёмкость:** S
-
----
-
-## 5. Производительность
-
-- [ ] Перенести фильтрацию channel visibility, `COUNT`, `OFFSET/LIMIT` в SQL. Не загружать все опубликованные товары tenant в память перед пагинацией.  
-  **Приоритет:** Critical · **Трудоёмкость:** L
-
-- [ ] Нормализовать channel visibility в отдельную таблицу либо добавить поддерживаемый JSONB-предикат и соответствующий индекс.  
-  **Приоритет:** High · **Трудоёмкость:** L
-
-- [ ] Сократить количество последовательных запросов в `get_product_with_locale_fallback`:
-  - объединить загрузку projections;
-  - либо выполнять независимые запросы параллельно;
-  - использовать согласованную read-транзакцию при необходимости snapshot consistency.  
-  **Приоритет:** High · **Трудоёмкость:** L
-
-- [ ] Проверить новые запросы через:
-  ```sql
-  EXPLAIN (ANALYZE, BUFFERS)
-  ```
-  на каталогах 10k, 100k и 1M товаров.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
----
-
-## 6. Тестирование
-
-- [ ] Добавить PostgreSQL integration tests для полного цикла `up/down/up` всех product-миграций.  
-  **Приоритет:** Critical · **Трудоёмкость:** L
-
-- [ ] Выполнить реальные persistence-backed тесты:
-  - `read_product_projection`;
-  - `list_published_products`.  
-  **Приоритет:** Critical · **Трудоёмкость:** L
-
-- [ ] Добавить конкурентные тесты создания одинаковых handle и SKU.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
-- [ ] Добавить tenant-isolation тесты для:
-  - products;
-  - categories;
-  - schemas;
-  - attributes;
-  - values;
-  - options;
-  - variants;
-  - translations;
-  - tags.  
-  **Приоритет:** Critical · **Трудоёмкость:** L
-
-- [ ] Добавить отдельный тест, запрещающий создание `product_tags` с несовпадающими tenant товара, taxonomy term и самой записи.  
-  **Приоритет:** Critical · **Трудоёмкость:** S
-
-- [ ] Добавить тесты:
-  - повреждённых EAV-значений;
-  - циклов категорий;
-  - рассинхронизации closure/path;
-  - нескольких primary category;
-  - duplicate root slug.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
-- [ ] Добавить migration tests для существующих дубликатов перед установкой unique constraints.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
-- [ ] Добавить migration test для переноса старых inventory-флагов и проверки их удаления.  
-  **Приоритет:** High · **Трудоёмкость:** M
-
-- [ ] Проверять parity native/GraphQL для admin и storefront.  
-  **Приоритет:** Medium · **Трудоёмкость:** L
-
----
-
-## 7. Безопасность
-
-- [ ] Закрыть возможность подмены `tenant_id` и `user_id` через GraphQL variables.  
-  **Приоритет:** Critical · **Трудоёмкость:** M
-
-- [ ] Закрыть утечку внутренних сообщений БД через API.  
-  **Приоритет:** High · **Трудоёмкость:** S
-
-- [ ] Ограничить размер:
-  - `metadata`;
-  - `validation`;
-  - `rule_config`;
-  - snapshots;
-  - других JSONB-входов.  
-  **Приоритет:** Medium · **Трудоёмкость:** M  
-  **⚠ Требуется перепроверка:** лимиты transport/body могут применяться выше.
-
-- [ ] Добавить негативные тесты подмены tenant во всех write/read сценариях.  
-  **Приоритет:** Critical · **Трудоёмкость:** M
-
----
-
-## 8. Документация
-
-- [ ] Создать ER-диаграмму product-схемы с:
-  - PK;
-  - FK;
-  - composite FK;
-  - unique constraints;
-  - partial indexes;
-  - обычными индексами.  
-  **Приоритет:** Medium · **Трудоёмкость:** M
-
-- [ ] Описать владельца каждой таблицы и канонические источники данных:
-  - category;
-  - tags;
-  - inventory;
-  - prices;
-  - media;
-  - shipping profile.  
-  **Приоритет:** Medium · **Трудоёмкость:** M
-
-- [ ] Добавить ADR:
-  - PostgreSQL-only;
-  - tenant isolation;
-  - EAV-модель;
-  - closure table;
-  - ownership product/commerce.  
-  **Приоритет:** Medium · **Трудоёмкость:** S
-
-- [ ] После появления live-тестов обновить статус `boundary_ready/transport_verified`.  
-  **Приоритет:** Low · **Трудоёмкость:** S
-
----
-
-## Рекомендуемый порядок выполнения
-
-1. Сделать snapshot БД и аудит существующих данных:
-   - duplicate handles;
-   - duplicate SKU;
-   - duplicate root slug;
-   - cross-tenant tags;
-   - несколько primary category;
-   - конфликт старых и новых inventory-полей.
-
-2. Закрыть возможность подмены `tenant_id` и `user_id` в API.
-
-3. Перенести enum-миграцию в `rustok-product`.
-
-4. Исправить tenant-целостность `product_tags`.
-
-5. Выполнить backfill `tenant_id` и tenant-ограничений для translations и остальных product-таблиц.
-
-6. Добавить unique/check/composite FK constraints и обработку DB conflicts.
-
-7. Мигрировать старые inventory-поля и удалить legacy-колонки.
-
-8. Перенести storefront-фильтрацию и пагинацию в SQL, добавить индексы.
-
-9. Ввести безопасный единый mapper ошибок API.
-
-10. Добавить PostgreSQL integration, concurrency и tenant-isolation tests.
-
-11. Разделить крупные сервисы и перенести product-owned типы.
-
-12. Удалить дублирующиеся миграции и завершить перенос ownership из `commerce`.
-
-13. Зафиксировать архитектуру и схему БД в документации.
-
----
-
-## Проверенные и исключённые пункты
-
-Следующие замечания из исходного резюме **не являются актуальными проблемами**:
-
-- У `product_translations` уже есть unique index `(product_id, locale)`.
-- У `product_images.media_id` уже есть FK на `media.id` с `ON DELETE SET NULL`.
-- Для `product_variants` поздняя миграция добавляет composite FK `(tenant_id, product_id) → products(tenant_id, id)`. Отдельный FK `tenant_id → tenants(id)` не обязателен и будет избыточным при корректном composite FK.
-
----
-
-## Основные файлы для работы
-
-- `crates/rustok-product/src/services/catalog.rs`
-- `crates/rustok-product/src/services/catalog_schema_service.rs`
-- `crates/rustok-product/src/ports.rs`
-- `crates/rustok-product/src/entities/product_tag.rs`
-- `crates/rustok-product/src/migrations/`
-- `crates/rustok-commerce/src/graphql/mutations/catalog.rs`
-- `crates/rustok-commerce/src/graphql/query.rs`
-- `crates/rustok-commerce-foundation/src/entities/`
-- `apps/server/migration/src/m20250201_000001_alter_status_to_enums.rs`
+# `rustok-product` Remediation Register
+
+**Reviewed:** 2026-07-11
+
+**Scope:** `crates/rustok-product` and its product GraphQL and migration boundaries.
+**Status terms:** `resolved` is implemented and source-verified; `open` remains a valid
+engineering task; `partial` mitigates the risk but does not yet meet the target contract;
+`blocked` needs a live PostgreSQL environment or production data audit.
+
+This register replaces the stale, incorrectly encoded draft. Every original item is retained
+below with its current disposition. Items are deliberately not marked resolved solely from
+source markers or no-compile evidence.
+
+## Architecture
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| Move product DTOs, entities, and errors out of `rustok-commerce-foundation` | open | The obsolete, unexported product/price entity copies were removed from `rustok-commerce`; `rustok-product/src/lib.rs` still re-exports foundation DTOs and `Cargo.toml` depends on the foundation crate. No compatibility re-export will be introduced; this needs an atomic owner-boundary move. |
+| Split `CatalogService` into commands, queries, inventory, tags, and projection components | partial | Tag reads/writes are isolated in `src/services/catalog/tags.rs`. Product no longer owns inventory persistence helpers: it calls inventory-owned `BootstrapService` for initial records, cleanup, and available-quantity reads inside its transaction under a documented native-only bootstrap exception. Commands, queries, and product projection still share `src/services/catalog.rs`. |
+| Split `ProductCatalogSchemaService` into attributes, schemas, categories, values, and virtual categories | partial | Category creation, groups, bindings, schema modes, and listing are isolated in `src/services/catalog_schema_service/categories.rs`; schema creation/listing/groups/bindings are isolated in `src/services/catalog_schema_service/schemas.rs`; attribute reads/writes are isolated in `src/services/catalog_schema_service/attributes.rs`; values, virtual-category validation, and effective-form projection remain in the main service file. |
+| Keep a single owner of product migrations and remove commerce copies | resolved | `rustok-commerce/src/migrations/` no longer creates product tables; `ProductModule` exports the product migration set. |
+| Enforce PostgreSQL-only product migrations | resolved | New product migrations return an explicit error for a non-PostgreSQL backend instead of silently succeeding. |
+| Move the product GraphQL surface to `rustok-product` or use the `product` module slug | resolved | Catalog GraphQL roots remain schema-composed by commerce, but every product read/write root is gated by `PRODUCT_MODULE_SLUG` (`product`), not the commerce umbrella slug. |
+
+## Database and schema
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| Move `product_status_enum` creation and `products.status` conversion to the product owner | resolved | `m20260711_000001_product_status_enum` now owns it. The server migration retains only the content enum, preventing a clean install from altering `products` before the table exists. |
+| Tenant-scope translation handles | resolved | `m20260711_000002_enforce_product_tenant_integrity` backfills `product_translations.tenant_id`, adds a composite FK and `UNIQUE (tenant_id, locale, handle)`. Writes now supply the tenant id. |
+| Tenant-scoped unique SKU and `DuplicateSku` mapping | resolved | The migration adds partial index `uq_product_variants_tenant_sku`; catalog inserts map that constraint to `CommerceError::DuplicateSku`. |
+| Unique root category slug | resolved | The migration adds partial unique index `(tenant_id, slug) WHERE parent_id IS NULL`. |
+| EAV value, detached-value, and option-type constraints | resolved | `m20260711_000003_enforce_catalog_value_invariants` adds scalar-value checks, type/tenant triggers, option ownership validation, and serialized single-select enforcement. Detached state is now derived from the effective schema rather than persisted as an independently writable timestamp. |
+| One canonical primary-category source | resolved | `products.primary_category_id` is canonical. The migration fails on multiple legacy primary assignments, backfills a missing canonical value, converts legacy assignment rows to navigation, and prohibits new `primary` assignments. |
+| Storefront ordering index | resolved | The migration adds `(tenant_id, status, published_at DESC, created_at DESC)` for non-deleted products. |
+| Remove transitional columns from products, options, images, translations, and variants | open | Only obsolete variant inventory fields are safely migrated here. Other legacy columns need an audited consumer inventory. |
+| Migrate and remove `manage_inventory`, `allow_backorder`, and `variant_rank` | resolved | The migration maps them to `inventory_management`, `inventory_policy`, and `position`, then drops the old columns. |
+| Product-tag tenant integrity | resolved | Product tags are backfilled from their product; composite product/tag-term FKs and `(tenant_id, product_id)` index are added. The migration depends on taxonomy storage. |
+| Automated schema check for every tenant-bearing table | resolved | `verify-product-catalog-schema` now verifies the registered product migrations, the catalog tenant constraints, translation/product-tag composite tenant keys, and the EAV/primary-category/channel-visibility invariants. Its fixture suite proves that removal of representative constraints or indexes fails the guardrail. This is a source-level check; PostgreSQL execution remains separately open. |
+
+## Code and ORM
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| Add taxonomy `Term` relation to `product_tag` | resolved | `product_tag::Relation::Term` and its `Related` implementation now target `rustok_taxonomy::taxonomy_term`. |
+| Replace `SELECT → INSERT` uniqueness checks with constraint-conflict handling | resolved | Product handle and SKU inserts rely on the new unique indexes; in-process duplicate input detection remains only to report duplicate values in one request. |
+| Bulk-insert translations, options, option values, variants, and prices where safe | partial | Product-option rows, option translations, option values, option-value translations, variant translations, and prices now use batched inserts after their dependent ids are allocated. Product translations and variants remain per-row because their conflict mapping and inventory/outbox side effects require per-record handling. |
+| Extract a common entity-and-outbox transaction helper | resolved | Product entity write paths with domain events now use `services/write_transaction.rs::ProductWriteTransaction`. It owns the SeaORM transaction, exposes only transactional event publication, and commits only after the entity and outbox writes succeed. The source guardrail rejects direct `self.db.begin()` in the catalog and schema write services. |
+| Replace SEO provider-registration `expect` with a controlled module-init error | open | `ProductModule::register_runtime_extensions` still uses `expect`. |
+
+## API and access control
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| Derive tenant and actor exclusively from trusted GraphQL contexts | resolved | Product write mutations no longer accept tenant/user GraphQL arguments; they derive both from `TenantContext` and `AuthContext`. The owner admin GraphQL operations were updated accordingly. |
+| Preserve RBAC and bind it to the tenant | resolved | Each product mutation now performs the existing permission check plus authenticated tenant/actor scope validation. |
+| Prevent DB error strings from reaching GraphQL clients | partial | Product catalog and schema-service errors on GraphQL reads and writes are mapped to a safe message and stable code; failures and invalid enum inputs are logged on the server without being reflected to the client. Direct SeaORM helper paths, correlation-id propagation, and complete read-transport coverage remain open. |
+| Map every `CommerceError` to a stable API code | resolved | Product GraphQL maps the existing exhaustive `CommerceError → RichError` conversion; every `RichError::new` initializes a stable error-kind code and explicit product conflicts retain their named codes. |
+| Apply one pagination validation rule and remove service-level clamping | resolved | Product service and commerce GraphQL storefront paths reject page `0` and per-page values outside `1..=48`; neither silently clamps client input. |
+
+## Performance
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| Push channel visibility, count, and pagination into SQL | resolved | Product and commerce storefront list paths filter, count, order, and page in SQL; neither materializes a tenant catalog before pagination. |
+| Normalize channel visibility or add an indexed JSONB predicate | resolved | Product metadata canonicalizes allowlist slugs with a PostgreSQL trigger; storefront uses JSONB containment backed by a GIN `jsonb_path_ops` index. |
+| Reduce sequential queries in `get_product_with_locale_fallback` | resolved | Independent base projections, tag/metadata resolution, option projections, and variant price/translation/inventory reads execute in bounded parallel groups; dependent option/image lookups remain batched by ids. |
+| Run `EXPLAIN (ANALYZE, BUFFERS)` at 10k/100k/1M products | blocked | Requires representative live PostgreSQL datasets; no such environment is available in this workspace. |
+
+## Testing
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| PostgreSQL `up/down/up` migration integration tests | open | Existing product tests are module/source tests, not a full PostgreSQL migration lifecycle. |
+| Persistence-backed tests for read projection and published listing | open | Current FBA evidence is source/no-compile fallback evidence; local implementation plan explicitly says live persistence execution is absent. |
+| Concurrent duplicate-handle and duplicate-SKU tests | open | Constraints exist, but race tests have not been added. |
+| Tenant-isolation tests for product/catalog storage | partial | The GraphQL runtime suite now rejects a substituted tenant on every current product read root, including schema/EAV and storefront roots, before any storage access. A complete persistence suite for products, categories, schemas, attributes, values, translations, and tags is still required. |
+| Cross-tenant `product_tags` rejection test | open | Constraints are now present; a PostgreSQL negative test is still required. |
+| EAV corruption, category cycle, closure drift, multiple-primary, and root-slug tests | open | No complete invariant suite exists. |
+| Migration test for pre-existing duplicates | open | Required before applying the new uniqueness constraints to production data. |
+| Migration test for legacy inventory mapping and column removal | open | The data mapping is defined but untested against a real PostgreSQL fixture. |
+| Native/GraphQL parity tests for admin and storefront | open | Boundary checks exist, but no live parity suite proves equal behaviour. |
+
+## Security
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| Prevent tenant/user substitution through GraphQL variables | resolved | Product write mutations no longer expose tenant/user GraphQL variables. |
+| Prevent internal DB message leakage through the API | partial | Product service GraphQL read/write mapper is safe and logs internal failures; direct SeaORM helper paths, correlation-id propagation, and complete read-transport coverage remain open. |
+| Bound `metadata`, validation, rule, snapshot, and other JSONB inputs | resolved | Product schema inputs now require bounded JSON (64 KiB, depth 32); metadata/override/rule payloads must be objects, and JSON attribute values use the same bound. Clone snapshots are server-generated. |
+| Negative tenant-substitution tests for all read/write flows | partial | `graphql_runtime_parity_test` proves substituted `tenantId` is rejected for every current product read root (`product`, `products`, schema/EAV reads, `storefrontProduct`, and `storefrontProducts`) and rejects `createProduct` when `AuthContext.tenant_id` differs from `TenantContext`. Every remaining mutation still needs equivalent negative runtime coverage. |
+
+## Documentation and FBA status
+
+| Item | Status | Review result and evidence |
+| --- | --- | --- |
+| Product ER diagram with keys, constraints, and indexes | resolved | Product documentation now contains the storage ER summary and identifies the schema-level tenant/composite/partial constraints. |
+| Table ownership and canonical-source documentation | resolved | Product documentation now names every storage owner class and `products.primary_category_id` as the canonical category source. |
+| ADRs for PostgreSQL-only, tenant isolation, EAV, closure table, and product/commerce ownership | resolved | [ADR 2026-07-11](DECISIONS/2026-07-11-product-storage-integrity-and-request-trust.md) records these decisions and is indexed. |
+| Promote FBA to `boundary_ready` / `transport_verified` after live tests | blocked | `boundary_ready` already has source-locked evidence; `transport_verified` must wait for persistence-backed execution and consumer fallback evidence. |
+
+## Verification performed
+
+- Source audit of product migrations, service writes, GraphQL mutations and storefront listing.
+- `git diff --check` passed for this change set.
+- `cargo check -p rustok-inventory -p rustok-product --offline` and `cargo check -p rustok-commerce --offline` passed.
+- `cargo test -p rustok-product --lib --offline` passed (13 tests).
+- `npm run verify:product:catalog-schema` and `npm run test:verify:product:catalog-schema` passed. The fixture suite contains negative cases for the new migration guardrails.
+
+## Required next execution order
+
+1. Run a production-data preflight for duplicate handles/SKUs/root slugs, cross-tenant tags,
+   conflicting primary categories, and legacy inventory values.
+2. Run the new migrations against an isolated PostgreSQL fixture and add the migration/invariant tests.
+3. Complete the GraphQL owner-boundary move; the tenant/user variables have been removed from the public mutation contract.
+4. Run indexed SQL plans on representative PostgreSQL data and capture `EXPLAIN (ANALYZE, BUFFERS)` evidence.
+5. Complete the product contract ownership move and split the two large services.

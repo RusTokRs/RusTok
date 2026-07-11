@@ -15,6 +15,15 @@ pub enum ArtifactPayloadKind {
 }
 
 impl ArtifactPayloadKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rhai => "rhai",
+            Self::WasmComponent => "wasm_component",
+            Self::StaticPromoted => "static_promoted",
+            Self::Sidecar => "sidecar",
+        }
+    }
+
     /// Static promotion is intentionally outside the isolated executor process.
     pub fn sandbox_executor(self) -> Option<SandboxExecutorKind> {
         match self {
@@ -127,8 +136,8 @@ impl ArtifactRelease {
 
         let parent_version = Version::parse(&self.descriptor.version)
             .expect("published artifact version must have been validated");
-        let next_version = Version::parse(&descriptor.version)
-            .expect("validated artifact version must parse");
+        let next_version =
+            Version::parse(&descriptor.version).expect("validated artifact version must parse");
         if next_version <= parent_version {
             return Err(ModuleArtifactError::ForkVersionNotIncremented {
                 parent: self.descriptor.version.clone(),
@@ -154,7 +163,10 @@ pub struct ArtifactReleaseDraft {
 }
 
 impl ArtifactReleaseDraft {
-    pub fn publish(self, published_at: DateTime<Utc>) -> Result<ArtifactRelease, ModuleArtifactError> {
+    pub fn publish(
+        self,
+        published_at: DateTime<Utc>,
+    ) -> Result<ArtifactRelease, ModuleArtifactError> {
         self.descriptor.validate()?;
         if !valid_digest(&self.lineage.source_digest) {
             return Err(ModuleArtifactError::InvalidSourceDigest(
@@ -194,9 +206,9 @@ pub enum ModuleArtifactError {
 fn valid_slug(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 48
-        && value
-            .chars()
-            .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_')
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+        })
         && !value.starts_with('_')
         && !value.ends_with('_')
 }
@@ -204,7 +216,9 @@ fn valid_slug(value: &str) -> bool {
 fn valid_digest(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
-        && value[7..].chars().all(|character| character.is_ascii_hexdigit())
+        && value[7..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
@@ -215,7 +229,11 @@ mod tests {
         format!("sha256:{}", character.to_string().repeat(64))
     }
 
-    fn descriptor(kind: ArtifactPayloadKind, version: &str, marker: char) -> ModuleArtifactDescriptor {
+    fn descriptor(
+        kind: ArtifactPayloadKind,
+        version: &str,
+        marker: char,
+    ) -> ModuleArtifactDescriptor {
         ModuleArtifactDescriptor {
             slug: "sample_module".to_string(),
             version: version.to_string(),
@@ -263,12 +281,18 @@ mod tests {
         .expect("publish original");
 
         let fork = original
-            .fork(descriptor(ArtifactPayloadKind::Rhai, "1.1.0", 'b'), digest('2'))
+            .fork(
+                descriptor(ArtifactPayloadKind::Rhai, "1.1.0", 'b'),
+                digest('2'),
+            )
             .expect("fork")
             .publish(Utc::now())
             .expect("publish fork");
 
-        assert_eq!(fork.lineage.parent_release, Some(original.descriptor.release_ref()));
+        assert_eq!(
+            fork.lineage.parent_release,
+            Some(original.descriptor.release_ref())
+        );
         assert_eq!(original.descriptor.version, "1.0.0");
         assert_eq!(fork.descriptor.version, "1.1.0");
     }
@@ -306,7 +330,10 @@ mod tests {
         ));
 
         assert!(matches!(
-            original.fork(descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'c'), digest('3')),
+            original.fork(
+                descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'c'),
+                digest('3')
+            ),
             Err(ModuleArtifactError::ForkVersionNotIncremented { .. })
         ));
     }

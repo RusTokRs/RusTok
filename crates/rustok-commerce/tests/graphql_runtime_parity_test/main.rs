@@ -1504,20 +1504,22 @@ async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
         .unwrap();
     }
 
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Sqlite,
-        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-        vec![
-            Uuid::new_v4().into(),
-            tenant_id.into(),
-            "commerce".into(),
-            true.into(),
-            serde_json::json!({}).to_string().into(),
-        ],
-    ))
-    .await
-    .unwrap();
+    for module_slug in ["commerce", "product"] {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            vec![
+                Uuid::new_v4().into(),
+                tenant_id.into(),
+                module_slug.into(),
+                true.into(),
+                serde_json::json!({}).to_string().into(),
+            ],
+        ))
+        .await
+        .unwrap();
+    }
 }
 
 pub mod cart;

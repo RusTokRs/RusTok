@@ -26,9 +26,10 @@ pub use services::{
     public_channel_inventory_projection, AdminInventoryPrice, AdminInventoryProductDetail,
     AdminInventoryProductList, AdminInventoryProductListItem, AdminInventoryProductTranslation,
     AdminInventoryProductsFilter, AdminInventoryReadService, AdminInventoryVariant,
-    InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
-    InventoryReservationReleaseWriteResult, InventoryReservationWriteResult, InventoryService,
-    PublicChannelInventoryProjection, PublicChannelInventoryVariantProjectionInput,
+    BootstrapService, InitialInventory, InventoryAvailabilityCheckResult,
+    InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
+    InventoryReservationWriteResult, InventoryService, PublicChannelInventoryProjection,
+    PublicChannelInventoryVariantProjectionInput,
 };
 
 pub struct InventoryModule;

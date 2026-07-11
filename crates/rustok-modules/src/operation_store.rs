@@ -1,0 +1,343 @@
+use chrono::{DateTime, Utc};
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use thiserror::Error;
+use uuid::Uuid;
+
+use crate::ModuleOperationStatus;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleOperationRequest {
+    pub tenant_id: Uuid,
+    pub module_slug: String,
+    pub requested_enabled: bool,
+    pub previous_effective_enabled: bool,
+    pub requested_by: Option<String>,
+    pub correlation_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleOperationRecord {
+    pub id: Uuid,
+}
+
+/// Durable lifecycle journal data exposed without leaking server ORM entities
+/// into the module control-plane contract.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleOperationSnapshot {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub module_slug: String,
+    pub requested_enabled: bool,
+    pub previous_effective_enabled: bool,
+    pub status: ModuleOperationStatus,
+    pub requested_by: Option<String>,
+    pub correlation_id: Option<String>,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Error)]
+pub enum ModuleOperationStoreError {
+    #[error("module operation store database error: {0}")]
+    Database(String),
+}
+
+/// Owner-owned persistence for lifecycle operation journaling.
+///
+/// The generic connection parameter retains the caller's transaction boundary.
+pub struct ModuleOperationJournal;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TenantModuleStateRequest {
+    pub tenant_id: Uuid,
+    pub module_slug: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TenantModuleStateRecord {
+    pub id: Uuid,
+    pub previous_enabled: bool,
+    pub changed: bool,
+}
+
+/// Owner-owned persistence for a tenant's explicit module state row.
+pub struct TenantModuleStateStore;
+
+impl ModuleOperationJournal {
+    pub async fn find<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
+        let backend = db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
+            _ => format!("{} WHERE id = ?1", operation_select_sql()),
+        };
+        db.query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![operation_id.into()],
+        ))
+        .await
+        .map_err(database_error)?
+        .map(operation_snapshot)
+        .transpose()
+    }
+
+    pub async fn failed_for_tenant<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: Option<&str>,
+    ) -> Result<Vec<ModuleOperationSnapshot>, ModuleOperationStoreError> {
+        let backend = db.get_database_backend();
+        let (sql, values) = match (backend, module_slug) {
+            (DbBackend::Postgres, Some(module_slug)) => (
+                format!(
+                    "{} WHERE tenant_id = $1 AND status = $2 AND module_slug = $3 ORDER BY created_at DESC",
+                    operation_select_sql()
+                ),
+                vec![
+                    tenant_id.into(),
+                    ModuleOperationStatus::Failed.as_str().into(),
+                    module_slug.into(),
+                ],
+            ),
+            (DbBackend::Postgres, None) => (
+                format!(
+                    "{} WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC",
+                    operation_select_sql()
+                ),
+                vec![
+                    tenant_id.into(),
+                    ModuleOperationStatus::Failed.as_str().into(),
+                ],
+            ),
+            (_, Some(module_slug)) => (
+                format!(
+                    "{} WHERE tenant_id = ?1 AND status = ?2 AND module_slug = ?3 ORDER BY created_at DESC",
+                    operation_select_sql()
+                ),
+                vec![
+                    tenant_id.into(),
+                    ModuleOperationStatus::Failed.as_str().into(),
+                    module_slug.into(),
+                ],
+            ),
+            (_, None) => (
+                format!(
+                    "{} WHERE tenant_id = ?1 AND status = ?2 ORDER BY created_at DESC",
+                    operation_select_sql()
+                ),
+                vec![
+                    tenant_id.into(),
+                    ModuleOperationStatus::Failed.as_str().into(),
+                ],
+            ),
+        };
+        db.query_all(Statement::from_sql_and_values(backend, sql, values))
+            .await
+            .map_err(database_error)?
+            .into_iter()
+            .map(operation_snapshot)
+            .collect()
+    }
+
+    pub async fn record<C: ConnectionTrait>(
+        db: &C,
+        request: ModuleOperationRequest,
+    ) -> Result<ModuleOperationRecord, ModuleOperationStoreError> {
+        let id = rustok_core::generate_id();
+        execute(
+            db,
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, correlation_id, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, NULL)",
+            vec![
+                id.into(),
+                request.tenant_id.into(),
+                request.module_slug.into(),
+                request.requested_enabled.into(),
+                request.previous_effective_enabled.into(),
+                ModuleOperationStatus::Validated.as_str().into(),
+                request.requested_by.into(),
+                request.correlation_id.into(),
+            ],
+        )
+        .await?;
+        Ok(ModuleOperationRecord { id })
+    }
+
+    pub async fn mark_running<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<(), ModuleOperationStoreError> {
+        Self::mark_status(db, operation_id, ModuleOperationStatus::Running, None).await
+    }
+
+    pub async fn mark_committed<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<(), ModuleOperationStoreError> {
+        Self::mark_status(db, operation_id, ModuleOperationStatus::Committed, None).await
+    }
+
+    pub async fn mark_failed<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+        error_message: &str,
+    ) -> Result<(), ModuleOperationStoreError> {
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::Failed,
+            Some(error_message),
+        )
+        .await
+    }
+
+    async fn mark_status<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+        status: ModuleOperationStatus,
+        error_message: Option<&str>,
+    ) -> Result<(), ModuleOperationStoreError> {
+        match error_message {
+            Some(error_message) => execute(
+                db,
+                "UPDATE module_operations SET status = {1}, error_message = {2}, updated_at = CURRENT_TIMESTAMP WHERE id = {3}",
+                vec![status.as_str().into(), error_message.into(), operation_id.into()],
+            )
+            .await,
+            None => execute(
+                db,
+                "UPDATE module_operations SET status = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+                vec![status.as_str().into(), operation_id.into()],
+            )
+            .await,
+        }
+    }
+}
+
+fn operation_select_sql() -> &'static str {
+    "SELECT id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, \
+     requested_by, correlation_id, error_message, created_at FROM module_operations"
+}
+
+fn operation_snapshot(
+    row: sea_orm::QueryResult,
+) -> Result<ModuleOperationSnapshot, ModuleOperationStoreError> {
+    let status: String = row.try_get("", "status").map_err(database_error)?;
+    Ok(ModuleOperationSnapshot {
+        id: row.try_get("", "id").map_err(database_error)?,
+        tenant_id: row.try_get("", "tenant_id").map_err(database_error)?,
+        module_slug: row.try_get("", "module_slug").map_err(database_error)?,
+        requested_enabled: row
+            .try_get("", "requested_enabled")
+            .map_err(database_error)?,
+        previous_effective_enabled: row
+            .try_get("", "previous_effective_enabled")
+            .map_err(database_error)?,
+        status: ModuleOperationStatus::parse(&status).ok_or_else(|| {
+            ModuleOperationStoreError::Database(format!(
+                "unknown module operation status `{status}`"
+            ))
+        })?,
+        requested_by: row.try_get("", "requested_by").map_err(database_error)?,
+        correlation_id: row.try_get("", "correlation_id").map_err(database_error)?,
+        error_message: row.try_get("", "error_message").map_err(database_error)?,
+        created_at: row.try_get("", "created_at").map_err(database_error)?,
+    })
+}
+
+fn database_error(error: impl std::fmt::Display) -> ModuleOperationStoreError {
+    ModuleOperationStoreError::Database(error.to_string())
+}
+
+impl TenantModuleStateStore {
+    pub async fn persist<C: ConnectionTrait>(
+        db: &C,
+        request: TenantModuleStateRequest,
+    ) -> Result<TenantModuleStateRecord, ModuleOperationStoreError> {
+        let backend = db.get_database_backend();
+        let select = match backend {
+            DbBackend::Postgres => {
+                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+            }
+            _ => {
+                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+            }
+        };
+        if let Some(row) = db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                select,
+                vec![request.tenant_id.into(), request.module_slug.clone().into()],
+            ))
+            .await
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+        {
+            let id: Uuid = row
+                .try_get("", "id")
+                .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+            let previous_enabled = row
+                .try_get("", "enabled")
+                .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+            if previous_enabled != request.enabled {
+                execute(
+                    db,
+                    "UPDATE tenant_modules SET enabled = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+                    vec![request.enabled.into(), id.into()],
+                )
+                .await?;
+            }
+            return Ok(TenantModuleStateRecord {
+                id,
+                previous_enabled,
+                changed: previous_enabled != request.enabled,
+            });
+        }
+
+        let id = rustok_core::generate_id();
+        execute(
+            db,
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, '{}')",
+            vec![
+                id.into(),
+                request.tenant_id.into(),
+                request.module_slug.into(),
+                request.enabled.into(),
+            ],
+        )
+        .await?;
+        Ok(TenantModuleStateRecord {
+            id,
+            previous_enabled: !request.enabled,
+            changed: true,
+        })
+    }
+}
+
+async fn execute<C: ConnectionTrait>(
+    db: &C,
+    sql_template: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<(), ModuleOperationStoreError> {
+    let backend = db.get_database_backend();
+    db.execute(Statement::from_sql_and_values(
+        backend,
+        render_parameters(sql_template, backend),
+        values,
+    ))
+    .await
+    .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+    Ok(())
+}
+
+fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
+    (1..=8).fold(sql_template.to_string(), |sql, index| {
+        let parameter = match backend {
+            DbBackend::Postgres => format!("${index}"),
+            _ => format!("?{index}"),
+        };
+        sql.replace(format!("{{{index}}}").as_str(), parameter.as_str())
+    })
+}

@@ -4,7 +4,14 @@ use sea_orm::{
 };
 use thiserror::Error;
 
-use rustok_core::{ModuleContext, ModuleRegistry};
+use rustok_core::ModuleRegistry;
+use rustok_modules::{
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
+    ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
+    ModuleOperationStatus, ModulePostHookRetryRequest, ModuleToggleValidationError,
+    execute_module_toggle, failed_module_operation_recovery_plans, module_operation_recovery_plan,
+    retry_failed_post_hook_operation,
+};
 
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
@@ -14,170 +21,15 @@ use crate::services::effective_module_policy::EffectiveModulePolicyService;
 
 pub struct ModuleLifecycleService;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModuleOperationStatus {
-    Validated,
-    Running,
-    Committed,
-    Failed,
-}
-
-impl ModuleOperationStatus {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Validated => "validated",
-            Self::Running => "running",
-            Self::Committed => "committed",
-            Self::Failed => "failed",
-        }
-    }
-
-    pub const fn is_terminal(self) -> bool {
-        matches!(self, Self::Committed | Self::Failed)
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "validated" => Some(Self::Validated),
-            "running" => Some(Self::Running),
-            "committed" => Some(Self::Committed),
-            "failed" => Some(Self::Failed),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for ModuleOperationStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl std::str::FromStr for ModuleOperationStatus {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s).ok_or(())
-    }
-}
-
-impl From<ModuleOperationStatus> for String {
-    fn from(value: ModuleOperationStatus) -> Self {
-        value.as_str().to_string()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModuleOperationIssue {
-    None,
-    PreHookFailed,
-    PostHookFailed,
-    OtherFailed,
-}
-
-impl ModuleOperationIssue {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::PreHookFailed => "pre_hook_failed",
-            Self::PostHookFailed => "post_hook_failed",
-            Self::OtherFailed => "other_failed",
-        }
-    }
-
-    pub const fn retryable(self) -> bool {
-        matches!(self, Self::PostHookFailed)
-    }
-}
-
-impl std::fmt::Display for ModuleOperationIssue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModuleOperationRecoveryAction {
-    None,
-    RetryPostHook,
-    RepeatToggle,
-    CompensatingToggle,
-}
-
-impl ModuleOperationRecoveryAction {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::RetryPostHook => "retry_post_hook",
-            Self::RepeatToggle => "repeat_toggle",
-            Self::CompensatingToggle => "compensating_toggle",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModuleOperationRecoveryPlan {
-    pub operation_id: uuid::Uuid,
-    pub tenant_id: uuid::Uuid,
-    pub module_slug: String,
-    pub requested_enabled: bool,
-    pub previous_effective_enabled: bool,
-    pub status: ModuleOperationStatus,
-    pub issue: ModuleOperationIssue,
-    pub retryable: bool,
-    pub recommended_action: ModuleOperationRecoveryAction,
-    pub correlation_id: Option<String>,
-    pub requested_by: Option<String>,
-    pub error_message: Option<String>,
-}
-
-impl ModuleOperationRecoveryPlan {
-    pub fn from_operation(operation: &module_operations::Model) -> Self {
-        let status = ModuleOperationStatus::parse(operation.status.as_str())
-            .unwrap_or(ModuleOperationStatus::Failed);
-        let error_message = operation.error_message.as_deref().unwrap_or_default();
-        let issue = if status != ModuleOperationStatus::Failed {
-            ModuleOperationIssue::None
-        } else if error_message.starts_with("post-hook:") {
-            ModuleOperationIssue::PostHookFailed
-        } else if error_message.is_empty() {
-            ModuleOperationIssue::OtherFailed
-        } else {
-            ModuleOperationIssue::PreHookFailed
-        };
-        let retryable = issue.retryable();
-        let recommended_action = if retryable {
-            ModuleOperationRecoveryAction::RetryPostHook
-        } else if issue == ModuleOperationIssue::PreHookFailed {
-            ModuleOperationRecoveryAction::RepeatToggle
-        } else {
-            ModuleOperationRecoveryAction::None
-        };
-
-        Self {
-            operation_id: operation.id,
-            tenant_id: operation.tenant_id,
-            module_slug: operation.module_slug.clone(),
-            requested_enabled: operation.requested_enabled,
-            previous_effective_enabled: operation.previous_effective_enabled,
-            status,
-            issue,
-            retryable,
-            recommended_action,
-            correlation_id: operation.correlation_id.clone(),
-            requested_by: operation.requested_by.clone(),
-            error_message: operation.error_message.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum ModuleOperationRecoveryError {
     #[error("Module operation not found")]
     OperationNotFound,
     #[error("Module operation is not retryable: {0}")]
     NotRetryable(String),
-    #[error("Module operation state mismatch: requested enabled={requested_enabled}, current enabled={current_enabled}")]
+    #[error(
+        "Module operation state mismatch: requested enabled={requested_enabled}, current enabled={current_enabled}"
+    )]
     StateMismatch {
         requested_enabled: bool,
         current_enabled: bool,
@@ -255,127 +107,37 @@ impl ModuleLifecycleService {
         enabled: bool,
         requested_by: Option<String>,
     ) -> Result<tenant_modules::Model, ToggleModuleError> {
-        let Some(module_impl) = registry.get(module_slug) else {
-            return Err(ToggleModuleError::UnknownModule);
-        };
-
-        if !enabled && registry.is_core(module_slug) {
-            return Err(ToggleModuleError::CoreModuleCannotBeDisabled(
-                module_slug.to_string(),
-            ));
-        }
-
         let enabled_set = EffectiveModulePolicyService::resolve_enabled(db, registry, tenant_id)
             .await
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
-        let previous_effective_enabled = enabled_set.contains(module_slug);
-
-        if enabled {
-            let missing: Vec<String> = module_impl
-                .dependencies()
-                .iter()
-                .filter(|dependency| !enabled_set.contains(**dependency))
-                .map(|dependency| (*dependency).to_string())
-                .collect();
-
-            if !missing.is_empty() {
-                return Err(ToggleModuleError::MissingDependencies(missing.join(", ")));
-            }
-        } else {
-            let dependents: Vec<String> = registry
-                .list()
-                .into_iter()
-                .filter(|module| enabled_set.contains(module.slug()))
-                .filter(|module| module.dependencies().contains(&module_slug))
-                .map(|module| module.slug().to_string())
-                .collect();
-
-            if !dependents.is_empty() {
-                return Err(ToggleModuleError::HasDependents(dependents.join(", ")));
-            }
-        }
-
-        if previous_effective_enabled == enabled {
-            let (module, _, _) =
-                Self::persist_module_state(db, tenant_id, module_slug, enabled).await?;
-            return Ok(module);
-        }
-
-        let operation = Self::record_operation(
+        let current_settings = Self::current_module_settings(db, tenant_id, module_slug).await?;
+        let result = execute_module_toggle(
             db,
-            tenant_id,
-            module_slug,
-            enabled,
-            previous_effective_enabled,
-            requested_by,
+            registry,
+            ModuleLifecycleToggleRequest {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                enabled,
+                requested_by,
+                effective_enabled_modules: enabled_set,
+                current_settings,
+            },
         )
-        .await?;
-        Self::mark_operation_running(db, operation.id).await?;
-
-        let hook_settings = Self::current_module_settings(db, tenant_id, module_slug).await?;
-        let module_ctx = ModuleContext {
-            db,
-            tenant_id,
-            config: &hook_settings,
-        };
-
-        let hook_result = if enabled {
-            module_impl.pre_enable(module_ctx).await
-        } else {
-            module_impl.pre_disable(module_ctx).await
-        };
-
-        if let Err(err) = hook_result {
-            tracing::error!(
-                "Module pre-hook failed for {} (enabled={}): {}; tenant state was not changed",
-                module_slug,
-                enabled,
-                err
-            );
-
-            Self::mark_operation_failed(db, operation.id, &err.to_string()).await?;
-            return Err(ToggleModuleError::PreHookFailed(err.to_string()));
-        }
-
-        let module =
-            Self::commit_module_state(db, operation.id, tenant_id, module_slug, enabled).await?;
-
-        let post_settings = Self::current_module_settings(db, tenant_id, module_slug).await?;
-        let post_ctx = ModuleContext {
-            db,
-            tenant_id,
-            config: &post_settings,
-        };
-
-        let post_hook_result = if enabled {
-            module_impl.post_enable(post_ctx).await
-        } else {
-            module_impl.post_disable(post_ctx).await
-        };
-
-        if let Err(err) = post_hook_result {
-            tracing::error!(
-                "Module post-hook failed for {} (enabled={}): {}; tenant state remains committed",
-                module_slug,
-                enabled,
-                err
-            );
-            Self::mark_operation_failed(db, operation.id, &format!("post-hook: {err}")).await?;
-            return Err(ToggleModuleError::PostHookFailed(err.to_string()));
-        }
-
-        Ok(module)
+        .await
+        .map_err(map_toggle_execution_error)?;
+        TenantModulesEntity::find_by_id(result.state.id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbErr::RecordNotFound("tenant_modules.toggle_state".to_string()))
     }
 
     pub async fn module_operation_recovery_plan(
         db: &DatabaseConnection,
         operation_id: uuid::Uuid,
     ) -> Result<ModuleOperationRecoveryPlan, ModuleOperationRecoveryError> {
-        let operation = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-            .ok_or(ModuleOperationRecoveryError::OperationNotFound)?;
-        Ok(ModuleOperationRecoveryPlan::from_operation(&operation))
+        module_operation_recovery_plan(db, operation_id)
+            .await
+            .map_err(map_module_recovery_error)
     }
 
     pub async fn failed_module_operation_recovery_plans(
@@ -383,21 +145,10 @@ impl ModuleLifecycleService {
         tenant_id: uuid::Uuid,
         module_slug: Option<&str>,
     ) -> Result<Vec<ModuleOperationRecoveryPlan>, ModuleOperationRecoveryError> {
-        let mut query = ModuleOperationsEntity::find()
-            .filter(module_operations::Column::TenantId.eq(tenant_id))
-            .filter(module_operations::Column::Status.eq(ModuleOperationStatus::Failed.as_str()))
-            .order_by_desc(module_operations::Column::CreatedAt);
-
-        if let Some(module_slug) = module_slug {
-            query = query.filter(module_operations::Column::ModuleSlug.eq(module_slug));
-        }
-
-        Ok(query
-            .all(db)
-            .await?
-            .iter()
-            .map(ModuleOperationRecoveryPlan::from_operation)
-            .collect())
+        let plans = failed_module_operation_recovery_plans(db, tenant_id, module_slug)
+            .await
+            .map_err(map_module_recovery_error)?;
+        Ok(plans)
     }
 
     pub async fn retry_failed_post_hook_operation(
@@ -406,69 +157,26 @@ impl ModuleLifecycleService {
         operation_id: uuid::Uuid,
         requested_by: Option<String>,
     ) -> Result<module_operations::Model, ModuleOperationRecoveryError> {
-        let failed_operation = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-            .ok_or(ModuleOperationRecoveryError::OperationNotFound)?;
-        let plan = ModuleOperationRecoveryPlan::from_operation(&failed_operation);
-
-        if !plan.retryable {
-            return Err(ModuleOperationRecoveryError::NotRetryable(
-                plan.issue.to_string(),
-            ));
-        }
-
-        let Some(module_impl) = registry.get(plan.module_slug.as_str()) else {
-            return Err(ModuleOperationRecoveryError::NotRetryable(
-                "unknown_module".to_string(),
-            ));
-        };
+        let plan = Self::module_operation_recovery_plan(db, operation_id).await?;
 
         let enabled_set =
             EffectiveModulePolicyService::resolve_enabled(db, registry, plan.tenant_id)
                 .await
                 .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-        let current_enabled = enabled_set.contains(plan.module_slug.as_str());
-        if current_enabled != plan.requested_enabled {
-            return Err(ModuleOperationRecoveryError::StateMismatch {
-                requested_enabled: plan.requested_enabled,
-                current_enabled,
-            });
-        }
-
-        let retry_operation = Self::record_operation(
-            db,
-            plan.tenant_id,
-            plan.module_slug.as_str(),
-            plan.requested_enabled,
-            current_enabled,
-            requested_by,
-        )
-        .await?;
-        Self::mark_operation_running(db, retry_operation.id).await?;
-
         let post_settings =
             Self::current_module_settings(db, plan.tenant_id, plan.module_slug.as_str()).await?;
-        let post_ctx = ModuleContext {
+        let retry_operation = retry_failed_post_hook_operation(
             db,
-            tenant_id: plan.tenant_id,
-            config: &post_settings,
-        };
-        let post_hook_result = if plan.requested_enabled {
-            module_impl.post_enable(post_ctx).await
-        } else {
-            module_impl.post_disable(post_ctx).await
-        };
-
-        if let Err(err) = post_hook_result {
-            Self::mark_operation_failed(db, retry_operation.id, &format!("post-hook: {err}"))
-                .await?;
-            return Err(ModuleOperationRecoveryError::PostHookFailed(
-                err.to_string(),
-            ));
-        }
-
-        Self::mark_operation_committed(db, retry_operation.id).await?;
+            registry,
+            ModulePostHookRetryRequest {
+                operation_id,
+                requested_by,
+                effective_enabled_modules: enabled_set,
+                current_settings: post_settings,
+            },
+        )
+        .await
+        .map_err(map_module_recovery_error)?;
         ModuleOperationsEntity::find_by_id(retry_operation.id)
             .one(db)
             .await?
@@ -481,11 +189,7 @@ impl ModuleLifecycleService {
         operation_id: uuid::Uuid,
         requested_by: Option<String>,
     ) -> Result<tenant_modules::Model, ModuleOperationRecoveryError> {
-        let failed_operation = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-            .ok_or(ModuleOperationRecoveryError::OperationNotFound)?;
-        let plan = ModuleOperationRecoveryPlan::from_operation(&failed_operation);
+        let plan = Self::module_operation_recovery_plan(db, operation_id).await?;
 
         if plan.issue != ModuleOperationIssue::PostHookFailed {
             return Err(ModuleOperationRecoveryError::NotRetryable(
@@ -618,12 +322,9 @@ impl ModuleLifecycleService {
                 let (module, _, _) =
                     Self::persist_module_state_on(txn, tenant_id, &module_slug, enabled).await?;
 
-                if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
-                    .one(txn)
-                    .await?
-                {
-                    Self::mark_operation_model_committed(txn, model).await?;
-                }
+                ModuleOperationJournal::mark_committed(txn, operation_id)
+                    .await
+                    .map_err(|error| DbErr::Custom(error.to_string()))?;
 
                 Ok(module)
             })
@@ -665,40 +366,21 @@ impl ModuleLifecycleService {
     where
         C: sea_orm::ConnectionTrait,
     {
-        let existing = TenantModulesEntity::find()
-            .filter(tenant_modules::Column::TenantId.eq(tenant_id))
-            .filter(tenant_modules::Column::ModuleSlug.eq(module_slug))
+        let state = TenantModuleStateStore::persist(
+            db,
+            TenantModuleStateRequest {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                enabled,
+            },
+        )
+        .await
+        .map_err(|error| DbErr::Custom(error.to_string()))?;
+        let module = TenantModulesEntity::find_by_id(state.id)
             .one(db)
-            .await?;
-
-        match existing {
-            Some(model) => {
-                if model.enabled == enabled {
-                    return Ok((model.clone(), model.enabled, false));
-                }
-
-                let previous_enabled = model.enabled;
-                let mut active: tenant_modules::ActiveModel = model.into();
-                active.enabled = Set(enabled);
-                let updated = active.update(db).await?;
-                Ok((updated, previous_enabled, true))
-            }
-            None => {
-                let module = tenant_modules::ActiveModel {
-                    id: Set(rustok_core::generate_id()),
-                    tenant_id: Set(tenant_id),
-                    module_slug: Set(module_slug.to_string()),
-                    enabled: Set(enabled),
-                    settings: Set(serde_json::json!({})),
-                    created_at: sea_orm::ActiveValue::NotSet,
-                    updated_at: sea_orm::ActiveValue::NotSet,
-                }
-                .insert(db)
-                .await?;
-
-                Ok((module, !enabled, true))
-            }
-        }
+            .await?
+            .ok_or_else(|| DbErr::RecordNotFound("tenant_modules.persisted_state".to_string()))?;
+        Ok((module, state.previous_enabled, state.changed))
     }
 
     async fn record_operation(
@@ -708,50 +390,29 @@ impl ModuleLifecycleService {
         requested_enabled: bool,
         previous_effective_enabled: bool,
         requested_by: Option<String>,
-    ) -> Result<module_operations::Model, DbErr> {
-        let now = chrono::Utc::now().into();
-        module_operations::ActiveModel {
-            id: sea_orm::ActiveValue::Set(rustok_core::generate_id()),
-            tenant_id: sea_orm::ActiveValue::Set(tenant_id),
-            module_slug: sea_orm::ActiveValue::Set(module_slug.to_string()),
-            requested_enabled: sea_orm::ActiveValue::Set(requested_enabled),
-            previous_effective_enabled: sea_orm::ActiveValue::Set(previous_effective_enabled),
-            status: sea_orm::ActiveValue::Set(ModuleOperationStatus::Validated.into()),
-            requested_by: sea_orm::ActiveValue::Set(requested_by),
-            correlation_id: sea_orm::ActiveValue::Set(Some(Self::generate_correlation_id())),
-            error_message: sea_orm::ActiveValue::Set(None),
-            created_at: sea_orm::ActiveValue::Set(now),
-            updated_at: sea_orm::ActiveValue::Set(now),
-        }
-        .insert(db)
+    ) -> Result<ModuleOperationRecord, DbErr> {
+        ModuleOperationJournal::record(
+            db,
+            ModuleOperationRequest {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                requested_enabled,
+                previous_effective_enabled,
+                requested_by,
+                correlation_id: Self::generate_correlation_id(),
+            },
+        )
         .await
+        .map_err(|error| DbErr::Custom(error.to_string()))
     }
 
     async fn mark_operation_committed(
         db: &DatabaseConnection,
         operation_id: uuid::Uuid,
     ) -> Result<(), DbErr> {
-        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-        {
-            Self::mark_operation_model_committed(db, model).await?;
-        }
-        Ok(())
-    }
-
-    async fn mark_operation_model_committed<C>(
-        db: &C,
-        model: module_operations::Model,
-    ) -> Result<(), DbErr>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
-        let mut active: module_operations::ActiveModel = model.into();
-        active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Committed.into());
-        active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-        active.update(db).await?;
-        Ok(())
+        ModuleOperationJournal::mark_committed(db, operation_id)
+            .await
+            .map_err(|error| DbErr::Custom(error.to_string()))
     }
 
     async fn mark_operation_failed(
@@ -759,46 +420,79 @@ impl ModuleLifecycleService {
         operation_id: uuid::Uuid,
         error_message: &str,
     ) -> Result<(), DbErr> {
-        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-        {
-            let mut active: module_operations::ActiveModel = model.into();
-            active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Failed.into());
-            active.error_message = sea_orm::ActiveValue::Set(Some(error_message.to_string()));
-            active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-            active.update(db).await?;
-        }
-        Ok(())
+        ModuleOperationJournal::mark_failed(db, operation_id, error_message)
+            .await
+            .map_err(|error| DbErr::Custom(error.to_string()))
     }
 
     async fn mark_operation_running(
         db: &DatabaseConnection,
         operation_id: uuid::Uuid,
     ) -> Result<(), DbErr> {
-        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-        {
-            let mut active: module_operations::ActiveModel = model.into();
-            active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Running.into());
-            active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-            active.update(db).await?;
+        ModuleOperationJournal::mark_running(db, operation_id)
+            .await
+            .map_err(|error| DbErr::Custom(error.to_string()))
+    }
+}
+
+fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModuleError {
+    match error {
+        ModuleToggleValidationError::UnknownModule => ToggleModuleError::UnknownModule,
+        ModuleToggleValidationError::CoreModuleCannotBeDisabled(module_slug) => {
+            ToggleModuleError::CoreModuleCannotBeDisabled(module_slug)
         }
-        Ok(())
+        ModuleToggleValidationError::MissingDependencies(dependencies) => {
+            ToggleModuleError::MissingDependencies(dependencies.join(", "))
+        }
+        ModuleToggleValidationError::HasDependents(dependents) => {
+            ToggleModuleError::HasDependents(dependents.join(", "))
+        }
+    }
+}
+
+fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleModuleError {
+    match error {
+        ModuleLifecycleExecutionError::Validation(error) => map_toggle_validation_error(error),
+        ModuleLifecycleExecutionError::Persistence(error) => {
+            ToggleModuleError::Database(DbErr::Custom(error))
+        }
+        ModuleLifecycleExecutionError::PreHook(error) => ToggleModuleError::PreHookFailed(error),
+        ModuleLifecycleExecutionError::PostHook(error) => ToggleModuleError::PostHookFailed(error),
+    }
+}
+
+fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationRecoveryError {
+    match error {
+        ModulesRecoveryError::OperationNotFound => ModuleOperationRecoveryError::OperationNotFound,
+        ModulesRecoveryError::NotRetryable(reason) => {
+            ModuleOperationRecoveryError::NotRetryable(reason)
+        }
+        ModulesRecoveryError::StateMismatch {
+            requested_enabled,
+            current_enabled,
+        } => ModuleOperationRecoveryError::StateMismatch {
+            requested_enabled,
+            current_enabled,
+        },
+        ModulesRecoveryError::PostHookFailed(error) => {
+            ModuleOperationRecoveryError::PostHookFailed(error)
+        }
+        ModulesRecoveryError::Persistence(error) => {
+            ModuleOperationRecoveryError::Database(DbErr::Custom(error))
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ModuleOperationStatus;
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
-    use crate::modules::{build_registry, ManifestManager, ManifestModuleSpec, ModulesManifest};
+    use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
     use migration::Migrator;
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
+    use rustok_modules::ModuleOperationStatus;
     use rustok_rbac::RbacModule;
     use rustok_tenant::TenantModule;
     use rustok_test_utils::db::setup_test_db_with_migrations;

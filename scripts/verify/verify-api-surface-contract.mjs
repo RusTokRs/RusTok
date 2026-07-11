@@ -516,6 +516,27 @@ requireContains('crates/rustok-auth/src/bootstrap.rs', 'pub struct AuthUserBoots
 requireContains('apps/server/src/installer_cli.rs', 'AuthUserBootstrapDbWriter::new', 'server seed identity adapter uses the auth-owned bootstrap writer');
 requireNotContains('apps/server/src/installer_cli.rs', 'users::ActiveModel::new', 'server seed identity adapter does not write user persistence models directly');
 requireNotContains('apps/server/src/installer_cli.rs', 'hash_password(&request.password)', 'server seed identity adapter does not hash bootstrap credentials directly');
+requireContains('crates/rustok-rbac/src/bootstrap.rs', 'pub struct RbacRoleAssignmentDbWriter', 'RBAC owns the bootstrap role-assignment database adapter');
+requireContains('apps/server/src/installer_cli.rs', 'RbacRoleAssignmentDbWriter::new', 'server seed role adapter uses the RBAC-owned assignment writer');
+requireContains('apps/server/src/installer_cli.rs', 'RbacService::invalidate_user_rbac_caches', 'server seed role adapter retains host cache invalidation');
+requireContains('apps/server/src/services/rbac_persistence.rs', 'RbacRoleAssignmentDbWriter::new', 'server RBAC persistence delegates relation writes to the owner module');
+requireNotContains('apps/server/src/services/rbac_persistence.rs', 'fn get_or_create_permission(', 'server does not duplicate RBAC permission persistence');
+requireContains('crates/rustok-modules/src/policy.rs', 'pub fn resolve_effective_modules(', 'modules capability owns effective-module policy calculation');
+requireContains('apps/server/src/services/effective_module_policy.rs', 'resolve_effective_modules(', 'server effective-module policy adapter delegates calculation to the modules capability');
+requireContains('crates/rustok-modules/src/policy.rs', 'pub fn validate_module_toggle(', 'modules capability owns module-toggle topology validation');
+requireContains('crates/rustok-modules/src/executor.rs', 'validate_module_toggle(', 'owner lifecycle executor applies module-toggle topology validation');
+requireContains('crates/rustok-modules/src/lifecycle.rs', 'pub enum ModuleOperationStatus', 'modules capability owns lifecycle operation status contracts');
+requireNotContains('apps/server/src/services/module_lifecycle.rs', 'pub enum ModuleOperationStatus', 'server lifecycle does not own operation status contracts');
+requireContains('crates/rustok-modules/src/operation_store.rs', 'pub struct ModuleOperationJournal', 'modules capability owns lifecycle operation journaling');
+requireContains('apps/server/src/services/module_lifecycle.rs', 'ModuleOperationJournal::record(', 'server lifecycle delegates operation record creation to the modules capability');
+requireContains('apps/server/src/services/module_lifecycle.rs', 'ModuleOperationJournal::mark_committed(txn, operation_id)', 'server lifecycle keeps operation-status commit inside its state transaction');
+requireContains('crates/rustok-modules/src/operation_store.rs', 'pub struct TenantModuleStateStore', 'modules capability owns tenant module-state persistence');
+requireContains('apps/server/src/services/module_lifecycle.rs', 'TenantModuleStateStore::persist(', 'server lifecycle delegates tenant module-state writes to the modules capability');
+requireContains('crates/rustok-modules/src/hooks.rs', 'pub async fn run_module_lifecycle_hook(', 'modules capability owns lifecycle hook dispatch');
+requireContains('apps/server/src/services/module_lifecycle.rs', 'run_module_lifecycle_hook(', 'server lifecycle delegates hook dispatch to the modules capability');
+requireNotContains('apps/server/src/services/module_lifecycle.rs', 'ModuleContext {', 'server lifecycle does not construct module hook contexts directly');
+requireContains('crates/rustok-modules/src/executor.rs', 'pub async fn execute_module_toggle(', 'modules capability owns the normal lifecycle toggle sequence');
+requireContains('apps/server/src/services/module_lifecycle.rs', 'execute_module_toggle(', 'server lifecycle delegates normal toggle execution to the modules capability');
 requireNotContains('apps/server/src/installer_cli.rs', 'fn default_modules_for_seed(', 'server installer does not duplicate seed-profile module policy');
 requireNotContains('apps/server/src/installer_cli.rs', 'fn parse_seed_profile(', 'server installer does not duplicate seed-profile parsing');
 for (const parser of ['parse_environment', 'parse_profile', 'parse_database_engine', 'parse_secret_mode', 'parse_secret_ref']) {

@@ -21,11 +21,23 @@ pub enum Relation {
         to = "rustok_commerce_foundation::entities::product::Column::Id"
     )]
     Product,
+    #[sea_orm(
+        belongs_to = "rustok_taxonomy::entities::taxonomy_term::Entity",
+        from = "Column::TermId",
+        to = "rustok_taxonomy::entities::taxonomy_term::Column::Id"
+    )]
+    Term,
 }
 
 impl Related<rustok_commerce_foundation::entities::product::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Product.def()
+    }
+}
+
+impl Related<rustok_taxonomy::entities::taxonomy_term::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Term.def()
     }
 }
 

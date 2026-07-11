@@ -14,6 +14,10 @@ mod m20260405_000007_expand_product_locale_storage_columns;
 mod m20260409_000007_add_product_seller_id;
 mod m20260701_000001_create_product_catalog_attributes;
 mod m20260701_000002_add_product_catalog_tenant_consistency_constraints;
+mod m20260711_000001_product_status_enum;
+mod m20260711_000002_enforce_product_tenant_integrity;
+mod m20260711_000003_enforce_catalog_value_invariants;
+mod m20260711_000004_normalize_product_channel_visibility;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -34,12 +38,22 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260409_000007_add_product_seller_id::Migration),
         Box::new(m20260701_000001_create_product_catalog_attributes::Migration),
         Box::new(m20260701_000002_add_product_catalog_tenant_consistency_constraints::Migration),
+        Box::new(m20260711_000001_product_status_enum::Migration),
+        Box::new(m20260711_000002_enforce_product_tenant_integrity::Migration),
+        Box::new(m20260711_000003_enforce_catalog_value_invariants::Migration),
+        Box::new(m20260711_000004_normalize_product_channel_visibility::Migration),
     ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
-    vec![MigrationDependencyDescriptor::new(
-        "m20260329_000001_create_product_tags",
-        vec!["m20260329_000001_create_taxonomy_tables"],
-    )]
+    vec![
+        MigrationDependencyDescriptor::new(
+            "m20260329_000001_create_product_tags",
+            vec!["m20260329_000001_create_taxonomy_tables"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260711_000002_enforce_product_tenant_integrity",
+            vec!["m20260711_000001_add_tenant_identity_key"],
+        ),
+    ]
 }

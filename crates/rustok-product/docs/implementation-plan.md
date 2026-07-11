@@ -17,6 +17,35 @@ Product runtime contract, commerce transport, and module metadata remain synchro
 The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
 The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, optional catalog filters/sorts, detached-value marker contract, and no-compile schema guardrail are source-locked.
+Product write GraphQL derives tenant and actor exclusively from authenticated
+contexts, and product-service GraphQL reads/writes map internal errors to safe
+public messages and stable codes. Entity writes that publish product domain events use
+`ProductWriteTransaction` to keep the outbox write and database commit in one transaction.
+Admin and storefront product roots reject an explicit tenant that differs from the
+host-provided `TenantContext` before accessing storage.
+Product migrations enforce PostgreSQL-only execution, tenant-scoped
+translation/SKU/tag identity, canonical primary categories, typed EAV option
+relations, bounded JSON inputs, and normalized/indexed channel visibility.
+Storefront product lists filter, count, and paginate in SQL; live PostgreSQL
+execution evidence remains required before promoting the transport status.
+`CatalogService` is being separated by responsibility; product-tag reads and
+writes now live in `services/catalog/tags.rs` while the public service contract
+remains unchanged. Inventory state uses the owner-owned native
+`rustok_inventory::BootstrapService` inside product's transaction for variant
+initialization, cleanup, and available-quantity reads; this is a
+documented bootstrap exception because no GraphQL/REST bootstrap contract exists
+yet. Public inventory availability/reservation contracts remain inventory-owned;
+the exception must be replaced if a public bootstrap transport is introduced.
+`ProductCatalogSchemaService` is also being split by responsibility: category
+creation, category groups, category bindings, category schema modes, and category listing now live in
+`services/catalog_schema_service/categories.rs` without changing closure-table
+validation or category outbox semantics.
+Schema creation and schema listing now live in
+`services/catalog_schema_service/schemas.rs` with the existing schema outbox
+event, translation writes, schema groups, and schema-attribute bindings preserved.
+Attribute and attribute-option reads and writes now live in
+`services/catalog_schema_service/attributes.rs`, including option-type
+validation and attribute outbox events.
 
 ## FFA/FBA status
 
@@ -49,6 +78,7 @@ The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, optional ca
 
 ## Verification
 
+- [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - `npm run verify:product:runtime-fallback-smoke`
 - `npm run verify:product:admin-boundary`
 - `npm run verify:product:storefront-boundary`

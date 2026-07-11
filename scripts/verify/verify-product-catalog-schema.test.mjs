@@ -5,24 +5,39 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = process.cwd();
 const script = path.join(repoRoot, 'scripts/verify/verify-product-catalog-schema.mjs');
+const fixtureRoots = [];
 const fixtureFiles = [
   'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
   'crates/rustok-product/src/migrations/mod.rs',
   'crates/rustok-product/src/migrations/m20260405_000007_expand_product_locale_storage_columns.rs',
   'crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs',
+  'crates/rustok-product/src/migrations/m20260711_000001_product_status_enum.rs',
+  'crates/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs',
+  'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
+  'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
   'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
   'crates/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
   'crates/rustok-index/src/migrations/m20260701_000001_create_index_product_attribute_facets.rs',
   'crates/rustok-product/src/services/catalog_schema_service.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/attributes.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/categories.rs',
+  'crates/rustok-product/src/services/catalog_schema_service/schemas.rs',
   'crates/rustok-product/src/services/catalog_schema.rs',
   'crates/rustok-product/src/services/catalog.rs',
+  'crates/rustok-product/src/services/catalog/tags.rs',
+  'crates/rustok-product/Cargo.toml',
+  'crates/rustok-inventory/src/services/bootstrap.rs',
+  'crates/rustok-inventory/src/services/mod.rs',
+  'crates/rustok-product/src/services/write_transaction.rs',
   'crates/rustok-index/src/product/indexer.rs',
   'crates/rustok-commerce/tests/product_taxonomy_tags.rs',
   'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
   'crates/rustok-commerce/tests/product_event_index_integration_test.rs',
   'crates/rustok-commerce/src/graphql/mutations/helpers.rs',
   'crates/rustok-commerce/src/graphql/mutations/catalog.rs',
+  'crates/rustok-commerce/src/graphql/mod.rs',
+  'crates/rustok-commerce/src/graphql/query.rs',
   'crates/rustok-product/docs/implementation-plan.md',
   'crates/rustok-product/README.md',
   'crates/rustok-product/docs/README.md',
@@ -50,6 +65,10 @@ function run(root = repoRoot) {
 
 function copyFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'product-catalog-schema-'));
+  fixtureRoots.push(root);
+  if (fixtureRoots.length % 5 === 0) {
+    console.log(`[verify-product-catalog-schema.test] preparing fixture ${fixtureRoots.length}`);
+  }
   for (const file of fixtureFiles) {
     const target = path.join(root, file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -57,6 +76,12 @@ function copyFixture() {
   }
   return root;
 }
+
+process.on('exit', () => {
+  for (const root of fixtureRoots) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function replaceInFixture(root, file, search, replacement) {
   const fullPath = path.join(root, file);
@@ -155,6 +180,48 @@ assert(
   `expected tenant consistency migration wiring failure, got ${missingTenantConsistencyMigrationResult.stderr}`,
 );
 
+const missingProductTagTenantForeignKey = copyFixture();
+replaceInFixture(
+  missingProductTagTenantForeignKey,
+  'crates/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs',
+  'FOREIGN KEY (tenant_id, term_id)\n            REFERENCES taxonomy_terms(tenant_id, id)',
+  'FOREIGN KEY (tenant_id, term_id)\n            REFERENCES taxonomy_terms_drift(tenant_id, id)',
+);
+const missingProductTagTenantForeignKeyResult = run(missingProductTagTenantForeignKey);
+assert(missingProductTagTenantForeignKeyResult.status !== 0, 'expected missing product tag tenant foreign key to fail');
+assert(
+  missingProductTagTenantForeignKeyResult.stderr.includes('FOREIGN KEY (tenant_id, term_id)'),
+  `expected product tag tenant foreign key failure, got ${missingProductTagTenantForeignKeyResult.stderr}`,
+);
+
+const missingPrimaryCategoryInvariant = copyFixture();
+replaceInFixture(
+  missingPrimaryCategoryInvariant,
+  'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
+  'cannot migrate product_categories: multiple primary assignments exist',
+  'primary-category migration preflight drift',
+);
+const missingPrimaryCategoryInvariantResult = run(missingPrimaryCategoryInvariant);
+assert(missingPrimaryCategoryInvariantResult.status !== 0, 'expected missing primary-category invariant to fail');
+assert(
+  missingPrimaryCategoryInvariantResult.stderr.includes('cannot migrate product_categories: multiple primary assignments exist'),
+  `expected primary-category invariant failure, got ${missingPrimaryCategoryInvariantResult.stderr}`,
+);
+
+const missingChannelVisibilityIndex = copyFixture();
+replaceInFixture(
+  missingChannelVisibilityIndex,
+  'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
+  'metadata jsonb_path_ops',
+  'metadata jsonb_ops',
+);
+const missingChannelVisibilityIndexResult = run(missingChannelVisibilityIndex);
+assert(missingChannelVisibilityIndexResult.status !== 0, 'expected missing channel visibility index to fail');
+assert(
+  missingChannelVisibilityIndexResult.stderr.includes('metadata jsonb_path_ops'),
+  `expected channel visibility index failure, got ${missingChannelVisibilityIndexResult.stderr}`,
+);
+
 const missingTenantAwareValueOptionInsert = copyFixture();
 replaceInFixture(
   missingTenantAwareValueOptionInsert,
@@ -167,6 +234,62 @@ assert(missingTenantAwareValueOptionInsertResult.status !== 0, 'expected missing
 assert(
   missingTenantAwareValueOptionInsertResult.stderr.includes('tenant_id, value_id, option_id'),
   `expected tenant-aware value option insert failure, got ${missingTenantAwareValueOptionInsertResult.stderr}`,
+);
+
+const missingBatchPriceInsert = copyFixture();
+replaceInFixture(
+  missingBatchPriceInsert,
+  'crates/rustok-product/src/services/catalog.rs',
+  'price::Entity::insert_many(price_models)',
+  'price::Entity::insert_one_by_one(price_models)',
+);
+const missingBatchPriceInsertResult = run(missingBatchPriceInsert);
+assert(missingBatchPriceInsertResult.status !== 0, 'expected missing batch price insert to fail');
+assert(
+  missingBatchPriceInsertResult.stderr.includes('price::Entity::insert_many(price_models)'),
+  `expected batch price insert failure, got ${missingBatchPriceInsertResult.stderr}`,
+);
+
+const missingCatalogTagComponent = copyFixture();
+replaceInFixture(
+  missingCatalogTagComponent,
+  'crates/rustok-product/src/services/catalog/tags.rs',
+  'TaxonomyTermKind::Tag,',
+  'TaxonomyTermKind::TagDrift,',
+);
+const missingCatalogTagComponentResult = run(missingCatalogTagComponent);
+assert(missingCatalogTagComponentResult.status !== 0, 'expected missing catalog tag component marker to fail');
+assert(
+  missingCatalogTagComponentResult.stderr.includes('TaxonomyTermKind::Tag,'),
+  `expected catalog tag component failure, got ${missingCatalogTagComponentResult.stderr}`,
+);
+
+const missingCategoryComponent = copyFixture();
+replaceInFixture(
+  missingCategoryComponent,
+  'crates/rustok-product/src/services/catalog_schema_service/categories.rs',
+  'DomainEvent::CatalogCategoryCreated { category_id }',
+  'DomainEvent::CatalogCategoryCreationDrift { category_id }',
+);
+const missingCategoryComponentResult = run(missingCategoryComponent);
+assert(missingCategoryComponentResult.status !== 0, 'expected missing category component event to fail');
+assert(
+  missingCategoryComponentResult.stderr.includes('DomainEvent::CatalogCategoryCreated { category_id }'),
+  `expected category component failure, got ${missingCategoryComponentResult.stderr}`,
+);
+
+const missingInventoryBootstrap = copyFixture();
+replaceInFixture(
+  missingInventoryBootstrap,
+  'crates/rustok-inventory/src/services/bootstrap.rs',
+  'create_initial_records_in_tx',
+  'create_initial_records_drift',
+);
+const missingInventoryBootstrapResult = run(missingInventoryBootstrap);
+assert(missingInventoryBootstrapResult.status !== 0, 'expected missing inventory bootstrap contract to fail');
+assert(
+  missingInventoryBootstrapResult.stderr.includes('create_initial_records_in_tx'),
+  `expected inventory bootstrap contract failure, got ${missingInventoryBootstrapResult.stderr}`,
 );
 
 const missingDetachedReadMarker = copyFixture();

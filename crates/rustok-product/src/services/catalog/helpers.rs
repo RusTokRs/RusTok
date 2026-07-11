@@ -9,7 +9,8 @@ use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    sea_query::Expr, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QueryOrder, Value as SqlValue,
 };
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -731,6 +732,34 @@ pub fn is_metadata_visible_for_public_channel(
 ) -> bool {
     let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
     is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
+}
+
+pub fn product_channel_visibility_condition(
+    backend: DbBackend,
+    public_channel_slug: Option<&str>,
+) -> Condition {
+    match normalize_public_channel_slug(public_channel_slug) {
+        None => Condition::all().add(Expr::cust(
+            "COALESCE(metadata #> '{channel_visibility,allowed_channel_slugs}', '[]'::jsonb) = '[]'::jsonb",
+        )),
+        Some(slug) => {
+            let placeholder = if backend == DbBackend::Sqlite {
+                "?"
+            } else {
+                "$1"
+            };
+            Condition::all().add(Expr::cust_with_values(
+                format!(
+                    "COALESCE(metadata #> '{{channel_visibility,allowed_channel_slugs}}', '[]'::jsonb) = '[]'::jsonb
+                     OR metadata @> jsonb_build_object(
+                         'channel_visibility',
+                         jsonb_build_object('allowed_channel_slugs', jsonb_build_array({placeholder}::text))
+                     )"
+                ),
+                vec![SqlValue::from(slug)],
+            ))
+        }
+    }
 }
 
 pub async fn load_available_inventory_by_variant_for_public_channel(

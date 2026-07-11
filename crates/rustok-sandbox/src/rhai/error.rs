@@ -17,4 +17,3 @@ pub enum RhaiError {
 }
 
 pub type RhaiResult<T> = Result<T, RhaiError>;
-

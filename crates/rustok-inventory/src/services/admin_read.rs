@@ -450,6 +450,7 @@ mod tests {
         entities::product_translation::Model {
             id: Uuid::new_v4(),
             product_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
             locale: locale.to_string(),
             title: title.to_string(),
             handle: title.to_ascii_lowercase().replace(' ', "-"),

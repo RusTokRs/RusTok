@@ -28,6 +28,9 @@
   in the service/read-side and commerce checkout/storefront compatibility semantics through an exported
   inventory-owned policy helper; further non-admin/channel-aware parity is handled separately from the admin UI scope;
 - public-channel inventory visibility/projection helpers (`normalize_public_channel_slug`, metadata allowlist parsing, channel-visible available quantity loaders, `PublicChannelInventoryProjection` / `PublicChannelInventoryVariantProjectionInput` and `load_inventory_projection_by_variant_for_public_channel`) belong to the inventory crate and are reused by the umbrella `rustok-commerce` for storefront/checkout compatibility without duplicating backorder policy branching in the commerce DTO adapter;
+- `BootstrapService` is the inventory-owned native transaction-sharing contract for
+  product variant bootstrap; it creates default locations and initial inventory rows and
+  loads available quantities without transferring inventory persistence ownership to product;
 - common DTOs, entities and error surface come from `rustok-commerce-foundation`.
 
 ## Integration

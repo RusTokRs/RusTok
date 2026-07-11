@@ -113,4 +113,7 @@ modules.local.toml
 .github/pull_request_template.md
 
 # Athanor local store and outputs
-.athanor/
+.athanor/*
+!.athanor/adapters/
+.athanor/adapters/*
+!.athanor/adapters/*.json

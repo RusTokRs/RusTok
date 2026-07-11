@@ -4,11 +4,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use parking_lot::RwLock;
-use rhai_full as rhai;
 use rhai::{
-    Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc, Scope,
-    AST,
+    AST, Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc,
+    Scope,
 };
+use rhai_full as rhai;
 
 use super::{RhaiConfig, RhaiError, RhaiResult};
 
@@ -157,7 +157,11 @@ impl RhaiEngine {
             convert_error(
                 *error,
                 self.config.max_operations,
-                self.config.timeout.as_millis().try_into().unwrap_or(u64::MAX),
+                self.config
+                    .timeout
+                    .as_millis()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
             )
         })
     }
@@ -187,7 +191,9 @@ fn source_hash(source: &str) -> u64 {
 fn convert_error(error: EvalAltResult, operation_limit: u64, timeout_ms: u64) -> RhaiError {
     match error {
         EvalAltResult::ErrorTerminated(reason, _) if reason.to_string() == TIMEOUT_MARKER => {
-            RhaiError::Timeout { limit_ms: timeout_ms }
+            RhaiError::Timeout {
+                limit_ms: timeout_ms,
+            }
         }
         EvalAltResult::ErrorTerminated(reason, _) => RhaiError::Aborted(reason.to_string()),
         EvalAltResult::ErrorTooManyOperations(_) => RhaiError::OperationLimit {

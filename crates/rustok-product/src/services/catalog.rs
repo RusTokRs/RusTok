@@ -1,14 +1,14 @@
 pub mod helpers;
+mod tags;
 pub mod types;
 
 pub use types::{ProductTagState, StorefrontProductList, StorefrontProductListItem};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
@@ -17,20 +17,38 @@ use validator::Validate;
 use rustok_core::generate_id;
 
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
-
 use rustok_commerce_foundation::dto::*;
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+use rustok_events::DomainEvent;
+use rustok_inventory::{BootstrapService, InitialInventory};
+use rustok_outbox::TransactionalEventBus;
 
-use crate::entities::product_tag;
 use crate::ProductCatalogSchemaService;
 
+use super::write_transaction::ProductWriteTransaction;
 use helpers::*;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";
+
+fn map_product_unique_violation(
+    error: sea_orm::DbErr,
+    handle: &str,
+    locale: &str,
+    sku: Option<&str>,
+) -> CommerceError {
+    let message = error.to_string();
+    if message.contains("uq_product_variants_tenant_sku") {
+        return CommerceError::DuplicateSku(sku.unwrap_or_default().to_owned());
+    }
+    if message.contains("uq_product_translations_tenant_locale_handle") {
+        return CommerceError::DuplicateHandle {
+            handle: handle.to_owned(),
+            locale: locale.to_owned(),
+        };
+    }
+    CommerceError::Database(error)
+}
 
 pub struct CatalogService {
     db: DatabaseConnection,
@@ -101,7 +119,7 @@ impl CatalogService {
             product_metadata,
         );
 
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = entities::product::ActiveModel {
             id: Set(product_id),
@@ -158,35 +176,30 @@ impl CatalogService {
                 });
             }
 
-            let existing = entities::product_translation::Entity::find()
-                .filter(entities::product_translation::Column::Locale.eq(&trans_input.locale))
-                .filter(entities::product_translation::Column::Handle.eq(&handle))
-                .one(&txn)
-                .await?;
-            if existing.is_some() {
-                return Err(CommerceError::DuplicateHandle {
-                    handle,
-                    locale: trans_input.locale.clone(),
-                });
-            }
-
             let translation = entities::product_translation::ActiveModel {
                 id: Set(generate_id()),
                 product_id: Set(product_id),
+                tenant_id: Set(tenant_id),
                 locale: Set(trans_input.locale.clone()),
                 title: Set(trans_input.title.clone()),
-                handle: Set(handle),
+                handle: Set(handle.clone()),
                 description: Set(trans_input.description.clone()),
                 meta_title: Set(trans_input.meta_title.clone()),
                 meta_description: Set(trans_input.meta_description.clone()),
             };
-            translation.insert(&txn).await?;
+            translation.insert(&txn).await.map_err(|error| {
+                map_product_unique_violation(error, &handle, &trans_input.locale, None)
+            })?;
         }
         debug!(
             translations_count = input.translations.len(),
             "Product translations inserted"
         );
 
+        let mut option_models = Vec::with_capacity(input.options.len());
+        let mut option_translation_models = Vec::new();
+        let mut option_value_models = Vec::new();
+        let mut option_value_translation_models = Vec::new();
         for (position, opt_input) in input.options.iter().enumerate() {
             let option_id = generate_id();
             let option_translations = normalize_option_translations(&opt_input.translations)?;
@@ -199,35 +212,30 @@ impl CatalogService {
                 .map(|item| item.values.clone())
                 .unwrap_or_default();
             ensure_option_values_consistent(&option_translations, &base_values)?;
-            let option = entities::product_option::ActiveModel {
+            option_models.push(entities::product_option::ActiveModel {
                 id: Set(option_id),
                 product_id: Set(product_id),
                 position: Set(position as i32),
-            };
-            option.insert(&txn).await?;
+            });
 
             for translation in &option_translations {
-                entities::product_option_translation::ActiveModel {
+                option_translation_models.push(entities::product_option_translation::ActiveModel {
                     id: Set(generate_id()),
                     option_id: Set(option_id),
                     locale: Set(translation.locale.clone()),
                     title: Set(translation.name.clone()),
-                }
-                .insert(&txn)
-                .await?;
+                });
             }
 
             let mut option_value_ids = Vec::with_capacity(base_values.len());
             for (value_position, _) in base_values.iter().enumerate() {
                 let option_value_id = generate_id();
-                entities::product_option_value::ActiveModel {
+                option_value_models.push(entities::product_option_value::ActiveModel {
                     id: Set(option_value_id),
                     option_id: Set(option_id),
                     position: Set(value_position as i32),
                     metadata: Set(serde_json::json!({})),
-                }
-                .insert(&txn)
-                .await?;
+                });
                 option_value_ids.push(option_value_id);
             }
 
@@ -238,38 +246,51 @@ impl CatalogService {
                         .get(value_position)
                         .cloned()
                         .unwrap_or_default();
-                    entities::product_option_value_translation::ActiveModel {
-                        id: Set(generate_id()),
-                        value_id: Set(*value_id),
-                        locale: Set(translation.locale.clone()),
-                        value: Set(value),
-                    }
-                    .insert(&txn)
-                    .await?;
+                    option_value_translation_models.push(
+                        entities::product_option_value_translation::ActiveModel {
+                            id: Set(generate_id()),
+                            value_id: Set(*value_id),
+                            locale: Set(translation.locale.clone()),
+                            value: Set(value),
+                        },
+                    );
                 }
             }
+        }
+        if !option_models.is_empty() {
+            entities::product_option::Entity::insert_many(option_models)
+                .exec(&txn)
+                .await?;
+        }
+        if !option_translation_models.is_empty() {
+            entities::product_option_translation::Entity::insert_many(option_translation_models)
+                .exec(&txn)
+                .await?;
+        }
+        if !option_value_models.is_empty() {
+            entities::product_option_value::Entity::insert_many(option_value_models)
+                .exec(&txn)
+                .await?;
+        }
+        if !option_value_translation_models.is_empty() {
+            entities::product_option_value_translation::Entity::insert_many(
+                option_value_translation_models,
+            )
+            .exec(&txn)
+            .await?;
         }
         debug!(
             options_count = input.options.len(),
             "Product options inserted"
         );
 
-        let default_stock_location = Self::ensure_default_stock_location(&txn, tenant_id).await?;
+        let default_stock_location =
+            BootstrapService::ensure_default_location_in_tx(&txn, tenant_id).await?;
 
+        let mut variant_translation_models = Vec::new();
+        let mut price_models = Vec::new();
         for (position, var_input) in input.variants.iter().enumerate() {
             let variant_id = generate_id();
-
-            if let Some(ref sku) = var_input.sku {
-                let existing = entities::product_variant::Entity::find()
-                    .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-                    .filter(entities::product_variant::Column::Sku.eq(sku))
-                    .one(&txn)
-                    .await?;
-                if existing.is_some() {
-                    warn!(sku = %sku, "Duplicate SKU detected");
-                    return Err(CommerceError::DuplicateSku(sku.clone()));
-                }
-            }
 
             let variant = entities::product_variant::ActiveModel {
                 id: Set(variant_id),
@@ -295,14 +316,18 @@ impl CatalogService {
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
             };
-            variant.insert(&txn).await?;
+            variant.insert(&txn).await.map_err(|error| {
+                map_product_unique_violation(error, "", "", var_input.sku.as_deref())
+            })?;
 
-            Self::create_initial_inventory_records(
+            BootstrapService::create_initial_records_in_tx(
                 &txn,
                 &default_stock_location,
-                variant_id,
-                var_input.sku.clone(),
-                var_input.inventory_quantity,
+                InitialInventory {
+                    variant_id,
+                    sku: var_input.sku.clone(),
+                    available_quantity: var_input.inventory_quantity,
+                },
             )
             .await?;
 
@@ -312,18 +337,16 @@ impl CatalogService {
                 var_input.option3.as_deref(),
             );
             for locale in &translation_locales {
-                entities::variant_translation::ActiveModel {
+                variant_translation_models.push(entities::variant_translation::ActiveModel {
                     id: Set(generate_id()),
                     variant_id: Set(variant_id),
                     locale: Set(locale.clone()),
                     title: Set(Some(variant_title.clone())),
-                }
-                .insert(&txn)
-                .await?;
+                });
             }
 
             for price_input in &var_input.prices {
-                let price = entities::price::ActiveModel {
+                price_models.push(entities::price::ActiveModel {
                     id: Set(generate_id()),
                     variant_id: Set(variant_id),
                     price_list_id: Set(None),
@@ -341,9 +364,18 @@ impl CatalogService {
                         .and_then(decimal_to_cents)),
                     min_quantity: Set(None),
                     max_quantity: Set(None),
-                };
-                price.insert(&txn).await?;
+                });
             }
+        }
+        if !variant_translation_models.is_empty() {
+            entities::variant_translation::Entity::insert_many(variant_translation_models)
+                .exec(&txn)
+                .await?;
+        }
+        if !price_models.is_empty() {
+            entities::price::Entity::insert_many(price_models)
+                .exec(&txn)
+                .await?;
         }
         debug!(
             variants_count = input.variants.len(),
@@ -360,14 +392,12 @@ impl CatalogService {
                 .await?;
         }
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductCreated { product_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductCreated { product_id },
+        )
+        .await?;
 
         txn.commit().await?;
         debug!("Transaction committed");
@@ -418,45 +448,95 @@ impl CatalogService {
                 CommerceError::ProductNotFound(product_id)
             })?;
 
-        let translations = entities::product_translation::Entity::find()
-            .filter(entities::product_translation::Column::ProductId.eq(product_id))
-            .all(&self.db)
-            .await?;
-
-        let options = entities::product_option::Entity::find()
-            .filter(entities::product_option::Column::ProductId.eq(product_id))
-            .order_by_asc(entities::product_option::Column::Position)
-            .all(&self.db)
-            .await?;
-
-        let variants = entities::product_variant::Entity::find()
-            .filter(entities::product_variant::Column::ProductId.eq(product_id))
-            .order_by_asc(entities::product_variant::Column::Position)
-            .all(&self.db)
-            .await?;
+        let tag_locale = locale;
+        let (translations, options, variants, images, product_tags, resolved_metadata) = tokio::try_join!(
+            async {
+                Ok::<_, CommerceError>(
+                    entities::product_translation::Entity::find()
+                        .filter(entities::product_translation::Column::ProductId.eq(product_id))
+                        .all(&self.db)
+                        .await?,
+                )
+            },
+            async {
+                Ok::<_, CommerceError>(
+                    entities::product_option::Entity::find()
+                        .filter(entities::product_option::Column::ProductId.eq(product_id))
+                        .order_by_asc(entities::product_option::Column::Position)
+                        .all(&self.db)
+                        .await?,
+                )
+            },
+            async {
+                Ok::<_, CommerceError>(
+                    entities::product_variant::Entity::find()
+                        .filter(entities::product_variant::Column::ProductId.eq(product_id))
+                        .order_by_asc(entities::product_variant::Column::Position)
+                        .all(&self.db)
+                        .await?,
+                )
+            },
+            async {
+                Ok::<_, CommerceError>(
+                    entities::product_image::Entity::find()
+                        .filter(entities::product_image::Column::ProductId.eq(product_id))
+                        .order_by_asc(entities::product_image::Column::Position)
+                        .all(&self.db)
+                        .await?,
+                )
+            },
+            self.load_product_tags(
+                tenant_id,
+                product_id,
+                tag_locale,
+                fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
+                &product.metadata,
+            ),
+            resolve_product_metadata(
+                &self.db,
+                tenant_id,
+                product_id,
+                &product.metadata,
+                locale,
+                fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
+            ),
+        )?;
 
         let option_ids: Vec<Uuid> = options.iter().map(|option| option.id).collect();
-        let option_translations = if !option_ids.is_empty() {
-            entities::product_option_translation::Entity::find()
-                .filter(
-                    entities::product_option_translation::Column::OptionId
-                        .is_in(option_ids.clone()),
-                )
-                .order_by_asc(entities::product_option_translation::Column::Locale)
-                .all(&self.db)
-                .await?
-        } else {
-            Vec::new()
-        };
-        let option_values = if !option_ids.is_empty() {
-            entities::product_option_value::Entity::find()
-                .filter(entities::product_option_value::Column::OptionId.is_in(option_ids.clone()))
-                .order_by_asc(entities::product_option_value::Column::Position)
-                .all(&self.db)
-                .await?
-        } else {
-            Vec::new()
-        };
+        let (option_translations, option_values) = tokio::try_join!(
+            async {
+                if option_ids.is_empty() {
+                    Ok::<_, CommerceError>(Vec::new())
+                } else {
+                    Ok::<_, CommerceError>(
+                        entities::product_option_translation::Entity::find()
+                            .filter(
+                                entities::product_option_translation::Column::OptionId
+                                    .is_in(option_ids.clone()),
+                            )
+                            .order_by_asc(entities::product_option_translation::Column::Locale)
+                            .all(&self.db)
+                            .await?,
+                    )
+                }
+            },
+            async {
+                if option_ids.is_empty() {
+                    Ok::<_, CommerceError>(Vec::new())
+                } else {
+                    Ok::<_, CommerceError>(
+                        entities::product_option_value::Entity::find()
+                            .filter(
+                                entities::product_option_value::Column::OptionId
+                                    .is_in(option_ids.clone()),
+                            )
+                            .order_by_asc(entities::product_option_value::Column::Position)
+                            .all(&self.db)
+                            .await?,
+                    )
+                }
+            },
+        )?;
         let option_value_ids: Vec<Uuid> = option_values.iter().map(|value| value.id).collect();
         let option_value_translations = if !option_value_ids.is_empty() {
             entities::product_option_value_translation::Entity::find()
@@ -471,27 +551,38 @@ impl CatalogService {
             Vec::new()
         };
 
-        // Load all prices for all variants in a single query (fixes N+1)
         let variant_ids: Vec<Uuid> = variants.iter().map(|v| v.id).collect();
-        let all_prices = if !variant_ids.is_empty() {
-            entities::price::Entity::find()
-                .filter(entities::price::Column::VariantId.is_in(variant_ids.clone()))
-                .all(&self.db)
-                .await?
-        } else {
-            Vec::new()
-        };
-        let variant_translations = if !variant_ids.is_empty() {
-            entities::variant_translation::Entity::find()
-                .filter(entities::variant_translation::Column::VariantId.is_in(variant_ids.clone()))
-                .order_by_asc(entities::variant_translation::Column::Locale)
-                .all(&self.db)
-                .await?
-        } else {
-            Vec::new()
-        };
-        let available_inventory_by_variant =
-            Self::load_available_quantities(&self.db, &variant_ids).await?;
+        let (all_prices, variant_translations, available_inventory_by_variant) = tokio::try_join!(
+            async {
+                if variant_ids.is_empty() {
+                    Ok::<_, CommerceError>(Vec::new())
+                } else {
+                    Ok::<_, CommerceError>(
+                        entities::price::Entity::find()
+                            .filter(entities::price::Column::VariantId.is_in(variant_ids.clone()))
+                            .all(&self.db)
+                            .await?,
+                    )
+                }
+            },
+            async {
+                if variant_ids.is_empty() {
+                    Ok::<_, CommerceError>(Vec::new())
+                } else {
+                    Ok::<_, CommerceError>(
+                        entities::variant_translation::Entity::find()
+                            .filter(
+                                entities::variant_translation::Column::VariantId
+                                    .is_in(variant_ids.clone()),
+                            )
+                            .order_by_asc(entities::variant_translation::Column::Locale)
+                            .all(&self.db)
+                            .await?,
+                    )
+                }
+            },
+            BootstrapService::load_available_quantities(&self.db, &variant_ids),
+        )?;
 
         // Group prices by variant_id
         let mut prices_by_variant: HashMap<Uuid, Vec<entities::price::Model>> = HashMap::new();
@@ -594,11 +685,6 @@ impl CatalogService {
             })
             .collect();
 
-        let images = entities::product_image::Entity::find()
-            .filter(entities::product_image::Column::ProductId.eq(product_id))
-            .order_by_asc(entities::product_image::Column::Position)
-            .all(&self.db)
-            .await?;
         let image_ids: Vec<Uuid> = images.iter().map(|image| image.id).collect();
         let image_translations = if !image_ids.is_empty() {
             entities::product_image_translation::Entity::find()
@@ -619,26 +705,6 @@ impl CatalogService {
                 .or_default()
                 .push(translation);
         }
-
-        let tag_locale = locale;
-        let product_tags = self
-            .load_product_tags(
-                tenant_id,
-                product_id,
-                tag_locale,
-                fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
-                &product.metadata,
-            )
-            .await?;
-        let resolved_metadata = resolve_product_metadata(
-            &self.db,
-            tenant_id,
-            product_id,
-            &product.metadata,
-            locale,
-            fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
-        )
-        .await?;
 
         let response = ProductResponse {
             id: product.id,
@@ -736,29 +802,29 @@ impl CatalogService {
         per_page: u64,
     ) -> CommerceResult<StorefrontProductList> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
-        let page = page.max(1);
-        let per_page = per_page.clamp(1, 48);
+        if page == 0 || per_page == 0 || per_page > 48 {
+            return Err(CommerceError::Validation(
+                "page must be at least 1 and per_page must be between 1 and 48".to_owned(),
+            ));
+        }
         let offset = (page.saturating_sub(1)) * per_page;
 
-        let visible_products = entities::product::Entity::find()
+        let query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
             .filter(entities::product::Column::PublishedAt.is_not_null())
+            .filter(product_channel_visibility_condition(
+                self.db.get_database_backend(),
+                public_channel_slug,
+            ));
+        let total = query.clone().count(&self.db).await?;
+        let products = query
             .order_by_desc(entities::product::Column::PublishedAt)
             .order_by_desc(entities::product::Column::CreatedAt)
+            .offset(offset)
+            .limit(per_page)
             .all(&self.db)
-            .await?
-            .into_iter()
-            .filter(|product| {
-                is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
-            })
-            .collect::<Vec<_>>();
-        let total = visible_products.len() as u64;
-        let products = visible_products
-            .into_iter()
-            .skip(offset as usize)
-            .take(per_page as usize)
-            .collect::<Vec<_>>();
+            .await?;
         let product_ids = products
             .iter()
             .map(|product| product.id)
@@ -890,7 +956,7 @@ impl CatalogService {
                 .await?;
         }
 
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
@@ -996,32 +1062,21 @@ impl CatalogService {
                     return Err(CommerceError::DuplicateHandle { handle, locale });
                 }
 
-                let existing = entities::product_translation::Entity::find()
-                    .filter(
-                        entities::product_translation::Column::Locale.eq(&translation_input.locale),
-                    )
-                    .filter(entities::product_translation::Column::Handle.eq(&handle))
-                    .filter(entities::product_translation::Column::ProductId.ne(product_id))
-                    .one(&txn)
-                    .await?;
-                if existing.is_some() {
-                    return Err(CommerceError::DuplicateHandle {
-                        handle,
-                        locale: translation_input.locale,
-                    });
-                }
-
                 let translation = entities::product_translation::ActiveModel {
                     id: Set(generate_id()),
                     product_id: Set(product_id),
+                    tenant_id: Set(tenant_id),
                     locale: Set(translation_input.locale),
                     title: Set(translation_input.title),
-                    handle: Set(handle),
+                    handle: Set(handle.clone()),
                     description: Set(translation_input.description),
                     meta_title: Set(translation_input.meta_title),
                     meta_description: Set(translation_input.meta_description),
                 };
-                translation.insert(&txn).await?;
+                translation
+                    .insert(&txn)
+                    .await
+                    .map_err(|error| map_product_unique_violation(error, &handle, &locale, None))?;
             }
         }
 
@@ -1033,27 +1088,23 @@ impl CatalogService {
                 .await?;
         }
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductUpdated { product_id },
+        )
+        .await?;
+        if primary_category_changed {
+            txn.publish(
                 tenant_id,
                 Some(actor_id),
-                DomainEvent::ProductUpdated { product_id },
+                DomainEvent::ProductPrimaryCategoryChanged {
+                    product_id,
+                    old_category_id: existing_product.primary_category_id,
+                    new_category_id: input.primary_category_id,
+                },
             )
             .await?;
-        if primary_category_changed {
-            self.event_bus
-                .publish_in_tx(
-                    &txn,
-                    tenant_id,
-                    Some(actor_id),
-                    DomainEvent::ProductPrimaryCategoryChanged {
-                        product_id,
-                        old_category_id: existing_product.primary_category_id,
-                        new_category_id: input.primary_category_id,
-                    },
-                )
-                .await?;
         }
 
         txn.commit().await?;
@@ -1112,7 +1163,7 @@ impl CatalogService {
             .validate_product_publish_requirements(tenant_id, product_id)
             .await?;
 
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
@@ -1129,14 +1180,12 @@ impl CatalogService {
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&txn).await?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductPublished { product_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductPublished { product_id },
+        )
+        .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product published successfully");
@@ -1153,7 +1202,7 @@ impl CatalogService {
     ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Unpublishing product");
 
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
@@ -1166,14 +1215,12 @@ impl CatalogService {
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&txn).await?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductUpdated { product_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductUpdated { product_id },
+        )
+        .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product unpublished successfully");
@@ -1190,7 +1237,7 @@ impl CatalogService {
     ) -> CommerceResult<()> {
         debug!(product_id = %product_id, "Deleting product");
 
-        let txn = self.db.begin().await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
@@ -1210,36 +1257,7 @@ impl CatalogService {
         let variant_ids: Vec<Uuid> = variants.iter().map(|variant| variant.id).collect();
 
         if !variant_ids.is_empty() {
-            let inventory_item_ids: Vec<Uuid> = entities::inventory_item::Entity::find()
-                .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.clone()))
-                .all(&txn)
-                .await?
-                .into_iter()
-                .map(|item| item.id)
-                .collect();
-
-            if !inventory_item_ids.is_empty() {
-                entities::reservation_item::Entity::delete_many()
-                    .filter(
-                        entities::reservation_item::Column::InventoryItemId
-                            .is_in(inventory_item_ids.clone()),
-                    )
-                    .exec(&txn)
-                    .await?;
-
-                entities::inventory_level::Entity::delete_many()
-                    .filter(
-                        entities::inventory_level::Column::InventoryItemId
-                            .is_in(inventory_item_ids.clone()),
-                    )
-                    .exec(&txn)
-                    .await?;
-
-                entities::inventory_item::Entity::delete_many()
-                    .filter(entities::inventory_item::Column::Id.is_in(inventory_item_ids))
-                    .exec(&txn)
-                    .await?;
-            }
+            BootstrapService::delete_records_for_variants_in_tx(&txn, &variant_ids).await?;
 
             entities::price::Entity::delete_many()
                 .filter(entities::price::Column::VariantId.is_in(variant_ids.clone()))
@@ -1334,305 +1352,16 @@ impl CatalogService {
             .await
             .map_err(map_flex_cleanup_error)?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                Some(actor_id),
-                DomainEvent::ProductDeleted { product_id },
-            )
-            .await?;
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductDeleted { product_id },
+        )
+        .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product deleted successfully");
 
         Ok(())
-    }
-
-    pub async fn load_product_tag_map(
-        &self,
-        tenant_id: Uuid,
-        products: &[entities::product::Model],
-        locale: &str,
-        fallback_locale: Option<&str>,
-    ) -> CommerceResult<HashMap<Uuid, Vec<String>>> {
-        let product_ids = products
-            .iter()
-            .map(|product| product.id)
-            .collect::<Vec<_>>();
-        if product_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let relations = product_tag::Entity::find()
-            .filter(product_tag::Column::ProductId.is_in(product_ids.clone()))
-            .order_by_asc(product_tag::Column::ProductId)
-            .order_by_asc(product_tag::Column::CreatedAt)
-            .all(&self.db)
-            .await?;
-
-        let mut relations_by_product: HashMap<Uuid, Vec<product_tag::Model>> = HashMap::new();
-        let mut ordered_term_ids = Vec::new();
-        let mut seen_term_ids = HashSet::new();
-        for relation in relations {
-            if seen_term_ids.insert(relation.term_id) {
-                ordered_term_ids.push(relation.term_id);
-            }
-            relations_by_product
-                .entry(relation.product_id)
-                .or_default()
-                .push(relation);
-        }
-
-        let names = if ordered_term_ids.is_empty() {
-            HashMap::new()
-        } else {
-            TaxonomyService::new(self.db.clone())
-                .resolve_term_names(tenant_id, &ordered_term_ids, locale, fallback_locale)
-                .await
-                .map_err(|error| CommerceError::Validation(error.to_string()))?
-        };
-
-        let mut tags_by_product = HashMap::new();
-        for product in products {
-            if let Some(relations) = relations_by_product.get(&product.id) {
-                let tags = relations
-                    .iter()
-                    .filter_map(|relation| names.get(&relation.term_id).cloned())
-                    .collect::<Vec<_>>();
-                tags_by_product.insert(product.id, tags);
-                continue;
-            }
-
-            if metadata_has_tags_field(&product.metadata) {
-                tags_by_product.insert(
-                    product.id,
-                    normalize_tag_names(&extract_metadata_tags(&product.metadata)),
-                );
-            }
-        }
-
-        Ok(tags_by_product)
-    }
-
-    async fn load_product_tags(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: &str,
-        fallback_locale: Option<&str>,
-        metadata: &Value,
-    ) -> CommerceResult<ProductTagState> {
-        let relations = product_tag::Entity::find()
-            .filter(product_tag::Column::ProductId.eq(product_id))
-            .order_by_asc(product_tag::Column::CreatedAt)
-            .all(&self.db)
-            .await?;
-
-        if relations.is_empty() {
-            if metadata_has_tags_field(metadata) {
-                return Ok(ProductTagState {
-                    tags: normalize_tag_names(&extract_metadata_tags(metadata)),
-                });
-            }
-
-            return Ok(ProductTagState { tags: Vec::new() });
-        }
-
-        let term_ids = relations
-            .iter()
-            .map(|relation| relation.term_id)
-            .collect::<Vec<_>>();
-        let names = TaxonomyService::new(self.db.clone())
-            .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
-            .await
-            .map_err(|error| CommerceError::Validation(error.to_string()))?;
-
-        let mut tags = Vec::new();
-        for relation in relations {
-            if let Some(name) = names.get(&relation.term_id) {
-                tags.push(name.clone());
-            }
-        }
-
-        Ok(ProductTagState { tags })
-    }
-
-    async fn sync_product_tags_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: &str,
-        tag_names: &[String],
-    ) -> CommerceResult<()> {
-        let normalized_tags = normalize_tag_names(tag_names);
-
-        product_tag::Entity::delete_many()
-            .filter(product_tag::Column::ProductId.eq(product_id))
-            .exec(txn)
-            .await?;
-
-        if normalized_tags.is_empty() {
-            return Ok(());
-        }
-
-        let term_ids = TaxonomyService::new(self.db.clone())
-            .ensure_terms_for_module_in_tx(
-                txn,
-                tenant_id,
-                TaxonomyTermKind::Tag,
-                PRODUCT_SCOPE_VALUE,
-                locale,
-                &normalized_tags,
-            )
-            .await
-            .map_err(|error| CommerceError::Validation(error.to_string()))?;
-
-        let now = Utc::now();
-        for term_id in term_ids {
-            product_tag::ActiveModel {
-                product_id: Set(product_id),
-                term_id: Set(term_id),
-                tenant_id: Set(tenant_id),
-                created_at: Set(now.into()),
-            }
-            .insert(txn)
-            .await?;
-        }
-
-        Ok(())
-    }
-
-    async fn ensure_default_stock_location<C>(
-        conn: &C,
-        tenant_id: Uuid,
-    ) -> CommerceResult<entities::stock_location::Model>
-    where
-        C: ConnectionTrait,
-    {
-        if let Some(location) = entities::stock_location::Entity::find()
-            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-            .filter(entities::stock_location::Column::DeletedAt.is_null())
-            .one(conn)
-            .await?
-        {
-            return Ok(location);
-        }
-
-        let now = Utc::now();
-        let location = entities::stock_location::ActiveModel {
-            id: Set(generate_id()),
-            tenant_id: Set(tenant_id),
-            code: Set(Some("default".to_string())),
-            address_line1: Set(None),
-            address_line2: Set(None),
-            city: Set(None),
-            province: Set(None),
-            postal_code: Set(None),
-            country_code: Set(None),
-            phone: Set(None),
-            metadata: Set(serde_json::json!({ "source": "catalog_service" })),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-            deleted_at: Set(None),
-        }
-        .insert(conn)
-        .await
-        .map_err(CommerceError::from)?;
-
-        entities::stock_location_translation::ActiveModel {
-            id: Set(generate_id()),
-            stock_location_id: Set(location.id),
-            locale: Set(PLATFORM_FALLBACK_LOCALE.to_string()),
-            name: Set("Default".to_string()),
-        }
-        .insert(conn)
-        .await
-        .map_err(CommerceError::from)?;
-
-        Ok(location)
-    }
-
-    async fn create_initial_inventory_records<C>(
-        conn: &C,
-        default_stock_location: &entities::stock_location::Model,
-        variant_id: Uuid,
-        sku: Option<String>,
-        quantity: i32,
-    ) -> CommerceResult<()>
-    where
-        C: ConnectionTrait,
-    {
-        let now = Utc::now();
-        let inventory_item = entities::inventory_item::ActiveModel {
-            id: Set(generate_id()),
-            variant_id: Set(variant_id),
-            sku: Set(sku),
-            requires_shipping: Set(true),
-            metadata: Set(serde_json::json!({ "source": "catalog_service" })),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(conn)
-        .await?;
-
-        entities::inventory_level::ActiveModel {
-            id: Set(generate_id()),
-            inventory_item_id: Set(inventory_item.id),
-            location_id: Set(default_stock_location.id),
-            stocked_quantity: Set(quantity),
-            reserved_quantity: Set(0),
-            incoming_quantity: Set(0),
-            low_stock_threshold: Set(None),
-            updated_at: Set(now.into()),
-        }
-        .insert(conn)
-        .await?;
-
-        Ok(())
-    }
-
-    async fn load_available_quantities<C>(
-        conn: &C,
-        variant_ids: &[Uuid],
-    ) -> CommerceResult<HashMap<Uuid, i32>>
-    where
-        C: ConnectionTrait,
-    {
-        if variant_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let inventory_items = entities::inventory_item::Entity::find()
-            .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-            .all(conn)
-            .await?;
-
-        if inventory_items.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-            .iter()
-            .map(|item| (item.id, item.variant_id))
-            .collect();
-        let levels = entities::inventory_level::Entity::find()
-            .filter(
-                entities::inventory_level::Column::InventoryItemId
-                    .is_in(item_to_variant.keys().copied()),
-            )
-            .all(conn)
-            .await?;
-
-        let mut available_by_variant = HashMap::new();
-        for level in levels {
-            if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-                *available_by_variant.entry(*variant_id).or_insert(0) +=
-                    level.stocked_quantity - level.reserved_quantity;
-            }
-        }
-
-        Ok(available_by_variant)
     }
 }

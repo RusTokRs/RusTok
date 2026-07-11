@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use rhai::{Map, Scope};
-use uuid::Uuid;
 use rustok_sandbox::rhai::RhaiScopeProvider;
+use uuid::Uuid;
 
 use crate::model::EntityProxy;
 

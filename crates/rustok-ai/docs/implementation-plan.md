@@ -56,6 +56,13 @@ requires an intentional snapshot change and the catalog factory test to pass.
    connectivity tests for every descriptor. Product vector-store schema and
    RAG UI remain outside this implementation wave.
 
+Rig agent recovery does not execute unknown or policy-denied tool calls. It
+persists a synthetic skipped tool result and lets the model finish the turn;
+sensitive calls remain explicit approval boundaries.
+The execution driver repeats policy enforcement immediately before every MCP
+call, including multi-tool turns, so provider output cannot bypass the
+advertised-tool filter.
+
 ## Verification
 
 - `npm run verify:ai:admin-boundary`
