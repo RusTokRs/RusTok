@@ -4315,7 +4315,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-sink",
- "gloo-utils",
+ "gloo-utils 0.2.0",
  "http 1.4.0",
  "js-sys",
  "pin-project",
@@ -4329,15 +4329,15 @@ dependencies = [
 
 [[package]]
 name = "gloo-storage"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbc8031e8c92758af912f9bc08fbbadd3c6f3cfcbf6b64cdf3d6a81f0139277a"
+checksum = "e82ce7d41c6d821640a43726f6ff33c924795cc151b62e5a84d0c988c151c980"
 dependencies = [
- "gloo-utils",
+ "gloo-utils 0.3.0",
  "js-sys",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -4371,6 +4371,19 @@ name = "gloo-utils"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b5555354113b18c547c1d3a98fbf7fb32a9ff4f6fa112ce823a21641a0ba3aa"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "gloo-utils"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4202275d95a142fa209a1e35e91c250a710c5600731372cd3464a39ed01573d6"
 dependencies = [
  "js-sys",
  "serde",
@@ -6347,7 +6360,7 @@ dependencies = [
  "gloo-storage",
  "js-sys",
  "leptos 0.8.20",
- "leptos-use",
+ "leptos-use 0.19.0",
  "leptos_axum",
  "leptos_router",
  "reqwest 0.13.4",
@@ -6367,7 +6380,7 @@ checksum = "777b6bb2100427b4e5f6c64ec659a27c253b69f4a78ccd58f4bcc5d39c6dcffb"
 dependencies = [
  "chrono",
  "leptos 0.8.20",
- "leptos-use",
+ "leptos-use 0.18.3",
  "log",
  "web-sys",
 ]
@@ -6451,13 +6464,13 @@ dependencies = [
 
 [[package]]
 name = "leptos-struct-table"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8512aac7ab65b0e8f4c963abd4a0501fe49eac2ab18b99a046001e7ea73a07df"
+checksum = "c07fea88b3965e9cb15aba0f3adbb4c72639ab8050a56bf2991482bdc947f40a"
 dependencies = [
  "leptos 0.8.20",
  "leptos-struct-table-macro",
- "leptos-use",
+ "leptos-use 0.19.0",
  "send_wrapper",
  "serde",
  "wasm-bindgen",
@@ -6506,9 +6519,9 @@ dependencies = [
 
 [[package]]
 name = "leptos-use"
-version = "0.18.0"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e652389aa67f810bab687dd32566346a1d0dc4d25b44370d952ffc2ca4c627c0"
+checksum = "17cded1fffd0646ff028f38552724be36054052a35d293531c8766bbeb25dcc5"
 dependencies = [
  "cfg-if",
  "chrono",
@@ -6517,6 +6530,31 @@ dependencies = [
  "default-struct-builder",
  "futures-util",
  "gloo-timers 0.3.0",
+ "js-sys",
+ "lazy_static",
+ "leptos 0.8.20",
+ "paste",
+ "send_wrapper",
+ "thiserror 2.0.18",
+ "unic-langid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "leptos-use"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc07f2657dcc366ef2d80045354143f6e0a86919763a1a5753cd3871f8f95e2d"
+dependencies = [
+ "cfg-if",
+ "chrono",
+ "codee",
+ "cookie",
+ "default-struct-builder",
+ "futures-util",
+ "gloo-timers 0.4.0",
  "js-sys",
  "lazy_static",
  "leptos 0.8.20",
@@ -6690,7 +6728,7 @@ dependencies = [
  "icu_plurals",
  "js-sys",
  "leptos 0.8.20",
- "leptos-use",
+ "leptos-use 0.18.3",
  "leptos_i18n_macro",
  "leptos_meta",
  "serde",
@@ -9719,9 +9757,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.4"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1292b7759ae1cb9ec195452d1390a074f0cd8541ab7a5a8c31cd6db45d4a6ba"
+checksum = "2a0e75113e14dc5acb068cd0786884f214f1312650a3d36d269f5c4f3cdee8a2"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -10562,7 +10600,7 @@ dependencies = [
  "leptos-struct-table",
  "leptos-ui",
  "leptos-ui-routing",
- "leptos-use",
+ "leptos-use 0.19.0",
  "leptos-zod",
  "leptos-zustand",
  "leptos_axum",
@@ -10806,7 +10844,7 @@ dependencies = [
  "leptos-auth",
  "leptos-hook-form",
  "leptos-ui",
- "leptos-use",
+ "leptos-use 0.19.0",
  "leptos_axum",
  "leptos_router",
  "reqwest 0.13.4",
@@ -12697,7 +12735,7 @@ dependencies = [
  "leptos-shadcn-pagination",
  "leptos-table",
  "leptos-ui",
- "leptos-use",
+ "leptos-use 0.19.0",
  "leptos-zod",
  "leptos-zustand",
  "leptos_axum",
