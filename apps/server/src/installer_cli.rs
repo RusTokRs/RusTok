@@ -1,25 +1,25 @@
 use eyre::{bail, eyre, Result};
 use migration::Migrator;
+use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
+use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_installer::{
-    evaluate_preflight, redact_install_plan, AdminBootstrap, DatabaseConfig, DatabaseEngine,
-    InstallEnvironment, InstallPlan, InstallProfile, InstallReceipt, InstallState, InstallStep,
-    ModuleSelection, SecretMode, SecretRef, SecretValue, SeedProfile, TenantBootstrap,
+    evaluate_preflight, execute_seed_profile, redact_install_plan, AdminBootstrap, DatabaseConfig,
+    DatabaseEngine, InstallEnvironment, InstallPlan, InstallProfile, InstallReceipt, InstallState,
+    InstallStep, ModuleSelection, SecretMode, SecretRef, SecretValue, SeedExecutionError,
+    SeedExecutionRequest, SeedIdentityPort, SeedModulePort, SeedProfile, SeedRolePort, SeedTenant,
+    SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest, TenantBootstrap,
 };
 use rustok_tenant::{
     PortActor, PortContext, PortErrorKind, TenantReadPort, TenantReadProjection, TenantReadRequest,
     TenantReadSelector, TenantService,
 };
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    Statement,
-};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
 
-use crate::auth::hash_password;
-use crate::models::{tenants, users};
+use crate::models::users;
 use crate::modules::build_registry;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::installer_persistence::InstallerPersistenceService;
@@ -140,18 +140,24 @@ struct InstallCliOptions {
 impl InstallCliOptions {
     fn parse(args: &[String]) -> Result<Self> {
         let mut options = Self {
-            environment: parse_env_var("RUSTOK_INSTALL_ENVIRONMENT", parse_environment)
-                .unwrap_or(InstallEnvironment::Local),
-            profile: parse_env_var("RUSTOK_INSTALL_PROFILE", parse_profile)
-                .unwrap_or(InstallProfile::DevLocal),
-            database_engine: parse_env_var("RUSTOK_INSTALL_DATABASE_ENGINE", parse_database_engine)
-                .unwrap_or(DatabaseEngine::Postgres),
+            environment: parse_env_var("RUSTOK_INSTALL_ENVIRONMENT", |value| {
+                InstallEnvironment::parse_cli_value(value).map_err(|error| eyre!(error))
+            })
+            .unwrap_or(InstallEnvironment::Local),
+            profile: parse_env_var("RUSTOK_INSTALL_PROFILE", |value| {
+                InstallProfile::parse_cli_value(value).map_err(|error| eyre!(error))
+            })
+            .unwrap_or(InstallProfile::DevLocal),
+            database_engine: parse_env_var("RUSTOK_INSTALL_DATABASE_ENGINE", |value| {
+                DatabaseEngine::parse_cli_value(value).map_err(|error| eyre!(error))
+            })
+            .unwrap_or(DatabaseEngine::Postgres),
             database_url: std::env::var("DATABASE_URL")
                 .unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string()),
             database_secret_ref: std::env::var("RUSTOK_INSTALL_DATABASE_SECRET_REF")
                 .ok()
                 .as_deref()
-                .map(parse_secret_ref)
+                .map(|value| SecretRef::parse_cli_value(value).map_err(|error| eyre!(error)))
                 .transpose()?,
             create_database: false,
             pg_admin_url: std::env::var("RUSTOK_INSTALL_PG_ADMIN_URL").ok(),
@@ -164,7 +170,7 @@ impl InstallCliOptions {
             admin_password_ref: std::env::var("RUSTOK_INSTALL_ADMIN_PASSWORD_REF")
                 .ok()
                 .as_deref()
-                .map(parse_secret_ref)
+                .map(|value| SecretRef::parse_cli_value(value).map_err(|error| eyre!(error)))
                 .transpose()?,
             tenant_slug: std::env::var("SUPERADMIN_TENANT_SLUG")
                 .or_else(|_| std::env::var("SEED_TENANT_SLUG"))
@@ -172,10 +178,14 @@ impl InstallCliOptions {
             tenant_name: std::env::var("SUPERADMIN_TENANT_NAME")
                 .or_else(|_| std::env::var("SEED_TENANT_NAME"))
                 .unwrap_or_else(|_| DEFAULT_TENANT_NAME.to_string()),
-            seed_profile: parse_env_var("RUSTOK_INSTALL_SEED_PROFILE", parse_seed_profile)
-                .unwrap_or(SeedProfile::Minimal),
-            secrets_mode: parse_env_var("RUSTOK_INSTALL_SECRETS_MODE", parse_secret_mode)
-                .unwrap_or(SecretMode::Env),
+            seed_profile: parse_env_var("RUSTOK_INSTALL_SEED_PROFILE", |value| {
+                SeedProfile::parse_cli_value(value).map_err(|error| eyre!(error))
+            })
+            .unwrap_or(SeedProfile::Minimal),
+            secrets_mode: parse_env_var("RUSTOK_INSTALL_SECRETS_MODE", |value| {
+                SecretMode::parse_cli_value(value).map_err(|error| eyre!(error))
+            })
+            .unwrap_or(SecretMode::Env),
             enable_modules: Vec::new(),
             disable_modules: Vec::new(),
             lock_owner: std::env::var("RUSTOK_INSTALL_LOCK_OWNER")
@@ -190,22 +200,29 @@ impl InstallCliOptions {
         while index < args.len() {
             match args[index].as_str() {
                 "--environment" => {
-                    options.environment = parse_environment(&take_value(args, &mut index)?)?;
+                    options.environment =
+                        InstallEnvironment::parse_cli_value(&take_value(args, &mut index)?)
+                            .map_err(|error| eyre!(error))?;
                 }
                 "--profile" => {
-                    options.profile = parse_profile(&take_value(args, &mut index)?)?;
+                    options.profile =
+                        InstallProfile::parse_cli_value(&take_value(args, &mut index)?)
+                            .map_err(|error| eyre!(error))?;
                 }
                 "--database-engine" => {
                     options.database_engine =
-                        parse_database_engine(&take_value(args, &mut index)?)?;
+                        DatabaseEngine::parse_cli_value(&take_value(args, &mut index)?)
+                            .map_err(|error| eyre!(error))?;
                 }
                 "--database-url" => {
                     options.database_url = take_value(args, &mut index)?;
                     options.database_secret_ref = None;
                 }
                 "--database-secret-ref" => {
-                    options.database_secret_ref =
-                        Some(parse_secret_ref(&take_value(args, &mut index)?)?);
+                    options.database_secret_ref = Some(
+                        SecretRef::parse_cli_value(&take_value(args, &mut index)?)
+                            .map_err(|error| eyre!(error))?,
+                    );
                 }
                 "--create-database" => options.create_database = true,
                 "--pg-admin-url" => {
@@ -219,8 +236,10 @@ impl InstallCliOptions {
                     options.admin_password_ref = None;
                 }
                 "--admin-password-ref" => {
-                    options.admin_password_ref =
-                        Some(parse_secret_ref(&take_value(args, &mut index)?)?);
+                    options.admin_password_ref = Some(
+                        SecretRef::parse_cli_value(&take_value(args, &mut index)?)
+                            .map_err(|error| eyre!(error))?,
+                    );
                 }
                 "--tenant-slug" => {
                     options.tenant_slug = take_value(args, &mut index)?;
@@ -229,10 +248,14 @@ impl InstallCliOptions {
                     options.tenant_name = take_value(args, &mut index)?;
                 }
                 "--seed-profile" => {
-                    options.seed_profile = parse_seed_profile(&take_value(args, &mut index)?)?;
+                    options.seed_profile =
+                        SeedProfile::parse_cli_value(&take_value(args, &mut index)?)
+                            .map_err(|error| eyre!(error))?;
                 }
                 "--secrets-mode" => {
-                    options.secrets_mode = parse_secret_mode(&take_value(args, &mut index)?)?;
+                    options.secrets_mode =
+                        SecretMode::parse_cli_value(&take_value(args, &mut index)?)
+                            .map_err(|error| eyre!(error))?;
                 }
                 "--enable-module" => {
                     options.enable_modules.push(take_value(args, &mut index)?);
@@ -591,6 +614,101 @@ async fn apply_schema_migrations(db: &DatabaseConnection) -> Result<()> {
         .map_err(|error| eyre!("failed to apply installer schema migrations: {error}"))
 }
 
+struct ServerInstallerSeedTenantPort<'a> {
+    db: &'a DatabaseConnection,
+}
+
+struct ServerInstallerSeedIdentityPort<'a> {
+    db: &'a DatabaseConnection,
+}
+
+struct ServerInstallerSeedRolePort<'a> {
+    db: &'a DatabaseConnection,
+}
+
+struct ServerInstallerSeedModulePort<'a> {
+    db: &'a DatabaseConnection,
+    registry: rustok_core::ModuleRegistry,
+}
+
+#[async_trait::async_trait]
+impl SeedTenantPort for ServerInstallerSeedTenantPort<'_> {
+    async fn ensure_seed_tenant(
+        &self,
+        request: SeedTenantRequest,
+    ) -> Result<SeedTenant, SeedExecutionError> {
+        let (tenant, created) = TenantService::new(self.db.clone())
+            .ensure_tenant(rustok_tenant::CreateTenantInput {
+                name: request.name,
+                slug: request.slug,
+                domain: request.domain,
+            })
+            .await
+            .map_err(seed_dependency_error)?;
+        Ok(SeedTenant {
+            id: tenant.id,
+            slug: tenant.slug,
+            created,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl SeedIdentityPort for ServerInstallerSeedIdentityPort<'_> {
+    async fn ensure_seed_user(
+        &self,
+        request: SeedUserRequest,
+    ) -> Result<SeedUser, SeedExecutionError> {
+        let user = ensure_installer_user(self.db, &request)
+            .await
+            .map_err(seed_dependency_error)?;
+        Ok(user)
+    }
+}
+
+#[async_trait::async_trait]
+impl SeedRolePort for ServerInstallerSeedRolePort<'_> {
+    async fn assign_seed_role(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        role: rustok_core::UserRole,
+    ) -> Result<(), SeedExecutionError> {
+        RbacRoleAssignmentDbWriter::new(self.db.clone())
+            .assign_role_permissions(tenant_id, user_id, role)
+            .await
+            .map_err(seed_dependency_error)?;
+        RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl SeedModulePort for ServerInstallerSeedModulePort<'_> {
+    async fn set_seed_module_enabled(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        enabled: bool,
+        actor: &str,
+    ) -> Result<(), SeedExecutionError> {
+        ModuleLifecycleService::toggle_module_with_actor(
+            self.db,
+            &self.registry,
+            tenant_id,
+            module_slug,
+            enabled,
+            Some(actor.to_string()),
+        )
+        .await
+        .map_err(seed_dependency_error)
+    }
+}
+
+fn seed_dependency_error(error: impl std::fmt::Display) -> SeedExecutionError {
+    SeedExecutionError::Dependency(error.to_string())
+}
+
 #[derive(Debug)]
 struct SeedOutcome {
     tenant_id: Uuid,
@@ -602,81 +720,49 @@ struct SeedOutcome {
 }
 
 async fn apply_seed_profile(db: &DatabaseConnection, plan: &InstallPlan) -> Result<SeedOutcome> {
-    let existing_tenant = read_installer_tenant_by_slug(db, &plan.tenant.slug)
-        .await
-        .map_err(|error| eyre!("failed to inspect installer tenant: {error}"))?;
-    let tenant = tenants::Entity::find_or_create(db, &plan.tenant.name, &plan.tenant.slug, None)
-        .await
-        .map_err(|error| eyre!("failed to create installer tenant: {error}"))?;
-    let mut enabled_modules = default_modules_for_seed(plan.seed_profile);
+    let mut enabled_modules = plan.seed_profile.default_enabled_modules();
     enabled_modules.extend(plan.modules.enable.iter().cloned());
-    enabled_modules.sort();
-    enabled_modules.dedup();
-
-    let mut disabled_modules = plan.modules.disable.clone();
-    disabled_modules.sort();
-    disabled_modules.dedup();
-    enabled_modules.retain(|module| !disabled_modules.contains(module));
-
-    let registry = build_registry();
-    for module in &enabled_modules {
-        ModuleLifecycleService::toggle_module_with_actor(
-            db,
-            &registry,
-            tenant.id,
-            module,
-            true,
-            Some("installer".to_string()),
-        )
-        .await
-        .map_err(|error| eyre!("failed to enable module `{module}`: {error}"))?;
-    }
-    for module in &disabled_modules {
-        ModuleLifecycleService::toggle_module_with_actor(
-            db,
-            &registry,
-            tenant.id,
-            module,
-            false,
-            Some("installer".to_string()),
-        )
-        .await
-        .map_err(|error| eyre!("failed to disable module `{module}`: {error}"))?;
-    }
-
-    let demo_customer_created = if plan.seed_profile == SeedProfile::Dev {
-        ensure_user_with_role(
-            db,
-            tenant.id,
-            "customer@demo.local",
-            "Demo Customer",
-            "dev-password-123",
-            rustok_core::UserRole::Customer,
-        )
-        .await?
-        .created
-    } else {
-        false
+    let tenant_port = ServerInstallerSeedTenantPort { db };
+    let identity_port = ServerInstallerSeedIdentityPort { db };
+    let role_port = ServerInstallerSeedRolePort { db };
+    let module_port = ServerInstallerSeedModulePort {
+        db,
+        registry: build_registry(),
     };
+    let outcome = execute_seed_profile(
+        SeedExecutionRequest {
+            profile: plan.seed_profile,
+            tenant: SeedTenantRequest {
+                name: plan.tenant.name.clone(),
+                slug: plan.tenant.slug.clone(),
+                domain: None,
+            },
+            enabled_modules,
+            disabled_modules: plan.modules.disable.clone(),
+            admin: None,
+            demo_customer_password: (plan.seed_profile == SeedProfile::Dev)
+                .then(|| "dev-password-123".to_string()),
+            actor: "installer".to_string(),
+        },
+        &tenant_port,
+        &identity_port,
+        &role_port,
+        &module_port,
+    )
+    .await
+    .map_err(|error| eyre!("failed to apply installer seed profile: {error}"))?;
 
     Ok(SeedOutcome {
-        tenant_id: tenant.id,
-        tenant_slug: tenant.slug,
-        tenant_created: existing_tenant.is_none(),
-        enabled_modules,
-        disabled_modules,
-        demo_customer_created,
+        tenant_id: outcome.tenant.id,
+        tenant_slug: outcome.tenant.slug,
+        tenant_created: outcome.tenant.created,
+        enabled_modules: outcome.enabled_modules,
+        disabled_modules: outcome.disabled_modules,
+        demo_customer_created: outcome
+            .demo_customer
+            .map(|user| user.created)
+            .unwrap_or(false),
     })
-}
-
-fn default_modules_for_seed(seed_profile: SeedProfile) -> Vec<String> {
-    match seed_profile {
-        SeedProfile::Dev => ["content", "commerce", "pages", "blog", "forum", "index"]
-            .into_iter()
-            .map(ToString::to_string)
-            .collect(),
-        SeedProfile::Minimal | SeedProfile::None => Vec::new(),
-    }
 }
 
 #[derive(Debug)]
@@ -711,35 +797,48 @@ async fn ensure_user_with_role(
     password: &str,
     role: rustok_core::UserRole,
 ) -> Result<AdminOutcome> {
-    if let Some(user) = users::Entity::find_by_email(db, tenant_id, email)
-        .await
-        .map_err(|error| eyre!("failed to inspect installer user `{email}`: {error}"))?
-    {
-        RbacService::assign_role_permissions(db, &user.id, &tenant_id, role)
-            .await
-            .map_err(|error| eyre!("failed to synchronize installer user role: {error}"))?;
-        return Ok(AdminOutcome {
-            user_id: user.id,
-            email: user.email,
-            created: false,
-        });
-    }
-
-    let password_hash = hash_password(password)
-        .map_err(|error| eyre!("failed to hash installer user password: {error}"))?;
-    let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
-    user.name = Set(Some(name.to_string()));
-    let user = user
-        .insert(db)
-        .await
-        .map_err(|error| eyre!("failed to create installer user `{email}`: {error}"))?;
-
+    let user = ensure_installer_user(
+        db,
+        &SeedUserRequest {
+            tenant_id,
+            email: email.to_string(),
+            name: name.to_string(),
+            password: password.to_string(),
+        },
+    )
+    .await?;
     RbacService::assign_role_permissions(db, &user.id, &tenant_id, role)
         .await
         .map_err(|error| eyre!("failed to assign installer user role: {error}"))?;
 
     Ok(AdminOutcome {
         user_id: user.id,
+        email: user.email,
+        created: user.created,
+    })
+}
+
+async fn ensure_installer_user(
+    db: &DatabaseConnection,
+    request: &SeedUserRequest,
+) -> Result<SeedUser> {
+    let user = AuthUserBootstrapDbWriter::new(db.clone())
+        .ensure_user(AuthUserBootstrapRequest {
+            tenant_id: request.tenant_id,
+            email: request.email.clone(),
+            name: request.name.clone(),
+            password: request.password.clone(),
+        })
+        .await
+        .map_err(|error| {
+            eyre!(
+                "failed to provision installer user `{}`: {error}",
+                request.email
+            )
+        })?;
+
+    Ok(SeedUser {
+        id: user.id,
         email: user.email,
         created: true,
     })
@@ -1044,67 +1143,6 @@ fn take_value(args: &[String], index: &mut usize) -> Result<String> {
         .filter(|value| !value.trim().is_empty())
         .cloned()
         .ok_or_else(|| eyre!("install option requires a value"))
-}
-
-fn parse_environment(value: &str) -> Result<InstallEnvironment> {
-    match normalize(value).as_str() {
-        "local" => Ok(InstallEnvironment::Local),
-        "demo" => Ok(InstallEnvironment::Demo),
-        "test" => Ok(InstallEnvironment::Test),
-        "production" | "prod" => Ok(InstallEnvironment::Production),
-        _ => bail!("unknown install environment `{value}`"),
-    }
-}
-
-fn parse_profile(value: &str) -> Result<InstallProfile> {
-    match normalize(value).as_str() {
-        "dev_local" | "dev-local" | "dev" => Ok(InstallProfile::DevLocal),
-        "monolith" => Ok(InstallProfile::Monolith),
-        "hybrid_admin" | "hybrid-admin" => Ok(InstallProfile::HybridAdmin),
-        "headless_next" | "headless-next" => Ok(InstallProfile::HeadlessNext),
-        "headless_leptos" | "headless-leptos" => Ok(InstallProfile::HeadlessLeptos),
-        _ => bail!("unknown install profile `{value}`"),
-    }
-}
-
-fn parse_database_engine(value: &str) -> Result<DatabaseEngine> {
-    match normalize(value).as_str() {
-        "postgres" | "postgresql" => Ok(DatabaseEngine::Postgres),
-        "sqlite" => Ok(DatabaseEngine::Sqlite),
-        _ => bail!("unknown database engine `{value}`"),
-    }
-}
-
-fn parse_seed_profile(value: &str) -> Result<SeedProfile> {
-    match normalize(value).as_str() {
-        "none" => Ok(SeedProfile::None),
-        "minimal" => Ok(SeedProfile::Minimal),
-        "dev" => Ok(SeedProfile::Dev),
-        _ => bail!("unknown seed profile `{value}`"),
-    }
-}
-
-fn parse_secret_mode(value: &str) -> Result<SecretMode> {
-    match normalize(value).as_str() {
-        "env" => Ok(SecretMode::Env),
-        "dotenv_file" | "dotenv-file" => Ok(SecretMode::DotenvFile),
-        "mounted_file" | "mounted-file" => Ok(SecretMode::MountedFile),
-        "external_secret" | "external-secret" => Ok(SecretMode::ExternalSecret),
-        _ => bail!("unknown secret mode `{value}`"),
-    }
-}
-
-fn parse_secret_ref(value: &str) -> Result<SecretRef> {
-    let (backend, key) = value
-        .split_once(':')
-        .ok_or_else(|| eyre!("secret ref must use `<backend>:<key>` format"))?;
-    if backend.trim().is_empty() || key.trim().is_empty() {
-        bail!("secret ref must include non-empty backend and key");
-    }
-    Ok(SecretRef {
-        backend: backend.trim().to_string(),
-        key: key.trim().to_string(),
-    })
 }
 
 fn normalize(value: &str) -> String {

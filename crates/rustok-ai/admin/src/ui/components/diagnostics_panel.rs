@@ -59,7 +59,7 @@ pub fn AiDiagnosticsPanel(ui_locale: Option<String>, bootstrap: AiAdminBootstrap
                                         </div>
                                         <div>
                                             <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.providerBuckets", "Provider buckets")}</div>
-                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.provider_kind_totals)}</div>
+                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.provider_slug_totals)}</div>
                                         </div>
                                         <div>
                                             <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.executionTargets", "Execution targets")}</div>

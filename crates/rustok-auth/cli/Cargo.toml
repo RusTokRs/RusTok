@@ -1,0 +1,17 @@
+[package]
+name = "rustok-auth-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Operational command adapters for the RusToK auth module"
+
+[dependencies]
+async-trait.workspace = true
+rustok-api.workspace = true
+rustok-auth.workspace = true
+rustok-cli-core.workspace = true
+rustok-runtime.workspace = true
+rustok-tenant.workspace = true
+sea-orm.workspace = true
+serde_json.workspace = true
+uuid.workspace = true

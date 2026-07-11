@@ -1,5 +1,7 @@
-use loco_rs::mailer::EmailSender;
-use rustok_auth::{AuthConfig, AuthLifecycleRuntime, OAuthAdminRuntime, UserAdminMutationRuntime};
+use rustok_auth::{
+    AuthConfig, AuthLifecycleRuntime, AuthUserBackfillRuntime, OAuthAdminRuntime,
+    UserAdminMutationRuntime,
+};
 use rustok_core::events::{DispatcherConfig, EventDispatcher};
 use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexerRuntimeConfig;
@@ -72,7 +74,6 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     settings: &RustokSettings,
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
-    mailer: Option<EmailSender>,
 ) -> Arc<ModuleRuntimeExtensions> {
     let base = build_shared_runtime_extensions(registry, settings);
     let mut extensions = base.as_ref().clone();
@@ -88,10 +89,10 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         crate::services::auth_lifecycle_provider::ServerAuthLifecycleProvider::new(
             runtime_ctx,
             auth_config,
-            mailer,
         ),
     );
-    extensions.insert(AuthLifecycleRuntime::new(auth_lifecycle_provider));
+    extensions.insert(AuthLifecycleRuntime::new(auth_lifecycle_provider.clone()));
+    extensions.insert(AuthUserBackfillRuntime::new(auth_lifecycle_provider));
     let mcp_management_provider = Arc::new(
         crate::services::mcp_management_mutation_provider::ServerMcpManagementMutationProvider::new(
             db,
@@ -169,12 +170,11 @@ mod tests {
         let extensions = build_shared_runtime_extensions_with_host_providers(
             &registry,
             &settings,
-            crate::services::server_runtime_context::ServerRuntimeContext::with_empty_shared_store(
+            crate::services::server_runtime_context::ServerRuntimeContext::new(
                 db,
                 settings.clone(),
             ),
             AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
-            None,
         );
 
         assert!(extensions.contains::<rustok_auth::AuthLifecycleRuntime>());

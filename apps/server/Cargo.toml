@@ -72,7 +72,9 @@ mod-workflow  = ["dep:rustok-workflow"]
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
+rustok-modules.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
+rustok-build.workspace = true
 rustok-auth = { workspace = true, features = ["graphql"] }
 rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-channel.workspace = true

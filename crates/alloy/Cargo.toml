@@ -24,6 +24,10 @@ rustok-web.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-telemetry.workspace = true
+rustok-sandbox = { workspace = true, features = ["rhai"] }
+rustok-modules.workspace = true
+sha2.workspace = true
+hex.workspace = true
 parking_lot = "0.12"
 cron = "0.17"
 email_address = "0.2.9"

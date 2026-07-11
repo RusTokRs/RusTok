@@ -23,8 +23,10 @@ Create a separate capability crate `crates/rustok-ai`.
 
 `rustok-ai`:
 
-- owns the `ModelProvider` abstraction;
-- owns `AiRuntime`, chat/session model and approval policy;
+- owns the Rig 0.39 provider registry, `ProviderSlug`, and provider feature contract;
+- owns `RigAgentDriver`, chat/session model and approval policy;
+- persists only provider settings and external `SecretRef` values; resolver endpoints,
+  cloud identities, allowlists, and egress policy are server-owned composition inputs;
 - uses `rustok-mcp` as an MCP tool surface;
 - provides `apps/server` with server-side `AiManagementService` and persisted control-plane wiring;
 - owns GraphQL query/mutation/subscription roots, DTO and permission checks;
@@ -53,10 +55,11 @@ integration layer.
 The `LLM provider <-> host` link is not a responsibility of the MCP server layer. This layer should live
 in the AI host/orchestrator capability and use MCP as a separate tool bus.
 
-### 3. Persisted control plane belongs to the server composition root
+### 3. Persisted control plane belongs to the capability boundary
 
-Secrets, provider profiles, chat sessions, traces, and approvals must be stored in `apps/server`,
-not in UI hosts and not in `rustok-mcp`.
+Provider profiles, chat sessions, traces, and approvals must be stored through capability-owned
+contracts, not in UI hosts and not in `rustok-mcp`. Plaintext provider secrets are forbidden:
+`rustok-secrets` resolves server-owned references at execution time.
 
 At the same time, the transport contract does not become server-owned: `rustok-ai` owns the AI GraphQL
 resolver/DTO surface, while `apps/server` only adds roots to the common schema and registers narrow
@@ -75,7 +78,8 @@ Leptos UI is shipped as `crates/rustok-ai/admin`, Next.js UI as
 ### Positive
 
 - AI host/orchestrator layer is separated from the MCP server boundary;
-- a single backend runtime covers both local and cloud endpoints through the `OpenAI-compatible` family;
+- Rig provides the canonical provider protocol/runtime implementation instead of local SSE parsers;
+- a registry snapshot makes provider factories, features, schemas, and UI fields auditable;
 - dual-path contract for Leptos is preserved: native `#[server]` first, GraphQL parallel;
 - AI GraphQL artifacts are not duplicated in `apps/server` and are protected by the owner-boundary guard;
 - Leptos and Next.js receive parity capability-owned UI surface;
@@ -85,7 +89,7 @@ Leptos UI is shipped as `crates/rustok-ai/admin`, Next.js UI as
 
 - a new capability crate and a separate persisted control plane appear;
 - the Next.js package requires manual `package.json` wiring and manual rebuild;
-- the first version is limited to the `OpenAI-compatible` provider family and request/response runs without streaming.
+- Rig upgrades are explicit registry-review changes because the exact crate version is pinned.
 
 ## What we are not doing
 

@@ -1,6 +1,6 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    Set, TransactionTrait,
+    QueryOrder, Set, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -74,6 +74,29 @@ impl TenantService {
         Ok(to_tenant_response(model))
     }
 
+    /// Returns the tenant identified by `input.slug`, creating it when absent.
+    ///
+    /// Bootstrap and installer flows need idempotent tenant provisioning, while
+    /// ordinary tenant creation must continue to reject duplicate slugs through
+    /// [`Self::create_tenant`].  Keeping both operations in the tenant owner
+    /// avoids host-side copies of the tenant persistence policy.
+    #[instrument(skip(self, input), fields(slug = %input.slug))]
+    pub async fn ensure_tenant(
+        &self,
+        input: CreateTenantInput,
+    ) -> TenantResult<(TenantResponse, bool)> {
+        if let Some(existing) = tenant::Entity::find()
+            .filter(tenant::Column::Slug.eq(&input.slug))
+            .one(&self.db)
+            .await?
+        {
+            return Ok((to_tenant_response(existing), false));
+        }
+
+        let tenant = self.create_tenant(input).await?;
+        Ok((tenant, true))
+    }
+
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
     pub async fn get_tenant(&self, tenant_id: Uuid) -> TenantResult<TenantResponse> {
         let model = tenant::Entity::find_by_id(tenant_id)
@@ -101,6 +124,17 @@ impl TenantService {
             .await?
             .ok_or(TenantError::NotFound)?;
         Ok(to_tenant_response(model))
+    }
+
+    #[instrument(skip(self))]
+    pub async fn first_active_tenant(&self) -> TenantResult<TenantResponse> {
+        tenant::Entity::find()
+            .filter(tenant::Column::IsActive.eq(true))
+            .order_by_asc(tenant::Column::CreatedAt)
+            .one(&self.db)
+            .await?
+            .map(to_tenant_response)
+            .ok_or(TenantError::NotFound)
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]

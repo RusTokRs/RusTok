@@ -16,6 +16,7 @@ For `apps/server`, the mandatory baseline consists of two layers.
 
 Platform `Core` modules:
 
+- `rustok-modules`
 - `rustok-auth`
 - `rustok-cache`
 - `rustok-channel`
@@ -35,6 +36,11 @@ Shared foundation / support crates used by the backend platform:
 - `rustok-web`
 - `rustok-fba`
 - `rustok-cli-core`
+
+`rustok-modules` is the mandatory module-platform control plane. The server
+registers it as a Core module but must not own artifact lifecycle, marketplace
+policy or executor selection; sandboxed execution is delegated to the neutral
+`rustok-sandbox` foundation.
 
 This is a foundation catalog, not a requirement that the production server binary depends on
 every listed crate. `apps/server` should depend only on the crates needed for its active
@@ -84,6 +90,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   `TransactionalEventBus` through GraphQL data. They do not extract or adapt Loco `AppContext`;
   the request/connection boundary continues to pass it only for resolvers that have not yet been migrated.
 - App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
+- `services::server_bootstrap` owns framework-neutral startup validation, default-superadmin initialization, runtime/worker setup and router composition; current Loco hooks only adapt host configuration into its explicit inputs, and the future Axum entrypoint will use the same functions.
   Alloy runtime bootstrap also registers `SharedAlloyRuntime` via `ServerRuntimeContext` from an explicit DB handle,
   and Alloy GraphQL receives this runtime as schema-owned data without Loco `AppContext`.
   Loco `AppContext` inside bootstrap remains only for current boundary adapters such as the mailer.
@@ -94,8 +101,8 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
   does not import Loco. `services/graphql_schema.rs` also accepts only `ServerRuntimeContext`;
   the current app bootstrap/controller boundary is responsible for the one-time adaptation of the host context.
-- Server event runtime builds the regular and transactional event bus from `ServerRuntimeContext` and no longer
-  re-exports `rustok_outbox::loco`; the crate-local Loco adapter remains until the dependency feature is removed.
+- Server event runtime builds the regular and transactional event bus from `ServerRuntimeContext`; `rustok-outbox`
+  exposes no Loco adapter or framework-specific composition path.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass Loco `AppContext` into request/connection data. `loco_rs::controller::Routes`
   remains only a temporary routing adapter until Phase 2.

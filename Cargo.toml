@@ -34,6 +34,9 @@ members = [
     "crates/rustok-index/admin",
     "crates/rustok-media/admin",
     "crates/rustok-media/cli",
+    "crates/rustok-profiles/cli",
+    "crates/rustok-auth/cli",
+    "crates/rustok-rbac/cli",
     "crates/rustok-outbox/admin",
     "crates/rustok-forum/admin",
     "crates/rustok-forum/storefront",
@@ -153,6 +156,12 @@ chrono-humanize = "0.2.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 async-trait = "0.1"
+aws-config = "1.8"
+aws-sdk-secretsmanager = "1.109"
+azure_identity = "1.0"
+azure_core = "1.1"
+azure_security_keyvault_secrets = "1.0"
+google-cloud-secretmanager-v1 = "1.10"
 
 # OpenTelemetry
 # NOTE: tracing-opentelemetry 0.32.x is coupled with opentelemetry 0.31.x.
@@ -175,6 +184,7 @@ once_cell = "1.21"
 hex = "0.4"
 iggy = "0.10.0"
 reqwest = { version = "0.13", features = ["json", "query", "form"] }
+url = "2.5"
 reqwest-middleware = "0.3.3"
 reqwest-retry = "0.5.0"
 prometheus = "0.14"
@@ -188,6 +198,7 @@ rig-vertexai = "=0.39.0"
 
 # Internal crates
 rustok-core = { path = "crates/rustok-core" }
+rustok-modules = { path = "crates/rustok-modules" }
 rustok-events = { path = "crates/rustok-events" }
 rustok-commerce-foundation = { path = "crates/rustok-commerce-foundation" }
 rustok-commerce = { path = "crates/rustok-commerce" }
@@ -222,11 +233,13 @@ rustok-seo-admin-support = { path = "crates/rustok-seo-admin-support" }
 rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api", default-features = false }
 rustok-runtime = { path = "crates/rustok-runtime" }
+rustok-sandbox = { path = "crates/rustok-sandbox" }
 rustok-web = { path = "crates/rustok-web" }
 rustok-fba = { path = "crates/rustok-fba" }
 rustok-cli-core = { path = "crates/rustok-cli-core" }
 rustok-cli-registry = { path = "crates/rustok-cli-registry" }
 rustok-cli-platform = { path = "crates/rustok-cli-platform" }
+rustok-build = { path = "crates/rustok-build" }
 rustok-graphql = { path = "crates/rustok-graphql" }
 rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
 rustok-ui-core = { path = "crates/rustok-ui-core" }
@@ -256,6 +269,9 @@ rustok-storage = { path = "crates/rustok-storage" }
 rustok-secrets = { path = "crates/rustok-secrets" }
 rustok-media = { path = "crates/rustok-media" }
 rustok-media-cli = { path = "crates/rustok-media/cli" }
+rustok-profiles-cli = { path = "crates/rustok-profiles/cli" }
+rustok-auth-cli = { path = "crates/rustok-auth/cli" }
+rustok-rbac-cli = { path = "crates/rustok-rbac/cli" }
 flex = { path = "crates/flex" }
 alloy = { path = "crates/alloy" }
 rustok-workflow = { path = "crates/rustok-workflow" }

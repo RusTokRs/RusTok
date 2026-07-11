@@ -1,10 +1,10 @@
 use async_trait::async_trait;
-use loco_rs::mailer::EmailSender;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use rustok_auth::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,
-    AuthSessionRecord, AuthTokenRecord, AuthUserRecord,
+    AuthSessionRecord, AuthTokenRecord, AuthUserBackfillDbReader, AuthUserBackfillReadPort,
+    AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
 use crate::auth::{decode_invite_token, encode_password_reset_token, AuthConfig};
@@ -20,19 +20,13 @@ const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 pub struct ServerAuthLifecycleProvider {
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
-    mailer: Option<EmailSender>,
 }
 
 impl ServerAuthLifecycleProvider {
-    pub fn new(
-        runtime_ctx: ServerRuntimeContext,
-        auth_config: AuthConfig,
-        mailer: Option<EmailSender>,
-    ) -> Self {
+    pub fn new(runtime_ctx: ServerRuntimeContext, auth_config: AuthConfig) -> Self {
         Self {
             runtime_ctx,
             auth_config,
-            mailer,
         }
     }
 
@@ -224,12 +218,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             DEFAULT_RESET_TOKEN_TTL_SECS,
         )
         .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let email_service = email_service_from_ctx(
-            &self.runtime_ctx,
-            self.mailer.clone(),
-            context.locale.as_str(),
-        )
-        .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+        let email_service = email_service_from_ctx(&self.runtime_ctx, context.locale.as_str())
+            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
         let reset_url = password_reset_url(&self.runtime_ctx, &reset_token)
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
 
@@ -379,6 +369,18 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         .map_err(map_lifecycle_error)?;
 
         Ok(AcceptInviteRecord { email, role })
+    }
+}
+
+#[async_trait]
+impl AuthUserBackfillReadPort for ServerAuthLifecycleProvider {
+    async fn list_users_for_profile_backfill(
+        &self,
+        request: AuthUserBackfillReadRequest,
+    ) -> Result<Vec<AuthUserBackfillRecord>, AuthLifecycleMutationError> {
+        AuthUserBackfillDbReader::new(self.runtime_ctx.db_clone())
+            .list_users_for_profile_backfill(request)
+            .await
     }
 }
 

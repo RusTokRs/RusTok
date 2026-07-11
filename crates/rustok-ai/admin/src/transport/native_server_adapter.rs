@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
-    AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiProviderProfilePayload,
-    AiProviderTestResultPayload, AiSendMessageResultPayload, AiTaskProfilePayload,
-    AiToolProfilePayload,
+    AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiCredentialRefPayload,
+    AiProviderCatalogEntryPayload, AiProviderFieldPayload, AiProviderProfilePayload,
+    AiProviderSettingPayload, AiProviderTestResultPayload, AiSendMessageResultPayload,
+    AiTaskProfilePayload, AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -51,10 +52,10 @@ pub async fn fetch_session(
 pub async fn create_provider(
     slug: String,
     display_name: String,
-    provider_kind: String,
-    base_url: String,
+    provider_slug: String,
     model: String,
-    api_key_secret: Option<String>,
+    settings: Vec<AiProviderSettingPayload>,
+    credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
     capabilities: Vec<String>,
@@ -65,10 +66,10 @@ pub async fn create_provider(
     ai_create_provider_native(
         slug,
         display_name,
-        provider_kind,
-        base_url,
+        provider_slug,
         model,
-        api_key_secret,
+        settings,
+        credential_refs,
         temperature,
         max_tokens,
         capabilities,
@@ -83,8 +84,9 @@ pub async fn create_provider(
 pub async fn update_provider(
     id: String,
     display_name: String,
-    base_url: String,
     model: String,
+    settings: Vec<AiProviderSettingPayload>,
+    credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
     capabilities: Vec<String>,
@@ -96,8 +98,9 @@ pub async fn update_provider(
     ai_update_provider_native(
         id,
         display_name,
-        base_url,
         model,
+        settings,
+        credential_refs,
         temperature,
         max_tokens,
         capabilities,
@@ -290,6 +293,10 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
         let db = runtime_ctx.db_clone();
         Ok(AiAdminBootstrap {
             metrics: map_runtime_metrics(rustok_ai::AiManagementService::metrics_snapshot()),
+            provider_catalog: rustok_ai::provider_catalog()
+                .iter()
+                .map(map_provider_catalog_entry)
+                .collect(),
             providers: rustok_ai::AiManagementService::list_provider_profiles(&db, auth.tenant_id)
                 .await
                 .map_err(server_error)?
@@ -364,10 +371,10 @@ async fn ai_session_native(
 async fn ai_create_provider_native(
     slug: String,
     display_name: String,
-    provider_kind: String,
-    base_url: String,
+    provider_slug: String,
     model: String,
-    api_key_secret: Option<String>,
+    settings: Vec<AiProviderSettingPayload>,
+    credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
     capabilities: Vec<String>,
@@ -383,16 +390,19 @@ async fn ai_create_provider_native(
         ensure_ai_provider_manage_permission(&auth.permissions)?;
         let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::create_provider_profile(
             &db,
             &operator(&auth, &db).await?,
+            runtime.egress_policy(),
+            runtime.secret_registry(),
             rustok_ai::CreateAiProviderProfileInput {
                 slug,
                 display_name,
-                provider_kind: parse_provider_kind(&provider_kind)?,
-                base_url,
+                provider_slug: parse_provider_slug(&provider_slug)?,
                 model,
-                api_key_secret,
+                settings: parse_settings(settings)?,
+                credential_refs: parse_credential_refs(credential_refs)?,
                 temperature,
                 max_tokens,
                 capabilities: parse_capabilities(capabilities)?,
@@ -413,10 +423,10 @@ async fn ai_create_provider_native(
         let _ = (
             slug,
             display_name,
-            provider_kind,
-            base_url,
+            provider_slug,
             model,
-            api_key_secret,
+            settings,
+            credential_refs,
             temperature,
             max_tokens,
             capabilities,
@@ -438,8 +448,10 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
         ensure_ai_provider_manage_permission(&auth.permissions)?;
         let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::test_provider_profile(
             &db,
+            runtime.secret_registry(),
             auth.tenant_id,
             parse_uuid(&id, "id")?,
         )
@@ -464,8 +476,9 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
 async fn ai_update_provider_native(
     id: String,
     display_name: String,
-    base_url: String,
     model: String,
+    settings: Vec<AiProviderSettingPayload>,
+    credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
     capabilities: Vec<String>,
@@ -482,14 +495,18 @@ async fn ai_update_provider_native(
         ensure_ai_provider_manage_permission(&auth.permissions)?;
         let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::update_provider_profile(
             &db,
             &operator(&auth, &db).await?,
+            runtime.egress_policy(),
+            runtime.secret_registry(),
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiProviderProfileInput {
                 display_name,
-                base_url,
                 model,
+                settings: parse_settings(settings)?,
+                credential_refs: parse_credential_refs(credential_refs)?,
                 temperature,
                 max_tokens,
                 capabilities: parse_capabilities(capabilities)?,
@@ -511,8 +528,9 @@ async fn ai_update_provider_native(
         let _ = (
             id,
             display_name,
-            base_url,
             model,
+            settings,
+            credential_refs,
             temperature,
             max_tokens,
             capabilities,
@@ -1092,11 +1110,16 @@ fn ai_runtime_from_context(
         })?
         .0;
 
-    Ok(
-        rustok_ai::AiHostRuntime::new(runtime_ctx.db_clone(), event_bus, module_registry)
-            .with_storage(runtime_ctx.shared_get::<rustok_storage::StorageService>())
-            .with_alloy_runtime(runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()),
-    )
+    let mut runtime = rustok_ai::AiHostRuntime::new(runtime_ctx.db_clone(), event_bus, module_registry)
+        .with_storage(runtime_ctx.shared_get::<rustok_storage::StorageService>())
+        .with_alloy_runtime(runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>());
+    if let Some(registry) = runtime_ctx.shared_get::<rustok_ai::SharedAiSecretResolverRegistry>() {
+        runtime = runtime.with_secret_registry(registry.0);
+    }
+    if let Some(policy) = runtime_ctx.shared_get::<rustok_ai::SharedAiEgressPolicy>() {
+        runtime = runtime.with_egress_policy(policy.0);
+    }
+    Ok(runtime)
 }
 
 #[cfg(feature = "ssr")]
@@ -1160,18 +1183,74 @@ fn server_error(error: impl std::fmt::Display) -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
+fn map_provider_catalog_entry(
+    value: &rustok_ai::ProviderCatalogEntry,
+) -> AiProviderCatalogEntryPayload {
+    AiProviderCatalogEntryPayload {
+        slug: value.slug.to_string(),
+        display_name: value.display_name.to_string(),
+        features: value
+            .features
+            .iter()
+            .map(|feature| format!("{feature:?}").to_ascii_lowercase())
+            .collect(),
+        settings_schema: value.settings.iter().map(map_provider_field).collect(),
+        credential_schema: value.credentials.iter().map(map_provider_field).collect(),
+        default_settings: value
+            .default_settings
+            .iter()
+            .map(|setting| AiProviderSettingPayload {
+                key: setting.key.to_string(),
+                text_value: Some(setting.value.to_string()),
+                integer_value: None,
+                boolean_value: None,
+            })
+            .collect(),
+        compiled_in: value.compiled_in,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_provider_field(value: &rustok_ai::ProviderConfigField) -> AiProviderFieldPayload {
+    AiProviderFieldPayload {
+        key: value.key.to_string(),
+        label: value.label.to_string(),
+        kind: format!("{:?}", value.kind).to_ascii_lowercase(),
+        required: value.required,
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_provider(value: rustok_ai::AiProviderProfileRecord) -> AiProviderProfilePayload {
     AiProviderProfilePayload {
         id: value.id.to_string(),
         slug: value.slug,
         display_name: value.display_name,
-        provider_kind: value.provider_kind.slug().to_string(),
-        base_url: value.base_url,
+        provider_slug: value.provider_slug.to_string(),
         model: value.model,
+        settings: value
+            .settings
+            .into_iter()
+            .map(|(key, value)| AiProviderSettingPayload {
+                key,
+                text_value: value.as_str().map(ToString::to_string),
+                integer_value: value.as_i64(),
+                boolean_value: value.as_bool(),
+            })
+            .collect(),
+        credential_refs: value
+            .credential_refs
+            .into_iter()
+            .map(|(key, value)| AiCredentialRefPayload {
+                key,
+                resolver: value.resolver,
+                secret_key: value.key,
+            })
+            .collect(),
         temperature: value.temperature,
         max_tokens: value.max_tokens,
         is_active: value.is_active,
-        has_secret: value.has_secret,
+        has_credentials: value.has_credentials,
         capabilities: value
             .capabilities
             .into_iter()
@@ -1198,8 +1277,8 @@ fn map_runtime_metrics(value: rustok_ai::AiRuntimeMetricsSnapshot) -> AiRuntimeM
         locale_fallback_total: value.locale_fallback_total,
         run_latency_ms_total: value.run_latency_ms_total,
         run_latency_samples: value.run_latency_samples,
-        provider_kind_totals: value
-            .provider_kind_totals
+        provider_slug_totals: value
+            .provider_slug_totals
             .into_iter()
             .map(|bucket| AiMetricBucketPayload {
                 label: bucket.label,
@@ -1364,7 +1443,7 @@ fn map_recent_run(value: rustok_ai::AiRecentRunRecord) -> AiRecentRunPayload {
         session_title: value.session_title,
         provider_profile_id: value.provider_profile_id.to_string(),
         provider_display_name: value.provider_display_name,
-        provider_kind: value.provider_kind.slug().to_string(),
+        provider_slug: value.provider_slug.to_string(),
         task_profile_id: value.task_profile_id.map(|value| value.to_string()),
         task_profile_slug: value.task_profile_slug,
         status: value.status,
@@ -1495,13 +1574,53 @@ fn parse_execution_mode(value: &str) -> Result<rustok_ai::ExecutionMode, ServerF
 }
 
 #[cfg(feature = "ssr")]
-fn parse_provider_kind(value: &str) -> Result<rustok_ai::ProviderKind, ServerFnError> {
-    match value.trim() {
-        "anthropic" => Ok(rustok_ai::ProviderKind::Anthropic),
-        "gemini" => Ok(rustok_ai::ProviderKind::Gemini),
-        "openai_compatible" | "" => Ok(rustok_ai::ProviderKind::OpenAiCompatible),
-        _ => Err(ServerFnError::new("Invalid provider_kind")),
+fn parse_provider_slug(value: &str) -> Result<rustok_ai::ProviderSlug, ServerFnError> {
+    rustok_ai::ProviderSlug::new(value).map_err(ServerFnError::new)
+}
+
+#[cfg(feature = "ssr")]
+fn parse_settings(
+    values: Vec<AiProviderSettingPayload>,
+) -> Result<std::collections::BTreeMap<String, serde_json::Value>, ServerFnError> {
+    let mut settings = std::collections::BTreeMap::new();
+    for value in values {
+        let candidates = [
+            value.text_value.map(serde_json::Value::String),
+            value.integer_value.map(serde_json::Value::from),
+            value.boolean_value.map(serde_json::Value::from),
+        ];
+        let mut candidates = candidates.into_iter().flatten();
+        let typed_value = candidates
+            .next()
+            .ok_or_else(|| ServerFnError::new(format!("Setting `{}` has no value", value.key)))?;
+        if candidates.next().is_some() || settings.insert(value.key.clone(), typed_value).is_some() {
+            return Err(ServerFnError::new(format!(
+                "Setting `{}` is ambiguous or duplicated",
+                value.key
+            )));
+        }
     }
+    Ok(settings)
+}
+
+#[cfg(feature = "ssr")]
+fn parse_credential_refs(
+    values: Vec<AiCredentialRefPayload>,
+) -> Result<std::collections::BTreeMap<String, rustok_secrets::SecretRef>, ServerFnError> {
+    let mut refs = std::collections::BTreeMap::new();
+    for value in values {
+        let reference = rustok_secrets::SecretRef {
+            resolver: value.resolver,
+            key: value.secret_key,
+        };
+        if refs.insert(value.key.clone(), reference).is_some() {
+            return Err(ServerFnError::new(format!(
+                "Credential `{}` is duplicated",
+                value.key
+            )));
+        }
+    }
+    Ok(refs)
 }
 
 #[cfg(feature = "ssr")]

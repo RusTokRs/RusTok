@@ -116,7 +116,14 @@ impl From<&crate::ProviderCatalogEntry> for AiProviderCatalogEntryGql {
             features: value.features.iter().copied().map(Into::into).collect(),
             settings_schema: value.settings.iter().map(Into::into).collect(),
             credential_schema: value.credentials.iter().map(Into::into).collect(),
-            default_settings: Vec::new(),
+            default_settings: value
+                .default_settings
+                .iter()
+                .map(|setting| AiProviderSettingDefaultGql {
+                    key: setting.key.to_string(),
+                    value: setting.value.to_string(),
+                })
+                .collect(),
             compiled_in: value.compiled_in,
         }
     }

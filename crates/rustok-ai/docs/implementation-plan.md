@@ -2,11 +2,22 @@
 
 ## Current state
 
-`rustok-ai` is the capability-owned AI host/orchestrator. It provides
-OpenAI-compatible, Anthropic, and Gemini provider adapters; task-profile
+`rustok-ai` is the capability-owned AI host/orchestrator. It uses Rig 0.39 through a
+single registry-driven engine; task-profile
 routing; direct first-party and MCP execution; persisted sessions, runs,
 traces, and approvals; GraphQL; and capability-owned Leptos and Next admin
 surfaces. The detailed supported scope is maintained in the crate README.
+
+The Rig cutover is owner-contained: provider profiles persist a stable
+`provider_slug`, typed settings and external `credential_refs`; `ProviderSlug`,
+the catalog and `ProviderFeature` prevent provider drift; and `rustok-secrets`
+resolves tenant-authorized external secrets. `AiMigrationSource` is exported by
+this crate for module-registry composition. No AI implementation or provider
+knowledge belongs in `apps/server`.
+
+The catalog is locked to
+`contracts/rig-0.39-provider-catalog.json`. Updating Rig or adding a provider
+requires an intentional snapshot change and the catalog factory test to pass.
 
 ## FFA/FBA readiness
 
@@ -40,6 +51,10 @@ surfaces. The detailed supported scope is maintained in the crate README.
    execution, approval, and GraphQL/native admin paths against an available
    runtime environment. Done when the evidence package covers normal and
    degraded execution without replacing the parallel GraphQL contract.
+4. **Complete Rig cutover evidence.** Maintain catalog factory tests, migration
+   preflight tests, secret-resolver contract tests and opt-in provider live
+   connectivity tests for every descriptor. Product vector-store schema and
+   RAG UI remain outside this implementation wave.
 
 ## Verification
 
@@ -47,6 +62,9 @@ surfaces. The detailed supported scope is maintained in the crate README.
 - `npm run verify:ai:fba-baseline`
 - `npm run verify:orchestrator:fba-runtime-order`
 - `cargo test -p rustok-ai --features server metrics::tests direct::tests service::tests -- --nocapture`
+- `cargo test -p rustok-ai --features server migrations::m20260710_000001_rig_provider_profiles::tests -- --nocapture`
+- `cargo test -p rustok-ai --features server engine::agent_driver::tests -- --nocapture`
+- `cargo test -p rustok-secrets`
 
 ## References
 

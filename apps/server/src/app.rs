@@ -5,24 +5,20 @@ use loco_rs::{
     boot::{create_app, BootResult, StartMode},
     config::Config,
     environment::Environment,
-    task::Tasks,
     Result,
 };
 use std::path::Path;
 
-use sea_orm::EntityTrait;
-
 use crate::channels;
-use crate::common::settings::{EmailProvider, RustokSettings};
+use crate::common::settings::RustokSettings;
 use crate::controllers;
-use crate::initializers;
 use crate::routes::{self, AppRoutes, Routes};
 use crate::seeds;
-use crate::services::app_lifecycle::{apply_boot_database_fallback, connect_runtime_workers};
-use crate::services::app_router::compose_application_router;
-use crate::services::app_runtime::bootstrap_app_runtime;
-use crate::tasks;
-use loco_rs::prelude::Queue;
+use crate::services::app_lifecycle::resolve_boot_database_uri;
+use crate::services::server_bootstrap::bootstrap_application_router;
+use crate::services::server_runtime_context::{
+    auth_config_from_loco_app_context, ServerRuntimeContext,
+};
 
 use crate::error::Error;
 use migration::Migrator;
@@ -57,7 +53,11 @@ impl Hooks for App {
         environment: &Environment,
         mut config: Config,
     ) -> Result<BootResult> {
-        if apply_boot_database_fallback(&mut config) {
+        if let Some(database_uri) = resolve_boot_database_uri(
+            std::env::var("DATABASE_URL").is_ok(),
+            config.database.uri.as_str(),
+        ) {
+            config.database.uri = database_uri.to_string();
             tracing::info!(
                 "No external database found. Falling back to local SQLite: {}",
                 config.database.uri
@@ -67,47 +67,25 @@ impl Hooks for App {
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 
-    async fn after_context(mut ctx: AppContext) -> Result<AppContext> {
-        check_production_secrets(&ctx)?;
+    async fn after_context(ctx: AppContext) -> Result<AppContext> {
+        let jwt_secret = ctx
+            .config
+            .auth
+            .as_ref()
+            .and_then(|auth| auth.jwt.as_ref())
+            .map(|jwt| jwt.secret.clone())
+            .unwrap_or_default();
         let runtime_ctx =
             crate::services::server_runtime_context::ServerRuntimeContext::from_loco_app_context(
                 &ctx,
             );
-        initializers::superadmin::ensure_default_superadmin(&runtime_ctx).await?;
+        crate::services::server_bootstrap::initialize_server_context(
+            &runtime_ctx,
+            &jwt_secret,
+            &ctx.config.database.uri,
+        )
+        .await?;
 
-        // Initialise Loco's ctx.mailer when email.provider = "loco".
-        // This must happen before after_routes so every request handler
-        // can call email_service_from_ctx() and get a working Loco mailer.
-        if let Ok(settings) = RustokSettings::from_settings(&ctx.config.settings) {
-            if settings.email.provider == EmailProvider::Loco {
-                match loco_rs::mailer::EmailSender::smtp(&loco_rs::config::SmtpMailer {
-                    enable: settings.email.enabled,
-                    host: settings.email.smtp.host,
-                    port: settings.email.smtp.port,
-                    secure: settings.email.smtp.port == 465,
-                    auth: if settings.email.smtp.username.is_empty() {
-                        None
-                    } else {
-                        Some(loco_rs::config::MailerAuth {
-                            user: settings.email.smtp.username,
-                            password: settings.email.smtp.password,
-                        })
-                    },
-                    hello_name: None,
-                }) {
-                    Ok(sender) => {
-                        ctx.mailer = Some(sender);
-                        tracing::info!("Loco Mailer initialised from rustok email settings");
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            error = %err,
-                            "Failed to initialise Loco Mailer; emails will be disabled"
-                        );
-                    }
-                }
-            }
-        }
         Ok(ctx)
     }
 
@@ -165,60 +143,39 @@ impl Hooks for App {
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
-        tracing::info!("RusTok after_routes bootstrap started");
         let rustok_settings = RustokSettings::from_settings(&ctx.config.settings)
             .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
-        let runtime = bootstrap_app_runtime(ctx, &rustok_settings).await?;
-        tracing::info!("RusTok app runtime bootstrap completed");
-        connect_runtime_workers(ctx).await?;
-        tracing::info!("RusTok runtime workers connected");
-
-        let router = compose_application_router(router, ctx, runtime, &rustok_settings)?;
-        tracing::info!("RusTok application router composed");
-
-        Ok(router)
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+        let auth_config = auth_config_from_loco_app_context(ctx)?;
+        let settings_snapshot = ctx
+            .config
+            .settings
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({}));
+        bootstrap_application_router(
+            router,
+            runtime_ctx,
+            auth_config,
+            settings_snapshot,
+            rustok_settings,
+        )
+        .await
     }
 
     async fn truncate(ctx: &AppContext) -> Result<()> {
         tracing::info!("Truncating database...");
 
-        let releases = crate::models::release::Entity::delete_many()
-            .exec(&ctx.db)
-            .await?;
-        let builds = crate::models::build::Entity::delete_many()
-            .exec(&ctx.db)
-            .await?;
-        let tenant_modules = crate::models::_entities::tenant_modules::Entity::delete_many()
-            .exec(&ctx.db)
-            .await?;
-        let sessions = crate::models::sessions::Entity::delete_many()
-            .exec(&ctx.db)
-            .await?;
-        let users = crate::models::users::Entity::delete_many()
-            .exec(&ctx.db)
-            .await?;
-        let tenants = crate::models::tenants::Entity::delete_many()
-            .exec(&ctx.db)
-            .await?;
+        let report = crate::services::app_lifecycle::truncate_server_database(&ctx.db).await?;
 
         tracing::info!(
-            releases = releases.rows_affected,
-            builds = builds.rows_affected,
-            tenant_modules = tenant_modules.rows_affected,
-            sessions = sessions.rows_affected,
-            users = users.rows_affected,
-            tenants = tenants.rows_affected,
+            releases = report.releases,
+            builds = report.builds,
+            tenant_modules = report.tenant_modules,
+            sessions = report.sessions,
+            users = report.users,
+            tenants = report.tenants,
             "Database truncation complete"
         );
-        Ok(())
-    }
-
-    fn register_tasks(tasks: &mut Tasks) {
-        tasks::register(tasks);
-    }
-
-    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
-        // Workers are started in after_routes where the full runtime is available.
         Ok(())
     }
 
@@ -231,130 +188,20 @@ impl Hooks for App {
 
     /// Graceful shutdown: stop background workers and flush telemetry.
     async fn on_shutdown(ctx: &AppContext) {
-        use crate::services::app_lifecycle::StopHandle;
-
-        if let Some(handle) = ctx.shared_store.get::<StopHandle>() {
-            tracing::info!("Stopping background workers…");
-            handle.stop().await;
-        }
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+        crate::services::app_lifecycle::shutdown_runtime_workers(&runtime_ctx).await;
 
         tracing::info!("RusTok server shut down cleanly");
     }
 }
 
 /// Abort startup when known dev/test secrets are detected in a release build.
-///
-/// This is a defence-in-depth guard: a misconfigured production deployment that
-/// copies the sample config verbatim will fail loudly at boot time rather than
-/// silently running with a predictable JWT secret.  The check is compiled out in
-/// debug builds so local development and tests are unaffected.
-fn check_production_secrets(ctx: &AppContext) -> Result<()> {
-    #[cfg(not(debug_assertions))]
-    {
-        let jwt_secret = ctx
-            .config
-            .auth
-            .as_ref()
-            .and_then(|auth| auth.jwt.as_ref())
-            .map(|jwt| jwt.secret.as_str())
-            .unwrap_or("");
-
-        if let Some(fragment) = known_dev_jwt_fragment(jwt_secret) {
-            return Err(Error::Message(format!(
-                "FATAL: JWT secret contains a known development value (\"{fragment}\"). \
-                 Set a strong, random secret in your production configuration."
-            )));
-        }
-
-        if !jwt_secret.is_empty() && jwt_secret.len() < 32 {
-            return Err(Error::Message(
-                "FATAL: JWT secret is too short (< 32 characters) for production use. \
-                 Generate a cryptographically random secret of at least 32 characters."
-                    .to_string(),
-            ));
-        }
-
-        if let Some(pattern) = sample_database_credentials_pattern(&ctx.config.database.uri) {
-            return Err(Error::Message(format!(
-                "FATAL: database URI matches known sample credentials ({pattern}). \
-                 Set production database credentials before starting the release build."
-            )));
-        }
-
-        if let Some((variable, password)) = configured_superadmin_password() {
-            if let Some(sample) = known_sample_superadmin_password(&password) {
-                return Err(Error::Message(format!(
-                    "FATAL: env var {variable} contains sample superadmin password \"{sample}\". \
-                     Set a unique secret before starting the release build."
-                )));
-            }
-        }
-    }
-
-    let _ = ctx; // suppress unused warning in debug builds
-    Ok(())
-}
-
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn known_dev_jwt_fragment(secret: &str) -> Option<&'static str> {
-    const KNOWN_DEV_SUBSTRINGS: &[&str] = &[
-        "dev-secret",
-        "test-secret",
-        "change-in-production",
-        "dev_secret",
-        "rustok-dev-secret",
-    ];
-
-    KNOWN_DEV_SUBSTRINGS
-        .iter()
-        .copied()
-        .find(|fragment| secret.contains(fragment))
-}
-
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn sample_database_credentials_pattern(uri: &str) -> Option<&'static str> {
-    const SAMPLE_PATTERNS: &[&str] = &["://postgres:postgres@", "://rustok:rustok@"];
-
-    SAMPLE_PATTERNS
-        .iter()
-        .copied()
-        .find(|pattern| uri.contains(pattern))
-}
-
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn configured_superadmin_password() -> Option<(&'static str, String)> {
-    for key in [
-        "SUPERADMIN_PASSWORD",
-        "SEED_ADMIN_PASSWORD",
-        "RUSTOK_DEV_SEED_PASSWORD",
-    ] {
-        if let Ok(value) = std::env::var(key) {
-            let value = value.trim().to_string();
-            if !value.is_empty() {
-                return Some((key, value));
-            }
-        }
-    }
-
-    None
-}
-
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn known_sample_superadmin_password(password: &str) -> Option<&'static str> {
-    const SAMPLE_PASSWORDS: &[&str] =
-        &["change-me-in-production", "admin12345", "dev-password-123"];
-
-    SAMPLE_PASSWORDS
-        .iter()
-        .copied()
-        .find(|candidate| password == *candidate)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
+    use super::App;
+    use crate::services::server_bootstrap::{
         known_dev_jwt_fragment, known_sample_superadmin_password,
-        sample_database_credentials_pattern, App,
+        sample_database_credentials_pattern,
     };
     use crate::testing::get_server_app_context;
     use axum::body::{to_bytes, Body};
@@ -615,19 +462,20 @@ mod tests {
     async fn build_runtime_router(ctx: &loco_rs::app::AppContext) -> axum::Router {
         let settings = crate::common::settings::RustokSettings::from_settings(&ctx.config.settings)
             .expect("rustok settings should parse for test runtime");
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
 
-        if !ctx.shared_store.contains::<Arc<ModuleRuntimeExtensions>>() {
+        if !runtime_ctx.shared_contains::<Arc<ModuleRuntimeExtensions>>() {
             let registry = crate::modules::build_registry();
             let extensions =
                 crate::services::module_event_dispatcher::build_shared_runtime_extensions(
                     &registry, &settings,
                 );
-            ctx.shared_store.insert(extensions);
+            runtime_ctx.shared_insert(extensions);
         }
 
-        if !ctx.shared_store.contains::<Arc<dyn EventTransport>>() {
+        if !runtime_ctx.shared_contains::<Arc<dyn EventTransport>>() {
             let transport: Arc<dyn EventTransport> = Arc::new(MemoryTransport::new());
-            ctx.shared_store.insert(transport);
+            runtime_ctx.shared_insert(transport);
         }
 
         App::routes(ctx)
@@ -664,14 +512,13 @@ mod tests {
         .expect("after_routes timed out")
         .expect("after_routes should wire runtime");
 
-        assert!(ctx.shared_store.contains::<Arc<EventRuntime>>());
-        assert!(ctx
-            .shared_store
-            .contains::<SharedMarketplaceCatalogService>());
-        assert!(ctx.shared_store.contains::<SharedGraphqlSchema>());
-        assert!(ctx.shared_store.contains::<SharedApiRateLimiter>());
-        assert!(ctx.shared_store.contains::<SharedAuthRateLimiter>());
-        assert!(ctx.shared_store.contains::<SharedOAuthRateLimiter>());
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+        assert!(runtime_ctx.shared_contains::<Arc<EventRuntime>>());
+        assert!(runtime_ctx.shared_contains::<SharedMarketplaceCatalogService>());
+        assert!(runtime_ctx.shared_contains::<SharedGraphqlSchema>());
+        assert!(runtime_ctx.shared_contains::<SharedApiRateLimiter>());
+        assert!(runtime_ctx.shared_contains::<SharedAuthRateLimiter>());
+        assert!(runtime_ctx.shared_contains::<SharedOAuthRateLimiter>());
 
         let response = timeout(
             Duration::from_secs(30),

@@ -5,11 +5,18 @@
 //! tenant cannot redirect secret resolution to an arbitrary endpoint.
 
 use std::{collections::HashMap, fmt, path::PathBuf, sync::Arc, time::Duration};
+use uuid::Uuid;
 
 use async_trait::async_trait;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+
+mod cloud;
+mod remote;
+
+pub use cloud::{AwsSecretsManagerResolver, AzureKeyVaultResolver, GcpSecretManagerResolver};
+pub use remote::{KubernetesSecretResolver, VaultAuth, VaultResolver};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SecretRef {
@@ -29,6 +36,8 @@ pub enum SecretError {
     ResolverNotFound(String),
     #[error("secret reference key must not be blank")]
     BlankKey,
+    #[error("secret key `{key}` is forbidden by resolver `{resolver}` policy")]
+    ForbiddenKey { resolver: String, key: String },
     #[error("secret `{key}` was not found in resolver `{resolver}`")]
     NotFound { resolver: String, key: String },
     #[error("secret resolver `{resolver}` failed: {message}")]
@@ -40,9 +49,34 @@ pub trait SecretResolver: Send + Sync {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SecretAccessPolicy {
+    DenyAll,
+    Exact(Vec<String>),
+    Prefix(Vec<String>),
+    TenantPrefix { prefix: String },
+}
+
+impl SecretAccessPolicy {
+    fn allows(&self, tenant_id: Uuid, key: &str) -> bool {
+        match self {
+            Self::DenyAll => false,
+            Self::Exact(values) => values.iter().any(|value| value == key),
+            Self::Prefix(values) => values.iter().any(|value| key.starts_with(value)),
+            Self::TenantPrefix { prefix } => key.starts_with(&format!("{prefix}{tenant_id}/")),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ResolverRegistration {
+    resolver: Arc<dyn SecretResolver>,
+    policy: SecretAccessPolicy,
+}
+
 #[derive(Clone)]
 pub struct SecretResolverRegistry {
-    resolvers: Arc<HashMap<String, Arc<dyn SecretResolver>>>,
+    resolvers: Arc<HashMap<String, ResolverRegistration>>,
     cache: Arc<RwLock<HashMap<SecretRef, CachedSecret>>>,
     ttl: Duration,
 }
@@ -70,9 +104,23 @@ impl SecretResolverRegistry {
         SecretResolverRegistryBuilder::default()
     }
 
-    pub async fn resolve(&self, reference: &SecretRef) -> Result<SecretString, SecretError> {
+    pub async fn resolve_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        reference: &SecretRef,
+    ) -> Result<SecretString, SecretError> {
         if reference.key.trim().is_empty() {
             return Err(SecretError::BlankKey);
+        }
+        let registration = self
+            .resolvers
+            .get(&reference.resolver)
+            .ok_or_else(|| SecretError::ResolverNotFound(reference.resolver.clone()))?;
+        if !registration.policy.allows(tenant_id, &reference.key) {
+            return Err(SecretError::ForbiddenKey {
+                resolver: reference.resolver.clone(),
+                key: reference.key.clone(),
+            });
         }
         {
             let cache = self.cache.read().await;
@@ -82,11 +130,7 @@ impl SecretResolverRegistry {
                 }
             }
         }
-        let resolver = self
-            .resolvers
-            .get(&reference.resolver)
-            .ok_or_else(|| SecretError::ResolverNotFound(reference.resolver.clone()))?;
-        let value = resolver.resolve(&reference.key).await?;
+        let value = registration.resolver.resolve(&reference.key).await?;
         self.cache.write().await.insert(
             reference.clone(),
             CachedSecret {
@@ -113,7 +157,7 @@ impl SecretResolverRegistry {
 
 #[derive(Default)]
 pub struct SecretResolverRegistryBuilder {
-    resolvers: HashMap<String, Arc<dyn SecretResolver>>,
+    resolvers: HashMap<String, ResolverRegistration>,
     ttl: Option<Duration>,
 }
 
@@ -122,8 +166,15 @@ impl SecretResolverRegistryBuilder {
         mut self,
         alias: impl Into<String>,
         resolver: impl SecretResolver + 'static,
+        policy: SecretAccessPolicy,
     ) -> Self {
-        self.resolvers.insert(alias.into(), Arc::new(resolver));
+        self.resolvers.insert(
+            alias.into(),
+            ResolverRegistration {
+                resolver: Arc::new(resolver),
+                policy,
+            },
+        );
         self
     }
 
@@ -208,20 +259,47 @@ impl SecretResolver for MountedFileResolver {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
     use super::*;
     use secrecy::ExposeSecret;
+    use tokio::sync::Mutex;
+
+    #[derive(Clone)]
+    struct RotatingResolver {
+        value: Arc<Mutex<String>>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl SecretResolver for RotatingResolver {
+        async fn resolve(&self, _key: &str) -> Result<SecretString, SecretError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(SecretString::from(self.value.lock().await.clone()))
+        }
+    }
 
     #[tokio::test]
     async fn registry_resolves_and_redacts_env_secrets() {
         unsafe { std::env::set_var("RUSTOK_SECRET_TEST", "top-secret") };
         let registry = SecretResolverRegistry::builder()
-            .resolver("env", EnvResolver)
+            .resolver(
+                "env",
+                EnvResolver,
+                SecretAccessPolicy::Exact(vec!["RUSTOK_SECRET_TEST".to_string()]),
+            )
             .build();
         let value = registry
-            .resolve(&SecretRef {
-                resolver: "env".to_string(),
-                key: "RUSTOK_SECRET_TEST".to_string(),
-            })
+            .resolve_for_tenant(
+                Uuid::nil(),
+                &SecretRef {
+                    resolver: "env".to_string(),
+                    key: "RUSTOK_SECRET_TEST".to_string(),
+                },
+            )
             .await
             .expect("env secret should resolve");
         assert_eq!(value.expose_secret(), "top-secret");
@@ -233,12 +311,97 @@ mod tests {
     async fn unknown_resolver_fails_explicitly() {
         let registry = SecretResolverRegistry::builder().build();
         let error = registry
-            .resolve(&SecretRef {
-                resolver: "vault-prod".to_string(),
-                key: "ai/openai".to_string(),
-            })
+            .resolve_for_tenant(
+                Uuid::nil(),
+                &SecretRef {
+                    resolver: "vault-prod".to_string(),
+                    key: "ai/openai".to_string(),
+                },
+            )
             .await
             .expect_err("unknown resolver must fail");
         assert!(error.to_string().contains("vault-prod"));
+    }
+
+    #[tokio::test]
+    async fn cache_is_invalidated_after_secret_rotation() {
+        let resolver = RotatingResolver {
+            value: Arc::new(Mutex::new("first".to_string())),
+            calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let calls = Arc::clone(&resolver.calls);
+        let value = Arc::clone(&resolver.value);
+        let reference = SecretRef {
+            resolver: "rotation".to_string(),
+            key: "tenant/secret".to_string(),
+        };
+        let registry = SecretResolverRegistry::builder()
+            .resolver(
+                "rotation",
+                resolver,
+                SecretAccessPolicy::Prefix(vec!["tenant/".to_string()]),
+            )
+            .build();
+
+        assert_eq!(
+            registry
+                .resolve_for_tenant(Uuid::nil(), &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "first"
+        );
+        *value.lock().await = "rotated".to_string();
+        assert_eq!(
+            registry
+                .resolve_for_tenant(Uuid::nil(), &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "first"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        registry.invalidate(Some(&reference)).await;
+        assert_eq!(
+            registry
+                .resolve_for_tenant(Uuid::nil(), &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "rotated"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn tenant_prefix_policy_prevents_cross_tenant_resolution() {
+        let tenant = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let key = format!("tenants/{tenant}/provider-key");
+        unsafe { std::env::set_var(&key, "scoped-secret") };
+        let registry = SecretResolverRegistry::builder()
+            .resolver(
+                "env",
+                EnvResolver,
+                SecretAccessPolicy::TenantPrefix {
+                    prefix: "tenants/".to_string(),
+                },
+            )
+            .build();
+        let reference = SecretRef {
+            resolver: "env".to_string(),
+            key: key.clone(),
+        };
+        registry
+            .resolve_for_tenant(tenant, &reference)
+            .await
+            .unwrap();
+        let error = registry
+            .resolve_for_tenant(other, &reference)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, SecretError::ForbiddenKey { .. }));
+        unsafe { std::env::remove_var(key) };
     }
 }

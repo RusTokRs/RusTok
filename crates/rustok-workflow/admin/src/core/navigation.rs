@@ -3,7 +3,6 @@ pub struct WorkflowAdminNavViewModel {
     pub module_href: String,
     pub template_href: String,
     pub toggle_href: String,
-    pub legacy_href: &'static str,
 }
 
 pub fn workflow_admin_nav_view_model(
@@ -28,7 +27,6 @@ pub fn workflow_admin_nav_view_model(
         module_href,
         template_href,
         toggle_href,
-        legacy_href: "/workflows",
     }
 }
 
@@ -42,8 +40,6 @@ mod tests {
         assert_eq!(overview.module_href, "/modules/workflow");
         assert_eq!(overview.template_href, "/modules/workflow/templates");
         assert_eq!(overview.toggle_href, "/modules/workflow/templates");
-        assert_eq!(overview.legacy_href, "/workflows");
-
         let templates = workflow_admin_nav_view_model(Some("/workflow/"), true);
         assert_eq!(templates.toggle_href, "/modules/workflow");
 

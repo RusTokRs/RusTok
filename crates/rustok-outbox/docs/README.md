@@ -43,10 +43,10 @@ When backlog, retry or DLQ grows:
 
 - used by `apps/server` for migrations, runtime relay bootstrap and event transport wiring;
 - depends on `rustok-core` for module contracts and event transport abstractions, and on `rustok-api` for shared `PortContext`/`PortError` and write-policy primitives;
-- owns the outbox-specific Loco composition adapter in `rustok_outbox::loco`; the adapter is enabled by the `loco-adapter` feature and does not create a reverse dependency from `rustok-api`;
+- exposes host-neutral relay and transactional event contracts; the host supplies runtime composition without an outbox framework adapter;
 - can forward delivery to downstream transports like `rustok-iggy`, without owning provider-specific delivery semantics;
 - remains a `Core` module regardless of the fact that part of the bootstrap wiring lives in the host runtime.
-- module-level `health()` returns `Degraded` because without the host `AppContext` the module cannot check `sys_events`, relay worker state, backlog, lag and DLQ; specific checks are at `/health/ready`.
+- module-level `health()` returns `Degraded` when host runtime evidence is unavailable; specific checks are at `/health/ready`.
 
 ## Verification
 

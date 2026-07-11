@@ -4,33 +4,23 @@ pub use rustok_auth::{
     JwtAlgorithm, PasswordResetClaims,
 };
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use serde::Deserialize;
-
-pub type AuthHostContext = loco_rs::app::AppContext;
 
 // ─── Loco bridge ─────────────────────────────────────────────────────
 // Thin wrappers that convert `rustok_auth::AuthError` to the server error bridge.
 // All server code imports from `crate::auth`, never directly from `rustok_auth`.
 
 /// Build `AuthConfig` from Loco's `AppContext`.
-pub fn auth_config_from_ctx(ctx: &AuthHostContext) -> Result<AuthConfig> {
-    let auth = ctx
-        .config
-        .auth
-        .as_ref()
-        .and_then(|auth| auth.jwt.as_ref())
-        .ok_or_else(|| Error::InternalServerError)?;
-
-    let app_settings = ctx
-        .config
-        .settings
-        .as_ref()
-        .and_then(|value| serde_json::from_value::<AppSettings>(value.clone()).ok());
-
+pub fn auth_config_from_host_settings(
+    secret: String,
+    access_expiration: u64,
+    settings: Option<&serde_json::Value>,
+) -> Result<AuthConfig> {
+    let app_settings =
+        settings.and_then(|value| serde_json::from_value::<AppSettings>(value.clone()).ok());
     let auth_settings = app_settings.and_then(|s| s.auth).unwrap_or_default();
-
-    auth_config_from_parts(auth.secret.clone(), auth.expiration, auth_settings)
+    auth_config_from_parts(secret, access_expiration, auth_settings)
 }
 
 fn auth_config_from_parts(

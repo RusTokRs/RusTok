@@ -41,6 +41,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Module and Application Registry](./modules/registry.md)
 - [FFA/FBA Readiness Board and Boundary Evidence (inside module registry)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
 - [Module Platform Crate Registry](./modules/crates-registry.md)
+- [`rustok-modules` control-plane documentation](../crates/rustok-modules/docs/README.md)
+- [`rustok-sandbox` execution foundation documentation](../crates/rustok-sandbox/docs/README.md)
 - [`rustok-page-builder` Runtime Contract](../crates/rustok-page-builder/docs/README.md)
 - [Machine-readable FBA Registry Page Builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
 - [Machine-readable Page Builder Wave Evidence Template](../crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
@@ -96,6 +98,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Loco RS Exit Plan to Pure Axum and Custom CLI](./architecture/loco-exit-plan.md)
 - [ADR: Axum Runtime and Platform CLI Boundary](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md) — pure Axum server binary without maintenance CLI code, separate `rustok-cli`, module-local `cli/` adapters and generated registries for distribution-aware builds
 - [ADR: Lifecycle Hook Phases/Retry Contract](../DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) — `validated/running/committed/failed`, explicit `pre/post` hooks and retryable post-hook failures without partial rollback
+- [ADR: Neutral Sandbox Foundation](../DECISIONS/2026-07-11-neutral-sandbox-foundation.md) — one sandbox contract for Alloy-authored Rhai, WebAssembly module artifacts and future sidecars
 - [ADR: Shared API Contract Ownership](../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) — `Port*`, permission and locale contracts in `rustok-api`, one-way graph `rustok-core -> rustok-api` and owner-owned Loco adapter in `rustok-outbox`
 - [Channels](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)

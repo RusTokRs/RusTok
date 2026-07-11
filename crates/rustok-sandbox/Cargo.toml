@@ -1,0 +1,24 @@
+[package]
+name = "rustok-sandbox"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Neutral sandbox execution foundation for RusToK"
+
+[features]
+default = []
+rhai = ["dep:rhai-full", "dep:parking_lot"]
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+rhai-full = { package = "rhai", version = "=1.24.0", features = ["sync", "metadata"], optional = true }
+parking_lot = { version = "0.12", optional = true }
+
+[dev-dependencies]
+tokio.workspace = true

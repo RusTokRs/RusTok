@@ -32,12 +32,13 @@ type Provider = {
   id: string;
   slug: string;
   displayName: string;
-  providerKind: string;
-  baseUrl: string;
+  providerSlug: string;
   model: string;
+  settings: ProviderSetting[];
+  credentialRefs: CredentialRef[];
   temperature?: number | null;
   maxTokens?: number | null;
-  hasSecret: boolean;
+  hasCredentials: boolean;
   isActive: boolean;
   capabilities: string[];
   usagePolicy: {
@@ -45,6 +46,43 @@ type Provider = {
     deniedTaskProfiles: string[];
     restrictedRoleSlugs: string[];
   };
+};
+
+type ProviderSetting = {
+  key: string;
+  textValue?: string | null;
+  integerValue?: number | null;
+  booleanValue?: boolean | null;
+};
+
+type ProviderSettingInput = {
+  key: string;
+  textValue?: string;
+  integerValue?: number;
+  booleanValue?: boolean;
+};
+
+type CredentialRef = {
+  key: string;
+  resolver: string;
+  secretKey: string;
+};
+
+type ProviderField = {
+  key: string;
+  label: string;
+  kind: 'TEXT' | 'URL' | 'INTEGER' | 'BOOLEAN' | 'SECRET_REF';
+  required: boolean;
+};
+
+type ProviderCatalogEntry = {
+  slug: string;
+  displayName: string;
+  features: string[];
+  settingsSchema: ProviderField[];
+  credentialSchema: ProviderField[];
+  defaultSettings: Array<{ key: string; value: string }>;
+  compiledIn: boolean;
 };
 
 type TaskProfile = {
@@ -140,7 +178,7 @@ type RuntimeMetrics = {
   localeFallbackTotal: number;
   runLatencyMsTotal: number;
   runLatencySamples: number;
-  providerKindTotals: MetricBucket[];
+  providerSlugTotals: MetricBucket[];
   executionTargetTotals: MetricBucket[];
   taskProfileTotals: MetricBucket[];
   resolvedLocaleTotals: MetricBucket[];
@@ -152,7 +190,7 @@ type RecentRun = {
   sessionTitle: string;
   providerProfileId: string;
   providerDisplayName: string;
-  providerKind: string;
+  providerSlug: string;
   taskProfileId?: string | null;
   taskProfileSlug?: string | null;
   status: string;
@@ -208,21 +246,28 @@ const BOOTSTRAP_QUERY = `
       localeFallbackTotal
       runLatencyMsTotal
       runLatencySamples
-      providerKindTotals { label total }
+      providerSlugTotals { label total }
       executionTargetTotals { label total }
       taskProfileTotals { label total }
       resolvedLocaleTotals { label total }
+    }
+    aiProviderCatalog {
+      slug displayName features compiledIn
+      settingsSchema { key label kind required }
+      credentialSchema { key label kind required }
+      defaultSettings { key value }
     }
     aiProviderProfiles {
       id
       slug
       displayName
-      providerKind
-      baseUrl
+      providerSlug
       model
+      settings { key textValue integerValue booleanValue }
+      credentialRefs { key resolver secretKey }
       temperature
       maxTokens
-      hasSecret
+      hasCredentials
       isActive
       capabilities
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
@@ -236,7 +281,7 @@ const BOOTSTRAP_QUERY = `
       sessionTitle
       providerProfileId
       providerDisplayName
-      providerKind
+      providerSlug
       taskProfileId
       taskProfileSlug
       status
@@ -269,7 +314,9 @@ const SESSION_QUERY = `
     aiChatSession(id: $id) {
       session { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
       providerProfile {
-        id slug displayName providerKind baseUrl model temperature maxTokens hasSecret isActive capabilities
+        id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
+        settings { key textValue integerValue booleanValue }
+        credentialRefs { key resolver secretKey }
         usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
       }
       taskProfile { id slug displayName description targetCapability systemPrompt allowedProviderProfileIds preferredProviderProfileIds fallbackStrategy toolProfileId defaultExecutionMode isActive }
@@ -308,7 +355,9 @@ const AI_SESSION_EVENTS_SUBSCRIPTION = `
 const CREATE_PROVIDER_MUTATION = `
   mutation CreateAiProviderProfile($input: CreateAiProviderProfileInputGql!) {
     createAiProviderProfile(input: $input) {
-      id slug displayName providerKind baseUrl model temperature maxTokens hasSecret isActive capabilities
+      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
+      settings { key textValue integerValue booleanValue }
+      credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
   }
@@ -323,7 +372,9 @@ const TEST_PROVIDER_MUTATION = `
 const UPDATE_PROVIDER_MUTATION = `
   mutation UpdateAiProviderProfile($id: UUID!, $input: UpdateAiProviderProfileInputGql!) {
     updateAiProviderProfile(id: $id, input: $input) {
-      id slug displayName providerKind baseUrl model temperature maxTokens hasSecret isActive capabilities
+      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
+      settings { key textValue integerValue booleanValue }
+      credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
   }
@@ -332,7 +383,9 @@ const UPDATE_PROVIDER_MUTATION = `
 const DEACTIVATE_PROVIDER_MUTATION = `
   mutation DeactivateAiProviderProfile($id: UUID!) {
     deactivateAiProviderProfile(id: $id) {
-      id slug displayName providerKind baseUrl model temperature maxTokens hasSecret isActive capabilities
+      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
+      settings { key textValue integerValue booleanValue }
+      credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
   }
@@ -442,6 +495,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
   const diagnosticsOnly = props.section === 'diagnostics';
   const [runtimeMetrics, setRuntimeMetrics] =
     React.useState<RuntimeMetrics | null>(null);
+  const [providerCatalog, setProviderCatalog] = React.useState<
+    ProviderCatalogEntry[]
+  >([]);
   const [providers, setProviders] = React.useState<Provider[]>([]);
   const [taskProfiles, setTaskProfiles] = React.useState<TaskProfile[]>([]);
   const [toolProfiles, setToolProfiles] = React.useState<ToolProfile[]>([]);
@@ -469,10 +525,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
     id: '',
     slug: '',
     displayName: '',
-    providerKind: 'OPEN_AI_COMPATIBLE',
-    baseUrl: 'http://localhost:11434',
+    providerSlug: 'openai_compatible',
     model: 'gpt-4.1-mini',
-    apiKeySecret: '',
+    settings: {} as Record<string, string>,
+    credentialRefs: {} as Record<
+      string,
+      { resolver: string; secretKey: string }
+    >,
     temperature: '0.2',
     maxTokens: '1024',
     capabilities:
@@ -691,6 +750,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
     try {
       const data = await gql<{
         aiRuntimeMetrics: RuntimeMetrics;
+        aiProviderCatalog: ProviderCatalogEntry[];
         aiProviderProfiles: Provider[];
         aiTaskProfiles: TaskProfile[];
         aiToolProfiles: ToolProfile[];
@@ -699,6 +759,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
         aiRecentRunStreamEvents: RunStreamEvent[];
       }>(BOOTSTRAP_QUERY, {} as Record<string, never>, props);
       setRuntimeMetrics(data.aiRuntimeMetrics);
+      setProviderCatalog(data.aiProviderCatalog);
       setProviders(data.aiProviderProfiles);
       setTaskProfiles(data.aiTaskProfiles);
       setToolProfiles(data.aiToolProfiles);
@@ -798,10 +859,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
     id: '',
     slug: '',
     displayName: '',
-    providerKind: 'OPEN_AI_COMPATIBLE',
-    baseUrl: 'http://localhost:11434',
+    providerSlug: 'openai_compatible',
     model: 'gpt-4.1-mini',
-    apiKeySecret: '',
+    settings: {} as Record<string, string>,
+    credentialRefs: {} as Record<
+      string,
+      { resolver: string; secretKey: string }
+    >,
     temperature: '0.2',
     maxTokens: '1024',
     capabilities:
@@ -987,6 +1051,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
     selectedSession
   ]);
 
+  const selectedProviderDescriptor = providerCatalog.find(
+    (entry) => entry.slug === providerForm.providerSlug
+  );
+
   return (
     <div className='space-y-6'>
       <header className='border-border bg-card rounded-2xl border p-6 shadow-sm'>
@@ -1064,10 +1132,16 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         input: {
                           slug: providerForm.slug,
                           displayName: providerForm.displayName,
-                          providerKind: providerForm.providerKind,
-                          baseUrl: providerForm.baseUrl,
+                          providerSlug: providerForm.providerSlug,
                           model: providerForm.model,
-                          apiKeySecret: providerForm.apiKeySecret || null,
+                          settings: providerSettingInputs(
+                            selectedProviderDescriptor?.settingsSchema ?? [],
+                            providerForm.settings
+                          ),
+                          credentialRefs: providerCredentialInputs(
+                            selectedProviderDescriptor?.credentialSchema ?? [],
+                            providerForm.credentialRefs
+                          ),
                           temperature: Number(providerForm.temperature),
                           maxTokens: Number(providerForm.maxTokens),
                           capabilities: splitCsv(providerForm.capabilities),
@@ -1119,23 +1193,54 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       }))
                     }
                   />
-                  <Input
-                    label='Provider kind'
-                    value={providerForm.providerKind}
-                    onChange={(providerKind) =>
-                      setProviderForm((current) => ({
-                        ...current,
-                        providerKind
-                      }))
-                    }
-                  />
-                  <Input
-                    label='Base URL'
-                    value={providerForm.baseUrl}
-                    onChange={(baseUrl) =>
-                      setProviderForm((current) => ({ ...current, baseUrl }))
-                    }
-                  />
+                  <label className='grid gap-1 text-sm font-medium'>
+                    <span>Provider integration</span>
+                    <select
+                      className='border-border bg-background rounded-lg border px-3 py-2'
+                      value={providerForm.providerSlug}
+                      onChange={(event) =>
+                        setProviderForm((current) => {
+                          const providerSlug = event.target.value;
+                          const descriptor = providerCatalog.find(
+                            (entry) => entry.slug === providerSlug
+                          );
+                          return {
+                            ...current,
+                            providerSlug,
+                            settings: Object.fromEntries(
+                              (descriptor?.defaultSettings ?? []).map(
+                                (setting) => [setting.key, setting.value]
+                              )
+                            ),
+                            credentialRefs: {}
+                          };
+                        })
+                      }
+                    >
+                      {providerCatalog
+                        .filter((entry) => entry.compiledIn)
+                        .map((entry) => (
+                          <option key={entry.slug} value={entry.slug}>
+                            {entry.displayName}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {(selectedProviderDescriptor?.settingsSchema ?? []).map(
+                    (field) => (
+                      <Input
+                        key={field.key}
+                        label={field.label}
+                        value={providerForm.settings[field.key] ?? ''}
+                        onChange={(value) =>
+                          setProviderForm((current) => ({
+                            ...current,
+                            settings: { ...current.settings, [field.key]: value }
+                          }))
+                        }
+                      />
+                    )
+                  )}
                   <Input
                     label='Model'
                     value={providerForm.model}
@@ -1143,16 +1248,58 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       setProviderForm((current) => ({ ...current, model }))
                     }
                   />
-                  <Input
-                    label='API key'
-                    value={providerForm.apiKeySecret}
-                    onChange={(apiKeySecret) =>
-                      setProviderForm((current) => ({
-                        ...current,
-                        apiKeySecret
-                      }))
-                    }
-                  />
+                  {(selectedProviderDescriptor?.credentialSchema ?? []).map(
+                    (field) => (
+                      <div
+                        className='border-border grid gap-2 rounded-lg border p-3'
+                        key={field.key}
+                      >
+                        <div className='text-sm font-medium'>{field.label}</div>
+                        <Input
+                          label='Resolver alias'
+                          value={
+                            providerForm.credentialRefs[field.key]?.resolver ?? ''
+                          }
+                          onChange={(resolver) =>
+                            setProviderForm((current) => ({
+                              ...current,
+                              credentialRefs: {
+                                ...current.credentialRefs,
+                                [field.key]: {
+                                  resolver,
+                                  secretKey:
+                                    current.credentialRefs[field.key]?.secretKey ??
+                                    ''
+                                }
+                              }
+                            }))
+                          }
+                        />
+                        <Input
+                          label='External secret key'
+                          type='password'
+                          value={
+                            providerForm.credentialRefs[field.key]?.secretKey ??
+                            ''
+                          }
+                          onChange={(secretKey) =>
+                            setProviderForm((current) => ({
+                              ...current,
+                              credentialRefs: {
+                                ...current.credentialRefs,
+                                [field.key]: {
+                                  resolver:
+                                    current.credentialRefs[field.key]?.resolver ??
+                                    '',
+                                  secretKey
+                                }
+                              }
+                            }))
+                          }
+                        />
+                      </div>
+                    )
+                  )}
                   <Input
                     label='Temperature'
                     value={providerForm.temperature}
@@ -1246,8 +1393,15 @@ export function AiAdminPage(props: AiAdminPageProps) {
                             id: providerForm.id,
                             input: {
                               displayName: providerForm.displayName,
-                              baseUrl: providerForm.baseUrl,
                               model: providerForm.model,
+                              settings: providerSettingInputs(
+                                selectedProviderDescriptor?.settingsSchema ?? [],
+                                providerForm.settings
+                              ),
+                              credentialRefs: providerCredentialInputs(
+                                selectedProviderDescriptor?.credentialSchema ?? [],
+                                providerForm.credentialRefs
+                              ),
                               temperature: Number(providerForm.temperature),
                               maxTokens: Number(providerForm.maxTokens),
                               capabilities: splitCsv(providerForm.capabilities),
@@ -1361,10 +1515,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           id: provider.id,
                           slug: provider.slug,
                           displayName: provider.displayName,
-                          providerKind: provider.providerKind,
-                          baseUrl: provider.baseUrl,
+                          providerSlug: provider.providerSlug,
                           model: provider.model,
-                          apiKeySecret: '',
+                          settings: settingRecord(provider.settings),
+                          credentialRefs: credentialRecord(
+                            provider.credentialRefs
+                          ),
                           temperature:
                             provider.temperature !== null &&
                             provider.temperature !== undefined
@@ -1389,7 +1545,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     >
                       <div className='font-medium'>{provider.displayName}</div>
                       <div className='text-muted-foreground'>
-                        {provider.providerKind} В· {provider.model} В·{' '}
+                        {provider.providerSlug} · {provider.model} ·{' '}
                         {provider.capabilities.length} capabilities В·{' '}
                         {provider.isActive ? 'active' : 'inactive'}
                       </div>
@@ -1869,7 +2025,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     Provider buckets
                   </div>
                   <div>
-                    {bucketSummary(runtimeMetrics?.providerKindTotals ?? [])}
+                    {bucketSummary(runtimeMetrics?.providerSlugTotals ?? [])}
                   </div>
                 </div>
                 <div>
@@ -3393,6 +3549,7 @@ function Input(props: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  type?: React.HTMLInputTypeAttribute;
 }) {
   return (
     <label className='block space-y-1'>
@@ -3401,6 +3558,7 @@ function Input(props: {
         className='border-input bg-background w-full rounded-lg border px-3 py-2 text-sm'
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
+        type={props.type ?? 'text'}
         value={props.value}
       />
     </label>
@@ -3447,6 +3605,67 @@ function splitCsv(value: string): string[] {
     .split(/[\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function providerSettingInputs(
+  schema: ProviderField[],
+  values: Record<string, string>
+): ProviderSettingInput[] {
+  const inputs: ProviderSettingInput[] = [];
+  schema.forEach((field) => {
+    const value = values[field.key]?.trim();
+    if (!value) return;
+    if (field.kind === 'INTEGER') {
+      inputs.push({ key: field.key, integerValue: Number(value) });
+    } else if (field.kind === 'BOOLEAN') {
+      inputs.push({ key: field.key, booleanValue: value === 'true' });
+    } else {
+      inputs.push({ key: field.key, textValue: value });
+    }
+  });
+  return inputs;
+}
+
+function providerCredentialInputs(
+  schema: ProviderField[],
+  values: Record<string, { resolver: string; secretKey: string }>
+) {
+  return schema.flatMap((field) => {
+    const value = values[field.key];
+    if (!value?.resolver.trim() || !value.secretKey.trim()) return [];
+    return [
+      {
+        key: field.key,
+        resolver: value.resolver.trim(),
+        secretKey: value.secretKey.trim()
+      }
+    ];
+  });
+}
+
+function settingRecord(settings: ProviderSetting[]): Record<string, string> {
+  return Object.fromEntries(
+    settings.map((setting) => [
+      setting.key,
+      setting.textValue ??
+        (setting.integerValue !== null && setting.integerValue !== undefined
+          ? String(setting.integerValue)
+          : setting.booleanValue !== null && setting.booleanValue !== undefined
+            ? String(setting.booleanValue)
+            : '')
+    ])
+  );
+}
+
+function credentialRecord(
+  refs: CredentialRef[]
+): Record<string, { resolver: string; secretKey: string }> {
+  return Object.fromEntries(
+    refs.map((reference) => [
+      reference.key,
+      { resolver: reference.resolver, secretKey: reference.secretKey }
+    ])
+  );
 }
 
 function parseCsvUrls(value: string): { urls: string[]; invalid: string[] } {

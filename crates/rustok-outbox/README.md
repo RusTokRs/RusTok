@@ -23,7 +23,7 @@
 
 - Depends on `rustok-core` for module/event runtime contracts and transport abstractions.
 - Depends on default `rustok-api` for neutral port context/error/write-policy primitives.
-- Owns its optional Loco composition adapter under `rustok-outbox::loco` (`loco-adapter` feature).
+- Exposes only host-neutral transactional outbox and relay contracts; host composition remains outside the crate.
 - Used by `apps/server` for runtime relay wiring, background processing, and migrations.
 - Integrates with target transports such as `rustok-iggy` instead of owning transport-specific adapters inline.
 - The Leptos admin UI lives in `crates/rustok-outbox/admin`, keeps framework-agnostic DTO/view-model helpers in `admin/src/core.rs`, and is mounted through manifest-driven host wiring.

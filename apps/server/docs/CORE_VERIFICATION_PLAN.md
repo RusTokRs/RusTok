@@ -134,7 +134,7 @@ ls apps/server/src/services/email.rs
 ### 4.2 Provider switch and Loco Mailer adapter connected centrally
 
 ```bash
-grep -rn "EmailProvider\|loco_rs::mailer\|LocoMailerAdapter\|email.provider" apps/server/src/services/email.rs apps/server/src/common/settings.rs
+grep -rn "EmailProvider\|email.provider" apps/server/src/services/email.rs apps/server/src/common/settings.rs
 ```
 
 **Expected result:** Email runtime remains server-infra responsibility and supports `smtp|loco|none`; when `provider=loco` uses `ctx.mailer`, when `provider=smtp` remains compatibility path via SMTP.

@@ -9,7 +9,6 @@ use std::sync::Arc;
 pub struct SharedSmtpEmailService(pub Arc<rustok_email::SmtpEmailSender>);
 
 use async_trait::async_trait;
-use loco_rs::mailer::{Email, EmailSender};
 use rustok_email::{EmailError, RenderedEmail};
 
 use crate::common::settings::EmailProvider;
@@ -72,7 +71,7 @@ fn record_email_send_skipped() {
     EMAIL_SEND_SKIPPED_TOTAL.fetch_add(1, Ordering::Relaxed);
 }
 
-/// Loco bridge: convert `EmailError` → `loco_rs::Error`.
+/// Server error bridge: convert `EmailError` into the host error type.
 pub fn email_err(err: EmailError) -> Error {
     Error::Message(err.to_string())
 }
@@ -197,27 +196,7 @@ pub fn render_email_verification(
     })
 }
 
-// ── Loco Mailer adapter ──────────────────────────────────────────────────────
-
-/// Sends emails via Loco's `ctx.mailer` (`EmailSender`) and Tera templates.
-///
-/// Use this when `email.provider = "loco"` in settings.  The `ctx.mailer`
-/// field must be initialised before use (done in `after_context()` in `app.rs`).
-pub struct LocoMailerAdapter {
-    mailer: EmailSender,
-    from: String,
-    locale: String,
-}
-
-impl LocoMailerAdapter {
-    pub fn new(mailer: EmailSender, from: impl Into<String>, locale: impl Into<String>) -> Self {
-        Self {
-            mailer,
-            from: from.into(),
-            locale: locale.into(),
-        }
-    }
-}
+// ── SMTP mailer adapter ──────────────────────────────────────────────────────
 
 /// SMTP bridge that preserves app-level localized templates while reusing the
 /// shared SMTP transport across requests.
@@ -263,75 +242,6 @@ impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
 }
 
 #[async_trait]
-impl BuiltInAuthEmailSender for LocoMailerAdapter {
-    async fn send_password_reset(
-        &self,
-        email: PasswordResetEmail,
-    ) -> std::result::Result<(), EmailError> {
-        let rendered = match render_password_reset(&self.locale, &email.reset_url) {
-            Ok(rendered) => rendered,
-            Err(error) => {
-                let result = Err(error);
-                record_email_send_result(&result);
-                return result;
-            }
-        };
-
-        let msg = Email {
-            from: Some(self.from.clone()),
-            to: email.to,
-            reply_to: None,
-            subject: rendered.subject,
-            text: rendered.text,
-            html: rendered.html,
-            bcc: None,
-            cc: None,
-        };
-
-        let result = self
-            .mailer
-            .mail(&msg)
-            .await
-            .map_err(|e| EmailError::Send(e.to_string()));
-        record_email_send_result(&result);
-        result
-    }
-
-    async fn send_email_verification(
-        &self,
-        email: EmailVerificationEmail,
-    ) -> std::result::Result<(), EmailError> {
-        let rendered = match render_email_verification(&self.locale, &email.verification_token) {
-            Ok(rendered) => rendered,
-            Err(error) => {
-                let result = Err(error);
-                record_email_send_result(&result);
-                return result;
-            }
-        };
-
-        let msg = Email {
-            from: Some(self.from.clone()),
-            to: email.to,
-            reply_to: None,
-            subject: rendered.subject,
-            text: rendered.text,
-            html: rendered.html,
-            bcc: None,
-            cc: None,
-        };
-
-        let result = self
-            .mailer
-            .mail(&msg)
-            .await
-            .map_err(|e| EmailError::Send(e.to_string()));
-        record_email_send_result(&result);
-        result
-    }
-}
-
-#[async_trait]
 impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
     async fn send_password_reset(
         &self,
@@ -372,39 +282,20 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
 
 /// Build a localized built-in auth email sender from server runtime context.
 ///
-/// `locale` is used to render localized built-in auth templates for both `loco`
-/// and `smtp` providers. The underlying SMTP transport is cached in
+/// `locale` is used to render localized built-in auth templates. The underlying SMTP transport is cached in
 /// `shared_store` to reuse the connection pool.
 ///
 /// Dispatches on `email.provider`:
-/// - `loco` → `LocoMailerAdapter` with per-request locale (requires `ctx.mailer` initialized)
 /// - `smtp` (default) → localized SMTP adapter over cached `SmtpEmailSender`
 /// - `none` → `EmailService::Disabled`
 pub fn email_service_from_ctx(
     ctx: &ServerRuntimeContext,
-    mailer: Option<EmailSender>,
     locale: &str,
 ) -> Result<Box<dyn BuiltInAuthEmailSender>> {
     let settings = ctx.settings();
 
     match settings.email.provider {
         EmailProvider::None => Ok(Box::new(DisabledBuiltInAuthEmailSender)),
-
-        EmailProvider::Loco => {
-            // Cannot cache: LocoMailerAdapter carries a per-request locale.
-            let Some(mailer) = mailer else {
-                tracing::warn!(
-                    "email.provider = \"loco\" but mailer is not initialized; \
-                     falling back to disabled"
-                );
-                return Ok(Box::new(DisabledBuiltInAuthEmailSender));
-            };
-            Ok(Box::new(LocoMailerAdapter::new(
-                mailer,
-                settings.email.from.clone(),
-                locale,
-            )))
-        }
 
         EmailProvider::Smtp => {
             // Return cached transport if already initialised (connection pool reuse).

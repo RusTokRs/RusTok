@@ -22,6 +22,12 @@ pub trait CustomerReadPort: Send + Sync {
         context: PortContext,
         request: CustomerListProjectionRequest,
     ) -> Result<CustomerListProjectionResponse, PortError>;
+
+    async fn list_profile_enrichment(
+        &self,
+        context: PortContext,
+        request: CustomerProfileEnrichmentRequest,
+    ) -> Result<Vec<CustomerProfileEnrichment>, PortError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,6 +46,20 @@ pub struct CustomerListProjectionRequest {
 pub struct CustomerListProjectionResponse {
     pub items: Vec<CustomerResponse>,
     pub total: u64,
+}
+
+/// Customer-owned optional identity enrichments for profile provisioning.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomerProfileEnrichmentRequest {
+    pub user_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomerProfileEnrichment {
+    pub user_id: Uuid,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub preferred_locale: Option<String>,
 }
 
 #[async_trait]
@@ -76,6 +96,18 @@ impl CustomerReadPort for crate::CustomerService {
             .await
             .map_err(customer_error_to_port_error)?;
         Ok(CustomerListProjectionResponse { items, total })
+    }
+
+    async fn list_profile_enrichment(
+        &self,
+        context: PortContext,
+        request: CustomerProfileEnrichmentRequest,
+    ) -> Result<Vec<CustomerProfileEnrichment>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        crate::CustomerService::list_profile_enrichment(self, tenant_id, &request.user_ids)
+            .await
+            .map_err(customer_error_to_port_error)
     }
 }
 

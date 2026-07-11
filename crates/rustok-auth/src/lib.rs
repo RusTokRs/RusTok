@@ -9,6 +9,8 @@
  */
 
 pub mod admin_mutations;
+pub mod backfill;
+pub mod bootstrap;
 pub mod config;
 pub mod credentials;
 pub mod error;
@@ -26,6 +28,8 @@ pub use admin_mutations::{
     OAuthAppMutationRecord, OAuthAppSecretResult, UpdateOAuthAppCommand, UpdateUserCommand,
     UserAdminMutationPort, UserAdminMutationRuntime, UserMutationRecord,
 };
+pub use backfill::AuthUserBackfillDbReader;
+pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};
 pub use config::{
     build_auth_config, build_auth_config_with_env, validate_auth_config, AuthConfig,
     AuthSettingsOverrides, JwtAlgorithm,
@@ -40,7 +44,8 @@ pub use jwt::{
 };
 pub use lifecycle::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,
-    AuthLifecycleRuntime, AuthSessionRecord, AuthTokenRecord, AuthUserRecord,
+    AuthLifecycleRuntime, AuthSessionRecord, AuthTokenRecord, AuthUserBackfillReadPort,
+    AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserBackfillRuntime, AuthUserRecord,
 };
 pub use rest::{
     AcceptInviteParams, AuthResponse, AuthorizeRequest, BrowserAuthorizeRequest,

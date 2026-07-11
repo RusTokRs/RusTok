@@ -14,6 +14,7 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-07-11](./2026-07-11-neutral-sandbox-foundation.md) | Neutral sandbox foundation for Alloy and module artifacts | Accepted |
 | [2026-07-10](./2026-07-10-mcp-management-owner-boundary.md) | MCP management owner boundary | Accepted |
 | [2026-07-02](./2026-07-02-axum-runtime-and-ops-cli-boundary.md) | Axum runtime and platform CLI boundary | Accepted |
 | [2026-07-01](./2026-07-01-product-category-bound-attribute-schemas.md) | Product category-bound attribute schemas | Accepted |

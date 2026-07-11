@@ -58,6 +58,7 @@ impl AiMutation {
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let provider_slug =
             crate::ProviderSlug::new(input.provider_slug).map_err(async_graphql::Error::new)?;
         let capabilities = if input.capabilities.is_empty() {
@@ -70,6 +71,8 @@ impl AiMutation {
         let item = crate::AiManagementService::create_provider_profile(
             db,
             &operator,
+            runtime.egress_policy(),
+            runtime.secret_registry(),
             crate::CreateAiProviderProfileInput {
                 slug: input.slug,
                 display_name: input.display_name,
@@ -99,12 +102,15 @@ impl AiMutation {
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
         let settings = provider_settings(input.settings)?;
         let credential_refs = credential_refs(input.credential_refs)?;
         let item = crate::AiManagementService::update_provider_profile(
             db,
             &operator,
+            runtime.egress_policy(),
+            runtime.secret_registry(),
             id,
             crate::UpdateAiProviderProfileInput {
                 display_name: input.display_name,

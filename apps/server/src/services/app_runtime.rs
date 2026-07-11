@@ -3,9 +3,7 @@ use std::sync::Arc;
 use crate::error::{Error, Result};
 use rustok_core::ModuleRegistry;
 
-pub type AppRuntimeHostContext = loco_rs::app::AppContext;
-
-use crate::auth::{auth_config_from_ctx, AuthConfig};
+use crate::auth::AuthConfig;
 use crate::common::settings::{RustokSettings, SharedRustokSettings};
 use crate::graphql::AppSchema;
 use crate::middleware;
@@ -58,10 +56,10 @@ fn validate_compiled_surface_contract(
 }
 
 pub async fn bootstrap_app_runtime(
-    ctx: &AppRuntimeHostContext,
+    runtime_ctx: ServerRuntimeContext,
+    auth_config: AuthConfig,
     settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
-    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
     let cache_service = CacheService::from_url(settings.cache.redis_url.as_deref());
     runtime_ctx.shared_insert(cache_service.clone());
 
@@ -83,7 +81,7 @@ pub async fn bootstrap_app_runtime(
     };
     let deployment_surfaces = if settings.runtime.is_registry_only() {
         DeploymentSurfaceContract {
-            profile: crate::models::build::DeploymentProfile::HeadlessApi,
+            profile: rustok_build::DeploymentProfile::HeadlessApi,
             embed_admin: false,
             embed_storefront: false,
         }
@@ -98,13 +96,11 @@ pub async fn bootstrap_app_runtime(
     };
 
     let registry = modules::build_registry();
-    let auth_config = auth_config_from_ctx(ctx)?;
     let runtime_extensions = build_shared_runtime_extensions_with_host_providers(
         &registry,
         settings,
         runtime_ctx.clone(),
         auth_config.clone(),
-        ctx.mailer.clone(),
     );
     runtime_ctx.shared_insert(runtime_extensions.clone());
     runtime_ctx.shared_insert(rustok_ai::SharedAiModuleRegistry(registry.clone()));
@@ -371,9 +367,9 @@ fn build_namespaced_rate_limiter(
 mod tests {
     use super::validate_compiled_surface_contract;
     use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
-    use crate::models::build::DeploymentProfile;
     use crate::modules::DeploymentSurfaceContract;
     use crate::testing::get_server_app_context;
+    use rustok_build::DeploymentProfile;
 
     #[test]
     fn compiled_surface_contract_rejects_missing_embedded_admin() {
@@ -434,7 +430,14 @@ mod tests {
             ..RustokSettings::default()
         };
 
-        let runtime = super::bootstrap_app_runtime(&ctx, &settings)
+        let runtime_ctx =
+            crate::services::server_runtime_context::ServerRuntimeContext::from_loco_app_context(
+                &ctx,
+            );
+        let auth_config =
+            crate::services::server_runtime_context::auth_config_from_loco_app_context(&ctx)
+                .expect("test host context should provide auth configuration");
+        let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config, &settings)
             .await
             .expect("registry-only runtime should bootstrap");
 

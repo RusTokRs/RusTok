@@ -45,11 +45,6 @@ pub fn WorkflowAdmin() -> impl IntoView {
         "workflow.openTemplates",
         "Open templates",
     );
-    let open_legacy = t(
-        locale.as_deref(),
-        "workflow.openLegacy",
-        "Open legacy detail flow",
-    );
     let section_title = t(locale.as_deref(), "workflow.section.title", "Workflows");
     let section_subtitle = t(
         locale.as_deref(),
@@ -99,12 +94,6 @@ pub fn WorkflowAdmin() -> impl IntoView {
                         } else {
                             open_templates.clone()
                         }}
-                    </A>
-                    <A
-                        href=nav.legacy_href
-                        attr:class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                    >
-                        {open_legacy.clone()}
                     </A>
                 </div>
             </header>
@@ -171,19 +160,14 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
         "workflow.empty",
         "No workflows yet. Start with a template or open the legacy workflow screens.",
     );
-    let open_workflows = t(
-        locale.as_deref(),
-        "workflow.openWorkflows",
-        "Open workflows",
-    );
     let table_name = t(locale.as_deref(), "workflow.table.name", "Name");
     let table_status = t(locale.as_deref(), "workflow.table.status", "Status");
     let table_failures = t(locale.as_deref(), "workflow.table.failures", "Failures");
     let table_updated = t(locale.as_deref(), "workflow.table.updated", "Updated");
-    let legacy_details = t(
+    let details = t(
         locale.as_deref(),
-        "workflow.table.legacyDetails",
-        "Legacy details ->",
+        "workflow.table.details",
+        "View details ->",
     );
     if workflows.is_empty() {
         return view! {
@@ -191,12 +175,6 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
                 <p class="text-sm text-muted-foreground">
                     {empty_message}
                 </p>
-                <A
-                    href=workflow_admin_nav_view_model(None, false).legacy_href
-                    attr:class="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-                >
-                    {open_workflows}
-                </A>
             </div>
         }
         .into_any();
@@ -217,7 +195,7 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
                 <tbody class="divide-y divide-border">
                     {workflows.into_iter().map(|workflow| {
                         let row = workflow_row_view_model(workflow);
-                        let legacy_details = legacy_details.clone();
+                        let details = details.clone();
                         view! {
                             <tr class="transition-colors hover:bg-muted/30">
                                 <td class="px-4 py-3 font-medium text-foreground">{row.name}</td>
@@ -231,7 +209,7 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
                                         href=row.detail_href
                                         attr:class="text-xs font-medium text-primary hover:underline"
                                     >
-                                        {legacy_details}
+                                        {details}
                                     </A>
                                 </td>
                             </tr>

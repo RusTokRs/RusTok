@@ -19,6 +19,7 @@ ssr = [
   "dep:rustok-core",
   "dep:rustok-outbox",
   "dep:rustok-storage",
+  "dep:rustok-secrets",
   "dep:sea-orm",
   "rustok-api/server",
 ]
@@ -43,6 +44,7 @@ rustok-ai = { workspace = true, optional = true, features = ["server"] }
 rustok-core = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
+rustok-secrets = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sea-orm = { workspace = true, optional = true }

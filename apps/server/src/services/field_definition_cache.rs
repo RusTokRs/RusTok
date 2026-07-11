@@ -174,8 +174,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite db should connect");
-        let runtime_ctx =
-            ServerRuntimeContext::with_empty_shared_store(db, RustokSettings::default());
+        let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         let bus = EventBus::default();
         let cache = field_definition_cache_from_context(&runtime_ctx, bus.clone());
         let (tenant_id, entity_type) = match &event {

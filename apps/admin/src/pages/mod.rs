@@ -7,4 +7,3 @@ pub mod module_admin;
 pub mod modules;
 pub mod not_found;
 pub mod workflow_detail;
-pub mod workflows;

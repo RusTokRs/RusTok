@@ -34,12 +34,12 @@ lives in `src/widgets/app_shell/core.rs` without Leptos dependencies, while `sid
 a Leptos render/bind adapter. This split is enforced by a quick verifier
 `npm run verify:frontend:host-ffa-contract`.
 
-The host still composes the workflow detail editor, execution history, and version history through
-`src/features/workflow/`; its native server-function adapter uses `HostRuntimeContext`, not Loco.
-The corresponding owner-owned overview and template surface is in
-`crates/rustok-workflow/admin/`. The outstanding ownership transfer must move the remaining detail
-surface atomically into that package and delete the host feature; no second transport path is to be
-introduced.
+`/workflows` redirects to the owner-owned overview and templates surface at
+`/modules/workflow`. The host still composes only the workflow detail editor, execution history,
+and version history through `src/features/workflow/`; its native server-function adapter uses
+`HostRuntimeContext`, not Loco. The outstanding ownership transfer must move that remaining detail
+surface atomically into `crates/rustok-workflow/admin/` and delete the host feature; no second
+transport path is to be introduced.
 
 The host-owned `/modules` control plane also receives only a narrow database snapshot from
 `HostRuntimeContext`; `apps/admin` has no Loco dependency.

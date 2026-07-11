@@ -15,6 +15,10 @@ entry_type = "AuthModule"
 query = "graphql::OAuthQuery"
 mutation = "graphql::OAuthMutation"
 
+[provides.cli]
+namespace = "oauth"
+factory = "rustok_auth_cli::command_provider"
+
 [provides.admin_ui]
 leptos_crate = "rustok-auth-admin"
 route_segment = "auth"

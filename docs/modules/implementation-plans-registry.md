@@ -12,7 +12,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 
 | Module/Crate | Local plan | Status | Nearest priority |
 | --- | --- | --- | --- |
-| `alloy` | [plan](../../crates/alloy/docs/implementation-plan.md) | `in_progress` | Promote static runtime locks into executable host-composed integration evidence. |
+| `alloy` | [plan](../../crates/alloy/docs/implementation-plan.md) | `in_progress` | Move Alloy execution through the neutral sandbox, then package source revisions as immutable module artifacts. |
 | `flex` | [plan](../../crates/flex/docs/implementation-plan.md) | `in_progress` | Finish owner transport extraction and targeted runtime evidence. |
 | `leptos-auth` | [plan](../../crates/leptos-auth/docs/implementation-plan.md) | `not_started` | Remove the legacy `api` compatibility re-export after migrating callers. |
 | `leptos-hook-form` | [plan](../../crates/leptos-hook-form/docs/implementation-plan.md) | `not_started` | Validate the shared form-state contract with concrete consumers. |
@@ -20,7 +20,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `leptos-table` | [plan](../../crates/leptos-table/docs/implementation-plan.md) | `not_started` | Validate the shared table-state contract with its first concrete consumers. |
 | `leptos-zod` | [plan](../../crates/leptos-zod/docs/implementation-plan.md) | `not_started` | Validate the shared validation-envelope contract with concrete consumers. |
 | `leptos-zustand` | [plan](../../crates/leptos-zustand/docs/implementation-plan.md) | `not_started` | Decide whether a concrete host workflow warrants this shared state contract, then verify Rust/Next wire compatibility. |
-| `ai` | [plan](../../crates/rustok-ai/docs/implementation-plan.md) | `in_progress` | Complete AI ownership extraction from the server host, then make routing decisions observable with live transport evidence. |
+| `ai` | [plan](../../crates/rustok-ai/docs/implementation-plan.md) | `in_progress` | Verify the Rig 0.39 registry/secret/migration cutover and make routing decisions observable with live transport evidence. |
 | `ai-alloy` | [plan](../../crates/rustok-ai-alloy/docs/implementation-plan.md) | `in_progress` | Add composed direct-execution evidence, then specify remote Alloy transport only when its owner selects that product path. |
 | `ai-content` | [plan](../../crates/rustok-ai-content/docs/implementation-plan.md) | `in_progress` | Add composed content-policy evidence, then render the owned admin package with native/GraphQL parity. |
 | `ai-media` | [plan](../../crates/rustok-ai-media/docs/implementation-plan.md) | `boundary_ready` | Execute the media consumer contract, then cover the composed image direct-execution path. |
@@ -29,6 +29,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `api` | [plan](../../crates/rustok-api/docs/implementation-plan.md) | `not_started` | Keep shared port policy neutral and reject module/runtime ownership drift. |
 | `auth` | [plan](../../crates/rustok-auth/docs/implementation-plan.md) | `not_started` | Record browser/runtime parity evidence for the auth admin user and OAuth mutation flows before promoting to parityverified. |
 | `blog` | [plan](../../crates/rustok-blog/docs/implementation-plan.md) | `in_progress` | Add public/write rate limits, verify search projection, and obtain live comments plus host-parity evidence. |
+| `build` | [plan](../../crates/rustok-build/docs/implementation-plan.md) | `in_progress` | Move the build queue and executor from the server host, then expose the shared execution service to the platform CLI. |
 | `cache` | [plan](../../crates/rustok-cache/docs/implementation-plan.md) | `in_progress` | Add compile/test evidence when the compilation restriction is lifted and run the ignored real-Redis scenario with RUSTOKCACHEREALREDISURL over the channel-scoped subscription contract. |
 | `cart` | [plan](../../crates/rustok-cart/docs/implementation-plan.md) | `not_started` | Continue only with owner-module checkout handoff slices that remove real umbrella presentation/read leakage, or return to parity/evidence hardening for SSR native path, GraphQL selected path, headless cart mutation contracts and DOM evidence. |
 | `channel` | [plan](../../crates/rustok-channel/docs/implementation-plan.md) | `not_started` | Collect full Rust runtime contract evidence for ChannelReadPort and full server middleware test evidence; until Rust runtime evidence FBA remains inprogress, but fallback smoke profiles are now locked by dedicated no-compile executable verifier, resolution-order decision by a fast source verifier, a… |
@@ -53,6 +54,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `index` | [plan](../../crates/rustok-index/docs/implementation-plan.md) | `in_progress` | Connect persistence-backed adapter over the current in-process seams and collect Rust runtime contract evidence; until then, status remains inprogress. |
 | `inventory` | [plan](../../crates/rustok-inventory/docs/implementation-plan.md) | `in_progress` | verification/CI evidence slice for InventoryReservationPort: close contract tests/fallback smoke and then prepare promotion to boundaryready; keep the iteration small and do not run long compilation. |
 | `mcp` | [plan](../../crates/rustok-mcp/docs/implementation-plan.md) | `in_progress` | Obtain authenticated Next/Leptos parity evidence, then design secure remote MCP transport before expanding protocol capabilities. |
+| `modules` | [plan](../../crates/rustok-modules/docs/implementation-plan.md) | `in_progress` | Move control-plane ownership from the server, then add digest-pinned artifact installation over the neutral sandbox. |
 | `media` | [plan](../../crates/rustok-media/docs/implementation-plan.md) | `in_progress` | remove the legacy Loco media cleanup task after targeted CLI/provider verification, then continue moving remaining module GraphQL artifacts from the server; for Flex, a separate runtime-handle over FieldDefinitionCachePort, FlexStandaloneService and event publishing is needed before removing apps/se… |
 | `order` | [plan](../../crates/rustok-order/docs/implementation-plan.md) | `in_progress` | maintain parity of the public GraphQL order contract while post-order surfaces continue moving to owner admin/storefront packages; continue removing remaining module-specific server GraphQL artifacts in small no-compile slices. |
 | `outbox` | [plan](../../crates/rustok-outbox/docs/implementation-plan.md) | `in_progress` | Expand relay/backlog/DLQ evidence without long full-workspace compilation and then add targeted runtime contract/fallback smoke when compilation is allowed again. |
@@ -65,6 +67,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `rbac` | [plan](../../crates/rustok-rbac/docs/implementation-plan.md) | `not_started` | Expand operator flows/verification for role and permission management surfaces; add GraphQL/REST secondary path only if such a remote/headless admin contract is approved, and keep the current native-only overview with fast boundary guardrails. |
 | `region` | [plan](../../crates/rustok-region/docs/implementation-plan.md) | `in_progress` | Execute live `RegionReadPort` and storefront transport evidence before any FBA promotion. |
 | `runtime` | [plan](../../crates/rustok-runtime/docs/implementation-plan.md) | `not_started` | Use RuntimeComposition in the first DB-backed module CLI provider. |
+| `sandbox` | [plan](../../crates/rustok-sandbox/docs/implementation-plan.md) | `in_progress` | Move the Rhai kernel behind the neutral executor contract and prepare the Wasmtime adapter. |
 | `search` | [plan](../../crates/rustok-search/docs/implementation-plan.md) | `boundary_ready` | Execute live provider evidence, harden ingestion/analytics operations, then stage external engines as adapters. |
 | `seo` | [plan](../../crates/rustok-seo/docs/implementation-plan.md) | `in_progress` | Execute D8 backend/host/media evidence, close D9 incident sign-off, then add SEO only through additive owner routes. |
 | `seo-render` | [plan](../../crates/rustok-seo/render/docs/implementation-plan.md) | `in_progress` | Lock cross-host semantic fixtures, exercise storefront SSR, and harden renderer safety regressions. |

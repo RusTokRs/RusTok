@@ -23,7 +23,7 @@
 - Used by module crates such as `rustok-blog`, `rustok-content`, `rustok-commerce`, and others when their GraphQL/REST adapters need shared host/API contracts.
 - All feature profiles, including `server`, remain independent from `rustok-core`.
 - `rustok-core` consumes API-owned contracts and adds runtime RBAC/security policy.
-- Runtime-specific composition helpers remain owner-owned; outbox Loco wiring is exposed by `rustok-outbox::loco`, not this crate.
+- Runtime-specific composition helpers remain owner-owned; `rustok-api` does not depend on outbox runtime wiring.
 
 ## Boundary Rules
 - `apps/server` may wire and re-export `rustok-api`, but must not grow a second parallel shared API layer.

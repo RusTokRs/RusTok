@@ -1,0 +1,28 @@
+//! Platform-owned build and release persistence contracts.
+
+pub mod build;
+pub mod events;
+pub mod execution;
+pub mod executor;
+pub mod plan;
+pub mod release;
+pub mod report;
+pub mod request;
+pub mod runtime;
+pub mod service;
+
+pub use build::{BuildStage, BuildStatus, DeploymentProfile};
+pub use events::{
+    BuildEvent, BuildEventPublisher, EventBusBuildEventPublisher, NoopBuildEventPublisher,
+};
+pub use execution::{build_manifest_snapshot_path, run_build_command, BuildCommandSpec};
+pub use executor::BuildExecutionService;
+pub use plan::{
+    parse_execution_plan, BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan,
+    FrontendBuildTool,
+};
+pub use release::ReleaseStatus;
+pub use report::BuildExecutionReport;
+pub use request::{BuildRequest, ModuleSpec, ReleaseArtifactBundle};
+pub use runtime::{NoopReleaseActivationHook, ReleaseActivationHook};
+pub use service::BuildService;

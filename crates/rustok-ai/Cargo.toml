@@ -39,6 +39,7 @@ server = [
   "dep:sea-orm",
   "dep:sea-orm-migration",
   "dep:tokio",
+  "dep:url",
 ]
 
 [dependencies]
@@ -82,5 +83,6 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, optional = true, features = ["sync"] }
+url = { workspace = true, optional = true }
 tracing.workspace = true
 uuid.workspace = true

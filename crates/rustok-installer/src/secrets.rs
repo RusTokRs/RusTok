@@ -11,10 +11,37 @@ pub enum SecretMode {
     ExternalSecret,
 }
 
+impl SecretMode {
+    pub fn parse_cli_value(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "env" => Ok(Self::Env),
+            "dotenv_file" | "dotenv-file" => Ok(Self::DotenvFile),
+            "mounted_file" | "mounted-file" => Ok(Self::MountedFile),
+            "external_secret" | "external-secret" => Ok(Self::ExternalSecret),
+            _ => Err(format!("unknown secret mode `{value}`")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SecretRef {
     pub backend: String,
     pub key: String,
+}
+
+impl SecretRef {
+    pub fn parse_cli_value(value: &str) -> Result<Self, String> {
+        let (backend, key) = value
+            .split_once(':')
+            .ok_or_else(|| "secret ref must use `<backend>:<key>` format".to_string())?;
+        if backend.trim().is_empty() || key.trim().is_empty() {
+            return Err("secret ref must include non-empty backend and key".to_string());
+        }
+        Ok(Self {
+            backend: backend.trim().to_string(),
+            key: key.trim().to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +119,22 @@ mod tests {
 
         assert_eq!(redacted["backend"], "vault");
         assert_eq!(redacted["key"], "secret/rustok/db");
+    }
+
+    #[test]
+    fn secret_contract_parsers_normalize_values_and_validate_references() {
+        assert_eq!(
+            SecretMode::parse_cli_value("mounted-file"),
+            Ok(SecretMode::MountedFile)
+        );
+        assert_eq!(
+            SecretRef::parse_cli_value("vault: secret/rustok/db"),
+            Ok(SecretRef {
+                backend: "vault".to_string(),
+                key: "secret/rustok/db".to_string(),
+            })
+        );
+        assert!(SecretRef::parse_cli_value("vault").is_err());
     }
 
     #[test]

@@ -27,7 +27,7 @@ use crate::model::{
     ProviderStreamEvent, ProviderTestResult, RuntimeOutcome, ToolTrace,
 };
 use crate::router::AiRouter;
-use crate::runtime::AiRuntime;
+use crate::engine::RigAgentDriver;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
 use crate::{AiError, AiResult, McpClientAdapter};
 
@@ -138,9 +138,17 @@ impl AiManagementService {
     pub async fn create_provider_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
+        egress_policy: &crate::ProviderEgressPolicy,
+        secrets: &rustok_secrets::SecretResolverRegistry,
         input: CreateAiProviderProfileInput,
     ) -> AiResult<AiProviderProfileRecord> {
         validate_slug(&input.slug)?;
+        validate_provider_profile_contract(
+            &input.provider_slug,
+            &input.settings,
+            &input.credential_refs,
+            egress_policy,
+        )?;
         let profile = ai_provider_profiles::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(operator.tenant_id),
@@ -166,17 +174,27 @@ impl AiManagementService {
         .insert(db)
         .await
         .map_err(db_err)?;
+        secrets.invalidate(None).await;
         map_provider_profile(profile)
     }
 
     pub async fn update_provider_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
+        egress_policy: &crate::ProviderEgressPolicy,
+        secrets: &rustok_secrets::SecretResolverRegistry,
         id: Uuid,
         input: UpdateAiProviderProfileInput,
     ) -> AiResult<AiProviderProfileRecord> {
-        let profile = require_provider_profile(db, operator.tenant_id, id).await?;
-        let mut active: ai_provider_profiles::ActiveModel = profile.into();
+        let existing = require_provider_profile(db, operator.tenant_id, id).await?;
+        let provider_slug = provider_slug_from_str(&existing.provider_slug)?;
+        validate_provider_profile_contract(
+            &provider_slug,
+            &input.settings,
+            &input.credential_refs,
+            egress_policy,
+        )?;
+        let mut active: ai_provider_profiles::ActiveModel = existing.into();
         active.display_name = Set(input.display_name);
         active.model = Set(input.model);
         active.settings = Set(serde_json::to_value(input.settings).map_err(json_err)?);
@@ -195,6 +213,7 @@ impl AiManagementService {
         active.updated_by = Set(Some(operator.user_id));
         active.updated_at = Set(Utc::now().into());
         let saved = active.update(db).await.map_err(db_err)?;
+        secrets.invalidate(None).await;
         map_provider_profile(saved)
     }
 
@@ -219,9 +238,49 @@ impl AiManagementService {
         id: Uuid,
     ) -> AiResult<ProviderTestResult> {
         let profile = require_provider_profile(db, tenant_id, id).await?;
+        secrets.invalidate(None).await;
         let config = provider_config(&profile)?;
-        let provider = inference_for_slug(&config.provider_slug, &config, secrets).await?;
-        provider.test_connection(&config).await
+        if crate::provider_factory_supports(&config.provider_slug, crate::ProviderFeature::Chat) {
+            let provider = inference_for_slug(&config.provider_slug, &config, secrets).await?;
+            return provider.test_connection(&config).await;
+        }
+        let started = std::time::Instant::now();
+        if crate::provider_factory_supports(&config.provider_slug, crate::ProviderFeature::Embeddings) {
+            crate::embed(
+                &config,
+                secrets,
+                crate::EmbeddingRequest {
+                    model: config.model.clone(),
+                    documents: vec!["RusToK connectivity test".to_string()],
+                    dimensions: None,
+                },
+            )
+            .await?;
+        } else if crate::provider_factory_supports(&config.provider_slug, crate::ProviderFeature::Rerank) {
+            crate::rerank(
+                &config,
+                secrets,
+                crate::RerankRequest {
+                    model: config.model.clone(),
+                    query: "connectivity".to_string(),
+                    documents: vec!["RusToK connectivity test".to_string()],
+                    top_n: Some(1),
+                },
+            )
+            .await?;
+        } else {
+            return Err(AiError::InvalidConfig(format!(
+                "Rig provider `{}` has no connectivity-test entrypoint",
+                config.provider_slug
+            )));
+        }
+        Ok(ProviderTestResult {
+            ok: true,
+            provider: config.provider_slug.to_string(),
+            model: Some(config.model),
+            latency_ms: started.elapsed().as_millis() as i64,
+            message: "Provider responded successfully".to_string(),
+        })
     }
 
     pub async fn list_task_profiles(
@@ -1311,7 +1370,7 @@ impl AiManagementService {
         let access_context = access_context_for_operator(operator);
         let adapter = Arc::new(InProcessMcpAdapter::new(runtime, access_context)?);
         let policy = policy_from_model(tool_profile.as_ref());
-        let runtime = AiRuntime::new(provider, adapter, policy);
+        let runtime = RigAgentDriver::new(provider, adapter, policy);
         let stream_buffer = Arc::new(Mutex::new(String::new()));
         let stream_emitter = ProviderStreamEmitter::new({
             let stream_buffer = Arc::clone(&stream_buffer);

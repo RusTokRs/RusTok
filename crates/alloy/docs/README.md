@@ -1,6 +1,6 @@
 # `alloy` Documentation
 
-`alloy` is a capability module of the platform script/runtime layer based on Rhai.
+`alloy` is a capability module of the platform authoring and automation layer.
 It is part of `ModuleRegistry` and is installed/removed like other optional
 modules, but remains a capability-only layer, not a tenant business domain.
 
@@ -12,17 +12,19 @@ modules, but remains a capability-only layer, not a tenant business domain.
 
 ## Scope
 
-- `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` and execution lifecycle;
+- source revisions, `ScriptOrchestrator`, `Scheduler` and Alloy execution lifecycle;
+- Alloy context adaptation over the neutral `rustok-sandbox` Rhai kernel;
 - storage/migrations for scripts and execution log;
 - GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::axum_router`), including tenant-scoped execution history;
 - integration contracts `ScriptableEntity` and `HookExecutor` for host modules;
+- staging and forking Rhai module artifacts through `rustok-modules` with immutable release lineage;
 - no transformation of the script runtime into a separate tenant business domain.
 
 ## Integration
 
 - connected by `apps/server` via generated module wiring from `modules.toml` and `rustok-module.toml`;
 - registered in `ModuleRegistry` as a regular optional module and publishes script permission surface;
-- uses Rhai as embedded engine and must maintain sandbox/resource-limit semantics;
+- uses the neutral sandbox Rhai executor and must request only explicitly granted capabilities;
 - can be called by domain modules through hook/integration contracts without blurring their own runtime boundaries.
 
 ## Verification
@@ -49,9 +51,9 @@ host-triggered hooks:
 - `max_call_depth = 16` enforced by Rhai function-call limits;
 - `max_string_size = 64 KiB`, `max_array_size = 10_000` and `max_map_depth = 16` enforced as data-size limits and mapped to `ScriptError::ResourceLimit`.
 
-Use `EngineConfig::strict()` for latency-sensitive pre-commit hooks and
-`EngineConfig::relaxed()` only for operator-controlled maintenance scripts.
-Public callers can obtain a snapshot of effective limits via `EngineConfig::limits()`
+Use `RhaiConfig::strict()` for latency-sensitive pre-commit hooks and
+`RhaiConfig::relaxed()` only for operator-controlled maintenance scripts.
+Public callers can obtain a snapshot of effective limits via `RhaiConfig::limits()`
 without depending on Rhai internals. `PhaseCapabilities` fixes the helper families
 allowed for each execution phase, so integrations do not infer bridge
 availability from side effects of registration.

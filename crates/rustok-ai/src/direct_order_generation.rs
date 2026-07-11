@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use crate::direct::parse_json_object_from_text;
+use crate::direct::complete_typed;
 use crate::engine::InferenceEngine;
 use crate::model::{
     AiOrderAnalyticsTaskInput, AiOrderOpsAssistantTaskInput, AiProviderConfig, ChatMessage,
@@ -16,7 +16,7 @@ use rustok_ai_order::{
     GeneratedOrderAnalytics, GeneratedOrderOpsAssistant,
 };
 
-async fn complete_direct_order_json(
+async fn complete_direct_order<T>(
     provider: &Arc<dyn InferenceEngine>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
@@ -24,7 +24,10 @@ async fn complete_direct_order_json(
     direct_generation: &str,
     schema_instruction: &str,
     input_payload: Value,
-) -> AiResult<Value> {
+) -> AiResult<T>
+where
+    T: for<'de> serde::Deserialize<'de> + schemars::JsonSchema,
+{
     let system = match system_prompt {
         Some(system_prompt) if !system_prompt.trim().is_empty() => {
             format!("{system_prompt}\n\n{schema_instruction}")
@@ -38,10 +41,9 @@ async fn complete_direct_order_json(
     })
     .to_string();
 
-    let response = provider
-        .complete(
-            provider_config,
-            ProviderChatRequest {
+    complete_typed(
+        provider,
+        ProviderChatRequest {
                 model: provider_config.model.clone(),
                 messages: vec![
                     ChatMessage {
@@ -65,17 +67,9 @@ async fn complete_direct_order_json(
                 temperature: provider_config.temperature,
                 max_tokens: provider_config.max_tokens,
                 locale: Some(target_locale.to_string()),
-            },
-        )
-        .await?;
-
-    let content = response.assistant_message.content.ok_or_else(|| {
-        AiError::Provider(format!(
-            "provider returned empty content for {direct_generation}"
-        ))
-    })?;
-
-    parse_json_object_from_text(&content)
+        },
+    )
+    .await
 }
 
 pub(crate) async fn generate_order_analytics(
@@ -89,7 +83,7 @@ pub(crate) async fn generate_order_analytics(
         "Return valid JSON only with keys `summary`, `key_findings`, `risk_flags`, `recommended_actions`. ",
         "All array values must be arrays of strings."
     );
-    let parsed = complete_direct_order_json(
+    let generated: GeneratedOrderAnalytics = complete_direct_order(
         provider,
         provider_config,
         system_prompt,
@@ -99,8 +93,6 @@ pub(crate) async fn generate_order_analytics(
         serde_json::to_value(input).map_err(AiError::Json)?,
     )
     .await?;
-    let generated: GeneratedOrderAnalytics =
-        serde_json::from_value(parsed).map_err(AiError::Json)?;
     validate_order_analytics_payload(&generated).map_err(AiError::Validation)?;
     Ok(generated)
 }
@@ -116,7 +108,7 @@ pub(crate) async fn generate_order_ops_assistant(
         "Return valid JSON only with keys `recommended_action`, `rationale`, `prefill`, `requires_human`, `confidence`. ",
         "`confidence` must be an integer from 0 to 100."
     );
-    let parsed = complete_direct_order_json(
+    let decision: GeneratedOrderOpsAssistant = complete_direct_order(
         provider,
         provider_config,
         system_prompt,
@@ -126,8 +118,6 @@ pub(crate) async fn generate_order_ops_assistant(
         serde_json::to_value(input).map_err(AiError::Json)?,
     )
     .await?;
-    let decision: GeneratedOrderOpsAssistant =
-        serde_json::from_value(parsed).map_err(AiError::Json)?;
     validate_order_ops_assistant_payload(&decision).map_err(AiError::Validation)?;
     Ok(decision)
 }

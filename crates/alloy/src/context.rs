@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use rhai::{Map, Scope};
 use uuid::Uuid;
+use rustok_sandbox::rhai::RhaiScopeProvider;
 
 use crate::model::EntityProxy;
 
@@ -108,5 +109,11 @@ impl ExecutionContext {
         scope.push_constant("params", self.params.clone());
 
         scope
+    }
+}
+
+impl RhaiScopeProvider for ExecutionContext {
+    fn rhai_scope(&self) -> Scope<'static> {
+        self.to_scope()
     }
 }

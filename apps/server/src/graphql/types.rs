@@ -9,18 +9,17 @@ use uuid::Uuid;
 
 use crate::common::RequestContext;
 use crate::graphql::loaders::TenantNameLoader;
-use crate::models::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
-use crate::models::release::{Model as ReleaseModel, ReleaseStatus};
 use crate::models::users;
-use crate::modules::{
-    module_setting_shape_value, BuildExecutionPlan, InstalledManifestModule, ModuleSettingSpec,
-};
-use crate::services::build_service::BuildEvent;
+use crate::modules::{module_setting_shape_value, InstalledManifestModule, ModuleSettingSpec};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::module_lifecycle::ModuleOperationRecoveryPlan as ServiceModuleOperationRecoveryPlan;
 use crate::services::rbac_service::RbacService;
 use crate::services::registry_principal::RegistryPrincipalRef;
 use rustok_api::graphql::PageInfo;
+use rustok_build::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
+use rustok_build::release::{Model as ReleaseModel, ReleaseStatus};
+use rustok_build::BuildEvent;
+use rustok_build::BuildExecutionPlan;
 
 #[derive(SimpleObject, Clone)]
 pub struct Tenant {

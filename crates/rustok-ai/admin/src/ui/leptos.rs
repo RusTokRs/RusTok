@@ -77,10 +77,10 @@ pub fn AiAdmin() -> impl IntoView {
 
     let provider_slug = RwSignal::new(String::new());
     let provider_name = RwSignal::new(String::new());
-    let provider_kind = RwSignal::new("openai_compatible".to_string());
-    let provider_base_url = RwSignal::new("http://localhost:11434".to_string());
+    let provider_integration = RwSignal::new("openai_compatible".to_string());
+    let provider_settings = RwSignal::new(Vec::new());
+    let provider_credential_refs = RwSignal::new(Vec::new());
     let provider_model = RwSignal::new("gpt-4.1-mini".to_string());
-    let provider_api_key = RwSignal::new(String::new());
     let provider_temperature = RwSignal::new("0.2".to_string());
     let provider_max_tokens = RwSignal::new("1024".to_string());
     let provider_capabilities = RwSignal::new(
@@ -407,10 +407,10 @@ pub fn AiAdmin() -> impl IntoView {
                                 selected_provider,
                                 provider_slug,
                                 provider_name,
-                                provider_kind,
-                                provider_base_url,
+                                provider_integration,
+                                provider_settings,
+                                provider_credential_refs,
                                 provider_model,
-                                provider_api_key,
                                 provider_temperature,
                                 provider_max_tokens,
                                 provider_capabilities,
@@ -425,10 +425,10 @@ pub fn AiAdmin() -> impl IntoView {
                                 selected_provider,
                                 provider_slug,
                                 provider_name,
-                                provider_kind,
-                                provider_base_url,
+                                provider_integration,
+                                provider_settings,
+                                provider_credential_refs,
                                 provider_model,
-                                provider_api_key,
                                 provider_temperature,
                                 provider_max_tokens,
                                 provider_capabilities,
@@ -444,10 +444,10 @@ pub fn AiAdmin() -> impl IntoView {
                         selected_provider,
                         provider_slug,
                         provider_name,
-                        provider_kind,
-                        provider_base_url,
+                        provider_integration,
+                        provider_settings,
+                        provider_credential_refs,
                         provider_model,
-                        provider_api_key,
                         provider_temperature,
                         provider_max_tokens,
                         provider_capabilities,
@@ -806,10 +806,10 @@ pub fn AiAdmin() -> impl IntoView {
             let result = transport::create_provider(
                 provider_slug.get_untracked(),
                 provider_name.get_untracked(),
-                provider_kind.get_untracked(),
-                provider_base_url.get_untracked(),
+                provider_integration.get_untracked(),
                 provider_model.get_untracked(),
-                optional_text(provider_api_key.get_untracked()),
+                provider_settings.get_untracked(),
+                provider_credential_refs.get_untracked(),
                 provider_temperature
                     .get_untracked()
                     .trim()
@@ -847,10 +847,10 @@ pub fn AiAdmin() -> impl IntoView {
             selected_provider,
             provider_slug,
             provider_name,
-            provider_kind,
-            provider_base_url,
+            provider_integration,
+            provider_settings,
+            provider_credential_refs,
             provider_model,
-            provider_api_key,
             provider_temperature,
             provider_max_tokens,
             provider_capabilities,
@@ -875,8 +875,9 @@ pub fn AiAdmin() -> impl IntoView {
             let result = transport::update_provider(
                 provider_id,
                 provider_name.get_untracked(),
-                provider_base_url.get_untracked(),
                 provider_model.get_untracked(),
+                provider_settings.get_untracked(),
+                provider_credential_refs.get_untracked(),
                 provider_temperature
                     .get_untracked()
                     .trim()
@@ -1592,13 +1593,14 @@ pub fn AiAdmin() -> impl IntoView {
                                     <section class="space-y-6">
                                         <AiProviderPanel
                                             ui_locale=ui_locale_left.clone()
+                                            provider_catalog=bootstrap_left.provider_catalog.clone()
                                             providers=bootstrap_left.providers.clone()
                                             provider_slug=provider_slug
                                             provider_name=provider_name
-                                            provider_kind=provider_kind
-                                            provider_base_url=provider_base_url
+                                            provider_integration=provider_integration
+                                            provider_settings=provider_settings
+                                            provider_credential_refs=provider_credential_refs
                                             provider_model=provider_model
-                                            provider_api_key=provider_api_key
                                             provider_temperature=provider_temperature
                                             provider_max_tokens=provider_max_tokens
                                             provider_capabilities=provider_capabilities
@@ -2048,10 +2050,10 @@ fn apply_provider_profile(
     selected_provider: RwSignal<String>,
     provider_slug: RwSignal<String>,
     provider_name: RwSignal<String>,
-    provider_kind: RwSignal<String>,
-    provider_base_url: RwSignal<String>,
+    provider_integration: RwSignal<String>,
+    provider_settings: RwSignal<Vec<crate::model::AiProviderSettingPayload>>,
+    provider_credential_refs: RwSignal<Vec<crate::model::AiCredentialRefPayload>>,
     provider_model: RwSignal<String>,
-    provider_api_key: RwSignal<String>,
     provider_temperature: RwSignal<String>,
     provider_max_tokens: RwSignal<String>,
     provider_capabilities: RwSignal<String>,
@@ -2064,10 +2066,10 @@ fn apply_provider_profile(
     selected_provider.set(profile.id.clone());
     provider_slug.set(profile.slug.clone());
     provider_name.set(profile.display_name.clone());
-    provider_kind.set(profile.provider_kind.clone());
-    provider_base_url.set(profile.base_url.clone());
+    provider_integration.set(profile.provider_slug.clone());
+    provider_settings.set(profile.settings.clone());
+    provider_credential_refs.set(profile.credential_refs.clone());
     provider_model.set(profile.model.clone());
-    provider_api_key.set(String::new());
     provider_temperature.set(
         profile
             .temperature
@@ -2091,10 +2093,10 @@ fn clear_provider_profile(
     selected_provider: RwSignal<String>,
     provider_slug: RwSignal<String>,
     provider_name: RwSignal<String>,
-    provider_kind: RwSignal<String>,
-    provider_base_url: RwSignal<String>,
+    provider_integration: RwSignal<String>,
+    provider_settings: RwSignal<Vec<crate::model::AiProviderSettingPayload>>,
+    provider_credential_refs: RwSignal<Vec<crate::model::AiCredentialRefPayload>>,
     provider_model: RwSignal<String>,
-    provider_api_key: RwSignal<String>,
     provider_temperature: RwSignal<String>,
     provider_max_tokens: RwSignal<String>,
     provider_capabilities: RwSignal<String>,
@@ -2106,10 +2108,10 @@ fn clear_provider_profile(
     selected_provider.set(String::new());
     provider_slug.set(String::new());
     provider_name.set(String::new());
-    provider_kind.set("openai_compatible".to_string());
-    provider_base_url.set("http://localhost:11434".to_string());
+    provider_integration.set("openai_compatible".to_string());
+    provider_settings.set(Vec::new());
+    provider_credential_refs.set(Vec::new());
     provider_model.set("gpt-4.1-mini".to_string());
-    provider_api_key.set(String::new());
     provider_temperature.set("0.2".to_string());
     provider_max_tokens.set("1024".to_string());
     provider_capabilities

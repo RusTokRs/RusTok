@@ -82,13 +82,14 @@
         "timeout_ms": 5000
       }
     },
-    "operator_surface": "EngineConfig::limits",
-    "timeout_enforcement": "post_eval_elapsed_budget_returns_timeout",
+    "operator_surface": "rustok_sandbox::rhai::RhaiConfig::limits",
+    "timeout_enforcement": "progress_callback_interrupts_execution_with_timeout",
     "rhai_native_limit_mapping": [
       "ErrorTooManyOperations_to_OperationLimit",
       "ErrorDataTooLarge_to_ResourceLimit"
     ],
-    "executor_timeout_observability": "warn_after_execution_budget_exceeded"
+    "executor_timeout_observability": "alloy_adapter_records_timeout_outcome",
+    "owner": "rustok-sandbox"
   },
   "scheduler_hook_contract": {
     "scheduler_phase": "Scheduled",

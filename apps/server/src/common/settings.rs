@@ -87,14 +87,12 @@ pub struct CacheSettings {
 /// Email transport provider selector.
 ///
 /// - `smtp` (default): sends via lettre directly using the `[email.smtp]` config
-/// - `loco`: sends via Loco Mailer (`ctx.mailer`) + Tera templates
 /// - `none`: email sending is disabled
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum EmailProvider {
     #[default]
     Smtp,
-    Loco,
     None,
 }
 

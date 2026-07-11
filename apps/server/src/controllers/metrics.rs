@@ -39,7 +39,7 @@ use crate::services::rbac_service::{RbacResolverMetricsSnapshot, RbacService};
 use crate::services::runtime_guardrails::{
     collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot,
 };
-use crate::services::server_runtime_context::{ServerEmailRuntime, ServerRuntimeContext};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_cache::CacheService;
 use rustok_telemetry::metrics::update_queue_depth;
 use tracing::warn;
@@ -58,10 +58,7 @@ static RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
         (status = 503, description = "Metrics collection disabled")
     )
 )]
-pub async fn metrics(
-    State(ctx): State<ServerRuntimeContext>,
-    State(email_runtime): State<ServerEmailRuntime>,
-) -> Result<Response> {
+pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
     match rustok_telemetry::metrics_handle() {
         Some(handle) => {
             sync_rate_limit_metrics(&ctx).await;
@@ -73,7 +70,7 @@ pub async fn metrics(
             payload.push_str(&render_tenant_locale_cache_metrics(&ctx).await);
             payload.push_str(&render_outbox_metrics(&ctx).await);
             payload.push_str(&render_runtime_worker_metrics(&ctx));
-            payload.push_str(&render_email_backend_metrics(&ctx, &email_runtime));
+            payload.push_str(&render_email_backend_metrics(&ctx));
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
             payload.push_str(&render_search_metrics(&ctx).await);
@@ -469,33 +466,20 @@ fn format_runtime_worker_restart_metrics(snapshot: OutboxRelaySupervisorMetricsS
     )
 }
 
-fn render_email_backend_metrics(
-    ctx: &ServerRuntimeContext,
-    email_runtime: &ServerEmailRuntime,
-) -> String {
+fn render_email_backend_metrics(ctx: &ServerRuntimeContext) -> String {
     let settings = ctx.settings();
-    let mut payload = format_email_backend_state(
-        &settings.email.provider,
-        settings.email.enabled,
-        email_runtime.mailer_initialized(),
-    );
+    let mut payload = format_email_backend_state(&settings.email.provider, settings.email.enabled);
     payload.push_str(&format_email_delivery_metrics(
         email_delivery_metrics_snapshot(),
     ));
     payload
 }
 
-fn format_email_backend_state(
-    provider: &EmailProvider,
-    smtp_enabled: bool,
-    loco_mailer_initialized: bool,
-) -> String {
+fn format_email_backend_state(provider: &EmailProvider, smtp_enabled: bool) -> String {
     let (provider_label, state) = match provider {
         EmailProvider::None => ("none", 0),
         EmailProvider::Smtp if smtp_enabled => ("smtp", 1),
         EmailProvider::Smtp => ("smtp", 0),
-        EmailProvider::Loco if loco_mailer_initialized => ("loco", 1),
-        EmailProvider::Loco => ("loco", 2),
     };
 
     format!("rustok_email_backend_state{{provider=\"{provider_label}\"}} {state}\n")
@@ -940,18 +924,14 @@ mod tests {
     }
 
     #[test]
-    fn email_backend_metrics_encode_disabled_enabled_and_degraded_states() {
+    fn email_backend_metrics_encode_disabled_and_enabled_states() {
         assert_eq!(
-            format_email_backend_state(&EmailProvider::None, false, false),
+            format_email_backend_state(&EmailProvider::None, false),
             "rustok_email_backend_state{provider=\"none\"} 0\n"
         );
         assert_eq!(
-            format_email_backend_state(&EmailProvider::Smtp, true, false),
+            format_email_backend_state(&EmailProvider::Smtp, true),
             "rustok_email_backend_state{provider=\"smtp\"} 1\n"
-        );
-        assert_eq!(
-            format_email_backend_state(&EmailProvider::Loco, true, false),
-            "rustok_email_backend_state{provider=\"loco\"} 2\n"
         );
     }
 

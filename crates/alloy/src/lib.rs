@@ -6,6 +6,7 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod api;
+pub mod artifact;
 pub mod bridge;
 pub mod context;
 pub mod controllers;
@@ -24,10 +25,11 @@ pub mod storage;
 pub mod utils;
 
 pub use api::{create_router, AppState};
+pub use artifact::{fork_rhai_module_release, stage_rhai_module_release, AlloyArtifactError};
 pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
 pub use controllers::{axum_router, LOCO_EXECUTION_HISTORY_ROUTES};
-pub use engine::{EngineConfig, ScriptEngine};
+pub use engine::{RhaiConfig, RhaiLimits, ScriptEngine};
 pub use error::{ScriptError, ScriptResult};
 pub use execution_log::{
     ExecutionLogEntry, ExecutionLogSink, ScriptExecutionsMigration, SeaOrmExecutionLog,
@@ -49,11 +51,11 @@ pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaO
 pub struct AlloyModule;
 
 pub fn create_default_engine() -> ScriptEngine {
-    let config = EngineConfig::default();
+    let config = RhaiConfig::default();
     create_engine_with_config(config)
 }
 
-pub fn create_engine_with_config(config: engine::EngineConfig) -> ScriptEngine {
+pub fn create_engine_with_config(config: engine::RhaiConfig) -> ScriptEngine {
     let mut engine = ScriptEngine::new(config);
 
     bridge::register_utils(engine.engine_mut());
@@ -63,7 +65,7 @@ pub fn create_engine_with_config(config: engine::EngineConfig) -> ScriptEngine {
 }
 
 pub fn create_engine_for_phase(phase: context::ExecutionPhase) -> ScriptEngine {
-    let config = EngineConfig::default();
+    let config = RhaiConfig::default();
     let mut engine = ScriptEngine::new(config);
 
     Bridge::register_for_phase(engine.engine_mut(), phase);
@@ -128,6 +130,7 @@ mod tests {
     use super::*;
     use rhai::Dynamic;
     use std::sync::Arc;
+    use std::time::Duration;
 
     #[derive(Default)]
     struct CapturingExecutionLog {
@@ -223,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_operation_limit() {
-        let config = EngineConfig {
+        let config = RhaiConfig {
             max_operations: 100,
             ..Default::default()
         };
@@ -248,8 +251,23 @@ mod tests {
     }
 
     #[test]
+    fn test_timeout_interrupts_running_script() {
+        let config = RhaiConfig {
+            timeout: Duration::from_millis(0),
+            max_operations: 1_000_000,
+            ..Default::default()
+        };
+        let engine = ScriptEngine::new(config);
+        let context = ExecutionContext::new(ExecutionPhase::Manual);
+
+        let result = engine.execute("timeout", "loop { }", &context);
+
+        assert!(matches!(result, Err(ScriptError::Timeout { limit_ms: 0 })));
+    }
+
+    #[test]
     fn test_string_resource_limit() {
-        let config = EngineConfig {
+        let config = RhaiConfig {
             max_string_size: 8,
             ..Default::default()
         };
@@ -272,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_engine_limits_snapshot() {
-        let config = EngineConfig::strict();
+        let config = RhaiConfig::strict();
         let limits = config.limits();
 
         assert_eq!(limits.max_operations, 10_000);

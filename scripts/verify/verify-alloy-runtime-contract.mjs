@@ -40,7 +40,9 @@ if (contract.execution_history_contract?.tenant_filter_before_offset !== true) f
 if (contract.sandbox_contract?.profiles?.default?.max_operations !== 50000 || contract.sandbox_contract?.profiles?.default?.timeout_ms !== 100) fail('default sandbox profile drift');
 if (contract.sandbox_contract?.profiles?.strict?.max_operations !== 10000 || contract.sandbox_contract?.profiles?.strict?.timeout_ms !== 50 || contract.sandbox_contract?.profiles?.strict?.max_call_depth !== 8) fail('strict sandbox profile drift');
 if (contract.sandbox_contract?.profiles?.relaxed?.max_operations !== 500000 || contract.sandbox_contract?.profiles?.relaxed?.timeout_ms !== 5000) fail('relaxed sandbox profile drift');
-if (contract.sandbox_contract?.operator_surface !== 'EngineConfig::limits') fail('sandbox operator surface drift');
+if (contract.sandbox_contract?.operator_surface !== 'rustok_sandbox::rhai::RhaiConfig::limits') fail('sandbox operator surface drift');
+if (contract.sandbox_contract?.owner !== 'rustok-sandbox') fail('sandbox owner drift');
+if (contract.sandbox_contract?.timeout_enforcement !== 'progress_callback_interrupts_execution_with_timeout') fail('sandbox timeout enforcement drift');
 sameArray(contract.sandbox_contract?.rhai_native_limit_mapping, ['ErrorTooManyOperations_to_OperationLimit', 'ErrorDataTooLarge_to_ResourceLimit'], 'rhai native limit mapping');
 if (contract.scheduler_hook_contract?.scheduler_phase !== 'Scheduled' || contract.scheduler_hook_contract?.scheduler_tenant_context !== 'script_tenant_id') fail('scheduler context drift');
 sameArray(contract.script_crud_validation_contract?.rest_create, ['reject_duplicate_name', 'validate_cron_trigger', 'compile_before_save', 'persist_optional_tenant_id'], 'REST create validation');
@@ -94,14 +96,14 @@ hasAll(sea, [
   '.limit(limit)'
 ], 'sea orm storage');
 
-const engineConfig = read('crates/alloy/src/engine/config.rs');
+const engineConfig = read('crates/rustok-sandbox/src/rhai/config.rs');
 hasAll(engineConfig, [
   'max_operations: 50_000',
   'timeout: Duration::from_millis(100)',
   'max_call_depth: 16',
   'max_string_size: 64 * 1024',
   'max_array_size: 10_000',
-  'max_map_depth: 16',
+  'max_map_size: 16',
   'pub fn relaxed() -> Self',
   'max_operations: 500_000',
   'timeout: Duration::from_secs(5)',
@@ -109,20 +111,27 @@ hasAll(engineConfig, [
   'max_operations: 10_000',
   'timeout: Duration::from_millis(50)',
   'max_call_depth: 8',
-  'pub fn limits(&self) -> EngineLimits'
+  'pub fn limits(&self) -> RhaiLimits'
 ], 'engine config sandbox limits');
 
-const engineRuntime = read('crates/alloy/src/engine/runtime.rs');
+const engineRuntime = read('crates/rustok-sandbox/src/rhai/engine.rs');
 hasAll(engineRuntime, [
-  'let timeout = self.config.timeout',
-  'let max_ops = self.config.max_operations',
-  'if elapsed > timeout',
-  'ScriptError::Timeout',
+  'engine.on_progress(move |_|',
+  'TIMEOUT_MARKER',
+  'ExecutionTimerGuard::start()',
+  'RhaiError::Timeout',
   'EvalAltResult::ErrorTooManyOperations',
-  'ScriptError::OperationLimit { limit: op_limit }',
+  'RhaiError::OperationLimit',
   'EvalAltResult::ErrorDataTooLarge',
-  'ScriptError::ResourceLimit { resource: kind }'
+  'RhaiError::ResourceLimit'
 ], 'engine runtime timeout and native limit mapping');
+
+const alloyEngineAdapter = read('crates/alloy/src/engine/runtime.rs');
+hasAll(alloyEngineAdapter, [
+  'Alloy-specific adapter over the neutral Rhai execution kernel',
+  'inner: RhaiEngine',
+  '.map_err(ScriptError::from)'
+], 'Alloy sandbox adapter');
 
 const handlers = read('crates/alloy/src/api/handlers.rs');
 hasAll(handlers, [

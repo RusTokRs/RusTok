@@ -50,7 +50,7 @@ pub fn register_order_ai_vertical_handlers(
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GeneratedOrderAnalytics {
     pub summary: String,
     #[serde(default)]
@@ -61,7 +61,7 @@ pub struct GeneratedOrderAnalytics {
     pub recommended_actions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GeneratedOrderOpsAssistant {
     pub recommended_action: String,
     pub rationale: String,

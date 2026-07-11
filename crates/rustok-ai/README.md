@@ -9,7 +9,10 @@ typed runtime contracts for provider profiles, task profiles, hybrid direct/MCP 
 chat sessions, runs, traces, and approval-gated tool execution.
 
 Current implementation includes:
-- multiprovider routing for `OpenAI-compatible`, `Anthropic`, and `Gemini`
+- Rig 0.39 as the canonical inference engine, with registry-driven provider profiles and
+  built-in Rig providers plus Bedrock, Vertex AI, Gemini gRPC, and optional FastEmbed
+- persisted `ProviderSlug`, typed settings, external `SecretRef` credential references, and
+  server-owned resolver/egress policies
 - AI-task RBAC permissions consumed from `rustok-core` / `rustok-rbac`
 - multilingual locale-aware session/run contracts with arbitrary BCP-47-style locale tags
 - direct task-job execution for first-party verticals `alloy_code`, `image_asset`, `product_copy`,
@@ -35,10 +38,10 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
 
 ## Responsibilities
 
-- Expose a provider-agnostic AI runtime centered on the `ModelProvider` trait.
-- Ship native provider adapters for `OpenAI-compatible`, `Anthropic`, and `Gemini`.
-- Support native streaming text/tool-call parsing for `OpenAI-compatible`, `Anthropic`, and
-  `Gemini` provider-backed runs.
+- Expose a provider-agnostic Rig engine centered on `InferenceEngine` and `RigAgentDriver`.
+- Keep provider descriptions, factories, typed settings, credentials, and feature declarations in
+  one static registry.
+- Delegate streaming protocol handling, tool-call assembly, and structured output constraints to Rig.
 - Orchestrate chat runs, direct-vs-MCP execution selection, MCP tool calls, and approval flows.
 - Own task-profile-driven routing through `AiRouter` and typed execution decisions.
 - Persist requested/resolved locale metadata on AI sessions and runs.
@@ -81,11 +84,9 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
 
 ## Entry points
 
-- `ModelProvider`
-- `OpenAiCompatibleProvider`
-- `AnthropicProvider`
-- `GeminiProvider`
-- `AiRuntime`
+- `ProviderSlug`, `ProviderFeature`, `provider_catalog()`
+- `InferenceEngine`, `RigAgentDriver`, `inference_for_slug(...)`
+- `embed(...)`, `rerank(...)`
 - `AiRouter`
 - `McpClientAdapter`
 - `ToolExecutionPolicy`

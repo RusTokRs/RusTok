@@ -24,10 +24,8 @@
     "field": {
       "slug": "Slug",
       "displayName": "Display name",
-      "providerKind": "Provider kind",
-      "baseUrl": "Base URL",
+      "providerIntegration": "Provider integration",
       "model": "Model",
-      "apiKey": "API key",
       "temperature": "Temperature",
       "maxTokens": "Max tokens",
       "capabilitiesCsv": "Capabilities (csv)",

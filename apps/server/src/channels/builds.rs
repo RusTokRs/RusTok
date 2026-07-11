@@ -20,8 +20,8 @@ use uuid::Uuid;
 
 use crate::routes::Routes;
 use crate::services::build_event_hub::build_event_hub_from_context;
-use crate::services::build_service::BuildEvent;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use rustok_build::BuildEvent;
 
 // ── Wire-format message ───────────────────────────────────────────────────────
 

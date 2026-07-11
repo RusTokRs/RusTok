@@ -9,6 +9,7 @@ use rustok_channel::ChannelModule;
 use rustok_core::ModuleRegistry;
 use rustok_email::EmailModule;
 use rustok_index::IndexModule;
+use rustok_modules::ModulesModule;
 use rustok_outbox::OutboxModule;
 use rustok_rbac::RbacModule;
 use rustok_search::SearchModule;
@@ -16,15 +17,15 @@ use rustok_tenant::TenantModule;
 
 pub(crate) use manifest::module_setting_shape_value;
 pub use manifest::{
-    catalog_module_ui_classification, validate_registry_vs_manifest, BuildExecutionPlan,
-    CatalogManifestModule, CatalogModuleVersion, DeploymentSurfaceContract, FrontendArtifactKind,
-    FrontendBuildPlan, FrontendBuildTool, InstalledManifestModule, ManifestDiff, ManifestError,
-    ManifestManager, ManifestModuleSpec, ModuleSettingSpec, ModulesManifest,
+    catalog_module_ui_classification, validate_registry_vs_manifest, CatalogManifestModule,
+    CatalogModuleVersion, DeploymentSurfaceContract, InstalledManifestModule, ManifestDiff,
+    ManifestError, ManifestManager, ManifestModuleSpec, ModuleSettingSpec, ModulesManifest,
 };
 
 pub fn build_registry() -> ModuleRegistry {
     let cache_module = CacheModule::new();
     let registry = ModuleRegistry::new()
+        .register(ModulesModule)
         .register(AuthModule)
         .register(cache_module)
         .register(ChannelModule)

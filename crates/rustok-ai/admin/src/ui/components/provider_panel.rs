@@ -1,5 +1,8 @@
 use crate::i18n::t;
-use crate::model::AiProviderProfilePayload;
+use crate::model::{
+    AiCredentialRefPayload, AiProviderCatalogEntryPayload, AiProviderProfilePayload,
+    AiProviderSettingPayload,
+};
 use crate::ui::leptos::{provider_profile_summary, Card, TextField};
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
@@ -8,13 +11,14 @@ use rustok_ui_core::AdminQueryKey;
 #[component]
 pub fn AiProviderPanel(
     ui_locale: Option<String>,
+    provider_catalog: Vec<AiProviderCatalogEntryPayload>,
     providers: Vec<AiProviderProfilePayload>,
     provider_slug: RwSignal<String>,
     provider_name: RwSignal<String>,
-    provider_kind: RwSignal<String>,
-    provider_base_url: RwSignal<String>,
+    provider_integration: RwSignal<String>,
+    provider_settings: RwSignal<Vec<AiProviderSettingPayload>>,
+    provider_credential_refs: RwSignal<Vec<AiCredentialRefPayload>>,
     provider_model: RwSignal<String>,
-    provider_api_key: RwSignal<String>,
     provider_temperature: RwSignal<String>,
     provider_max_tokens: RwSignal<String>,
     provider_capabilities: RwSignal<String>,
@@ -31,16 +35,99 @@ pub fn AiProviderPanel(
 ) -> impl IntoView {
     let ui_locale_providers = ui_locale.clone();
     let select_provider_query_writer = select_provider_query_writer.clone();
+    let settings_catalog = provider_catalog.clone();
+    let defaults_catalog = provider_catalog.clone();
+    let credentials_catalog = provider_catalog.clone();
 
     view! {
         <Card title=t(ui_locale.as_deref(), "ai.card.providers", "Providers")>
             <form class="space-y-3" on:submit=move |ev| on_create_provider.run(ev)>
                 <TextField label=t(ui_locale.as_deref(), "ai.field.slug", "Slug") value=provider_slug />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.displayName", "Display name") value=provider_name />
-                <TextField label=t(ui_locale.as_deref(), "ai.field.providerKind", "Provider kind") value=provider_kind />
-                <TextField label=t(ui_locale.as_deref(), "ai.field.baseUrl", "Base URL") value=provider_base_url />
+                <label class="grid gap-1 text-sm font-medium">
+                    <span>{t(ui_locale.as_deref(), "ai.field.providerIntegration", "Provider integration")}</span>
+                    <select
+                        class="rounded-lg border border-border bg-background px-3 py-2"
+                        prop:value=move || provider_integration.get()
+                        on:change=move |ev| {
+                            provider_integration.set(event_target_value(&ev));
+                            provider_settings.set(
+                                selected_default_settings(&defaults_catalog, &provider_integration.get()),
+                            );
+                            provider_credential_refs.set(Vec::new());
+                        }
+                    >
+                        {provider_catalog.into_iter().filter(|entry| entry.compiled_in).map(|entry| {
+                            view! { <option value=entry.slug>{entry.display_name}</option> }
+                        }).collect_view()}
+                    </select>
+                </label>
+                <For
+                    each=move || selected_settings_schema(&settings_catalog, &provider_integration.get())
+                    key=|field| field.key.clone()
+                    children=move |field| {
+                        let key = field.key.clone();
+                        let key_for_value = key.clone();
+                        let kind = field.kind.clone();
+                        view! {
+                            <label class="grid gap-1 text-sm font-medium">
+                                <span>{field.label}</span>
+                                <input
+                                    class="rounded-lg border border-border bg-background px-3 py-2"
+                                    type=if kind == "integer" { "number" } else { "text" }
+                                    prop:value=move || setting_value(&provider_settings.get(), &key_for_value)
+                                    on:input=move |ev| update_setting(
+                                        provider_settings,
+                                        key.clone(),
+                                        kind.clone(),
+                                        event_target_value(&ev),
+                                    )
+                                />
+                            </label>
+                        }
+                    }
+                />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.model", "Model") value=provider_model />
-                <TextField label=t(ui_locale.as_deref(), "ai.field.apiKey", "API key") value=provider_api_key />
+                <For
+                    each=move || selected_credential_schema(&credentials_catalog, &provider_integration.get())
+                    key=|field| field.key.clone()
+                    children=move |field| {
+                        let key_for_resolver = field.key.clone();
+                        let key_for_secret = field.key.clone();
+                        let value_key = field.key.clone();
+                        let secret_update_key = field.key.clone();
+                        let label = field.label;
+                        view! {
+                            <div class="grid gap-2 rounded-lg border border-border p-3">
+                                <div class="text-sm font-medium">{label}</div>
+                                <input
+                                    class="rounded-lg border border-border bg-background px-3 py-2"
+                                    placeholder="Resolver alias"
+                                    prop:value=move || credential_resolver(&provider_credential_refs.get(), &key_for_resolver)
+                                    on:input=move |ev| update_credential_ref(
+                                        provider_credential_refs,
+                                        value_key.clone(),
+                                        Some(event_target_value(&ev)),
+                                        None,
+                                    )
+                                />
+                                <input
+                                    class="rounded-lg border border-border bg-background px-3 py-2"
+                                    type="password"
+                                    placeholder="External secret key"
+                                    autocomplete="off"
+                                    prop:value=move || credential_key(&provider_credential_refs.get(), &key_for_secret)
+                                    on:input=move |ev| update_credential_ref(
+                                        provider_credential_refs,
+                                        secret_update_key.clone(),
+                                        None,
+                                        Some(event_target_value(&ev)),
+                                    )
+                                />
+                            </div>
+                        }
+                    }
+                />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.temperature", "Temperature") value=provider_temperature />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.maxTokens", "Max tokens") value=provider_max_tokens />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.capabilitiesCsv", "Capabilities (csv)") value=provider_capabilities />
@@ -81,7 +168,7 @@ pub fn AiProviderPanel(
                             <div class="text-muted-foreground">
                                 {provider_profile_summary(
                                     ui_locale_providers.as_deref(),
-                                    provider.provider_kind.as_str(),
+                                    provider.provider_slug.as_str(),
                                     provider.model.as_str(),
                                     provider.capabilities.len(),
                                     provider.is_active,
@@ -93,4 +180,116 @@ pub fn AiProviderPanel(
             </div>
         </Card>
     }
+}
+
+fn selected_settings_schema(
+    catalog: &[AiProviderCatalogEntryPayload],
+    slug: &str,
+) -> Vec<crate::model::AiProviderFieldPayload> {
+    catalog
+        .iter()
+        .find(|entry| entry.slug == slug)
+        .map(|entry| entry.settings_schema.clone())
+        .unwrap_or_default()
+}
+
+fn selected_credential_schema(
+    catalog: &[AiProviderCatalogEntryPayload],
+    slug: &str,
+) -> Vec<crate::model::AiProviderFieldPayload> {
+    catalog
+        .iter()
+        .find(|entry| entry.slug == slug)
+        .map(|entry| entry.credential_schema.clone())
+        .unwrap_or_default()
+}
+
+fn selected_default_settings(
+    catalog: &[AiProviderCatalogEntryPayload],
+    slug: &str,
+) -> Vec<AiProviderSettingPayload> {
+    catalog
+        .iter()
+        .find(|entry| entry.slug == slug)
+        .map(|entry| entry.default_settings.clone())
+        .unwrap_or_default()
+}
+
+fn setting_value(settings: &[AiProviderSettingPayload], key: &str) -> String {
+    settings
+        .iter()
+        .find(|value| value.key == key)
+        .map(|value| {
+            value
+                .text_value
+                .clone()
+                .or_else(|| value.integer_value.map(|item| item.to_string()))
+                .or_else(|| value.boolean_value.map(|item| item.to_string()))
+                .unwrap_or_default()
+        })
+        .unwrap_or_default()
+}
+
+fn update_setting(
+    settings: RwSignal<Vec<AiProviderSettingPayload>>,
+    key: String,
+    kind: String,
+    raw_value: String,
+) {
+    settings.update(|values| {
+        values.retain(|value| value.key != key);
+        if raw_value.trim().is_empty() {
+            return;
+        }
+        let mut value = AiProviderSettingPayload {
+            key,
+            ..Default::default()
+        };
+        match kind.as_str() {
+            "integer" => value.integer_value = raw_value.trim().parse().ok(),
+            "boolean" => value.boolean_value = raw_value.trim().parse().ok(),
+            _ => value.text_value = Some(raw_value),
+        }
+        values.push(value);
+    });
+}
+
+fn credential_resolver(values: &[AiCredentialRefPayload], key: &str) -> String {
+    values
+        .iter()
+        .find(|value| value.key == key)
+        .map(|value| value.resolver.clone())
+        .unwrap_or_default()
+}
+
+fn credential_key(values: &[AiCredentialRefPayload], key: &str) -> String {
+    values
+        .iter()
+        .find(|value| value.key == key)
+        .map(|value| value.secret_key.clone())
+        .unwrap_or_default()
+}
+
+fn update_credential_ref(
+    refs: RwSignal<Vec<AiCredentialRefPayload>>,
+    key: String,
+    resolver: Option<String>,
+    secret_key: Option<String>,
+) {
+    refs.update(|values| {
+        if let Some(value) = values.iter_mut().find(|value| value.key == key) {
+            if let Some(resolver) = resolver {
+                value.resolver = resolver;
+            }
+            if let Some(secret_key) = secret_key {
+                value.secret_key = secret_key;
+            }
+        } else {
+            values.push(AiCredentialRefPayload {
+                key,
+                resolver: resolver.unwrap_or_default(),
+                secret_key: secret_key.unwrap_or_default(),
+            });
+        }
+    });
 }

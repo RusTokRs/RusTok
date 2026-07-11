@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AiAdminBootstrap {
     pub metrics: AiRuntimeMetricsPayload,
+    pub provider_catalog: Vec<AiProviderCatalogEntryPayload>,
     pub providers: Vec<AiProviderProfilePayload>,
     pub task_profiles: Vec<AiTaskProfilePayload>,
     pub tool_profiles: Vec<AiToolProfilePayload>,
@@ -30,7 +31,7 @@ pub struct AiRuntimeMetricsPayload {
     pub locale_fallback_total: u64,
     pub run_latency_ms_total: u64,
     pub run_latency_samples: u64,
-    pub provider_kind_totals: Vec<AiMetricBucketPayload>,
+    pub provider_slug_totals: Vec<AiMetricBucketPayload>,
     pub execution_target_totals: Vec<AiMetricBucketPayload>,
     pub task_profile_totals: Vec<AiMetricBucketPayload>,
     pub resolved_locale_totals: Vec<AiMetricBucketPayload>,
@@ -41,18 +42,53 @@ pub struct AiProviderProfilePayload {
     pub id: String,
     pub slug: String,
     pub display_name: String,
-    pub provider_kind: String,
-    pub base_url: String,
+    pub provider_slug: String,
     pub model: String,
+    pub settings: Vec<AiProviderSettingPayload>,
+    pub credential_refs: Vec<AiCredentialRefPayload>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub is_active: bool,
-    pub has_secret: bool,
+    pub has_credentials: bool,
     pub capabilities: Vec<String>,
     pub allowed_task_profiles: Vec<String>,
     pub denied_task_profiles: Vec<String>,
     pub restricted_role_slugs: Vec<String>,
     pub metadata: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiProviderCatalogEntryPayload {
+    pub slug: String,
+    pub display_name: String,
+    pub features: Vec<String>,
+    pub settings_schema: Vec<AiProviderFieldPayload>,
+    pub credential_schema: Vec<AiProviderFieldPayload>,
+    pub default_settings: Vec<AiProviderSettingPayload>,
+    pub compiled_in: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiProviderFieldPayload {
+    pub key: String,
+    pub label: String,
+    pub kind: String,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiProviderSettingPayload {
+    pub key: String,
+    pub text_value: Option<String>,
+    pub integer_value: Option<i64>,
+    pub boolean_value: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiCredentialRefPayload {
+    pub key: String,
+    pub resolver: String,
+    pub secret_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,7 +189,7 @@ pub struct AiRecentRunPayload {
     pub session_title: String,
     pub provider_profile_id: String,
     pub provider_display_name: String,
-    pub provider_kind: String,
+    pub provider_slug: String,
     pub task_profile_id: Option<String>,
     pub task_profile_slug: Option<String>,
     pub status: String,

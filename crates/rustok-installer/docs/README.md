@@ -18,6 +18,12 @@ The crate defines the common installer contract that should be reused by:
 - SQLite is allowed only for `local`, `demo` and `test` scenarios.
 - Module selection in v1 controls tenant enablement and build/profile intent, but not
   physical exclusion of module-owned schema from the global `Migrator`.
+- `SeedProfile` owns its canonical default module set; host installers may only
+  apply explicit enable/disable overrides from the install plan.
+- `SeedExecutionRequest` composes tenant, identity, role and module owner ports;
+  it has no server model or database adapter dependency. The current server
+  installer supplies composition adapters and delegates all seed sequencing to
+  this canonical workflow.
 - Rollback after schema application must not promise a universal reverse
   migration; production restore relies on backup/snapshot.
 

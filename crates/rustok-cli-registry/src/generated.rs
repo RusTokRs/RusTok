@@ -10,5 +10,11 @@ pub fn generated_providers(runtime: &RuntimeComposition) -> Vec<Box<dyn CommandP
         rustok_cli_platform::command_provider(runtime),
         // media / media
         rustok_media_cli::command_provider(runtime),
+        // auth / oauth
+        rustok_auth_cli::command_provider(runtime),
+        // profiles / profiles
+        rustok_profiles_cli::command_provider(runtime),
+        // rbac / rbac
+        rustok_rbac_cli::command_provider(runtime),
     ]
 }

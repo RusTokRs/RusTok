@@ -1,5 +1,4 @@
-mod config;
 mod runtime;
 
-pub use config::EngineConfig;
+pub use rustok_sandbox::rhai::{RhaiConfig, RhaiLimits};
 pub use runtime::ScriptEngine;

@@ -25,6 +25,10 @@ leptos_locales_path = "admin/locales"
 query = "graphql::RbacQuery"
 mutation = "graphql::RbacMutation"
 
+[provides.cli]
+namespace = "rbac"
+factory = "rustok_rbac_cli::command_provider"
+
 [fba.provider]
 registry = "contracts/rbac-fba-registry.json"
 contract_version = "rbac.permission_decision.v1"

@@ -1,7 +1,7 @@
 # rustok-outbox / CRATE_API
 
 ## Public Modules
-`entity`, `migration`, `ports`, `relay`, `transactional`, `transport`; `loco` is available with the `loco-adapter` feature.
+`entity`, `migration`, `ports`, `relay`, `transactional`, `transport`.
 
 ## Primary Public Types and Signatures
 - `pub struct TransactionalEventBus`

@@ -12,6 +12,11 @@ native/GraphQL transport facade, and explicit Leptos UI adapter. Native server
 functions and HTTP/webhook handlers use `HostRuntimeContext` and narrow
 `WorkflowHttpRuntime`, without Loco dependencies.
 
+The owner-owned overview and template gallery are mounted at `/modules/workflow`.
+The legacy `/workflows` root redirects there; only workflow detail editing,
+execution history, and version history remain host-composed until their atomic
+transfer to this package.
+
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`

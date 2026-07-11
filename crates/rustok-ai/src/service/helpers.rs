@@ -20,7 +20,7 @@ use crate::model::{
 };
 use crate::policy::ToolExecutionPolicy;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind};
-use crate::{AiError, AiResult, ProviderSlug};
+use crate::{AiError, AiResult, ProviderEgressPolicy, ProviderSlug};
 
 use super::mapping::role_slug;
 use super::types::AiOperatorContext;
@@ -66,6 +66,41 @@ pub fn provider_slug_from_str(value: &str) -> AiResult<ProviderSlug> {
     ProviderSlug::new(value).map_err(AiError::Validation)
 }
 
+pub fn validate_provider_profile_contract(
+    provider_slug: &ProviderSlug,
+    settings: &std::collections::BTreeMap<String, serde_json::Value>,
+    credential_refs: &std::collections::BTreeMap<String, rustok_secrets::SecretRef>,
+    egress_policy: &ProviderEgressPolicy,
+) -> AiResult<()> {
+    let descriptor = crate::provider_catalog_entry(provider_slug).ok_or_else(|| {
+        AiError::Validation(format!("unknown Rig provider integration `{provider_slug}`"))
+    })?;
+    if !descriptor.compiled_in {
+        return Err(AiError::Validation(format!(
+            "Rig provider integration `{provider_slug}` is not compiled into this deployment"
+        )));
+    }
+    egress_policy
+        .validate_settings(descriptor, settings)
+        .map_err(AiError::Validation)?;
+    for field in descriptor.credentials {
+        if field.required && !credential_refs.contains_key(field.key) {
+            return Err(AiError::Validation(format!(
+                "provider credential reference `{}` is required",
+                field.key
+            )));
+        }
+    }
+    for key in credential_refs.keys() {
+        if !descriptor.credentials.iter().any(|field| field.key == key) {
+            return Err(AiError::Validation(format!(
+                "unknown provider credential reference `{key}`"
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub fn capability_from_slug(value: &str) -> AiResult<ProviderCapability> {
     match value {
         "text_generation" => Ok(ProviderCapability::TextGeneration),
@@ -93,6 +128,7 @@ pub fn execution_mode_from_slug(value: &str) -> AiResult<ExecutionMode> {
 
 pub fn provider_config(model: &ai_provider_profiles::Model) -> AiResult<AiProviderConfig> {
     Ok(AiProviderConfig {
+        tenant_id: model.tenant_id,
         provider_slug: provider_slug_from_str(&model.provider_slug)?,
         model: model.model.clone(),
         settings: serde_json::from_value(model.settings.clone()).map_err(json_err)?,
@@ -199,10 +235,6 @@ pub fn normalize_metadata(value: serde_json::Value) -> serde_json::Value {
     } else {
         json!({})
     }
-}
-
-pub fn normalize_base_url(value: &str) -> String {
-    value.trim().trim_end_matches('/').to_string()
 }
 
 pub fn normalize_nonempty(value: String, fallback: &str) -> String {

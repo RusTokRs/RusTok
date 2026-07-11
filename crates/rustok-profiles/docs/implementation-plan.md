@@ -42,6 +42,22 @@ tag dictionary while profile-tag bindings remain module-owned.
    **Done when:** the new surface has an owner package, public transport
    contract, profile-conflict recovery guidance, and no auth/customer leakage.
 
+4. **Move profile backfill to an owner-local operations adapter.** The current
+   legacy server task has a neutral execution chain and reads users through the
+   auth-owned `AuthUserBackfillReadPort`, but tenant reads remain platform
+   concerns and optional customer enrichment remains customer-owned. Define
+   explicit CLI runtime inputs before adding `profiles
+   backfill` to a module CLI; the profiles module must not import server models
+   or query customer internals directly.
+   **Depends on:** the auth-owned `AuthUserBackfillReadPort`, the existing
+   `TenantReadPort`, and the customer-owned profile-enrichment projection.
+   **Done when:** `rustok-cli profiles backfill` is provided by a
+   `rustok-profiles/cli` adapter, preserves dry-run/event semantics, and the
+   Loco task is deleted. **Completed:** the provider uses owner-owned auth,
+   tenant and customer reads plus `OutboxTransport` for optional event
+   publishing; compiled CLI/runtime evidence remains the next verification
+   step.
+
 ## Verification
 
 - `cargo xtask module validate profiles`

@@ -10,12 +10,11 @@ pub use types::*;
 pub use validation::*;
 
 use crate::error::{Error as ServerError, Result as ServerResult};
-use crate::models::build::DeploymentProfile;
-use crate::services::build_service::ModuleSpec as BuildModuleSpec;
 use rustok_api::module_registry_contract::{
     validate_module_registry_contract, ManifestModuleContract, ModuleRegistryContractError,
     RegistryModuleContract,
 };
+use rustok_build::{BuildExecutionPlan, DeploymentProfile, ModuleSpec as BuildModuleSpec};
 use rustok_core::ModuleRegistry;
 use semver::{Version, VersionReq};
 use std::collections::{BTreeSet, HashMap, HashSet};

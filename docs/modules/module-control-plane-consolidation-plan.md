@@ -10,12 +10,12 @@ status: verified
 
 ## Execution checkpoint
 
-- Current phase: `not_started`
-- Last checkpoint: current fragmentation of module control plane between foundation contracts, server services, GraphQL and admin SSR has been recorded.
-- Next step: prepare ADR with target ownership boundary and inventory of production entrypoints.
-- Open blockers: target boundary of shared contracts/server orchestration must be approved before code migration.
-- Hand-off notes for next agent: do not mix this work with a temporary production remediation plan; do not start by creating a new crate without ADR.
-- Last updated at (UTC): 2026-06-27T00:00:00Z
+- Current phase: `architecture_fixed`
+- Last checkpoint: neutral sandbox ownership and the Alloy/module-platform boundary were accepted in the 2026-07-11 ADR.
+- Next step: introduce `rustok-sandbox` contracts and move the generic Rhai execution kernel behind them.
+- Open blockers: none for the foundation slice; OCI and Wasmtime dependency selection belongs to the artifact-executor stage.
+- Hand-off notes for next agent: Alloy and `rustok-modules` are peer consumers of `rustok-sandbox`; neither may implement a parallel production sandbox.
+- Last updated at (UTC): 2026-07-11T00:00:00Z
 
 ## Problem
 
@@ -37,10 +37,14 @@ sources of taxonomy, validation and state mapping.
 
 ## Goal
 
-Form a single server-owned module control plane with explicit subdomains and
-one set of transport-neutral contracts. Admin and other hosts should only
-call APIs and display canonical payloads without SQL, manifest parsing, hashing
-or lifecycle taxonomy.
+Form a single `rustok-modules`-owned module control plane with explicit
+subdomains and one set of transport-neutral contracts. Admin and other hosts
+only call APIs and display canonical payloads without SQL, manifest parsing,
+hashing, executor selection or lifecycle taxonomy.
+
+Sandboxed execution is owned by the neutral `rustok-sandbox` foundation. Alloy
+and `rustok-modules` consume the same execution request, capability broker,
+policy, limits, audit envelope and outcome taxonomy.
 
 ## Out of Scope
 
@@ -48,7 +52,8 @@ or lifecycle taxonomy.
 - merging platform composition and tenant enablement into one state;
 - removing GraphQL when adding native `#[server]` functions;
 - turning capability crates into tenant-toggled modules;
-- creating a new foundation crate before an architectural decision.
+- rewriting existing native modules in Rhai or WebAssembly;
+- implementing the sidecar executor before the common sandbox and WebAssembly executor are stable.
 
 ## Target Model
 
@@ -59,18 +64,27 @@ The control plane maintains four separate areas of state:
 3. tenant lifecycle — enable/disable/settings/recovery for `Optional` modules;
 4. effective policy — final availability considering platform, tenant and channel.
 
-One server facade coordinates these areas, but does not mix their tables and
-invariants. The shared layer contains only DTOs, pure validation and error taxonomy;
-DB, transactions, build jobs and hooks remain in the server-owned implementation.
+One `rustok-modules` facade coordinates these areas without mixing their tables
+and invariants. Infrastructure adapters are supplied explicitly by the host.
+The neutral sandbox executes admitted payloads but does not own marketplace,
+module identity, installation or Alloy authoring state.
 
 ## Stages
 
 ### 0. Architectural Fixation
 
-- [ ] Compile an inventory of all read/write entrypoints, SQL and manifest DTOs.
-- [ ] Fix an ADR: ownership, dependency direction and transaction boundaries.
+- [x] Compile an inventory of all read/write entrypoints, SQL and manifest DTOs.
+- [x] Fix an ADR: ownership, dependency direction, neutral sandbox and immutable release lineage.
 - [ ] Define canonical error taxonomy and revision/CAS semantics.
 - [ ] Fix compatibility policy for GraphQL and native server functions.
+
+### 0A. Neutral Sandbox Foundation
+
+- [ ] Introduce one execution subject/envelope, capability broker, sandbox policy and typed outcome taxonomy.
+- [ ] Register `rhai` and `wasm_component` executors behind one executor interface; reserve `sidecar` without a placeholder implementation.
+- [ ] Move generic Rhai execution and resource limits from Alloy into `rustok-sandbox`; retain Alloy-specific bridges in Alloy adapters.
+- [ ] Route Alloy draft execution and installed module execution through the same sandbox with distinct typed subjects and grants.
+- [ ] Preserve immutable marketplace releases: Alloy changes create a new version and digest with explicit source lineage.
 
 ### 1. Shared Contracts
 
@@ -80,9 +94,9 @@ DB, transactions, build jobs and hooks remain in the server-owned implementation
 - [ ] Remove duplicate DTOs and local taxonomy mappings after migrating consumers.
 - [ ] Add contract tests for serialization, error codes and revision conflicts.
 
-### 2. Server-Owned Orchestration
+### 2. Module-Owned Orchestration
 
-- [ ] Introduce a single facade over existing lifecycle/composition/governance services.
+- [ ] Introduce a single `rustok-modules` facade over lifecycle, installation, composition and governance services.
 - [ ] Fix one write entrypoint per operation.
 - [ ] Maintain atomic boundaries for platform CAS + build enqueue and tenant journal + state.
 - [ ] Prohibit direct writes to control-plane tables outside owner services via static guardrail.
@@ -108,12 +122,20 @@ DB, transactions, build jobs and hooks remain in the server-owned implementation
 - [ ] Verify Core/Optional invariants and dependency graph on all write paths.
 - [ ] Add tenant/channel isolation and stale revision tests.
 
-### 6. Migration and Removal of Legacy Paths
+### 6. Atomic Cutover and Removal
 
-- [ ] Migrate consumers incrementally with dual-read comparison without dual-write.
-- [ ] Add telemetry on legacy entrypoint usage.
-- [ ] Remove legacy paths after zero-usage window.
+- [ ] Migrate every internal caller to the owner facade in the same change set.
+- [ ] Delete server/admin SQL, manifest and lifecycle paths after caller migration.
+- [ ] Do not retain dual reads, compatibility aliases or fallback-to-legacy execution.
 - [ ] Update central/local docs and operational runbook.
+
+### 7. Artifact Executors and Alloy Evolution
+
+- [ ] Package Rhai modules as immutable artifacts with source lineage and canonical descriptors.
+- [ ] Add the Wasmtime component executor under the same sandbox policy and capability broker.
+- [ ] Add OCI publication, signature/SBOM verification and digest-pinned installation.
+- [ ] Support importing or forking a marketplace Rhai release into Alloy and publishing changes as a new version.
+- [ ] Move trusted native composition into the explicit static-promotion adapter.
 
 ## Verification Gates
 
@@ -127,7 +149,7 @@ DB, transactions, build jobs and hooks remain in the server-owned implementation
 
 ## Definition of Done
 
-The plan is complete when the server is the sole owner of module-management
-orchestration, the shared layer contains only reusable contracts/pure
-validation, admin has no backend bypass paths, and all transports confirm
-identical lifecycle, revision and recovery semantics.
+The plan is complete when `rustok-modules` is the sole owner of module-management
+orchestration, `rustok-sandbox` is the sole sandbox contract used by Alloy and
+installed artifacts, admin/server have no backend bypass paths, and all
+transports confirm identical lifecycle, revision and recovery semantics.

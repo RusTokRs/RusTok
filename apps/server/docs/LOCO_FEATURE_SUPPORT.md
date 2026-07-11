@@ -12,14 +12,14 @@
 
 | Capability area | Loco support | Currently implemented | Source of truth (target) | Duplication risk | Decision |
 |---|---|---|---|---|---|
-| Application hooks (`Hooks`) | ✅ | `boot`, `routes`, `after_routes`, `truncate`, `register_tasks`, `initializers`, `connect_workers`, `seed` | **Loco hooks** | Low | Keep on Loco |
-| Application configuration | ✅ | `development.yaml`/`test.yaml`, `auth.jwt`, custom `settings.rustok.*` | **Loco config + typed project settings** | Low | Keep as is |
-| REST/GraphQL routing | ✅ | `AppRoutes` + Axum layers, GraphQL endpoint | **Loco + project controllers** | Low | Keep as is |
+| Application hooks (`Hooks`) | ✅ | Transitional adapters around neutral `server_bootstrap`, seed and lifecycle services; no Loco worker hook remains | Explicit Axum bootstrap/lifecycle functions | Low | Migrating |
+| Application configuration | ✅ | `development.yaml`/`test.yaml`, JWT and `settings.rustok.*` remain current host inputs | Explicit host configuration plus typed project settings | Low | Migrating |
+| REST/GraphQL routing | ✅ | Transitional `AppRoutes` plus composed Axum layers and GraphQL endpoint | Axum router and typed response/error mappers | Low | Migrating |
 | ORM/migrations/entities | ✅ (SeaORM stack) | migration crate + entities + models | **Loco/SeaORM stack** | Low | Keep as is |
-| Auth framework primitives | ✅ (patterns/hooks) | JWT, refresh sessions, password reset tokens, RBAC domain wiring | **Project domain logic atop Loco runtime** | Medium | Don't duplicate Loco infra layer, but keep domain auth logic as custom |
-| Tasks (`cargo loco task`) | ✅ | `CleanupTask` registered | **Loco Tasks** | Low | Keep on Loco |
-| Initializers | ✅ | `TelemetryInitializer` via Loco API | **Loco Initializers** | Low | Keep on Loco |
-| Mailer subsystem | ✅ | Provider-based server email service (`smtp|loco|none`) + templated auth mail | **Server email service + Loco Mailer adapter** | Low | Keep provider switch in server infra, without separate platform module |
+| Auth framework primitives | ✅ (patterns/hooks) | JWT, refresh sessions, password reset tokens and RBAC domain wiring | `rustok-auth` plus narrow runtime contexts | Medium | Migrated from Loco auth primitives |
+| Tasks (`cargo loco task`) | N/A | No Loco tasks are registered | `rustok-cli` typed providers | Low | Migrated |
+| Initializers | ✅ | Default superadmin is an explicit neutral startup action | `server_bootstrap` ordered startup actions | Low | Migrating |
+| Mailer subsystem | ✅ | Provider-based server email service (`smtp|none`) plus templated auth mail | Server email service | Low | Migrated from Loco mailer |
 | Workers/queue subsystem | ✅ | Currently custom event-driven outbox relay worker | **RusToK custom (consciously)** | Medium | Keep queues/workers as custom (don't duplicate Loco queue runtime) |
 | Storage abstraction (uploads/assets) | ✅ | Shared storage contract via `rustok-storage` + `rustok-media`, initialized in server runtime | **`rustok-storage` service + server runtime wiring** | Low | Use shared storage contract and don't proliferate adhoc upload paths |
 | Tenancy caching | N/A (project concern) | custom tenant cache + negative cache + invalidation + metrics | **RusToK custom** | Low | Keep as custom (platform-specific) |
@@ -31,14 +31,14 @@ The registry below is the mandatory entry point for architectural decisions on L
 
 | Capability | Runtime owner (current) | Source of truth (target) | ADR / reference (required) | Decision status | Next review date | Code points |
 |---|---|---|---|---|---|---|
-| Application hooks (`Hooks`) | `apps/server` + `loco_rs` runtime | Loco hooks contract + `apps/server/src/app.rs` as integration layer | `apps/server/docs/loco/README.md`; `DECISIONS/2026-02-19-core-server-module-bundles-routing.md` | Accepted | 2026-06-01 | `apps/server/src/app.rs` |
-| Application configuration (`Config` + `settings.rustok.*`) | `apps/server` | Loco config (`config/*.yaml`) + typed settings in server | `apps/server/docs/loco/README.md`; `docs/architecture/overview.md` | Accepted | 2026-06-01 | `apps/server/src/common/settings.rs`; `apps/server/config/development.yaml`; `apps/server/config/test.yaml` |
-| REST/GraphQL routing | `apps/server` | Loco `AppRoutes` + server controllers/graphql modules | `DECISIONS/2026-02-19-core-server-module-bundles-routing.md`; `docs/architecture/api.md` | Accepted | 2026-06-01 | `apps/server/src/app.rs`; `apps/server/src/controllers/mod.rs`; `apps/server/src/graphql/mod.rs` |
+| Application hooks (`Hooks`) | `apps/server` + transitional Loco runtime | Explicit bootstrap/lifecycle functions in `services::server_bootstrap` | `docs/architecture/loco-exit-plan.md` | Migrating | 2026-07-11 | `apps/server/src/app.rs`; `apps/server/src/services/server_bootstrap.rs` |
+| Application configuration (`Config` + `settings.rustok.*`) | `apps/server` | Explicit host config plus typed server settings | `docs/architecture/loco-exit-plan.md` | Migrating | 2026-07-11 | `apps/server/src/common/settings.rs`; `apps/server/config/development.yaml`; `apps/server/config/test.yaml` |
+| REST/GraphQL routing | `apps/server` | Axum router composition and typed transport boundaries | `docs/architecture/loco-exit-plan.md`; `docs/architecture/api.md` | Migrating | 2026-07-11 | `apps/server/src/app.rs`; `apps/server/src/services/app_router.rs`; `apps/server/src/graphql/mod.rs` |
 | ORM/migrations/entities | `apps/server` migration + SeaORM entities | SeaORM stack in server app + migration crate | `docs/architecture/database.md`; `apps/server/docs/README.md` | Accepted | 2026-06-01 | `apps/server/migration/src/lib.rs`; `apps/server/src/models/mod.rs` |
-| Auth framework primitives (JWT/sessions/reset/RBAC wiring) | `apps/server` + `rustok-core` + `rustok-rbac` | Domain auth logic atop Loco runtime | `DECISIONS/2026-02-26-auth-lifecycle-unification-session-invalidation.md`; `DECISIONS/2026-03-05-rbac-relation-only-final-cutover-gate.md` | Accepted | 2026-05-20 | `apps/server/src/services/rbac_service.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/controllers/auth.rs` |
-| Tasks (`cargo loco task`) | `apps/server` via Loco task runtime | Loco tasks API with server task registration | `apps/server/docs/README.md`; `docs/guides/quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/tasks/mod.rs`; `apps/server/src/tasks/cleanup.rs`; `apps/server/src/app.rs` |
-| Initializers | `apps/server` startup composition | Default-superadmin setup is an explicit host bootstrap action over `ServerRuntimeContext`; remaining historical initializer references are inventory only | `apps/server/docs/README.md`; `docs/architecture/loco-exit-plan.md` | Accepted | 2026-07-10 | `apps/server/src/initializers/superadmin.rs`; `apps/server/src/app.rs` |
-| Mailer subsystem | `apps/server` (`services/email.rs` + typed settings) | Server email service with `EmailProvider::{Smtp,Loco,None}` and Loco Mailer adapter | `apps/server/docs/loco/README.md`; `docs/architecture/api.md`; `apps/server/docs/README.md` | Accepted | 2026-06-01 | `apps/server/src/services/email.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/common/settings.rs` |
+| Auth framework primitives (JWT/sessions/reset/RBAC wiring) | `apps/server` + `rustok-auth` + `rustok-rbac` | Domain auth logic over explicit host configuration and narrow runtimes | `docs/architecture/loco-exit-plan.md` | Migrated | 2026-07-11 | `apps/server/src/auth.rs`; `apps/server/src/services/server_runtime_context.rs` |
+| Tasks (`cargo loco task`) | None | `rustok-cli` typed providers | `docs/architecture/loco-exit-plan.md`; `crates/rustok-cli-platform/docs/implementation-plan.md` | Migrated | 2026-07-11 | `crates/rustok-cli-platform/src/rebuild.rs` |
+| Initializers | `apps/server` startup composition | Explicit `server_bootstrap` action over `ServerRuntimeContext` | `apps/server/docs/README.md`; `docs/architecture/loco-exit-plan.md` | Migrating | 2026-07-11 | `apps/server/src/initializers/superadmin.rs`; `apps/server/src/services/server_bootstrap.rs` |
+| Mailer subsystem | `apps/server` (`services/email.rs` + typed settings) | Server email service with `EmailProvider::{Smtp,None}` | `apps/server/docs/README.md` | Migrated | 2026-07-11 | `apps/server/src/services/email.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/common/settings.rs` |
 | Workers/queue subsystem | `apps/server` + `rustok-outbox` | RusToK event-driven worker runtime (without Loco queue duplication) | `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`; `docs/architecture/event-flow-contract.md`; `docs/standards/transactional-outbox.md` | Accepted | 2026-05-01 | `apps/server/src/app.rs`; `apps/server/src/services/event_transport_factory.rs`; `crates/rustok-outbox/src/relay.rs` |
 | Storage abstraction (uploads/assets) | `apps/server` + `rustok-storage` + `rustok-media` | Shared `StorageService` runtime + media module APIs; maintenance cleanup is provided by `rustok-media-cli` | `apps/server/docs/README.md`; `docs/architecture/modules.md`; `docs/modules/registry.md` | Accepted | 2026-06-01 | `apps/server/src/services/app_runtime.rs`; `apps/server/src/services/graphql_schema.rs`; `crates/rustok-media/cli/src/lib.rs` |
 | Tenancy caching | `apps/server` + `rustok-core` cache backends | RusToK custom tenancy cache (`tenant.rs`) + shared cache backend contract | `crates/rustok-tenant/docs/README.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-05-01 | `apps/server/src/middleware/tenant.rs`; `apps/server/src/middleware/tenant_cache_v3.rs`; `crates/rustok-core/src/cache.rs` |
@@ -56,9 +56,7 @@ Implemented in `impl Hooks for App`:
 - `routes` with registration of health/metrics/auth/graphql and domain controllers;
 - `after_routes` with tenant middleware + runtime extensions;
 - `truncate` (not a stub, but real table cleanup in dependency order);
-- `register_tasks`;
 - `initializers`;
-- `connect_workers`;
 - `seed`.
 
 ### 2.2 Configuration system
@@ -98,7 +96,7 @@ Implemented and used:
 
 ### 2.7 Background processing / events
 
-- Outbox relay worker starts from `connect_workers`.
+- Outbox relay worker starts from neutral server bootstrap.
 - Event runtime is created from transport configuration (`memory` / `outbox` / `iggy`).
 - Event-driven approach remains the priority for queues and integrations.
 
@@ -125,7 +123,7 @@ Implemented and used:
 
 ### 3.2 Workers/Queue (consciously custom — Loco Queue not connected)
 
-**Currently:** `loco-rs` is connected without queue features (no `sidekiq` / `bg-redis` in features). `connect_workers` hook is empty — all background processes start as tokio tasks in `connect_runtime_workers`:
+**Currently:** `loco-rs` is connected without queue features (no `sidekiq` / `bg-redis` in features). The empty Loco worker hook was removed; all background processes start as tokio tasks from neutral server bootstrap:
 
 | Worker | Implementation | Type |
 |--------|-----------|-----|
@@ -138,7 +136,7 @@ Implemented and used:
 `WorkflowCronScheduler` remains a separate background runtime path and is not considered
 part of this event-listener contract.
 
-Loco Tasks (CLI): `cleanup`, `rebuild`, `db_baseline`, and `create_oauth_app` remain legacy inventory. Media cleanup has moved to `rustok-cli media cleanup` and no longer has a Loco task.
+Loco Tasks (CLI): no tasks remain registered. Build execution has moved to `rustok-cli core rebuild`; session cleanup is `rustok-cli auth sessions-cleanup`; RBAC diagnostics are `rustok-cli rbac consistency-report`; OAuth bootstrap is `rustok-cli oauth create-app`; database baseline collection is `rustok-cli core db-baseline`; media cleanup is `rustok-cli media cleanup`.
 
 For slow operations on request path (e.g., SMTP in `forgot_password`) `tokio::spawn` is used — without Sidekiq.
 
@@ -245,8 +243,8 @@ The server uses shared CacheBackend contract with backend selection by feature/r
 - `apps/server/src/graphql/auth/mutation.rs`
 - `apps/server/src/services/email.rs`
 - `apps/server/src/services/event_transport_factory.rs`
-- `apps/server/src/tasks/mod.rs`
-- `apps/server/src/tasks/cleanup.rs`
+- `crates/rustok-cli-platform/src/rebuild.rs`
+- `crates/rustok-cli/src/lib.rs`
 - `apps/server/src/initializers/mod.rs`
 - `apps/server/src/initializers/telemetry.rs`
 - `apps/server/src/middleware/tenant.rs`

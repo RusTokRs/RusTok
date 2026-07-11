@@ -40,6 +40,11 @@ pub trait TenantReadPort: Send + Sync {
         context: PortContext,
         request: TenantReadRequest,
     ) -> Result<TenantReadProjection, PortError>;
+
+    async fn read_default_active_tenant(
+        &self,
+        context: PortContext,
+    ) -> Result<TenantReadProjection, PortError>;
 }
 
 #[async_trait]
@@ -67,6 +72,24 @@ impl TenantReadPort for crate::TenantService {
                 false,
             ));
         }
+
+        Ok(TenantReadProjection {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            domain: tenant.domain,
+            is_active: tenant.is_active,
+            default_locale: tenant.default_locale,
+            settings: tenant.settings,
+        })
+    }
+
+    async fn read_default_active_tenant(
+        &self,
+        context: PortContext,
+    ) -> Result<TenantReadProjection, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant = self.first_active_tenant().await.map_err(map_tenant_error)?;
 
         Ok(TenantReadProjection {
             id: tenant.id,

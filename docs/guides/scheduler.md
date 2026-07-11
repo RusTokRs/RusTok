@@ -6,201 +6,44 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Task Scheduler (Loco Scheduler)
+# Scheduled Operations
 
-Guide for working with the task scheduler in RusToK.
+RusToK does not run a scheduler inside `apps/server` and no longer has Loco
+tasks. Schedule typed `rustok-cli` commands with the deployment platform's
+cron or job runner. Each invocation must receive `RUSTOK_DATABASE_URL` (or
+`DATABASE_URL`) and any command-specific settings through
+`RUSTOK_SETTINGS_JSON`.
 
-## Overview
+## Current operations
 
-The scheduler is a separate Loco process that runs registered Loco Tasks on a schedule.
+| Operation | Command | Suggested cadence | Owner |
+|---|---|---|---|
+| Expired session cleanup | `rustok-cli auth sessions-cleanup` | hourly | `rustok-auth` |
+| Build queue execution | `rustok-cli core rebuild` | deployment-defined polling cadence | `rustok-build` |
+| Media orphan cleanup | `rustok-cli media cleanup --limit <count>` | deployment-defined | `rustok-media` |
 
-```
-cargo loco scheduler    ← starts the scheduler
-cargo loco task --name <name>   ← runs a task manually
-```
+Use `rustok-cli list --json` to obtain the currently enabled command inventory.
+Module-owned operations must declare their provider through `[provides.cli]`;
+platform-owned operations belong in `rustok-cli-platform`.
 
-The scheduler is **not built into the server** — it runs as an independent process, reads `scheduler.yaml`, and executes `cargo loco task --name <name>` on a CRON schedule.
+## Example deployment cron
 
-## Configuration (`scheduler.yaml`)
-
-File `apps/server/scheduler.yaml`:
-
-```yaml
-jobs:
-  cleanup_sessions:
-    run: "cleanup sessions"
-    schedule: "0 0 * * * *"    # every hour
-
-  rebuild_index:
-    run: "rebuild index"
-    schedule: "0 0 */6 * * *"  # every 6 hours
+```cron
+0 * * * * /usr/local/bin/rustok-cli auth sessions-cleanup
+*/5 * * * * /usr/local/bin/rustok-cli core rebuild
 ```
 
-### `schedule` Format
+The process runner should record exit status and standard output. The commands
+are idempotent where their owner contract requires retry-safe operation.
 
-The schedule is specified in **cron format with 6 fields** (seconds, minutes, hours, days, months, weekdays):
+## Runtime schedulers
 
-```
-seconds minutes hours day_of_month month day_of_week
-   0       0     3    *           *       *        → 03:00:00 UTC every day
-   0       0     *    *           *       *        → every hour at 0 minutes
-   0       0    */6   *           *       *        → at 0:00, 6:00, 12:00, 18:00
-```
-
-### `run` Field
-
-The `run` value is the Loco Task name passed to `--name`:
-
-```yaml
-run: "cleanup sessions"   # → cargo loco task --name "cleanup sessions"
-```
-
-## Current Tasks
-
-| Task | Schedule | Description |
-|------|----------|-------------|
-| `cleanup_sessions` | Every hour | Deletes expired sessions from the DB |
-| `rebuild_index` | Every 6 hours | Rebuilds the CQRS read-model index |
-
-Media cleanup is no longer a Loco scheduler task. Schedule the standalone
-`rustok-cli media cleanup [--limit <count>]` binary through the deployment
-platform's cron or job runner, with `RUSTOK_DATABASE_URL` (or `DATABASE_URL`)
-and the optional `RUSTOK_SETTINGS_JSON` storage snapshot supplied explicitly.
-
-## How to Create a New Task
-
-### 1. Implement a `Task`
-
-```rust
-// apps/server/src/tasks/my_task.rs
-use async_trait::async_trait;
-use loco_rs::{app::AppContext, task::{Task, TaskInfo, Vars}, Result};
-
-pub struct MyTask;
-
-#[async_trait]
-impl Task for MyTask {
-    fn task(&self) -> TaskInfo {
-        TaskInfo {
-            name: "my_task".to_string(),
-            detail: "Short description of what the task does".to_string(),
-        }
-    }
-
-    async fn run(&self, app_context: &AppContext, _vars: &Vars) -> Result<()> {
-        // Task logic
-        tracing::info!("my_task: starting");
-        Ok(())
-    }
-}
-```
-
-### 2. Register the Task in `app.rs`
-
-```rust
-// apps/server/src/app.rs
-async fn connect_tasks(v: &mut Tasks) {
-    v.register(tasks::MyTask);
-    // ...
-}
-```
-
-### 3. Add to `scheduler.yaml`
-
-```yaml
-jobs:
-  my_task:
-    run: "my_task"
-    schedule: "0 30 2 * * *"   # every day at 02:30 UTC
-```
-
-### 4. (Optional) Add a Feature Flag
-
-If the task depends on an optional module:
-
-```rust
-async fn run(&self, app_context: &AppContext, _vars: &Vars) -> Result<()> {
-    #[cfg(feature = "mod-media")]
-    run_my_logic(app_context).await?;
-
-    #[cfg(not(feature = "mod-media"))]
-    tracing::info!("module not enabled — skipping");
-
-    Ok(())
-}
-```
-
-## Manual Execution
-
-```bash
-# Run media cleanup immediately through the standalone platform CLI
-rustok-cli media cleanup --limit 1000
-
-# List available tasks
-cargo loco task
-```
-
-## Running the Scheduler
-
-```bash
-# In development
-cargo loco scheduler
-
-# In production (usually a separate process/container)
-./server scheduler
-```
-
-## Reliability Patterns
-
-### Checking Dependency Availability
-
-Before executing a long-running operation, check that the dependency (storage, external service) is available:
-
-```rust
-async fn run(&self, ctx: &AppContext, _vars: &Vars) -> Result<()> {
-    let Some(storage) = ctx.shared_store.get::<StorageService>() else {
-        tracing::warn!("StorageService not available — skipping");
-        return Ok(());
-    };
-    // ...
-}
-```
-
-### Conservative Error Handling
-
-If a task processes many records, **do not abort the entire task** on a single error — log and continue:
-
-```rust
-for item in items {
-    match process_item(&item).await {
-        Ok(_) => processed += 1,
-        Err(e) => {
-            tracing::warn!(id = %item.id, error = %e, "Failed to process item");
-        }
-    }
-}
-tracing::info!(processed, total = items.len(), "Task complete");
-```
-
-### Idempotency
-
-Tasks **must be idempotent** — running them again should not produce duplicate effects.
-
-## Monitoring
-
-Task execution results are logged via `tracing`. Levels:
-- `INFO` — normal completion with final statistics
-- `WARN` — non-critical skips (record not processed, dependency unavailable)
-- `ERROR` — only for unrecoverable failures
-
-Example from the media cleanup CLI provider:
-
-```
-INFO rustok: scanned=1024 removed=3 "Media cleanup complete"
-```
+`WorkflowCronScheduler` and the Alloy scheduler are capability-owned runtime
+services. They are started through their respective host runtime composition;
+they are not deployment cron jobs and are not configured in this guide.
 
 ## Related Documents
 
-- [WebSocket Channels](../architecture/channels.md)
+- [Loco RS Exit Plan](../architecture/loco-exit-plan.md)
 - [rustok-media Documentation](../../crates/rustok-media/docs/README.md)
 - [Observability](./observability-quickstart.md)

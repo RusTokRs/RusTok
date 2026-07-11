@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast;
 
-use crate::services::build_service::{BuildEvent, BuildEventPublisher};
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use rustok_build::{BuildEvent, BuildEventPublisher};
 
 #[derive(Clone)]
 pub struct SharedBuildEventHub(pub Arc<BuildEventHub>);

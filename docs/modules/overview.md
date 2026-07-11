@@ -52,6 +52,7 @@ It is important to distinguish:
 
 | Slug | Crate |
 |---|---|
+| `modules` | `rustok-modules` |
 | `auth` | `rustok-auth` |
 | `cache` | `rustok-cache` |
 | `channel` | `rustok-channel` |

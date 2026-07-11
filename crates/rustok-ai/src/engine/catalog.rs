@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "server")]
+use std::{collections::BTreeMap, net::IpAddr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -95,13 +97,117 @@ pub struct ProviderConfigField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ProviderDefaultSetting {
+    pub key: &'static str,
+    pub value: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ProviderCatalogEntry {
     pub slug: &'static str,
     pub display_name: &'static str,
     pub features: &'static [ProviderFeature],
     pub settings: &'static [ProviderConfigField],
     pub credentials: &'static [ProviderConfigField],
+    pub default_settings: &'static [ProviderDefaultSetting],
     pub compiled_in: bool,
+}
+
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Default)]
+pub struct ProviderEgressPolicy {
+    pub allowed_origins: Vec<String>,
+    pub allow_local_origins: bool,
+}
+
+#[cfg(feature = "server")]
+impl ProviderEgressPolicy {
+    pub fn validate_settings(
+        &self,
+        descriptor: &ProviderCatalogEntry,
+        settings: &BTreeMap<String, serde_json::Value>,
+    ) -> Result<(), String> {
+        for field in descriptor.settings {
+            if field.required && !settings.contains_key(field.key) {
+                return Err(format!("provider setting `{}` is required", field.key));
+            }
+        }
+        for (key, value) in settings {
+            let field = descriptor
+                .settings
+                .iter()
+                .find(|field| field.key == key)
+                .ok_or_else(|| format!("unknown provider setting `{key}`"))?;
+            match field.kind {
+                ProviderFieldKind::Text | ProviderFieldKind::Url => {
+                    if !value.is_string() {
+                        return Err(format!("provider setting `{key}` must be text"));
+                    }
+                }
+                ProviderFieldKind::Integer if value.as_i64().is_none() => {
+                    return Err(format!("provider setting `{key}` must be an integer"));
+                }
+                ProviderFieldKind::Boolean if !value.is_boolean() => {
+                    return Err(format!("provider setting `{key}` must be boolean"));
+                }
+                ProviderFieldKind::SecretRef => {
+                    return Err(format!("provider setting `{key}` must be a credential ref"));
+                }
+                _ => {}
+            }
+            if matches!(field.kind, ProviderFieldKind::Url) {
+                self.validate_egress_url(value.as_str().unwrap_or_default())?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_egress_url(&self, value: &str) -> Result<(), String> {
+        let url =
+            url::Url::parse(value).map_err(|error| format!("invalid provider URL: {error}"))?;
+        if !matches!(url.scheme(), "https" | "http") {
+            return Err("provider URL must use HTTP(S)".to_string());
+        }
+        let host = url
+            .host_str()
+            .ok_or_else(|| "provider URL requires a host".to_string())?
+            .to_ascii_lowercase();
+        let local = host == "localhost"
+            || host.ends_with(".localhost")
+            || host.parse::<IpAddr>().is_ok_and(is_local_or_private_ip);
+        if local {
+            if self.allow_local_origins {
+                return Ok(());
+            }
+            return Err(
+                "loopback and private provider origins are disabled by server policy".to_string(),
+            );
+        }
+        if url.scheme() != "https" {
+            return Err("non-local provider URLs must use HTTPS".to_string());
+        }
+        if self.allowed_origins.iter().any(|origin| origin == &host) {
+            Ok(())
+        } else {
+            Err(format!(
+                "provider origin `{host}` is not in the server egress allowlist"
+            ))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+fn is_local_or_private_ip(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => {
+            address.is_loopback() || address.is_private() || address.is_unspecified()
+        }
+        IpAddr::V6(address) => {
+            address.is_loopback()
+                || address.is_unspecified()
+                || (address.segments()[0] & 0xfe00) == 0xfc00
+        }
+    }
 }
 
 const API_KEY: &[ProviderConfigField] = &[ProviderConfigField {
@@ -128,7 +234,11 @@ const LOCAL_URL: &[ProviderConfigField] = &[ProviderConfigField {
     kind: ProviderFieldKind::Url,
     required: true,
 }];
-const CLOUD_SETTINGS: &[ProviderConfigField] = &[
+const OLLAMA_DEFAULTS: &[ProviderDefaultSetting] = &[ProviderDefaultSetting {
+    key: "base_url",
+    value: "http://localhost:11434",
+}];
+const AWS_SETTINGS: &[ProviderConfigField] = &[
     ProviderConfigField {
         key: "region",
         label: "Region",
@@ -136,10 +246,38 @@ const CLOUD_SETTINGS: &[ProviderConfigField] = &[
         required: true,
     },
     ProviderConfigField {
-        key: "project",
-        label: "Project or account",
+        key: "profile",
+        label: "AWS profile",
         kind: ProviderFieldKind::Text,
         required: false,
+    },
+];
+const VERTEX_SETTINGS: &[ProviderConfigField] = &[
+    ProviderConfigField {
+        key: "project",
+        label: "Google Cloud project",
+        kind: ProviderFieldKind::Text,
+        required: true,
+    },
+    ProviderConfigField {
+        key: "location",
+        label: "Google Cloud location",
+        kind: ProviderFieldKind::Text,
+        required: false,
+    },
+];
+const AZURE_OPENAI_SETTINGS: &[ProviderConfigField] = &[
+    ProviderConfigField {
+        key: "base_url",
+        label: "Azure OpenAI endpoint",
+        kind: ProviderFieldKind::Url,
+        required: true,
+    },
+    ProviderConfigField {
+        key: "api_version",
+        label: "API version",
+        kind: ProviderFieldKind::Text,
+        required: true,
     },
 ];
 
@@ -156,16 +294,20 @@ const CHAT_EMBED: &[ProviderFeature] = &[
     ProviderFeature::StructuredOutput,
     ProviderFeature::Embeddings,
 ];
-const CHAT_MEDIA: &[ProviderFeature] = &[
+const CHAT_IMAGE: &[ProviderFeature] = &[
+    ProviderFeature::Chat,
+    ProviderFeature::Streaming,
+    ProviderFeature::Tools,
+    ProviderFeature::StructuredOutput,
+    ProviderFeature::Image,
+];
+const CHAT_EMBED_IMAGE: &[ProviderFeature] = &[
     ProviderFeature::Chat,
     ProviderFeature::Streaming,
     ProviderFeature::Tools,
     ProviderFeature::StructuredOutput,
     ProviderFeature::Embeddings,
     ProviderFeature::Image,
-    ProviderFeature::Audio,
-    ProviderFeature::Transcription,
-    ProviderFeature::Multimodal,
 ];
 const EMBED_RERANK: &[ProviderFeature] = &[ProviderFeature::Embeddings, ProviderFeature::Rerank];
 const EMBEDDINGS: &[ProviderFeature] = &[ProviderFeature::Embeddings];
@@ -178,17 +320,18 @@ macro_rules! entry {
             features: $features,
             settings: $settings,
             credentials: $credentials,
+            default_settings: &[],
             compiled_in: true,
         }
     };
 }
 
 static CATALOG: &[ProviderCatalogEntry] = &[
-    entry!("openai", "OpenAI", CHAT_MEDIA, BASE_URL, API_KEY),
+    entry!("openai", "OpenAI", CHAT_EMBED_IMAGE, BASE_URL, API_KEY),
     entry!(
         "openai_compatible",
         "OpenAI-compatible",
-        CHAT_MEDIA,
+        CHAT_EMBED_IMAGE,
         BASE_URL,
         API_KEY
     ),
@@ -197,7 +340,7 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         "azure_openai",
         "Azure OpenAI",
         CHAT_EMBED,
-        CLOUD_SETTINGS,
+        AZURE_OPENAI_SETTINGS,
         API_KEY
     ),
     entry!("chatgpt", "ChatGPT", CHAT, BASE_URL, TOKEN),
@@ -211,12 +354,18 @@ static CATALOG: &[ProviderCatalogEntry] = &[
     entry!("cohere", "Cohere", CHAT_EMBED, BASE_URL, API_KEY),
     entry!("deepseek", "DeepSeek", CHAT, BASE_URL, API_KEY),
     entry!("galadriel", "Galadriel", CHAT, BASE_URL, API_KEY),
-    entry!("gemini", "Google Gemini", CHAT_EMBED, BASE_URL, API_KEY),
+    entry!(
+        "gemini",
+        "Google Gemini",
+        CHAT_EMBED_IMAGE,
+        BASE_URL,
+        API_KEY
+    ),
     entry!("groq", "Groq", CHAT, BASE_URL, API_KEY),
     entry!(
         "hugging_face",
         "Hugging Face",
-        CHAT_MEDIA,
+        CHAT_IMAGE,
         BASE_URL,
         API_KEY
     ),
@@ -226,34 +375,36 @@ static CATALOG: &[ProviderCatalogEntry] = &[
     entry!("mira", "Mira", CHAT, BASE_URL, API_KEY),
     entry!("mistral", "Mistral", CHAT_EMBED, BASE_URL, API_KEY),
     entry!("moonshot", "Moonshot", CHAT, BASE_URL, API_KEY),
-    entry!("ollama", "Ollama", CHAT_EMBED, LOCAL_URL, &[]),
-    entry!("openrouter", "OpenRouter", CHAT_MEDIA, BASE_URL, API_KEY),
+    ProviderCatalogEntry {
+        slug: "ollama",
+        display_name: "Ollama",
+        features: CHAT_EMBED,
+        settings: LOCAL_URL,
+        credentials: &[],
+        default_settings: OLLAMA_DEFAULTS,
+        compiled_in: true,
+    },
+    entry!("openrouter", "OpenRouter", CHAT_EMBED, BASE_URL, API_KEY),
     entry!("perplexity", "Perplexity", CHAT, BASE_URL, API_KEY),
     entry!("together", "Together AI", CHAT_EMBED, BASE_URL, API_KEY),
     entry!("voyage_ai", "Voyage AI", EMBED_RERANK, BASE_URL, API_KEY),
-    entry!("xai", "xAI", CHAT, BASE_URL, API_KEY),
+    entry!("xai", "xAI", CHAT_IMAGE, BASE_URL, API_KEY),
     entry!("xiaomi_mimo", "Xiaomi MiMo", CHAT, BASE_URL, API_KEY),
     entry!("zai", "Z.ai", CHAT, BASE_URL, API_KEY),
     entry!(
         "aws_bedrock",
         "AWS Bedrock",
-        CHAT_EMBED,
-        CLOUD_SETTINGS,
+        CHAT_EMBED_IMAGE,
+        AWS_SETTINGS,
         &[]
     ),
-    entry!(
-        "vertex_ai",
-        "Google Vertex AI",
-        CHAT_EMBED,
-        CLOUD_SETTINGS,
-        &[]
-    ),
+    entry!("vertex_ai", "Google Vertex AI", CHAT, VERTEX_SETTINGS, &[]),
     entry!(
         "gemini_grpc",
         "Google Gemini gRPC",
         CHAT_EMBED,
-        CLOUD_SETTINGS,
-        &[]
+        &[],
+        API_KEY
     ),
     ProviderCatalogEntry {
         slug: "fastembed",
@@ -261,6 +412,7 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         features: EMBEDDINGS,
         settings: &[],
         credentials: &[],
+        default_settings: &[],
         compiled_in: cfg!(feature = "fastembed"),
     },
 ];
@@ -273,11 +425,55 @@ pub fn provider_catalog_entry(slug: &ProviderSlug) -> Option<&'static ProviderCa
     CATALOG.iter().find(|entry| entry.slug == slug.as_str())
 }
 
+#[cfg(feature = "server")]
+pub fn provider_factory_supports(slug: &ProviderSlug, feature: ProviderFeature) -> bool {
+    match feature {
+        ProviderFeature::Chat
+        | ProviderFeature::Streaming
+        | ProviderFeature::Tools
+        | ProviderFeature::StructuredOutput => !matches!(slug.as_str(), "voyage_ai" | "fastembed"),
+        ProviderFeature::Embeddings => matches!(
+            slug.as_str(),
+            "openai"
+                | "openai_compatible"
+                | "azure_openai"
+                | "github_copilot"
+                | "cohere"
+                | "gemini"
+                | "llamafile"
+                | "mistral"
+                | "ollama"
+                | "openrouter"
+                | "together"
+                | "voyage_ai"
+                | "aws_bedrock"
+                | "gemini_grpc"
+                | "fastembed"
+        ),
+        ProviderFeature::Rerank => slug.as_str() == "voyage_ai",
+        ProviderFeature::Image => matches!(
+            slug.as_str(),
+            "openai" | "openai_compatible" | "gemini" | "hugging_face" | "xai" | "aws_bedrock"
+        ),
+        ProviderFeature::Audio | ProviderFeature::Transcription | ProviderFeature::Multimodal => {
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
 
+    use serde::Deserialize;
+
     use super::*;
+
+    #[derive(Deserialize)]
+    struct ProviderCatalogSnapshot {
+        rig_version: String,
+        provider_slugs: Vec<String>,
+    }
 
     #[test]
     fn catalog_slugs_are_unique_and_normalized() {
@@ -289,6 +485,20 @@ mod tests {
     }
 
     #[test]
+    fn catalog_matches_the_rig_0_39_registry_snapshot() {
+        let snapshot: ProviderCatalogSnapshot = serde_json::from_str(include_str!(
+            "../../contracts/rig-0.39-provider-catalog.json"
+        ))
+        .expect("catalog snapshot is valid JSON");
+        assert_eq!(snapshot.rig_version, "0.39.0");
+        let slugs = provider_catalog()
+            .iter()
+            .map(|entry| entry.slug.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(slugs, snapshot.provider_slugs);
+    }
+
+    #[test]
     fn every_remote_provider_declares_credentials_or_workload_settings() {
         for entry in provider_catalog() {
             if matches!(entry.slug, "ollama" | "llamafile" | "fastembed") {
@@ -296,5 +506,41 @@ mod tests {
             }
             assert!(!entry.credentials.is_empty() || !entry.settings.is_empty());
         }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn every_compiled_descriptor_has_a_linked_factory_for_each_declared_feature() {
+        for entry in provider_catalog().iter().filter(|entry| entry.compiled_in) {
+            let slug = ProviderSlug::new(entry.slug).unwrap();
+            for feature in entry.features {
+                assert!(
+                    provider_factory_supports(&slug, *feature),
+                    "{}/{} is catalogued without a linked Rig factory",
+                    entry.slug,
+                    format!("{feature:?}")
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn egress_policy_rejects_private_origins_without_explicit_local_setting() {
+        let policy = ProviderEgressPolicy::default();
+        assert!(policy
+            .validate_egress_url("http://127.0.0.1:11434")
+            .is_err());
+        assert!(policy
+            .validate_egress_url("https://api.openai.com/v1")
+            .is_err());
+        let policy = ProviderEgressPolicy {
+            allowed_origins: vec!["api.openai.com".to_string()],
+            allow_local_origins: true,
+        };
+        assert!(policy
+            .validate_egress_url("https://api.openai.com/v1")
+            .is_ok());
+        assert!(policy.validate_egress_url("http://127.0.0.1:11434").is_ok());
     }
 }

@@ -1051,10 +1051,9 @@ async fn generate_blog_draft(
     })
     .to_string();
 
-    let response = provider
-        .complete(
-            provider_config,
-            ProviderChatRequest {
+    let generated: GeneratedBlogDraft = complete_typed(
+        provider,
+        ProviderChatRequest {
                 model: provider_config.model.clone(),
                 messages: vec![
                     ChatMessage {
@@ -1084,15 +1083,9 @@ async fn generate_blog_draft(
                 temperature: provider_config.temperature,
                 max_tokens: provider_config.max_tokens,
                 locale: Some(target_locale.to_string()),
-            },
-        )
-        .await?;
-
-    let content = response.assistant_message.content.ok_or_else(|| {
-        AiError::Provider("provider returned empty content for blog_draft".to_string())
-    })?;
-    let parsed = parse_json_object_from_text(&content)?;
-    let generated: GeneratedBlogDraft = serde_json::from_value(parsed).map_err(AiError::Json)?;
+        },
+    )
+    .await?;
     validate_blog_draft_payload(&generated).map_err(AiError::Validation)?;
     Ok(generated)
 }
@@ -1136,10 +1129,9 @@ pub(crate) async fn generate_content_moderation(
     })
     .to_string();
 
-    let response = provider
-        .complete(
-            provider_config,
-            ProviderChatRequest {
+    let decision: GeneratedModerationDecision = complete_typed(
+        provider,
+        ProviderChatRequest {
                 model: provider_config.model.clone(),
                 messages: vec![
                     ChatMessage {
@@ -1169,16 +1161,9 @@ pub(crate) async fn generate_content_moderation(
                 temperature: provider_config.temperature,
                 max_tokens: provider_config.max_tokens,
                 locale: Some(target_locale.to_string()),
-            },
-        )
-        .await?;
-
-    let content = response.assistant_message.content.ok_or_else(|| {
-        AiError::Provider("provider returned empty content for content_moderation".to_string())
-    })?;
-    let parsed = parse_json_object_from_text(&content)?;
-    let decision: GeneratedModerationDecision =
-        serde_json::from_value(parsed).map_err(AiError::Json)?;
+        },
+    )
+    .await?;
 
     validate_moderation_decision(&decision).map_err(AiError::Validation)
 }
@@ -1217,10 +1202,9 @@ pub(crate) async fn generate_product_attributes(
         }
     })
     .to_string();
-    let response = provider
-        .complete(
-            provider_config,
-            ProviderChatRequest {
+    let generated: GeneratedProductAttributes = complete_typed(
+        provider,
+        ProviderChatRequest {
                 model: provider_config.model.clone(),
                 messages: vec![
                     ChatMessage {
@@ -1244,15 +1228,9 @@ pub(crate) async fn generate_product_attributes(
                 temperature: provider_config.temperature,
                 max_tokens: provider_config.max_tokens,
                 locale: Some(target_locale.to_string()),
-            },
-        )
-        .await?;
-    let content = response.assistant_message.content.ok_or_else(|| {
-        AiError::Provider("provider returned empty content for product_attributes".to_string())
-    })?;
-    let parsed = parse_json_object_from_text(&content)?;
-    let generated: GeneratedProductAttributes =
-        serde_json::from_value(parsed).map_err(AiError::Json)?;
+        },
+    )
+    .await?;
     validate_product_attributes_payload(&generated).map_err(AiError::Validation)?;
     Ok(generated)
 }
@@ -1294,10 +1272,9 @@ async fn generate_product_copy(
     })
     .to_string();
 
-    let response = provider
-        .complete(
-            provider_config,
-            ProviderChatRequest {
+    let generated: GeneratedProductCopy = complete_typed(
+        provider,
+        ProviderChatRequest {
                 model: provider_config.model.clone(),
                 messages: vec![
                     ChatMessage {
@@ -1327,41 +1304,28 @@ async fn generate_product_copy(
                 temperature: provider_config.temperature,
                 max_tokens: provider_config.max_tokens,
                 locale: Some(target_locale.to_string()),
-            },
-        )
-        .await?;
-
-    let content = response.assistant_message.content.ok_or_else(|| {
-        AiError::Provider("provider returned empty content for product_copy".to_string())
-    })?;
-    let generated = parse_generated_product_copy(&content)?;
+        },
+    )
+    .await?;
     validate_product_copy_payload(&generated).map_err(AiError::Validation)?;
     Ok(generated)
 }
 
-fn parse_generated_product_copy(content: &str) -> AiResult<GeneratedProductCopy> {
-    let parsed = parse_json_object_from_text(content)?;
-    serde_json::from_value(parsed).map_err(AiError::Json)
-}
-
-pub(crate) fn parse_json_object_from_text(content: &str) -> AiResult<Value> {
-    let trimmed = content.trim();
-    if trimmed.is_empty() {
-        return Err(AiError::Provider(
-            "provider returned empty JSON payload".to_string(),
-        ));
-    }
-    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-        return Ok(value);
-    }
-
-    let start = trimmed.find('{').ok_or_else(|| {
-        AiError::Provider("provider response did not contain a JSON object".to_string())
-    })?;
-    let end = trimmed.rfind('}').ok_or_else(|| {
-        AiError::Provider("provider response did not contain a complete JSON object".to_string())
-    })?;
-    serde_json::from_str::<Value>(&trimmed[start..=end]).map_err(AiError::Json)
+pub(crate) async fn complete_typed<T>(
+    provider: &Arc<dyn InferenceEngine>,
+    request: ProviderChatRequest,
+) -> AiResult<T>
+where
+    T: for<'de> serde::Deserialize<'de> + schemars::JsonSchema,
+{
+    let schema = serde_json::to_value(schemars::schema_for!(T)).map_err(AiError::Json)?;
+    let value = provider
+        .complete_structured(crate::model::ProviderStructuredRequest {
+            request,
+            output_schema: schema,
+        })
+        .await?;
+    serde_json::from_value(value).map_err(AiError::Json)
 }
 
 fn normalize_locale_hint(locale: Option<&str>) -> Option<String> {
@@ -1603,10 +1567,7 @@ fn merge_message_metadata(base: Value, extension: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_generated_file_name, locale_matches, normalize_tag_list,
-        parse_generated_product_copy, parse_json_object_from_text,
-    };
+    use super::{build_generated_file_name, locale_matches, normalize_tag_list};
     use rustok_ai_content::BLOG_DRAFT_TASK_SLUG;
     use rustok_ai_media::normalize_image_size;
 
@@ -1625,16 +1586,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_generated_product_copy_accepts_embedded_json() {
-        let parsed = parse_generated_product_copy(
-            "```json\n{\"title\":\"Titel\",\"description\":\"Beschreibung\"}\n```",
-        )
-        .unwrap();
-        assert_eq!(parsed.title.as_deref(), Some("Titel"));
-        assert_eq!(parsed.description.as_deref(), Some("Beschreibung"));
-    }
-
-    #[test]
     fn locale_matches_ignores_separator_and_case() {
         assert!(locale_matches("en-us", "en_US"));
         assert!(locale_matches("zh-cn", "zh-CN"));
@@ -1646,13 +1597,6 @@ mod tests {
             build_generated_file_name(Some("hero banner"), None, "image/webp"),
             "hero-banner.webp"
         );
-    }
-
-    #[test]
-    fn parse_json_object_from_text_accepts_embedded_payload() {
-        let parsed =
-            parse_json_object_from_text("result:\n```json\n{\"title\":\"Hallo\"}\n```").unwrap();
-        assert_eq!(parsed["title"], "Hallo");
     }
 
     #[test]

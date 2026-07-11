@@ -24,10 +24,8 @@
     "field": {
       "slug": "Slug",
       "displayName": "Отображаемое имя",
-      "providerKind": "Тип провайдера",
-      "baseUrl": "Base URL",
+      "providerIntegration": "Provider integration",
       "model": "Модель",
-      "apiKey": "API key",
       "temperature": "Temperature",
       "maxTokens": "Max tokens",
       "capabilitiesCsv": "Capabilities (csv)",

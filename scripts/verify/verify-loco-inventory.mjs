@@ -95,7 +95,6 @@ function classify(rel) {
   if (p.startsWith('apps/server/tests/')) return 'server_test';
   if (p.startsWith('apps/server/src/tasks/')) return 'server_task';
   if (p.startsWith('apps/server/src/seeds/')) return 'server_seed';
-  if (p === 'apps/server/scheduler.yaml') return 'server_schedule';
   if (p === 'apps/server/build.rs') return 'host_runtime';
   if (p.startsWith('apps/server/src/')) return 'host_runtime';
 

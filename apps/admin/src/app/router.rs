@@ -1,13 +1,13 @@
 use leptos::prelude::*;
 use leptos_auth::components::ProtectedRoute;
 use leptos_auth::context::AuthProvider;
-use leptos_router::components::{ParentRoute, Route, Router, Routes};
+use leptos_router::components::{ParentRoute, Redirect, Route, Router, Routes};
 use leptos_router::path;
 
 use crate::pages::{
     cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage, events::EventsPage,
     installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
-    workflow_detail::WorkflowDetailPage, workflows::Workflows,
+    workflow_detail::WorkflowDetailPage,
 };
 use crate::shared::ui::LanguageToggle;
 use crate::widgets::app_shell::AppLayout;
@@ -45,7 +45,10 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/ai") view=rustok_ai_admin::AiAdmin />
                                 <Route path=path!("/ai/diagnostics") view=rustok_ai_admin::AiAdmin />
                                 <Route path=path!("/mcp") view=rustok_mcp_admin::McpAdmin />
-                                <Route path=path!("/workflows") view=Workflows />
+                                <Route
+                                    path=path!("/workflows")
+                                    view=|| view! { <Redirect path="/modules/workflow" /> }
+                                />
                                 <Route path=path!("/workflows/:id") view=WorkflowDetailPage />
                                 <Route path=path!("/email") view=EmailSettingsPage />
                                 <Route path=path!("/cache") view=CachePage />

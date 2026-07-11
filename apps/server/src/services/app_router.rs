@@ -8,8 +8,6 @@ use rustok_api::{HostRuntimeContext, HostSettingsSnapshot};
 use rustok_core::ModuleRuntimeExtensions;
 use std::sync::Arc;
 
-pub type AppRouterHostContext = loco_rs::app::AppContext;
-
 #[cfg(feature = "embed-admin")]
 #[allow(unused_imports)]
 use rustok_admin as _;
@@ -131,13 +129,13 @@ pub fn mount_application_shell(
 
 pub fn compose_application_router(
     router: AxumRouter,
-    ctx: &AppRouterHostContext,
+    middleware_runtime_ctx: ServerRuntimeContext,
+    auth_runtime: ServerAuthRuntime,
+    settings_snapshot: serde_json::Value,
     runtime: AppRuntimeBootstrap,
     rustok_settings: &RustokSettings,
 ) -> Result<AxumRouter> {
     if rustok_settings.runtime.is_registry_only() {
-        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
-        let auth_runtime = ServerAuthRuntime::from_loco_app_context(ctx);
         return Ok(router
             .layer(Extension(runtime.registry))
             // Rate limiting must be present to prevent resource exhaustion even
@@ -153,7 +151,7 @@ pub fn compose_application_router(
                 middleware::auth_context::resolve_optional,
             ))
             .layer(axum_middleware::from_fn_with_state(
-                runtime_ctx,
+                middleware_runtime_ctx,
                 middleware::locale::resolve_locale,
             ))
             .layer(axum_middleware::from_fn(
@@ -161,27 +159,22 @@ pub fn compose_application_router(
             )));
     }
 
-    let server_fn_ctx = ctx.clone();
-    let middleware_runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
-    let auth_runtime = ServerAuthRuntime::from_loco_app_context(ctx);
     let server_fn_runtime_ctx = {
-        let runtime_ctx = HostRuntimeContext::new(ctx.db.clone())
+        let runtime_ctx = HostRuntimeContext::new(middleware_runtime_ctx.db_clone())
             .with_shared_value(transactional_event_bus_from_context(
                 &middleware_runtime_ctx,
             ))
-            .with_shared_value(HostSettingsSnapshot::new(
-                ctx.config
-                    .settings
-                    .clone()
-                    .unwrap_or_else(|| serde_json::json!({})),
-            ));
-        let runtime_ctx =
-            if let Some(storage) = ctx.shared_store.get::<rustok_storage::StorageService>() {
-                runtime_ctx.with_shared_value(storage)
-            } else {
-                runtime_ctx
-            };
-        if let Some(extensions) = ctx.shared_store.get::<Arc<ModuleRuntimeExtensions>>() {
+            .with_shared_value(HostSettingsSnapshot::new(settings_snapshot));
+        let runtime_ctx = if let Some(storage) =
+            middleware_runtime_ctx.shared_get::<rustok_storage::StorageService>()
+        {
+            runtime_ctx.with_shared_value(storage)
+        } else {
+            runtime_ctx
+        };
+        if let Some(extensions) =
+            middleware_runtime_ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
+        {
             runtime_ctx.with_shared_value(extensions)
         } else {
             runtime_ctx
@@ -209,13 +202,11 @@ pub fn compose_application_router(
         router.route(
             "/api/fn/{*fn_name}",
             post(move |req| {
-                let ctx = server_fn_ctx.clone();
                 let runtime_ctx = server_fn_runtime_ctx.clone();
                 let registry = server_fn_registry.clone();
                 async move {
                     handle_server_fns_with_context(
                         move || {
-                            provide_context(ctx.clone());
                             provide_context(runtime_ctx.clone());
                             provide_context(registry.clone());
                         },

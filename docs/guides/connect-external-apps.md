@@ -67,7 +67,7 @@ For local development you can create a test app with the built-in task:
 
 ```bash
 cd apps/server
-cargo loco task create_oauth_app name="My Postman Client" slug="postman-dev"
+rustok-cli oauth create-app --name "My Postman Client" --slug postman-dev
 ```
 
 This prints a one-time `client_secret`.

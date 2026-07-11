@@ -37,6 +37,12 @@ Local documentation is synchronized.
 
 ## Open results
 
+0. **Keep profile provisioning enrichment owner-owned.**
+   `CustomerReadPort::list_profile_enrichment` exposes only linked user id,
+   name components and preferred locale for profile backfill. It must remain a
+   narrow projection rather than exposing customer entities or persistence to
+   profiles or its future CLI adapter.
+
 1. **Run compiled customer-port evidence.** Execute normalized identity guards,
    tenant-scoped read/list projections, and `PortCallPolicy::read()` deadline
    semantics before considering FBA promotion.

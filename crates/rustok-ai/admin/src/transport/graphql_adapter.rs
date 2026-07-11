@@ -26,21 +26,28 @@ query AiBootstrap {
     localeFallbackTotal
     runLatencyMsTotal
     runLatencySamples
-    providerKindTotals { label total }
+    providerSlugTotals { label total }
     executionTargetTotals { label total }
     taskProfileTotals { label total }
     resolvedLocaleTotals { label total }
+  }
+  aiProviderCatalog {
+    slug displayName features compiledIn
+    settingsSchema { key label kind required }
+    credentialSchema { key label kind required }
+    defaultSettings { key value }
   }
   aiProviderProfiles {
     id
     slug
     displayName
-    providerKind
-    baseUrl
+    providerSlug
     model
+    settings { key textValue integerValue booleanValue }
+    credentialRefs { key resolver secretKey }
     temperature
     maxTokens
-    hasSecret
+    hasCredentials
     isActive
     capabilities
     usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
@@ -54,7 +61,7 @@ query AiBootstrap {
     sessionTitle
     providerProfileId
     providerDisplayName
-    providerKind
+    providerSlug
     taskProfileId
     taskProfileSlug
     status
@@ -87,7 +94,9 @@ query AiSession($id: UUID!) {
   aiChatSession(id: $id) {
     session { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
     providerProfile {
-      id slug displayName providerKind baseUrl model temperature maxTokens hasSecret isActive capabilities
+      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
+      settings { key textValue integerValue booleanValue }
+      credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
     taskProfile { id slug displayName description targetCapability systemPrompt allowedProviderProfileIds preferredProviderProfileIds fallbackStrategy toolProfileId defaultExecutionMode isActive }

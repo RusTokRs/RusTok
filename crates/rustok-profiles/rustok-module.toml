@@ -15,3 +15,7 @@ taxonomy = { version_req = ">=0.1.0" }
 [provides.graphql]
 query = "graphql::ProfilesQuery"
 mutation = "graphql::ProfilesMutation"
+
+[provides.cli]
+namespace = "profiles"
+factory = "rustok_profiles_cli::command_provider"

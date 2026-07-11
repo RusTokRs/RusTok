@@ -25,7 +25,7 @@ module transport adapters, but which should not live in `rustok-core`.
 - module crates may depend on `rustok-api` when their GraphQL/REST adapters need shared host/API contracts;
 - default surface does not depend on `rustok-core` and publishes neutral contracts directly;
 - `server` feature enables `rustok-core` only for server-side security/permission/auth/request/GraphQL integration;
-- outbox-specific Loco wiring belongs to `rustok-outbox::loco`, so `rustok-api` does not depend on outbox runtime;
+- outbox runtime composition remains host-owned, so `rustok-api` does not depend on it;
 - must not be duplicated in `apps/server` or in per-module helper crates.
 
 ## Verification

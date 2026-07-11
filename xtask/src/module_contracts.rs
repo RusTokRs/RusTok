@@ -80,21 +80,21 @@ fn module_local_docs_file_matches_current_english_contract(path: &Path, content:
     if file_name == "README.md" {
         return [
             "## Purpose",
-            "## Scope",
+            "## Responsibility Zone",
             "## Integration",
             "## Verification",
-            "## Related documents",
+            "## Related Documents",
         ]
         .iter()
         .all(|heading| content.contains(heading));
     }
     if file_name == "implementation-plan.md" {
         return [
-            "## Scope of work",
-            "## Current state",
-            "## Stages",
+            "## Scope",
+            "## Current State",
+            "## Milestones",
             "## Verification",
-            "## Update rules",
+            "## Update Rules",
         ]
         .iter()
         .all(|heading| content.contains(heading));

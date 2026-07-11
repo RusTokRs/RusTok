@@ -145,12 +145,14 @@ requireContains('crates/rustok-api/src/runtime.rs', 'pub struct HostRuntimeConte
 requireContains('crates/rustok-api/src/runtime.rs', 'pub fn db_clone(&self) -> DatabaseConnection', 'HostRuntimeContext exposes DB access without Loco');
 requireContains('crates/rustok-api/src/runtime.rs', 'pub fn with_shared_value<T>', 'HostRuntimeContext accepts host-provided typed handles without Loco');
 requireContains('crates/rustok-api/src/runtime.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'HostRuntimeContext exposes typed shared handles without Loco');
-requireContains('apps/server/src/services/app_router.rs', 'HostRuntimeContext::new(ctx.db.clone())', 'server function context provides neutral runtime context');
+requireContains('apps/server/src/services/app_router.rs', 'HostRuntimeContext::new(middleware_runtime_ctx.db_clone())', 'server function context provides neutral runtime context');
 requireContains('apps/server/src/services/app_router.rs', 'with_shared_value(storage)', 'server function context provides storage through neutral host runtime context');
 requireContains('apps/server/src/services/app_router.rs', 'with_shared_value(extensions)', 'server function context provides module runtime extensions through neutral typed handles');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub struct ServerRuntimeContext', 'server owns neutral runtime context for server services');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn db(&self) -> &DatabaseConnection', 'ServerRuntimeContext exposes DB access without service-level Loco dependency');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'ServerRuntimeContext exposes typed shared-store access behind server boundary');
+requireContains('apps/server/src/services/server_runtime_context.rs', 'struct ServerSharedValues', 'ServerRuntimeContext owns its typed runtime values');
+requireNotContains('apps/server/src/services/server_runtime_context.rs', 'SharedStore', 'ServerRuntimeContext does not depend on Loco SharedStore');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'impl FromRef<AppContext> for ServerRuntimeContext', 'Axum can extract the neutral server runtime from the current host state');
 requireNotContains('apps/server/src/services/settings_service.rs', 'loco_rs', 'settings service does not depend on Loco runtime context');
 requireContains('apps/server/src/services/settings_service.rs', 'ServerRuntimeContext', 'settings service consumes server runtime context');
@@ -184,11 +186,17 @@ requireContains('apps/server/src/services/app_runtime.rs', 'pub fn module_runtim
 requireNotContains('apps/server/src/initializers/superadmin.rs', 'loco_rs', 'superadmin startup action does not depend on Loco initializer contracts');
 requireContains('apps/server/src/initializers/superadmin.rs', 'ServerRuntimeContext', 'superadmin startup action consumes neutral server runtime state');
 requireNotContains('apps/server/src/initializers/mod.rs', 'loco_rs', 'initializer module no longer imports Loco contracts');
-requireContains('apps/server/src/app.rs', 'ensure_default_superadmin(&runtime_ctx)', 'server bootstrap runs the superadmin action explicitly');
-requireContains('apps/server/src/services/app_runtime.rs', 'pub type AppRuntimeHostContext = loco_rs::app::AppContext;', 'app runtime exposes a local host AppContext bridge');
-requireNotContains('apps/server/src/services/app_runtime.rs', 'use loco_rs::app::AppContext', 'app runtime does not import Loco AppContext directly');
-requireContains('apps/server/src/auth.rs', 'pub type AuthHostContext = loco_rs::app::AppContext;', 'auth config exposes a local host AppContext bridge');
-requireNotContains('apps/server/src/auth.rs', 'use loco_rs::app::AppContext', 'auth config does not import Loco AppContext directly');
+requireContains('apps/server/src/services/server_bootstrap.rs', 'ensure_default_superadmin(runtime_ctx)', 'neutral server bootstrap runs the superadmin action explicitly');
+requireNotContains('apps/server/src/services/app_runtime.rs', 'loco_rs', 'app runtime does not depend on Loco');
+requireContains('apps/server/src/services/app_runtime.rs', 'runtime_ctx: ServerRuntimeContext', 'app runtime accepts neutral server runtime state');
+requireContains('apps/server/src/services/app_runtime.rs', 'auth_config: AuthConfig', 'app runtime accepts explicit auth configuration');
+requireNotContains('apps/server/src/services/server_bootstrap.rs', 'loco_rs', 'server bootstrap does not depend on Loco');
+requireContains('apps/server/src/services/server_bootstrap.rs', 'pub async fn bootstrap_application_router(', 'server owns a neutral application bootstrap entrypoint');
+requireContains('apps/server/src/services/server_bootstrap.rs', 'connect_runtime_workers_with_runtime', 'neutral server bootstrap owns worker lifecycle composition');
+requireNotContains('apps/server/src/app.rs', 'fn connect_workers(', 'server app no longer retains an empty Loco worker hook');
+requireContains('apps/server/src/auth.rs', 'pub fn auth_config_from_host_settings(', 'auth config is built from neutral host values');
+requireNotContains('apps/server/src/auth.rs', 'loco_rs', 'auth config does not depend on Loco');
+requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn auth_config_from_loco_app_context(', 'server runtime owns the Loco auth configuration bridge');
 requireContains('apps/server/src/testing.rs', 'pub async fn get_server_app_context()', 'server test fixture bridge exposes a local context helper');
 requireNotContains('apps/server/src/app.rs', 'loco_rs::tests_cfg', 'server app tests use the server test fixture bridge');
 requireContains('apps/server/src/app.rs', 'use crate::testing::get_server_app_context;', 'server app tests import the server test fixture bridge');
@@ -350,7 +358,13 @@ requireContains('crates/rustok-seo/src/controllers/mod.rs', 'HostRuntimeContext'
 requireNotContains('crates/rustok-seo/src/controllers/mod.rs', 'loco_rs', 'SEO HTTP router does not import Loco');
 requireNotContains('crates/rustok-seo/Cargo.toml', 'loco-rs', 'SEO domain crate does not depend on Loco after Axum router cutover');
 requireNotContains('crates/rustok-seo/Cargo.toml', 'loco-adapter', 'SEO crate does not depend on the outbox Loco adapter feature');
-requireContains('apps/server/src/services/app_lifecycle.rs', 'let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);', 'runtime worker lifecycle isolates current Loco boundary adapter');
+requireNotContains('apps/server/src/services/app_lifecycle.rs', 'loco_rs', 'runtime worker lifecycle does not depend on Loco');
+requireContains('apps/server/src/services/app_lifecycle.rs', 'pub async fn connect_runtime_workers_with_runtime(', 'runtime worker lifecycle exposes a neutral runtime entrypoint');
+requireContains('apps/server/src/services/app_lifecycle.rs', 'pub fn resolve_boot_database_uri(', 'runtime worker lifecycle exposes neutral database fallback policy');
+requireContains('apps/server/src/services/app_lifecycle.rs', 'pub async fn truncate_server_database(', 'runtime lifecycle owns neutral database truncate execution');
+requireContains('apps/server/src/app.rs', 'truncate_server_database(&ctx.db)', 'Loco truncate hook delegates to neutral lifecycle execution');
+requireContains('apps/server/src/services/app_lifecycle.rs', 'pub async fn shutdown_runtime_workers(', 'runtime lifecycle owns neutral worker shutdown');
+requireContains('apps/server/src/app.rs', 'shutdown_runtime_workers(&runtime_ctx)', 'Loco shutdown hook delegates to neutral lifecycle execution');
 requireNotContains('apps/server/src/services/app_lifecycle.rs', 'RustokSettings::from_settings(&ctx.config.settings)', 'runtime worker lifecycle does not parse settings from Loco config directly');
 for (const rel of [
   'apps/server/src/middleware/channel.rs',
@@ -411,12 +425,12 @@ requireContains('apps/server/src/controllers/users.rs', 'http_error(rustok_web::
 requireContains('apps/server/src/controllers/users.rs', 'State<ServerRuntimeContext>', 'users controller extracts neutral runtime state');
 requireNotContains('apps/server/src/controllers/metrics.rs', 'loco_rs::app::AppContext', 'metrics controller does not consume Loco AppContext');
 requireContains('apps/server/src/controllers/metrics.rs', 'State(ctx): State<ServerRuntimeContext>', 'metrics controller extracts neutral runtime state');
-requireContains('apps/server/src/controllers/metrics.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'metrics controller extracts narrow email runtime state');
+requireNotContains('apps/server/src/controllers/metrics.rs', 'ServerEmailRuntime', 'metrics controller does not extract Loco mailer runtime state');
 requireNotContains('apps/server/src/controllers/health.rs', 'loco_rs::app::AppContext', 'health controller does not consume Loco AppContext');
 requireNotContains('apps/server/src/controllers/health.rs', 'loco_rs::controller::format', 'health controller does not use Loco response formatting');
 requireContains('apps/server/src/controllers/health.rs', 'rustok_web::json_response', 'health controller uses rustok-web JSON response helper');
 requireContains('apps/server/src/controllers/health.rs', 'State(ctx): State<ServerRuntimeContext>', 'health controller extracts neutral runtime state');
-requireContains('apps/server/src/controllers/health.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'health readiness extracts narrow email runtime state');
+requireNotContains('apps/server/src/controllers/health.rs', 'ServerEmailRuntime', 'health readiness does not extract Loco mailer runtime state');
 requireNotContains('apps/server/src/controllers/channel.rs', 'loco_rs::controller::format', 'channel controller does not use Loco response formatting');
 requireNotContains('apps/server/src/controllers/channel.rs', 'ErrorDetail', 'channel controller does not build Loco error details directly');
 requireContains('apps/server/src/controllers/channel.rs', 'rustok_web::json_response', 'channel controller uses rustok-web JSON response helper');
@@ -433,7 +447,7 @@ requireNotContains('apps/server/src/controllers/auth.rs', 'loco_rs::app::AppCont
 requireNotContains('apps/server/src/controllers/auth.rs', 'loco_rs::controller::format', 'auth controller does not use Loco response formatting');
 requireContains('apps/server/src/controllers/auth.rs', 'rustok_web::json_response', 'auth controller uses rustok-web JSON response helper');
 requireContains('apps/server/src/controllers/auth.rs', 'State(ctx): State<ServerAuthRuntime>', 'auth controller extracts narrow auth runtime state');
-requireContains('apps/server/src/controllers/auth.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'auth email endpoints extract narrow email runtime state');
+requireNotContains('apps/server/src/controllers/auth.rs', 'ServerEmailRuntime', 'auth email endpoints do not extract Loco mailer runtime state');
 requireNotContains('apps/server/src/controllers/auth.rs', 'auth_config_from_ctx', 'auth controller reads config from the narrow auth runtime');
 requireNotContains('apps/server/src/controllers/oauth_metadata.rs', 'loco_rs::app::AppContext', 'OAuth metadata controller does not consume Loco AppContext');
 requireContains('apps/server/src/controllers/oauth_metadata.rs', 'State(ctx): State<ServerAuthRuntime>', 'OAuth metadata controller extracts narrow auth runtime state');
@@ -449,10 +463,13 @@ requireContains('apps/server/src/controllers/marketplace_registry.rs', 'http_err
 requireContains('apps/server/src/controllers/marketplace_registry.rs', 'http_error(HttpError::new', 'marketplace registry controller maps conflict errors through rustok-web HTTP boundary');
 requireNotContains('apps/server/src/controllers/installer.rs', 'ErrorDetail', 'installer controller does not build Loco error details directly');
 requireContains('apps/server/src/controllers/installer.rs', 'http_error(HttpError::', 'installer controller maps errors through rustok-web HTTP boundary');
-requireContains('apps/server/src/services/app_router.rs', 'pub type AppRouterHostContext = loco_rs::app::AppContext;', 'app router exposes a local host AppContext bridge');
-requireNotContains('apps/server/src/services/app_router.rs', 'use loco_rs::app::AppContext', 'app router does not import Loco AppContext directly');
+requireNotContains('apps/server/src/services/app_router.rs', 'loco_rs', 'app router does not depend on Loco');
+requireContains('apps/server/src/services/app_router.rs', 'middleware_runtime_ctx: ServerRuntimeContext', 'app router accepts neutral server runtime state');
+requireContains('apps/server/src/services/app_router.rs', 'auth_runtime: ServerAuthRuntime', 'app router accepts narrow auth runtime state');
+requireNotContains('apps/server/src/services/app_router.rs', 'ctx.shared_store', 'app router reads runtime handles through ServerRuntimeContext');
 requireNotContains('apps/server/src/app.rs', 'loco_rs::Error::Message', 'server app maps host bootstrap errors through the server error bridge');
-requireContains('apps/server/src/app.rs', 'return Err(Error::Message(format!', 'server app production-secret guard uses the server error bridge');
+requireContains('apps/server/src/services/server_bootstrap.rs', 'crate::error::Error::Message', 'server bootstrap production-secret guard uses the server error bridge');
+requireContains('apps/server/src/services/server_bootstrap.rs', 'fn check_production_secrets(jwt_secret: &str, database_uri: &str)', 'production-secret guard accepts neutral configuration values');
 requireNotContains('apps/server/src/app.rs', 'controller::AppRoutes', 'server app imports AppRoutes through the route isolation layer');
 requireContains('apps/server/src/app.rs', 'use crate::routes::{self, AppRoutes, Routes};', 'server app uses the route isolation layer for AppRoutes');
 requireNotContains('apps/server/src/app.rs', 'AppRoutes::with_default_routes', 'server app creates routes through the route isolation helper');
@@ -463,26 +480,81 @@ requireNotContains('apps/server/build.rs', 'loco_rs::controller::AppRoutes', 'ge
 requireContains('apps/server/build.rs', 'crate::routes::AppRoutes', 'generated optional route composition references the route isolation layer');
 requireNotContains('apps/server/build.rs', '.add_route(', 'generated optional route composition mounts through the route isolation helper');
 requireContains('apps/server/build.rs', 'crate::routes::mount_route', 'generated optional route composition uses the route isolation helper');
-requireContains('apps/server/src/tasks/mod.rs', 'pub type TaskAppContext = loco_rs::app::AppContext;', 'server tasks expose a local task AppContext bridge');
-requireContains('apps/server/src/tasks/mod.rs', 'pub use loco_rs::task::{Task, TaskInfo, Tasks, Vars};', 'server tasks expose a local Loco task bridge');
+if (exists('apps/server/src/tasks/mod.rs')) fail('server Loco task registry must be deleted after CLI cutover');
+else pass('server Loco task registry is deleted after CLI cutover');
+if (exists('apps/server/src/tasks/cleanup.rs')) fail('cleanup Loco task must be deleted after CLI cutover');
+else pass('cleanup Loco task is deleted after CLI cutover');
+requireContains('crates/rustok-auth/cli/src/lib.rs', '"auth", "sessions-cleanup"', 'auth CLI adapter exposes session cleanup');
+requireContains('crates/rustok-rbac/cli/src/lib.rs', '"rbac", "consistency-report"', 'RBAC CLI adapter exposes consistency reporting');
+requireContains('crates/rustok-rbac/src/consistency.rs', 'load_consistency_stats', 'RBAC module owns its consistency diagnostic');
+requireContains('apps/server/src/services/rbac_consistency.rs', 'rustok_rbac::load_consistency_stats', 'server metrics delegates RBAC diagnostics to the owner module');
+if (exists('apps/server/src/tasks/rebuild.rs')) fail('rebuild Loco task must be deleted after CLI cutover');
+else pass('rebuild Loco task is deleted after CLI cutover');
+if (exists('apps/server/scheduler.yaml')) fail('Loco scheduler configuration must be deleted after CLI cutover');
+else pass('Loco scheduler configuration is deleted after CLI cutover');
+requireContains('crates/rustok-cli-platform/src/lib.rs', '"core",\n                "rebuild"', 'platform CLI provider exposes the rebuild command');
+requireContains('crates/rustok-cli-platform/src/rebuild.rs', 'rustok_build::BuildExecutionService::new', 'rebuild CLI executes through the build capability');
+requireNotContains('crates/rustok-cli-platform/src/rebuild.rs', 'apps/server', 'rebuild CLI is host-independent');
+requireContains('crates/rustok-installer/src/plan.rs', 'pub fn default_enabled_modules(self)', 'installer owns canonical seed-profile module policy');
+requireContains('crates/rustok-installer/src/plan.rs', 'pub fn parse_cli_value(value: &str)', 'installer owns canonical seed-profile parsing');
+requireContains('crates/rustok-installer/src/secrets.rs', 'pub fn parse_cli_value(value: &str)', 'installer owns secret CLI parsing');
+requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedTenantPort', 'installer owns the seed tenant consumer port');
+requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedIdentityPort', 'installer owns the seed identity consumer port');
+requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedRolePort', 'installer owns the seed role consumer port');
+requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedModulePort', 'installer owns the seed module consumer port');
+requireNotContains('crates/rustok-installer/src/seed.rs', 'apps/server', 'installer seed workflow is host-independent');
+requireContains('apps/server/src/installer_cli.rs', 'execute_seed_profile(', 'server installer executes the canonical seed workflow');
+requireContains('apps/server/src/installer_cli.rs', 'impl SeedTenantPort for ServerInstallerSeedTenantPort', 'server composes the seed tenant adapter');
+requireContains('apps/server/src/installer_cli.rs', 'impl SeedIdentityPort for ServerInstallerSeedIdentityPort', 'server composes the seed identity adapter');
+requireContains('apps/server/src/installer_cli.rs', 'impl SeedRolePort for ServerInstallerSeedRolePort', 'server composes the seed role adapter');
+requireContains('apps/server/src/installer_cli.rs', 'impl SeedModulePort for ServerInstallerSeedModulePort', 'server composes the seed module adapter');
+requireContains('apps/server/src/installer_cli.rs', 'plan.seed_profile.default_enabled_modules()', 'server installer consumes canonical seed-profile module policy');
+requireContains('crates/rustok-tenant/src/services/tenant_service.rs', 'pub async fn ensure_tenant(', 'tenant owns idempotent bootstrap provisioning');
+requireContains('apps/server/src/installer_cli.rs', '.ensure_tenant(', 'server seed tenant adapter uses the tenant-owned provisioning API');
+requireNotContains('apps/server/src/installer_cli.rs', 'models::{tenants,', 'server seed tenant adapter does not access tenant persistence models directly');
+requireContains('crates/rustok-auth/src/bootstrap.rs', 'pub struct AuthUserBootstrapDbWriter', 'auth owns the bootstrap identity database adapter');
+requireContains('apps/server/src/installer_cli.rs', 'AuthUserBootstrapDbWriter::new', 'server seed identity adapter uses the auth-owned bootstrap writer');
+requireNotContains('apps/server/src/installer_cli.rs', 'users::ActiveModel::new', 'server seed identity adapter does not write user persistence models directly');
+requireNotContains('apps/server/src/installer_cli.rs', 'hash_password(&request.password)', 'server seed identity adapter does not hash bootstrap credentials directly');
+requireNotContains('apps/server/src/installer_cli.rs', 'fn default_modules_for_seed(', 'server installer does not duplicate seed-profile module policy');
+requireNotContains('apps/server/src/installer_cli.rs', 'fn parse_seed_profile(', 'server installer does not duplicate seed-profile parsing');
+for (const parser of ['parse_environment', 'parse_profile', 'parse_database_engine', 'parse_secret_mode', 'parse_secret_ref']) {
+  requireNotContains('apps/server/src/installer_cli.rs', `fn ${parser}(`, `server installer does not duplicate ${parser} contract parsing`);
+}
+if (exists('apps/server/src/tasks/create_oauth_app.rs')) fail('OAuth app Loco task must be deleted after CLI cutover');
+else pass('OAuth app Loco task is deleted after CLI cutover');
+requireContains('crates/rustok-auth/rustok-module.toml', 'factory = "rustok_auth_cli::command_provider"', 'auth module declares its OAuth CLI provider');
+requireContains('crates/rustok-auth/cli/src/lib.rs', '"oauth",\n                "create-app"', 'auth CLI adapter exposes OAuth app bootstrap');
+requireContains('crates/rustok-auth/cli/src/lib.rs', 'read_default_active_tenant', 'auth CLI resolves its fallback tenant through the tenant-owned port');
+requireNotContains('crates/rustok-auth/cli/src/lib.rs', 'apps/server', 'auth CLI bootstrap is host-independent');
+if (exists('apps/server/src/tasks/db_baseline.rs')) fail('DB baseline Loco task must be deleted after CLI cutover');
+else pass('DB baseline Loco task is deleted after CLI cutover');
+requireContains('crates/rustok-cli-platform/src/lib.rs', '"core",\n                "db-baseline"', 'platform CLI provider exposes the DB baseline command');
+requireContains('crates/rustok-cli-platform/src/db_baseline.rs', 'read_default_active_tenant', 'DB baseline CLI resolves its fallback tenant through the tenant-owned port');
+requireNotContains('crates/rustok-cli-platform/src/db_baseline.rs', 'apps/server', 'DB baseline CLI is host-independent');
+requireContains('crates/rustok-tenant/src/ports.rs', 'read_default_active_tenant', 'tenant owner exposes the default active-tenant read operation');
+if (exists('apps/server/src/tasks/profiles_backfill.rs')) fail('profiles backfill Loco task must be deleted after CLI cutover');
+else pass('profiles backfill Loco task is deleted after CLI cutover');
+requireContains('crates/rustok-profiles/rustok-module.toml', 'factory = "rustok_profiles_cli::command_provider"', 'profiles module declares its CLI provider');
+requireContains('crates/rustok-profiles/cli/src/lib.rs', '"profiles", "backfill"', 'profiles CLI adapter exposes the backfill command');
+requireContains('crates/rustok-profiles/cli/src/lib.rs', 'AuthUserBackfillDbReader', 'profiles CLI reads users through the auth-owned adapter');
+requireContains('crates/rustok-profiles/cli/src/lib.rs', 'CustomerReadPort', 'profiles CLI consumes customer enrichment through its owner port');
+requireContains('crates/rustok-profiles/cli/src/lib.rs', 'OutboxTransport::new', 'profiles CLI preserves profile event publishing through outbox transport');
+requireContains('crates/rustok-customer/src/ports.rs', 'struct CustomerProfileEnrichment', 'customer owns a narrow profile-enrichment projection');
+requireContains('crates/rustok-customer/src/ports.rs', 'list_profile_enrichment', 'customer read port exposes profile enrichment');
+requireContains('crates/rustok-auth/src/lifecycle.rs', 'trait AuthUserBackfillReadPort', 'auth owns the bounded user-read contract for profile backfill');
+requireContains('crates/rustok-auth/src/lifecycle.rs', 'struct AuthUserBackfillRecord', 'auth user-backfill contract exposes a narrow identity projection');
+requireContains('crates/rustok-auth/src/lifecycle.rs', 'struct AuthUserBackfillRuntime', 'auth exposes the bounded user reader through a typed runtime');
+requireContains('apps/server/src/services/auth_lifecycle_provider.rs', 'impl AuthUserBackfillReadPort for ServerAuthLifecycleProvider', 'server implements the auth-owned user-backfill port');
+requireContains('apps/server/src/services/auth_lifecycle_provider.rs', 'AuthUserBackfillDbReader::new', 'server delegates user-backfill reads to the auth-owned DB adapter');
+requireContains('crates/rustok-auth/src/backfill.rs', 'ORDER BY created_at ASC', 'auth user-backfill adapter preserves stable identity ordering');
+requireNotContains('crates/rustok-auth/src/backfill.rs', 'apps/server', 'auth user-backfill DB adapter is host-independent');
+requireContains('apps/server/src/services/module_event_dispatcher.rs', 'AuthUserBackfillRuntime::new(auth_lifecycle_provider)', 'server runtime extension composition publishes the auth user-backfill reader');
 requireContains('apps/server/src/seeds/mod.rs', 'ServerRuntimeContext', 'server seed service consumes neutral runtime state');
 requireContains('apps/server/src/seeds/mod.rs', 'use anyhow::Result;', 'server seed service returns a neutral error type');
 requireNotContains('apps/server/src/seeds/mod.rs', 'loco_rs', 'server seed service does not import Loco');
 requireNotContains('apps/server/src/seeds/mod.rs', 'cargo loco', 'server seed comments do not advertise cargo-loco execution');
 requireContains('apps/server/src/app.rs', 'seeds::seed(&runtime_ctx, path)', 'Loco Hooks::seed is a thin adapter to the neutral seed service');
-for (const rel of [
-  'apps/server/src/tasks/cleanup.rs',
-  'apps/server/src/tasks/create_oauth_app.rs',
-  'apps/server/src/tasks/db_baseline.rs',
-  'apps/server/src/tasks/profiles_backfill.rs',
-  'apps/server/src/tasks/rebuild.rs',
-]) {
-  requireNotContains(rel, 'loco_rs::task', `${rel} imports task contracts through the server task bridge`);
-  requireNotContains(rel, 'cargo loco', `${rel} comments do not advertise cargo-loco execution`);
-  requireContains(rel, 'crate::tasks::{', `${rel} uses the server task bridge`);
-}
-requireNotContains('apps/server/src/tasks/mod.rs', 'cargo loco', 'server task registry comments do not advertise cargo-loco execution');
-requireNotContains('apps/server/src/tasks/mod.rs', 'media_cleanup', 'media cleanup is no longer registered as a Loco task');
 requireContains('crates/rustok-media/rustok-module.toml', '[provides.cli]', 'media module declares its CLI provider');
 requireContains('crates/rustok-media/rustok-module.toml', 'factory = "rustok_media_cli::command_provider"', 'media module CLI provider uses its local adapter factory');
 requireContains('crates/rustok-media/cli/src/lib.rs', '"media",\n            "cleanup"', 'media CLI adapter exposes the cleanup command');
@@ -570,6 +642,8 @@ requireNotContains('crates/rustok-region/admin/Cargo.toml', 'loco-rs', 'region a
 requireNotContains('crates/rustok-comments/admin/Cargo.toml', 'loco-rs', 'comments admin crate does not depend on Loco');
 requireNotContains('crates/rustok-workflow/admin/Cargo.toml', 'loco-rs', 'workflow admin crate does not depend on Loco');
 requireNotContains('apps/admin/Cargo.toml', 'loco-rs', 'admin host does not depend on Loco after native adapter migration');
+requireNotContains('apps/server/src/services/email.rs', 'LocoMailerAdapter', 'server email delivery does not retain a Loco mailer adapter');
+requireNotContains('apps/server/src/common/settings.rs', '    Loco,', 'server email settings do not retain the Loco provider');
 requireNotContains('crates/rustok-media/admin/Cargo.toml', 'loco-rs', 'media admin crate does not depend on Loco');
 requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-rs', 'search admin crate does not depend on Loco');
 requireNotContains('crates/rustok-search/admin/Cargo.toml', 'loco-adapter', 'search admin crate does not enable the outbox Loco adapter feature');
@@ -706,6 +780,17 @@ requireContains('crates/rustok-cli/Cargo.toml', 'rustok-cli-registry.workspace =
 requireNotContains('crates/rustok-cli/Cargo.toml', 'loco-rs', 'rustok-cli does not depend on Loco');
 requireNotContains('crates/rustok-cli/Cargo.toml', 'rustok-server', 'rustok-cli does not depend on the server crate');
 requireContains('crates/rustok-cli-platform/Cargo.toml', 'name = "rustok-cli-platform"', 'rustok-cli-platform provider crate exists');
+requireContains('crates/rustok-build/Cargo.toml', 'name = "rustok-build"', 'build capability crate exists');
+requireContains('crates/rustok-build/src/build.rs', '#[sea_orm(table_name = "builds")]', 'build capability owns the build persistence model');
+requireContains('crates/rustok-build/src/release.rs', '#[sea_orm(table_name = "releases")]', 'build capability owns the release persistence model');
+requireContains('crates/rustok-build/src/plan.rs', 'pub struct BuildExecutionPlan', 'build capability owns immutable execution-plan contracts');
+requireContains('crates/rustok-build/src/report.rs', 'pub struct BuildExecutionReport', 'build capability owns executor result contracts');
+requireContains('crates/rustok-build/src/runtime.rs', 'trait ReleaseActivationHook', 'build capability defines an explicit post-activation host port');
+requireContains('crates/rustok-build/src/executor.rs', 'pub struct BuildExecutionService', 'build capability owns queued build execution');
+requireNotContains('crates/rustok-build/src/executor.rs', 'apps/server', 'build executor is host-independent');
+requireNotContains('apps/server/src/modules/manifest/types.rs', 'pub struct BuildExecutionPlan', 'server manifest layer does not own build execution plans');
+requireNotContains('apps/server/src/models/mod.rs', 'pub mod build;', 'server does not own the build persistence model');
+requireNotContains('apps/server/src/models/mod.rs', 'pub mod release;', 'server does not own the release persistence model');
 requireContains('crates/rustok-cli-platform/Cargo.toml', 'rustok-cli-core.workspace = true', 'rustok-cli-platform consumes CLI core contracts');
 requireNotContains('crates/rustok-cli-platform/Cargo.toml', 'rustok-cli.workspace', 'rustok-cli-platform does not depend on runner APIs');
 requireNotContains('crates/rustok-cli-platform/Cargo.toml', 'rustok-server', 'rustok-cli-platform does not depend on the server crate');
@@ -757,6 +842,7 @@ for (const rel of walk('crates/rustok-cli-platform', (childRel) => childRel.ends
 }
 requireContains('docs/modules/crates-registry.md', '| `rustok-cli` |', 'crate registry lists rustok-cli runner ownership');
 requireContains('docs/modules/crates-registry.md', '| `rustok-cli-platform` |', 'crate registry lists rustok-cli-platform ownership');
+requireContains('docs/modules/crates-registry.md', '| `rustok-build` |', 'crate registry lists build capability ownership');
 requireContains('docs/modules/crates-registry.md', '| `rustok-cli-registry` |', 'crate registry lists rustok-cli-registry ownership');
 requireContains('docs/modules/manifest.md', '[provides.cli]', 'module manifest contract documents CLI provider metadata');
 requireContains('docs/modules/_index.md', '| `rustok-cli-registry` |', 'module docs index links rustok-cli-registry docs');

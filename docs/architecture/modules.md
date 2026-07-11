@@ -39,6 +39,8 @@ This means:
 - Runtime registration: `apps/server/src/modules/mod.rs`
 - Manifest/runtime validation: `apps/server/src/modules/manifest.rs`
 - Base module contracts: `crates/rustok-core/src/module.rs`
+- Module artifact control plane: `crates/rustok-modules`
+- Neutral sandbox execution foundation: `crates/rustok-sandbox`
 
 ### Documentation
 
@@ -75,6 +77,7 @@ These crates provide foundation or shared contracts for platform modules and the
 - `rustok-core`
 - `rustok-api`
 - `rustok-runtime`
+- `rustok-sandbox`
 - `rustok-web`
 - `rustok-fba`
 - `rustok-cli-core`

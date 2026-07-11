@@ -37,3 +37,20 @@ pub enum ScriptError {
 }
 
 pub type ScriptResult<T> = Result<T, ScriptError>;
+
+impl From<rustok_sandbox::rhai::RhaiError> for ScriptError {
+    fn from(error: rustok_sandbox::rhai::RhaiError) -> Self {
+        match error {
+            rustok_sandbox::rhai::RhaiError::Compilation(message) => Self::Compilation(message),
+            rustok_sandbox::rhai::RhaiError::Runtime(message) => Self::Runtime(message),
+            rustok_sandbox::rhai::RhaiError::Aborted(reason) => Self::Aborted(reason),
+            rustok_sandbox::rhai::RhaiError::Timeout { limit_ms } => Self::Timeout { limit_ms },
+            rustok_sandbox::rhai::RhaiError::OperationLimit { limit } => {
+                Self::OperationLimit { limit }
+            }
+            rustok_sandbox::rhai::RhaiError::ResourceLimit { resource } => {
+                Self::ResourceLimit { resource }
+            }
+        }
+    }
+}

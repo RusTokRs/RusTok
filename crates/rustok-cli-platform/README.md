@@ -8,6 +8,7 @@ of a domain module and do not belong in the terminal runner.
 ## Responsibilities
 
 - Provide platform/core command providers for `rustok-cli-registry`.
+- Execute queued build plans through `core rebuild` without a server dependency.
 - Keep platform command execution outside `rustok-cli`.
 - Depend only on CLI contracts and narrowly required data-format helpers.
 - Stay independent from `apps/server` and domain modules.
@@ -25,4 +26,3 @@ of a domain module and do not belong in the terminal runner.
 - Is consumed by `rustok-cli` only through the selected registry.
 
 See [docs](docs/README.md).
-

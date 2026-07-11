@@ -8,9 +8,9 @@ to the role of model host.
 
 ## Purpose
 
-- hold a provider-agnostic runtime contract for AI orchestration;
-- provide a multiprovider runtime for `OpenAI-compatible`, `Anthropic` and `Gemini`, keeping
-  `OpenAI-compatible` as a convenient path for cloud and local endpoints via `base_url`;
+- hold a provider-agnostic Rig engine contract for AI orchestration;
+- provide a registry-driven Rig 0.39 runtime. `base_url` is a typed provider setting subject to
+  server-owned egress policy; credentials are external `SecretRef` values, never plaintext;
 - call MCP tools through a separate `McpClientAdapter`, rather than mixing provider logic with MCP server;
 - store the chat/runtime model: sessions, messages, runs, tool traces, approval requests;
 - provide `apps/server` with a canonical service layer for the persisted control plane.
@@ -19,10 +19,9 @@ to the role of model host.
 
 ### Provider/Runtime Layer
 
-- `ModelProvider` trait;
-- `OpenAiCompatibleProvider`;
-- typed request/response model for chat runs;
-- `AiRuntime` with request/response loop, tool-call orchestration and error normalization;
+- `ProviderSlug` / `ProviderFeature` registry with typed setting and credential schemas;
+- `InferenceEngine` backed by Rig 0.39;
+- `RigAgentDriver` with persisted canonical history, tool policy, and approval boundaries;
 - `ToolExecutionPolicy` with sensitive tool calls and approval boundary.
 - `AiRouter` and direct-dispatch layer for first-party verticals without mandatory MCP hop.
 

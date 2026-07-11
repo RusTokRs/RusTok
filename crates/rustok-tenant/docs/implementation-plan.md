@@ -8,10 +8,11 @@ owns resolver middleware, cache infrastructure, provisioning orchestration, and
 runtime composition; it must not take over tenant business rules.
 
 The host cache-miss resolver and installer provisioning/verification use
-`TenantReadPort` for typed id, slug, and domain reads. The module keeps inactive
-tenants hidden unless explicitly requested and requires read deadlines. Cache
-invalidation after lifecycle changes remains a server-owned integration
-responsibility.
+`TenantReadPort` for typed id, slug, and domain reads. Idempotent installer
+tenant provisioning uses `TenantService::ensure_tenant`, so the host does not
+duplicate tenant persistence semantics. The module keeps inactive tenants hidden
+unless explicitly requested and requires read deadlines. Cache invalidation after
+lifecycle changes remains a server-owned integration responsibility.
 
 ## FFA/FBA boundary
 

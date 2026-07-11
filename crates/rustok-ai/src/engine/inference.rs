@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -14,15 +14,17 @@ use rig::{
         perplexity, together, xai, xiaomimimo, zai,
     },
     streaming::StreamedAssistantContent,
+    image_generation::ImageGenerationModel,
     OneOrMany,
 };
+use rig::prelude::ImageGenerationClient;
 use secrecy::ExposeSecret;
 
 use crate::{
     model::{
         AiProviderConfig, ChatMessage, ChatMessageRole, ProviderChatRequest, ProviderChatResponse,
         ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter, ProviderTestResult,
-        ToolCall,
+        ProviderStructuredRequest, ToolCall,
     },
     AiError, AiResult,
 };
@@ -43,6 +45,10 @@ pub trait InferenceEngine: Send + Sync {
         request: ProviderChatRequest,
         emitter: Option<ProviderStreamEmitter>,
     ) -> AiResult<ProviderChatResponse>;
+    async fn complete_structured(
+        &self,
+        request: ProviderStructuredRequest,
+    ) -> AiResult<serde_json::Value>;
     async fn generate_image(
         &self,
         _config: &AiProviderConfig,
@@ -58,6 +64,49 @@ pub trait InferenceEngine: Send + Sync {
 pub struct RigInferenceEngine<M> {
     model: M,
     provider: String,
+    image: Option<Arc<dyn ImageInference>>,
+}
+
+#[async_trait]
+trait ImageInference: Send + Sync {
+    async fn generate(&self, request: ProviderImageRequest) -> AiResult<ProviderImageResponse>;
+}
+
+#[derive(Clone)]
+struct RigImageInference<I> {
+    model: I,
+    provider: String,
+}
+
+#[async_trait]
+impl<I> ImageInference for RigImageInference<I>
+where
+    I: ImageGenerationModel + 'static,
+{
+    async fn generate(&self, request: ProviderImageRequest) -> AiResult<ProviderImageResponse> {
+        let (width, height) = parse_image_size(request.size.as_deref())?;
+        let mut builder = self
+            .model
+            .image_generation_request()
+            .prompt(&request.prompt)
+            .width(width)
+            .height(height);
+        if let Some(negative_prompt) = request.negative_prompt {
+            builder = builder.additional_params(serde_json::json!({
+                "negative_prompt": negative_prompt
+            }));
+        }
+        let response = builder
+            .send()
+            .await
+            .map_err(|error| AiError::Provider(error.to_string()))?;
+        Ok(ProviderImageResponse {
+            bytes: response.image,
+            mime_type: "image/png".to_string(),
+            revised_prompt: None,
+            raw_payload: serde_json::json!({"provider": self.provider}),
+        })
+    }
 }
 
 fn rig_engine<M>(model: M, provider: &ProviderSlug) -> Box<dyn InferenceEngine>
@@ -67,6 +116,26 @@ where
     Box::new(RigInferenceEngine {
         model,
         provider: provider.to_string(),
+        image: None,
+    })
+}
+
+fn rig_engine_with_image<M, I>(
+    model: M,
+    image_model: I,
+    provider: &ProviderSlug,
+) -> Box<dyn InferenceEngine>
+where
+    M: CompletionModel + 'static,
+    I: ImageGenerationModel + 'static,
+{
+    Box::new(RigInferenceEngine {
+        model,
+        provider: provider.to_string(),
+        image: Some(Arc::new(RigImageInference {
+            model: image_model,
+            provider: provider.to_string(),
+        })),
     })
 }
 
@@ -88,7 +157,7 @@ pub async fn inference_for_slug(
             })?;
             Some(
                 secrets
-                    .resolve(reference)
+                    .resolve_for_tenant(config.tenant_id, reference)
                     .await
                     .map_err(|error| AiError::InvalidConfig(error.to_string()))?,
             )
@@ -105,6 +174,11 @@ pub async fn inference_for_slug(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("")
         .trim();
+    let image_model = config
+        .settings
+        .get("image_model")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&config.model);
     macro_rules! keyed_engine {
         ($provider:ident) => {{
             let mut builder = $provider::Client::builder().api_key(api_key);
@@ -126,7 +200,11 @@ pub async fn inference_for_slug(
             let client = builder
                 .build()
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine(client.completion_model(config.model.clone()), slug)
+            rig_engine_with_image(
+                client.completion_model(config.model.clone()),
+                client.image_generation_model(image_model),
+                slug,
+            )
         }
         "anthropic" => {
             let mut builder = anthropic::Client::builder().api_key(api_key);
@@ -146,16 +224,47 @@ pub async fn inference_for_slug(
             let client = builder
                 .build()
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            rig_engine_with_image(
+                client.completion_model(config.model.clone()),
+                client.image_generation_model(image_model),
+                slug,
+            )
+        }
+        "azure_openai" => {
+            let endpoint = base_url;
+            let api_version = config
+                .settings
+                .get("api_version")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| AiError::InvalidConfig("Azure API version is required".to_string()))?;
+            let client = azure::Client::builder()
+                .api_key(api_key)
+                .azure_endpoint(endpoint.to_string())
+                .api_version(api_version)
+                .build()
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             rig_engine(client.completion_model(config.model.clone()), slug)
         }
-        "azure_openai" => keyed_engine!(azure),
         "chatgpt" => keyed_engine!(chatgpt),
         "github_copilot" => keyed_engine!(copilot),
         "cohere" => keyed_engine!(cohere),
         "deepseek" => keyed_engine!(deepseek),
         "galadriel" => keyed_engine!(galadriel),
         "groq" => keyed_engine!(groq),
-        "hugging_face" => keyed_engine!(huggingface),
+        "hugging_face" => {
+            let mut builder = huggingface::Client::builder().api_key(api_key);
+            if !base_url.is_empty() {
+                builder = builder.base_url(base_url);
+            }
+            let client = builder
+                .build()
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            rig_engine_with_image(
+                client.completion_model(config.model.clone()),
+                client.image_generation_model(image_model),
+                slug,
+            )
+        }
         "hyperbolic" => keyed_engine!(hyperbolic),
         "llamafile" => {
             let mut builder = llamafile::Client::builder().api_key(rig::client::Nothing);
@@ -175,9 +284,72 @@ pub async fn inference_for_slug(
         "openrouter" => keyed_engine!(openrouter),
         "perplexity" => keyed_engine!(perplexity),
         "together" => keyed_engine!(together),
-        "xai" => keyed_engine!(xai),
+        "xai" => {
+            let mut builder = xai::Client::builder().api_key(api_key);
+            if !base_url.is_empty() {
+                builder = builder.base_url(base_url);
+            }
+            let client = builder
+                .build()
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            rig_engine_with_image(
+                client.completion_model(config.model.clone()),
+                client.image_generation_model(image_model),
+                slug,
+            )
+        }
         "xiaomi_mimo" => keyed_engine!(xiaomimimo),
         "zai" => keyed_engine!(zai),
+        "aws_bedrock" => {
+            let region = config
+                .settings
+                .get("region")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(rig_bedrock::client::DEFAULT_AWS_REGION);
+            let client = if let Some(profile) = config
+                .settings
+                .get("profile")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+            {
+                rig_bedrock::client::Client::with_profile_name(profile)
+            } else {
+                rig_bedrock::client::ClientBuilder::default()
+                    .region(region)
+                    .build()
+                    .await
+            };
+            rig_engine_with_image(
+                client.completion_model(config.model.clone()),
+                client.image_generation_model(image_model),
+                slug,
+            )
+        }
+        "vertex_ai" => {
+            let project = config
+                .settings
+                .get("project")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| AiError::InvalidConfig("Vertex project is required".to_string()))?;
+            let mut builder = rig_vertexai::Client::builder().with_project(project);
+            if let Some(location) = config
+                .settings
+                .get("location")
+                .and_then(serde_json::Value::as_str)
+            {
+                builder = builder.with_location(location);
+            }
+            let client = builder
+                .build()
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            rig_engine(client.completion_model(config.model.clone()), slug)
+        }
+        "gemini_grpc" => {
+            let client = rig_gemini_grpc::Client::new(api_key.to_string())
+                .await
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            rig_engine(client.completion_model(config.model.clone()), slug)
+        }
         other => {
             return Err(AiError::InvalidConfig(format!(
                 "Rig provider `{other}` is catalogued but its typed runtime factory is not linked"
@@ -244,6 +416,55 @@ where
         let request = map_request(request)?;
         stream_with(&self.model, request, &self.provider, emitter).await
     }
+
+    async fn complete_structured(
+        &self,
+        request: ProviderStructuredRequest,
+    ) -> AiResult<serde_json::Value> {
+        let mut completion = map_request(request.request)?;
+        completion.output_schema = Some(
+            schemars::Schema::try_from(request.output_schema)
+                .map_err(|error| AiError::Validation(error.to_string()))?,
+        );
+        let response = complete_with(&self.model, completion, &self.provider).await?;
+        let content = response.assistant_message.content.ok_or_else(|| {
+            AiError::Provider("Rig structured output returned empty content".to_string())
+        })?;
+        serde_json::from_str(content.trim()).map_err(AiError::Json)
+    }
+
+    async fn generate_image(
+        &self,
+        _config: &AiProviderConfig,
+        request: ProviderImageRequest,
+    ) -> AiResult<ProviderImageResponse> {
+        let image = self.image.as_ref().ok_or_else(|| {
+            AiError::Provider(format!(
+                "Rig provider `{}` does not expose image generation",
+                self.provider
+            ))
+        })?;
+        image.generate(request).await
+    }
+}
+
+fn parse_image_size(value: Option<&str>) -> AiResult<(u32, u32)> {
+    let value = value.unwrap_or("1024x1024");
+    let (width, height) = value.split_once('x').ok_or_else(|| {
+        AiError::Validation("image size must use WIDTHxHEIGHT format".to_string())
+    })?;
+    let width = width
+        .parse::<u32>()
+        .map_err(|_| AiError::Validation("invalid image width".to_string()))?;
+    let height = height
+        .parse::<u32>()
+        .map_err(|_| AiError::Validation("invalid image height".to_string()))?;
+    if width == 0 || height == 0 {
+        return Err(AiError::Validation(
+            "image dimensions must be positive".to_string(),
+        ));
+    }
+    Ok((width, height))
 }
 
 async fn complete_with<M: CompletionModel>(

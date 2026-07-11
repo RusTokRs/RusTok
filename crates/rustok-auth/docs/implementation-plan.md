@@ -43,6 +43,28 @@ does not create a package-local locale fallback.
    **Done when:** the module README, metadata, and FFA/FBA evidence describe the
    same runtime surface without a server-local bypass.
 
+3. **Provide bounded identity reads for owner-owned operations.**
+   `AuthUserBackfillReadPort` exposes only tenant-scoped user id, email and
+   display-name data in creation order for profile provisioning. The
+   host-independent `AuthUserBackfillDbReader` implements that port from an
+   explicit database handle, while the server provider delegates to it.
+   **Done when:** the selected CLI composition resolves the auth port without
+   importing server models or expanding the profile domain with auth storage.
+
+4. **Keep OAuth bootstrap in the auth-owned CLI adapter.**
+   `rustok-cli oauth create-app` creates the development application through
+   `rustok-auth/cli`, an explicit database handle, and the tenant-owned default
+   tenant read. The server no longer registers a Loco task for this operation.
+
+5. **Keep session maintenance in the auth-owned CLI adapter.**
+   `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
+   server Loco task bridge.
+
+6. **Keep bootstrap identity provisioning in the auth owner.**
+   `AuthUserBootstrapDbWriter` provides idempotent tenant-scoped user creation
+   from an explicit database handle for installer and future standalone seed
+   composition. RBAC role assignment remains a separate owner boundary.
+
 ## Verification
 
 - `npm run verify:auth:admin-boundary`

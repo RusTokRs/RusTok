@@ -91,6 +91,38 @@ impl CustomerService {
         Ok(map_customer(customer))
     }
 
+    pub async fn list_profile_enrichment(
+        &self,
+        tenant_id: Uuid,
+        user_ids: &[Uuid],
+    ) -> CustomerResult<Vec<crate::CustomerProfileEnrichment>> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        entities::customer::Entity::find()
+            .filter(entities::customer::Column::TenantId.eq(tenant_id))
+            .filter(entities::customer::Column::UserId.is_in(user_ids.iter().copied()))
+            .all(&self.db)
+            .await
+            .map(|customers| {
+                customers
+                    .into_iter()
+                    .filter_map(|customer| {
+                        customer
+                            .user_id
+                            .map(|user_id| crate::CustomerProfileEnrichment {
+                                user_id,
+                                first_name: customer.first_name,
+                                last_name: customer.last_name,
+                                preferred_locale: customer.locale,
+                            })
+                    })
+                    .collect()
+            })
+            .map_err(Into::into)
+    }
+
     pub async fn list_customers(
         &self,
         tenant_id: Uuid,

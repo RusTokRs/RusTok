@@ -23,11 +23,8 @@ use crate::graphql::types::{
 use crate::models::_entities::tenant_modules::Column as TenantModulesColumn;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::users::Column as UsersColumn;
-use crate::models::build::{Column as BuildColumn, Entity as BuildEntity};
-use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
 use crate::models::users;
 use crate::modules::ManifestManager;
-use crate::services::build_service::BuildService;
 use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::marketplace_catalog::marketplace_catalog_from_context;
@@ -41,6 +38,9 @@ use crate::services::registry_governance::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
 use rustok_api::graphql::{encode_cursor, PageInfo, PaginationInput};
+use rustok_build::build::{Column as BuildColumn, Entity as BuildEntity};
+use rustok_build::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
+use rustok_build::BuildService;
 
 fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     if previous == 0 {

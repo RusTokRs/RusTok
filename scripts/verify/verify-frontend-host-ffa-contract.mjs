@@ -503,10 +503,8 @@ assertNotContains(
 );
 
 const workflowHostCallers = [
-  "apps/admin/src/pages/workflows.rs",
   "apps/admin/src/pages/workflow_detail.rs",
   "apps/admin/src/features/workflow/components/workflow_step_editor.rs",
-  "apps/admin/src/features/workflow/components/template_gallery.rs",
   "apps/admin/src/features/workflow/components/version_history.rs",
 ].map((relativePath) => [relativePath, readRepo(relativePath)]);
 
@@ -516,6 +514,15 @@ for (const [relativePath, source] of workflowHostCallers) {
   assertNotContains(source, "native_server_adapter::", `${relativePath}: workflow host caller must not call native adapter directly`);
   assertNotContains(source, "graphql_adapter::", `${relativePath}: workflow host caller must not call GraphQL adapter directly`);
 }
+
+assertMissing(
+  "apps/admin/src/pages/workflows.rs",
+  "apps/admin/src/pages/workflows.rs: owner-owned workflow overview must not be restored in the host",
+);
+assertMissing(
+  "apps/admin/src/features/workflow/components/template_gallery.rs",
+  "apps/admin/src/features/workflow/components/template_gallery.rs: owner-owned workflow templates must not be restored in the host",
+);
 
 assertMissing(
   "apps/admin/src/features/oauth_apps/api.rs",

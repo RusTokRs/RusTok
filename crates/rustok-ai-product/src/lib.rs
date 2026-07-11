@@ -49,7 +49,7 @@ pub fn register_product_ai_vertical_handlers(
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GeneratedProductCopy {
     pub title: Option<String>,
     pub handle: Option<String>,
@@ -58,7 +58,7 @@ pub struct GeneratedProductCopy {
     pub meta_description: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GeneratedProductAttributes {
     pub brand: Option<String>,
     pub material: Option<String>,
@@ -72,7 +72,7 @@ pub struct GeneratedProductAttributes {
     pub flex_attributes: Vec<GeneratedFlexAttribute>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GeneratedFlexAttribute {
     pub key: String,
     pub value: String,

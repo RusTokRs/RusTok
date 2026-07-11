@@ -1,4 +1,5 @@
 use super::types::*;
+use rustok_build::{FrontendArtifactKind, FrontendBuildPlan, FrontendBuildTool};
 
 pub fn admin_frontend_build_plan(
     manifest: &ModulesManifest,

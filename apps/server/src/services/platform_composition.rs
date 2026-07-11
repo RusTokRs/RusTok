@@ -9,13 +9,13 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::models::build::Model as Build;
 use crate::models::platform_state::{
     ActiveModel as PlatformStateActiveModel, Column as PlatformStateColumn,
     Entity as PlatformStateEntity, Model as PlatformStateModel,
 };
 use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
-use crate::services::build_service::{BuildEventPublisher, BuildRequest, BuildService};
+use rustok_build::build::Model as Build;
+use rustok_build::{BuildEventPublisher, BuildRequest, BuildService, ModuleSpec};
 
 pub const ACTIVE_PLATFORM_STATE_ID: &str = "active";
 
@@ -312,7 +312,7 @@ impl PlatformCompositionBuildService {
             Ok(result) => {
                 txn.commit().await.map_err(PlatformCompositionError::from)?;
                 event_publisher
-                    .publish(crate::services::build_service::BuildEvent::BuildRequested {
+                    .publish(rustok_build::BuildEvent::BuildRequested {
                         build_id: result.build.id,
                         requested_by: result.build.requested_by.clone(),
                     })

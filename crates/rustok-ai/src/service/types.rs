@@ -19,6 +19,12 @@ use crate::ProviderSlug;
 pub struct SharedAiModuleRegistry(pub ModuleRegistry);
 
 #[derive(Clone)]
+pub struct SharedAiSecretResolverRegistry(pub SecretResolverRegistry);
+
+#[derive(Clone)]
+pub struct SharedAiEgressPolicy(pub crate::ProviderEgressPolicy);
+
+#[derive(Clone)]
 pub struct AiHostRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -26,6 +32,7 @@ pub struct AiHostRuntime {
     storage: Option<StorageService>,
     alloy_runtime: Option<alloy::SharedAlloyRuntime>,
     secret_registry: SecretResolverRegistry,
+    egress_policy: crate::ProviderEgressPolicy,
 }
 
 impl AiHostRuntime {
@@ -41,6 +48,7 @@ impl AiHostRuntime {
             storage: None,
             alloy_runtime: None,
             secret_registry: SecretResolverRegistry::builder().build(),
+            egress_policy: crate::ProviderEgressPolicy::default(),
         }
     }
 
@@ -61,6 +69,15 @@ impl AiHostRuntime {
 
     pub fn secret_registry(&self) -> &SecretResolverRegistry {
         &self.secret_registry
+    }
+
+    pub fn with_egress_policy(mut self, egress_policy: crate::ProviderEgressPolicy) -> Self {
+        self.egress_policy = egress_policy;
+        self
+    }
+
+    pub fn egress_policy(&self) -> &crate::ProviderEgressPolicy {
+        &self.egress_policy
     }
 
     pub fn db(&self) -> &DatabaseConnection {

@@ -62,3 +62,99 @@ impl MigrationTrait for Migration {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Migration;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
+    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+
+    async fn legacy_database(api_key_secret: Option<&str>) -> sea_orm::DatabaseConnection {
+        let database = Database::connect("sqlite::memory:").await.unwrap();
+        database
+            .execute_unprepared(
+                "CREATE TABLE ai_provider_profiles (\
+                    slug TEXT NOT NULL,\
+                    provider_kind TEXT NOT NULL,\
+                    base_url TEXT NOT NULL DEFAULT '',\
+                    api_key_secret TEXT\
+                )",
+            )
+            .await
+            .unwrap();
+        let secret = api_key_secret
+            .map(|value| format!("'{}'", value.replace('\'', "''")))
+            .unwrap_or_else(|| "NULL".to_string());
+        database
+            .execute_unprepared(&format!(
+                "INSERT INTO ai_provider_profiles (slug, provider_kind, base_url, api_key_secret) \
+                 VALUES ('primary', 'openai_compatible', 'https://gateway.example.test/v1', {secret})"
+            ))
+            .await
+            .unwrap();
+        database
+    }
+
+    #[tokio::test]
+    async fn migrates_slug_and_base_url_without_retaining_plaintext_column() {
+        let database = legacy_database(None).await;
+        Migration.up(&SchemaManager::new(&database)).await.unwrap();
+
+        let row = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT provider_slug, settings, credential_refs FROM ai_provider_profiles"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            String::try_get(&row, "", "provider_slug").unwrap(),
+            "openai_compatible"
+        );
+        assert_eq!(
+            String::try_get(&row, "", "settings").unwrap(),
+            r#"{"base_url":"https://gateway.example.test/v1"}"#
+        );
+        assert_eq!(String::try_get(&row, "", "credential_refs").unwrap(), "{}");
+
+        let columns = database
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "PRAGMA table_info(ai_provider_profiles)".to_string(),
+            ))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| String::try_get(&row, "", "name").unwrap())
+            .collect::<Vec<_>>();
+        assert!(columns.contains(&"provider_slug".to_string()));
+        assert!(!columns.contains(&"provider_kind".to_string()));
+        assert!(!columns.contains(&"base_url".to_string()));
+        assert!(!columns.contains(&"api_key_secret".to_string()));
+    }
+
+    #[tokio::test]
+    async fn rejects_plaintext_secret_before_schema_mutation() {
+        let database = legacy_database(Some("do-not-migrate")).await;
+        let error = Migration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect_err("plaintext credentials must stop the upgrade");
+        assert!(error.to_string().contains("primary"));
+
+        let columns = database
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "PRAGMA table_info(ai_provider_profiles)".to_string(),
+            ))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| String::try_get(&row, "", "name").unwrap())
+            .collect::<Vec<_>>();
+        assert!(columns.contains(&"api_key_secret".to_string()));
+        assert!(columns.contains(&"provider_kind".to_string()));
+    }
+}

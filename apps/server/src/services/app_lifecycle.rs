@@ -1,13 +1,12 @@
-use loco_rs::{app::AppContext, config::Config};
-
 use crate::error::{Error, Result};
+use sea_orm::{DatabaseConnection, EntityTrait};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
 #[cfg(feature = "mod-seo")]
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
-use crate::services::build_executor::BuildExecutionService;
+use crate::services::build_executor::build_execution_service;
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
@@ -21,7 +20,7 @@ use rustok_seo::SeoService;
 
 // ── Graceful-shutdown handle ──────────────────────────────────────────────────
 
-/// Stored in `ctx.shared_store`; `on_shutdown` calls `stop()` to abort workers.
+/// Stored in `ServerRuntimeContext`; `on_shutdown` calls `stop()` to abort workers.
 #[derive(Clone)]
 pub struct StopHandle {
     stop_tx: tokio::sync::watch::Sender<bool>,
@@ -70,6 +69,42 @@ pub enum RuntimeWorkerLifecycleState {
     Degraded,
     Stopping,
     Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DatabaseTruncateReport {
+    pub releases: u64,
+    pub builds: u64,
+    pub tenant_modules: u64,
+    pub sessions: u64,
+    pub users: u64,
+    pub tenants: u64,
+}
+
+pub async fn truncate_server_database(db: &DatabaseConnection) -> Result<DatabaseTruncateReport> {
+    let releases = rustok_build::release::Entity::delete_many()
+        .exec(db)
+        .await?;
+    let builds = rustok_build::build::Entity::delete_many().exec(db).await?;
+    let tenant_modules = crate::models::_entities::tenant_modules::Entity::delete_many()
+        .exec(db)
+        .await?;
+    let sessions = crate::models::sessions::Entity::delete_many()
+        .exec(db)
+        .await?;
+    let users = crate::models::users::Entity::delete_many().exec(db).await?;
+    let tenants = crate::models::tenants::Entity::delete_many()
+        .exec(db)
+        .await?;
+
+    Ok(DatabaseTruncateReport {
+        releases: releases.rows_affected,
+        builds: builds.rows_affected,
+        tenant_modules: tenant_modules.rows_affected,
+        sessions: sessions.rows_affected,
+        users: users.rows_affected,
+        tenants: tenants.rows_affected,
+    })
 }
 
 impl RuntimeWorkerLifecycleState {
@@ -174,20 +209,17 @@ impl SeoBulkWorkerHandle {
     }
 }
 
-pub fn apply_boot_database_fallback(config: &mut Config) -> bool {
-    if should_use_local_sqlite_fallback(
-        std::env::var("DATABASE_URL").is_ok(),
-        config.database.uri.as_str(),
-    ) {
-        config.database.uri = LOCAL_SQLITE_DATABASE_URI.to_string();
-        return true;
-    }
-
-    false
+/// Resolves the local development database fallback without depending on a host config type.
+pub fn resolve_boot_database_uri(
+    database_url_present: bool,
+    configured_uri: &str,
+) -> Option<&'static str> {
+    should_use_local_sqlite_fallback(database_url_present, configured_uri)
+        .then_some(LOCAL_SQLITE_DATABASE_URI)
 }
 
-pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
-    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+/// Start runtime workers from framework-neutral server runtime state.
+pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeContext) -> Result<()> {
     let settings = runtime_ctx.settings().clone();
     #[cfg(feature = "mod-seo")]
     let seo_bulk_worker_enabled = settings.runtime.background_workers.seo_bulk_enabled;
@@ -225,7 +257,7 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
 
     if settings.build.enabled && !runtime_ctx.shared_contains::<BuildWorkerHandle>() {
         runtime_ctx.shared_insert(spawn_build_worker_handle(
-            ctx.clone(),
+            runtime_ctx.clone(),
             settings.build,
             stop_rx.clone(),
         ));
@@ -235,7 +267,7 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
         && !runtime_ctx.shared_contains::<RemoteExecutorReaperHandle>()
     {
         runtime_ctx.shared_insert(spawn_remote_executor_reaper_handle(
-            ctx.clone(),
+            runtime_ctx.clone(),
             settings.registry.remote_executor.requeue_scan_interval_ms,
             stop_rx.clone(),
         ));
@@ -243,12 +275,23 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
 
     #[cfg(feature = "mod-seo")]
     if seo_bulk_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
-        runtime_ctx.shared_insert(spawn_seo_bulk_worker_handle(ctx.clone(), stop_rx.clone()));
+        runtime_ctx.shared_insert(spawn_seo_bulk_worker_handle(
+            runtime_ctx.clone(),
+            stop_rx.clone(),
+        ));
     } else if !seo_bulk_worker_enabled {
         tracing::info!("SEO bulk worker disabled by runtime.background_workers config");
     }
 
     Ok(())
+}
+
+/// Stops all runtime workers that were registered during server bootstrap.
+pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
+    if let Some(handle) = runtime_ctx.shared_get::<StopHandle>() {
+        tracing::info!("Stopping background workers");
+        handle.stop().await;
+    }
 }
 
 fn spawn_relay_worker_handle(
@@ -268,7 +311,7 @@ fn spawn_relay_worker_handle(
 }
 
 fn spawn_build_worker_handle(
-    ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
     config: crate::common::settings::BuildRuntimeSettings,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> BuildWorkerHandle {
@@ -280,12 +323,12 @@ fn spawn_build_worker_handle(
     );
     BuildWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(build_worker_loop(ctx, config, stop_rx)),
+        _handle: tokio::spawn(build_worker_loop(runtime_ctx, config, stop_rx)),
     }
 }
 
 fn spawn_remote_executor_reaper_handle(
-    ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
     scan_interval_ms: u64,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> RemoteExecutorReaperHandle {
@@ -297,30 +340,33 @@ fn spawn_remote_executor_reaper_handle(
     );
     RemoteExecutorReaperHandle {
         instance_id,
-        _handle: tokio::spawn(remote_executor_reaper_loop(ctx, scan_interval_ms, stop_rx)),
+        _handle: tokio::spawn(remote_executor_reaper_loop(
+            runtime_ctx,
+            scan_interval_ms,
+            stop_rx,
+        )),
     }
 }
 
 #[cfg(feature = "mod-seo")]
 fn spawn_seo_bulk_worker_handle(
-    ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> SeoBulkWorkerHandle {
     let instance_id = SEO_BULK_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(worker = "seo_bulk", instance_id, "Starting runtime worker");
     SeoBulkWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(seo_bulk_worker_loop(ctx, stop_rx)),
+        _handle: tokio::spawn(seo_bulk_worker_loop(runtime_ctx, stop_rx)),
     }
 }
 
 async fn build_worker_loop(
-    ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
     config: crate::common::settings::BuildRuntimeSettings,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
-    let executor = BuildExecutionService::new(&runtime_ctx);
+    let executor = build_execution_service(&runtime_ctx);
     let release_backend = ReleaseDeploymentService::new(&runtime_ctx, config.clone());
     let poll_interval = Duration::from_millis(config.poll_interval_ms);
 
@@ -392,11 +438,11 @@ async fn build_worker_loop(
 }
 
 async fn remote_executor_reaper_loop(
-    ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
     scan_interval_ms: u64,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let governance = RegistryGovernanceService::new(runtime_ctx.db_clone());
     let poll_interval = Duration::from_millis(scan_interval_ms.max(1));
 
     loop {
@@ -428,18 +474,23 @@ async fn remote_executor_reaper_loop(
 }
 
 #[cfg(feature = "mod-seo")]
-async fn seo_bulk_worker_loop(ctx: AppContext, mut stop_rx: tokio::sync::watch::Receiver<bool>) {
-    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+async fn seo_bulk_worker_loop(
+    runtime_ctx: ServerRuntimeContext,
+    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let event_bus = transactional_event_bus_from_context(&runtime_ctx);
     let runtime_extensions = module_runtime_extensions_from_ctx(&runtime_ctx);
-    let service =
-        match SeoService::from_runtime_extensions(ctx.db.clone(), event_bus, &runtime_extensions) {
-            Ok(service) => service,
-            Err(error) => {
-                tracing::error!(error = %error, "Failed to initialize SEO bulk worker registry");
-                return;
-            }
-        };
+    let service = match SeoService::from_runtime_extensions(
+        runtime_ctx.db_clone(),
+        event_bus,
+        &runtime_extensions,
+    ) {
+        Ok(service) => service,
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to initialize SEO bulk worker registry");
+            return;
+        }
+    };
     let poll_interval = Duration::from_millis(SEO_BULK_WORKER_POLL_INTERVAL_MS);
 
     loop {
@@ -482,8 +533,8 @@ fn should_use_local_sqlite_fallback(database_url_present: bool, current_uri: &st
 #[cfg(test)]
 mod tests {
     use super::{
-        connect_runtime_workers, should_use_local_sqlite_fallback, BuildWorkerHandle,
-        OutboxRelayWorkerHandle,
+        connect_runtime_workers_with_runtime, resolve_boot_database_uri,
+        should_use_local_sqlite_fallback, BuildWorkerHandle, OutboxRelayWorkerHandle,
     };
     use crate::testing::get_server_app_context;
     use rustok_core::events::MemoryTransport;
@@ -495,6 +546,10 @@ mod tests {
     #[test]
     fn uses_sqlite_fallback_when_database_url_is_missing_and_uri_is_empty() {
         assert!(should_use_local_sqlite_fallback(false, ""));
+        assert_eq!(
+            resolve_boot_database_uri(false, ""),
+            Some("sqlite://rustok.sqlite?mode=rwc")
+        );
     }
 
     #[test]
@@ -556,30 +611,27 @@ mod tests {
             channel_capacity: 128,
             relay_fallback_active: false,
         });
-        ctx.shared_store.insert(runtime);
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+        runtime_ctx.shared_insert(runtime);
 
-        connect_runtime_workers(&ctx)
+        connect_runtime_workers_with_runtime(runtime_ctx.clone())
             .await
             .expect("first worker connect should succeed");
-        let first_instance_id = ctx
-            .shared_store
-            .get_ref::<OutboxRelayWorkerHandle>()
-            .expect("relay handle should be stored")
-            .instance_id();
+        let first_instance_id = runtime_ctx
+            .shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::instance_id)
+            .expect("relay handle should be stored");
 
-        connect_runtime_workers(&ctx)
+        connect_runtime_workers_with_runtime(runtime_ctx.clone())
             .await
             .expect("second worker connect should be idempotent");
-        let second_instance_id = ctx
-            .shared_store
-            .get_ref::<OutboxRelayWorkerHandle>()
-            .expect("relay handle should still be stored")
-            .instance_id();
+        let second_instance_id = runtime_ctx
+            .shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::instance_id)
+            .expect("relay handle should still be stored");
 
         assert_eq!(first_instance_id, second_instance_id);
 
         // Gracefully shut down background workers to avoid hanging tests
-        if let Some(stop_handle) = ctx.shared_store.get_ref::<super::StopHandle>() {
+        if let Some(stop_handle) = runtime_ctx.shared_get::<super::StopHandle>() {
             stop_handle.stop().await;
         };
     }
@@ -601,30 +653,27 @@ mod tests {
             channel_capacity: 128,
             relay_fallback_active: false,
         });
-        ctx.shared_store.insert(runtime);
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+        runtime_ctx.shared_insert(runtime);
 
-        connect_runtime_workers(&ctx)
+        connect_runtime_workers_with_runtime(runtime_ctx.clone())
             .await
             .expect("first worker connect should succeed");
-        let first_instance_id = ctx
-            .shared_store
-            .get_ref::<BuildWorkerHandle>()
-            .expect("build worker handle should be stored")
-            .instance_id();
+        let first_instance_id = runtime_ctx
+            .shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::instance_id)
+            .expect("build worker handle should be stored");
 
-        connect_runtime_workers(&ctx)
+        connect_runtime_workers_with_runtime(runtime_ctx.clone())
             .await
             .expect("second worker connect should be idempotent");
-        let second_instance_id = ctx
-            .shared_store
-            .get_ref::<BuildWorkerHandle>()
-            .expect("build worker handle should still be stored")
-            .instance_id();
+        let second_instance_id = runtime_ctx
+            .shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::instance_id)
+            .expect("build worker handle should still be stored");
 
         assert_eq!(first_instance_id, second_instance_id);
 
         // Gracefully shut down background workers to avoid hanging tests
-        if let Some(stop_handle) = ctx.shared_store.get_ref::<super::StopHandle>() {
+        if let Some(stop_handle) = runtime_ctx.shared_get::<super::StopHandle>() {
             stop_handle.stop().await;
         };
     }

@@ -49,6 +49,24 @@ pub struct AcceptInviteRecord {
     pub role: UserRole,
 }
 
+/// A minimal identity projection for owner-owned maintenance consumers.
+///
+/// This deliberately excludes roles, sessions and credentials. Consumers such
+/// as the profiles backfill may derive an initial profile from identity data,
+/// but must not receive broader auth persistence access.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthUserBackfillRecord {
+    pub id: Uuid,
+    pub email: String,
+    pub name: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthUserBackfillReadRequest {
+    pub tenant_id: Uuid,
+    pub limit: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AuthLifecycleMutationError {
     EmailAlreadyExists,
@@ -82,6 +100,29 @@ impl std::fmt::Display for AuthLifecycleMutationError {
 }
 
 impl std::error::Error for AuthLifecycleMutationError {}
+
+#[async_trait]
+pub trait AuthUserBackfillReadPort: Send + Sync {
+    async fn list_users_for_profile_backfill(
+        &self,
+        request: AuthUserBackfillReadRequest,
+    ) -> Result<Vec<AuthUserBackfillRecord>, AuthLifecycleMutationError>;
+}
+
+#[derive(Clone)]
+pub struct AuthUserBackfillRuntime {
+    port: Arc<dyn AuthUserBackfillReadPort>,
+}
+
+impl AuthUserBackfillRuntime {
+    pub fn new(port: Arc<dyn AuthUserBackfillReadPort>) -> Self {
+        Self { port }
+    }
+
+    pub fn port(&self) -> &dyn AuthUserBackfillReadPort {
+        self.port.as_ref()
+    }
+}
 
 #[async_trait]
 pub trait AuthLifecyclePort: Send + Sync {

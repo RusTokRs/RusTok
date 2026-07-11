@@ -391,10 +391,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn test_runtime_context(db: sea_orm::DatabaseConnection) -> ServerRuntimeContext {
-        ServerRuntimeContext::with_empty_shared_store(
-            db,
-            crate::common::settings::RustokSettings::default(),
-        )
+        ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default())
     }
 
     fn tenant_context(model: &tenants::Model) -> TenantContext {

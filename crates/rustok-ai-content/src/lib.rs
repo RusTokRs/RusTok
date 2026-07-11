@@ -90,7 +90,7 @@ pub fn register_content_ai_vertical_handlers(
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GeneratedBlogDraft {
     pub title: Option<String>,
     pub slug: Option<String>,
@@ -123,7 +123,7 @@ pub fn validate_blog_draft_payload(payload: &GeneratedBlogDraft) -> Result<(), S
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GeneratedModerationDecision {
     pub decision: String,
     #[serde(default)]

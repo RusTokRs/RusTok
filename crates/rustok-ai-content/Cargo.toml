@@ -11,3 +11,4 @@ server = []
 
 [dependencies]
 serde.workspace = true
+schemars.workspace = true

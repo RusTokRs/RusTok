@@ -1,4 +1,4 @@
-use crate::models::build::DeploymentProfile;
+use rustok_build::DeploymentProfile;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -73,46 +73,6 @@ pub struct DeploymentSurfaceContract {
     pub profile: DeploymentProfile,
     pub embed_admin: bool,
     pub embed_storefront: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct BuildExecutionPlan {
-    pub cargo_package: String,
-    pub cargo_profile: String,
-    pub cargo_target: Option<String>,
-    pub cargo_features: Vec<String>,
-    pub cargo_command: String,
-    #[serde(default)]
-    pub admin_build: Option<FrontendBuildPlan>,
-    #[serde(default)]
-    pub storefront_build: Option<FrontendBuildPlan>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum FrontendBuildTool {
-    Cargo,
-    Trunk,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum FrontendArtifactKind {
-    File,
-    Directory,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct FrontendBuildPlan {
-    pub surface: String,
-    pub tool: FrontendBuildTool,
-    pub package: String,
-    pub workspace_path: String,
-    pub profile: String,
-    pub target: Option<String>,
-    pub artifact_path: String,
-    pub artifact_kind: FrontendArtifactKind,
-    pub command: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

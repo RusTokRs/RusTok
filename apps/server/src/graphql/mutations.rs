@@ -8,7 +8,6 @@ use crate::graphql::types::{
     UpdateUserInput, User,
 };
 use crate::models::_entities::users::Column as UsersColumn;
-use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
 use crate::models::users;
 use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
 #[cfg(test)]
@@ -16,8 +15,6 @@ use crate::services::auth_lifecycle::AuthLifecycleError;
 use crate::services::build_event_hub::{
     build_event_hub_from_context, BuildEventHubPublisher, CompositeBuildEventPublisher,
 };
-use crate::services::build_service::BuildService;
-use crate::services::build_service::EventBusBuildEventPublisher;
 use crate::services::event_bus::event_bus_from_context;
 #[cfg(test)]
 use crate::services::flex_attached_values::{
@@ -39,6 +36,9 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationRuntime, UserMutationRecord,
 };
+use rustok_build::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
+use rustok_build::BuildService;
+use rustok_build::EventBusBuildEventPublisher;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use std::sync::Arc;
 use uuid::Uuid;

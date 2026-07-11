@@ -1,0 +1,11 @@
+[module]
+slug = "modules"
+name = "Module Platform"
+version = "0.1.0"
+description = "Mandatory module artifact, marketplace, and lifecycle control plane"
+ownership = "first_party"
+trust_level = "core"
+ui_classification = "no_ui"
+
+[crate]
+entry_type = "ModulesModule"

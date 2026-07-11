@@ -32,7 +32,7 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::email::{
     email_service_from_ctx, password_reset_url, EmailVerificationEmail, PasswordResetEmail,
 };
-use crate::services::server_runtime_context::{ServerAuthRuntime, ServerEmailRuntime};
+use crate::services::server_runtime_context::ServerAuthRuntime;
 pub use rustok_auth::{
     AcceptInviteParams, AuthResponse, ChangePasswordParams, ConfirmResetParams,
     ConfirmVerificationParams, GenericStatusResponse, InviteAcceptResponse, LoginParams,
@@ -251,7 +251,6 @@ async fn accept_invite(
     responses((status = 200, description = "Reset request accepted", body = ResetRequestResponse)))]
 async fn request_reset(
     State(ctx): State<ServerAuthRuntime>,
-    State(email_runtime): State<ServerEmailRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     request_context: RequestContext,
     Json(params): Json<RequestResetParams>,
@@ -282,12 +281,8 @@ async fn request_reset(
 
     if let Some(reset_token_value) = reset_token.as_ref() {
         let runtime_ctx = ctx.runtime_ctx();
-        let email_service = email_service_from_ctx(
-            runtime_ctx,
-            email_runtime.mailer_clone(),
-            request_context.locale.as_str(),
-        )
-        .map_err(|_| Error::InternalServerError)?;
+        let email_service = email_service_from_ctx(runtime_ctx, request_context.locale.as_str())
+            .map_err(|_| Error::InternalServerError)?;
         let reset_url = password_reset_url(runtime_ctx, reset_token_value)
             .map_err(|_| Error::InternalServerError)?;
         let recipient = params.email.clone();
@@ -340,7 +335,6 @@ async fn confirm_reset(
     responses((status = 200, description = "Verification request accepted", body = VerificationRequestResponse)))]
 async fn request_verification(
     State(ctx): State<ServerAuthRuntime>,
-    State(email_runtime): State<ServerEmailRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     request_context: RequestContext,
     Json(params): Json<RequestVerificationParams>,
@@ -374,12 +368,8 @@ async fn request_verification(
 
     if let Some(verification_token_value) = verification_token.as_ref() {
         let runtime_ctx = ctx.runtime_ctx();
-        let email_service = email_service_from_ctx(
-            runtime_ctx,
-            email_runtime.mailer_clone(),
-            request_context.locale.as_str(),
-        )
-        .map_err(|_| Error::InternalServerError)?;
+        let email_service = email_service_from_ctx(runtime_ctx, request_context.locale.as_str())
+            .map_err(|_| Error::InternalServerError)?;
         let recipient = params.email.clone();
         let verification_token = verification_token_value.clone();
 

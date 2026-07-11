@@ -61,6 +61,7 @@ pub struct ProviderUsagePolicy {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderConfig {
+    pub tenant_id: Uuid,
     pub provider_slug: ProviderSlug,
     pub model: String,
     #[serde(default)]
@@ -120,6 +121,12 @@ pub struct ProviderChatRequest {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderStructuredRequest {
+    pub request: ProviderChatRequest,
+    pub output_schema: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

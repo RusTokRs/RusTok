@@ -32,6 +32,7 @@ redirect_uris = ["http://localhost:3000/auth/callback"]
 # ───────────────────────────────────────────────
 [modules]
 # Core modules (required and always active)
+modules = { crate = "rustok-modules", source = "path", path = "crates/rustok-modules", required = true }
 auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
 cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
 channel = { crate = "rustok-channel", source = "path", path = "crates/rustok-channel", required = true }

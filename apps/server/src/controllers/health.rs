@@ -37,7 +37,7 @@ use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
     collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
 };
-use crate::services::server_runtime_context::{ServerEmailRuntime, ServerRuntimeContext};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 3;
@@ -170,7 +170,6 @@ pub async fn live() -> Result<Response> {
 )]
 pub async fn ready(
     State(ctx): State<ServerRuntimeContext>,
-    State(email_runtime): State<ServerEmailRuntime>,
     Extension(registry): Extension<ModuleRegistry>,
 ) -> Result<Response> {
     let settings = ctx.settings();
@@ -270,10 +269,7 @@ pub async fn ready(
             checks.push(check_outbox_pending_lag(&ctx, settings).await);
         }
         checks.push(check_search_index_lag(&ctx, settings).await);
-        checks.push(email_backend_check(
-            settings,
-            email_runtime.mailer_initialized(),
-        ));
+        checks.push(email_backend_check(settings));
         checks.extend(check_runtime_workers(&ctx, settings));
 
         #[cfg(feature = "mod-media")]
@@ -733,7 +729,7 @@ fn runtime_worker_check(
     }
 }
 
-fn email_backend_check(settings: &RustokSettings, loco_mailer_initialized: bool) -> ReadinessCheck {
+fn email_backend_check(settings: &RustokSettings) -> ReadinessCheck {
     let (status, reason) = match settings.email.provider {
         EmailProvider::None => (
             ReadinessStatus::Degraded,
@@ -744,11 +740,6 @@ fn email_backend_check(settings: &RustokSettings, loco_mailer_initialized: bool)
             Some("smtp email provider disabled by configuration".to_string()),
         ),
         EmailProvider::Smtp => (ReadinessStatus::Ok, None),
-        EmailProvider::Loco if !loco_mailer_initialized => (
-            ReadinessStatus::Degraded,
-            Some("loco email provider selected but ctx.mailer is not initialized".to_string()),
-        ),
-        EmailProvider::Loco => (ReadinessStatus::Ok, None),
     };
 
     ReadinessCheck {
@@ -1202,7 +1193,7 @@ mod tests {
         let mut settings = RustokSettings::default();
         settings.email.provider = EmailProvider::None;
 
-        let check = email_backend_check(&settings, false);
+        let check = email_backend_check(&settings);
 
         assert_eq!(check.name, "email_backend");
         assert_eq!(check.criticality, DependencyCriticality::NonCritical);
@@ -1219,23 +1210,24 @@ mod tests {
         settings.email.provider = EmailProvider::Smtp;
         settings.email.enabled = true;
 
-        let check = email_backend_check(&settings, false);
+        let check = email_backend_check(&settings);
 
         assert_eq!(check.status, ReadinessStatus::Ok);
         assert!(check.reason.is_none());
     }
 
     #[test]
-    fn email_backend_is_degraded_when_loco_mailer_is_missing() {
+    fn email_backend_is_degraded_when_smtp_is_disabled() {
         let mut settings = RustokSettings::default();
-        settings.email.provider = EmailProvider::Loco;
+        settings.email.provider = EmailProvider::Smtp;
+        settings.email.enabled = false;
 
-        let check = email_backend_check(&settings, false);
+        let check = email_backend_check(&settings);
 
         assert_eq!(check.status, ReadinessStatus::Degraded);
         assert!(check
             .reason
             .as_deref()
-            .is_some_and(|reason| reason.contains("not initialized")));
+            .is_some_and(|reason| reason.contains("disabled")));
     }
 }

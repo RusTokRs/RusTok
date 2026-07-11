@@ -1,12 +1,15 @@
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod bootstrap;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod integration;
 pub mod ports;
 pub mod services;
 
+pub use consistency::{load_consistency_stats, RbacConsistencyStats};
+pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use error::RbacError;
 pub use integration::{
     RbacIntegrationEventKind, RbacRoleAssignmentEvent, RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED,
@@ -89,5 +92,6 @@ impl RusToKModule for RbacModule {
     }
 }
 
+pub mod consistency;
 #[cfg(test)]
 mod contract_tests;

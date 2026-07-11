@@ -22,7 +22,6 @@ pub mod module_lifecycle;
 pub mod oauth_app;
 pub mod platform_composition;
 
-pub mod build_service;
 pub mod event_transport_factory;
 pub mod order_field_service;
 pub mod product_field_service;
@@ -33,8 +32,10 @@ pub mod rbac_service;
 pub mod redis_runtime;
 pub mod registry_governance;
 pub mod registry_principal;
+pub mod release_activation_hook;
 pub mod release_backend;
 pub mod runtime_guardrails;
+pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;
 pub mod topic_field_service;

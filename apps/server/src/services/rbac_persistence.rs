@@ -1,15 +1,13 @@
 use crate::error::Error;
 use crate::error::Result;
 use sea_orm::{
-    sea_query::OnConflict, ActiveValue, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
 
-use rustok_core::{Rbac, UserRole};
-
-use rustok_api::Permission;
+use rustok_core::UserRole;
 use rustok_telemetry::metrics;
 
-use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
+use crate::models::_entities::{roles, user_roles};
 
 use super::rbac_runtime::invalidate_user_rbac_caches;
 
@@ -20,48 +18,14 @@ pub(crate) async fn assign_role_permissions_via_store(
     role: UserRole,
 ) -> Result<()> {
     record_authz_entrypoint_call("assign_role_permissions_via_store", "core_runtime");
-    let role_model = get_or_create_role(db, tenant_id, &role).await?;
-
-    match user_roles::Entity::insert(user_roles::ActiveModel {
-        id: ActiveValue::Set(rustok_core::generate_id()),
-        user_id: ActiveValue::Set(*user_id),
-        role_id: ActiveValue::Set(role_model.id),
-    })
-    .on_conflict(
-        OnConflict::columns([user_roles::Column::UserId, user_roles::Column::RoleId])
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec(db)
-    .await
-    {
-        Ok(_) | Err(sea_orm::DbErr::RecordNotInserted) => {}
-        Err(err) => return Err(err.into()),
-    }
-
-    for permission in Rbac::permissions_for_role(&role).iter() {
-        let permission_model = get_or_create_permission(db, tenant_id, permission).await?;
-
-        match role_permissions::Entity::insert(role_permissions::ActiveModel {
-            id: ActiveValue::Set(rustok_core::generate_id()),
-            role_id: ActiveValue::Set(role_model.id),
-            permission_id: ActiveValue::Set(permission_model.id),
-        })
-        .on_conflict(
-            OnConflict::columns([
-                role_permissions::Column::RoleId,
-                role_permissions::Column::PermissionId,
-            ])
-            .do_nothing()
-            .to_owned(),
-        )
-        .exec(db)
+    let db = db
+        .as_database_connection()
+        .ok_or(Error::InternalServerError)?
+        .clone();
+    rustok_rbac::RbacRoleAssignmentDbWriter::new(db)
+        .assign_role_permissions(*tenant_id, *user_id, role)
         .await
-        {
-            Ok(_) | Err(sea_orm::DbErr::RecordNotInserted) => {}
-            Err(err) => return Err(err.into()),
-        }
-    }
+        .map_err(|error| Error::Message(error.to_string()))?;
 
     invalidate_user_rbac_caches(tenant_id, user_id).await;
 
@@ -133,95 +97,6 @@ pub(crate) async fn remove_user_role_assignment_via_store(
     invalidate_user_rbac_caches(tenant_id, user_id).await;
 
     Ok(())
-}
-
-async fn get_or_create_role(
-    db: &impl ConnectionTrait,
-    tenant_id: &uuid::Uuid,
-    role: &UserRole,
-) -> Result<roles::Model> {
-    let role_slug = role.to_string();
-
-    if let Some(existing) = roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(*tenant_id))
-        .filter(roles::Column::Slug.eq(&role_slug))
-        .one(db)
-        .await?
-    {
-        return Ok(existing);
-    }
-
-    roles::Entity::insert(roles::ActiveModel {
-        id: ActiveValue::Set(rustok_core::generate_id()),
-        tenant_id: ActiveValue::Set(*tenant_id),
-        name: ActiveValue::Set(role_slug.clone()),
-        slug: ActiveValue::Set(role_slug),
-        description: ActiveValue::Set(None),
-        is_system: ActiveValue::Set(true),
-        created_at: ActiveValue::NotSet,
-        updated_at: ActiveValue::NotSet,
-    })
-    .on_conflict(
-        OnConflict::columns([roles::Column::TenantId, roles::Column::Slug])
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec(db)
-    .await?;
-
-    roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(*tenant_id))
-        .filter(roles::Column::Slug.eq(role.to_string()))
-        .one(db)
-        .await?
-        .ok_or(Error::InternalServerError)
-}
-
-async fn get_or_create_permission(
-    db: &impl ConnectionTrait,
-    tenant_id: &uuid::Uuid,
-    permission: &Permission,
-) -> Result<permissions::Model> {
-    let resource_str = permission.resource.to_string();
-    let action_str = permission.action.to_string();
-
-    if let Some(existing) = permissions::Entity::find()
-        .filter(permissions::Column::TenantId.eq(*tenant_id))
-        .filter(permissions::Column::Resource.eq(&resource_str))
-        .filter(permissions::Column::Action.eq(&action_str))
-        .one(db)
-        .await?
-    {
-        return Ok(existing);
-    }
-
-    permissions::Entity::insert(permissions::ActiveModel {
-        id: ActiveValue::Set(rustok_core::generate_id()),
-        tenant_id: ActiveValue::Set(*tenant_id),
-        resource: ActiveValue::Set(resource_str.clone()),
-        action: ActiveValue::Set(action_str.clone()),
-        description: ActiveValue::Set(None),
-        created_at: ActiveValue::NotSet,
-    })
-    .on_conflict(
-        OnConflict::columns([
-            permissions::Column::TenantId,
-            permissions::Column::Resource,
-            permissions::Column::Action,
-        ])
-        .do_nothing()
-        .to_owned(),
-    )
-    .exec(db)
-    .await?;
-
-    permissions::Entity::find()
-        .filter(permissions::Column::TenantId.eq(*tenant_id))
-        .filter(permissions::Column::Resource.eq(resource_str))
-        .filter(permissions::Column::Action.eq(action_str))
-        .one(db)
-        .await?
-        .ok_or(Error::InternalServerError)
 }
 
 fn record_authz_entrypoint_call(entry_point: &str, path: &str) {

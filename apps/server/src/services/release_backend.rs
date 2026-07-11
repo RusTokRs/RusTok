@@ -10,11 +10,12 @@ use tokio::process::Command;
 use crate::common::settings::{
     BuildDeploymentBackendKind, BuildDeploymentSettings, BuildRuntimeSettings,
 };
-use crate::models::build::Model as Build;
-use crate::models::release::Model as Release;
-use crate::modules::{BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan};
-use crate::services::build_service::{BuildService, ReleaseArtifactBundle};
+use crate::services::release_activation_hook::ServerReleaseActivationHook;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use rustok_build::build::Model as Build;
+use rustok_build::release::Model as Release;
+use rustok_build::{BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan};
+use rustok_build::{BuildService, ReleaseArtifactBundle};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ReleasePublishState {
@@ -45,7 +46,11 @@ pub struct ReleaseDeploymentService {
 impl ReleaseDeploymentService {
     pub fn new(ctx: &ServerRuntimeContext, config: BuildRuntimeSettings) -> Self {
         Self {
-            build_service: BuildService::new(ctx.db_clone()),
+            build_service: BuildService::with_runtime(
+                ctx.db_clone(),
+                std::sync::Arc::new(rustok_build::NoopBuildEventPublisher),
+                std::sync::Arc::new(ServerReleaseActivationHook::new(ctx.db_clone())),
+            ),
             config,
         }
     }
@@ -851,8 +856,8 @@ mod tests {
         ReleasePublishState, RemoteReleasePublishRequest,
     };
     use crate::common::settings::BuildDeploymentSettings;
-    use crate::models::release::Model as Release;
-    use crate::modules::BuildExecutionPlan;
+    use rustok_build::release::Model as Release;
+    use rustok_build::BuildExecutionPlan;
     use std::path::{Path, PathBuf};
 
     #[test]

@@ -14,12 +14,14 @@ bootstrap logic.
 
 ## Responsibilities
 
-- Model install plans, profiles, database policy, seed profiles, and tenant
-  enablement inputs.
+- Model install plans, profiles, database policy, seed profiles (including
+  canonical parsing and the profile module set), and tenant enablement inputs.
 - Track install state transitions and resumable step receipts.
 - Redact secrets and distinguish secret references from plaintext setup input.
 - Provide deterministic checksums for idempotent step skipping.
 - Provide preflight policy checks that are independent from any specific UI.
+- Define a consumer-owned seed workflow over narrow tenant, identity, role and
+  module ports, without server model dependencies.
 
 ## Interactions
 

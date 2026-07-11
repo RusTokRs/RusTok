@@ -8,6 +8,7 @@ mod plan;
 mod preflight;
 mod receipt;
 mod secrets;
+mod seed;
 mod state;
 
 pub use plan::{
@@ -17,4 +18,9 @@ pub use plan::{
 pub use preflight::{evaluate_preflight, PreflightIssue, PreflightReport, PreflightSeverity};
 pub use receipt::{checksum_json, InstallReceipt, ReceiptError, ReceiptOutcome};
 pub use secrets::{redact_install_plan, redact_secret, SecretMode, SecretRef, SecretValue};
+pub use seed::{
+    execute_seed_profile, SeedExecutionError, SeedExecutionOutcome, SeedExecutionRequest,
+    SeedIdentityPort, SeedModulePort, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
+    SeedUser, SeedUserRequest,
+};
 pub use state::{InstallState, InstallStep, StateTransitionError};

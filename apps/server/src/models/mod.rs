@@ -1,7 +1,6 @@
 //! Database models for the server application
 
 pub mod _entities;
-pub mod build;
 pub mod flex_attached_localized_values;
 pub mod flex_entries;
 pub mod flex_entry_localized_values;
@@ -31,7 +30,6 @@ pub mod registry_publish_request;
 pub mod registry_publish_request_translation;
 pub mod registry_validation_job;
 pub mod registry_validation_stage;
-pub mod release;
 pub mod sessions;
 pub mod tenant_modules;
 pub mod tenants;
@@ -39,7 +37,6 @@ pub mod topic_field_definitions;
 pub mod user_field_definitions;
 pub mod users;
 
-pub use build::Entity as Build;
 pub use flex_attached_localized_values::Entity as FlexAttachedLocalizedValues;
 pub use flex_entry_localized_values::Entity as FlexEntryLocalizedValues;
 pub use install_session::Entity as InstallSession;
@@ -52,4 +49,3 @@ pub use registry_publish_request::Entity as RegistryPublishRequest;
 pub use registry_publish_request_translation::Entity as RegistryPublishRequestTranslation;
 pub use registry_validation_job::Entity as RegistryValidationJob;
 pub use registry_validation_stage::Entity as RegistryValidationStage;
-pub use release::Entity as Release;

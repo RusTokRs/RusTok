@@ -273,8 +273,7 @@ mod tests {
     }
 
     fn test_auth_runtime(db: DatabaseConnection) -> ServerAuthRuntime {
-        let runtime_ctx =
-            ServerRuntimeContext::with_empty_shared_store(db, RustokSettings::default());
+        let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         ServerAuthRuntime::new(runtime_ctx, test_auth_config())
     }
 

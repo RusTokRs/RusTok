@@ -837,7 +837,7 @@ All OAuth2 events are written to the audit log:
 - [x] Leptos Admin: application management (CRUD + secret rotation) + FSD components (`apps/admin/src/{entities,features,widgets,pages}/oauth_apps*`)
 - [x] Built-in SDK for frontend (`npm pkg @rustok/sdk`) - Moved to Next.js Admin integrations (`Next.js Admin OAuth UI`)
 - [x] Instructions/documentation "How to connect a third-party application" - Added to `docs/guides/connect-external-apps.md`
-- [x] CLI tools/scripts for quick app creation in dev environment (via Loco CLI Task `create_oauth_app`)
+- [x] CLI tools/scripts for quick app creation in dev environment (via `rustok-cli oauth create-app`)
 - [x] `/.well-known/oauth-authorization-server` metadata endpoint (+ `/openid-configuration`)
 - [x] OpenID Connect basic support (`/oauth/userinfo`)
 - [x] Documentation for module developers — included in `docs/guides/connect-external-apps.md`
@@ -864,7 +864,7 @@ All OAuth2 events are written to the audit log:
 | # | Severity | Issue | Status | Fix |
 |---|---|---|---|---|
 | 1 | **Critical** | Case mismatch `"ThirdParty"` in consent check | **Fixed** | `controllers/oauth.rs` — replaced with `"third_party"` |
-| 2 | **Critical** | Case mismatch `"ThirdParty"` in CLI task | **Fixed** | `tasks/create_oauth_app.rs` — replaced with `"third_party"` |
+| 2 | **Critical** | Case mismatch `"ThirdParty"` in CLI bootstrap | **Fixed** | `rustok-auth/cli` uses `"third_party"` |
 | 3 | **High** | `/oauth/revoke` not implemented | **Fixed** | Added `revoke_handler` + route + `revoke_token_by_hash` in service |
 | 4 | **High** | `sync_app_connections` not implemented | **Fixed** | Full function implemented with upsert embedded/first-party + orphan deactivation |
 | 5 | **High** | `oauth_tokens` missing `updated_at` | **Fixed** | Column added in migration + field in entity model |

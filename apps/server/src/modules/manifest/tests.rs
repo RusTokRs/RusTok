@@ -5,8 +5,8 @@ mod tests {
         builtin_module_catalog, ManifestError, ManifestManager, ModulesManifest,
         StorefrontBuildConfig,
     };
-    use crate::models::build::DeploymentProfile;
-    use crate::modules::{build_registry, FrontendArtifactKind, FrontendBuildTool};
+    use crate::modules::build_registry;
+    use rustok_build::{DeploymentProfile, FrontendArtifactKind, FrontendBuildTool};
     use serial_test::serial;
     use std::collections::HashMap;
     use tempfile::tempdir;
