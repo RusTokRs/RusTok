@@ -35,14 +35,20 @@ impl ModuleRegistry {
     }
 
     pub fn register<M: RusToKModule + 'static>(mut self, module: M) -> Self {
+        let slug = module.slug();
+        assert!(
+            !self.contains(slug),
+            "module slug `{slug}` is already registered"
+        );
+
         match module.kind() {
             ModuleKind::Core => {
                 let map = Arc::make_mut(&mut self.core_modules);
-                map.insert(module.slug().to_string(), Arc::new(module));
+                map.insert(slug.to_string(), Arc::new(module));
             }
             ModuleKind::Optional => {
                 let map = Arc::make_mut(&mut self.optional_modules);
-                map.insert(module.slug().to_string(), Arc::new(module));
+                map.insert(slug.to_string(), Arc::new(module));
             }
         }
         self
@@ -117,7 +123,7 @@ mod tests {
     use super::ModuleRegistry;
     use crate::events::{DomainEvent, EventEnvelope, EventHandler, HandlerResult};
     use crate::module::{
-        MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+        MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
         ModuleRuntimeExtensions, RusToKModule,
     };
     use async_trait::async_trait;
@@ -149,6 +155,23 @@ mod tests {
 
     struct DemoModule {
         slug: &'static str,
+        kind: ModuleKind,
+    }
+
+    impl DemoModule {
+        fn optional(slug: &'static str) -> Self {
+            Self {
+                slug,
+                kind: ModuleKind::Optional,
+            }
+        }
+
+        fn core(slug: &'static str) -> Self {
+            Self {
+                slug,
+                kind: ModuleKind::Core,
+            }
+        }
     }
 
     impl MigrationSource for DemoModule {
@@ -175,6 +198,10 @@ mod tests {
             "0.1.0"
         }
 
+        fn kind(&self) -> ModuleKind {
+            self.kind
+        }
+
         fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
             extensions
                 .get_or_insert_with::<Vec<&'static str>, _>(Vec::new)
@@ -197,8 +224,8 @@ mod tests {
     #[test]
     fn build_runtime_extensions_collects_module_owned_capabilities() {
         let registry = ModuleRegistry::new()
-            .register(DemoModule { slug: "one" })
-            .register(DemoModule { slug: "two" });
+            .register(DemoModule::optional("one"))
+            .register(DemoModule::optional("two"));
 
         let extensions = registry.build_runtime_extensions();
 
@@ -210,11 +237,27 @@ mod tests {
         );
     }
 
+    #[test]
+    #[should_panic(expected = "module slug `duplicate` is already registered")]
+    fn register_rejects_duplicate_slug_in_same_bucket() {
+        let _registry = ModuleRegistry::new()
+            .register(DemoModule::optional("duplicate"))
+            .register(DemoModule::optional("duplicate"));
+    }
+
+    #[test]
+    #[should_panic(expected = "module slug `duplicate` is already registered")]
+    fn register_rejects_duplicate_slug_across_buckets() {
+        let _registry = ModuleRegistry::new()
+            .register(DemoModule::core("duplicate"))
+            .register(DemoModule::optional("duplicate"));
+    }
+
     #[tokio::test]
     async fn build_event_listeners_collects_handlers_from_registered_modules() {
         let registry = ModuleRegistry::new()
-            .register(DemoModule { slug: "one" })
-            .register(DemoModule { slug: "two" });
+            .register(DemoModule::optional("one"))
+            .register(DemoModule::optional("two"));
         let db = in_memory_db().await;
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(TestRuntimeValue("demo_handler"));
