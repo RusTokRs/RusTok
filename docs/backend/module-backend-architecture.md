@@ -120,9 +120,9 @@ Transport adapters are thin. They map request context, validate transport shape,
 services/ports and map results into the transport response. Business decisions remain in the
 module service layer.
 
-During the Loco exit, legacy `loco_rs::controller::Routes` may still exist only as a route
-mounting adapter until the Axum router cutover. New response formatting should use
-`rustok_web::json_response`; do not add new `loco_rs::controller::format` usage.
+The active server and module composition are Axum-only. New response formatting
+uses `rustok_web::json_response`; do not add `loco_rs::controller::format`
+usage or a second routing model.
 
 ## FBA Contracts
 

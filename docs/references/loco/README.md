@@ -4,14 +4,17 @@ kind: project_overview
 language: markdown
 last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
-status: verified
+status: archived
 ---
 
-# Loco Reference Package (RusToK)
+# Archived Loco Reference Package (RusToK)
 
 Last updated: **2026-02-19**.
 
-> This package captures "how to correctly" use Loco in the current RusToK and protects against incorrect migrations of habits from pure Axum.
+> Archived historical material. RusToK now uses a pure Axum server runtime and
+> separate platform CLI. Do not use these examples, API signatures, or
+> procedures for implementation. Use the [Loco RS Exit Plan](../../architecture/loco-exit-plan.md)
+> and [backend guides](../../backend/README.md) instead.
 
 ## 1) Minimal working example: controller + routes
 

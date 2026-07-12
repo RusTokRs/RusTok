@@ -132,8 +132,8 @@ async fn handler(...) -> crate::error::Result<axum::response::Response> {
 }
 ```
 
-Do not add new `loco_rs::controller::format` imports. Legacy `Routes` use is a temporary
-mounting adapter only; replacing it with `axum::Router` is a separate cutover.
+Do not add `loco_rs::controller::format` imports. The active host is already
+Axum-only; module routes use the manifest-declared `axum::Router` entrypoint.
 
 Use `rustok-web::HttpError` / `HttpResult` only for HTTP boundary errors. Domain errors
 belong to the module and should be mapped at the adapter boundary.
