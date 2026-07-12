@@ -3,25 +3,26 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_api::PortErrorKind;
-use rustok_api::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
-use rustok_cart::error::CartError;
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::CartService;
+use rustok_cart::error::CartError;
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
 };
-use rustok_inventory::{check_variant_availability_for_public_channel, InventoryReservationPort};
+use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
+use rustok_payment::PaymentService;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
-use rustok_payment::PaymentService;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
+use crate::StoreContextService;
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
     CreateFulfillmentInput, CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
@@ -34,7 +35,6 @@ use crate::storefront_channel::{
 use crate::storefront_shipping::{
     is_shipping_option_compatible_with_profiles, load_current_shipping_profile_slug_for_line_item,
 };
-use crate::StoreContextService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_product::entities::{product, product_variant};
@@ -51,7 +51,9 @@ pub enum CheckoutError {
     CheckoutInProgress(Uuid),
     #[error("cart {0} has no line items")]
     EmptyCart(Uuid),
-    #[error("checkout boundary `{stage}` failed with `{code}` ({kind:?}, retryable={retryable}): {message}")]
+    #[error(
+        "checkout boundary `{stage}` failed with `{code}` ({kind:?}, retryable={retryable}): {message}"
+    )]
     BoundaryFailure {
         stage: &'static str,
         kind: PortErrorKind,
@@ -72,6 +74,7 @@ pub type CheckoutResult<T> = Result<T, CheckoutError>;
 pub struct CheckoutService {
     db: DatabaseConnection,
     cart_service: CartService,
+    inventory_reservation_port: Arc<dyn InventoryReservationPort>,
     order_service: OrderService,
     payment_service: PaymentService,
     payment_provider_registry: PaymentProviderRegistry,
@@ -85,11 +88,12 @@ impl CheckoutService {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
         region_read_port: Arc<dyn rustok_region::RegionReadPort>,
-        _inventory_reservation_port: Arc<dyn InventoryReservationPort>,
+        inventory_reservation_port: Arc<dyn InventoryReservationPort>,
     ) -> Self {
         Self {
             db: db.clone(),
             cart_service: CartService::new(db.clone()),
+            inventory_reservation_port,
             order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
@@ -178,7 +182,10 @@ impl CheckoutService {
             .begin_checkout(tenant_id, cart.id)
             .await
             .map_err(stage_error("begin_checkout"))?;
-        if let Err(error) = self.validate_cart_inventory(tenant_id, &cart).await {
+        if let Err(error) = self
+            .validate_cart_inventory(tenant_id, actor_id, &cart)
+            .await
+        {
             let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
             return Err(error);
         }
@@ -584,6 +591,7 @@ impl CheckoutService {
     async fn validate_cart_inventory(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         cart: &rustok_cart::dto::CartResponse,
     ) -> CheckoutResult<()> {
         let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
@@ -643,16 +651,25 @@ impl CheckoutService {
                 )));
             }
 
-            let available = check_variant_availability_for_public_channel(
-                &self.db,
-                tenant_id,
-                &variant,
-                line_item.quantity,
-                public_channel_slug.as_deref(),
-            )
-            .await
-            .map_err(stage_error("load_inventory"))?;
-            if !available {
+            let availability = self
+                .inventory_reservation_port
+                .check_availability(
+                    checkout_inventory_port_context(
+                        tenant_id,
+                        actor_id,
+                        cart.id,
+                        cart.locale_code.as_deref(),
+                        public_channel_slug.as_deref(),
+                    ),
+                    InventoryAvailabilityRequest {
+                        variant_id: variant.id,
+                        requested_quantity: line_item.quantity,
+                        channel_slug: public_channel_slug.clone(),
+                    },
+                )
+                .await
+                .map_err(|error| checkout_port_error("check_inventory_availability", error))?;
+            if !availability.available {
                 return Err(CheckoutError::Validation(format!(
                     "Variant {} does not have enough available inventory for the cart channel",
                     variant.id
@@ -888,6 +905,40 @@ impl CheckoutService {
             .order_service
             .cancel_order(tenant_id, actor_id, order_id, Some(reason.to_string()))
             .await;
+    }
+}
+
+fn checkout_inventory_port_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    cart_id: Uuid,
+    locale: Option<&str>,
+    channel_slug: Option<&str>,
+) -> PortContext {
+    let locale = locale
+        .and_then(normalize_locale_tag)
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(actor_id.to_string()),
+        locale,
+        format!("checkout:{cart_id}:inventory"),
+    )
+    .with_deadline(Duration::from_secs(2));
+
+    match channel_slug {
+        Some(channel_slug) => context.with_channel(channel_slug),
+        None => context,
+    }
+}
+
+fn checkout_port_error(stage: &'static str, error: PortError) -> CheckoutError {
+    CheckoutError::BoundaryFailure {
+        stage,
+        kind: error.kind,
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
     }
 }
 

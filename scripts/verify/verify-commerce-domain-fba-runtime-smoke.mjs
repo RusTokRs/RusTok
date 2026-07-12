@@ -46,6 +46,7 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const trace = json(invocationTracePath);
   const commerceRegistry = json('crates/rustok-commerce/contracts/commerce-fba-registry.json');
   const commerceFbaSource = read('crates/rustok-commerce/src/fba.rs');
+  const checkoutSource = read('crates/rustok-commerce/src/services/checkout.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
   if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
@@ -81,6 +82,25 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   if (!sameSet(trace.modules.map((entry) => entry.provider_module), modules)) {
     fail('commerce-domain invocation trace module set drift');
+  }
+
+  for (const marker of [
+    'inventory_reservation_port: Arc<dyn InventoryReservationPort>',
+    '.inventory_reservation_port',
+    '.check_availability(',
+    'InventoryAvailabilityRequest {',
+    'checkout_inventory_port_context(',
+    'PortActor::user(actor_id.to_string())',
+    '.with_deadline(Duration::from_secs(2))',
+    'checkout_port_error("check_inventory_availability", error)',
+    'CheckoutError::BoundaryFailure',
+  ]) {
+    if (!checkoutSource.includes(marker)) {
+      fail(`checkout inventory provider-consumer boundary missing: ${marker}`);
+    }
+  }
+  if (checkoutSource.includes('check_variant_availability_for_public_channel')) {
+    fail('checkout must not bypass InventoryReservationPort through the public inventory helper');
   }
 
   for (const module of modules) {

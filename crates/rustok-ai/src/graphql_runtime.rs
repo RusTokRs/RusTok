@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 #[cfg(feature = "server")]
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 
 #[async_trait]
 pub trait AiGraphqlRoleSlugProvider: Send + Sync {

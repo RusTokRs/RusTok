@@ -28,6 +28,14 @@ already handed to payment-owned storefront transport.
   `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-customer/contracts/customer-fba-registry.json`, and
   `crates/rustok-cart/contracts/cart-fba-registry.json`.
+- The bounded checkout → inventory availability seam now calls the injected
+  `InventoryReservationPort` with tenant, user actor, normalized cart locale,
+  channel, correlation id, and a read deadline. It maps provider failures to
+  `CheckoutError::BoundaryFailure` and no longer uses the inventory public
+  helper directly. The status remains `in_progress`: the targeted
+  `complete_checkout_rejects_line_item_without_channel_visible_inventory`
+  integration test still needs a completed local or CI execution record before
+  this provider-consumer seam can be counted as live evidence.
 - FFA guardrails: `scripts/verify/verify-commerce-admin-boundary.mjs` locks
   `admin/src/transport/native_server_adapter.rs`, removed root GraphQL and state-machine aliases,
   and the core/transport/UI owner boundary;
