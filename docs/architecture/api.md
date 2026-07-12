@@ -126,9 +126,9 @@ business logic.
 
 `rustok-api` owns `Port*`, permission and locale primitives and does not depend on
 `rustok-core` in any feature. Runtime RBAC/security policy belongs to core,
-which depends on the API contract layer. Runtime-specific adapters are also not part of the neutral contract surface:
-outbox Loco wiring belongs to `rustok-outbox::loco` and is enabled by feature
-`rustok-outbox/loco-adapter`.
+which depends on the API contract layer. Runtime-specific adapters are also not
+part of the neutral contract surface: the server composes the host-neutral
+outbox runtime through explicit `ServerRuntimeContext` values.
 
 Backend foundation responsibilities are intentionally split so `rustok-api` remains a
 contract crate:
@@ -146,8 +146,9 @@ contract:
 - [Backend Module Verification Guide](../backend/module-backend-verification.md)
 
 New module services, ports, HTTP handlers, GraphQL roots, `#[server]` adapters and CLI
-adapters must not use Loco runtime APIs as their target contract. During the current
-cutover, any remaining Loco controller/router usage is legacy boundary inventory only.
+adapters must not use Loco runtime APIs as their target contract. The active
+server and generated module composition are Axum-only; Loco references are
+archived inventory or verifier search terms only.
 
 ## Security and Context Contract
 

@@ -337,7 +337,7 @@ carry common contracts, adapters or vertical capabilities:
 | `rustok-core` | Shared foundation contracts, primitives, validation and security helpers |
 | `rustok-api` | Shared host/API layer used by transport adapters and boundary contracts |
 | `rustok-runtime` | Host runtime helpers for typed shared handles, neutral DB access and module adapters |
-| `rustok-web` | Axum HTTP response/error helpers used by the Loco-exit controller boundary |
+| `rustok-web` | Axum HTTP response/error helpers used by server and module transport boundaries |
 | `rustok-fba` | Shared FBA provider/consumer registry metadata and transport-profile descriptors |
 | `rustok-cli-core` | Platform CLI command/provider contracts for future module-local CLI adapters |
 | `rustok-events` | Canonical event contracts and import surface |
@@ -416,7 +416,7 @@ Beyond MCP, the platform is structured for agent-assisted development: explicit 
 
 RusTok is assembled from well-maintained open-source crates:
 
-- **[Loco.rs](https://loco.rs)** + **[Axum](https://github.com/tokio-rs/axum)** — web framework and HTTP routing
+- **[Axum](https://github.com/tokio-rs/axum)** — HTTP routing and server runtime
 - **[Leptos](https://leptos.dev)** — Rust/WASM frontend framework
 - **[SeaORM](https://www.sea-ql.org/SeaORM/)** — async database ORM for PostgreSQL
 - **[async-graphql](https://async-graphql.github.io/async-graphql/)** — type-safe GraphQL server

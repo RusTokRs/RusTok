@@ -91,9 +91,13 @@ Do not mix:
 - In the current core wave, `auth`, `search` and `channel` are considered active dual-path work; `cache` and `email` are already covered by host-level build-profile-selected native surfaces; `index`, `outbox`, `tenant` and `rbac` now also have module-owned Leptos admin surfaces with native `#[server]` bootstrap.
 - Leptos core surfaces use build-profile-selected native and GraphQL paths where both contracts exist; `rustok-channel-admin` may keep its REST secondary path while that REST client is supported in parallel.
 
-## Loco Subsystem Replacements — Must Read
+## Historical Loco Replacement Inventory (Archived)
 
-Part of Loco's built-in subsystems have been replaced with our own modules. **Do not duplicate them with parallel implementations.**
+This section preserves the pre-Axum replacement inventory only. Some code
+examples and API names below belong to the historical Loco host and are not
+implementation guidance. Use the [Loco RS Exit Plan](./architecture/loco-exit-plan.md),
+the backend guides, and current component-local documentation for active work.
+Do not recreate any parallel framework adapter from this inventory.
 
 | Loco Subsystem | Replaced by | What to do | What NOT to do |
 |---|---|---|---|
@@ -141,7 +145,7 @@ Canonical event contract layer on top of the platform event model.
 
 ### `crates/rustok-auth`
 
-`Core` authentication module: JWT (HS256 and RS256), Argon2 password hashing, refresh tokens, password reset, invite, email verification tokens. **Replaces** `loco_rs::prelude::auth::JWT`. Connected via `apps/server/src/auth.rs` (bridge: `AuthError → loco_rs::Error`).
+`Core` authentication module: JWT (HS256 and RS256), Argon2 password hashing, refresh tokens, password reset, invite, email verification tokens. It replaces the historical Loco JWT helper and is composed through `apps/server/src/auth.rs` with RusToK-owned runtime/settings contracts.
 
 Algorithm is selected via `AuthConfig::algorithm: JwtAlgorithm`:
 - `JwtAlgorithm::HS256` (default) — symmetric, `AuthConfig::secret`
@@ -164,7 +168,10 @@ Redis URL is specified via (in priority order):
 
 ### `crates/rustok-email`
 
-`Core` email delivery module: SMTP via lettre, Tera templates. **Replaces** Loco Mailer as primary transport. Factory `email_service_from_ctx(ctx, locale)` in `apps/server/src/services/email.rs` selects provider (`smtp | loco | none`). SMTP transport is cached in `shared_store` via `SharedSmtpEmailService`.
+`Core` email delivery module: SMTP via lettre and Tera templates. Factory
+`email_service_from_ctx(ctx, locale)` in `apps/server/src/services/email.rs`
+selects `smtp` or explicit `none`; SMTP transport is cached in the typed server
+runtime via `SharedSmtpEmailService`.
 
 Two public traits:
 - `BuiltInAuthEmailSender` in `apps/server/src/services/email.rs` — localized runtime contract for built-in auth email flows (password reset + email verification)

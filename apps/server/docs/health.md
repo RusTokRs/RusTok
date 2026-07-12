@@ -49,8 +49,8 @@ to pull ecommerce or content surfaces it doesn't need.
 - `tenant_cache_invalidation` — non-critical check of Redis pubsub listener for cross-instance invalidation;
 - `event_transport` — critical check of event transport initialization;
 - `search_backend` — non-critical check of search connectivity;
-- `email_backend` — non-critical configuration check of email transport: `smtp` must be enabled,
-  `loco` must have initialized `ctx.mailer`, `none` is explicitly reflected as degraded.
+- `email_backend` — non-critical configuration check of email transport: `smtp` must be enabled;
+  `none` is explicitly reflected as degraded.
 - `outbox_pending_lag` — non-critical check of the age of the oldest pending event, enabled for
   `rustok.events.transport = "outbox"`;
 - `search_index_lag` — non-critical check of maximum lag between `search_documents.updated_at`
@@ -147,7 +147,7 @@ and recipient/error; reset, verification, invite and refresh token values are no
 
 Email backend metrics:
 
-- `rustok_email_backend_state{provider="none|smtp|loco"}`:
+- `rustok_email_backend_state{provider="none|smtp"}`:
   `0 = disabled`, `1 = enabled`, `2 = degraded/miswired`.
 - `rustok_email_send_success_total`
 - `rustok_email_send_failure_total`

@@ -46,7 +46,7 @@ Target state:
 | RBAC | Runtime policy moved to `rustok-rbac`/shared contracts | `rustok-rbac`, `rustok-api`, `apps/server` enforcement |
 | Cache | `rustok-cache` and tenant cache infra are used instead of Loco cache | `rustok-cache`, tenant middleware |
 | Storage | `rustok-storage` + `rustok-media`; server bootstrap initializes `StorageService` | `rustok-storage`, `rustok-media`, server wiring |
-| Email | `rustok-email` and server email service cover SMTP/templates; Loco provider still remains an option | `rustok-email` + server adapter |
+| Email | `rustok-email` and server email service cover SMTP/templates; only native `smtp` or explicit `none` remain | `rustok-email` + server adapter |
 | Queue/event delivery | Transactional outbox and relay are the source of truth; Loco Queue is not used | `rustok-outbox`, `rustok-events`, server workers |
 | WebSocket channels | Custom Axum WS path is used, not Loco channels | `apps/server` + channel/auth modules |
 | Module-owned API composition | GraphQL/REST are increasingly assembled through manifests and owner-owned roots | module crates + generated server composition |

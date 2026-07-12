@@ -96,10 +96,9 @@ For backend implementation details, read the backend module guides:
 - [Backend Module Verification Guide](../backend/module-backend-verification.md)
 
 New HTTP response formatting must use `rustok-web` helpers such as
-`rustok_web::json_response`. Do not add new `loco_rs::controller::format` usage. Current
-`loco_rs::controller::Routes` occurrences are temporary route-mounting inventory until the
-Axum router cutover, not a model for new module routing. `rustok-blog` is the first
-manifest-driven Axum route provider and has no Loco route-state adapter.
+`rustok_web::json_response`. Do not add `loco_rs::controller::format` usage.
+The active host and generated module composition use Axum routers; Loco route
+terms remain only in archived inventory and verifier search patterns.
 
 ## Route-selection Contract for Module-owned Admin UI
 
