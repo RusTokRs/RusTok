@@ -4,20 +4,24 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateOrderInput {
     pub customer_id: Option<Uuid>,
-    #[validate(length(equal = 3))]
+    #[validate(custom(function = "validate_currency_code"))]
     pub currency_code: String,
     #[serde(default)]
+    #[validate(custom(function = "validate_non_negative_decimal"))]
     pub shipping_total: Decimal,
     #[validate(length(min = 1))]
+    #[validate(nested)]
     pub line_items: Vec<CreateOrderLineItemInput>,
     #[serde(default)]
+    #[validate(nested)]
     pub adjustments: Vec<CreateOrderAdjustmentInput>,
     #[serde(default)]
+    #[validate(nested)]
     pub tax_lines: Vec<CreateOrderTaxLineInput>,
     pub metadata: Value,
 }
@@ -26,6 +30,7 @@ pub struct CreateOrderInput {
 pub struct CreateOrderLineItemInput {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    #[validate(length(min = 1, max = 100))]
     pub shipping_profile_slug: String,
     #[validate(length(max = 100))]
     pub seller_id: Option<String>,
@@ -35,6 +40,7 @@ pub struct CreateOrderLineItemInput {
     pub title: String,
     #[validate(range(min = 1))]
     pub quantity: i32,
+    #[validate(custom(function = "validate_non_negative_decimal"))]
     pub unit_price: Decimal,
     pub metadata: Value,
 }
@@ -46,6 +52,7 @@ pub struct CreateOrderAdjustmentInput {
     pub source_type: String,
     #[validate(length(max = 191))]
     pub source_id: Option<String>,
+    #[validate(custom(function = "validate_non_negative_decimal"))]
     pub amount: Decimal,
     pub metadata: Value,
 }
@@ -58,9 +65,11 @@ pub struct CreateOrderTaxLineInput {
     pub description: Option<String>,
     #[validate(length(min = 1, max = 64))]
     pub provider_id: String,
+    #[validate(custom(function = "validate_non_negative_decimal"))]
     pub rate: Decimal,
+    #[validate(custom(function = "validate_non_negative_decimal"))]
     pub amount: Decimal,
-    #[validate(length(equal = 3))]
+    #[validate(custom(function = "validate_currency_code"))]
     pub currency_code: String,
     pub metadata: Value,
 }
@@ -137,6 +146,7 @@ pub struct CreateOrderReturnInput {
     #[validate(length(max = 2000))]
     pub note: Option<String>,
     #[serde(default)]
+    #[validate(nested)]
     pub items: Vec<CreateOrderReturnItemInput>,
     pub metadata: Value,
 }
@@ -307,4 +317,69 @@ pub struct OrderReturnItemResponse {
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn validate_currency_code(value: &str) -> Result<(), ValidationError> {
+    let value = value.trim();
+    if value.len() == 3 && value.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        Ok(())
+    } else {
+        Err(ValidationError::new("currency_code"))
+    }
+}
+
+fn validate_non_negative_decimal(value: &Decimal) -> Result<(), ValidationError> {
+    if *value >= Decimal::ZERO {
+        Ok(())
+    } else {
+        Err(ValidationError::new("non_negative_decimal"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_order() -> CreateOrderInput {
+        CreateOrderInput {
+            customer_id: None,
+            currency_code: "USD".to_string(),
+            shipping_total: Decimal::ZERO,
+            line_items: vec![CreateOrderLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: "default".to_string(),
+                seller_id: None,
+                sku: None,
+                title: "Item".to_string(),
+                quantity: 1,
+                unit_price: Decimal::ONE,
+                metadata: Value::Null,
+            }],
+            adjustments: Vec::new(),
+            tax_lines: Vec::new(),
+            metadata: Value::Null,
+        }
+    }
+
+    #[test]
+    fn rejects_non_alphabetic_currency() {
+        let mut input = valid_order();
+        input.currency_code = "12$".to_string();
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn validates_nested_line_items() {
+        let mut input = valid_order();
+        input.line_items[0].quantity = 0;
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_negative_money() {
+        let mut input = valid_order();
+        input.shipping_total = -Decimal::ONE;
+        assert!(input.validate().is_err());
+    }
 }
