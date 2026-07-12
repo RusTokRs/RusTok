@@ -30,7 +30,6 @@ use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::graphql::FlexGraphqlRuntime;
-use rustok_ai::graphql::{AiMutation, AiQuery, AiSubscription};
 use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
 #[cfg(feature = "mod-content")]
 use rustok_content::graphql::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
@@ -52,7 +51,6 @@ pub mod module_slug {
 #[derive(MergedObject, Default)]
 pub struct Query(
     RootQuery,
-    AiQuery,
     SearchQueryRoot,
     AuthQuery,
     OAuthQuery,
@@ -73,7 +71,6 @@ pub struct Mutation(
         feature = "mod-comments"
     ))]
     rustok_content_orchestration::graphql::ContentOrchestrationMutation,
-    AiMutation,
     SearchMutationRoot,
     AuthMutation,
     OAuthMutation,
@@ -84,7 +81,10 @@ pub struct Mutation(
 );
 
 #[derive(MergedSubscription, Default)]
-pub struct Subscription(BuildSubscription, AiSubscription);
+pub struct Subscription(
+    BuildSubscription,
+    schema_codegen::OptionalModuleSubscription,
+);
 
 pub type AppSchema = Schema<Query, Mutation, Subscription>;
 

@@ -36,6 +36,12 @@ already handed to payment-owned storefront transport.
   `complete_checkout_rejects_line_item_without_channel_visible_inventory`
   integration test still needs a completed local or CI execution record before
   this provider-consumer seam can be counted as live evidence.
+- Checkout now also reads product and variant-first catalog projections through
+  `ProductCatalogReadPort`. The product owner resolves a variant id to its
+  product projection, while checkout keeps cart-specific channel and shipping
+  snapshot validation. Checkout no longer imports product entities. This
+  additive owner operation has static contract evidence only; the FBA status
+  remains `in_progress` until provider-consumer execution is recorded.
 - FFA guardrails: `scripts/verify/verify-commerce-admin-boundary.mjs` locks
   `admin/src/transport/native_server_adapter.rs`, removed root GraphQL and state-machine aliases,
   and the core/transport/UI owner boundary;

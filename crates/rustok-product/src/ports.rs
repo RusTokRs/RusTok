@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::StorefrontProductList;
+use crate::entities::product_variant;
 use rustok_commerce_foundation::dto::ProductResponse;
 
 const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
@@ -17,6 +19,17 @@ pub trait ProductCatalogReadPort: Send + Sync {
         request: ProductProjectionRequest,
     ) -> Result<ProductResponse, PortError>;
 
+    /// Resolve the owner product projection for a variant-first consumer input.
+    ///
+    /// Checkout consumers may receive a cart line with a variant id before a
+    /// product id is materialized. The product owner resolves that association
+    /// so consumers do not query product entities directly.
+    async fn read_variant_product_projection(
+        &self,
+        context: PortContext,
+        request: VariantProductProjectionRequest,
+    ) -> Result<ProductResponse, PortError>;
+
     async fn list_published_products(
         &self,
         context: PortContext,
@@ -27,6 +40,13 @@ pub trait ProductCatalogReadPort: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProductProjectionRequest {
     pub product_id: Uuid,
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VariantProductProjectionRequest {
+    pub variant_id: Uuid,
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
 }
@@ -53,6 +73,43 @@ impl ProductCatalogReadPort for crate::CatalogService {
         self.get_product_with_locale_fallback(
             tenant_id,
             request.product_id,
+            locale,
+            request.fallback_locale.as_deref(),
+        )
+        .await
+        .map_err(product_error_to_port_error)
+    }
+
+    async fn read_variant_product_projection(
+        &self,
+        context: PortContext,
+        request: VariantProductProjectionRequest,
+    ) -> Result<ProductResponse, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let variant = product_variant::Entity::find_by_id(request.variant_id)
+            .filter(product_variant::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(|error| {
+                PortError::unavailable(
+                    "product.database_unavailable",
+                    format!("product storage unavailable: {error}"),
+                )
+            })?
+            .ok_or_else(|| {
+                PortError::new(
+                    rustok_api::PortErrorKind::NotFound,
+                    "product.variant_not_found",
+                    format!("variant {} not found", request.variant_id),
+                    false,
+                )
+            })?;
+        let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
+
+        self.get_product_with_locale_fallback(
+            tenant_id,
+            variant.product_id,
             locale,
             request.fallback_locale.as_deref(),
         )
@@ -181,10 +238,12 @@ mod tests {
         assert_eq!(error.code, "port.deadline_required");
         assert!(error.retryable);
 
-        assert!(base_context()
-            .with_deadline(Duration::from_secs(3))
-            .require_policy(PortCallPolicy::read())
-            .is_ok());
+        assert!(
+            base_context()
+                .with_deadline(Duration::from_secs(3))
+                .require_policy(PortCallPolicy::read())
+                .is_ok()
+        );
     }
 
     #[test]

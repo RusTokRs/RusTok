@@ -183,7 +183,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        ArtifactPayloadKind, ArtifactReleaseRef, InMemoryArtifactBlobStore,
+        ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, InMemoryArtifactBlobStore,
         ModuleArtifactDescriptor, ModuleArtifactPackage, ModuleInstallationScope,
         OciArtifactReference,
     };
@@ -234,15 +234,20 @@ mod tests {
                 digest: format!("sha256:{}", "a".repeat(64)),
             },
             descriptor: ModuleArtifactDescriptor {
+                schema_version: 1,
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 payload_kind: ArtifactPayloadKind::Rhai,
+                module_kind: ArtifactModuleKind::Optional,
                 runtime_abi: "rustok:module/runtime@1".to_string(),
+                platform_compatibility: "^0.1".to_string(),
+                required_features: Vec::new(),
                 artifact_digest: payload_digest,
                 entrypoint: "main".to_string(),
                 capabilities: Vec::new(),
                 bindings: Vec::new(),
                 dependencies: Vec::new(),
+                permissions: Vec::new(),
             },
             media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
             payload,

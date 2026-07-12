@@ -10,6 +10,7 @@
       "owner": "product",
       "operations": [
         "read_product_projection",
+        "read_variant_product_projection",
         "list_published_products"
       ],
       "context": "rustok_api::ports::PortContext",
@@ -87,6 +88,18 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_variant_product_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "variant_to_product_owner_resolution"
         ]
       },
       {

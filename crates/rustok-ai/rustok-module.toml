@@ -17,6 +17,7 @@ tags = ["ai", "agents", "rig", "orchestration"]
 [provides.graphql]
 query = "graphql::AiQuery"
 mutation = "graphql::AiMutation"
+subscription = "graphql::AiSubscription"
 
 [provides.admin_ui]
 leptos_crate = "rustok-ai-admin"

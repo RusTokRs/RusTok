@@ -13,6 +13,8 @@ framework-specific outbox adapter dependency.
 `CatalogService`. `boundary_ready` on no-compile runtime fallback evidence is
 supported by the provider registry, static contract matrix, and fallback smoke.
 `transport_verified` still requires live provider execution evidence.
+The port also resolves variant-first consumer input to the owning product
+projection, so checkout consumers do not query product or variant entities.
 Product runtime contract, commerce transport, and module metadata remain synchronized.
 The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
@@ -65,7 +67,8 @@ validation and attribute outbox events.
 ## Open results
 
 1. Execute `ProductCatalogReadPort` against persistence for
-   `read_product_projection` and `list_published_products`. Done when real
+   `read_product_projection`, `read_variant_product_projection`, and
+   `list_published_products`. Done when real
    calls prove read-policy ordering, tenant and locale handling, bounded
    pagination, and typed `PortError` mapping rather than source markers.
    Dependency: a runnable product persistence environment. Verification:

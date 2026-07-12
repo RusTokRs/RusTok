@@ -39,15 +39,20 @@ pub fn stage_rhai_module_release(
     let module_slug = module_slug.into();
     let source_digest = sha256_digest(script.code.as_bytes());
     let descriptor = ModuleArtifactDescriptor {
+        schema_version: 1,
         slug: module_slug.clone(),
         version: version.into(),
         payload_kind: ArtifactPayloadKind::Rhai,
+        module_kind: rustok_modules::ArtifactModuleKind::Optional,
         runtime_abi: RHAI_MODULE_ABI.to_string(),
+        platform_compatibility: "^0.1".to_string(),
+        required_features: Vec::new(),
         artifact_digest: source_digest.clone(),
         entrypoint: "main".to_string(),
         capabilities,
         bindings: Vec::new(),
         dependencies: Vec::new(),
+        permissions: Vec::new(),
     };
     descriptor
         .validate()

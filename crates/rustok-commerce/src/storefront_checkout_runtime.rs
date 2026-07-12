@@ -1,7 +1,7 @@
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -294,6 +294,10 @@ pub async fn complete_storefront_checkout(
         runtime.event_bus(),
         std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
+            runtime.db_clone(),
+            runtime.event_bus(),
+        )),
+        std::sync::Arc::new(rustok_product::CatalogService::new(
             runtime.db_clone(),
             runtime.event_bus(),
         )),

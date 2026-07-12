@@ -16,7 +16,7 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
 };
 
 const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
@@ -762,15 +762,20 @@ mod tests {
                 digest: format!("sha256:{}", "a".repeat(64)),
             },
             descriptor: ModuleArtifactDescriptor {
+                schema_version: 1,
                 slug: "sample_module".to_string(),
                 version: "1.0.0".to_string(),
                 payload_kind: kind,
+                module_kind: ArtifactModuleKind::Optional,
                 runtime_abi: "rustok:module/runtime@1".to_string(),
+                platform_compatibility: "^0.1".to_string(),
+                required_features: Vec::new(),
                 artifact_digest: digest,
                 entrypoint: "main".to_string(),
                 capabilities: vec![CapabilityName::new("platform.events").expect("capability")],
                 bindings: Vec::new(),
                 dependencies: Vec::new(),
+                permissions: Vec::new(),
             },
             media_type: media_type_for(kind).to_string(),
             payload,

@@ -14,6 +14,13 @@ pub enum ArtifactPayloadKind {
     Sidecar,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactModuleKind {
+    Core,
+    Optional,
+}
+
 impl ArtifactPayloadKind {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -59,10 +66,15 @@ pub struct ArtifactSourceLineage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleArtifactDescriptor {
+    pub schema_version: u32,
     pub slug: String,
     pub version: String,
     pub payload_kind: ArtifactPayloadKind,
+    pub module_kind: ArtifactModuleKind,
     pub runtime_abi: String,
+    pub platform_compatibility: String,
+    #[serde(default)]
+    pub required_features: Vec<String>,
     pub artifact_digest: String,
     pub entrypoint: String,
     #[serde(default)]
@@ -71,12 +83,20 @@ pub struct ModuleArtifactDescriptor {
     pub bindings: Vec<ModuleRuntimeBinding>,
     #[serde(default)]
     pub dependencies: Vec<ModuleDependencyConstraint>,
+    #[serde(default)]
+    pub permissions: Vec<ArtifactPermissionDescriptor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleDependencyConstraint {
     pub slug: String,
     pub version_requirement: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactPermissionDescriptor {
+    pub key: String,
+    pub label: String,
 }
 
 /// Declarative runtime binding admitted with an immutable artifact descriptor.
@@ -123,6 +143,19 @@ impl ModuleArtifactDescriptor {
         }
         Version::parse(&self.version)
             .map_err(|error| ModuleArtifactError::InvalidVersion(error.to_string()))?;
+        if self.schema_version != 1 {
+            return Err(ModuleArtifactError::UnsupportedSchemaVersion(
+                self.schema_version,
+            ));
+        }
+        VersionReq::parse(&self.platform_compatibility).map_err(|_| {
+            ModuleArtifactError::InvalidPlatformCompatibility(self.platform_compatibility.clone())
+        })?;
+        for feature in &self.required_features {
+            if feature.trim().is_empty() || feature.contains(char::is_whitespace) {
+                return Err(ModuleArtifactError::InvalidRequiredFeature(feature.clone()));
+            }
+        }
         if self.runtime_abi.trim().is_empty() {
             return Err(ModuleArtifactError::MissingRuntimeAbi);
         }
@@ -173,7 +206,9 @@ impl ModuleArtifactDescriptor {
         }
         for (index, dependency) in self.dependencies.iter().enumerate() {
             if !valid_slug(&dependency.slug) || dependency.slug == self.slug {
-                return Err(ModuleArtifactError::InvalidDependency(dependency.slug.clone()));
+                return Err(ModuleArtifactError::InvalidDependency(
+                    dependency.slug.clone(),
+                ));
             }
             VersionReq::parse(&dependency.version_requirement).map_err(|_| {
                 ModuleArtifactError::InvalidDependencyVersionRequirement {
@@ -185,7 +220,26 @@ impl ModuleArtifactDescriptor {
                 .iter()
                 .any(|previous| previous.slug == dependency.slug)
             {
-                return Err(ModuleArtifactError::DuplicateDependency(dependency.slug.clone()));
+                return Err(ModuleArtifactError::DuplicateDependency(
+                    dependency.slug.clone(),
+                ));
+            }
+        }
+        let permission_prefix = format!("{}.", self.slug);
+        for (index, permission) in self.permissions.iter().enumerate() {
+            if !permission.key.starts_with(&permission_prefix) || permission.label.trim().is_empty()
+            {
+                return Err(ModuleArtifactError::InvalidPermission(
+                    permission.key.clone(),
+                ));
+            }
+            if self.permissions[..index]
+                .iter()
+                .any(|previous| previous.key == permission.key)
+            {
+                return Err(ModuleArtifactError::DuplicatePermission(
+                    permission.key.clone(),
+                ));
             }
         }
         Ok(())
@@ -278,6 +332,12 @@ pub enum ModuleArtifactError {
     InvalidSlug(String),
     #[error("artifact version is not valid semantic versioning: {0}")]
     InvalidVersion(String),
+    #[error("artifact descriptor schema version `{0}` is unsupported")]
+    UnsupportedSchemaVersion(u32),
+    #[error("artifact platform compatibility requirement `{0}` is invalid")]
+    InvalidPlatformCompatibility(String),
+    #[error("artifact required platform feature `{0}` is invalid")]
+    InvalidRequiredFeature(String),
     #[error("artifact runtime ABI must be declared")]
     MissingRuntimeAbi,
     #[error("artifact digest `{0}` must be a sha256 digest")]
@@ -302,6 +362,10 @@ pub enum ModuleArtifactError {
     InvalidDependencyVersionRequirement { slug: String, requirement: String },
     #[error("artifact dependency `{0}` is declared more than once")]
     DuplicateDependency(String),
+    #[error("artifact permission `{0}` must use the owning module namespace and a label")]
+    InvalidPermission(String),
+    #[error("artifact permission `{0}` is declared more than once")]
+    DuplicatePermission(String),
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
@@ -340,15 +404,20 @@ mod tests {
         marker: char,
     ) -> ModuleArtifactDescriptor {
         ModuleArtifactDescriptor {
+            schema_version: 1,
             slug: "sample_module".to_string(),
             version: version.to_string(),
             payload_kind: kind,
+            module_kind: ArtifactModuleKind::Optional,
             runtime_abi: "rustok:module/runtime@1".to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
             artifact_digest: digest(marker),
             entrypoint: "main".to_string(),
             capabilities: vec![CapabilityName::new("platform.events").expect("capability")],
             bindings: Vec::new(),
             dependencies: Vec::new(),
+            permissions: Vec::new(),
         }
     }
 
@@ -456,6 +525,36 @@ mod tests {
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidDependencyVersionRequirement { .. })
+        ));
+    }
+
+    #[test]
+    fn descriptor_requires_supported_schema_and_platform_compatibility() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.schema_version = 2;
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::UnsupportedSchemaVersion(2))
+        ));
+
+        descriptor.schema_version = 1;
+        descriptor.platform_compatibility = "invalid".to_string();
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidPlatformCompatibility(_))
+        ));
+    }
+
+    #[test]
+    fn permissions_must_stay_in_the_artifact_namespace() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "platform.admin".to_string(),
+            label: "Admin".to_string(),
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidPermission(_))
         ));
     }
 

@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::CartService;
@@ -167,6 +167,10 @@ pub async fn complete_cart_checkout(
         event_bus.clone(),
         std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
+            runtime.db_clone(),
+            event_bus.clone(),
+        )),
+        std::sync::Arc::new(rustok_product::CatalogService::new(
             runtime.db_clone(),
             event_bus,
         )),

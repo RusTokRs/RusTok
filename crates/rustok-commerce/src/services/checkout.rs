@@ -17,6 +17,9 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
+use rustok_product::{
+    ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
+};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
@@ -33,11 +36,11 @@ use crate::storefront_channel::{
     is_metadata_visible_for_public_channel, normalize_public_channel_slug,
 };
 use crate::storefront_shipping::{
-    is_shipping_option_compatible_with_profiles, load_current_shipping_profile_slug_for_line_item,
+    effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles,
 };
+use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
-use rustok_product::entities::{product, product_variant};
 
 const MANUAL_PROVIDER_ID: &str = "manual";
 
@@ -75,6 +78,7 @@ pub struct CheckoutService {
     db: DatabaseConnection,
     cart_service: CartService,
     inventory_reservation_port: Arc<dyn InventoryReservationPort>,
+    product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
     order_service: OrderService,
     payment_service: PaymentService,
     payment_provider_registry: PaymentProviderRegistry,
@@ -89,11 +93,13 @@ impl CheckoutService {
         event_bus: TransactionalEventBus,
         region_read_port: Arc<dyn rustok_region::RegionReadPort>,
         inventory_reservation_port: Arc<dyn InventoryReservationPort>,
+        product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
     ) -> Self {
         Self {
             db: db.clone(),
             cart_service: CartService::new(db.clone()),
             inventory_reservation_port,
+            product_catalog_read_port,
             order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
@@ -600,31 +606,57 @@ impl CheckoutService {
                 continue;
             };
 
-            let Some(variant) = product_variant::Entity::find_by_id(variant_id)
-                .filter(product_variant::Column::TenantId.eq(tenant_id))
-                .one(&self.db)
-                .await
-                .map_err(stage_error("load_variant"))?
-            else {
-                return Err(CheckoutError::Validation(format!(
-                    "Variant {} is no longer available for checkout",
-                    variant_id
-                )));
-            };
+            let product = match line_item.product_id {
+                Some(product_id) => {
+                    self.product_catalog_read_port
+                        .read_product_projection(
+                            checkout_product_port_context(
+                                tenant_id,
+                                actor_id,
+                                cart.id,
+                                cart.locale_code.as_deref(),
+                                public_channel_slug.as_deref(),
+                            ),
+                            ProductProjectionRequest {
+                                product_id,
+                                locale: cart.locale_code.clone(),
+                                fallback_locale: None,
+                            },
+                        )
+                        .await
+                }
+                None => {
+                    self.product_catalog_read_port
+                        .read_variant_product_projection(
+                            checkout_product_port_context(
+                                tenant_id,
+                                actor_id,
+                                cart.id,
+                                cart.locale_code.as_deref(),
+                                public_channel_slug.as_deref(),
+                            ),
+                            VariantProductProjectionRequest {
+                                variant_id,
+                                locale: cart.locale_code.clone(),
+                                fallback_locale: None,
+                            },
+                        )
+                        .await
+                }
+            }
+            .map_err(|error| checkout_port_error("read_checkout_product_projection", error))?;
+            let variant = product
+                .variants
+                .iter()
+                .find(|variant| variant.id == variant_id)
+                .ok_or_else(|| {
+                    CheckoutError::Validation(format!(
+                        "Variant {} is no longer available for checkout",
+                        variant_id
+                    ))
+                })?;
 
-            let product_id = line_item.product_id.unwrap_or(variant.product_id);
-            let Some(product) = product::Entity::find_by_id(product_id)
-                .filter(product::Column::TenantId.eq(tenant_id))
-                .one(&self.db)
-                .await
-                .map_err(stage_error("load_product"))?
-            else {
-                return Err(CheckoutError::Validation(format!(
-                    "Product {} is no longer available for checkout",
-                    product_id
-                )));
-            };
-            if product.status != product::ProductStatus::Active
+            if product.status != ProductStatus::Active
                 || product.published_at.is_none()
                 || !is_metadata_visible_for_public_channel(
                     &product.metadata,
@@ -636,14 +668,11 @@ impl CheckoutService {
                     product.id
                 )));
             }
-            let current_shipping_profile_slug = load_current_shipping_profile_slug_for_line_item(
-                &self.db,
-                tenant_id,
-                Some(product.id),
-                Some(variant.id),
-            )
-            .await
-            .map_err(stage_error("load_shipping_profile"))?;
+            let current_shipping_profile_slug = effective_shipping_profile_slug(
+                product.shipping_profile_slug.as_deref(),
+                &product.metadata,
+                variant.shipping_profile_slug.as_deref(),
+            );
             if current_shipping_profile_slug != line_item.shipping_profile_slug {
                 return Err(CheckoutError::Validation(format!(
                     "Line item {} uses stale shipping profile snapshot {} (current: {})",
@@ -923,6 +952,30 @@ fn checkout_inventory_port_context(
         PortActor::user(actor_id.to_string()),
         locale,
         format!("checkout:{cart_id}:inventory"),
+    )
+    .with_deadline(Duration::from_secs(2));
+
+    match channel_slug {
+        Some(channel_slug) => context.with_channel(channel_slug),
+        None => context,
+    }
+}
+
+fn checkout_product_port_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    cart_id: Uuid,
+    locale: Option<&str>,
+    channel_slug: Option<&str>,
+) -> PortContext {
+    let locale = locale
+        .and_then(normalize_locale_tag)
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(actor_id.to_string()),
+        locale,
+        format!("checkout:{cart_id}:product"),
     )
     .with_deadline(Duration::from_secs(2));
 

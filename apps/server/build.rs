@@ -24,6 +24,8 @@ struct ModuleSpec {
     #[serde(default)]
     graphql_mutation_type: Option<String>,
     #[serde(default)]
+    graphql_subscription_type: Option<String>,
+    #[serde(default)]
     http_axum_router_fn: Option<String>,
     #[serde(default)]
     http_axum_webhook_router_fn: Option<String>,
@@ -35,6 +37,7 @@ struct OptionalModuleEntry {
     module_expr: Option<String>,
     graphql_query_expr: Option<String>,
     graphql_mutation_expr: Option<String>,
+    graphql_subscription_expr: Option<String>,
     axum_router_expr: Option<String>,
     axum_webhook_router_expr: Option<String>,
 }
@@ -67,6 +70,8 @@ struct ModulePackageGraphqlProvides {
     query: Option<String>,
     #[serde(default)]
     mutation: Option<String>,
+    #[serde(default)]
+    subscription: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -187,6 +192,7 @@ fn build_optional_module_entry(
             })
             .map(|_| format!("{crate_ident}::graphql::{type_stem}Mutation"))
     });
+    let graphql_subscription_expr = spec.graphql_subscription_type.clone();
 
     let axum_router_expr = spec
         .http_axum_router_fn
@@ -202,6 +208,7 @@ fn build_optional_module_entry(
         module_expr,
         graphql_query_expr,
         graphql_mutation_expr,
+        graphql_subscription_expr,
         axum_router_expr,
         axum_webhook_router_expr,
     }))
@@ -239,6 +246,11 @@ fn apply_module_package_manifest(
             qualify_package_type_path(&spec.crate_name, graphql.mutation.as_deref())
         {
             spec.graphql_mutation_type = Some(mutation_type);
+        }
+        if let Some(subscription_type) =
+            qualify_package_type_path(&spec.crate_name, graphql.subscription.as_deref())
+        {
+            spec.graphql_subscription_type = Some(subscription_type);
         }
     }
     if let Some(http) = package_manifest.provides.http {
@@ -319,8 +331,17 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
                 .map(|expr| (&entry.feature, expr))
         })
         .collect::<Vec<_>>();
+    let subscription_entries = entries
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .graphql_subscription_expr
+                .as_ref()
+                .map(|expr| (&entry.feature, expr))
+        })
+        .collect::<Vec<_>>();
     let mut out = String::new();
-    out.push_str("use async_graphql::MergedObject;\n\n");
+    out.push_str("use async_graphql::{MergedObject, MergedSubscription};\n\n");
 
     if query_entries.is_empty() {
         out.push_str("#[derive(MergedObject, Default)]\npub struct OptionalModuleQuery();\n\n");
@@ -341,6 +362,23 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
     } else {
         out.push_str("#[derive(MergedObject, Default)]\npub struct OptionalModuleMutation(\n");
         for (feature, expr) in &mutation_entries {
+            out.push_str(&format!(
+                "    #[cfg(feature = \"{feature}\")] {expr},\n",
+                feature = feature,
+                expr = expr,
+            ));
+        }
+        out.push_str(");\n");
+    }
+    if subscription_entries.is_empty() {
+        out.push_str(
+            "\n#[derive(MergedSubscription, Default)]\npub struct OptionalModuleSubscription();\n",
+        );
+    } else {
+        out.push_str(
+            "\n#[derive(MergedSubscription, Default)]\npub struct OptionalModuleSubscription(\n",
+        );
+        for (feature, expr) in &subscription_entries {
             out.push_str(&format!(
                 "    #[cfg(feature = \"{feature}\")] {expr},\n",
                 feature = feature,

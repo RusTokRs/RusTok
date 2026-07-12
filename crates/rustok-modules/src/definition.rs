@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleDependencyConstraint, ModuleRuntimeBinding,
+    ArtifactModuleKind, ArtifactPermissionDescriptor, ArtifactReleaseRef, ModuleArtifactDescriptor,
+    ModuleDependencyConstraint, ModuleRuntimeBinding,
 };
 
 /// Whether a definition is permanently active platform infrastructure or can
@@ -48,7 +49,7 @@ pub struct ModuleDefinition {
     #[serde(default)]
     pub dependencies: Vec<ModuleDependencyConstraint>,
     #[serde(default)]
-    pub permissions: Vec<String>,
+    pub permissions: Vec<ArtifactPermissionDescriptor>,
     #[serde(default)]
     pub settings_schema: Option<serde_json::Value>,
     #[serde(default)]
@@ -81,7 +82,13 @@ impl ModuleDefinition {
             permissions: module
                 .permissions()
                 .into_iter()
-                .map(|permission| permission.to_string())
+                .map(|permission| {
+                    let key = permission.to_string();
+                    ArtifactPermissionDescriptor {
+                        label: key.clone(),
+                        key,
+                    }
+                })
                 .collect(),
             settings_schema: None,
             bindings: Vec::new(),
@@ -95,12 +102,15 @@ impl ModuleDefinition {
         Self {
             slug: descriptor.slug.clone(),
             version: descriptor.version.clone(),
-            kind: ModuleDefinitionKind::Optional,
+            kind: match descriptor.module_kind {
+                ArtifactModuleKind::Core => ModuleDefinitionKind::Core,
+                ArtifactModuleKind::Optional => ModuleDefinitionKind::Optional,
+            },
             source: ModuleDefinitionSource::Artifact {
                 release: descriptor.release_ref(),
             },
             dependencies: descriptor.dependencies.clone(),
-            permissions: Vec::new(),
+            permissions: descriptor.permissions.clone(),
             settings_schema: None,
             bindings: descriptor.bindings.clone(),
             ui: None,

@@ -39,6 +39,7 @@ default = [
     "mod-media",
     "mod-seo",
     "mod-workflow",
+    "mod-ai",
 ]
 redis-cache = []
 embed-admin = ["dep:rustok-admin", "embed-admin-assets"]
@@ -69,6 +70,7 @@ mod-flex      = ["rustok-distribution/mod-flex"]
 mod-media     = ["dep:rustok-media", "rustok-distribution/mod-media"]
 mod-seo       = ["dep:rustok-seo", "mod-content", "rustok-distribution/mod-seo"]
 mod-workflow  = ["dep:rustok-workflow", "rustok-distribution/mod-workflow"]
+mod-ai        = []
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }

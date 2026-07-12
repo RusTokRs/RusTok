@@ -13,6 +13,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::constants::topic_status;
+use crate::state_machine::TopicStatus;
 use crate::{
     CategoryListItem, CategoryResponse, CategoryService, ListTopicsFilter, TopicListItem,
     TopicResponse, TopicService,
@@ -334,7 +335,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                     SecurityContext::system(),
                     ListTopicsFilter {
                         category_id: None,
-                        status: Some(topic_status::OPEN.to_string()),
+                        status: Some(TopicStatus::Open),
                         locale: Some(request.default_locale.to_string()),
                         page: page_number,
                         per_page: BULK_FETCH_SIZE,

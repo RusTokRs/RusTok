@@ -15,6 +15,7 @@ mod oci;
 mod operation_store;
 mod policy;
 mod recovery;
+mod resolution;
 mod runtime;
 
 use async_trait::async_trait;
@@ -22,9 +23,10 @@ use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
-    ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
+    ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
     ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError, ModuleBindingIdempotency,
-    ModuleDependencyConstraint, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ArtifactPermissionDescriptor, ModuleDependencyConstraint, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind,
 };
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
@@ -72,6 +74,10 @@ pub use recovery::{
     failed_module_operation_recovery_plans, module_operation_recovery_plan,
     retry_failed_post_hook_operation, ModuleOperationRecoveryError, ModuleOperationRecoveryPlan,
     ModulePostHookRetryRequest,
+};
+pub use resolution::{
+    ModuleResolutionCandidate, ModuleResolutionConflict, ModuleResolutionError,
+    ModuleResolutionProvider, ModuleResolutionResult,
 };
 pub use runtime::{
     ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,

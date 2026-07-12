@@ -12,7 +12,7 @@
       "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
       "contract_version": "product.catalog_read.v1",
       "ports": ["ProductCatalogReadPort"],
-      "operations": ["read_product_projection", "list_published_products"],
+      "operations": ["read_product_projection", "read_variant_product_projection", "list_published_products"],
       "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
       "degraded_modes": ["use_cart_product_snapshot", "show_product_refresh_required", "skip_product_enrichment"],
       "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],

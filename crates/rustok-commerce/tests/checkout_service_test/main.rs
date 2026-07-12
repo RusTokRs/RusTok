@@ -1,19 +1,19 @@
 use rust_decimal::Decimal;
+use rustok_cart::CartService;
 use rustok_cart::dto::{
     AddCartLineItemInput, CartShippingSelectionInput, CreateCartInput, SetCartAdjustmentInput,
     UpdateCartContextInput,
 };
-use rustok_cart::CartService;
 use rustok_commerce::dto::CompleteCheckoutInput;
 use rustok_commerce::services::{CheckoutError, CheckoutService};
-use rustok_fulfillment::dto::{CreateShippingOptionInput, ShippingOptionTranslationInput};
 use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::dto::{CreateShippingOptionInput, ShippingOptionTranslationInput};
 use rustok_inventory::InventoryService;
 use rustok_payment::PaymentService;
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
 };
-use rustok_product::CatalogService;
 use rustok_region::dto::{CreateRegionInput, RegionCountryTaxPolicyInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
@@ -42,8 +42,9 @@ pub(crate) async fn setup() -> (
             std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
             std::sync::Arc::new(rustok_inventory::InventoryService::new(
                 db.clone(),
-                event_bus,
+                event_bus.clone(),
             )),
+            std::sync::Arc::new(rustok_product::CatalogService::new(db.clone(), event_bus)),
         ),
         FulfillmentService::new(db),
     )

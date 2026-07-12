@@ -102,6 +102,23 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   if (checkoutSource.includes('check_variant_availability_for_public_channel')) {
     fail('checkout must not bypass InventoryReservationPort through the public inventory helper');
   }
+  for (const marker of [
+    'product_catalog_read_port: Arc<dyn ProductCatalogReadPort>',
+    '.product_catalog_read_port',
+    '.read_product_projection(',
+    '.read_variant_product_projection(',
+    'ProductProjectionRequest {',
+    'VariantProductProjectionRequest {',
+    'checkout_product_port_context(',
+    'checkout_port_error("read_checkout_product_projection", error)',
+  ]) {
+    if (!checkoutSource.includes(marker)) {
+      fail(`checkout product provider-consumer boundary missing: ${marker}`);
+    }
+  }
+  if (checkoutSource.includes('rustok_product::entities')) {
+    fail('checkout must not import product entities outside the ProductCatalogReadPort boundary');
+  }
 
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
