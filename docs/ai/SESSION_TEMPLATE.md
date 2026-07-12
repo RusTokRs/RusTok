@@ -17,7 +17,7 @@ Use this template before generating code in any module.
 > 1) read `docs/AI_CONTEXT.md`;  
 > 2) read `CRATE_API.md` of the target crate (if the file exists);  
 > 3) read `README.md` of the target crate;  
-> 4) if changes affect Loco/Iggy/MCP/Outbox/Telemetry — first check the reference package (`docs/references/loco/README.md`, `docs/references/iggy/README.md`, `docs/references/mcp/README.md`, `docs/references/outbox/README.md`, `docs/references/telemetry/README.md`);
+> 4) if changes affect the historical Loco exit, first read `docs/architecture/loco-exit-plan.md` and the backend guides; for Iggy/MCP/Outbox/Telemetry, first check the corresponding reference package in `docs/references/`;
 > 5) verify event invariants (`publish_in_tx`, `EventEnvelope`, handlers).
 
 ## Mini Prompt Template
@@ -27,13 +27,13 @@ Context:
 - Read docs/AI_CONTEXT.md.
 - Read CRATE_API.md of the target crate (if present).
 - Read README.md of the target crate.
-- If changing Loco/Iggy/MCP/Outbox/Telemetry — first read the corresponding reference package in `docs/references/`.
+- If changing the historical Loco exit, first read `docs/architecture/loco-exit-plan.md` and the backend guides. For Iggy/MCP/Outbox/Telemetry, first read the corresponding reference package in `docs/references/`.
 
 Task:
 - <briefly describe the task>
 
 Constraints:
-- Do not invent API of Loco/Iggy/internal crates.
+- Do not invent APIs of Axum, Iggy, or internal crates.
 - For transactional flow use publish_in_tx.
 - Verify EventEnvelope and handler compatibility.
 
