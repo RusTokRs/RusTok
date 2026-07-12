@@ -1,58 +1,20 @@
-use rustok_core::MigrationSource;
-use rustok_forum::ForumModule;
-use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
-use sea_orm_migration::SchemaManager;
+mod support;
+
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use support::postgres::{execute, expect_rejected as assert_rejected, PostgresForumTestDb};
+use support::TestResult;
 
 #[tokio::test]
 async fn postgres_rejects_cross_tenant_forum_relation_rows() -> TestResult<()> {
-    let Some((db, schema_name)) = setup_postgres().await? else {
+    let Some(context) = PostgresForumTestDb::setup("tenant_relations").await? else {
         return Ok(());
     };
 
-    let result = exercise_relation_constraints(&db).await;
-    db.execute_unprepared(&format!(
-        r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#
-    ))
-    .await?;
+    let result = exercise_relation_constraints(&context.db).await;
+    context.cleanup().await?;
     result
-}
-
-async fn setup_postgres() -> TestResult<Option<(DatabaseConnection, String)>> {
-    let database_url = match std::env::var("RUSTOK_FORUM_TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-    {
-        Ok(url) if url.starts_with("postgres://") || url.starts_with("postgresql://") => url,
-        _ => return Ok(None),
-    };
-
-    let mut options = ConnectOptions::new(database_url);
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
-    let db = Database::connect(options).await?;
-    let schema_name = format!("rustok_forum_relations_{}", Uuid::new_v4().simple());
-
-    execute(
-        &db,
-        format!(r#"CREATE SCHEMA "{schema_name}""#),
-    )
-    .await?;
-    execute(
-        &db,
-        format!(r#"SET search_path TO "{schema_name}""#),
-    )
-    .await?;
-
-    let manager = SchemaManager::new(&db);
-    for migration in TaxonomyModule.migrations() {
-        migration.up(&manager).await?;
-    }
-    for migration in ForumModule.migrations() {
-        migration.up(&manager).await?;
-    }
-    Ok(Some((db, schema_name)))
 }
 
 async fn exercise_relation_constraints(db: &DatabaseConnection) -> TestResult<()> {
@@ -163,20 +125,5 @@ VALUES ('{}', '{topic_a}', '{term_a}', '{tenant_a}');
     )
     .await?;
 
-    Ok(())
-}
-
-async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
-    db.execute_unprepared(&sql).await?;
-    Ok(())
-}
-
-async fn assert_rejected(
-    db: &DatabaseConnection,
-    sql: String,
-    relation: &str,
-) -> TestResult<()> {
-    let result = db.execute_unprepared(&sql).await;
-    assert!(result.is_err(), "{relation} must be rejected");
     Ok(())
 }
