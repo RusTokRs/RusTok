@@ -92,6 +92,8 @@ pub struct ModuleArtifactDescriptor {
     pub data_schema: Option<Value>,
     #[serde(default)]
     pub ui_contributions: Vec<ArtifactUiContribution>,
+    #[serde(default)]
+    pub persistence_contract: Option<ArtifactPersistenceContract>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +116,14 @@ pub struct ArtifactUiContribution {
     pub surface: String,
     pub localization_digest: String,
     pub permission: String,
+}
+
+/// Metadata for brokered namespaced data only. It never carries SQL, DDL, or
+/// executable migrations from an untrusted marketplace artifact.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactPersistenceContract {
+    pub revision: u64,
+    pub schema_digest: String,
 }
 
 /// Declarative runtime binding admitted with an immutable artifact descriptor.
@@ -271,13 +281,22 @@ impl ModuleArtifactDescriptor {
                 || !valid_digest(&contribution.localization_digest)
                 || !contribution.permission.starts_with(&permission_prefix)
             {
-                return Err(ModuleArtifactError::InvalidUiContribution(contribution.id.clone()));
+                return Err(ModuleArtifactError::InvalidUiContribution(
+                    contribution.id.clone(),
+                ));
             }
             if self.ui_contributions[..index]
                 .iter()
                 .any(|previous| previous.id == contribution.id)
             {
-                return Err(ModuleArtifactError::DuplicateUiContribution(contribution.id.clone()));
+                return Err(ModuleArtifactError::DuplicateUiContribution(
+                    contribution.id.clone(),
+                ));
+            }
+        }
+        if let Some(contract) = &self.persistence_contract {
+            if !valid_digest(&contract.schema_digest) {
+                return Err(ModuleArtifactError::InvalidPersistenceContract);
             }
         }
         Ok(())
@@ -410,6 +429,8 @@ pub enum ModuleArtifactError {
     InvalidUiContribution(String),
     #[error("artifact UI contribution `{0}` is declared more than once")]
     DuplicateUiContribution(String),
+    #[error("artifact persistence contract must declare a sha256 schema digest")]
+    InvalidPersistenceContract,
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
@@ -489,6 +510,7 @@ mod tests {
             settings_schema: None,
             data_schema: None,
             ui_contributions: Vec::new(),
+            persistence_contract: None,
         }
     }
 
@@ -638,6 +660,21 @@ mod tests {
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::NonLocalSchemaReference(_))
+        ));
+    }
+
+    #[test]
+    fn ui_contribution_requires_module_owned_permission() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.ui_contributions = vec![ArtifactUiContribution {
+            id: "settings".to_string(),
+            surface: "admin_settings".to_string(),
+            localization_digest: digest('b'),
+            permission: "other_module.settings.manage".to_string(),
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidUiContribution(_))
         ));
     }
 

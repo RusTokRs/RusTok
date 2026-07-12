@@ -369,8 +369,8 @@ fn seed_error(error: impl std::fmt::Display) -> SeedExecutionError {
     SeedExecutionError::Dependency(error.to_string())
 }
 
-fn execution_error(error: impl std::fmt::Display) -> InstallExecutionError {
-    InstallExecutionError::new(error.to_string())
+fn execution_error(error: impl std::fmt::Debug) -> InstallExecutionError {
+    InstallExecutionError::new(format!("{error:?}"))
 }
 
 async fn verify_standalone_installation(

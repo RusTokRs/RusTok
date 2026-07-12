@@ -778,6 +778,8 @@ mod tests {
                 permissions: Vec::new(),
                 settings_schema: None,
                 data_schema: None,
+                ui_contributions: Vec::new(),
+                persistence_contract: None,
             },
             media_type: media_type_for(kind).to_string(),
             payload,

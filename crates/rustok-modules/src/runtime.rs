@@ -250,6 +250,8 @@ mod tests {
                 permissions: Vec::new(),
                 settings_schema: None,
                 data_schema: None,
+                ui_contributions: Vec::new(),
+                persistence_contract: None,
             },
             media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
             payload,
