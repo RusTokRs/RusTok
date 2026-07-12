@@ -1,35 +1,31 @@
 use eyre::{bail, eyre, Result};
 use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_installer::{
-    execute_seed_profile, DatabaseEngine, InstallAdminOutcome, InstallAdminPort,
-    InstallApplyOptions, InstallApplyOutput, InstallDatabasePort, InstallDatabaseReady,
-    InstallExecutionError, InstallExecutor, InstallPersistencePort, InstallPlan, InstallReceipt,
-    InstallReceiptRecord, InstallSchemaPort, InstallSeedOutcome, InstallSeedPort,
-    InstallSessionRecord, InstallState, InstallVerificationOutcome, InstallVerificationPort,
-    SeedExecutionError, SeedExecutionRequest, SeedIdentityPort, SeedModulePort, SeedProfile,
-    SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
-    TenantBootstrap,
+    execute_seed_profile, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
+    InstallApplyOutput, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,
+    InstallExecutor, InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord,
+    InstallSchemaPort, InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallState,
+    InstallVerificationOutcome, InstallVerificationPort, SeedExecutionError, SeedExecutionRequest,
+    SeedIdentityPort, SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort,
+    SeedTenantRequest, SeedUser, SeedUserRequest, TenantBootstrap,
 };
-use rustok_installer_persistence::InstallerPersistenceService;
+use rustok_installer_persistence::SeaOrmInstallerPorts;
 use rustok_migrations::Migrator;
+use rustok_modules::ModuleLifecycleDbWriter;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
     PortActor, PortContext, PortErrorKind, TenantReadPort, TenantReadProjection, TenantReadRequest,
     TenantReadSelector, TenantService,
 };
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::MigratorTrait;
+use sea_orm::DatabaseConnection;
 use std::time::Duration;
-use url::Url;
 use uuid::Uuid;
 
 use crate::models::users;
 use crate::modules::build_registry;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::module_lifecycle::ModuleLifecycleService;
 use crate::services::rbac_service::RbacService;
 
-const DEFAULT_PG_ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
 const INSTALLER_TENANT_READ_DEADLINE: Duration = Duration::from_secs(15);
 
 pub async fn apply_plan(
@@ -70,14 +66,8 @@ impl InstallDatabasePort for ServerInstallerPorts {
         database_url: &str,
         options: &InstallApplyOptions,
     ) -> std::result::Result<InstallDatabaseReady<Self::Runtime>, InstallExecutionError> {
-        let ready = prepare_database(plan, database_url, options.pg_admin_url.as_deref())
+        InstallDatabasePort::prepare_database(&SeaOrmInstallerPorts, plan, database_url, options)
             .await
-            .map_err(execution_error)?;
-        Ok(InstallDatabaseReady {
-            runtime: ready.connection,
-            database_name: ready.database_name,
-            created_database: ready.created_database,
-        })
     }
 }
 
@@ -87,9 +77,7 @@ impl InstallSchemaPort<DatabaseConnection> for ServerInstallerPorts {
         &self,
         runtime: &DatabaseConnection,
     ) -> std::result::Result<(), InstallExecutionError> {
-        apply_schema_migrations(runtime)
-            .await
-            .map_err(execution_error)
+        InstallSchemaPort::apply_schema(&SeaOrmInstallerPorts, runtime).await
     }
 }
 
@@ -100,11 +88,7 @@ impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
         runtime: &DatabaseConnection,
         plan: &InstallPlan,
     ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
-        InstallerPersistenceService::new(runtime.clone())
-            .create_session(plan, None, None)
-            .await
-            .map(session_record)
-            .map_err(execution_error)
+        InstallPersistencePort::create_session(&SeaOrmInstallerPorts, runtime, plan).await
     }
 
     async fn acquire_lock(
@@ -114,19 +98,14 @@ impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
         owner: &str,
         ttl_secs: i64,
     ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
-        let persistence = InstallerPersistenceService::new(runtime.clone());
-        let model = persistence
-            .get_session(session.id)
-            .await
-            .map_err(execution_error)?
-            .ok_or_else(|| {
-                InstallExecutionError::new(format!("install session {} not found", session.id))
-            })?;
-        persistence
-            .acquire_lock(model, owner, chrono::Duration::seconds(ttl_secs.max(1)))
-            .await
-            .map(session_record)
-            .map_err(execution_error)
+        InstallPersistencePort::acquire_lock(
+            &SeaOrmInstallerPorts,
+            runtime,
+            session,
+            owner,
+            ttl_secs,
+        )
+        .await
     }
 
     async fn record_receipt(
@@ -134,14 +113,7 @@ impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
         runtime: &DatabaseConnection,
         receipt: &InstallReceipt,
     ) -> std::result::Result<InstallReceiptRecord, InstallExecutionError> {
-        InstallerPersistenceService::new(runtime.clone())
-            .record_receipt(receipt)
-            .await
-            .map(|model| InstallReceiptRecord {
-                id: model.id,
-                input_checksum: model.input_checksum,
-            })
-            .map_err(execution_error)
+        InstallPersistencePort::record_receipt(&SeaOrmInstallerPorts, runtime, receipt).await
     }
 
     async fn set_state(
@@ -150,11 +122,7 @@ impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
         session_id: Uuid,
         state: InstallState,
     ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
-        InstallerPersistenceService::new(runtime.clone())
-            .set_state(session_id, state)
-            .await
-            .map(session_record)
-            .map_err(execution_error)
+        InstallPersistencePort::set_state(&SeaOrmInstallerPorts, runtime, session_id, state).await
     }
 
     async fn set_tenant_id(
@@ -163,11 +131,8 @@ impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
         session_id: Uuid,
         tenant_id: Uuid,
     ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
-        InstallerPersistenceService::new(runtime.clone())
-            .set_tenant_id(session_id, tenant_id)
+        InstallPersistencePort::set_tenant_id(&SeaOrmInstallerPorts, runtime, session_id, tenant_id)
             .await
-            .map(session_record)
-            .map_err(execution_error)
     }
 }
 
@@ -232,67 +197,6 @@ impl InstallVerificationPort<DatabaseConnection> for ServerInstallerPorts {
     }
 }
 
-fn session_record(
-    model: rustok_installer_persistence::entities::install_session::Model,
-) -> InstallSessionRecord {
-    InstallSessionRecord {
-        id: model.id,
-        tenant_id: model.tenant_id,
-        lock_owner: model.lock_owner,
-        lock_expires_at: model.lock_expires_at,
-    }
-}
-
-fn execution_error(error: impl std::fmt::Display) -> InstallExecutionError {
-    InstallExecutionError::new(error.to_string())
-}
-
-struct DatabaseReady {
-    connection: DatabaseConnection,
-    database_name: Option<String>,
-    created_database: bool,
-}
-
-async fn prepare_database(
-    plan: &InstallPlan,
-    database_url: &str,
-    pg_admin_url: Option<&str>,
-) -> Result<DatabaseReady> {
-    let target = parse_database_target(&plan.database.engine, database_url)?;
-    let mut created_database = false;
-
-    if plan.database.create_if_missing {
-        if plan.database.engine != DatabaseEngine::Postgres {
-            bail!("--create-database is only supported for postgres install plans");
-        }
-        let admin_url = pg_admin_url.unwrap_or(DEFAULT_PG_ADMIN_URL);
-        created_database = ensure_postgres_database(admin_url, &target).await?;
-    }
-
-    let connection = Database::connect(database_url)
-        .await
-        .map_err(|error| eyre!("failed to connect installer database: {error}"))?;
-    connection
-        .query_one(Statement::from_string(
-            connection.get_database_backend(),
-            "SELECT 1".to_string(),
-        ))
-        .await
-        .map_err(|error| eyre!("failed installer database readiness query: {error}"))?;
-
-    Ok(DatabaseReady {
-        connection,
-        database_name: target.database_name,
-        created_database,
-    })
-}
-
-async fn apply_schema_migrations(db: &DatabaseConnection) -> Result<()> {
-    Migrator::up(db, None)
-        .await
-        .map_err(|error| eyre!("failed to apply installer schema migrations: {error}"))
-}
-
 struct ServerInstallerSeedTenantPort<'a> {
     db: &'a DatabaseConnection,
 }
@@ -308,6 +212,7 @@ struct ServerInstallerSeedRolePort<'a> {
 struct ServerInstallerSeedModulePort<'a> {
     db: &'a DatabaseConnection,
     registry: rustok_core::ModuleRegistry,
+    defaults: Vec<String>,
 }
 
 #[async_trait::async_trait]
@@ -371,16 +276,10 @@ impl SeedModulePort for ServerInstallerSeedModulePort<'_> {
         enabled: bool,
         actor: &str,
     ) -> Result<(), SeedExecutionError> {
-        ModuleLifecycleService::toggle_module_with_actor(
-            self.db,
-            &self.registry,
-            tenant_id,
-            module_slug,
-            enabled,
-            Some(actor.to_string()),
-        )
-        .await
-        .map_err(seed_dependency_error)
+        ModuleLifecycleDbWriter::new(self.db.clone(), &self.registry, self.defaults.clone())
+            .toggle(tenant_id, module_slug, enabled, actor)
+            .await
+            .map_err(seed_dependency_error)
     }
 }
 
@@ -407,6 +306,7 @@ async fn apply_seed_profile(db: &DatabaseConnection, plan: &InstallPlan) -> Resu
     let module_port = ServerInstallerSeedModulePort {
         db,
         registry: build_registry(),
+        defaults: plan.seed_profile.default_enabled_modules(),
     };
     let outcome = execute_seed_profile(
         SeedExecutionRequest {
@@ -591,158 +491,5 @@ async fn read_installer_tenant_by_slug(
             error.code,
             error.message
         )),
-    }
-}
-
-#[derive(Debug)]
-struct DatabaseTarget {
-    database_name: Option<String>,
-    username: Option<String>,
-    password: Option<String>,
-}
-
-fn parse_database_target(engine: &DatabaseEngine, database_url: &str) -> Result<DatabaseTarget> {
-    if *engine == DatabaseEngine::Sqlite {
-        return Ok(DatabaseTarget {
-            database_name: None,
-            username: None,
-            password: None,
-        });
-    }
-
-    let parsed = Url::parse(database_url)
-        .map_err(|error| eyre!("invalid postgres database URL: {error}"))?;
-    match parsed.scheme() {
-        "postgres" | "postgresql" => {}
-        scheme => bail!("postgres install plan requires postgres URL, got `{scheme}`"),
-    }
-
-    let database_name = parsed
-        .path_segments()
-        .and_then(|mut segments| segments.next_back())
-        .filter(|name| !name.trim().is_empty())
-        .ok_or_else(|| eyre!("postgres database URL must include a database name"))?
-        .to_string();
-    let username = parsed.username();
-    if username.trim().is_empty() {
-        bail!("postgres database URL must include a username");
-    }
-
-    Ok(DatabaseTarget {
-        database_name: Some(database_name),
-        username: Some(username.to_string()),
-        password: parsed.password().map(ToString::to_string),
-    })
-}
-
-async fn ensure_postgres_database(admin_url: &str, target: &DatabaseTarget) -> Result<bool> {
-    let database_name = target
-        .database_name
-        .as_deref()
-        .ok_or_else(|| eyre!("postgres database name is required"))?;
-    let username = target
-        .username
-        .as_deref()
-        .ok_or_else(|| eyre!("postgres username is required"))?;
-    let password = target.password.as_deref().unwrap_or_default();
-
-    let admin = Database::connect(admin_url)
-        .await
-        .map_err(|error| eyre!("failed to connect postgres admin database: {error}"))?;
-    let role_exists = admin
-        .query_one(Statement::from_string(
-            DbBackend::Postgres,
-            format!(
-                "SELECT 1 FROM pg_roles WHERE rolname = {}",
-                quote_literal(username)
-            ),
-        ))
-        .await
-        .map_err(|error| eyre!("failed to inspect postgres role `{username}`: {error}"))?
-        .is_some();
-    if !role_exists {
-        admin
-            .execute(Statement::from_string(
-                DbBackend::Postgres,
-                format!(
-                    "CREATE ROLE {} LOGIN PASSWORD {}",
-                    quote_ident(username),
-                    quote_literal(password)
-                ),
-            ))
-            .await
-            .map_err(|error| eyre!("failed to create postgres role `{username}`: {error}"))?;
-    }
-
-    let database_exists = admin
-        .query_one(Statement::from_string(
-            DbBackend::Postgres,
-            format!(
-                "SELECT 1 FROM pg_database WHERE datname = {}",
-                quote_literal(database_name)
-            ),
-        ))
-        .await
-        .map_err(|error| eyre!("failed to inspect postgres database `{database_name}`: {error}"))?
-        .is_some();
-    if database_exists {
-        return Ok(false);
-    }
-
-    admin
-        .execute(Statement::from_string(
-            DbBackend::Postgres,
-            format!(
-                "CREATE DATABASE {} OWNER {}",
-                quote_ident(database_name),
-                quote_ident(username)
-            ),
-        ))
-        .await
-        .map_err(|error| eyre!("failed to create postgres database `{database_name}`: {error}"))?;
-
-    Ok(true)
-}
-
-fn quote_ident(value: &str) -> String {
-    format!("\"{}\"", value.replace('"', "\"\""))
-}
-
-fn quote_literal(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_postgres_database_target() {
-        let target = parse_database_target(
-            &DatabaseEngine::Postgres,
-            "postgres://rustok:secret@localhost:5432/rustok_dev",
-        )
-        .expect("valid target");
-
-        assert_eq!(target.database_name.as_deref(), Some("rustok_dev"));
-        assert_eq!(target.username.as_deref(), Some("rustok"));
-        assert_eq!(target.password.as_deref(), Some("secret"));
-    }
-
-    #[test]
-    fn rejects_postgres_target_without_database_name() {
-        let error = parse_database_target(
-            &DatabaseEngine::Postgres,
-            "postgres://rustok@localhost:5432/",
-        )
-        .expect_err("missing database name");
-
-        assert!(error.to_string().contains("database name"));
-    }
-
-    #[test]
-    fn quotes_postgres_identifiers_and_literals() {
-        assert_eq!(quote_ident("tenant\"db"), "\"tenant\"\"db\"");
-        assert_eq!(quote_literal("pa'ss"), "'pa''ss'");
     }
 }

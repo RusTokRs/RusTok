@@ -79,17 +79,18 @@ Current classified inventory baseline after the Axum host cutover:
 | `server_test` | 5 | String assertions in boundary guards; no Loco test fixture remains. |
 | `dependency_manifest` | 0 | `loco-rs` is absent from active Cargo manifests. |
 | `lockfile` | 0 | Current inventory counts lockfile references only after a lockfile refresh. |
-| `verification_guard` / `docs` / `scaffold_template` | 381 | Guardrails retain search terms intentionally; historical docs and templates are the remaining text cleanup. |
+| `verification_guard` / `docs` / `scaffold_template` | 376 | Guardrails retain search terms intentionally; historical docs and templates are the remaining text cleanup. |
 
 Approximate remaining effort:
 
 | Workstream | Share of Remaining Work | Notes |
 |---|---:|---|
-| Server installer composition | 45-55% | Finish moving installer execution out of the HTTP host; schema composition is already in `rustok-migrations`. |
-| Dependency cleanup, tests, docs, scaffolds | 35-45% | Prune lockfile, archive historical docs and collapse verification inventory to final guards. |
-| CI type/runtime evidence | 10-15% | Validate the Axum host and migration package after the structural moves. |
+| Shared SeaORM installer adapter | 25-35% | Apply sequencing is now foundation-owned; move the remaining concrete stage adapter out of the HTTP host so CLI can invoke the same executor. |
+| Dependency cleanup, tests, docs, scaffolds | 45-55% | Archive obsolete guidance, prune final stale references and collapse verification inventory to final guards. |
+| CI type/runtime evidence | 20-25% | Validate the Axum host, migration package and shared installer executor after the structural moves. |
 
-Expected execution size: roughly 5-8 focused cutover slices, dominated by the atomic migration-package move and installer execution extraction.
+Expected execution size: roughly 3-5 focused cutover slices, dominated by the
+shared SeaORM installer-adapter extraction and CI type/runtime evidence.
 
 ## Loco Integration Documents Policy
 

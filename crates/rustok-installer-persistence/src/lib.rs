@@ -2,5 +2,7 @@
 
 pub mod entities;
 mod persistence;
+mod seaorm_ports;
 
 pub use persistence::InstallerPersistenceService;
+pub use seaorm_ports::SeaOrmInstallerPorts;

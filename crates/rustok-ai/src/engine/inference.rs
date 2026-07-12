@@ -563,6 +563,50 @@ async fn stream_with<M: CompletionModel>(
     ))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProviderUsage {
+    input_tokens: u64,
+    output_tokens: u64,
+    total_tokens: u64,
+}
+
+fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage> {
+    let usage = payload.get("usage")?;
+    let input_tokens = usage
+        .get("input_tokens")
+        .or_else(|| usage.get("prompt_tokens"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let output_tokens = usage
+        .get("output_tokens")
+        .or_else(|| usage.get("completion_tokens"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let total_tokens = usage
+        .get("total_tokens")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(input_tokens + output_tokens);
+    (input_tokens > 0 || output_tokens > 0 || total_tokens > 0).then_some(ProviderUsage {
+        input_tokens,
+        output_tokens,
+        total_tokens,
+    })
+}
+
+#[cfg(test)]
+mod usage_tests {
+    use super::extract_usage;
+
+    #[test]
+    fn normalizes_openai_and_anthropic_token_names() {
+        let openai = extract_usage(&serde_json::json!({"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}})).unwrap();
+        assert_eq!(openai.total_tokens, 8);
+        let anthropic = extract_usage(&serde_json::json!({"usage":{"input_tokens":3,"output_tokens":5}})).unwrap();
+        assert_eq!(anthropic.total_tokens, 8);
+        assert!(extract_usage(&serde_json::json!({})).is_none());
+    }
+}
+
 fn map_request(request: ProviderChatRequest) -> AiResult<CompletionRequest> {
     let mut messages = request
         .messages

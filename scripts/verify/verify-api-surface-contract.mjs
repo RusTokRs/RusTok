@@ -489,6 +489,11 @@ requireNotContains('crates/rustok-cli-platform/src/rebuild.rs', 'apps/server', '
 requireContains('crates/rustok-installer/src/plan.rs', 'pub fn default_enabled_modules(self)', 'installer owns canonical seed-profile module policy');
 requireContains('crates/rustok-installer/src/plan.rs', 'pub fn parse_cli_value(value: &str)', 'installer owns canonical seed-profile parsing');
 requireContains('crates/rustok-installer/src/secrets.rs', 'pub fn parse_cli_value(value: &str)', 'installer owns secret CLI parsing');
+requireContains('crates/rustok-installer/src/execution.rs', 'pub async fn execute_install_apply', 'installer owns canonical apply sequencing');
+requireContains('crates/rustok-installer/src/execution.rs', 'pub trait InstallDatabasePort', 'installer owns database stage port');
+requireContains('crates/rustok-installer/src/execution.rs', 'pub trait InstallPersistencePort', 'installer owns persistence stage port');
+requireContains('apps/server/src/installer_execution.rs', 'execute_install_apply(&ServerInstallerPorts', 'server installer delegates apply sequencing to the installer foundation');
+requireNotContains('apps/server/src/installer_execution.rs', 'let report = evaluate_preflight', 'server installer does not retain local apply sequencing');
 requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedTenantPort', 'installer owns the seed tenant consumer port');
 requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedIdentityPort', 'installer owns the seed identity consumer port');
 requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedRolePort', 'installer owns the seed role consumer port');
@@ -500,6 +505,8 @@ requireContains('apps/server/src/installer_execution.rs', 'impl SeedIdentityPort
 requireContains('apps/server/src/installer_execution.rs', 'impl SeedRolePort for ServerInstallerSeedRolePort', 'server composes the seed role adapter');
 requireContains('apps/server/src/installer_execution.rs', 'impl SeedModulePort for ServerInstallerSeedModulePort', 'server composes the seed module adapter');
 requireContains('apps/server/src/installer_execution.rs', 'plan.seed_profile.default_enabled_modules()', 'server installer consumes canonical seed-profile module policy');
+requireContains('apps/server/src/installer_execution.rs', 'ModuleLifecycleDbWriter::new', 'server installer seed adapter uses the module-owned lifecycle writer');
+requireNotContains('apps/server/src/installer_execution.rs', 'ModuleLifecycleService::', 'server installer seed adapter does not retain host-local module lifecycle execution');
 requireContains('crates/rustok-tenant/src/services/tenant_service.rs', 'pub async fn ensure_tenant(', 'tenant owns idempotent bootstrap provisioning');
 requireContains('apps/server/src/installer_execution.rs', '.ensure_tenant(', 'server seed tenant adapter uses the tenant-owned provisioning API');
 requireNotContains('apps/server/src/installer_execution.rs', 'models::{tenants,', 'server seed tenant adapter does not access tenant persistence models directly');
@@ -567,6 +574,7 @@ requireContains('apps/server/src/services/module_event_dispatcher.rs', 'AuthUser
 requireNotContains('apps/server/src/host.rs', 'async fn seed(', 'server host does not expose a seed hook');
 requireNotContains('apps/server/src/lib.rs', 'pub mod seeds;', 'server no longer links the superseded seed service');
 requireContains('crates/rustok-installer-cli/src/lib.rs', '"seed", "apply"', 'installer CLI adapter exposes typed seed application');
+requireContains('crates/rustok-installer-cli/src/lib.rs', '"install",\n                "status"', 'installer CLI adapter exposes durable installer status');
 requireContains('crates/rustok-installer-cli/src/lib.rs', 'ModuleLifecycleDbWriter::new', 'installer CLI seed adapter uses the module-owned lifecycle writer');
 requireNotContains('crates/rustok-installer-cli/src/lib.rs', 'apps/server', 'installer CLI seed adapter is host-independent');
 requireContains('crates/rustok-media/rustok-module.toml', '[provides.cli]', 'media module declares its CLI provider');
