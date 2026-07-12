@@ -224,7 +224,9 @@ impl TopicService {
         let tags = self
             .load_topic_tags(tenant_id, topic.id, &locale, fallback_locale.as_deref())
             .await?;
-        let solution_reply_id = self.load_solution_reply_id(topic_id).await?;
+        let solution_reply_id = self
+            .load_solution_reply_id(tenant_id, topic_id)
+            .await?;
         let vote_summary = VoteService::new(self.db.clone())
             .topic_vote_summary(tenant_id, topic_id, security.user_id)
             .await?;
@@ -366,10 +368,11 @@ impl TopicService {
             .into_iter()
             .map(|reply| reply.author_id)
             .collect::<Vec<_>>();
-        let solution_author_id = if let Some(solution) =
-            forum_solution::Entity::find_by_id(topic_id)
-                .one(&txn)
-                .await?
+        let solution_author_id = if let Some(solution) = forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(topic_id))
+            .one(&txn)
+            .await?
         {
             forum_reply::Entity::find_by_id(solution.reply_id)
                 .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -647,8 +650,14 @@ impl TopicService {
             .collect())
     }
 
-    async fn load_solution_reply_id(&self, topic_id: Uuid) -> ForumResult<Option<Uuid>> {
-        Ok(forum_solution::Entity::find_by_id(topic_id)
+    async fn load_solution_reply_id(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<Option<Uuid>> {
+        Ok(forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(topic_id))
             .one(&self.db)
             .await?
             .map(|solution| solution.reply_id))
@@ -662,6 +671,7 @@ impl TopicService {
         fallback_locale: Option<&str>,
     ) -> ForumResult<Vec<String>> {
         let term_ids = forum_topic_tag::Entity::find()
+            .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
             .order_by_asc(forum_topic_tag::Column::CreatedAt)
             .all(&self.db)
@@ -688,6 +698,7 @@ impl TopicService {
 
     async fn load_solution_reply_ids_map(
         &self,
+        tenant_id: Uuid,
         topic_ids: &[Uuid],
     ) -> ForumResult<HashMap<Uuid, Uuid>> {
         if topic_ids.is_empty() {
@@ -695,6 +706,7 @@ impl TopicService {
         }
 
         Ok(forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.is_in(topic_ids.to_vec()))
             .all(&self.db)
             .await?
@@ -761,6 +773,7 @@ impl TopicService {
         tags: &[String],
     ) -> ForumResult<()> {
         forum_topic_tag::Entity::delete_many()
+            .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
             .exec(txn)
             .await?;
@@ -816,7 +829,9 @@ impl TopicService {
         let channels = self
             .load_channel_slugs_map(tenant_id, &topic_ids)
             .await?;
-        let solution_reply_ids = self.load_solution_reply_ids_map(&topic_ids).await?;
+        let solution_reply_ids = self
+            .load_solution_reply_ids_map(tenant_id, &topic_ids)
+            .await?;
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
         let vote_summaries = VoteService::new(self.db.clone())
             .topic_vote_summaries(tenant_id, &topic_ids, viewer_user_id)

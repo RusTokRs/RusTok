@@ -223,7 +223,9 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
-        let previous_solution_reply_id = forum_solution::Entity::find_by_id(topic_id)
+        let previous_solution_reply_id = forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(topic_id))
             .one(&txn)
             .await?
             .map(|solution| solution.reply_id);
@@ -236,6 +238,7 @@ impl ModerationService {
                 None
             };
         forum_solution::Entity::delete_many()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(topic_id))
             .exec(&txn)
             .await?;
@@ -275,10 +278,11 @@ impl ModerationService {
         enforce_solution_scope(&security, topic.author_id)?;
 
         let txn = self.db.begin().await?;
-        let solution_author_id = if let Some(solution) =
-            forum_solution::Entity::find_by_id(topic_id)
-                .one(&txn)
-                .await?
+        let solution_author_id = if let Some(solution) = forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(topic_id))
+            .one(&txn)
+            .await?
         {
             ReplyService::find_reply_in_tx(&txn, tenant_id, solution.reply_id)
                 .await?
@@ -287,6 +291,7 @@ impl ModerationService {
             None
         };
         forum_solution::Entity::delete_many()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(topic_id))
             .exec(&txn)
             .await?;

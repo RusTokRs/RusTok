@@ -9,6 +9,7 @@ mod m20260330_000001_drop_forum_topic_legacy_tags_column;
 mod m20260405_000001_add_metadata_to_forum_topics;
 mod m20260712_000001_enforce_forum_core_tenant_integrity;
 mod m20260712_000002_add_tenant_to_forum_children;
+mod m20260712_000003_enforce_forum_relation_tenant_integrity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -26,12 +27,19 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260405_000001_add_metadata_to_forum_topics::Migration),
         Box::new(m20260712_000001_enforce_forum_core_tenant_integrity::Migration),
         Box::new(m20260712_000002_add_tenant_to_forum_children::Migration),
+        Box::new(m20260712_000003_enforce_forum_relation_tenant_integrity::Migration),
     ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
-    vec![MigrationDependencyDescriptor::new(
-        "m20260329_000005_create_forum_topic_tags",
-        vec!["m20260329_000001_create_taxonomy_tables"],
-    )]
+    vec![
+        MigrationDependencyDescriptor::new(
+            "m20260329_000005_create_forum_topic_tags",
+            vec!["m20260329_000001_create_taxonomy_tables"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260712_000003_enforce_forum_relation_tenant_integrity",
+            vec!["m20260711_000001_add_tenant_identity_key"],
+        ),
+    ]
 }

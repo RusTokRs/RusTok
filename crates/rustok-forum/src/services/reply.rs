@@ -158,7 +158,7 @@ impl ReplyService {
         let reply = self.find_reply(tenant_id, reply_id).await?;
         let bodies = self.load_bodies(tenant_id, reply_id).await?;
         let solution_reply_id = self
-            .load_solution_reply_id_for_topic(reply.topic_id)
+            .load_solution_reply_id_for_topic(tenant_id, reply.topic_id)
             .await?;
         let vote_summary = VoteService::new(self.db.clone())
             .reply_vote_summary(tenant_id, reply_id, security.user_id)
@@ -237,7 +237,9 @@ impl ReplyService {
             reply.author_id,
         )?;
         let txn = self.db.begin().await?;
-        let solution_removed = forum_solution::Entity::find_by_id(reply.topic_id)
+        let solution_removed = forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
             .one(&txn)
             .await?
             .is_some_and(|solution| solution.reply_id == reply_id);
@@ -288,7 +290,9 @@ impl ReplyService {
         let (replies, total) = self
             .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, None)
             .await?;
-        let solution_reply_id = self.load_solution_reply_id_for_topic(topic_id).await?;
+        let solution_reply_id = self
+            .load_solution_reply_id_for_topic(tenant_id, topic_id)
+            .await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
         let vote_summaries = VoteService::new(self.db.clone())
@@ -370,7 +374,9 @@ impl ReplyService {
         let (replies, total) = self
             .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, statuses)
             .await?;
-        let solution_reply_id = self.load_solution_reply_id_for_topic(topic_id).await?;
+        let solution_reply_id = self
+            .load_solution_reply_id_for_topic(tenant_id, topic_id)
+            .await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
         let vote_summaries = VoteService::new(self.db.clone())
@@ -449,8 +455,14 @@ impl ReplyService {
             .await?)
     }
 
-    async fn load_solution_reply_id_for_topic(&self, topic_id: Uuid) -> ForumResult<Option<Uuid>> {
-        Ok(forum_solution::Entity::find_by_id(topic_id)
+    async fn load_solution_reply_id_for_topic(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<Option<Uuid>> {
+        Ok(forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(topic_id))
             .one(&self.db)
             .await?
             .map(|solution| solution.reply_id))

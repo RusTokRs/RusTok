@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub topic_id: Uuid,
+    #[sea_orm(primary_key, auto_increment = false)]
     pub tenant_id: Uuid,
     pub reply_id: Uuid,
     pub marked_by_user_id: Option<Uuid>,
