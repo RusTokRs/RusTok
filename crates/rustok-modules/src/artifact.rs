@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -69,6 +69,14 @@ pub struct ModuleArtifactDescriptor {
     pub capabilities: Vec<CapabilityName>,
     #[serde(default)]
     pub bindings: Vec<ModuleRuntimeBinding>,
+    #[serde(default)]
+    pub dependencies: Vec<ModuleDependencyConstraint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleDependencyConstraint {
+    pub slug: String,
+    pub version_requirement: String,
 }
 
 /// Declarative runtime binding admitted with an immutable artifact descriptor.
@@ -161,6 +169,23 @@ impl ModuleArtifactDescriptor {
                 return Err(ModuleArtifactError::UndeclaredBindingCapability(
                     binding.id.clone(),
                 ));
+            }
+        }
+        for (index, dependency) in self.dependencies.iter().enumerate() {
+            if !valid_slug(&dependency.slug) || dependency.slug == self.slug {
+                return Err(ModuleArtifactError::InvalidDependency(dependency.slug.clone()));
+            }
+            VersionReq::parse(&dependency.version_requirement).map_err(|_| {
+                ModuleArtifactError::InvalidDependencyVersionRequirement {
+                    slug: dependency.slug.clone(),
+                    requirement: dependency.version_requirement.clone(),
+                }
+            })?;
+            if self.dependencies[..index]
+                .iter()
+                .any(|previous| previous.slug == dependency.slug)
+            {
+                return Err(ModuleArtifactError::DuplicateDependency(dependency.slug.clone()));
             }
         }
         Ok(())
@@ -271,6 +296,12 @@ pub enum ModuleArtifactError {
     DuplicateBinding(String),
     #[error("artifact binding `{0}` declares a capability absent from the descriptor")]
     UndeclaredBindingCapability(String),
+    #[error("artifact dependency `{0}` is invalid")]
+    InvalidDependency(String),
+    #[error("artifact dependency `{slug}` has invalid semantic-version requirement `{requirement}")]
+    InvalidDependencyVersionRequirement { slug: String, requirement: String },
+    #[error("artifact dependency `{0}` is declared more than once")]
+    DuplicateDependency(String),
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
@@ -317,6 +348,7 @@ mod tests {
             entrypoint: "main".to_string(),
             capabilities: vec![CapabilityName::new("platform.events").expect("capability")],
             bindings: Vec::new(),
+            dependencies: Vec::new(),
         }
     }
 
