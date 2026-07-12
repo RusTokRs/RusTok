@@ -120,6 +120,30 @@ async fn next_pending_approval_in_batch(
         .map_err(db_err)
 }
 
+fn validate_approval_resolution_policy(
+    approval_status: &str,
+    approved: bool,
+    tool_allowed: bool,
+    tool_name: &str,
+) -> AiResult<()> {
+    if !matches!(approval_status, "pending" | "executed") {
+        return Err(AiError::Validation(
+            "approval request is not available for resolution".to_string(),
+        ));
+    }
+    if approval_status == "executed" && !approved {
+        return Err(AiError::Validation(
+            "an executed approval must be finalized as approved".to_string(),
+        ));
+    }
+    if approved && approval_status == "pending" && !tool_allowed {
+        return Err(AiError::Validation(format!(
+            "tool `{tool_name}` is no longer allowed by the execution policy"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod approval_outcome_tests {
     use super::{approval_execution_outcome, ApprovalExecutionOutcome};
@@ -170,6 +194,27 @@ mod approval_outcome_tests {
         assert!(approval_execution_outcome(&serde_json::json!({
             "execution_outcome": { "content": "missing fields" }
         }))
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_stale_policy_without_reexecuting_a_durable_outcome() {
+        let stale_policy = super::validate_approval_resolution_policy(
+            "pending",
+            true,
+            false,
+            "catalog.write",
+        )
+        .expect_err("pending approval must observe current policy");
+        assert!(stale_policy.to_string().contains("no longer allowed"));
+        super::validate_approval_resolution_policy("executed", true, false, "catalog.write")
+            .expect("staged external outcome may be finalized after a policy change");
+        assert!(super::validate_approval_resolution_policy(
+            "executed",
+            false,
+            false,
+            "catalog.write",
+        )
         .is_err());
     }
 
@@ -1177,17 +1222,6 @@ impl AiManagementService {
             .await
             .map_err(db_err)?
             .ok_or_else(|| AiError::NotFound("approval request not found".to_string()))?;
-        if !matches!(approval.status.as_str(), "pending" | "executed") {
-            return Err(AiError::Validation(
-                "approval request is not available for resolution".to_string(),
-            ));
-        }
-        if approval.status == "executed" && !input.approved {
-            return Err(AiError::Validation(
-                "an executed approval must be finalized as approved".to_string(),
-            ));
-        }
-
         let session = require_session(db, operator.tenant_id, approval.session_id).await?;
         let provider =
             require_provider_profile(db, operator.tenant_id, session.provider_profile_id).await?;
@@ -1200,15 +1234,12 @@ impl AiManagementService {
             None => None,
         };
         let tool_policy = policy_from_model(tool_profile.as_ref());
-        if input.approved
-            && approval.status == "pending"
-            && !tool_policy.is_tool_allowed(&approval.tool_name)
-        {
-            return Err(AiError::Validation(format!(
-                "tool `{}` is no longer allowed by the execution policy",
-                approval.tool_name
-            )));
-        }
+        validate_approval_resolution_policy(
+            &approval.status,
+            input.approved,
+            tool_policy.is_tool_allowed(&approval.tool_name),
+            &approval.tool_name,
+        )?;
 
         let run = require_run(db, operator.tenant_id, approval.run_id).await?;
         if run.status != "waiting_approval" || run.pending_approval_id != Some(approval.id) {

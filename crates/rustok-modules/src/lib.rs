@@ -23,7 +23,7 @@ use sea_orm_migration::MigrationTrait;
 pub use artifact::{
     ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
     ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError, ModuleBindingIdempotency,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ModuleDependencyConstraint, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,

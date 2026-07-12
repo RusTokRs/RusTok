@@ -242,6 +242,7 @@ mod tests {
                 entrypoint: "main".to_string(),
                 capabilities: Vec::new(),
                 bindings: Vec::new(),
+                dependencies: Vec::new(),
             },
             media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
             payload,

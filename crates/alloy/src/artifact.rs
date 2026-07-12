@@ -47,6 +47,7 @@ pub fn stage_rhai_module_release(
         entrypoint: "main".to_string(),
         capabilities,
         bindings: Vec::new(),
+        dependencies: Vec::new(),
     };
     descriptor
         .validate()

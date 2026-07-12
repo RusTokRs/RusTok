@@ -770,6 +770,7 @@ mod tests {
                 entrypoint: "main".to_string(),
                 capabilities: vec![CapabilityName::new("platform.events").expect("capability")],
                 bindings: Vec::new(),
+                dependencies: Vec::new(),
             },
             media_type: media_type_for(kind).to_string(),
             payload,
