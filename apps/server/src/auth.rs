@@ -11,7 +11,7 @@ use serde::Deserialize;
 // Thin wrappers that convert `rustok_auth::AuthError` to the server error bridge.
 // All server code imports from `crate::auth`, never directly from `rustok_auth`.
 
-/// Build `AuthConfig` from Loco's `AppContext`.
+/// Build `AuthConfig` from the host configuration snapshot.
 pub fn auth_config_from_host_settings(
     secret: String,
     access_expiration: u64,

@@ -6,6 +6,8 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::sync::Mutex;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -184,7 +186,206 @@ pub trait ArtifactRegistry: Send + Sync {
 #[async_trait]
 pub trait ArtifactInstallationStore: Send + Sync {
     async fn save(&self, artifact: &InstalledModuleArtifact)
-    -> Result<(), ModuleInstallationError>;
+        -> Result<(), ModuleInstallationError>;
+}
+
+/// Platform-owned content-addressed storage for admitted executable payloads.
+#[async_trait]
+pub trait ArtifactBlobStore: Send + Sync {
+    async fn put_verified(&self, digest: &str, bytes: &[u8])
+        -> Result<(), ModuleInstallationError>;
+    async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError>;
+}
+
+/// Durable CAS publication is intentionally separate from the database
+/// transaction. A reconciler closes the gap between `CasPublished` and a
+/// committed admission/outbox record after process or storage failures.
+#[async_trait]
+pub trait DurableArtifactBlobStore: ArtifactBlobStore {
+    async fn stage(
+        &self,
+        expected_digest: &str,
+        expected_media_type: &str,
+        bytes: &[u8],
+    ) -> Result<StagedArtifactBlob, ModuleInstallationError>;
+    async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
+    async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
+    async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StagedArtifactBlob {
+    pub stage_id: Uuid,
+    pub digest: String,
+    pub media_type: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactAdmissionStage {
+    Staged,
+    CasPublished,
+    DbCommitted,
+    Failed,
+}
+
+/// Durable DB/outbox adapter contract for the part that must be atomic.
+#[async_trait]
+pub trait ArtifactAdmissionStore: Send + Sync {
+    async fn commit_admission(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        staged: &StagedArtifactBlob,
+    ) -> Result<(), ModuleInstallationError>;
+    async fn unfinished_admissions(
+        &self,
+    ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactAdmissionRecoveryRecord {
+    pub staged: StagedArtifactBlob,
+    pub stage: ArtifactAdmissionStage,
+}
+
+#[async_trait]
+pub trait ArtifactBlobRetentionPolicy: Send + Sync {
+    async fn may_delete(&self, digest: &str) -> Result<bool, ModuleInstallationError>;
+}
+
+/// Reconciles only temporary uploads. Published CAS blobs are retained until a
+/// reference/retention policy adapter explicitly authorizes their deletion.
+pub struct ArtifactAdmissionReconciler<B, S> {
+    blobs: B,
+    admissions: S,
+}
+
+impl<B, S> ArtifactAdmissionReconciler<B, S>
+where
+    B: DurableArtifactBlobStore,
+    S: ArtifactAdmissionStore,
+{
+    pub fn new(blobs: B, admissions: S) -> Self {
+        Self { blobs, admissions }
+    }
+
+    pub async fn discard_unpublished_staging(&self) -> Result<usize, ModuleInstallationError> {
+        let records = self.admissions.unfinished_admissions().await?;
+        let mut discarded = 0;
+        for record in records {
+            if record.stage == ArtifactAdmissionStage::Staged {
+                self.blobs.discard(&record.staged).await?;
+                discarded += 1;
+            }
+        }
+        Ok(discarded)
+    }
+}
+
+/// Test/local adapter. Production adapters must use durable storage outside
+/// PostgreSQL and preserve the same digest verification invariant.
+#[derive(Default)]
+pub struct InMemoryArtifactBlobStore {
+    blobs: Mutex<HashMap<String, Vec<u8>>>,
+    staged: Mutex<HashMap<Uuid, (String, String, Vec<u8>)>>,
+}
+
+#[async_trait]
+impl ArtifactBlobStore for InMemoryArtifactBlobStore {
+    async fn put_verified(
+        &self,
+        digest: &str,
+        bytes: &[u8],
+    ) -> Result<(), ModuleInstallationError> {
+        if sha256_digest(bytes) != digest {
+            return Err(ModuleInstallationError::PayloadDigestMismatch {
+                expected: digest.to_string(),
+                actual: sha256_digest(bytes),
+            });
+        }
+        self.blobs
+            .lock()
+            .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
+            .insert(digest.to_string(), bytes.to_vec());
+        Ok(())
+    }
+
+    async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError> {
+        let bytes = self
+            .blobs
+            .lock()
+            .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
+            .get(digest)
+            .cloned()
+            .ok_or_else(|| ModuleInstallationError::BlobNotFound(digest.to_string()))?;
+        if sha256_digest(&bytes) != digest {
+            return Err(ModuleInstallationError::Blob(
+                "stored blob digest mismatch".into(),
+            ));
+        }
+        Ok(bytes)
+    }
+}
+
+#[async_trait]
+impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
+    async fn stage(
+        &self,
+        expected_digest: &str,
+        expected_media_type: &str,
+        bytes: &[u8],
+    ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
+        if expected_media_type.trim().is_empty() {
+            return Err(ModuleInstallationError::Blob("artifact media type is empty".into()));
+        }
+        if sha256_digest(bytes) != expected_digest {
+            return Err(ModuleInstallationError::PayloadDigestMismatch {
+                expected: expected_digest.to_string(),
+                actual: sha256_digest(bytes),
+            });
+        }
+        let staged = StagedArtifactBlob {
+            stage_id: Uuid::new_v4(),
+            digest: expected_digest.to_string(),
+            media_type: expected_media_type.to_string(),
+            size_bytes: bytes.len() as u64,
+        };
+        self.staged
+            .lock()
+            .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
+            .insert(
+                staged.stage_id,
+                (staged.digest.clone(), staged.media_type.clone(), bytes.to_vec()),
+            );
+        Ok(staged)
+    }
+
+    async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
+        let (_, _, bytes) = self
+            .staged
+            .lock()
+            .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
+            .remove(&staged.stage_id)
+            .ok_or_else(|| ModuleInstallationError::Blob("staged blob is unavailable".into()))?;
+        self.put_verified(&staged.digest, &bytes).await
+    }
+
+    async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
+        self.staged
+            .lock()
+            .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
+            .remove(&staged.stage_id);
+        Ok(())
+    }
+
+    async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError> {
+        self.blobs
+            .lock()
+            .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
+            .remove(digest);
+        Ok(())
+    }
 }
 
 /// SeaORM adapter for the module-owned installation table. The OCI payload is
@@ -227,6 +428,23 @@ impl ArtifactInstallationStore for SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
+    async fn commit_admission(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        _staged: &StagedArtifactBlob,
+    ) -> Result<(), ModuleInstallationError> {
+        self.save(artifact).await
+    }
+
+    async fn unfinished_admissions(
+        &self,
+    ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
+        Ok(Vec::new())
     }
 }
 
@@ -318,18 +536,24 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
 /// Coordinates immutable OCI resolution and durable admission. The concrete OCI
 /// client and database adapter are host infrastructure; this module owns the
 /// identity, validation and lifecycle boundary.
-pub struct ModuleInstaller<R, S> {
+pub struct ModuleInstaller<R, S, B> {
     registry: R,
     store: S,
+    blobs: B,
 }
 
-impl<R, S> ModuleInstaller<R, S>
+impl<R, S, B> ModuleInstaller<R, S, B>
 where
     R: ArtifactRegistry,
-    S: ArtifactInstallationStore,
+    S: ArtifactAdmissionStore,
+    B: DurableArtifactBlobStore,
 {
-    pub fn new(registry: R, store: S) -> Self {
-        Self { registry, store }
+    pub fn new(registry: R, store: S, blobs: B) -> Self {
+        Self {
+            registry,
+            store,
+            blobs,
+        }
     }
 
     pub async fn install(
@@ -359,7 +583,19 @@ where
             descriptor: package.descriptor,
             installed_at,
         };
-        self.store.save(&artifact).await?;
+        let staged = self
+            .blobs
+            .stage(
+                &artifact.descriptor.artifact_digest,
+                &package.media_type,
+                &package.payload,
+            )
+            .await?;
+        if let Err(error) = self.blobs.publish(&staged).await {
+            let _ = self.blobs.discard(&staged).await;
+            return Err(error);
+        }
+        self.store.commit_admission(&artifact, &staged).await?;
         Ok(artifact)
     }
 }
@@ -384,6 +620,10 @@ pub enum ModuleInstallationError {
     Registry(String),
     #[error("artifact installation store error: {0}")]
     Store(String),
+    #[error("artifact blob store error: {0}")]
+    Blob(String),
+    #[error("admitted artifact blob `{0}` is unavailable")]
+    BlobNotFound(String),
 }
 
 fn media_type_for(kind: ArtifactPayloadKind) -> &'static str {
@@ -454,6 +694,23 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl ArtifactAdmissionStore for CapturingStore {
+        async fn commit_admission(
+            &self,
+            artifact: &InstalledModuleArtifact,
+            _staged: &StagedArtifactBlob,
+        ) -> Result<(), ModuleInstallationError> {
+            self.save(artifact).await
+        }
+
+        async fn unfinished_admissions(
+            &self,
+        ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
+            Ok(Vec::new())
+        }
+    }
+
     fn package(kind: ArtifactPayloadKind) -> ModuleArtifactPackage {
         let payload = b"let result = input.value; result".to_vec();
         let digest = sha256_digest(&payload);
@@ -471,6 +728,7 @@ mod tests {
                 artifact_digest: digest,
                 entrypoint: "main".to_string(),
                 capabilities: vec![CapabilityName::new("platform.events").expect("capability")],
+                bindings: Vec::new(),
             },
             media_type: media_type_for(kind).to_string(),
             payload,
@@ -482,7 +740,11 @@ mod tests {
         let package = package(ArtifactPayloadKind::Rhai);
         let reference = package.reference.clone();
         let store = CapturingStore::default();
-        let installer = ModuleInstaller::new(FixtureRegistry(package), store);
+        let installer = ModuleInstaller::new(
+            FixtureRegistry(package),
+            store,
+            InMemoryArtifactBlobStore::default(),
+        );
 
         let installed = installer
             .install(reference, ModuleInstallationScope::Platform, Utc::now())
@@ -497,7 +759,11 @@ mod tests {
     async fn static_promotion_is_not_a_runtime_install_path() {
         let package = package(ArtifactPayloadKind::StaticPromoted);
         let reference = package.reference.clone();
-        let installer = ModuleInstaller::new(FixtureRegistry(package), CapturingStore::default());
+        let installer = ModuleInstaller::new(
+            FixtureRegistry(package),
+            CapturingStore::default(),
+            InMemoryArtifactBlobStore::default(),
+        );
 
         assert!(matches!(
             installer
@@ -512,7 +778,11 @@ mod tests {
         let package = package(ArtifactPayloadKind::Rhai);
         let reference = package.reference.clone();
         let payload = package.payload.clone();
-        let installer = ModuleInstaller::new(FixtureRegistry(package), CapturingStore::default());
+        let installer = ModuleInstaller::new(
+            FixtureRegistry(package),
+            CapturingStore::default(),
+            InMemoryArtifactBlobStore::default(),
+        );
         let scope = ModuleInstallationScope::Tenant {
             tenant_id: Uuid::new_v4(),
         };
@@ -566,6 +836,7 @@ mod tests {
         let installer = ModuleInstaller::new(
             FixtureRegistry(package),
             SeaOrmArtifactInstallationStore::new(database.clone()),
+            InMemoryArtifactBlobStore::default(),
         );
         let installed = installer
             .install(

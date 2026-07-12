@@ -622,6 +622,13 @@ not the production target because it couples execution latency/availability to
 the external registry.
 
 - [ ] Introduce an `ArtifactBlobStore` port addressed only by verified digest.
+- [ ] Use `stage -> durable CAS publish -> DB transaction + outbox ->
+  reconciler` for admission. PostgreSQL does not claim atomicity with external
+  object storage; reconciliation completes/fails interrupted admission and
+  removes orphan blobs only after reference and retention-policy checks.
+- [ ] Commit admission metadata, dependency lock, installation/composition
+  revision, and the existing transactional-outbox envelope in one database
+  transaction; do not introduce a module-specific second event journal.
 - [ ] During admission, stream the selected payload into a platform-controlled
   CAS, verify digest/size while streaming, then atomically publish the blob and
   installation record.

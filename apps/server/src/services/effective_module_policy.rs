@@ -1,5 +1,5 @@
 use rustok_core::ModuleRegistry;
-use rustok_modules::{resolve_effective_modules, TenantModuleOverride};
+use rustok_modules::{resolve_effective_modules, ModuleDefinitionCatalog, TenantModuleOverride};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::models::_entities::tenant_modules::{
@@ -21,8 +21,10 @@ impl EffectiveModulePolicyService {
             .all(db)
             .await?;
 
+        let catalog = ModuleDefinitionCatalog::from_static_registry(registry)
+            .map_err(PlatformCompositionError::Definition)?;
         Ok(resolve_effective_modules(
-            registry,
+            &catalog,
             manifest.settings.default_enabled,
             overrides.into_iter().map(|module| TenantModuleOverride {
                 module_slug: module.module_slug,
@@ -50,9 +52,6 @@ impl EffectiveModulePolicyService {
         tenant_id: uuid::Uuid,
         module_slug: &str,
     ) -> Result<bool, PlatformCompositionError> {
-        if registry.is_core(module_slug) {
-            return Ok(true);
-        }
         Ok(Self::resolve_enabled(db, registry, tenant_id)
             .await?
             .contains(module_slug))

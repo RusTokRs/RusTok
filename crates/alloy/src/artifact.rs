@@ -46,6 +46,7 @@ pub fn stage_rhai_module_release(
         artifact_digest: source_digest.clone(),
         entrypoint: "main".to_string(),
         capabilities,
+        bindings: Vec::new(),
     };
     descriptor
         .validate()

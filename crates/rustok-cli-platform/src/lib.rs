@@ -49,14 +49,14 @@ impl CommandProvider for PlatformCommandProvider {
             }
             ("migrate", "up") => {
                 let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
-                migration::Migrator::up(&db, None)
+                rustok_migrations::Migrator::up(&db, None)
                     .await
                     .map_err(command_failed)?;
                 Ok(CommandOutcome::success("Schema migrations applied"))
             }
             ("migrate", "status") => {
                 let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
-                let pending = migration::Migrator::get_pending_migrations(&db)
+                let pending = rustok_migrations::Migrator::get_pending_migrations(&db)
                     .await
                     .map_err(command_failed)?
                     .into_iter()

@@ -33,8 +33,8 @@ type Provider = {
   slug: string;
   displayName: string;
   providerSlug: string;
+  providerTargetId: string;
   model: string;
-  settings: ProviderSetting[];
   credentialRefs: CredentialRef[];
   temperature?: number | null;
   maxTokens?: number | null;
@@ -46,20 +46,6 @@ type Provider = {
     deniedTaskProfiles: string[];
     restrictedRoleSlugs: string[];
   };
-};
-
-type ProviderSetting = {
-  key: string;
-  textValue?: string | null;
-  integerValue?: number | null;
-  booleanValue?: boolean | null;
-};
-
-type ProviderSettingInput = {
-  key: string;
-  textValue?: string;
-  integerValue?: number;
-  booleanValue?: boolean;
 };
 
 type CredentialRef = {
@@ -83,6 +69,12 @@ type ProviderCatalogEntry = {
   credentialSchema: ProviderField[];
   defaultSettings: Array<{ key: string; value: string }>;
   compiledIn: boolean;
+};
+
+type ProviderTarget = {
+  id: string;
+  providerSlug: string;
+  displayName: string;
 };
 
 type TaskProfile = {
@@ -154,6 +146,7 @@ type SessionDetail = {
   }>;
   approvals: Array<{
     id: string;
+    approvalBatchId: string;
     toolName: string;
     reason?: string | null;
     status: string;
@@ -210,10 +203,17 @@ type RecentRun = {
 type RunStreamEvent = {
   sessionId: string;
   runId: string;
-  eventKind: 'STARTED' | 'DELTA' | 'COMPLETED' | 'FAILED' | 'WAITING_APPROVAL';
+  eventKind:
+    | 'STARTED'
+    | 'DELTA'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'CANCELLED'
+    | 'WAITING_APPROVAL';
   contentDelta?: string | null;
   accumulatedContent?: string | null;
   errorMessage?: string | null;
+  sequence: number;
   createdAt: string;
 };
 
@@ -257,13 +257,14 @@ const BOOTSTRAP_QUERY = `
       credentialSchema { key label kind required }
       defaultSettings { key value }
     }
+    aiProviderTargets { id providerSlug displayName }
     aiProviderProfiles {
       id
       slug
       displayName
       providerSlug
+      providerTargetId
       model
-      settings { key textValue integerValue booleanValue }
       credentialRefs { key resolver secretKey }
       temperature
       maxTokens
@@ -304,6 +305,7 @@ const BOOTSTRAP_QUERY = `
       contentDelta
       accumulatedContent
       errorMessage
+      sequence
       createdAt
     }
   }
@@ -314,8 +316,7 @@ const SESSION_QUERY = `
     aiChatSession(id: $id) {
       session { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
       providerProfile {
-        id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
-        settings { key textValue integerValue booleanValue }
+        id slug displayName providerSlug providerTargetId model temperature maxTokens hasCredentials isActive capabilities
         credentialRefs { key resolver secretKey }
         usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
       }
@@ -324,7 +325,7 @@ const SESSION_QUERY = `
       messages { id role content }
       runs { id taskProfileId status model executionMode executionPath requestedLocale resolvedLocale errorMessage decisionTrace }
       toolTraces { toolName status durationMs }
-      approvals { id toolName reason status }
+      approvals { id approvalBatchId toolName reason status }
     }
     aiRecentRunStreamEvents(sessionId: $id, limit: 20) {
       sessionId
@@ -333,6 +334,7 @@ const SESSION_QUERY = `
       contentDelta
       accumulatedContent
       errorMessage
+      sequence
       createdAt
     }
   }
@@ -347,6 +349,7 @@ const AI_SESSION_EVENTS_SUBSCRIPTION = `
       contentDelta
       accumulatedContent
       errorMessage
+      sequence
       createdAt
     }
   }
@@ -355,8 +358,7 @@ const AI_SESSION_EVENTS_SUBSCRIPTION = `
 const CREATE_PROVIDER_MUTATION = `
   mutation CreateAiProviderProfile($input: CreateAiProviderProfileInputGql!) {
     createAiProviderProfile(input: $input) {
-      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
-      settings { key textValue integerValue booleanValue }
+      id slug displayName providerSlug providerTargetId model temperature maxTokens hasCredentials isActive capabilities
       credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
@@ -372,8 +374,7 @@ const TEST_PROVIDER_MUTATION = `
 const UPDATE_PROVIDER_MUTATION = `
   mutation UpdateAiProviderProfile($id: UUID!, $input: UpdateAiProviderProfileInputGql!) {
     updateAiProviderProfile(id: $id, input: $input) {
-      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
-      settings { key textValue integerValue booleanValue }
+      id slug displayName providerSlug providerTargetId model temperature maxTokens hasCredentials isActive capabilities
       credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
@@ -383,8 +384,7 @@ const UPDATE_PROVIDER_MUTATION = `
 const DEACTIVATE_PROVIDER_MUTATION = `
   mutation DeactivateAiProviderProfile($id: UUID!) {
     deactivateAiProviderProfile(id: $id) {
-      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
-      settings { key textValue integerValue booleanValue }
+      id slug displayName providerSlug providerTargetId model temperature maxTokens hasCredentials isActive capabilities
       credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
@@ -498,6 +498,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
   const [providerCatalog, setProviderCatalog] = React.useState<
     ProviderCatalogEntry[]
   >([]);
+  const [providerTargets, setProviderTargets] = React.useState<ProviderTarget[]>(
+    []
+  );
   const [providers, setProviders] = React.useState<Provider[]>([]);
   const [taskProfiles, setTaskProfiles] = React.useState<TaskProfile[]>([]);
   const [toolProfiles, setToolProfiles] = React.useState<ToolProfile[]>([]);
@@ -515,6 +518,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
     status: string;
     content: string;
     errorMessage?: string | null;
+    sequence: number;
     connected: boolean;
   } | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -525,9 +529,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
     id: '',
     slug: '',
     displayName: '',
-    providerSlug: 'openai_compatible',
+    providerTargetId: '',
     model: 'gpt-4.1-mini',
-    settings: {} as Record<string, string>,
     credentialRefs: {} as Record<
       string,
       { resolver: string; secretKey: string }
@@ -751,6 +754,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
       const data = await gql<{
         aiRuntimeMetrics: RuntimeMetrics;
         aiProviderCatalog: ProviderCatalogEntry[];
+        aiProviderTargets: ProviderTarget[];
         aiProviderProfiles: Provider[];
         aiTaskProfiles: TaskProfile[];
         aiToolProfiles: ToolProfile[];
@@ -760,6 +764,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
       }>(BOOTSTRAP_QUERY, {} as Record<string, never>, props);
       setRuntimeMetrics(data.aiRuntimeMetrics);
       setProviderCatalog(data.aiProviderCatalog);
+      setProviderTargets(data.aiProviderTargets);
       setProviders(data.aiProviderProfiles);
       setTaskProfiles(data.aiTaskProfiles);
       setToolProfiles(data.aiToolProfiles);
@@ -859,9 +864,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
     id: '',
     slug: '',
     displayName: '',
-    providerSlug: 'openai_compatible',
+    providerTargetId: '',
     model: 'gpt-4.1-mini',
-    settings: {} as Record<string, string>,
     credentialRefs: {} as Record<
       string,
       { resolver: string; secretKey: string }
@@ -994,16 +998,23 @@ export function AiAdminPage(props: AiAdminPageProps) {
 
       const streamEvent = payload.payload?.data?.aiSessionEvents;
       if (payload.type === 'next' && streamEvent) {
-        setLiveStream((current) => ({
-          runId: streamEvent.runId,
-          status: streamEvent.eventKind.toLowerCase(),
-          content: streamEvent.accumulatedContent ?? current?.content ?? '',
-          errorMessage: streamEvent.errorMessage,
-          connected: true
-        }));
+        setLiveStream((current) => {
+          if (current?.runId === streamEvent.runId && streamEvent.sequence <= current.sequence) {
+            return current;
+          }
+          return {
+            runId: streamEvent.runId,
+            status: streamEvent.eventKind.toLowerCase(),
+            content: streamEvent.accumulatedContent ?? current?.content ?? '',
+            errorMessage: streamEvent.errorMessage,
+            sequence: streamEvent.sequence,
+            connected: true
+          };
+        });
         if (
           streamEvent.eventKind === 'COMPLETED' ||
           streamEvent.eventKind === 'FAILED' ||
+          streamEvent.eventKind === 'CANCELLED' ||
           streamEvent.eventKind === 'WAITING_APPROVAL'
         ) {
           void loadSession(selectedSession);
@@ -1051,8 +1062,11 @@ export function AiAdminPage(props: AiAdminPageProps) {
     selectedSession
   ]);
 
+  const selectedProviderTarget = providerTargets.find(
+    (target) => target.id === providerForm.providerTargetId
+  );
   const selectedProviderDescriptor = providerCatalog.find(
-    (entry) => entry.slug === providerForm.providerSlug
+    (entry) => entry.slug === selectedProviderTarget?.providerSlug
   );
 
   return (
@@ -1132,12 +1146,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         input: {
                           slug: providerForm.slug,
                           displayName: providerForm.displayName,
-                          providerSlug: providerForm.providerSlug,
+                          providerTargetId: providerForm.providerTargetId,
                           model: providerForm.model,
-                          settings: providerSettingInputs(
-                            selectedProviderDescriptor?.settingsSchema ?? [],
-                            providerForm.settings
-                          ),
                           credentialRefs: providerCredentialInputs(
                             selectedProviderDescriptor?.credentialSchema ?? [],
                             providerForm.credentialRefs
@@ -1194,53 +1204,28 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     }
                   />
                   <label className='grid gap-1 text-sm font-medium'>
-                    <span>Provider integration</span>
+                    <span>Deployment target</span>
                     <select
                       className='border-border bg-background rounded-lg border px-3 py-2'
-                      value={providerForm.providerSlug}
+                      value={providerForm.providerTargetId}
                       onChange={(event) =>
                         setProviderForm((current) => {
-                          const providerSlug = event.target.value;
-                          const descriptor = providerCatalog.find(
-                            (entry) => entry.slug === providerSlug
-                          );
                           return {
                             ...current,
-                            providerSlug,
-                            settings: Object.fromEntries(
-                              (descriptor?.defaultSettings ?? []).map(
-                                (setting) => [setting.key, setting.value]
-                              )
-                            ),
+                            providerTargetId: event.target.value,
                             credentialRefs: {}
                           };
                         })
                       }
                     >
-                      {providerCatalog
-                        .filter((entry) => entry.compiledIn)
-                        .map((entry) => (
-                          <option key={entry.slug} value={entry.slug}>
-                            {entry.displayName}
+                      <option value=''>Select a deployment target</option>
+                      {providerTargets.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            {target.displayName}
                           </option>
                         ))}
                     </select>
                   </label>
-                  {(selectedProviderDescriptor?.settingsSchema ?? []).map(
-                    (field) => (
-                      <Input
-                        key={field.key}
-                        label={field.label}
-                        value={providerForm.settings[field.key] ?? ''}
-                        onChange={(value) =>
-                          setProviderForm((current) => ({
-                            ...current,
-                            settings: { ...current.settings, [field.key]: value }
-                          }))
-                        }
-                      />
-                    )
-                  )}
                   <Input
                     label='Model'
                     value={providerForm.model}
@@ -1391,13 +1376,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           UPDATE_PROVIDER_MUTATION,
                           {
                             id: providerForm.id,
-                            input: {
-                              displayName: providerForm.displayName,
-                              model: providerForm.model,
-                              settings: providerSettingInputs(
-                                selectedProviderDescriptor?.settingsSchema ?? [],
-                                providerForm.settings
-                              ),
+                          input: {
+                            displayName: providerForm.displayName,
+                            providerTargetId: providerForm.providerTargetId,
+                            model: providerForm.model,
                               credentialRefs: providerCredentialInputs(
                                 selectedProviderDescriptor?.credentialSchema ?? [],
                                 providerForm.credentialRefs
@@ -1515,9 +1497,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           id: provider.id,
                           slug: provider.slug,
                           displayName: provider.displayName,
-                          providerSlug: provider.providerSlug,
+                          providerTargetId: provider.providerTargetId,
                           model: provider.model,
-                          settings: settingRecord(provider.settings),
                           credentialRefs: credentialRecord(
                             provider.credentialRefs
                           ),
@@ -3607,25 +3588,6 @@ function splitCsv(value: string): string[] {
     .filter(Boolean);
 }
 
-function providerSettingInputs(
-  schema: ProviderField[],
-  values: Record<string, string>
-): ProviderSettingInput[] {
-  const inputs: ProviderSettingInput[] = [];
-  schema.forEach((field) => {
-    const value = values[field.key]?.trim();
-    if (!value) return;
-    if (field.kind === 'INTEGER') {
-      inputs.push({ key: field.key, integerValue: Number(value) });
-    } else if (field.kind === 'BOOLEAN') {
-      inputs.push({ key: field.key, booleanValue: value === 'true' });
-    } else {
-      inputs.push({ key: field.key, textValue: value });
-    }
-  });
-  return inputs;
-}
-
 function providerCredentialInputs(
   schema: ProviderField[],
   values: Record<string, { resolver: string; secretKey: string }>
@@ -3641,20 +3603,6 @@ function providerCredentialInputs(
       }
     ];
   });
-}
-
-function settingRecord(settings: ProviderSetting[]): Record<string, string> {
-  return Object.fromEntries(
-    settings.map((setting) => [
-      setting.key,
-      setting.textValue ??
-        (setting.integerValue !== null && setting.integerValue !== undefined
-          ? String(setting.integerValue)
-          : setting.booleanValue !== null && setting.booleanValue !== undefined
-            ? String(setting.booleanValue)
-            : '')
-    ])
-  );
 }
 
 function credentialRecord(

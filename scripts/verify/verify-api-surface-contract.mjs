@@ -153,7 +153,7 @@ requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn db
 requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'ServerRuntimeContext exposes typed shared-store access behind server boundary');
 requireContains('apps/server/src/services/server_runtime_context.rs', 'struct ServerSharedValues', 'ServerRuntimeContext owns its typed runtime values');
 requireNotContains('apps/server/src/services/server_runtime_context.rs', 'SharedStore', 'ServerRuntimeContext does not depend on Loco SharedStore');
-requireContains('apps/server/src/services/server_runtime_context.rs', 'impl FromRef<AppContext> for ServerRuntimeContext', 'Axum can extract the neutral server runtime from the current host state');
+requireContains('apps/server/src/services/server_runtime_context.rs', 'impl FromRef<ServerAuthRuntime> for ServerRuntimeContext', 'Axum can extract the neutral server runtime from the current host state');
 requireNotContains('apps/server/src/services/settings_service.rs', 'loco_rs', 'settings service does not depend on Loco runtime context');
 requireContains('apps/server/src/services/settings_service.rs', 'ServerRuntimeContext', 'settings service consumes server runtime context');
 for (const rel of [
@@ -193,19 +193,15 @@ requireContains('apps/server/src/services/app_runtime.rs', 'auth_config: AuthCon
 requireNotContains('apps/server/src/services/server_bootstrap.rs', 'loco_rs', 'server bootstrap does not depend on Loco');
 requireContains('apps/server/src/services/server_bootstrap.rs', 'pub async fn bootstrap_application_router(', 'server owns a neutral application bootstrap entrypoint');
 requireContains('apps/server/src/services/server_bootstrap.rs', 'connect_runtime_workers_with_runtime', 'neutral server bootstrap owns worker lifecycle composition');
-requireNotContains('apps/server/src/app.rs', 'fn connect_workers(', 'server app no longer retains an empty Loco worker hook');
+requireNotContains('apps/server/src/host.rs', 'fn connect_workers(', 'server host no longer retains an empty framework worker hook');
 requireContains('apps/server/src/auth.rs', 'pub fn auth_config_from_host_settings(', 'auth config is built from neutral host values');
 requireNotContains('apps/server/src/auth.rs', 'loco_rs', 'auth config does not depend on Loco');
-requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn auth_config_from_loco_app_context(', 'server runtime owns the Loco auth configuration bridge');
-requireContains('apps/server/src/testing.rs', 'pub async fn get_server_app_context()', 'server test fixture bridge exposes a local context helper');
-requireNotContains('apps/server/src/app.rs', 'loco_rs::tests_cfg', 'server app tests use the server test fixture bridge');
-requireContains('apps/server/src/app.rs', 'use crate::testing::get_server_app_context;', 'server app tests import the server test fixture bridge');
+requireNotContains('apps/server/src/services/server_runtime_context.rs', 'loco_rs', 'server runtime has no framework configuration bridge');
+requireNotContains('apps/server/src/host.rs', 'loco_rs::tests_cfg', 'server host does not use Loco test helpers');
 requireNotContains('apps/server/src/services/app_runtime.rs', 'loco_rs::tests_cfg', 'app runtime tests use the server test fixture bridge');
 requireNotContains('apps/server/src/services/app_lifecycle.rs', 'loco_rs::tests_cfg', 'app lifecycle tests use the server test fixture bridge');
 for (const rel of walk('apps/server/src', (childRel) => childRel.endsWith('.rs'))) {
-  if (rel !== path.join('apps', 'server', 'src', 'testing.rs')) {
-    requireNotContains(rel, 'loco_rs::tests_cfg', `${rel} uses the server test fixture bridge instead of Loco test helpers`);
-  }
+  requireNotContains(rel, 'loco_rs::tests_cfg', `${rel} does not use Loco test helpers`);
 }
 requireContains('apps/server/src/services/app_runtime.rs', 'ctx: &ServerRuntimeContext', 'app runtime helpers consume server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'init_storage(ctx: &ServerRuntimeContext)', 'storage bootstrap helper consumes server runtime context');
@@ -362,9 +358,9 @@ requireNotContains('apps/server/src/services/app_lifecycle.rs', 'loco_rs', 'runt
 requireContains('apps/server/src/services/app_lifecycle.rs', 'pub async fn connect_runtime_workers_with_runtime(', 'runtime worker lifecycle exposes a neutral runtime entrypoint');
 requireContains('apps/server/src/services/app_lifecycle.rs', 'pub fn resolve_boot_database_uri(', 'runtime worker lifecycle exposes neutral database fallback policy');
 requireContains('apps/server/src/services/app_lifecycle.rs', 'pub async fn truncate_server_database(', 'runtime lifecycle owns neutral database truncate execution');
-requireContains('apps/server/src/app.rs', 'truncate_server_database(&ctx.db)', 'Loco truncate hook delegates to neutral lifecycle execution');
+requireNotContains('apps/server/src/host.rs', 'truncate_server_database(', 'HTTP host does not expose a destructive truncate hook');
 requireContains('apps/server/src/services/app_lifecycle.rs', 'pub async fn shutdown_runtime_workers(', 'runtime lifecycle owns neutral worker shutdown');
-requireContains('apps/server/src/app.rs', 'shutdown_runtime_workers(&runtime_ctx)', 'Loco shutdown hook delegates to neutral lifecycle execution');
+requireContains('apps/server/src/host.rs', 'shutdown_runtime_workers(&runtime_ctx)', 'Axum host shutdown delegates to neutral lifecycle execution');
 requireNotContains('apps/server/src/services/app_lifecycle.rs', 'RustokSettings::from_settings(&ctx.config.settings)', 'runtime worker lifecycle does not parse settings from Loco config directly');
 for (const rel of [
   'apps/server/src/middleware/channel.rs',
@@ -467,19 +463,14 @@ requireNotContains('apps/server/src/services/app_router.rs', 'loco_rs', 'app rou
 requireContains('apps/server/src/services/app_router.rs', 'middleware_runtime_ctx: ServerRuntimeContext', 'app router accepts neutral server runtime state');
 requireContains('apps/server/src/services/app_router.rs', 'auth_runtime: ServerAuthRuntime', 'app router accepts narrow auth runtime state');
 requireNotContains('apps/server/src/services/app_router.rs', 'ctx.shared_store', 'app router reads runtime handles through ServerRuntimeContext');
-requireNotContains('apps/server/src/app.rs', 'loco_rs::Error::Message', 'server app maps host bootstrap errors through the server error bridge');
+requireNotContains('apps/server/src/host.rs', 'loco_rs::Error::Message', 'server host maps bootstrap errors through the server error bridge');
 requireContains('apps/server/src/services/server_bootstrap.rs', 'crate::error::Error::Message', 'server bootstrap production-secret guard uses the server error bridge');
 requireContains('apps/server/src/services/server_bootstrap.rs', 'fn check_production_secrets(jwt_secret: &str, database_uri: &str)', 'production-secret guard accepts neutral configuration values');
-requireNotContains('apps/server/src/app.rs', 'controller::AppRoutes', 'server app imports AppRoutes through the route isolation layer');
-requireContains('apps/server/src/app.rs', 'use crate::routes::{self, AppRoutes, Routes};', 'server app uses the route isolation layer for AppRoutes');
-requireNotContains('apps/server/src/app.rs', 'AppRoutes::with_default_routes', 'server app creates routes through the route isolation helper');
-requireNotContains('apps/server/src/app.rs', '.add_route(', 'server app mounts routes through the route isolation helper');
-requireContains('apps/server/src/app.rs', 'routes::default_app_routes()', 'server app uses the route isolation helper for default routes');
-requireContains('apps/server/src/app.rs', 'routes::mount_route', 'server app mounts routes through the route isolation helper');
-requireNotContains('apps/server/build.rs', 'loco_rs::controller::AppRoutes', 'generated optional route composition uses the server route isolation layer');
-requireContains('apps/server/build.rs', 'crate::routes::AppRoutes', 'generated optional route composition references the route isolation layer');
-requireNotContains('apps/server/build.rs', '.add_route(', 'generated optional route composition mounts through the route isolation helper');
-requireContains('apps/server/build.rs', 'crate::routes::mount_route', 'generated optional route composition uses the route isolation helper');
+requireNotContains('apps/server/src/host.rs', 'loco_rs', 'server host does not import Loco routing');
+requireContains('apps/server/src/host.rs', 'fn application_router(', 'server host composes the Axum application router');
+requireContains('apps/server/src/host.rs', '.merge(controllers::graphql::router())', 'server host mounts GraphQL through Axum router composition');
+requireNotContains('apps/server/build.rs', 'crate::routes::AppRoutes', 'generated optional route composition has no legacy AppRoutes signature');
+requireNotContains('apps/server/build.rs', 'crate::routes::mount_route', 'generated optional route composition does not mount legacy routes');
 if (exists('apps/server/src/tasks/mod.rs')) fail('server Loco task registry must be deleted after CLI cutover');
 else pass('server Loco task registry is deleted after CLI cutover');
 if (exists('apps/server/src/tasks/cleanup.rs')) fail('cleanup Loco task must be deleted after CLI cutover');
@@ -503,22 +494,22 @@ requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedIdentityPo
 requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedRolePort', 'installer owns the seed role consumer port');
 requireContains('crates/rustok-installer/src/seed.rs', 'pub trait SeedModulePort', 'installer owns the seed module consumer port');
 requireNotContains('crates/rustok-installer/src/seed.rs', 'apps/server', 'installer seed workflow is host-independent');
-requireContains('apps/server/src/installer_cli.rs', 'execute_seed_profile(', 'server installer executes the canonical seed workflow');
-requireContains('apps/server/src/installer_cli.rs', 'impl SeedTenantPort for ServerInstallerSeedTenantPort', 'server composes the seed tenant adapter');
-requireContains('apps/server/src/installer_cli.rs', 'impl SeedIdentityPort for ServerInstallerSeedIdentityPort', 'server composes the seed identity adapter');
-requireContains('apps/server/src/installer_cli.rs', 'impl SeedRolePort for ServerInstallerSeedRolePort', 'server composes the seed role adapter');
-requireContains('apps/server/src/installer_cli.rs', 'impl SeedModulePort for ServerInstallerSeedModulePort', 'server composes the seed module adapter');
-requireContains('apps/server/src/installer_cli.rs', 'plan.seed_profile.default_enabled_modules()', 'server installer consumes canonical seed-profile module policy');
+requireContains('apps/server/src/installer_execution.rs', 'execute_seed_profile(', 'server installer executes the canonical seed workflow');
+requireContains('apps/server/src/installer_execution.rs', 'impl SeedTenantPort for ServerInstallerSeedTenantPort', 'server composes the seed tenant adapter');
+requireContains('apps/server/src/installer_execution.rs', 'impl SeedIdentityPort for ServerInstallerSeedIdentityPort', 'server composes the seed identity adapter');
+requireContains('apps/server/src/installer_execution.rs', 'impl SeedRolePort for ServerInstallerSeedRolePort', 'server composes the seed role adapter');
+requireContains('apps/server/src/installer_execution.rs', 'impl SeedModulePort for ServerInstallerSeedModulePort', 'server composes the seed module adapter');
+requireContains('apps/server/src/installer_execution.rs', 'plan.seed_profile.default_enabled_modules()', 'server installer consumes canonical seed-profile module policy');
 requireContains('crates/rustok-tenant/src/services/tenant_service.rs', 'pub async fn ensure_tenant(', 'tenant owns idempotent bootstrap provisioning');
-requireContains('apps/server/src/installer_cli.rs', '.ensure_tenant(', 'server seed tenant adapter uses the tenant-owned provisioning API');
-requireNotContains('apps/server/src/installer_cli.rs', 'models::{tenants,', 'server seed tenant adapter does not access tenant persistence models directly');
+requireContains('apps/server/src/installer_execution.rs', '.ensure_tenant(', 'server seed tenant adapter uses the tenant-owned provisioning API');
+requireNotContains('apps/server/src/installer_execution.rs', 'models::{tenants,', 'server seed tenant adapter does not access tenant persistence models directly');
 requireContains('crates/rustok-auth/src/bootstrap.rs', 'pub struct AuthUserBootstrapDbWriter', 'auth owns the bootstrap identity database adapter');
-requireContains('apps/server/src/installer_cli.rs', 'AuthUserBootstrapDbWriter::new', 'server seed identity adapter uses the auth-owned bootstrap writer');
-requireNotContains('apps/server/src/installer_cli.rs', 'users::ActiveModel::new', 'server seed identity adapter does not write user persistence models directly');
-requireNotContains('apps/server/src/installer_cli.rs', 'hash_password(&request.password)', 'server seed identity adapter does not hash bootstrap credentials directly');
+requireContains('apps/server/src/installer_execution.rs', 'AuthUserBootstrapDbWriter::new', 'server seed identity adapter uses the auth-owned bootstrap writer');
+requireNotContains('apps/server/src/installer_execution.rs', 'users::ActiveModel::new', 'server seed identity adapter does not write user persistence models directly');
+requireNotContains('apps/server/src/installer_execution.rs', 'hash_password(&request.password)', 'server seed identity adapter does not hash bootstrap credentials directly');
 requireContains('crates/rustok-rbac/src/bootstrap.rs', 'pub struct RbacRoleAssignmentDbWriter', 'RBAC owns the bootstrap role-assignment database adapter');
-requireContains('apps/server/src/installer_cli.rs', 'RbacRoleAssignmentDbWriter::new', 'server seed role adapter uses the RBAC-owned assignment writer');
-requireContains('apps/server/src/installer_cli.rs', 'RbacService::invalidate_user_rbac_caches', 'server seed role adapter retains host cache invalidation');
+requireContains('apps/server/src/installer_execution.rs', 'RbacRoleAssignmentDbWriter::new', 'server seed role adapter uses the RBAC-owned assignment writer');
+requireContains('apps/server/src/installer_execution.rs', 'RbacService::invalidate_user_rbac_caches', 'server seed role adapter retains host cache invalidation');
 requireContains('apps/server/src/services/rbac_persistence.rs', 'RbacRoleAssignmentDbWriter::new', 'server RBAC persistence delegates relation writes to the owner module');
 requireNotContains('apps/server/src/services/rbac_persistence.rs', 'fn get_or_create_permission(', 'server does not duplicate RBAC permission persistence');
 requireContains('crates/rustok-modules/src/policy.rs', 'pub fn resolve_effective_modules(', 'modules capability owns effective-module policy calculation');
@@ -529,20 +520,20 @@ requireContains('crates/rustok-modules/src/lifecycle.rs', 'pub enum ModuleOperat
 requireNotContains('apps/server/src/services/module_lifecycle.rs', 'pub enum ModuleOperationStatus', 'server lifecycle does not own operation status contracts');
 requireContains('crates/rustok-modules/src/operation_store.rs', 'pub struct ModuleOperationJournal', 'modules capability owns lifecycle operation journaling');
 requireContains('crates/rustok-modules/src/operation_store.rs', 'pub struct TenantModuleStateStore', 'modules capability owns tenant module-state persistence');
-requireContains('crates/rustok-modules/src/hooks.rs', 'pub async fn run_module_lifecycle_hook(', 'modules capability owns lifecycle hook dispatch');
+requireContains('crates/rustok-modules/src/dispatcher.rs', 'pub async fn dispatch_lifecycle(', 'modules capability owns lifecycle hook dispatch');
 requireContains('crates/rustok-modules/src/executor.rs', 'ModuleOperationJournal::record(', 'modules lifecycle executor owns operation record creation');
 requireContains('crates/rustok-modules/src/executor.rs', 'ModuleOperationJournal::mark_committed(transaction, operation.id)', 'modules lifecycle executor commits operation status with module state');
 requireContains('crates/rustok-modules/src/executor.rs', 'TenantModuleStateStore::persist(transaction, state_request)', 'modules lifecycle executor owns tenant module-state writes');
-requireContains('crates/rustok-modules/src/executor.rs', 'run_module_lifecycle_hook(', 'modules lifecycle executor owns hook dispatch');
+requireContains('crates/rustok-modules/src/executor.rs', '.dispatch_lifecycle(', 'modules lifecycle executor owns hook dispatch');
 requireNotContains('apps/server/src/services/module_lifecycle.rs', 'ModuleContext {', 'server lifecycle does not construct module hook contexts directly');
 requireNotContains('apps/server/src/services/module_lifecycle.rs', 'ModuleOperationJournal::', 'server lifecycle does not retain operation journal execution');
 requireNotContains('apps/server/src/services/module_lifecycle.rs', 'TenantModuleStateStore::', 'server lifecycle does not retain tenant module-state persistence');
 requireContains('crates/rustok-modules/src/executor.rs', 'pub async fn execute_module_toggle(', 'modules capability owns the normal lifecycle toggle sequence');
 requireContains('apps/server/src/services/module_lifecycle.rs', 'execute_module_toggle(', 'server lifecycle delegates normal toggle execution to the modules capability');
-requireNotContains('apps/server/src/installer_cli.rs', 'fn default_modules_for_seed(', 'server installer does not duplicate seed-profile module policy');
-requireNotContains('apps/server/src/installer_cli.rs', 'fn parse_seed_profile(', 'server installer does not duplicate seed-profile parsing');
+requireNotContains('apps/server/src/installer_execution.rs', 'fn default_modules_for_seed(', 'server installer does not duplicate seed-profile module policy');
+requireNotContains('apps/server/src/installer_execution.rs', 'fn parse_seed_profile(', 'server installer does not duplicate seed-profile parsing');
 for (const parser of ['parse_environment', 'parse_profile', 'parse_database_engine', 'parse_secret_mode', 'parse_secret_ref']) {
-  requireNotContains('apps/server/src/installer_cli.rs', `fn ${parser}(`, `server installer does not duplicate ${parser} contract parsing`);
+  requireNotContains('apps/server/src/installer_execution.rs', `fn ${parser}(`, `server installer does not duplicate ${parser} contract parsing`);
 }
 if (exists('apps/server/src/tasks/create_oauth_app.rs')) fail('OAuth app Loco task must be deleted after CLI cutover');
 else pass('OAuth app Loco task is deleted after CLI cutover');
@@ -573,7 +564,7 @@ requireContains('apps/server/src/services/auth_lifecycle_provider.rs', 'AuthUser
 requireContains('crates/rustok-auth/src/backfill.rs', 'ORDER BY created_at ASC', 'auth user-backfill adapter preserves stable identity ordering');
 requireNotContains('crates/rustok-auth/src/backfill.rs', 'apps/server', 'auth user-backfill DB adapter is host-independent');
 requireContains('apps/server/src/services/module_event_dispatcher.rs', 'AuthUserBackfillRuntime::new(auth_lifecycle_provider)', 'server runtime extension composition publishes the auth user-backfill reader');
-requireNotContains('apps/server/src/app.rs', 'async fn seed(', 'server no longer exposes the Loco seed hook');
+requireNotContains('apps/server/src/host.rs', 'async fn seed(', 'server host does not expose a seed hook');
 requireNotContains('apps/server/src/lib.rs', 'pub mod seeds;', 'server no longer links the superseded seed service');
 requireContains('crates/rustok-installer-cli/src/lib.rs', '"seed", "apply"', 'installer CLI adapter exposes typed seed application');
 requireContains('crates/rustok-installer-cli/src/lib.rs', 'ModuleLifecycleDbWriter::new', 'installer CLI seed adapter uses the module-owned lifecycle writer');
@@ -600,7 +591,7 @@ for (const rel of [
   'apps/server/src/channels/builds.rs',
 ]) {
   requireNotContains(rel, 'loco_rs::controller::Routes', `${rel} imports routes through the server route isolation layer`);
-  requireContains(rel, 'crate::routes::Routes', `${rel} uses the server route isolation layer`);
+  requireContains(rel, 'crate::routes::ServerRouter', `${rel} uses the server Axum route-state contract`);
 }
 for (const rel of [
   'apps/server/src/controllers/admin_events.rs',

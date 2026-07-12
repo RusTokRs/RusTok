@@ -991,8 +991,9 @@ async fn ai_cancel_run_native(run_id: String) -> Result<AiChatRunPayload, Server
         ensure_ai_run_cancel_permission(&auth.permissions)?;
         let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::cancel_run(
-            &db,
+            &runtime,
             &operator(&auth, &db).await?,
             parse_uuid(&run_id, "run_id")?,
         )
@@ -1490,6 +1491,7 @@ fn map_approval(value: rustok_ai::AiApprovalRequestRecord) -> AiApprovalRequestP
         id: value.id.to_string(),
         session_id: value.session_id.to_string(),
         run_id: value.run_id.to_string(),
+        approval_batch_id: value.approval_batch_id,
         tool_name: value.tool_name,
         tool_call_id: value.tool_call_id,
         tool_input: value.tool_input.to_string(),
@@ -1663,6 +1665,7 @@ fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPaylo
             rustok_ai::AiRunStreamEventKind::Delta => AiRunStreamEventKindPayload::Delta,
             rustok_ai::AiRunStreamEventKind::Completed => AiRunStreamEventKindPayload::Completed,
             rustok_ai::AiRunStreamEventKind::Failed => AiRunStreamEventKindPayload::Failed,
+            rustok_ai::AiRunStreamEventKind::Cancelled => AiRunStreamEventKindPayload::Cancelled,
             rustok_ai::AiRunStreamEventKind::WaitingApproval => {
                 AiRunStreamEventKindPayload::WaitingApproval
             }
@@ -1670,6 +1673,7 @@ fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPaylo
         content_delta: value.content_delta,
         accumulated_content: value.accumulated_content,
         error_message: value.error_message,
+        sequence: value.sequence,
         created_at: value.created_at.to_rfc3339(),
     }
 }

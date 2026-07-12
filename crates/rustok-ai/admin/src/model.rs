@@ -231,6 +231,7 @@ pub struct AiApprovalRequestPayload {
     pub id: String,
     pub session_id: String,
     pub run_id: String,
+    pub approval_batch_id: String,
     pub tool_name: String,
     pub tool_call_id: String,
     pub tool_input: String,
@@ -277,6 +278,7 @@ pub struct AiLiveStreamStatePayload {
     pub status: String,
     pub content: String,
     pub error_message: Option<String>,
+    pub sequence: u64,
     pub connected: bool,
 }
 
@@ -287,6 +289,7 @@ pub enum AiRunStreamEventKindPayload {
     Delta,
     Completed,
     Failed,
+    Cancelled,
     WaitingApproval,
 }
 
@@ -299,6 +302,7 @@ pub struct AiRunStreamEventPayload {
     pub content_delta: Option<String>,
     pub accumulated_content: Option<String>,
     pub error_message: Option<String>,
+    pub sequence: u64,
     pub created_at: String,
 }
 

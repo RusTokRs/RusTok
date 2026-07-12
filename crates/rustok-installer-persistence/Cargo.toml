@@ -1,0 +1,15 @@
+[package]
+name = "rustok-installer-persistence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SeaORM persistence adapter for RusToK installer state"
+
+[dependencies]
+chrono.workspace = true
+rustok-core.workspace = true
+rustok-installer.workspace = true
+sea-orm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true

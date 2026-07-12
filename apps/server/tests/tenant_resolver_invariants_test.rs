@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -7,17 +5,13 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use loco_rs::{app::AppContext, tests_cfg::app::get_app_context};
-use migration::Migrator;
 use rustok_cache::CacheService;
+use rustok_migrations::Migrator;
 use rustok_server::{
-    common::settings::{RustokSettings, SharedRustokSettings},
-    extractors::tenant::CurrentTenant,
-    middleware::tenant,
+    common::settings::RustokSettings, extractors::tenant::CurrentTenant, middleware::tenant,
     services::server_runtime_context::ServerRuntimeContext,
 };
-use sea_orm::{ActiveModelTrait, Set};
-use sea_orm_migration::MigratorTrait;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use serial_test::serial;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -32,16 +26,9 @@ async fn tenant_probe(CurrentTenant(tenant): CurrentTenant) -> Json<serde_json::
 
 async fn setup_tenant_router(
     settings: RustokSettings,
-) -> (AppContext, ServerRuntimeContext, Router) {
-    let ctx = get_app_context().await;
-    Migrator::up(&ctx.db, None)
-        .await
-        .expect("server migrations should apply for tenant resolver test");
-
-    ctx.shared_store
-        .insert(SharedRustokSettings(Arc::new(settings)));
-
-    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+) -> (DatabaseConnection, ServerRuntimeContext, Router) {
+    let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
+    let runtime_ctx = ServerRuntimeContext::new(db.clone(), settings);
     let cache_service = CacheService::from_url(None);
     tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await;
 
@@ -53,7 +40,7 @@ async fn setup_tenant_router(
         ))
         .with_state(runtime_ctx.clone());
 
-    (ctx, runtime_ctx, app)
+    (db, runtime_ctx, app)
 }
 
 async fn request_tenant_slug(app: &Router, tenant_header: &str) -> (StatusCode, Option<String>) {
@@ -107,7 +94,7 @@ async fn request_host_tenant_slug(app: &Router, host: &str) -> (StatusCode, Opti
 }
 
 async fn insert_tenant(
-    ctx: &AppContext,
+    db: &DatabaseConnection,
     slug: &str,
     domain: Option<&str>,
     is_active: bool,
@@ -125,7 +112,7 @@ async fn insert_tenant(
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
     }
-    .insert(&ctx.db)
+    .insert(db)
     .await
     .expect("tenant should insert")
 }
@@ -137,8 +124,8 @@ async fn header_resolution_resolves_active_tenant_context() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
-    insert_tenant(&ctx, "resolver-header", None, true).await;
+    let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
+    insert_tenant(&db, "resolver-header", None, true).await;
 
     let response = app
         .oneshot(
@@ -168,9 +155,9 @@ async fn host_resolution_resolves_tenant_by_domain() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "host".to_string();
 
-    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
+    let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
     insert_tenant(
-        &ctx,
+        &db,
         "resolver-host",
         Some("resolver-host.example.test"),
         true,
@@ -206,8 +193,8 @@ async fn subdomain_resolution_extracts_slug_and_resolves_tenant() {
     settings.tenant.resolution = "subdomain".to_string();
     settings.tenant.base_domains = vec!["example.test".to_string()];
 
-    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
-    insert_tenant(&ctx, "resolver-subdomain", None, true).await;
+    let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
+    insert_tenant(&db, "resolver-subdomain", None, true).await;
 
     let response = app
         .oneshot(
@@ -237,7 +224,7 @@ async fn resolver_returns_not_found_for_unknown_tenant() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (_ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
+    let (_db, _runtime_ctx, app) = setup_tenant_router(settings).await;
 
     let response = app
         .oneshot(
@@ -260,8 +247,8 @@ async fn resolver_returns_forbidden_for_inactive_tenant() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, _runtime_ctx, app) = setup_tenant_router(settings).await;
-    insert_tenant(&ctx, "resolver-disabled", None, false).await;
+    let (db, _runtime_ctx, app) = setup_tenant_router(settings).await;
+    insert_tenant(&db, "resolver-disabled", None, false).await;
 
     let response = app
         .oneshot(
@@ -284,8 +271,8 @@ async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
-    let tenant_model = insert_tenant(&ctx, "resolver-deactivate-cache", None, true).await;
+    let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
+    let tenant_model = insert_tenant(&db, "resolver-deactivate-cache", None, true).await;
 
     let (status, slug) = request_tenant_slug(&app, "resolver-deactivate-cache").await;
     assert_eq!(status, StatusCode::OK);
@@ -295,7 +282,7 @@ async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
     active.is_active = Set(false);
     active.updated_at = Set(chrono::Utc::now().into());
     active
-        .update(&ctx.db)
+        .update(&db)
         .await
         .expect("tenant deactivation should persist");
 
@@ -318,12 +305,12 @@ async fn slug_negative_cache_invalidation_allows_created_tenant_to_resolve() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
+    let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
 
     let (missing_status, _) = request_tenant_slug(&app, "resolver-created-after-miss").await;
     assert_eq!(missing_status, StatusCode::NOT_FOUND);
 
-    insert_tenant(&ctx, "resolver-created-after-miss", None, true).await;
+    insert_tenant(&db, "resolver-created-after-miss", None, true).await;
 
     let (cached_miss_status, cached_miss_slug) =
         request_tenant_slug(&app, "resolver-created-after-miss").await;
@@ -348,9 +335,9 @@ async fn host_cache_invalidation_refreshes_domain_change() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "host".to_string();
 
-    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
+    let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
     let tenant_model = insert_tenant(
-        &ctx,
+        &db,
         "resolver-domain-change",
         Some("old-domain.example.test"),
         true,
@@ -365,7 +352,7 @@ async fn host_cache_invalidation_refreshes_domain_change() {
     active.domain = Set(Some("new-domain.example.test".to_string()));
     active.updated_at = Set(chrono::Utc::now().into());
     active
-        .update(&ctx.db)
+        .update(&db)
         .await
         .expect("tenant domain change should persist");
 
@@ -398,8 +385,8 @@ async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
     settings.tenant.enabled = true;
     settings.tenant.resolution = "header".to_string();
 
-    let (ctx, runtime_ctx, app) = setup_tenant_router(settings).await;
-    let tenant_model = insert_tenant(&ctx, "resolver-uuid-cache", None, true).await;
+    let (db, runtime_ctx, app) = setup_tenant_router(settings).await;
+    let tenant_model = insert_tenant(&db, "resolver-uuid-cache", None, true).await;
     let tenant_id = tenant_model.id;
 
     let (status, slug) = request_tenant_slug(&app, &tenant_id.to_string()).await;
@@ -410,7 +397,7 @@ async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
     active.is_active = Set(false);
     active.updated_at = Set(chrono::Utc::now().into());
     active
-        .update(&ctx.db)
+        .update(&db)
         .await
         .expect("tenant update should persist");
 

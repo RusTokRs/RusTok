@@ -13,7 +13,7 @@ rustok-cli-core.workspace = true
 rustok-runtime.workspace = true
 rustok-build.workspace = true
 rustok-tenant.workspace = true
-migration = { path = "../../apps/server/migration" }
+rustok-migrations = { path = "../rustok-migrations" }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

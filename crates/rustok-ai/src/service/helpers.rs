@@ -548,6 +548,7 @@ pub fn publish_ai_run_stream_event(
         content_delta,
         accumulated_content,
         error_message,
+        sequence: 0,
         created_at: Utc::now(),
     });
 }
@@ -736,6 +737,7 @@ pub async fn insert_approval_request(
     operator: &AiOperatorContext,
     session_id: Uuid,
     run_id: Uuid,
+    approval_batch_id: Uuid,
     approval: &PendingApproval,
 ) -> AiResult<ai_approval_requests::Model> {
     ai_approval_requests::ActiveModel {
@@ -743,6 +745,7 @@ pub async fn insert_approval_request(
         tenant_id: Set(operator.tenant_id),
         session_id: Set(session_id),
         run_id: Set(run_id),
+        approval_batch_id: Set(approval_batch_id.to_string()),
         tool_name: Set(approval.tool_name.clone()),
         tool_call_id: Set(approval.tool_call_id.clone()),
         tool_input: Set(approval.input_payload.clone()),

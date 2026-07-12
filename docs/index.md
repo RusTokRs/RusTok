@@ -91,6 +91,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
+- [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, monolith/distributed topology contract and CLI/HTTP adapter boundaries
+
 - [Platform Diagram](./architecture/diagram.md)
 - [Backend Module Guides](./backend/README.md) - target backend module architecture, implementation and verification for `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core`
 - [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`

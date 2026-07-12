@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[features]
+default = []
+# Enables the in-memory EventTransport fallback exclusively for test utility
+# crates. Production builds must use OutboxTransport for transactional writes.
+test-transport-fallback = []
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

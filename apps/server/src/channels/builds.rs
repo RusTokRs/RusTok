@@ -18,7 +18,6 @@ use serde::Serialize;
 use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
-use crate::routes::Routes;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_build::BuildEvent;
@@ -178,7 +177,7 @@ async fn handle_socket(
 
 // ── Route registration ────────────────────────────────────────────────────────
 
-pub fn routes() -> Routes {
+pub fn router() -> crate::routes::ServerRouter {
     use axum::routing::get;
-    Routes::new().prefix("ws").add("/builds", get(ws_builds))
+    axum::Router::new().route("/ws/builds", get(ws_builds))
 }

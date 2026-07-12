@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use chrono::Utc;
+use tokio::sync::watch;
 use rig::{
     agent::{AgentRun, AgentRunStep, InvalidToolCallHookAction, ModelTurn, ModelTurnOutcome},
     completion::Usage,
@@ -43,6 +44,7 @@ impl RigAgentDriver {
         config: &crate::model::AiProviderConfig,
         request: RuntimeRequest,
         stream_emitter: Option<ProviderStreamEmitter>,
+        mut cancellation: Option<watch::Receiver<()>>,
     ) -> AiResult<RuntimeOutcome> {
         let tools = if matches!(request.execution_mode, ExecutionMode::McpTooling) {
             self.tool_policy.apply(self.mcp_client.list_tools().await?)
@@ -70,6 +72,12 @@ impl RigAgentDriver {
         let mut traces = Vec::new();
 
         loop {
+            if cancellation
+                .as_ref()
+                .is_some_and(|receiver| receiver.has_changed().unwrap_or(false))
+            {
+                return Err(AiError::Runtime("AI run cancelled".to_string()));
+            }
             match run
                 .next_step()
                 .map_err(|error| AiError::Runtime(error.to_string()))?
@@ -80,21 +88,27 @@ impl RigAgentDriver {
                     let mut provider_messages =
                         history.into_iter().map(map_rig_message).collect::<Vec<_>>();
                     provider_messages.push(map_rig_message(prompt));
-                    let response = self
-                        .provider
-                        .complete_stream(
-                            config,
-                            ProviderChatRequest {
-                                model: request.model.clone(),
-                                messages: provider_messages,
-                                tools: tools.clone(),
-                                temperature: request.temperature,
-                                max_tokens: request.max_tokens,
-                                locale: request.locale.clone(),
-                            },
-                            stream_emitter.clone(),
-                        )
-                        .await?;
+                    let provider_request = ProviderChatRequest {
+                        model: request.model.clone(),
+                        messages: provider_messages,
+                        tools: tools.clone(),
+                        temperature: request.temperature,
+                        max_tokens: request.max_tokens,
+                        locale: request.locale.clone(),
+                    };
+                    let response = if let Some(receiver) = cancellation.as_mut() {
+                        tokio::select! {
+                            result = self.provider.complete_stream(config, provider_request, stream_emitter.clone()) => result?,
+                            changed = receiver.changed() => {
+                                let _ = changed;
+                                return Err(AiError::Runtime("AI run cancelled".to_string()));
+                            }
+                        }
+                    } else {
+                        self.provider
+                            .complete_stream(config, provider_request, stream_emitter.clone())
+                            .await?
+                    };
                     let assistant = response.assistant_message;
                     let choice = assistant_choice(&assistant)?;
                     appended_messages.push(assistant);
@@ -163,9 +177,9 @@ impl RigAgentDriver {
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let pending_approval = calls
+                    let pending_approvals = calls
                         .iter()
-                        .find(|call| {
+                        .filter(|call| {
                             self.tool_policy
                                 .is_tool_allowed(&call.tool_call.function.name)
                                 && self
@@ -180,19 +194,18 @@ impl RigAgentDriver {
                                 "Tool `{}` requires operator approval before execution",
                                 call.tool_call.function.name
                             ),
-                        });
-                    let pending_sensitive_call_id = pending_approval
-                        .as_ref()
-                        .map(|approval| approval.tool_call_id.clone());
+                        })
+                        .collect::<Vec<_>>();
+                    let pending_sensitive_call_ids = pending_approvals
+                        .iter()
+                        .map(|approval| approval.tool_call_id.as_str())
+                        .collect::<BTreeSet<_>>();
 
                     let mut results = Vec::with_capacity(calls.len());
                     for call in calls {
                         let name = call.tool_call.function.name.clone();
                         let arguments = call.tool_call.function.arguments.clone();
-                        if pending_sensitive_call_id
-                            .as_ref()
-                            .is_some_and(|id| id == &call.tool_call.id)
-                        {
+                        if pending_sensitive_call_ids.contains(call.tool_call.id.as_str()) {
                             continue;
                         }
                         let started = std::time::Instant::now();
@@ -276,11 +289,11 @@ impl RigAgentDriver {
                             }
                         }
                     }
-                    if let Some(pending_approval) = pending_approval {
+                    if !pending_approvals.is_empty() {
                         return Ok(RuntimeOutcome::WaitingApproval {
                             appended_messages,
                             traces,
-                            pending_approval,
+                            pending_approvals,
                         });
                     }
                     run.tool_results(results)
@@ -493,14 +506,15 @@ mod tests {
             ToolExecutionPolicy::new(None, Vec::new(), vec!["publish".to_string()]),
         );
 
-        let outcome = driver.run(&config(), request(), None).await.unwrap();
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
         let RuntimeOutcome::WaitingApproval {
-            pending_approval, ..
+            pending_approvals, ..
         } = outcome
         else {
             panic!("sensitive tool must stop for approval")
         };
-        assert_eq!(pending_approval.tool_name, "publish");
+        assert_eq!(pending_approvals.len(), 1);
+        assert_eq!(pending_approvals[0].tool_name, "publish");
         assert!(mcp.calls.lock().await.is_empty());
     }
 
@@ -538,19 +552,72 @@ mod tests {
             ToolExecutionPolicy::new(None, Vec::new(), vec!["publish".to_string()]),
         );
 
-        let outcome = driver.run(&config(), request(), None).await.unwrap();
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
         let RuntimeOutcome::WaitingApproval {
-            pending_approval,
+            pending_approvals,
             traces,
             ..
         } = outcome
         else {
             panic!("the sensitive tool must wait for approval")
         };
-        assert_eq!(pending_approval.tool_name, "publish");
+        assert_eq!(pending_approvals.len(), 1);
+        assert_eq!(pending_approvals[0].tool_name, "publish");
         assert_eq!(traces.len(), 1);
         assert_eq!(traces[0].tool_name, "notify");
         assert_eq!(mcp.calls.lock().await.as_slice(), ["notify".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn multiple_sensitive_tools_are_returned_as_one_approval_batch() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: None,
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: vec![
+                        ToolCall {
+                            id: "publish-1".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({"id": "draft-1"}),
+                        },
+                        ToolCall {
+                            id: "notify-1".to_string(),
+                            name: "notify".to_string(),
+                            arguments: serde_json::json!({"channel": "operator"}),
+                        },
+                    ],
+                    metadata: serde_json::Value::Null,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                raw_payload: serde_json::Value::Null,
+            }])),
+        });
+        let mcp = Arc::new(RecordingMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp.clone(),
+            ToolExecutionPolicy::new(
+                None,
+                Vec::new(),
+                vec!["publish".to_string(), "notify".to_string()],
+            ),
+        );
+
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+        let RuntimeOutcome::WaitingApproval {
+            pending_approvals,
+            traces,
+            ..
+        } = outcome
+        else {
+            panic!("sensitive tools must wait as one batch")
+        };
+        assert_eq!(pending_approvals.len(), 2);
+        assert!(traces.is_empty());
+        assert!(mcp.calls.lock().await.is_empty());
     }
 
     #[tokio::test]
@@ -594,7 +661,7 @@ mod tests {
             ToolExecutionPolicy::new(None, vec!["publish".to_string()], Vec::new()),
         );
 
-        let outcome = driver.run(&config(), request(), None).await.unwrap();
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
         let RuntimeOutcome::Completed {
             appended_messages,
             traces,
@@ -658,7 +725,7 @@ mod tests {
             ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
         );
 
-        let outcome = driver.run(&config(), request(), None).await.unwrap();
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
         let RuntimeOutcome::Completed { traces, .. } = outcome else {
             panic!("allowed multi-tool turn should complete")
         };
@@ -739,5 +806,26 @@ mod tests {
             mcp.calls.lock().await.as_slice(),
             ["publish", "publish", "publish"]
         );
+    }
+
+    #[tokio::test]
+    async fn cancellation_stops_before_the_next_provider_call() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::new()),
+        });
+        let mcp = Arc::new(RecordingMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp,
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+        let (sender, receiver) = tokio::sync::watch::channel(());
+        sender.send(()).unwrap();
+
+        let error = driver
+            .run(&config(), request(), None, Some(receiver))
+            .await
+            .expect_err("cancelled run must not invoke the provider");
+        assert!(error.to_string().contains("cancelled"));
     }
 }

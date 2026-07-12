@@ -6,8 +6,6 @@ pub mod flex_entries;
 pub mod flex_entry_localized_values;
 pub mod flex_schema_translations;
 pub mod flex_schemas;
-pub mod install_session;
-pub mod install_step_receipt;
 pub mod mcp_audit_logs;
 pub mod mcp_clients;
 pub mod mcp_policies;
@@ -39,8 +37,6 @@ pub mod users;
 
 pub use flex_attached_localized_values::Entity as FlexAttachedLocalizedValues;
 pub use flex_entry_localized_values::Entity as FlexEntryLocalizedValues;
-pub use install_session::Entity as InstallSession;
-pub use install_step_receipt::Entity as InstallStepReceipt;
 pub use registry_governance_event::Entity as RegistryGovernanceEvent;
 pub use registry_module_owner::Entity as RegistryModuleOwner;
 pub use registry_module_release::Entity as RegistryModuleRelease;

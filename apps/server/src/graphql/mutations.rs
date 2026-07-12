@@ -887,7 +887,7 @@ mod tests {
     };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use async_graphql::ErrorExtensions;
-    use migration::Migrator;
+    use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         entity::prelude::DateTimeWithTimeZone, ActiveModelTrait, DatabaseConnection, Set,

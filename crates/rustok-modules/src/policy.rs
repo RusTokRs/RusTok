@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
-use rustok_core::ModuleRegistry;
 use thiserror::Error;
+
+use crate::{ModuleDefinitionCatalog, ModuleDefinitionKind};
 
 /// A persisted tenant-level module enablement override.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,19 +24,19 @@ pub enum ModuleToggleValidationError {
 }
 
 /// Validates a requested module enablement change against the effective module
-/// set and registry topology. Persistence, operation journaling and lifecycle
+/// set and definition topology. Persistence, operation journaling and lifecycle
 /// hooks are intentionally outside this owner policy function.
 pub fn validate_module_toggle(
-    registry: &ModuleRegistry,
+    catalog: &ModuleDefinitionCatalog,
     enabled_modules: &HashSet<String>,
     module_slug: &str,
     enabled: bool,
 ) -> Result<(), ModuleToggleValidationError> {
-    let Some(module) = registry.get(module_slug) else {
+    let Some(module) = catalog.get(module_slug) else {
         return Err(ModuleToggleValidationError::UnknownModule);
     };
 
-    if !enabled && registry.is_core(module.slug()) {
+    if !enabled && module.kind == ModuleDefinitionKind::Core {
         return Err(ModuleToggleValidationError::CoreModuleCannotBeDisabled(
             module_slug.to_string(),
         ));
@@ -43,21 +44,25 @@ pub fn validate_module_toggle(
 
     if enabled {
         let missing = module
-            .dependencies()
+            .dependencies
             .iter()
-            .filter(|dependency| !enabled_modules.contains(**dependency))
-            .map(|dependency| (*dependency).to_string())
+            .filter(|dependency| !enabled_modules.contains(*dependency))
+            .cloned()
             .collect::<Vec<_>>();
         if !missing.is_empty() {
             return Err(ModuleToggleValidationError::MissingDependencies(missing));
         }
     } else {
-        let dependents = registry
-            .list()
-            .into_iter()
-            .filter(|candidate| enabled_modules.contains(candidate.slug()))
-            .filter(|candidate| candidate.dependencies().contains(&module_slug))
-            .map(|candidate| candidate.slug().to_string())
+        let dependents = catalog
+            .definitions()
+            .filter(|candidate| enabled_modules.contains(&candidate.slug))
+            .filter(|candidate| {
+                candidate
+                    .dependencies
+                    .iter()
+                    .any(|dependency| dependency == module_slug)
+            })
+            .map(|candidate| candidate.slug.clone())
             .collect::<Vec<_>>();
         if !dependents.is_empty() {
             return Err(ModuleToggleValidationError::HasDependents(dependents));
@@ -75,31 +80,30 @@ pub fn validate_module_toggle(
 /// Optional modules. Database and manifest loading deliberately remain outside
 /// this pure owner policy function.
 pub fn resolve_effective_modules(
-    registry: &ModuleRegistry,
+    catalog: &ModuleDefinitionCatalog,
     default_enabled: impl IntoIterator<Item = String>,
     tenant_overrides: impl IntoIterator<Item = TenantModuleOverride>,
 ) -> HashSet<String> {
-    let mut enabled = registry
-        .list()
-        .into_iter()
-        .filter(|module| registry.is_core(module.slug()))
-        .map(|module| module.slug().to_string())
+    let mut enabled = catalog
+        .definitions()
+        .filter(|definition| definition.kind == ModuleDefinitionKind::Core)
+        .map(|definition| definition.slug.clone())
         .collect::<HashSet<_>>();
 
     for slug in default_enabled {
-        if registry
+        if catalog
             .get(&slug)
-            .is_some_and(|module| !registry.is_core(module.slug()))
+            .is_some_and(|definition| definition.kind == ModuleDefinitionKind::Optional)
         {
             enabled.insert(slug);
         }
     }
 
     for module in tenant_overrides {
-        let Some(registered) = registry.get(&module.module_slug) else {
+        let Some(definition) = catalog.get(&module.module_slug) else {
             continue;
         };
-        if registry.is_core(registered.slug()) {
+        if definition.kind == ModuleDefinitionKind::Core {
             continue;
         }
         if module.enabled {
@@ -114,15 +118,18 @@ pub fn resolve_effective_modules(
 
 #[cfg(test)]
 mod tests {
-    use super::{TenantModuleOverride, resolve_effective_modules};
-    use crate::ModulesModule;
+    use super::{resolve_effective_modules, TenantModuleOverride};
+    use crate::{ModuleDefinitionCatalog, ModulesModule};
     use rustok_core::ModuleRegistry;
 
     #[test]
     fn core_is_immutable_and_overrides_require_registered_optional_modules() {
-        let registry = ModuleRegistry::new().register(ModulesModule);
+        let catalog = ModuleDefinitionCatalog::from_static_registry(
+            &ModuleRegistry::new().register(ModulesModule),
+        )
+        .expect("catalog");
         let enabled = resolve_effective_modules(
-            &registry,
+            &catalog,
             ["modules".to_string(), "missing".to_string()],
             [
                 TenantModuleOverride {

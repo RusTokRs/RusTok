@@ -1,4 +1,4 @@
-# Dockerfile for RusToK Server (Loco backend)
+# Dockerfile for the RusToK Axum server
 # Supports both development and production builds
 
 # ============================================================================
@@ -66,10 +66,9 @@ RUN apt-get update && apt-get install -y \
 # Copy built binary
 COPY --from=builder /app/target/release/rustok-server /app/rustok-server
 
-# Copy migrations and config
-COPY apps/server/migration ./migration
+# Copy host configuration
 COPY apps/server/config ./config
 
 EXPOSE 5150
 
-CMD ["./rustok-server", "start"]
+CMD ["./rustok-server"]

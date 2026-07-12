@@ -2,22 +2,25 @@
 
 ## Current state
 
-`rustok-ai` is the capability-owned AI host/orchestrator. It uses Rig 0.39 through a
-single registry-driven engine; task-profile
-routing; direct first-party and MCP execution; persisted sessions, runs,
-traces, and approvals; GraphQL; and capability-owned Leptos and Next admin
-surfaces. The detailed supported scope is maintained in the crate README.
+`rustok-ai` is the capability-owned AI host/orchestrator. Rig 0.39 is the only
+inference path for chat, streaming, tools, typed output, images, embeddings,
+and reranking. RusToK keeps tenancy, RBAC, routing, policy, approvals,
+persistence, traces, GraphQL/native transport, and first-party domain
+operations at this boundary.
 
-The Rig cutover is owner-contained: provider profiles persist a stable
-`provider_slug`, typed settings and external `credential_refs`; `ProviderSlug`,
-the catalog and `ProviderFeature` prevent provider drift; and `rustok-secrets`
-resolves tenant-authorized external secrets. `AiMigrationSource` is exported by
-this crate for module-registry composition. No AI implementation or provider
-knowledge belongs in `apps/server`.
+The active repair wave moves connectivity from tenant-owned profile settings to
+deployment-owned `AiProviderTargetCatalog` entries. A profile selects a stable
+target id, model, policy, and permitted external credential references; it
+never supplies an endpoint, cloud project/region/identity, or plaintext
+secret. The catalog remains locked to
+`contracts/rig-0.39-provider-catalog.json`; updating Rig or adding a provider
+requires an intentional snapshot change and factory evidence.
 
-The catalog is locked to
-`contracts/rig-0.39-provider-catalog.json`. Updating Rig or adding a provider
-requires an intentional snapshot change and the catalog factory test to pass.
+`apps/server` still contains legacy direct AI runtime construction. That is a
+platform-owned prerequisite, not a `rustok-ai` implementation concern: the
+target is a generic manifest/runtime contribution contract with no AI-specific
+imports in the host. The capability must not be marked boundary-complete until
+the platform owner removes that coupling.
 
 ## FFA/FBA readiness
 
@@ -36,35 +39,33 @@ requires an intentional snapshot change and the catalog factory test to pass.
   `scripts/verify/verify-orchestrator-fba-runtime-order.mjs`. Domain support
   ownership is checked by `scripts/verify/verify-ai-domain-verticals.mjs`.
 
-## Next results
+## Delivery status and next results
 
-1. **Complete the remaining host-boundary extraction.** Move any AI-specific
-   runtime, transport, or policy artifact still owned by `apps/server` to its
-   capability or support-crate owner, leaving server composition adapters
-   only. Done when the FFA boundary verifier and the FBA registry identify no
-   AI capability implementation under the host.
-2. **Make routing decisions actionable in persisted diagnostics.** Persist and
-   expose the selected provider, rejected candidates, and fallback reason with
-   bounded retention in both admin surfaces. Done when an operator can explain
-   a failed or fallback run without inspecting process-local metrics.
-3. **Obtain live transport evidence.** Exercise provider streaming, direct
-   execution, approval, and GraphQL/native admin paths against an available
-   runtime environment. Done when the evidence package covers normal and
-   degraded execution without replacing the parallel GraphQL contract.
-4. **Complete Rig cutover evidence.** Maintain catalog factory tests, migration
-   preflight tests, secret-resolver contract tests and opt-in provider live
-   connectivity tests for every descriptor. Product vector-store schema and
-   RAG UI remain outside this implementation wave.
+| Work item | Status | Completion evidence |
+|---|---|---|
+| Rig-only inference cutover and provider snapshot | `in_progress` | Registry/factory parity, protocol cassettes, and opt-in live checks for every declared integration. |
+| Deployment-owned provider targets | `in_progress` | `ProviderTargetId`, deployment catalog, GraphQL/native/Next target selection, and the irreversible profile migration are implemented. Still required: deployment configuration fixtures and rejection/parity tests for every non-catalogued target. |
+| Secret boundary | `in_progress` | Resolver policy, rotation invalidation, resolver emulator tests, and no secret values in transport/telemetry. |
+| Agent approvals and restart | `in_progress` | A model turn now persists a durable `approval_batch_id` for all sensitive calls and claims each approval with compare-and-set. Still required: failure-recovery transaction coverage and persisted-history restart evidence. |
+| Streaming/cancellation | `in_progress` | Cancellation tokens, `cancelled` state, per-run monotonic event sequences, and hub-side duplicate-terminal suppression are implemented. Still required: Rig usage/tool-call event mapping and cassette coverage. |
+| Generic host contribution | `blocked_platform` | Platform-owned manifest/runtime extension removes direct AI imports and construction from `apps/server`. |
+| Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
 
-Rig agent recovery does not execute unknown or policy-denied tool calls. It
-persists a synthetic skipped tool result and lets the model finish the turn;
-sensitive calls remain explicit approval boundaries. Both an approval and a
-rejection are persisted as a canonical tool result before the run is restored:
-the rejection never invokes the tool, while approval is rechecked against the
-current execution policy immediately before invocation.
-The execution driver repeats policy enforcement immediately before every MCP
-call, including multi-tool turns, so provider output cannot bypass the
-advertised-tool filter.
+The current wave has replaced tenant-facing provider settings with a deployment
+target selector in the new contract and transport forms. The migration rejects
+legacy custom endpoints rather than silently converting them: an operator must
+first create the named deployment target. A target owns endpoint and cloud
+settings; `SecretRef` remains the only tenant-controlled connection input,
+constrained by the server-owned resolver policy. The remaining registry repair
+is to make the factory dispatch the sole typed integration source instead of
+relying on parallel catalog/factory matching.
+
+Rig agent recovery never executes unknown or policy-denied tool calls. It
+persists a synthetic skipped result and lets the model finish the turn. A
+sensitive model turn is represented as one approval batch: non-sensitive
+allowed results are persisted immediately, each sensitive call is independently
+approved or rejected, and the run is restored only when the batch is complete.
+The final policy check occurs immediately before an approved MCP invocation.
 
 ## Verification
 
@@ -75,6 +76,8 @@ advertised-tool filter.
 - `cargo test -p rustok-ai --features server migrations::m20260710_000001_rig_provider_profiles::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::agent_driver::tests -- --nocapture`
 - `cargo test -p rustok-secrets`
+- `cargo test -p rustok-ai --features server,graphql --lib`
+- Next admin typecheck/lint and Leptos native/GraphQL target-catalog parity tests
 
 ## References
 

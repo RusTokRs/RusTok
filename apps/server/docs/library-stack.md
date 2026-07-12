@@ -10,7 +10,7 @@ This document establishes the **core backend stack libraries** in `apps/server` 
 |---|---|---|
 | `loco-rs` | Backend framework, bootstrap app, env/config/runtime conventions | `apps/server/src/app.rs`, `apps/server/src/main.rs`, `apps/server/docs/loco/` |
 | `axum` | HTTP routing, handlers, middleware integration | `apps/server/src/controllers/**`, `apps/server/src/middleware/**` |
-| `sea-orm` | ORM, entities, queries, migrations | `apps/server/src/models/**`, `apps/server/migration/**` |
+| `sea-orm` | ORM, entities, queries, migrations | `apps/server/src/models/**`, `crates/rustok-migrations/**` |
 | `async-graphql` | GraphQL schema/query/mutation/resolvers | `apps/server/src/graphql/**` |
 | `tokio` | Async runtime for I/O and background tasks | server entry point and async services in `apps/server/src/**` |
 | `serde` / `serde_json` | (De)serialization for API, configs and payload | DTO/response/request structures in `apps/server/src/**` |

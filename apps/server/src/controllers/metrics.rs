@@ -1,4 +1,3 @@
-use crate::routes::Routes;
 use axum::{
     extract::State,
     http::{header::CONTENT_TYPE, StatusCode},
@@ -87,8 +86,8 @@ pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response
     }
 }
 
-pub fn routes() -> Routes {
-    Routes::new().prefix("metrics").add("/", get(metrics))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new().route("/metrics/", get(metrics))
 }
 
 async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {

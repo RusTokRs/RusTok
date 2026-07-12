@@ -16,6 +16,7 @@ use crate::models::platform_state::{
 use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
 use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService, ModuleSpec};
+use rustok_modules::ModuleDefinitionError;
 
 pub const ACTIVE_PLATFORM_STATE_ID: &str = "active";
 
@@ -28,6 +29,8 @@ pub struct PlatformCompositionSnapshot {
 
 #[derive(Debug, Error)]
 pub enum PlatformCompositionError {
+    #[error(transparent)]
+    Definition(#[from] ModuleDefinitionError),
     #[error(transparent)]
     Database(#[from] DbErr),
     #[error(transparent)]

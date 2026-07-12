@@ -1183,7 +1183,7 @@ mod tests {
     use crate::models::oauth_consents;
     use crate::models::oauth_tokens;
     use crate::models::tenants;
-    use migration::Migrator;
+    use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,

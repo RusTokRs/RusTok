@@ -1,4 +1,3 @@
-use crate::routes::Routes;
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
@@ -599,25 +598,27 @@ async fn apply_scaffold_draft(
     Ok(Json(map_scaffold_draft(draft)))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/mcp")
-        .add("/runtime/bootstrap", post(bootstrap_remote_session))
-        .add("/runtime/tools/call", post(call_remote_tool))
-        .add("/runtime/tools/stream", post(stream_remote_tool))
-        .add("/clients", get(list_clients).post(create_client))
-        .add("/clients/{id}", get(get_client))
-        .add("/clients/{id}/rotate-token", post(rotate_token))
-        .add("/clients/{id}/policy", put(update_policy))
-        .add("/clients/{id}/deactivate", post(deactivate_client))
-        .add("/tokens/{id}/revoke", post(revoke_token_by_id))
-        .add(
-            "/scaffold-drafts",
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/api/mcp/runtime/bootstrap", post(bootstrap_remote_session))
+        .route("/api/mcp/runtime/tools/call", post(call_remote_tool))
+        .route("/api/mcp/runtime/tools/stream", post(stream_remote_tool))
+        .route("/api/mcp/clients", get(list_clients).post(create_client))
+        .route("/api/mcp/clients/{id}", get(get_client))
+        .route("/api/mcp/clients/{id}/rotate-token", post(rotate_token))
+        .route("/api/mcp/clients/{id}/policy", put(update_policy))
+        .route("/api/mcp/clients/{id}/deactivate", post(deactivate_client))
+        .route("/api/mcp/tokens/{id}/revoke", post(revoke_token_by_id))
+        .route(
+            "/api/mcp/scaffold-drafts",
             get(list_scaffold_drafts).post(stage_scaffold_draft),
         )
-        .add("/scaffold-drafts/{id}", get(get_scaffold_draft))
-        .add("/scaffold-drafts/{id}/apply", post(apply_scaffold_draft))
-        .add("/audit", get(list_audit_events))
+        .route("/api/mcp/scaffold-drafts/{id}", get(get_scaffold_draft))
+        .route(
+            "/api/mcp/scaffold-drafts/{id}/apply",
+            post(apply_scaffold_draft),
+        )
+        .route("/api/mcp/audit", get(list_audit_events))
 }
 
 fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {

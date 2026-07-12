@@ -105,7 +105,7 @@ fi
 # ─── 4. Миграции: каждая domain-таблица имеет tenant_id column ───
 header "4. Миграции: tenant_id column в domain таблицах"
 
-MIGRATION_DIR="apps/server/migration/src"
+MIGRATION_DIR="crates/rustok-migrations/src"
 if [[ -d "$MIGRATION_DIR" ]]; then
     # Find create_table calls and check for tenant_id
     migration_files=$(find "$MIGRATION_DIR" -name "*.rs" -not -name "lib.rs" | sort)

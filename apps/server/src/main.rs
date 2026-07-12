@@ -8,9 +8,6 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use loco_rs::cli;
-use migration::Migrator;
-use rustok_server::app::App;
 use rustok_telemetry::{LogFormat, TelemetryConfig};
 
 #[tokio::main]
@@ -20,17 +17,9 @@ async fn main() -> eyre::Result<()> {
     let _telemetry = if has_otel {
         rustok_telemetry::init(telemetry_cfg)?
     } else {
-        // Loco owns the global tracing subscriber for CLI commands.
         rustok_telemetry::init_metrics(telemetry_cfg.metrics)?
     };
-    let args = std::env::args().collect::<Vec<_>>();
-    if rustok_server::installer_cli::try_handle(&args).await? {
-        if has_otel {
-            rustok_telemetry::otel::shutdown().await;
-        }
-        return Ok(());
-    }
-    let result = cli::main::<App, Migrator>().await;
+    let result = rustok_server::host::run().await;
     if has_otel {
         rustok_telemetry::otel::shutdown().await;
     }

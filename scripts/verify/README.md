@@ -139,7 +139,7 @@ Unit guardrail for the verifier itself: `node scripts/verify/verify-ecommerce-fb
 What it does:
 - creates a temporary PostgreSQL database via `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` inside a Rust integration test, without depending on local `psql`;
 - runs the ignored integration test `postgres_zero_migration_smoke_applies_from_empty_database`;
-- applies `migration::Migrator` from scratch and checks that no pending migrations remain;
+- applies `rustok_migrations::Migrator` from scratch and checks that no pending migrations remain;
 - when `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`, applies migrations one by one to separately check the incremental apply path; the shell script and Rust test both accept only `0`/`1`, so direct test runs do not bypass this validation;
 - checks for representative platform/module tables (`tenants`, `product_variants`, `prices`, `inventory_items`, `channels`, `oauth_apps`, `blog_post_tags`, `forum_topic_tags`, `taxonomy_terms`);
 - drops the temporary database from the Rust test, unless `RUSTOK_MIGRATION_SMOKE_KEEP_DB=1` is set.

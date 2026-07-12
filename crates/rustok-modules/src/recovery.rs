@@ -1,13 +1,12 @@
 use std::collections::HashSet;
 
-use rustok_core::ModuleRegistry;
 use sea_orm::DatabaseConnection;
 use thiserror::Error;
 
 use crate::{
-    ModuleLifecycleHookPhase, ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
-    ModuleOperationRecoveryAction, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStatus, run_module_lifecycle_hook,
+    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationIssue,
+    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryAction,
+    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
 };
 
 /// Transport-neutral recovery view of a failed lifecycle operation.
@@ -120,7 +119,7 @@ pub async fn failed_module_operation_recovery_plans(
 
 pub async fn retry_failed_post_hook_operation(
     db: &DatabaseConnection,
-    registry: &ModuleRegistry,
+    dispatcher: &ModuleExecutionDispatcher<'_>,
     request: ModulePostHookRetryRequest,
 ) -> Result<ModuleOperationRecord, ModuleOperationRecoveryError> {
     let plan = module_operation_recovery_plan(db, request.operation_id).await?;
@@ -129,7 +128,7 @@ pub async fn retry_failed_post_hook_operation(
             plan.issue.to_string(),
         ));
     }
-    if registry.get(&plan.module_slug).is_none() {
+    if dispatcher.catalog().get(&plan.module_slug).is_none() {
         return Err(ModuleOperationRecoveryError::NotRetryable(
             "unknown_module".to_string(),
         ));
@@ -166,15 +165,15 @@ pub async fn retry_failed_post_hook_operation(
     } else {
         ModuleLifecycleHookPhase::PostDisable
     };
-    if let Err(error) = run_module_lifecycle_hook(
-        registry,
-        db,
-        plan.tenant_id,
-        &plan.module_slug,
-        &request.current_settings,
-        phase,
-    )
-    .await
+    if let Err(error) = dispatcher
+        .dispatch_lifecycle(
+            db,
+            plan.tenant_id,
+            &plan.module_slug,
+            &request.current_settings,
+            phase,
+        )
+        .await
     {
         let message = error.to_string();
         ModuleOperationJournal::mark_failed(db, operation.id, &format!("post-hook: {message}"))

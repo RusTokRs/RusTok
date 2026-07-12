@@ -3,12 +3,10 @@ use std::collections::HashSet;
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
-use rustok_core::ModuleRegistry;
-
 use crate::{
-    ModuleLifecycleHookPhase, ModuleOperationJournal, ModuleOperationRequest,
-    ModuleToggleValidationError, TenantModuleStateRecord, TenantModuleStateRequest,
-    TenantModuleStateStore, run_module_lifecycle_hook, validate_module_toggle,
+    validate_module_toggle, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+    ModuleOperationJournal, ModuleOperationRequest, ModuleToggleValidationError,
+    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
 };
 
 #[derive(Clone, Debug)]
@@ -41,11 +39,11 @@ pub enum ModuleLifecycleExecutionError {
 
 pub async fn execute_module_toggle(
     db: &DatabaseConnection,
-    registry: &ModuleRegistry,
+    dispatcher: &ModuleExecutionDispatcher<'_>,
     request: ModuleLifecycleToggleRequest,
 ) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
     validate_module_toggle(
-        registry,
+        dispatcher.catalog(),
         &request.effective_enabled_modules,
         &request.module_slug,
         request.enabled,
@@ -93,15 +91,15 @@ pub async fn execute_module_toggle(
     } else {
         ModuleLifecycleHookPhase::PreDisable
     };
-    if let Err(error) = run_module_lifecycle_hook(
-        registry,
-        db,
-        request.tenant_id,
-        &request.module_slug,
-        &request.current_settings,
-        pre_phase,
-    )
-    .await
+    if let Err(error) = dispatcher
+        .dispatch_lifecycle(
+            db,
+            request.tenant_id,
+            &request.module_slug,
+            &request.current_settings,
+            pre_phase,
+        )
+        .await
     {
         let message = error.to_string();
         ModuleOperationJournal::mark_failed(db, operation.id, &message)
@@ -144,15 +142,15 @@ pub async fn execute_module_toggle(
     } else {
         ModuleLifecycleHookPhase::PostDisable
     };
-    if let Err(error) = run_module_lifecycle_hook(
-        registry,
-        db,
-        request.tenant_id,
-        &request.module_slug,
-        &request.current_settings,
-        post_phase,
-    )
-    .await
+    if let Err(error) = dispatcher
+        .dispatch_lifecycle(
+            db,
+            request.tenant_id,
+            &request.module_slug,
+            &request.current_settings,
+            post_phase,
+        )
+        .await
     {
         let message = error.to_string();
         let journal_message = format!("post-hook: {message}");

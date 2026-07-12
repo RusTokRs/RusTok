@@ -63,6 +63,85 @@ impl AsRef<str> for ProviderSlug {
     }
 }
 
+/// Closed set of Rig integrations compiled into this capability.
+///
+/// Provider slugs are persisted/public strings; this enum is the internal
+/// dispatch key used by every Rig factory. Adding a slug therefore requires an
+/// explicit compiler-checked factory branch.
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderIntegration {
+    OpenAi,
+    OpenAiCompatible,
+    Anthropic,
+    AzureOpenAi,
+    ChatGpt,
+    GithubCopilot,
+    Cohere,
+    DeepSeek,
+    Galadriel,
+    Gemini,
+    Groq,
+    HuggingFace,
+    Hyperbolic,
+    Llamafile,
+    MiniMax,
+    Mira,
+    Mistral,
+    Moonshot,
+    Ollama,
+    OpenRouter,
+    Perplexity,
+    Together,
+    VoyageAi,
+    Xai,
+    XiaomiMimo,
+    Zai,
+    AwsBedrock,
+    VertexAi,
+    GeminiGrpc,
+    Fastembed,
+}
+
+#[cfg(feature = "server")]
+impl ProviderIntegration {
+    pub(crate) fn from_slug(slug: &ProviderSlug) -> Option<Self> {
+        Some(match slug.as_str() {
+            "openai" => Self::OpenAi,
+            "openai_compatible" => Self::OpenAiCompatible,
+            "anthropic" => Self::Anthropic,
+            "azure_openai" => Self::AzureOpenAi,
+            "chatgpt" => Self::ChatGpt,
+            "github_copilot" => Self::GithubCopilot,
+            "cohere" => Self::Cohere,
+            "deepseek" => Self::DeepSeek,
+            "galadriel" => Self::Galadriel,
+            "gemini" => Self::Gemini,
+            "groq" => Self::Groq,
+            "hugging_face" => Self::HuggingFace,
+            "hyperbolic" => Self::Hyperbolic,
+            "llamafile" => Self::Llamafile,
+            "minimax" => Self::MiniMax,
+            "mira" => Self::Mira,
+            "mistral" => Self::Mistral,
+            "moonshot" => Self::Moonshot,
+            "ollama" => Self::Ollama,
+            "openrouter" => Self::OpenRouter,
+            "perplexity" => Self::Perplexity,
+            "together" => Self::Together,
+            "voyage_ai" => Self::VoyageAi,
+            "xai" => Self::Xai,
+            "xiaomi_mimo" => Self::XiaomiMimo,
+            "zai" => Self::Zai,
+            "aws_bedrock" => Self::AwsBedrock,
+            "vertex_ai" => Self::VertexAi,
+            "gemini_grpc" => Self::GeminiGrpc,
+            "fastembed" => Self::Fastembed,
+            _ => return None,
+        })
+    }
+}
+
 /// Stable deployment-owned connection identifier.
 ///
 /// Tenant records may select this value, but never supply the endpoint or
@@ -524,38 +603,9 @@ pub fn provider_catalog_entry(slug: &ProviderSlug) -> Option<&'static ProviderCa
 
 #[cfg(feature = "server")]
 pub fn provider_factory_supports(slug: &ProviderSlug, feature: ProviderFeature) -> bool {
-    match feature {
-        ProviderFeature::Chat
-        | ProviderFeature::Streaming
-        | ProviderFeature::Tools
-        | ProviderFeature::StructuredOutput => !matches!(slug.as_str(), "voyage_ai" | "fastembed"),
-        ProviderFeature::Embeddings => matches!(
-            slug.as_str(),
-            "openai"
-                | "openai_compatible"
-                | "azure_openai"
-                | "github_copilot"
-                | "cohere"
-                | "gemini"
-                | "llamafile"
-                | "mistral"
-                | "ollama"
-                | "openrouter"
-                | "together"
-                | "voyage_ai"
-                | "aws_bedrock"
-                | "gemini_grpc"
-                | "fastembed"
-        ),
-        ProviderFeature::Rerank => slug.as_str() == "voyage_ai",
-        ProviderFeature::Image => matches!(
-            slug.as_str(),
-            "openai" | "openai_compatible" | "gemini" | "hugging_face" | "xai" | "aws_bedrock"
-        ),
-        ProviderFeature::Audio | ProviderFeature::Transcription | ProviderFeature::Multimodal => {
-            false
-        }
-    }
+    ProviderIntegration::from_slug(slug).is_some()
+        && provider_catalog_entry(slug)
+            .is_some_and(|entry| entry.features.contains(&feature))
 }
 
 #[cfg(test)]
@@ -632,6 +682,11 @@ mod tests {
     fn every_compiled_descriptor_has_a_linked_factory_for_each_declared_feature() {
         for entry in provider_catalog().iter().filter(|entry| entry.compiled_in) {
             let slug = ProviderSlug::new(entry.slug).unwrap();
+            assert!(
+                ProviderIntegration::from_slug(&slug).is_some(),
+                "{} is catalogued without a typed integration dispatch key",
+                entry.slug
+            );
             for feature in entry.features {
                 assert!(
                     provider_factory_supports(&slug, *feature),

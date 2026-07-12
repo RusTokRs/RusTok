@@ -9,7 +9,6 @@ use utoipa::OpenApi;
 
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
-use crate::routes::Routes;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(OpenApi)]
@@ -206,10 +205,10 @@ pub async fn openapi_yaml(State(ctx): State<ServerRuntimeContext>) -> Result<Res
         .into_response())
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .add("/api/openapi.json", get(openapi_json))
-        .add("/api/openapi.yaml", get(openapi_yaml))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/api/openapi.json", get(openapi_json))
+        .route("/api/openapi.yaml", get(openapi_yaml))
 }
 
 pub struct SecurityAddon;

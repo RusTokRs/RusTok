@@ -15,7 +15,7 @@ It does not replace migrations, entities and local docs of modules.
 
 Canonical source of truth for DB structure:
 
-- migrations in `apps/server/migration` and module-owned migration sources
+- migrations in `rustok-migrations` and module-owned migration sources
 - SeaORM entities in `apps/server/src/models/_entities` and module crates
 - local docs of modules for module-owned storage contracts
 

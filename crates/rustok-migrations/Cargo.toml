@@ -1,0 +1,45 @@
+[package]
+
+name = "rustok-migrations"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description.workspace = true
+
+[dependencies]
+rustok-api.workspace = true
+sea-orm-migration.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+# Platform-core dependencies
+rustok-core.workspace = true
+# Module crates — each owns its own migration files
+alloy.workspace = true
+rustok-auth.workspace = true
+rustok-channel.workspace = true
+rustok-cart.workspace = true
+rustok-customer.workspace = true
+rustok-product.workspace = true
+rustok-region.workspace = true
+rustok-pricing.workspace = true
+rustok-inventory.workspace = true
+rustok-order.workspace = true
+rustok-payment.workspace = true
+rustok-fulfillment.workspace = true
+rustok-commerce.workspace = true
+rustok-content.workspace = true
+rustok-blog.workspace = true
+rustok-comments.workspace = true
+rustok-pages.workspace = true
+rustok-seo.workspace = true
+rustok-forum.workspace = true
+rustok-index.workspace = true
+rustok-search.workspace = true
+rustok-taxonomy.workspace = true
+rustok-workflow.workspace = true
+
+[dev-dependencies]
+rust_decimal.workspace = true
+rustok-test-utils.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

@@ -13,7 +13,7 @@ rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-content = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }
-rustok-outbox.workspace = true
+rustok-outbox = { workspace = true, features = ["test-transport-fallback"] }
 sea-orm = { workspace = true, features = ["sqlx-sqlite"] }
 sea-orm-migration = { workspace = true, features = ["sqlx-sqlite"] }
 serde.workspace = true

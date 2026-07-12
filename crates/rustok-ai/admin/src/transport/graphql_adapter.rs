@@ -37,13 +37,14 @@ query AiBootstrap {
     credentialSchema { key label kind required }
     defaultSettings { key value }
   }
+  aiProviderTargets { id providerSlug displayName }
   aiProviderProfiles {
     id
     slug
     displayName
     providerSlug
+    providerTargetId
     model
-    settings { key textValue integerValue booleanValue }
     credentialRefs { key resolver secretKey }
     temperature
     maxTokens
@@ -84,6 +85,7 @@ query AiBootstrap {
     contentDelta
     accumulatedContent
     errorMessage
+    sequence
     createdAt
   }
 }
@@ -94,8 +96,7 @@ query AiSession($id: UUID!) {
   aiChatSession(id: $id) {
     session { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
     providerProfile {
-      id slug displayName providerSlug model temperature maxTokens hasCredentials isActive capabilities
-      settings { key textValue integerValue booleanValue }
+      id slug displayName providerSlug providerTargetId model temperature maxTokens hasCredentials isActive capabilities
       credentialRefs { key resolver secretKey }
       usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
     }
@@ -104,7 +105,7 @@ query AiSession($id: UUID!) {
     messages { id role content }
     runs { id taskProfileId status model executionMode executionPath requestedLocale resolvedLocale errorMessage decisionTrace }
     toolTraces { toolName status durationMs }
-    approvals { id toolName reason status }
+    approvals { id approvalBatchId toolName reason status }
   }
   aiRecentRunStreamEvents(sessionId: $id, limit: 20) {
     sessionId
@@ -113,6 +114,7 @@ query AiSession($id: UUID!) {
     contentDelta
     accumulatedContent
     errorMessage
+    sequence
     createdAt
   }
 }
@@ -127,6 +129,7 @@ subscription AiSessionEvents($sessionId: UUID!) {
     contentDelta
     accumulatedContent
     errorMessage
+    sequence
     createdAt
   }
 }

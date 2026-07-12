@@ -24,13 +24,9 @@ struct ModuleSpec {
     #[serde(default)]
     graphql_mutation_type: Option<String>,
     #[serde(default)]
-    http_routes_fn: Option<String>,
-    #[serde(default)]
     http_axum_router_fn: Option<String>,
     #[serde(default)]
     http_axum_webhook_router_fn: Option<String>,
-    #[serde(default)]
-    http_webhook_routes_fn: Option<String>,
 }
 
 #[derive(Debug)]
@@ -39,10 +35,8 @@ struct OptionalModuleEntry {
     module_expr: Option<String>,
     graphql_query_expr: Option<String>,
     graphql_mutation_expr: Option<String>,
-    routes_expr: Option<String>,
     axum_router_expr: Option<String>,
     axum_webhook_router_expr: Option<String>,
-    extra_route_exprs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -78,13 +72,9 @@ struct ModulePackageGraphqlProvides {
 #[derive(Debug, Deserialize, Default)]
 struct ModulePackageHttpProvides {
     #[serde(default)]
-    routes: Option<String>,
-    #[serde(default)]
     axum_router: Option<String>,
     #[serde(default)]
     axum_webhook_router: Option<String>,
-    #[serde(default)]
-    webhook_routes: Option<String>,
 }
 
 fn main() {
@@ -207,40 +197,13 @@ fn build_optional_module_entry(
         .clone()
         .map(|value| format!("{value}(runtime)"));
 
-    let routes_expr = spec
-        .http_routes_fn
-        .clone()
-        .map(|value| format!("{value}()"))
-        .or_else(|| {
-            crate_root
-                .as_ref()
-                .filter(|root| {
-                    !has_package_manifest
-                        && has_any(root, &["src/controllers/mod.rs", "src/controllers.rs"])
-                })
-                .map(|_| format!("{crate_ident}::controllers::routes()"))
-        });
-
-    let mut extra_route_exprs = Vec::new();
-    if let Some(webhook_routes_fn) = spec.http_webhook_routes_fn.clone() {
-        extra_route_exprs.push(format!("{webhook_routes_fn}()"));
-    } else if let Some(root) = crate_root.as_ref() {
-        let crate_controller_mod =
-            first_existing(root, &["src/controllers/mod.rs", "src/controllers.rs"]);
-        if file_contains_any(&crate_controller_mod, "pub fn webhook_routes") {
-            extra_route_exprs.push(format!("{crate_ident}::controllers::webhook_routes()"));
-        }
-    }
-
     Ok(Some(OptionalModuleEntry {
         feature,
         module_expr,
         graphql_query_expr,
         graphql_mutation_expr,
-        routes_expr,
         axum_router_expr,
         axum_webhook_router_expr,
-        extra_route_exprs,
     }))
 }
 
@@ -279,18 +242,6 @@ fn apply_module_package_manifest(
         }
     }
     if let Some(http) = package_manifest.provides.http {
-        if http.routes.is_some() && http.axum_router.is_some() {
-            return Err("[provides.http] cannot declare both routes and axum_router".into());
-        }
-        if http.webhook_routes.is_some() && http.axum_webhook_router.is_some() {
-            return Err(
-                "[provides.http] cannot declare both webhook_routes and axum_webhook_router".into(),
-            );
-        }
-        if let Some(routes_fn) = qualify_package_type_path(&spec.crate_name, http.routes.as_deref())
-        {
-            spec.http_routes_fn = Some(routes_fn);
-        }
         if let Some(axum_router_fn) =
             qualify_package_type_path(&spec.crate_name, http.axum_router.as_deref())
         {
@@ -300,11 +251,6 @@ fn apply_module_package_manifest(
             qualify_package_type_path(&spec.crate_name, http.axum_webhook_router.as_deref())
         {
             spec.http_axum_webhook_router_fn = Some(axum_webhook_router_fn);
-        }
-        if let Some(webhook_routes_fn) =
-            qualify_package_type_path(&spec.crate_name, http.webhook_routes.as_deref())
-        {
-            spec.http_webhook_routes_fn = Some(webhook_routes_fn);
         }
     }
 
@@ -408,26 +354,8 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
 
 fn render_routes_codegen(entries: &[OptionalModuleEntry]) -> String {
     let mut out = String::from(
-        "#[allow(unused_mut)]\npub fn append_optional_module_routes(mut routes: crate::routes::AppRoutes) -> crate::routes::AppRoutes {\n",
+        "#[allow(unused_mut, unused_variables)]\npub fn append_optional_module_axum_routers(\n    mut router: axum::Router,\n    runtime: &rustok_api::HostRuntimeContext,\n) -> anyhow::Result<axum::Router> {\n",
     );
-    for entry in entries {
-        if let Some(routes_expr) = &entry.routes_expr {
-            out.push_str(&format!(
-                "    #[cfg(feature = \"{feature}\")]\n    {{\n        routes = crate::routes::mount_route(routes, {routes_expr});\n    }}\n",
-                feature = entry.feature,
-                routes_expr = routes_expr,
-            ));
-        }
-        for extra_route_expr in &entry.extra_route_exprs {
-            out.push_str(&format!(
-                "    #[cfg(feature = \"{feature}\")]\n    {{\n        routes = crate::routes::mount_route(routes, {route_expr});\n    }}\n",
-                feature = entry.feature,
-                route_expr = extra_route_expr,
-            ));
-        }
-    }
-    out.push_str("    routes\n}\n");
-    out.push_str("\n#[allow(unused_mut, unused_variables)]\npub fn append_optional_module_axum_routers(\n    mut router: axum::Router,\n    runtime: &rustok_api::HostRuntimeContext,\n) -> anyhow::Result<axum::Router> {\n");
     for entry in entries {
         if let Some(axum_router_expr) = &entry.axum_router_expr {
             out.push_str(&format!(
@@ -466,18 +394,4 @@ fn has_any(root: &Path, candidates: &[&str]) -> bool {
     candidates
         .iter()
         .any(|candidate| root.join(candidate).exists())
-}
-
-fn first_existing(root: &Path, candidates: &[&str]) -> Option<PathBuf> {
-    candidates
-        .iter()
-        .map(|candidate| root.join(candidate))
-        .find(|path| path.exists())
-}
-
-fn file_contains_any(path: &Option<PathBuf>, needle: &str) -> bool {
-    path.as_ref()
-        .and_then(|path| fs::read_to_string(path).ok())
-        .map(|content| content.contains(needle))
-        .unwrap_or(false)
 }

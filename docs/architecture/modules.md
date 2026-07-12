@@ -187,7 +187,7 @@ registration. This determines:
 ### Schema Composition
 
 Schema composition in the current version is defined by the server `Migrator` in
-`apps/server/migration`, which combines platform-core and module-owned
+`rustok-migrations`, which combines platform-core and module-owned
 migrations into a single globally sorted list. Installer v1 must not
 promise physical exclusion of optional module schema artifacts from the database just
 because the module is disabled at the tenant level.

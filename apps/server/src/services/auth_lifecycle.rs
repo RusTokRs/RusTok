@@ -687,8 +687,8 @@ mod tests {
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
     use chrono::{Duration, Utc};
-    use migration::Migrator;
     use rustok_core::UserStatus;
+    use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,

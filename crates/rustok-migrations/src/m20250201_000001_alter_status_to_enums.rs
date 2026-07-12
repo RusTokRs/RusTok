@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+
 use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]

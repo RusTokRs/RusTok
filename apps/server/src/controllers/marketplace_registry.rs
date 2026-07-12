@@ -18,7 +18,6 @@ use axum::{
 const REGISTRY_ARTIFACT_MAX_BYTES: usize = 100 * 1024 * 1024;
 const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
 const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
-use crate::routes::Routes;
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -1767,67 +1766,67 @@ async fn transfer_owner(
     ))
 }
 
-pub fn routes() -> Routes {
-    read_only_routes()
-        .add(registry_publish_path(), post(publish))
-        .add(registry_publish_status_path(), get(publish_status))
-        .add(
+pub fn router() -> crate::routes::ServerRouter {
+    read_only_router()
+        .route(registry_publish_path(), post(publish))
+        .route(registry_publish_status_path(), get(publish_status))
+        .route(
             registry_publish_artifact_path(),
             put(upload_publish_artifact).layer(DefaultBodyLimit::max(REGISTRY_ARTIFACT_MAX_BYTES)),
         )
-        .add(
+        .route(
             registry_publish_artifact_download_path(),
             get(download_publish_artifact),
         )
-        .add(
+        .route(
             registry_publish_validate_path(),
             post(validate_publish_request_step),
         )
-        .add(
+        .route(
             registry_publish_stage_report_path(),
             post(report_validation_stage),
         )
-        .add(
+        .route(
             registry_publish_approve_path(),
             post(approve_publish_request),
         )
-        .add(registry_publish_reject_path(), post(reject_publish_request))
-        .add(
+        .route(registry_publish_reject_path(), post(reject_publish_request))
+        .route(
             registry_publish_request_changes_path(),
             post(request_changes_publish_request),
         )
-        .add(registry_publish_hold_path(), post(hold_publish_request))
-        .add(registry_publish_resume_path(), post(resume_publish_request))
-        .add(
+        .route(registry_publish_hold_path(), post(hold_publish_request))
+        .route(registry_publish_resume_path(), post(resume_publish_request))
+        .route(
             registry_runner_claim_path(),
             post(claim_remote_validation_stage),
         )
-        .add(
+        .route(
             registry_runner_heartbeat_path(),
             post(heartbeat_remote_validation_stage),
         )
-        .add(
+        .route(
             registry_runner_complete_path(),
             post(complete_remote_validation_stage),
         )
-        .add(
+        .route(
             registry_runner_fail_path(),
             post(fail_remote_validation_stage),
         )
-        .add(registry_owner_transfer_path(), post(transfer_owner))
-        .add(registry_yank_path(), post(yank))
+        .route(registry_owner_transfer_path(), post(transfer_owner))
+        .route(registry_yank_path(), post(yank))
 }
 
 fn registry_publish_artifact_download_path() -> &'static str {
     "/v2/catalog/publish/{request_id}/artifact/download"
 }
 
-pub fn read_only_routes() -> Routes {
-    Routes::new()
-        .add(registry_catalog_path(), get(catalog))
-        .add(legacy_registry_catalog_path(), get(catalog))
-        .add(registry_catalog_module_path(), get(catalog_module))
-        .add(legacy_registry_catalog_module_path(), get(catalog_module))
+pub fn read_only_router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route(registry_catalog_path(), get(catalog))
+        .route(legacy_registry_catalog_path(), get(catalog))
+        .route(registry_catalog_module_path(), get(catalog_module))
+        .route(legacy_registry_catalog_module_path(), get(catalog_module))
 }
 
 async fn first_party_catalog_modules(

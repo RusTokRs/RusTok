@@ -388,9 +388,9 @@ impl AiMutation {
     async fn cancel_ai_run(&self, ctx: &Context<'_>, run_id: Uuid) -> Result<AiChatRunGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_run_cancel(auth)?;
-        let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
-        let item = crate::AiManagementService::cancel_run(db, &operator, run_id)
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let item = crate::AiManagementService::cancel_run(runtime, &operator, run_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.into())

@@ -10,7 +10,7 @@ RusTok already has dev bootstrap via `cargo xtask install-dev` and a Docker laun
 are partially idempotent, but lack a common state model, receipts, resumable
 logic, install lock, strict secret policy, and a dedicated operator UX.
 
-The server `Migrator` in `apps/server/migration` collects platform-core and
+The platform `Migrator` in `rustok-migrations` collects platform-core and
 module-owned migrations into a single globally sorted list. Tenant-level
 enable/disable works on top of an already assembled platform composition. Therefore,
 the installer must not promise that selecting optional modules in v1 physically excludes

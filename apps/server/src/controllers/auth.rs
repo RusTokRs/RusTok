@@ -1,6 +1,5 @@
 use crate::error::Error;
 use crate::error::Result;
-use crate::routes::Routes;
 use axum::response::Response;
 use axum::{
     extract::State,
@@ -617,25 +616,24 @@ async fn revoke_session(
     }
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/auth")
-        .add("/register", post(register))
-        .add("/login", post(login))
-        .add("/refresh", post(refresh))
-        .add("/logout", post(logout))
-        .add("/me", get(me))
-        .add("/invite/accept", post(accept_invite))
-        .add("/reset/request", post(request_reset))
-        .add("/reset/confirm", post(confirm_reset))
-        .add("/verify/request", post(request_verification))
-        .add("/verify/confirm", post(confirm_verification))
-        .add("/sessions", get(list_sessions))
-        .add("/sessions/revoke-all", post(revoke_all_sessions))
-        .add("/sessions/{id}", delete(revoke_session))
-        .add("/change-password", post(change_password))
-        .add("/profile", post(update_profile))
-        .add("/history", get(login_history))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/api/auth/register", post(register))
+        .route("/api/auth/login", post(login))
+        .route("/api/auth/refresh", post(refresh))
+        .route("/api/auth/logout", post(logout))
+        .route("/api/auth/me", get(me))
+        .route("/api/auth/invite/accept", post(accept_invite))
+        .route("/api/auth/reset/request", post(request_reset))
+        .route("/api/auth/reset/confirm", post(confirm_reset))
+        .route("/api/auth/verify/request", post(request_verification))
+        .route("/api/auth/verify/confirm", post(confirm_verification))
+        .route("/api/auth/sessions", get(list_sessions))
+        .route("/api/auth/sessions/revoke-all", post(revoke_all_sessions))
+        .route("/api/auth/sessions/{id}", delete(revoke_session))
+        .route("/api/auth/change-password", post(change_password))
+        .route("/api/auth/profile", post(update_profile))
+        .route("/api/auth/history", get(login_history))
 }
 
 fn clamp_session_limit(limit: Option<u64>) -> u64 {

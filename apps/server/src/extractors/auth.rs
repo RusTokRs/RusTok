@@ -234,9 +234,9 @@ mod tests {
     use crate::services::rbac_service::RbacService;
     use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
     use chrono::{Duration, Utc};
-    use migration::Migrator;
     use rustok_api::Permission;
     use rustok_core::{UserRole, UserStatus};
+    use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Schema, Set};
     use sea_orm_migration::SchemaManager;

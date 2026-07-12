@@ -5,10 +5,9 @@ use std::{
 };
 
 use axum::extract::FromRef;
-use loco_rs::app::AppContext;
 use sea_orm::DatabaseConnection;
 
-use crate::auth::{auth_config_from_host_settings, AuthConfig};
+use crate::auth::AuthConfig;
 use crate::common::settings::RustokSettings;
 
 #[derive(Clone, Default)]
@@ -66,17 +65,6 @@ impl ServerRuntimeContext {
         }
     }
 
-    pub fn from_loco_app_context(ctx: &AppContext) -> Self {
-        if let Some(runtime_ctx) = ctx.shared_store.get::<ServerRuntimeContext>() {
-            return runtime_ctx;
-        }
-
-        let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
-        let runtime_ctx = Self::new(ctx.db.clone(), settings);
-        ctx.shared_store.insert(runtime_ctx.clone());
-        runtime_ctx
-    }
-
     pub fn db(&self) -> &DatabaseConnection {
         &self.db
     }
@@ -124,26 +112,6 @@ impl ServerRuntimeContext {
     }
 }
 
-impl FromRef<AppContext> for ServerRuntimeContext {
-    fn from_ref(input: &AppContext) -> Self {
-        Self::from_loco_app_context(input)
-    }
-}
-
-pub fn auth_config_from_loco_app_context(ctx: &AppContext) -> crate::error::Result<AuthConfig> {
-    let auth = ctx
-        .config
-        .auth
-        .as_ref()
-        .and_then(|auth| auth.jwt.as_ref())
-        .ok_or(crate::error::Error::InternalServerError)?;
-    auth_config_from_host_settings(
-        auth.secret.clone(),
-        auth.expiration,
-        ctx.config.settings.as_ref(),
-    )
-}
-
 #[derive(Clone)]
 pub struct ServerAuthRuntime {
     runtime_ctx: ServerRuntimeContext,
@@ -158,13 +126,6 @@ impl ServerAuthRuntime {
         }
     }
 
-    pub fn from_loco_app_context(ctx: &AppContext) -> Self {
-        Self {
-            runtime_ctx: ServerRuntimeContext::from_loco_app_context(ctx),
-            auth_config: auth_config_from_loco_app_context(ctx).ok(),
-        }
-    }
-
     pub fn runtime_ctx(&self) -> &ServerRuntimeContext {
         &self.runtime_ctx
     }
@@ -174,8 +135,8 @@ impl ServerAuthRuntime {
     }
 }
 
-impl FromRef<AppContext> for ServerAuthRuntime {
-    fn from_ref(input: &AppContext) -> Self {
-        Self::from_loco_app_context(input)
+impl FromRef<ServerAuthRuntime> for ServerRuntimeContext {
+    fn from_ref(input: &ServerAuthRuntime) -> Self {
+        input.runtime_ctx.clone()
     }
 }

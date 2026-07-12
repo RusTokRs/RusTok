@@ -1,7 +1,7 @@
 use crate::i18n::t;
 use crate::model::{
     AiCredentialRefPayload, AiProviderCatalogEntryPayload, AiProviderProfilePayload,
-    AiProviderSettingPayload,
+    AiProviderTargetPayload,
 };
 use crate::ui::leptos::{provider_profile_summary, Card, TextField};
 use leptos::ev::{MouseEvent, SubmitEvent};
@@ -12,11 +12,11 @@ use rustok_ui_core::AdminQueryKey;
 pub fn AiProviderPanel(
     ui_locale: Option<String>,
     provider_catalog: Vec<AiProviderCatalogEntryPayload>,
+    provider_targets: Vec<AiProviderTargetPayload>,
     providers: Vec<AiProviderProfilePayload>,
     provider_slug: RwSignal<String>,
     provider_name: RwSignal<String>,
     provider_integration: RwSignal<String>,
-    provider_settings: RwSignal<Vec<AiProviderSettingPayload>>,
     provider_credential_refs: RwSignal<Vec<AiCredentialRefPayload>>,
     provider_model: RwSignal<String>,
     provider_temperature: RwSignal<String>,
@@ -35,9 +35,8 @@ pub fn AiProviderPanel(
 ) -> impl IntoView {
     let ui_locale_providers = ui_locale.clone();
     let select_provider_query_writer = select_provider_query_writer.clone();
-    let settings_catalog = provider_catalog.clone();
-    let defaults_catalog = provider_catalog.clone();
     let credentials_catalog = provider_catalog.clone();
+    let credentials_targets = provider_targets.clone();
 
     view! {
         <Card title=t(ui_locale.as_deref(), "ai.card.providers", "Providers")>
@@ -45,51 +44,27 @@ pub fn AiProviderPanel(
                 <TextField label=t(ui_locale.as_deref(), "ai.field.slug", "Slug") value=provider_slug />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.displayName", "Display name") value=provider_name />
                 <label class="grid gap-1 text-sm font-medium">
-                    <span>{t(ui_locale.as_deref(), "ai.field.providerIntegration", "Provider integration")}</span>
+                    <span>{t(ui_locale.as_deref(), "ai.field.providerIntegration", "Deployment target")}</span>
                     <select
                         class="rounded-lg border border-border bg-background px-3 py-2"
                         prop:value=move || provider_integration.get()
                         on:change=move |ev| {
                             provider_integration.set(event_target_value(&ev));
-                            provider_settings.set(
-                                selected_default_settings(&defaults_catalog, &provider_integration.get()),
-                            );
                             provider_credential_refs.set(Vec::new());
                         }
                     >
-                        {provider_catalog.into_iter().filter(|entry| entry.compiled_in).map(|entry| {
-                            view! { <option value=entry.slug>{entry.display_name}</option> }
+                        <option value="">{"Select a deployment target"}</option>
+                        {provider_targets.into_iter().map(|target| {
+                            view! { <option value=target.id>{target.display_name}</option> }
                         }).collect_view()}
                     </select>
                 </label>
-                <For
-                    each=move || selected_settings_schema(&settings_catalog, &provider_integration.get())
-                    key=|field| field.key.clone()
-                    children=move |field| {
-                        let key = field.key.clone();
-                        let key_for_value = key.clone();
-                        let kind = field.kind.clone();
-                        view! {
-                            <label class="grid gap-1 text-sm font-medium">
-                                <span>{field.label}</span>
-                                <input
-                                    class="rounded-lg border border-border bg-background px-3 py-2"
-                                    type=if kind == "integer" { "number" } else { "text" }
-                                    prop:value=move || setting_value(&provider_settings.get(), &key_for_value)
-                                    on:input=move |ev| update_setting(
-                                        provider_settings,
-                                        key.clone(),
-                                        kind.clone(),
-                                        event_target_value(&ev),
-                                    )
-                                />
-                            </label>
-                        }
-                    }
-                />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.model", "Model") value=provider_model />
                 <For
-                    each=move || selected_credential_schema(&credentials_catalog, &provider_integration.get())
+                    each=move || selected_credential_schema(
+                        &credentials_catalog,
+                        selected_target_provider_slug(&credentials_targets, &provider_integration.get()).as_str(),
+                    )
                     key=|field| field.key.clone()
                     children=move |field| {
                         let key_for_resolver = field.key.clone();
@@ -182,17 +157,6 @@ pub fn AiProviderPanel(
     }
 }
 
-fn selected_settings_schema(
-    catalog: &[AiProviderCatalogEntryPayload],
-    slug: &str,
-) -> Vec<crate::model::AiProviderFieldPayload> {
-    catalog
-        .iter()
-        .find(|entry| entry.slug == slug)
-        .map(|entry| entry.settings_schema.clone())
-        .unwrap_or_default()
-}
-
 fn selected_credential_schema(
     catalog: &[AiProviderCatalogEntryPayload],
     slug: &str,
@@ -204,54 +168,12 @@ fn selected_credential_schema(
         .unwrap_or_default()
 }
 
-fn selected_default_settings(
-    catalog: &[AiProviderCatalogEntryPayload],
-    slug: &str,
-) -> Vec<AiProviderSettingPayload> {
-    catalog
+fn selected_target_provider_slug(targets: &[AiProviderTargetPayload], id: &str) -> String {
+    targets
         .iter()
-        .find(|entry| entry.slug == slug)
-        .map(|entry| entry.default_settings.clone())
+        .find(|target| target.id == id)
+        .map(|target| target.provider_slug.clone())
         .unwrap_or_default()
-}
-
-fn setting_value(settings: &[AiProviderSettingPayload], key: &str) -> String {
-    settings
-        .iter()
-        .find(|value| value.key == key)
-        .map(|value| {
-            value
-                .text_value
-                .clone()
-                .or_else(|| value.integer_value.map(|item| item.to_string()))
-                .or_else(|| value.boolean_value.map(|item| item.to_string()))
-                .unwrap_or_default()
-        })
-        .unwrap_or_default()
-}
-
-fn update_setting(
-    settings: RwSignal<Vec<AiProviderSettingPayload>>,
-    key: String,
-    kind: String,
-    raw_value: String,
-) {
-    settings.update(|values| {
-        values.retain(|value| value.key != key);
-        if raw_value.trim().is_empty() {
-            return;
-        }
-        let mut value = AiProviderSettingPayload {
-            key,
-            ..Default::default()
-        };
-        match kind.as_str() {
-            "integer" => value.integer_value = raw_value.trim().parse().ok(),
-            "boolean" => value.boolean_value = raw_value.trim().parse().ok(),
-            _ => value.text_value = Some(raw_value),
-        }
-        values.push(value);
-    });
 }
 
 fn credential_resolver(values: &[AiCredentialRefPayload], key: &str) -> String {

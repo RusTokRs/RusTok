@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::routes::Routes;
 use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
 use async_graphql::Data;
 use axum::{
@@ -274,10 +273,12 @@ async fn build_ws_connection_data(
     Ok(data)
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/graphql")
-        .add("/", get(graphql_playground).post(graphql_handler))
-        .add("/schema.graphql", get(graphql_schema_sdl))
-        .add("/ws", get(graphql_ws_handler))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route(
+            "/api/graphql/",
+            get(graphql_playground).post(graphql_handler),
+        )
+        .route("/api/graphql/schema.graphql", get(graphql_schema_sdl))
+        .route("/api/graphql/ws", get(graphql_ws_handler))
 }

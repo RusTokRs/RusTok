@@ -189,6 +189,7 @@ pub enum AiRunStreamEventKindGql {
     Delta,
     Completed,
     Failed,
+    Cancelled,
     WaitingApproval,
 }
 
@@ -199,6 +200,7 @@ impl From<AiRunStreamEventKind> for AiRunStreamEventKindGql {
             AiRunStreamEventKind::Delta => Self::Delta,
             AiRunStreamEventKind::Completed => Self::Completed,
             AiRunStreamEventKind::Failed => Self::Failed,
+            AiRunStreamEventKind::Cancelled => Self::Cancelled,
             AiRunStreamEventKind::WaitingApproval => Self::WaitingApproval,
         }
     }
@@ -253,6 +255,7 @@ pub struct AiRunStreamEventGql {
     pub content_delta: Option<String>,
     pub accumulated_content: Option<String>,
     pub error_message: Option<String>,
+    pub sequence: u64,
     pub created_at: DateTime<Utc>,
 }
 
@@ -316,6 +319,7 @@ impl From<AiRunStreamEvent> for AiRunStreamEventGql {
             content_delta: value.content_delta,
             accumulated_content: value.accumulated_content,
             error_message: value.error_message,
+            sequence: value.sequence,
             created_at: value.created_at,
         }
     }
@@ -713,6 +717,7 @@ pub struct AiApprovalRequestGql {
     pub id: Uuid,
     pub session_id: Uuid,
     pub run_id: Uuid,
+    pub approval_batch_id: String,
     pub tool_name: String,
     pub tool_call_id: String,
     pub tool_input: String,
@@ -731,6 +736,7 @@ impl AiApprovalRequestGql {
             id: value.id,
             session_id: value.session_id,
             run_id: value.run_id,
+            approval_batch_id: value.approval_batch_id,
             tool_name: value.tool_name,
             tool_call_id: value.tool_call_id,
             tool_input: value.tool_input.to_string(),

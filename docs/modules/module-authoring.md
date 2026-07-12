@@ -199,7 +199,7 @@ Basic rules:
 - heavy localizable content lives in `*_bodies` if necessary;
 - `locale` is stored normalized;
 - audit payload and technical metadata must not turn into business copies;
-- module-owned migrations are exported through a local `migrations()` and the `MigrationSource` trait; if a migration creates FK or other strict ordering against another module crate's tables, there must be a `migration_dependencies()` with `MigrationDependencyDescriptor`, and the module `MigrationSource::migration_dependencies()` must return this exporter; `apps/server/migration` aggregates descriptors through `MigrationSource` for all module crates whose migrations are included in the server migrator;
+- module-owned migrations are exported through a local `migrations()` and the `MigrationSource` trait; if a migration creates FK or other strict ordering against another module crate's tables, there must be a `migration_dependencies()` with `MigrationDependencyDescriptor`, and the module `MigrationSource::migration_dependencies()` must return this exporter; `rustok-migrations` aggregates descriptors through `MigrationSource` for all module crates whose migrations are included in the platform migrator;
 - a descriptor must only reference real migration names and pass server migrator tests for missing dependency, duplicate descriptor and cycle.
 
 Canon:

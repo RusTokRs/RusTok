@@ -3,12 +3,12 @@ use thiserror::Error;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
+    execute_module_toggle, failed_module_operation_recovery_plans, module_operation_recovery_plan,
+    persist_module_settings, retry_failed_post_hook_operation, ModuleLifecycleExecutionError,
+    ModuleLifecycleToggleRequest, ModuleOperationIssue,
     ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
     ModuleOperationStoreError, ModulePostHookRetryRequest, ModuleToggleValidationError,
-    TenantModuleSettingsRequest, TenantModuleStateStore, execute_module_toggle,
-    failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation,
+    TenantModuleSettingsRequest,
 };
 
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
@@ -105,9 +105,12 @@ impl ModuleLifecycleService {
             .await
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
         let current_settings = Self::current_module_settings(db, tenant_id, module_slug).await?;
+        let catalog = rustok_modules::ModuleDefinitionCatalog::from_static_registry(registry)
+            .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
+        let dispatcher = rustok_modules::ModuleExecutionDispatcher::new(&catalog, registry);
         let result = execute_module_toggle(
             db,
-            registry,
+            &dispatcher,
             ModuleLifecycleToggleRequest {
                 tenant_id,
                 module_slug: module_slug.to_string(),
@@ -159,9 +162,12 @@ impl ModuleLifecycleService {
                 .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
         let post_settings =
             Self::current_module_settings(db, plan.tenant_id, plan.module_slug.as_str()).await?;
+        let catalog = rustok_modules::ModuleDefinitionCatalog::from_static_registry(registry)
+            .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+        let dispatcher = rustok_modules::ModuleExecutionDispatcher::new(&catalog, registry);
         let retry_operation = retry_failed_post_hook_operation(
             db,
-            registry,
+            &dispatcher,
             ModulePostHookRetryRequest {
                 operation_id,
                 requested_by,
@@ -245,7 +251,7 @@ impl ModuleLifecycleService {
             EffectiveModulePolicyService::is_enabled(db, registry, tenant_id, module_slug)
                 .await
                 .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?;
-        let state = TenantModuleStateStore::persist_settings(
+        let state = persist_module_settings(
             db,
             TenantModuleSettingsRequest {
                 tenant_id,
@@ -344,10 +350,10 @@ mod tests {
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
-    use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
-    use migration::Migrator;
+    use crate::modules::{build_registry, ManifestManager, ManifestModuleSpec, ModulesManifest};
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
+    use rustok_migrations::Migrator;
     use rustok_modules::ModuleOperationStatus;
     use rustok_rbac::RbacModule;
     use rustok_tenant::TenantModule;

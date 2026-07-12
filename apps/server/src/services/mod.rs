@@ -12,7 +12,6 @@ pub mod effective_module_policy;
 pub mod email;
 pub mod event_bus;
 pub mod graphql_schema;
-pub mod installer_persistence;
 pub mod marketplace_catalog;
 pub mod mcp_management;
 pub mod mcp_management_mutation_provider;

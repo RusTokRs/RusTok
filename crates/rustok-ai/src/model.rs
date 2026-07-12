@@ -314,7 +314,7 @@ pub enum RuntimeOutcome {
     WaitingApproval {
         appended_messages: Vec<ChatMessage>,
         traces: Vec<ToolTrace>,
-        pending_approval: PendingApproval,
+        pending_approvals: Vec<PendingApproval>,
     },
     Failed {
         appended_messages: Vec<ChatMessage>,

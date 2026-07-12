@@ -64,7 +64,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - Commerce surface is no longer a compile-time baseline for any server build: `controllers::commerce`, commerce-specific error mapping, and the commerce fragment in OpenAPI live only with `mod-commerce`, so a reduced/headless host can build without the ecommerce transport layer.
 - Content REST/OpenAPI surface for `blog`, `forum`, and `pages` is also no longer an unconditional part of the host binary: the corresponding server controllers and OpenAPI fragments are included only with `mod-blog`, `mod-forum`, and `mod-pages`, so a module-sliced build does not have to pull in other content transport dependencies.
 - Maintenance binary `migrate_legacy_richtext` belongs to the content storage migration path and is built only with `mod-content`; headless server profiles without the content module should not link this tool.
-- `flex` attached field-definition and standalone schemas/entries GraphQL are published via `/api/graphql`, while standalone REST remains at `/api/v1/flex/schemas*`; this is a live tenant-scoped surface with separate `flex_schemas:*` and `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle, and DTO belong to `flex::graphql`; roots are included in the schema via `[provides.graphql]` manifest codegen, and the server builder registers only `FlexGraphqlRuntime` on top of concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle, and cache adapter. REST request/response DTO, command mapping, and view mapping belong to `flex::rest`; attached field-definition row-to-core/view/command mapping, create guardrails, persisted JSON shape helpers, persisted type-name normalization, lifecycle events, and cache invalidation event taxonomy belong to `flex::registry`; the server remains a Loco/Axum/SeaORM adapter.
+- `flex` attached field-definition and standalone schemas/entries GraphQL are published via `/api/graphql`, while standalone REST remains at `/api/v1/flex/schemas*`; this is a live tenant-scoped surface with separate `flex_schemas:*` and `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle, and DTO belong to `flex::graphql`; roots are included in the schema via `[provides.graphql]` manifest codegen, and the server builder registers only `FlexGraphqlRuntime` on top of concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle, and cache adapter. REST request/response DTO, command mapping, and view mapping belong to `flex::rest`; attached field-definition row-to-core/view/command mapping, create guardrails, persisted JSON shape helpers, persisted type-name normalization, lifecycle events, and cache invalidation event taxonomy belong to `flex::registry`; the server is the Axum/SeaORM adapter.
 - Health/observability surface is published via `/health*` and `/metrics`.
 - Module/runtime wiring relies on `modules.toml`, `rustok-module.toml`, and generated host integration.
 - Optional module REST/GraphQL surfaces are mounted only from owner-owned crate entrypoints,
@@ -78,10 +78,10 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   GraphQL roots from `rustok-content` and `rustok-content-orchestration`; the host does not own their resolver/DTO.
 - `rustok-content-orchestration` is registered by the host as `SharedContentOrchestrationService`,
   constructed from explicit DB and `TransactionalEventBus`; conversion GraphQL resolvers read this handle from schema data,
-  not through Loco `AppContext`.
+  not through framework-owned application context.
 - Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; auth, OAuth and users REST request/response DTOs and OpenAPI schema derives also belong to `rustok-auth::rest`. The server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services, registers the corresponding runtimes in shared runtime extensions, and keeps auth/OAuth/users HTTP controllers as route/extractor/response adapters that re-export or import owner DTOs for Swagger and route compatibility. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`, without Loco compatibility entrypoints. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`; the full Loco `AppContext` remains only in bootstrap/REST boundary adapters that assemble these dependencies.
 - AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, and Alloy runtime handles. `rustok-ai` does not read Loco `AppContext`; the Leptos admin adapter remains a host-boundary point that assembles this runtime from the current app context.
-- MCP GraphQL query/mutation/types and REST/control-plane DTOs belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService`, registers `McpManagementRuntime`, and keeps HTTP controllers as Axum/Loco adapters that import owner DTOs and actor parsing.
+- MCP GraphQL query/mutation/types and REST/control-plane DTOs belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService`, registers `McpManagementRuntime`, and keeps HTTP controllers as Axum adapters that import owner DTOs and actor parsing.
 - Content GraphQL dataloaders for `nodes`, `node_translations`, and `bodies` live in
   `rustok-content`; `apps/server` only registers owner-owned loader types in the schema builder.
 - System GraphQL may publish media usage, but reads it through `rustok-media::load_media_usage_snapshot`,
@@ -90,7 +90,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   `TransactionalEventBus` through GraphQL data. They do not extract or adapt Loco `AppContext`;
   the request/connection boundary continues to pass it only for resolvers that have not yet been migrated.
 - App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
-- `services::server_bootstrap` owns framework-neutral startup validation, default-superadmin initialization, runtime/worker setup and router composition; current Loco hooks only adapt host configuration into its explicit inputs, and the future Axum entrypoint will use the same functions.
+- `host::run` owns YAML configuration loading, database connection and graceful shutdown for the pure Axum executable; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition.
   Alloy runtime bootstrap also registers `SharedAlloyRuntime` via `ServerRuntimeContext` from an explicit DB handle,
   and Alloy GraphQL receives this runtime as schema-owned data without Loco `AppContext`.
   Loco `AppContext` inside bootstrap remains only for current boundary adapters such as the mailer.
@@ -104,8 +104,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - Server event runtime builds the regular and transactional event bus from `ServerRuntimeContext`; `rustok-outbox`
   exposes no Loco adapter or framework-specific composition path.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
-  substate and do not pass Loco `AppContext` into request/connection data. `loco_rs::controller::Routes`
-  remains only a temporary routing adapter until Phase 2.
+  substate and do not pass framework context into request/connection data.
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
   for JSON response formatting; Loco `Routes` and error helpers remain separate Phase 2 routing/error
   cutover inventory.
@@ -162,7 +161,8 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - `rustok-server install apply ...` performs the current CLI bootstrap end-to-end:
   preflight, with `--create-database` it can create a PostgreSQL database/role
   via `--pg-admin-url`, checks the target DB via `SELECT 1`, runs the server
-  `Migrator::up`, creates `install_sessions`, places a session lock, executes
+  `Migrator::up`, creates `install_sessions` through
+  `rustok-installer-persistence`, places a session lock, executes
   tenant/module seed, creates or synchronizes superadmin, verifies the result,
   writes `Preflight` / `Config` / `Database` / `Migrate` / `Seed` / `Admin` /
   `Verify` / `Finalize` receipts and transitions the session to `completed`.

@@ -1,7 +1,6 @@
 //! OAuth 2.0 Authorization Server Metadata (RFC 8414)
 //! OpenID Connect Discovery 1.0
 
-use crate::routes::Routes;
 use axum::{extract::State, routing::get, Json};
 
 use crate::error::Error;
@@ -97,8 +96,8 @@ async fn get_metadata(
     }))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .add("/.well-known/oauth-authorization-server", get(get_metadata))
-        .add("/.well-known/openid-configuration", get(get_metadata))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/.well-known/oauth-authorization-server", get(get_metadata))
+        .route("/.well-known/openid-configuration", get(get_metadata))
 }

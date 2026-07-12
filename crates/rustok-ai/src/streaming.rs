@@ -1,6 +1,6 @@
 #![cfg(feature = "server")]
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
@@ -16,6 +16,7 @@ pub enum AiRunStreamEventKind {
     Delta,
     Completed,
     Failed,
+    Cancelled,
     WaitingApproval,
 }
 
@@ -27,13 +28,22 @@ pub struct AiRunStreamEvent {
     pub content_delta: Option<String>,
     pub accumulated_content: Option<String>,
     pub error_message: Option<String>,
+    /// Monotonic per-run sequence assigned by the stream hub.
+    pub sequence: u64,
     pub created_at: DateTime<Utc>,
 }
 
 pub struct AiRunStreamHub {
     sender: broadcast::Sender<AiRunStreamEvent>,
     recent: Mutex<VecDeque<AiRunStreamEvent>>,
+    run_state: Mutex<HashMap<Uuid, RunStreamState>>,
     recent_limit: usize,
+}
+
+#[derive(Default)]
+struct RunStreamState {
+    sequence: u64,
+    terminal: bool,
 }
 
 impl AiRunStreamHub {
@@ -42,18 +52,59 @@ impl AiRunStreamHub {
         Self {
             sender,
             recent: Mutex::new(VecDeque::with_capacity(buffer.max(1))),
+            run_state: Mutex::new(HashMap::new()),
             recent_limit: buffer.max(1),
         }
     }
 
-    pub fn publish(&self, event: AiRunStreamEvent) {
+    /// Publishes one event, assigning its sequence and rejecting a second terminal event.
+    /// The return value reports whether subscribers received the event.
+    pub fn publish(&self, mut event: AiRunStreamEvent) -> bool {
+        let terminal = matches!(
+            event.event_kind,
+            AiRunStreamEventKind::Completed
+                | AiRunStreamEventKind::Failed
+                | AiRunStreamEventKind::Cancelled
+        );
+        let Ok(mut states) = self.run_state.lock() else {
+            return false;
+        };
+        let state = states.entry(event.run_id).or_default();
+        if state.terminal {
+            return false;
+        }
+        state.sequence += 1;
+        event.sequence = state.sequence;
+        if terminal {
+            state.terminal = true;
+        }
+        drop(states);
+        let mut evicted_runs = Vec::new();
         if let Ok(mut recent) = self.recent.lock() {
             recent.push_front(event.clone());
             while recent.len() > self.recent_limit {
-                recent.pop_back();
+                if let Some(evicted) = recent.pop_back() {
+                    evicted_runs.push(evicted.run_id);
+                }
+            }
+            if !evicted_runs.is_empty() {
+                let retained_runs = recent
+                    .iter()
+                    .map(|retained| retained.run_id)
+                    .collect::<std::collections::HashSet<_>>();
+                if let Ok(mut states) = self.run_state.lock() {
+                    for run_id in evicted_runs {
+                        if !retained_runs.contains(&run_id)
+                            && states.get(&run_id).is_some_and(|state| state.terminal)
+                        {
+                            states.remove(&run_id);
+                        }
+                    }
+                }
             }
         }
         let _ = self.sender.send(event);
+        true
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<AiRunStreamEvent> {
@@ -100,6 +151,7 @@ mod tests {
                 content_delta: None,
                 accumulated_content: None,
                 error_message: None,
+                sequence: 0,
                 created_at: Utc::now(),
             });
         }
@@ -125,6 +177,7 @@ mod tests {
             content_delta: None,
             accumulated_content: Some("a".to_string()),
             error_message: None,
+            sequence: 0,
             created_at: Utc::now(),
         });
         hub.publish(AiRunStreamEvent {
@@ -134,11 +187,44 @@ mod tests {
             content_delta: None,
             accumulated_content: Some("b".to_string()),
             error_message: None,
+            sequence: 0,
             created_at: Utc::now(),
         });
 
         let recent = hub.recent_events(Some(session_a), 10);
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].run_id, run_a);
+    }
+
+    #[test]
+    fn assigns_monotonic_sequence_and_rejects_duplicate_terminal_event() {
+        let hub = AiRunStreamHub::new(8);
+        let session_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
+        for event_kind in [AiRunStreamEventKind::Started, AiRunStreamEventKind::Completed] {
+            assert!(hub.publish(AiRunStreamEvent {
+                session_id,
+                run_id,
+                event_kind,
+                content_delta: None,
+                accumulated_content: None,
+                error_message: None,
+                sequence: 0,
+                created_at: Utc::now(),
+            }));
+        }
+        assert!(!hub.publish(AiRunStreamEvent {
+            session_id,
+            run_id,
+            event_kind: AiRunStreamEventKind::Failed,
+            content_delta: None,
+            accumulated_content: None,
+            error_message: None,
+            sequence: 0,
+            created_at: Utc::now(),
+        }));
+        let recent = hub.recent_events(Some(session_id), 10);
+        assert_eq!(recent[0].sequence, 2);
+        assert_eq!(recent[1].sequence, 1);
     }
 }

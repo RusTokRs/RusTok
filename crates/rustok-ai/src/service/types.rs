@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
 use rustok_api::Permission;
 use rustok_core::registry::ModuleRegistry;
 use rustok_outbox::TransactionalEventBus;
@@ -7,6 +8,8 @@ use rustok_storage::StorageService;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::{collections::HashMap, sync::{Arc, Mutex}};
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::model::{
@@ -14,6 +17,9 @@ use crate::model::{
     ProviderUsagePolicy, ToolCall, ToolTrace,
 };
 use crate::{ProviderSlug, ProviderTargetId};
+
+static AI_RUN_CANCELLATIONS: Lazy<Arc<Mutex<HashMap<Uuid, watch::Sender<()>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[derive(Clone)]
 pub struct SharedAiModuleRegistry(pub ModuleRegistry);
@@ -37,6 +43,7 @@ pub struct AiHostRuntime {
     secret_registry: SecretResolverRegistry,
     egress_policy: crate::ProviderEgressPolicy,
     provider_targets: crate::AiProviderTargetCatalog,
+    cancellations: Arc<Mutex<HashMap<Uuid, watch::Sender<()>>>>,
 }
 
 impl AiHostRuntime {
@@ -55,6 +62,7 @@ impl AiHostRuntime {
             egress_policy: crate::ProviderEgressPolicy::default(),
             provider_targets: crate::AiProviderTargetCatalog::from_environment()
                 .expect("invalid deployment AI provider target configuration"),
+            cancellations: Arc::clone(&AI_RUN_CANCELLATIONS),
         }
     }
 
@@ -96,6 +104,33 @@ impl AiHostRuntime {
 
     pub fn provider_targets(&self) -> &crate::AiProviderTargetCatalog {
         &self.provider_targets
+    }
+
+    pub fn register_run_cancellation(&self, run_id: Uuid) -> watch::Receiver<()> {
+        let (sender, receiver) = watch::channel(());
+        self.cancellations
+            .lock()
+            .expect("AI cancellation registry mutex poisoned")
+            .insert(run_id, sender);
+        receiver
+    }
+
+    pub fn cancel_active_run(&self, run_id: Uuid) {
+        if let Some(sender) = self
+            .cancellations
+            .lock()
+            .expect("AI cancellation registry mutex poisoned")
+            .remove(&run_id)
+        {
+            let _ = sender.send(());
+        }
+    }
+
+    pub fn complete_run_cancellation(&self, run_id: Uuid) {
+        self.cancellations
+            .lock()
+            .expect("AI cancellation registry mutex poisoned")
+            .remove(&run_id);
     }
 
     pub fn db(&self) -> &DatabaseConnection {
@@ -375,6 +410,7 @@ pub struct AiApprovalRequestRecord {
     pub id: Uuid,
     pub session_id: Uuid,
     pub run_id: Uuid,
+    pub approval_batch_id: String,
     pub tool_name: String,
     pub tool_call_id: String,
     pub tool_input: serde_json::Value,

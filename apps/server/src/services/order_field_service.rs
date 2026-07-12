@@ -273,9 +273,9 @@ mod tests {
     use super::OrderFieldService;
     use crate::models::order_field_definitions::{Model, MAX_FIELDS_PER_TENANT};
     use chrono::Utc;
-    use migration::Migrator;
     use rustok_core::field_schema::{FieldType, FlexError};
     use rustok_events::DomainEvent;
+    use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
     use serde_json::json;

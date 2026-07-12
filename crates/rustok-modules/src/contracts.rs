@@ -138,12 +138,30 @@ pub struct ModuleControlPlaneError {
 }
 
 impl ModuleControlPlaneError {
-    pub fn validation(code: ModuleErrorCode, message: impl Into<String>, details: serde_json::Value) -> Self {
-        Self { code, message: message.into(), details, retryable: false }
+    pub fn validation(
+        code: ModuleErrorCode,
+        message: impl Into<String>,
+        details: serde_json::Value,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            details,
+            retryable: false,
+        }
     }
 
-    pub fn conflict(code: ModuleErrorCode, message: impl Into<String>, details: serde_json::Value) -> Self {
-        Self { code, message: message.into(), details, retryable: false }
+    pub fn conflict(
+        code: ModuleErrorCode,
+        message: impl Into<String>,
+        details: serde_json::Value,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            details,
+            retryable: false,
+        }
     }
 }
 
@@ -210,14 +228,20 @@ mod tests {
         }))
         .expect("deserialize");
         assert_eq!(error.code, ModuleErrorCode::Unknown("future_code".into()));
-        assert_eq!(serde_json::to_value(error).expect("serialize")["code"], "future_code");
+        assert_eq!(
+            serde_json::to_value(error).expect("serialize")["code"],
+            "future_code"
+        );
     }
 
     #[test]
     fn stale_revision_cannot_advance() {
         assert!(matches!(
             ControlPlaneRevision(3).require(ControlPlaneRevision(2)),
-            Err(ModuleControlPlaneError { code: ModuleErrorCode::RevisionConflict, .. })
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::RevisionConflict,
+                ..
+            })
         ));
     }
 
@@ -228,7 +252,10 @@ mod tests {
         invalid.idempotency_key.clear();
         assert!(matches!(
             invalid.validate(),
-            Err(ModuleControlPlaneError { code: ModuleErrorCode::InvalidCommandContext, .. })
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::InvalidCommandContext,
+                ..
+            })
         ));
     }
 }

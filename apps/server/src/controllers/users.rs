@@ -1,5 +1,4 @@
 use crate::error::{http_error, Error, Result};
-use crate::routes::Routes;
 use axum::response::Response;
 use axum::{
     extract::{Path, Query},
@@ -139,11 +138,10 @@ async fn get_user(
     Ok(json_response(map_user(user)))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/users")
-        .add("/", get(list_users))
-        .add("/{id}", get(get_user))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/api/users/", get(list_users))
+        .route("/api/users/{id}", get(get_user))
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {

@@ -67,6 +67,45 @@ pub struct ModuleArtifactDescriptor {
     pub entrypoint: String,
     #[serde(default)]
     pub capabilities: Vec<CapabilityName>,
+    #[serde(default)]
+    pub bindings: Vec<ModuleRuntimeBinding>,
+}
+
+/// Declarative runtime binding admitted with an immutable artifact descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleRuntimeBinding {
+    pub id: String,
+    pub kind: ModuleRuntimeBindingKind,
+    pub entrypoint: String,
+    pub input_schema_digest: String,
+    pub output_schema_digest: String,
+    pub permission: Option<String>,
+    pub idempotency: ModuleBindingIdempotency,
+    pub limit_profile: String,
+    #[serde(default)]
+    pub capabilities: Vec<CapabilityName>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleRuntimeBindingKind {
+    PreEnable,
+    PostEnable,
+    PreDisable,
+    PostDisable,
+    Command,
+    Http,
+    Event,
+    Schedule,
+    Health,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleBindingIdempotency {
+    Required,
+    BestEffort,
+    None,
 }
 
 impl ModuleArtifactDescriptor {
@@ -94,6 +133,33 @@ impl ModuleArtifactDescriptor {
             {
                 return Err(ModuleArtifactError::DuplicateCapability(
                     capability.as_str().to_string(),
+                ));
+            }
+        }
+        for (index, binding) in self.bindings.iter().enumerate() {
+            if binding.id.trim().is_empty() || binding.entrypoint.trim().is_empty() {
+                return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+            }
+            if !valid_digest(&binding.input_schema_digest)
+                || !valid_digest(&binding.output_schema_digest)
+            {
+                return Err(ModuleArtifactError::InvalidBindingSchemaDigest(
+                    binding.id.clone(),
+                ));
+            }
+            if self.bindings[..index]
+                .iter()
+                .any(|previous| previous.id == binding.id)
+            {
+                return Err(ModuleArtifactError::DuplicateBinding(binding.id.clone()));
+            }
+            if binding
+                .capabilities
+                .iter()
+                .any(|capability| !self.capabilities.contains(capability))
+            {
+                return Err(ModuleArtifactError::UndeclaredBindingCapability(
+                    binding.id.clone(),
                 ));
             }
         }
@@ -197,6 +263,14 @@ pub enum ModuleArtifactError {
     MissingEntrypoint,
     #[error("artifact capability `{0}` is declared more than once")]
     DuplicateCapability(String),
+    #[error("artifact binding `{0}` is invalid")]
+    InvalidBinding(String),
+    #[error("artifact binding `{0}` must declare sha256 input/output schemas")]
+    InvalidBindingSchemaDigest(String),
+    #[error("artifact binding `{0}` is declared more than once")]
+    DuplicateBinding(String),
+    #[error("artifact binding `{0}` declares a capability absent from the descriptor")]
+    UndeclaredBindingCapability(String),
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
@@ -242,6 +316,7 @@ mod tests {
             artifact_digest: digest(marker),
             entrypoint: "main".to_string(),
             capabilities: vec![CapabilityName::new("platform.events").expect("capability")],
+            bindings: Vec::new(),
         }
     }
 
@@ -306,6 +381,27 @@ mod tests {
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::DuplicateCapability(_))
+        ));
+    }
+
+    #[test]
+    fn binding_cannot_expand_descriptor_capabilities() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.bindings.push(ModuleRuntimeBinding {
+            id: "pre_enable".to_string(),
+            kind: ModuleRuntimeBindingKind::PreEnable,
+            entrypoint: "pre_enable".to_string(),
+            input_schema_digest: digest('b'),
+            output_schema_digest: digest('c'),
+            permission: None,
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "lifecycle".to_string(),
+            capabilities: vec![CapabilityName::new("platform.http").expect("capability")],
+        });
+
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::UndeclaredBindingCapability(_))
         ));
     }
 

@@ -1,7 +1,6 @@
 //! Health check endpoints for K8s probes and module health aggregation
 
 use crate::error::Result;
-use crate::routes::Routes;
 use axum::extract::State;
 use axum::response::Response;
 use axum::routing::get;
@@ -963,14 +962,13 @@ fn parse_host_port(url: &str) -> std::result::Result<(String, u16), String> {
     Ok((authority.to_string(), 80))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("health")
-        .add("/", get(health))
-        .add("/live", get(live))
-        .add("/ready", get(ready))
-        .add("/runtime", get(runtime))
-        .add("/modules", get(modules))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/health/", get(health))
+        .route("/health/live", get(live))
+        .route("/health/ready", get(ready))
+        .route("/health/runtime", get(runtime))
+        .route("/health/modules", get(modules))
 }
 
 #[cfg(test)]

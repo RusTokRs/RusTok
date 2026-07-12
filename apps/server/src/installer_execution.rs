@@ -1,13 +1,14 @@
 use eyre::{bail, eyre, Result};
-use migration::Migrator;
 use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_installer::{
-    evaluate_preflight, execute_seed_profile, redact_install_plan, AdminBootstrap, DatabaseConfig,
-    DatabaseEngine, InstallEnvironment, InstallPlan, InstallProfile, InstallReceipt, InstallState,
-    InstallStep, ModuleSelection, SecretMode, SecretRef, SecretValue, SeedExecutionError,
+    evaluate_preflight, execute_seed_profile, redact_install_plan, DatabaseEngine,
+    InstallApplyOptions, InstallApplyOutput, InstallExecutionError, InstallExecutor, InstallPlan,
+    InstallReceipt, InstallState, InstallStep, SecretRef, SecretValue, SeedExecutionError,
     SeedExecutionRequest, SeedIdentityPort, SeedModulePort, SeedProfile, SeedRolePort, SeedTenant,
     SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest, TenantBootstrap,
 };
+use rustok_installer_persistence::InstallerPersistenceService;
+use rustok_migrations::Migrator;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
     PortActor, PortContext, PortErrorKind, TenantReadPort, TenantReadProjection, TenantReadRequest,
@@ -22,326 +23,11 @@ use uuid::Uuid;
 use crate::models::users;
 use crate::modules::build_registry;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::installer_persistence::InstallerPersistenceService;
 use crate::services::module_lifecycle::ModuleLifecycleService;
 use crate::services::rbac_service::RbacService;
 
-#[derive(Debug, Clone)]
-pub struct InstallerApplyOptions {
-    pub lock_owner: String,
-    pub lock_ttl_secs: i64,
-    pub pg_admin_url: Option<String>,
-}
-
-impl Default for InstallerApplyOptions {
-    fn default() -> Self {
-        Self {
-            lock_owner: "api".to_string(),
-            lock_ttl_secs: 900,
-            pg_admin_url: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct InstallerApplyOutput {
-    pub status: String,
-    pub session_id: Uuid,
-    pub tenant_id: Option<Uuid>,
-    pub lock_owner: Option<String>,
-    pub lock_expires_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub preflight_receipt_id: Uuid,
-    pub preflight_receipt_checksum: String,
-    pub config_receipt_id: Uuid,
-    pub config_receipt_checksum: String,
-    pub database_receipt_id: Uuid,
-    pub database_receipt_checksum: String,
-    pub migrate_receipt_id: Uuid,
-    pub migrate_receipt_checksum: String,
-    pub seed_receipt_id: Uuid,
-    pub seed_receipt_checksum: String,
-    pub admin_receipt_id: Uuid,
-    pub admin_receipt_checksum: String,
-    pub verify_receipt_id: Uuid,
-    pub verify_receipt_checksum: String,
-    pub finalize_receipt_id: Uuid,
-    pub finalize_receipt_checksum: String,
-    pub next: Option<String>,
-}
-
-const DEFAULT_DATABASE_URL: &str = "postgres://rustok:rustok@localhost:5432/rustok_dev";
 const DEFAULT_PG_ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
-const DEFAULT_ADMIN_EMAIL: &str = "admin@local";
-const DEFAULT_TENANT_SLUG: &str = "demo";
-const DEFAULT_TENANT_NAME: &str = "Demo Workspace";
 const INSTALLER_TENANT_READ_DEADLINE: Duration = Duration::from_secs(15);
-
-pub async fn try_handle(args: &[String]) -> Result<bool> {
-    if args.get(1).map(String::as_str) != Some("install") {
-        return Ok(false);
-    }
-
-    match args.get(2).map(String::as_str) {
-        Some("preflight") => {
-            let options = InstallCliOptions::parse(&args[3..])?;
-            let plan = options.into_plan()?;
-            let report = evaluate_preflight(&plan);
-            println!("{}", serde_json::to_string_pretty(&report)?);
-            if report.passed() {
-                Ok(true)
-            } else {
-                bail!("installer preflight failed")
-            }
-        }
-        Some("plan") => {
-            let options = InstallCliOptions::parse(&args[3..])?;
-            let plan = options.into_plan()?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&redact_install_plan(&plan))?
-            );
-            Ok(true)
-        }
-        Some("apply") => {
-            let options = InstallCliOptions::parse(&args[3..])?;
-            handle_apply(options).await?;
-            Ok(true)
-        }
-        Some("--help") | Some("-h") | None => {
-            print_usage();
-            Ok(true)
-        }
-        Some(command) => bail!("unknown install command `{command}`"),
-    }
-}
-
-#[derive(Debug)]
-struct InstallCliOptions {
-    environment: InstallEnvironment,
-    profile: InstallProfile,
-    database_engine: DatabaseEngine,
-    database_url: String,
-    database_secret_ref: Option<SecretRef>,
-    create_database: bool,
-    pg_admin_url: Option<String>,
-    admin_email: String,
-    admin_password: Option<String>,
-    admin_password_ref: Option<SecretRef>,
-    tenant_slug: String,
-    tenant_name: String,
-    seed_profile: SeedProfile,
-    secrets_mode: SecretMode,
-    enable_modules: Vec<String>,
-    disable_modules: Vec<String>,
-    lock_owner: String,
-    lock_ttl_secs: i64,
-}
-
-impl InstallCliOptions {
-    fn parse(args: &[String]) -> Result<Self> {
-        let mut options = Self {
-            environment: parse_env_var("RUSTOK_INSTALL_ENVIRONMENT", |value| {
-                InstallEnvironment::parse_cli_value(value).map_err(|error| eyre!(error))
-            })
-            .unwrap_or(InstallEnvironment::Local),
-            profile: parse_env_var("RUSTOK_INSTALL_PROFILE", |value| {
-                InstallProfile::parse_cli_value(value).map_err(|error| eyre!(error))
-            })
-            .unwrap_or(InstallProfile::DevLocal),
-            database_engine: parse_env_var("RUSTOK_INSTALL_DATABASE_ENGINE", |value| {
-                DatabaseEngine::parse_cli_value(value).map_err(|error| eyre!(error))
-            })
-            .unwrap_or(DatabaseEngine::Postgres),
-            database_url: std::env::var("DATABASE_URL")
-                .unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string()),
-            database_secret_ref: std::env::var("RUSTOK_INSTALL_DATABASE_SECRET_REF")
-                .ok()
-                .as_deref()
-                .map(|value| SecretRef::parse_cli_value(value).map_err(|error| eyre!(error)))
-                .transpose()?,
-            create_database: false,
-            pg_admin_url: std::env::var("RUSTOK_INSTALL_PG_ADMIN_URL").ok(),
-            admin_email: std::env::var("SUPERADMIN_EMAIL")
-                .or_else(|_| std::env::var("SEED_ADMIN_EMAIL"))
-                .unwrap_or_else(|_| DEFAULT_ADMIN_EMAIL.to_string()),
-            admin_password: std::env::var("SUPERADMIN_PASSWORD")
-                .or_else(|_| std::env::var("SEED_ADMIN_PASSWORD"))
-                .ok(),
-            admin_password_ref: std::env::var("RUSTOK_INSTALL_ADMIN_PASSWORD_REF")
-                .ok()
-                .as_deref()
-                .map(|value| SecretRef::parse_cli_value(value).map_err(|error| eyre!(error)))
-                .transpose()?,
-            tenant_slug: std::env::var("SUPERADMIN_TENANT_SLUG")
-                .or_else(|_| std::env::var("SEED_TENANT_SLUG"))
-                .unwrap_or_else(|_| DEFAULT_TENANT_SLUG.to_string()),
-            tenant_name: std::env::var("SUPERADMIN_TENANT_NAME")
-                .or_else(|_| std::env::var("SEED_TENANT_NAME"))
-                .unwrap_or_else(|_| DEFAULT_TENANT_NAME.to_string()),
-            seed_profile: parse_env_var("RUSTOK_INSTALL_SEED_PROFILE", |value| {
-                SeedProfile::parse_cli_value(value).map_err(|error| eyre!(error))
-            })
-            .unwrap_or(SeedProfile::Minimal),
-            secrets_mode: parse_env_var("RUSTOK_INSTALL_SECRETS_MODE", |value| {
-                SecretMode::parse_cli_value(value).map_err(|error| eyre!(error))
-            })
-            .unwrap_or(SecretMode::Env),
-            enable_modules: Vec::new(),
-            disable_modules: Vec::new(),
-            lock_owner: std::env::var("RUSTOK_INSTALL_LOCK_OWNER")
-                .unwrap_or_else(|_| "cli".to_string()),
-            lock_ttl_secs: std::env::var("RUSTOK_INSTALL_LOCK_TTL_SECS")
-                .ok()
-                .and_then(|value| value.parse::<i64>().ok())
-                .unwrap_or(900),
-        };
-
-        let mut index = 0;
-        while index < args.len() {
-            match args[index].as_str() {
-                "--environment" => {
-                    options.environment =
-                        InstallEnvironment::parse_cli_value(&take_value(args, &mut index)?)
-                            .map_err(|error| eyre!(error))?;
-                }
-                "--profile" => {
-                    options.profile =
-                        InstallProfile::parse_cli_value(&take_value(args, &mut index)?)
-                            .map_err(|error| eyre!(error))?;
-                }
-                "--database-engine" => {
-                    options.database_engine =
-                        DatabaseEngine::parse_cli_value(&take_value(args, &mut index)?)
-                            .map_err(|error| eyre!(error))?;
-                }
-                "--database-url" => {
-                    options.database_url = take_value(args, &mut index)?;
-                    options.database_secret_ref = None;
-                }
-                "--database-secret-ref" => {
-                    options.database_secret_ref = Some(
-                        SecretRef::parse_cli_value(&take_value(args, &mut index)?)
-                            .map_err(|error| eyre!(error))?,
-                    );
-                }
-                "--create-database" => options.create_database = true,
-                "--pg-admin-url" => {
-                    options.pg_admin_url = Some(take_value(args, &mut index)?);
-                }
-                "--admin-email" => {
-                    options.admin_email = take_value(args, &mut index)?;
-                }
-                "--admin-password" => {
-                    options.admin_password = Some(take_value(args, &mut index)?);
-                    options.admin_password_ref = None;
-                }
-                "--admin-password-ref" => {
-                    options.admin_password_ref = Some(
-                        SecretRef::parse_cli_value(&take_value(args, &mut index)?)
-                            .map_err(|error| eyre!(error))?,
-                    );
-                }
-                "--tenant-slug" => {
-                    options.tenant_slug = take_value(args, &mut index)?;
-                }
-                "--tenant-name" => {
-                    options.tenant_name = take_value(args, &mut index)?;
-                }
-                "--seed-profile" => {
-                    options.seed_profile =
-                        SeedProfile::parse_cli_value(&take_value(args, &mut index)?)
-                            .map_err(|error| eyre!(error))?;
-                }
-                "--secrets-mode" => {
-                    options.secrets_mode =
-                        SecretMode::parse_cli_value(&take_value(args, &mut index)?)
-                            .map_err(|error| eyre!(error))?;
-                }
-                "--enable-module" => {
-                    options.enable_modules.push(take_value(args, &mut index)?);
-                }
-                "--disable-module" => {
-                    options.disable_modules.push(take_value(args, &mut index)?);
-                }
-                "--lock-owner" => {
-                    options.lock_owner = take_value(args, &mut index)?;
-                }
-                "--lock-ttl-secs" => {
-                    options.lock_ttl_secs = take_value(args, &mut index)?
-                        .parse::<i64>()
-                        .map_err(|error| eyre!("invalid --lock-ttl-secs: {error}"))?;
-                }
-                "--help" | "-h" => {
-                    print_usage();
-                    std::process::exit(0);
-                }
-                unknown => bail!("unknown install option `{unknown}`"),
-            }
-            index += 1;
-        }
-
-        Ok(options)
-    }
-
-    fn into_plan(self) -> Result<InstallPlan> {
-        let admin_password = match (self.admin_password_ref, self.admin_password) {
-            (Some(reference), _) => SecretValue::Reference { reference },
-            (None, Some(value)) => SecretValue::Plaintext { value },
-            (None, None) => {
-                if self.environment.is_production() {
-                    bail!("production install requires --admin-password-ref or SUPERADMIN_PASSWORD")
-                }
-                SecretValue::Plaintext {
-                    value: "admin12345".to_string(),
-                }
-            }
-        };
-
-        let database_url = match self.database_secret_ref {
-            Some(reference) => SecretValue::Reference { reference },
-            None => SecretValue::Plaintext {
-                value: self.database_url,
-            },
-        };
-
-        Ok(InstallPlan {
-            environment: self.environment,
-            profile: self.profile,
-            database: DatabaseConfig {
-                engine: self.database_engine,
-                url: database_url,
-                create_if_missing: self.create_database,
-            },
-            tenant: TenantBootstrap {
-                slug: self.tenant_slug,
-                name: self.tenant_name,
-            },
-            admin: AdminBootstrap {
-                email: self.admin_email,
-                password: admin_password,
-            },
-            modules: ModuleSelection {
-                enable: self.enable_modules,
-                disable: self.disable_modules,
-            },
-            seed_profile: self.seed_profile,
-            secrets_mode: self.secrets_mode,
-        })
-    }
-}
-
-async fn handle_apply(options: InstallCliOptions) -> Result<()> {
-    let apply_options = InstallerApplyOptions {
-        lock_owner: options.lock_owner.clone(),
-        lock_ttl_secs: options.lock_ttl_secs,
-        pg_admin_url: options.pg_admin_url.clone(),
-    };
-    let plan = options.into_plan()?;
-    let output = apply_plan(plan, apply_options).await?;
-    println!("{}", serde_json::to_string_pretty(&output)?);
-
-    Ok(())
-}
 
 pub async fn apply_plan(
     plan: InstallPlan,
@@ -434,7 +120,7 @@ pub async fn apply_plan(
         InstallStep::Migrate,
         &plan_snapshot,
         serde_json::json!({
-            "migrator": "apps/server/migration::Migrator",
+            "migrator": "rustok-migrations::Migrator",
             "limit": null,
             "applied": "up_to_latest"
         }),
@@ -566,6 +252,22 @@ pub async fn apply_plan(
         finalize_receipt_checksum: finalize_receipt.input_checksum,
         next: None,
     })
+}
+
+/// HTTP-host adapter for the portable installer executor contract.
+pub struct ServerInstallExecutor;
+
+#[async_trait::async_trait]
+impl InstallExecutor for ServerInstallExecutor {
+    async fn apply(
+        &self,
+        plan: InstallPlan,
+        options: InstallApplyOptions,
+    ) -> Result<InstallApplyOutput, InstallExecutionError> {
+        apply_plan(plan, options)
+            .await
+            .map_err(|error| InstallExecutionError::new(error.to_string()))
+    }
 }
 
 struct DatabaseReady {
@@ -1131,49 +833,8 @@ fn strip_secret_newline(mut value: String) -> String {
     value
 }
 
-fn parse_env_var<T>(key: &str, parser: fn(&str) -> Result<T>) -> Option<T> {
-    std::env::var(key)
-        .ok()
-        .and_then(|value| parser(&value).ok())
-}
-
-fn take_value(args: &[String], index: &mut usize) -> Result<String> {
-    *index += 1;
-    args.get(*index)
-        .filter(|value| !value.trim().is_empty())
-        .cloned()
-        .ok_or_else(|| eyre!("install option requires a value"))
-}
-
 fn normalize(value: &str) -> String {
     value.trim().to_ascii_lowercase()
-}
-
-fn print_usage() {
-    println!("Usage:");
-    println!("  rustok-server install preflight [options]");
-    println!("  rustok-server install plan [options]");
-    println!("  rustok-server install apply [options]");
-    println!();
-    println!("Options:");
-    println!("  --environment <local|demo|test|production>");
-    println!("  --profile <dev-local|monolith|hybrid-admin|headless-next|headless-leptos>");
-    println!("  --database-engine <postgres|sqlite>");
-    println!("  --database-url <url>");
-    println!("  --database-secret-ref <backend:key>");
-    println!("  --create-database");
-    println!("  --pg-admin-url <url>");
-    println!("  --admin-email <email>");
-    println!("  --admin-password <value>");
-    println!("  --admin-password-ref <backend:key>");
-    println!("  --tenant-slug <slug>");
-    println!("  --tenant-name <name>");
-    println!("  --seed-profile <none|minimal|dev>");
-    println!("  --secrets-mode <env|dotenv-file|mounted-file|external-secret>");
-    println!("  --enable-module <slug>");
-    println!("  --disable-module <slug>");
-    println!("  --lock-owner <value>");
-    println!("  --lock-ttl-secs <seconds>");
 }
 
 #[cfg(test)]

@@ -339,7 +339,7 @@ Each module = ~50 lines of new code. Everything else is in core.
 ### Step 1: Migration
 
 ```rust
-// apps/server/migration/src/m20260315_000001_create_user_field_definitions.rs
+// crates/rustok-migrations/src/m20260315_000001_create_user_field_definitions.rs
 use rustok_core::field_schema::create_field_definitions_table;
 
 async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {

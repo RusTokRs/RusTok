@@ -208,6 +208,7 @@ pub fn map_approval_record(model: ai_approval_requests::Model) -> AiApprovalRequ
         id: model.id,
         session_id: model.session_id,
         run_id: model.run_id,
+        approval_batch_id: model.approval_batch_id,
         tool_name: model.tool_name,
         tool_call_id: model.tool_call_id,
         tool_input: model.tool_input,

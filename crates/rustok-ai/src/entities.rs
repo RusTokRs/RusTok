@@ -11,6 +11,7 @@ pub mod ai_approval_requests {
         pub tenant_id: Uuid,
         pub session_id: Uuid,
         pub run_id: Uuid,
+        pub approval_batch_id: String,
         pub tool_name: String,
         pub tool_call_id: String,
         pub tool_input: Json,

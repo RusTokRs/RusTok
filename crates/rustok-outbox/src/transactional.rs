@@ -44,17 +44,21 @@ impl TransactionalEventBus {
         let envelope = self.build_envelope(tenant_id, actor_id, event)?;
         let envelope_id = envelope.id;
 
-        let outbox = self
-            .transport
-            .as_any()
-            .downcast_ref::<OutboxTransport>()
-            .ok_or_else(|| {
-                rustok_core::Error::Validation(format!(
+        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
+            outbox.write_to_outbox(txn, envelope).await?;
+        } else {
+            #[cfg(feature = "test-transport-fallback")]
+            {
+                self.transport.publish(envelope).await?;
+            }
+            #[cfg(not(feature = "test-transport-fallback"))]
+            {
+                return Err(rustok_core::Error::Validation(format!(
                     "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",
                     self.transport.reliability_level()
-                ))
-            })?;
-        outbox.write_to_outbox(txn, envelope).await?;
+                )));
+            }
+        }
 
         Ok(envelope_id)
     }

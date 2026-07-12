@@ -47,8 +47,9 @@ Important intermediate limitations that must not be mistaken for the target:
   `rustok_core::ModuleRegistry`, so artifact-only modules are not yet first-class
   lifecycle participants;
 - lifecycle hooks dispatch only to native `RusToKModule` implementations;
-- `ArtifactRuntime` currently re-fetches OCI payload bytes for each execution
-  instead of reading an admitted platform content-addressed blob;
+- admission now stages, verifies, and publishes payload bytes into CAS before
+  the database admission commit; production durable CAS, outbox, and reconciler
+  adapters remain to be supplied by host infrastructure;
 - artifact descriptors do not yet carry the complete dependency lock,
   permission/settings, runtime binding, persistence, localization, and dynamic
   UI contribution contracts.
@@ -67,6 +68,37 @@ Current implementation: the shared command context, optimistic revision/CAS
 primitive, stable error envelope, and generic typed snapshot envelope are
 available from `rustok-modules`. Owner services will adopt these contracts as
 their write paths are moved; no server or admin compatibility facade was added.
+
+M2 has started with a transport-neutral definition catalog. It derives static
+definitions from the compile-time registry while keeping registry handles
+limited to static runtime concerns, and rejects ambiguous active definitions.
+Effective-policy resolution and toggle validation now consume the catalog.
+
+The lifecycle entrypoints now use `ModuleExecutionDispatcher`, which resolves
+the active definition before invoking a static implementation. Artifact
+lifecycle bindings are explicitly denied until their admitted sandbox adapter
+is wired; no artifact path falls back to a compiled callback.
+
+Artifact descriptors now carry versioned declarative bindings with stable IDs,
+schema digests, permission, idempotency, limit profile, and declared
+capabilities. Admission rejects duplicate bindings, malformed schemas, and
+binding capabilities absent from the descriptor.
+
+`ArtifactRuntimeLifecycleExecutor` now provides the dispatcher-facing sandbox
+adapter contract: installation resolution is tenant/scope-aware, effective
+grants and limits come from a separate policy resolver, and only a binding
+present in the immutable installed descriptor can replace the sandbox
+entrypoint. The production RLS/CAS adapters remain the next persistence slice.
+
+CAS admission is explicitly `stage -> durable CAS publish -> database
+transaction plus outbox -> reconciler`. A publish preceding a failed database
+commit is an orphan candidate, never a runtime installation; the reconciler
+may remove it only after reference and retention-policy checks.
+
+The database transaction uses the existing `TransactionalEventBus` and
+`OutboxTransport`: admission metadata, the selected dependency graph,
+installation/composition revision, and the outbox envelope are one commit. No
+module-specific second event journal is allowed.
 
 ### M2 - Introduce the Facade
 

@@ -1,4 +1,3 @@
-use crate::routes::Routes;
 use axum::{
     extract::{Path, State},
     response::Response,
@@ -476,44 +475,47 @@ async fn invalidate_channel_resolution_cache(ctx: &ServerRuntimeContext, tenant_
     invalidate_tenant_channel_cache(ctx, tenant_id).await;
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/channels")
-        .add("/bootstrap", get(bootstrap))
-        .add("/", post(create_channel))
-        .add("/{channel_id}/default", post(set_default_channel))
-        .add("/{channel_id}/targets", post(create_target))
-        .add("/{channel_id}/targets/{target_id}", patch(update_target))
-        .add("/{channel_id}/targets/{target_id}", delete(delete_target))
-        .add("/{channel_id}/modules", post(bind_module))
-        .add(
-            "/{channel_id}/modules/{binding_id}",
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/api/channels/bootstrap", get(bootstrap))
+        .route("/api/channels/", post(create_channel))
+        .route(
+            "/api/channels/{channel_id}/default",
+            post(set_default_channel),
+        )
+        .route("/api/channels/{channel_id}/targets", post(create_target))
+        .route(
+            "/api/channels/{channel_id}/targets/{target_id}",
+            patch(update_target).delete(delete_target),
+        )
+        .route("/api/channels/{channel_id}/modules", post(bind_module))
+        .route(
+            "/api/channels/{channel_id}/modules/{binding_id}",
             delete(delete_module_binding),
         )
-        .add("/{channel_id}/oauth-apps", post(bind_oauth_app))
-        .add(
-            "/{channel_id}/oauth-apps/{binding_id}",
+        .route(
+            "/api/channels/{channel_id}/oauth-apps",
+            post(bind_oauth_app),
+        )
+        .route(
+            "/api/channels/{channel_id}/oauth-apps/{binding_id}",
             delete(delete_oauth_app_binding),
         )
-        .add("/policies", post(create_resolution_policy_set))
-        .add(
-            "/policies/{policy_set_id}/activate",
+        .route("/api/channels/policies", post(create_resolution_policy_set))
+        .route(
+            "/api/channels/policies/{policy_set_id}/activate",
             post(activate_resolution_policy_set),
         )
-        .add(
-            "/policies/{policy_set_id}/rules",
+        .route(
+            "/api/channels/policies/{policy_set_id}/rules",
             post(create_resolution_rule),
         )
-        .add(
-            "/policies/{policy_set_id}/rules/reorder",
+        .route(
+            "/api/channels/policies/{policy_set_id}/rules/reorder",
             post(reorder_resolution_rules),
         )
-        .add(
-            "/policies/{policy_set_id}/rules/{rule_id}",
-            patch(update_resolution_rule),
-        )
-        .add(
-            "/policies/{policy_set_id}/rules/{rule_id}",
-            delete(delete_resolution_rule),
+        .route(
+            "/api/channels/policies/{policy_set_id}/rules/{rule_id}",
+            patch(update_resolution_rule).delete(delete_resolution_rule),
         )
 }

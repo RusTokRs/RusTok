@@ -42,7 +42,10 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE ai_provider_profiles DROP COLUMN settings",
             ],
             DbBackend::Sqlite => &[
-                "ALTER TABLE ai_provider_profiles ADD COLUMN provider_target_id TEXT",
+                // SQLite cannot add a non-null column without a default. The default is
+                // immediately overwritten for every existing row, and is only retained as
+                // a database-level guard for rows created outside the application.
+                "ALTER TABLE ai_provider_profiles ADD COLUMN provider_target_id TEXT NOT NULL DEFAULT ''",
                 "UPDATE ai_provider_profiles SET provider_target_id = provider_slug",
                 "ALTER TABLE ai_provider_profiles DROP COLUMN settings",
             ],
@@ -63,5 +66,79 @@ impl MigrationTrait for Migration {
             "AI provider targets are intentionally irreversible because endpoints are deployment-owned"
                 .to_string(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Migration;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
+    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+
+    async fn legacy_database(settings: &str) -> sea_orm::DatabaseConnection {
+        let database = Database::connect("sqlite::memory:").await.unwrap();
+        database
+            .execute_unprepared(
+                "CREATE TABLE ai_provider_profiles (\
+                    slug TEXT NOT NULL,\
+                    provider_slug TEXT NOT NULL,\
+                    settings JSON NOT NULL)",
+            )
+            .await
+            .unwrap();
+        database
+            .execute_unprepared(&format!(
+                "INSERT INTO ai_provider_profiles (slug, provider_slug, settings) \
+                 VALUES ('primary', 'openai_compatible', '{}')",
+                settings.replace('\'', "''")
+            ))
+            .await
+            .unwrap();
+        database
+    }
+
+    #[tokio::test]
+    async fn migrates_standard_profile_to_its_deployment_target_id() {
+        let database = legacy_database("{}").await;
+        Migration.up(&SchemaManager::new(&database)).await.unwrap();
+        let row = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT provider_target_id FROM ai_provider_profiles".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            String::try_get(&row, "", "provider_target_id").unwrap(),
+            "openai_compatible"
+        );
+        let columns = database
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "PRAGMA table_info(ai_provider_profiles)".to_string(),
+            ))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| {
+                (
+                    String::try_get(&row, "", "name").unwrap(),
+                    i64::try_get(&row, "", "notnull").unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(columns.contains(&("provider_target_id".to_string(), 1)));
+        assert!(!columns.iter().any(|(name, _)| name == "settings"));
+    }
+
+    #[tokio::test]
+    async fn rejects_custom_tenant_endpoint_without_a_deployment_mapping() {
+        let database = legacy_database(r#"{"base_url":"https://gateway.example.test/v1"}"#).await;
+        let error = Migration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect_err("custom endpoint must require operator mapping");
+        assert!(error.to_string().contains("primary"));
     }
 }

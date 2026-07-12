@@ -25,17 +25,20 @@ requires the returned manifest digest to match the requested reference, reads
 the descriptor from the manifest config, and downloads exactly one payload
 layer whose digest and media type match that descriptor.
 
-`ArtifactRuntime` resolves the installed reference again for every execution.
-It requires the package reference, descriptor and release identity to equal the
-durable installation record before it creates the shared sandbox request. This
-keeps registry drift or a substituted descriptor outside the execution path.
+During admission, `ModuleInstaller` verifies the OCI package and places its
+payload in an `ArtifactBlobStore` under the descriptor payload digest.
+`ArtifactRuntime` reads only that admitted digest-pinned blob for execution;
+the external OCI registry is a distribution source and is not consulted at
+runtime. Missing or corrupted blobs fail closed before a sandbox request is
+created.
 
 `module_artifact_installations` is the host-managed persistence boundary. Its
 PostgreSQL migration enables RLS; tenant-scoped connections must set
 `rustok.tenant_id` before querying or mutating tenant installation rows.
 `SeaOrmArtifactInstallationStore` performs that setup in the same transaction
 as its insert; it stores the reference and canonical descriptor, never artifact
-bytes.
+bytes. A durable production blob-store adapter, atomic blob/installation
+publication, and retention/garbage collection remain the next CAS work slice.
 
 ## Verification
 

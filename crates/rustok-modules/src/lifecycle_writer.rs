@@ -5,11 +5,21 @@ use uuid::Uuid;
 use rustok_core::ModuleRegistry;
 
 use crate::{
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, TenantModuleOverride,
-    execute_module_toggle, resolve_effective_modules,
+    execute_module_toggle, resolve_effective_modules, ModuleDefinitionCatalog,
+    ModuleDefinitionError, ModuleExecutionDispatcher, ModuleLifecycleExecutionError,
+    ModuleLifecycleToggleRequest, ModuleOperationStoreError, TenantModuleOverride,
+    TenantModuleSettingsRecord, TenantModuleSettingsRequest, TenantModuleStateStore,
 };
 
-/// Database-backed module lifecycle adapter for executable host composition.
+/// Persists validated module settings through the module-owned lifecycle state store.
+pub async fn persist_module_settings(
+    db: &DatabaseConnection,
+    request: TenantModuleSettingsRequest,
+) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
+    TenantModuleStateStore::persist_settings(db, request).await
+}
+
+/// Database-backed adapter for module lifecycle execution in a host composition.
 ///
 /// The caller supplies the selected distribution registry and its declared
 /// defaults; this adapter owns the durable override read and lifecycle write.
@@ -40,15 +50,18 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         actor: &str,
     ) -> Result<(), ModuleLifecycleDbWriterError> {
         let overrides = self.overrides(tenant_id).await?;
+        let catalog = ModuleDefinitionCatalog::from_static_registry(self.registry)
+            .map_err(ModuleLifecycleDbWriterError::Definition)?;
         let effective_enabled_modules = resolve_effective_modules(
-            self.registry,
+            &catalog,
             self.default_enabled_modules.iter().cloned(),
             overrides,
         );
         let current_settings = self.settings(tenant_id, module_slug).await?;
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, self.registry);
         execute_module_toggle(
             &self.db,
-            self.registry,
+            &dispatcher,
             ModuleLifecycleToggleRequest {
                 tenant_id,
                 module_slug: module_slug.to_string(),
@@ -126,6 +139,8 @@ pub enum ModuleLifecycleDbWriterError {
     Database(String),
     #[error(transparent)]
     Lifecycle(#[from] ModuleLifecycleExecutionError),
+    #[error(transparent)]
+    Definition(#[from] ModuleDefinitionError),
 }
 
 fn database_error(error: impl std::fmt::Display) -> ModuleLifecycleDbWriterError {

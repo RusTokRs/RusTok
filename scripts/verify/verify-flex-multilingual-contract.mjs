@@ -23,9 +23,9 @@ function expectNotContains(relativePath, unexpectedSnippet, description) {
 }
 
 expectContains(
-  "apps/server/migration/src/lib.rs",
+  "crates/rustok-migrations/src/lib.rs",
   "m20260410_000001_cleanup_flex_attached_legacy_inline_metadata",
-  "flex attached cleanup migration to be wired into the server migrator",
+  "flex attached cleanup migration to be wired into the platform migrator",
 );
 expectContains(
   "crates/flex/src/standalone.rs",

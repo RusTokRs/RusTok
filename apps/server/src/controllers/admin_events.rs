@@ -1,6 +1,5 @@
 use crate::error::Error;
 use crate::error::Result;
-use crate::routes::Routes;
 use axum::{
     extract::{Path, Query, State},
     Json,
@@ -188,11 +187,13 @@ pub async fn replay_dlq_event(
     }))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/admin/events")
-        .add("/dlq", axum::routing::get(list_dlq))
-        .add("/dlq/{id}/replay", axum::routing::post(replay_dlq_event))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/api/admin/events/dlq", axum::routing::get(list_dlq))
+        .route(
+            "/api/admin/events/dlq/{id}/replay",
+            axum::routing::post(replay_dlq_event),
+        )
 }
 
 fn default_limit() -> u64 {

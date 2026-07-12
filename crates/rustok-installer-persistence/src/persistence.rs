@@ -6,7 +6,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::models::{install_session, install_step_receipt};
+use crate::entities::{install_session, install_step_receipt};
 
 #[derive(Clone)]
 pub struct InstallerPersistenceService {

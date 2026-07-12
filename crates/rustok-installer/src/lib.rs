@@ -4,6 +4,7 @@
 //! Those layers should call these typed contracts instead of reimplementing
 //! install state, checksum, secret-redaction, and preflight policy rules.
 
+mod execution;
 mod plan;
 mod preflight;
 mod receipt;
@@ -11,6 +12,9 @@ mod secrets;
 mod seed;
 mod state;
 
+pub use execution::{
+    InstallApplyOptions, InstallApplyOutput, InstallExecutionError, InstallExecutor,
+};
 pub use plan::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
     InstallProfile, ModuleSelection, SeedProfile, TenantBootstrap,

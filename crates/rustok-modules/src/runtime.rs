@@ -1,27 +1,31 @@
+use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
 
-use rustok_sandbox::{SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime};
+use rustok_sandbox::{
+    ExecutionPhase, SandboxContext, SandboxOutcome, SandboxPolicy, SandboxRuntime,
+};
 
 use crate::{
-    ArtifactRegistry, InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError,
+    ArtifactBlobStore, ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ArtifactReleaseRef,
+    InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError, ModuleRuntimeBinding,
 };
 
 /// Executes an installed immutable artifact without involving the server's
 /// source tree or Cargo dependency graph. The registry is resolved on each
 /// invocation by the digest-pinned installation reference, then identity is
 /// verified again before the payload crosses the sandbox boundary.
-pub struct ArtifactRuntime<R> {
-    registry: R,
+pub struct ArtifactRuntime<B> {
+    blobs: B,
     sandbox: SandboxRuntime,
 }
 
-impl<R> ArtifactRuntime<R>
+impl<B> ArtifactRuntime<B>
 where
-    R: ArtifactRegistry,
+    B: ArtifactBlobStore,
 {
-    pub fn new(registry: R, sandbox: SandboxRuntime) -> Self {
-        Self { registry, sandbox }
+    pub fn new(blobs: B, sandbox: SandboxRuntime) -> Self {
+        Self { blobs, sandbox }
     }
 
     pub async fn execute(
@@ -31,10 +35,115 @@ where
         input: Value,
         policy: SandboxPolicy,
     ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
-        let package = self.registry.fetch(&artifact.reference).await?;
-        verify_runtime_package(artifact, &package)?;
-        let request = artifact.sandbox_request(package.payload, context, input, policy)?;
+        let payload = self
+            .blobs
+            .get_verified(&artifact.descriptor.artifact_digest)
+            .await?;
+        let request = artifact.sandbox_request(payload, context, input, policy)?;
         Ok(self.sandbox.execute(request).await?)
+    }
+
+    pub async fn execute_binding(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        binding: &ModuleRuntimeBinding,
+        context: SandboxContext,
+        input: Value,
+        policy: SandboxPolicy,
+    ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
+        if !artifact
+            .descriptor
+            .bindings
+            .iter()
+            .any(|candidate| candidate == binding)
+        {
+            return Err(ArtifactRuntimeError::BindingNotAdmitted(binding.id.clone()));
+        }
+        let payload = self
+            .blobs
+            .get_verified(&artifact.descriptor.artifact_digest)
+            .await?;
+        let mut request = artifact.sandbox_request(payload, context, input, policy)?;
+        request.payload.entrypoint = binding.entrypoint.clone();
+        Ok(self.sandbox.execute(request).await?)
+    }
+}
+
+/// Resolves the immutable installation selected for an artifact lifecycle
+/// dispatch. Implementations must apply platform/tenant scope and RLS.
+#[async_trait]
+pub trait ArtifactInstallationResolver: Send + Sync {
+    async fn resolve(
+        &self,
+        release: &ArtifactReleaseRef,
+        tenant_id: uuid::Uuid,
+    ) -> Result<InstalledModuleArtifact, String>;
+}
+
+/// Supplies the effective capability grants and limits for the selected
+/// installation. Descriptor declarations alone never become sandbox grants.
+#[async_trait]
+pub trait ArtifactSandboxPolicyResolver: Send + Sync {
+    async fn resolve(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        tenant_id: uuid::Uuid,
+    ) -> Result<SandboxPolicy, String>;
+}
+
+/// Production adapter from dispatcher lifecycle bindings to the shared sandbox.
+pub struct ArtifactRuntimeLifecycleExecutor<R, I, P> {
+    runtime: ArtifactRuntime<R>,
+    installations: I,
+    policies: P,
+}
+
+impl<B, I, P> ArtifactRuntimeLifecycleExecutor<B, I, P>
+where
+    B: ArtifactBlobStore,
+{
+    pub fn new(runtime: ArtifactRuntime<R>, installations: I, policies: P) -> Self {
+        Self {
+            runtime,
+            installations,
+            policies,
+        }
+    }
+}
+
+#[async_trait]
+impl<B, I, P> ArtifactLifecycleExecutor for ArtifactRuntimeLifecycleExecutor<B, I, P>
+where
+    B: ArtifactBlobStore,
+    I: ArtifactInstallationResolver,
+    P: ArtifactSandboxPolicyResolver,
+{
+    async fn dispatch_lifecycle(
+        &self,
+        dispatch: ArtifactLifecycleDispatch<'_>,
+    ) -> Result<(), String> {
+        let artifact = self
+            .installations
+            .resolve(dispatch.release, dispatch.tenant_id)
+            .await?;
+        let policy = self.policies.resolve(&artifact, dispatch.tenant_id).await?;
+        let mut context = SandboxContext::new(ExecutionPhase::Lifecycle);
+        context.tenant_id = Some(dispatch.tenant_id);
+        self.runtime
+            .execute_binding(
+                &artifact,
+                dispatch.binding,
+                context,
+                serde_json::json!({
+                    "binding_id": dispatch.binding.id,
+                    "phase": dispatch.phase,
+                    "config": dispatch.config,
+                }),
+                policy,
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -64,6 +173,8 @@ fn verify_runtime_package(
 
 #[derive(Debug, Error)]
 pub enum ArtifactRuntimeError {
+    #[error("artifact binding `{0}` is not admitted for this installation")]
+    BindingNotAdmitted(String),
     #[error(transparent)]
     Installation(#[from] ModuleInstallationError),
     #[error(transparent)]
@@ -96,22 +207,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleInstallationScope,
-        OciArtifactReference,
+        ArtifactPayloadKind, ArtifactReleaseRef, InMemoryArtifactBlobStore,
+        ModuleArtifactDescriptor, ModuleInstallationScope, OciArtifactReference,
     };
-
-    #[derive(Clone)]
-    struct FixtureRegistry(ModuleArtifactPackage);
-
-    #[async_trait]
-    impl ArtifactRegistry for FixtureRegistry {
-        async fn fetch(
-            &self,
-            _reference: &OciArtifactReference,
-        ) -> Result<ModuleArtifactPackage, ModuleInstallationError> {
-            Ok(self.0.clone())
-        }
-    }
 
     struct DenyBroker;
 
@@ -166,6 +264,7 @@ mod tests {
                 artifact_digest: payload_digest,
                 entrypoint: "main".to_string(),
                 capabilities: Vec::new(),
+                bindings: Vec::new(),
             },
             media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
             payload,
@@ -193,7 +292,12 @@ mod tests {
             .register(RecordingExecutor(Arc::clone(&observed)))
             .expect("executor registration");
         let sandbox = SandboxRuntime::new(executors, Arc::new(DenyBroker));
-        let runtime = ArtifactRuntime::new(FixtureRegistry(package), sandbox);
+        let blobs = InMemoryArtifactBlobStore::default();
+        blobs
+            .put_verified(&installed.descriptor.artifact_digest, &package.payload)
+            .await
+            .expect("admit payload");
+        let runtime = ArtifactRuntime::new(blobs, sandbox);
         let context = SandboxContext::new(ExecutionPhase::Event);
 
         let outcome = runtime
@@ -221,7 +325,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execution_rejects_a_registry_descriptor_different_from_the_installation() {
+    async fn execution_fails_closed_when_admitted_blob_is_unavailable() {
         let package = package();
         let installed = InstalledModuleArtifact {
             installation_id: Uuid::new_v4(),
@@ -235,7 +339,7 @@ mod tests {
             installed_at: Utc::now(),
         };
         let runtime = ArtifactRuntime::new(
-            FixtureRegistry(package),
+            InMemoryArtifactBlobStore::default(),
             SandboxRuntime::new(ExecutorRegistry::new(), Arc::new(DenyBroker)),
         );
 
@@ -248,7 +352,9 @@ mod tests {
                     SandboxPolicy::default(),
                 )
                 .await,
-            Err(ArtifactRuntimeError::DescriptorMismatch { .. })
+            Err(ArtifactRuntimeError::Installation(
+                ModuleInstallationError::BlobNotFound(_)
+            ))
         ));
     }
 }

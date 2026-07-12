@@ -25,16 +25,24 @@ bootstrap logic.
 
 ## Interactions
 
-- `apps/server` calls this crate from `rustok-server install ...`; future
-  `/api/install/*` endpoints should reuse the same contracts.
-- `xtask install-dev` remains a dev convenience wrapper and delegates bootstrap
-  to `rustok-server install apply`.
-- The current CLI adapter resolves local secret refs (`env`, `file`,
+- `apps/server` is a thin HTTP/setup-wizard adapter over these contracts; it
+  must not own a second installation state machine.
+- `rustok-cli` is the target operator adapter for `install` commands. The full
+  provider is planned; the current CLI provider covers seed operations only.
+- `xtask install-dev` remains a dev convenience wrapper and will delegate to
+  the platform CLI/executor rather than the production server binary.
+- The current executor adapters resolve local secret refs (`env`, `file`,
   `mounted-file`, `dotenv`) during `apply`; external secret managers remain
   contract-level references until an external resolver is added.
-- Migrations remain owned by `apps/server/migration`; installer schema-selection
+- Migrations are owned by `rustok-migrations`; installer schema-selection
   must not pretend to omit module-owned schema while the server migrator is still
   globally composed.
+- Durable SeaORM session and receipt storage is owned by
+  `rustok-installer-persistence`; this foundation crate deliberately keeps no
+  database adapter.
+- Monolith and distributed deployment intent is documented in
+  [the implementation plan](docs/implementation-plan.md). Build and deployment
+  execution belong to `rustok-build` and `rustok-distribution`, not this crate.
 
 ## Entry Points
 

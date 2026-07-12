@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AiError, AiProviderConfig, AiResult};
 
+use super::catalog::ProviderIntegration;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingRequest {
     pub model: String,
@@ -86,17 +88,20 @@ pub async fn embed(
         }};
     }
 
-    match config.provider_slug.as_str() {
+    let integration = ProviderIntegration::from_slug(&config.provider_slug).ok_or_else(|| {
+        AiError::InvalidConfig(format!("unknown provider `{}`", config.provider_slug))
+    })?;
+    match integration {
         #[cfg(feature = "fastembed")]
-        "fastembed" => {
+        ProviderIntegration::Fastembed => {
             let model = fastembed_model(&request.model)?;
             let model = rig_fastembed::Client::new()
                 .embedding_model(&model)
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             embed_with(model, request.documents).await
         }
-        "openai" | "openai_compatible" => keyed_embed!(openai),
-        "azure_openai" => {
+        ProviderIntegration::OpenAi | ProviderIntegration::OpenAiCompatible => keyed_embed!(openai),
+        ProviderIntegration::AzureOpenAi => {
             let api_version = setting_str(config, "api_version").ok_or_else(|| {
                 AiError::InvalidConfig("Azure API version is required".to_string())
             })?;
@@ -114,8 +119,8 @@ pub async fn embed(
             };
             embed_with(model, request.documents).await
         }
-        "github_copilot" => keyed_embed!(copilot),
-        "cohere" => {
+        ProviderIntegration::GithubCopilot => keyed_embed!(copilot),
+        ProviderIntegration::Cohere => {
             let mut builder = cohere::Client::builder().api_key(api_key);
             if !base_url.is_empty() {
                 builder = builder.base_url(base_url);
@@ -134,13 +139,13 @@ pub async fn embed(
             };
             embed_with(model, request.documents).await
         }
-        "gemini" => keyed_embed!(gemini),
-        "mistral" => keyed_embed!(mistral),
-        "ollama" => keyed_embed!(ollama),
-        "openrouter" => keyed_embed!(openrouter),
-        "together" => keyed_embed!(together),
-        "voyage_ai" => keyed_embed!(voyageai),
-        "aws_bedrock" => {
+        ProviderIntegration::Gemini => keyed_embed!(gemini),
+        ProviderIntegration::Mistral => keyed_embed!(mistral),
+        ProviderIntegration::Ollama => keyed_embed!(ollama),
+        ProviderIntegration::OpenRouter => keyed_embed!(openrouter),
+        ProviderIntegration::Together => keyed_embed!(together),
+        ProviderIntegration::VoyageAi => keyed_embed!(voyageai),
+        ProviderIntegration::AwsBedrock => {
             let region = setting_str(config, "region")
                 .unwrap_or(rig_bedrock::client::DEFAULT_AWS_REGION);
             let client = if let Some(profile) = setting_str(config, "profile")
@@ -161,7 +166,7 @@ pub async fn embed(
             };
             embed_with(model, request.documents).await
         }
-        "gemini_grpc" => {
+        ProviderIntegration::GeminiGrpc => {
             let client = rig_gemini_grpc::Client::new(api_key.to_string())
                 .await
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
@@ -173,7 +178,7 @@ pub async fn embed(
             };
             embed_with(model, request.documents).await
         }
-        "llamafile" => {
+        ProviderIntegration::Llamafile => {
             let mut builder = llamafile::Client::builder().api_key(rig::client::Nothing);
             if !base_url.is_empty() {
                 builder = builder.base_url(base_url);
@@ -189,8 +194,9 @@ pub async fn embed(
             };
             embed_with(model, request.documents).await
         }
-        slug => Err(AiError::InvalidConfig(format!(
-            "Rig provider `{slug}` does not expose embeddings through this entrypoint"
+        _ => Err(AiError::InvalidConfig(format!(
+            "Rig provider `{}` does not expose embeddings through this entrypoint",
+            config.provider_slug
         ))),
     }
 }

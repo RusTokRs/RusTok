@@ -1,4 +1,3 @@
-use crate::routes::Routes;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -7,7 +6,11 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
-use rustok_installer::{evaluate_preflight, redact_install_plan, InstallPlan};
+use rustok_installer::{
+    evaluate_preflight, redact_install_plan, InstallApplyOptions, InstallApplyOutput,
+    InstallExecutor, InstallPlan,
+};
+use rustok_installer_persistence::{entities::install_step_receipt, InstallerPersistenceService};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -15,9 +18,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::error::{http_error, Error, Result};
-use crate::installer_cli::{apply_plan, InstallerApplyOptions, InstallerApplyOutput};
-use crate::models::install_step_receipt;
-use crate::services::installer_persistence::InstallerPersistenceService;
+use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 static INSTALL_JOBS: Lazy<Mutex<HashMap<Uuid, InstallJobStatusResponse>>> =
@@ -186,7 +187,9 @@ async fn apply(
     );
 
     tokio::spawn(async move {
-        let result = apply_plan(request.plan, apply_options).await;
+        let result = ServerInstallExecutor
+            .apply(request.plan, apply_options)
+            .await;
         let finished_at = Utc::now();
         let mut jobs = INSTALL_JOBS.lock().await;
         let Some(job) = jobs.get_mut(&job_id) else {
@@ -305,13 +308,12 @@ fn internal_error(description: impl Into<String>) -> Error {
     ))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/install")
-        .add("/status", get(status))
-        .add("/jobs/{job_id}", get(job_status))
-        .add("/sessions/{session_id}/receipts", get(receipts))
-        .add("/plan", post(plan))
-        .add("/preflight", post(preflight))
-        .add("/apply", post(apply))
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route("/api/install/status", get(status))
+        .route("/api/install/jobs/{job_id}", get(job_status))
+        .route("/api/install/sessions/{session_id}/receipts", get(receipts))
+        .route("/api/install/plan", post(plan))
+        .route("/api/install/preflight", post(preflight))
+        .route("/api/install/apply", post(apply))
 }

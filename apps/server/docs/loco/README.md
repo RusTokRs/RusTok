@@ -10,7 +10,7 @@ If you are modifying `apps/server/**`, first check:
 2. `apps/server/docs/loco/changes.md`;
 3. `apps/server/docs/library-stack.md` (core server libraries and their roles);
 4. `apps/server/docs/loco/upstream/VERSION` (snapshot timeliness);
-5. Current patterns in `apps/server/src/**` and `apps/server/migration/**`.
+5. Current patterns in `apps/server/src/**` and `crates/rustok-migrations/**`.
 
 Short rule: **real code in `apps/server` is more important than abstract advice from the internet**.
 

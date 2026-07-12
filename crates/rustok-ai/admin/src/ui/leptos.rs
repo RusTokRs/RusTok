@@ -77,8 +77,7 @@ pub fn AiAdmin() -> impl IntoView {
 
     let provider_slug = RwSignal::new(String::new());
     let provider_name = RwSignal::new(String::new());
-    let provider_integration = RwSignal::new("openai_compatible".to_string());
-    let provider_settings = RwSignal::new(Vec::new());
+    let provider_integration = RwSignal::new(String::new());
     let provider_credential_refs = RwSignal::new(Vec::new());
     let provider_model = RwSignal::new("gpt-4.1-mini".to_string());
     let provider_temperature = RwSignal::new("0.2".to_string());
@@ -408,7 +407,6 @@ pub fn AiAdmin() -> impl IntoView {
                                 provider_slug,
                                 provider_name,
                                 provider_integration,
-                                provider_settings,
                                 provider_credential_refs,
                                 provider_model,
                                 provider_temperature,
@@ -426,7 +424,6 @@ pub fn AiAdmin() -> impl IntoView {
                                 provider_slug,
                                 provider_name,
                                 provider_integration,
-                                provider_settings,
                                 provider_credential_refs,
                                 provider_model,
                                 provider_temperature,
@@ -445,7 +442,6 @@ pub fn AiAdmin() -> impl IntoView {
                         provider_slug,
                         provider_name,
                         provider_integration,
-                        provider_settings,
                         provider_credential_refs,
                         provider_model,
                         provider_temperature,
@@ -622,6 +618,7 @@ pub fn AiAdmin() -> impl IntoView {
                 status: "CONNECTING".to_string(),
                 content: String::new(),
                 error_message: None,
+                sequence: 0,
                 connected: false,
             }));
 
@@ -692,6 +689,7 @@ pub fn AiAdmin() -> impl IntoView {
                                 AiRunStreamEventKindPayload::Delta => "STREAMING",
                                 AiRunStreamEventKindPayload::Completed => "COMPLETED",
                                 AiRunStreamEventKindPayload::Failed => "FAILED",
+                                AiRunStreamEventKindPayload::Cancelled => "CANCELLED",
                                 AiRunStreamEventKindPayload::WaitingApproval => "WAITING_APPROVAL",
                             }
                             .to_string();
@@ -703,14 +701,25 @@ pub fn AiAdmin() -> impl IntoView {
                                 event.event_kind,
                                 AiRunStreamEventKindPayload::Completed
                                     | AiRunStreamEventKindPayload::Failed
+                                    | AiRunStreamEventKindPayload::Cancelled
                                     | AiRunStreamEventKindPayload::WaitingApproval
                             );
 
+                            let is_duplicate = live_stream
+                                .get_untracked()
+                                .is_some_and(|current| {
+                                    current.run_id == event.run_id
+                                        && event.sequence <= current.sequence
+                                });
+                            if is_duplicate {
+                                return;
+                            }
                             set_live_stream.set(Some(AiLiveStreamStatePayload {
                                 run_id: event.run_id,
                                 status,
                                 content,
                                 error_message: event.error_message,
+                                sequence: event.sequence,
                                 connected: true,
                             }));
 
@@ -735,6 +744,7 @@ pub fn AiAdmin() -> impl IntoView {
                                     status: "ERROR".to_string(),
                                     content: String::new(),
                                     error_message: message.clone(),
+                                    sequence: 0,
                                     connected: false,
                                 });
                             }
@@ -808,7 +818,6 @@ pub fn AiAdmin() -> impl IntoView {
                 provider_name.get_untracked(),
                 provider_integration.get_untracked(),
                 provider_model.get_untracked(),
-                provider_settings.get_untracked(),
                 provider_credential_refs.get_untracked(),
                 provider_temperature
                     .get_untracked()
@@ -848,7 +857,6 @@ pub fn AiAdmin() -> impl IntoView {
             provider_slug,
             provider_name,
             provider_integration,
-            provider_settings,
             provider_credential_refs,
             provider_model,
             provider_temperature,
@@ -875,8 +883,8 @@ pub fn AiAdmin() -> impl IntoView {
             let result = transport::update_provider(
                 provider_id,
                 provider_name.get_untracked(),
+                provider_integration.get_untracked(),
                 provider_model.get_untracked(),
-                provider_settings.get_untracked(),
                 provider_credential_refs.get_untracked(),
                 provider_temperature
                     .get_untracked()
@@ -1594,11 +1602,11 @@ pub fn AiAdmin() -> impl IntoView {
                                         <AiProviderPanel
                                             ui_locale=ui_locale_left.clone()
                                             provider_catalog=bootstrap_left.provider_catalog.clone()
+                                            provider_targets=bootstrap_left.provider_targets.clone()
                                             providers=bootstrap_left.providers.clone()
                                             provider_slug=provider_slug
                                             provider_name=provider_name
                                             provider_integration=provider_integration
-                                            provider_settings=provider_settings
                                             provider_credential_refs=provider_credential_refs
                                             provider_model=provider_model
                                             provider_temperature=provider_temperature
@@ -1855,6 +1863,9 @@ pub(crate) fn stream_event_kind_label(
             t(locale, "ai.status.completed", "COMPLETED")
         }
         model::AiRunStreamEventKindPayload::Failed => t(locale, "ai.status.failed", "FAILED"),
+        model::AiRunStreamEventKindPayload::Cancelled => {
+            t(locale, "ai.status.cancelled", "CANCELLED")
+        }
         model::AiRunStreamEventKindPayload::WaitingApproval => {
             t(locale, "ai.status.waitingApproval", "WAITING_APPROVAL")
         }
@@ -2051,7 +2062,6 @@ fn apply_provider_profile(
     provider_slug: RwSignal<String>,
     provider_name: RwSignal<String>,
     provider_integration: RwSignal<String>,
-    provider_settings: RwSignal<Vec<crate::model::AiProviderSettingPayload>>,
     provider_credential_refs: RwSignal<Vec<crate::model::AiCredentialRefPayload>>,
     provider_model: RwSignal<String>,
     provider_temperature: RwSignal<String>,
@@ -2066,8 +2076,7 @@ fn apply_provider_profile(
     selected_provider.set(profile.id.clone());
     provider_slug.set(profile.slug.clone());
     provider_name.set(profile.display_name.clone());
-    provider_integration.set(profile.provider_slug.clone());
-    provider_settings.set(profile.settings.clone());
+    provider_integration.set(profile.provider_target_id.clone());
     provider_credential_refs.set(profile.credential_refs.clone());
     provider_model.set(profile.model.clone());
     provider_temperature.set(
@@ -2094,7 +2103,6 @@ fn clear_provider_profile(
     provider_slug: RwSignal<String>,
     provider_name: RwSignal<String>,
     provider_integration: RwSignal<String>,
-    provider_settings: RwSignal<Vec<crate::model::AiProviderSettingPayload>>,
     provider_credential_refs: RwSignal<Vec<crate::model::AiCredentialRefPayload>>,
     provider_model: RwSignal<String>,
     provider_temperature: RwSignal<String>,
@@ -2108,8 +2116,7 @@ fn clear_provider_profile(
     selected_provider.set(String::new());
     provider_slug.set(String::new());
     provider_name.set(String::new());
-    provider_integration.set("openai_compatible".to_string());
-    provider_settings.set(Vec::new());
+    provider_integration.set(String::new());
     provider_credential_refs.set(Vec::new());
     provider_model.set("gpt-4.1-mini".to_string());
     provider_temperature.set("0.2".to_string());

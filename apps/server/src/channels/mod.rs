@@ -27,7 +27,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 ///
 /// Unlike Loco Channels, `RustokChannel` uses the server's own auth mechanism
 /// (Bearer JWT validated before the upgrade) and does not depend on
-/// `loco_rs::controller::channels`.
+/// a framework-owned channel controller.
 #[async_trait]
 pub trait RustokChannel: Send + Sync {
     /// Axum route path for this channel, e.g. `"/ws/builds"`.

@@ -1,6 +1,6 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use migration::Migrator;
+use rustok_migrations::Migrator;
 use sea_orm_migration::{
     prelude::MigratorTrait,
     sea_orm::{

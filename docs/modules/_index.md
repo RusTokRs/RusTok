@@ -57,6 +57,9 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-fba` | [docs](../../crates/rustok-fba/docs/README.md) | [plan](../../crates/rustok-fba/docs/implementation-plan.md) |
 | `rustok-cli-core` | [docs](../../crates/rustok-cli-core/docs/README.md) | [plan](../../crates/rustok-cli-core/docs/implementation-plan.md) |
 | `rustok-cli-platform` | [docs](../../crates/rustok-cli-platform/docs/README.md) | [plan](../../crates/rustok-cli-platform/docs/implementation-plan.md) |
+| `rustok-migrations` | [README](../../crates/rustok-migrations/README.md) | - |
+| `rustok-installer` | [docs](../../crates/rustok-installer/docs/README.md) | [plan](../../crates/rustok-installer/docs/implementation-plan.md) |
+| `rustok-installer-persistence` | [README](../../crates/rustok-installer-persistence/README.md) | - |
 | `rustok-build` | [docs](../../crates/rustok-build/docs/README.md) | [plan](../../crates/rustok-build/docs/implementation-plan.md) |
 | `rustok-cli-registry` | [docs](../../crates/rustok-cli-registry/docs/README.md) | [plan](../../crates/rustok-cli-registry/docs/implementation-plan.md) |
 | `rustok-distribution` | [docs](../../crates/rustok-distribution/docs/README.md) | Registry composition is documented in its README. |

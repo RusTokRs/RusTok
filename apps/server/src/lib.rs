@@ -10,7 +10,6 @@
 
 extern crate rhai_full as rhai;
 
-pub mod app;
 pub mod auth;
 pub mod channels;
 pub mod common;
@@ -20,13 +19,12 @@ pub mod error;
 pub mod extractors;
 pub mod graphql;
 pub mod guards;
+pub mod host;
 pub mod initializers;
-pub mod installer_cli;
+pub mod installer_execution;
 pub mod middleware;
 pub mod models;
 pub mod modules;
 pub mod routes;
 pub mod services;
-#[cfg(test)]
-pub mod testing;
 pub mod views;

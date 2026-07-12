@@ -2,10 +2,12 @@
 
 mod artifact;
 mod contracts;
+mod definition;
+mod dispatcher;
 mod executor;
-mod hooks;
 mod installation;
 mod lifecycle;
+mod lifecycle_writer;
 mod migrations;
 #[cfg(feature = "oci-distribution")]
 mod oci;
@@ -13,7 +15,6 @@ mod operation_store;
 mod policy;
 mod recovery;
 mod runtime;
-mod seed_writer;
 
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
@@ -21,23 +22,36 @@ use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
     ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
-    ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError,
+    ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError, ModuleBindingIdempotency,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
     ModuleControlPlaneSnapshot, ModuleErrorCode, ModuleSnapshotKind,
 };
-pub use executor::{
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleLifecycleToggleResult,
-    execute_module_toggle,
+pub use definition::{
+    ModuleDefinition, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
+    ModuleDefinitionSource,
 };
-pub use hooks::{ModuleLifecycleHookError, ModuleLifecycleHookPhase, run_module_lifecycle_hook};
+pub use dispatcher::{
+    ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ModuleDispatchError,
+    ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+};
+pub use executor::{
+    execute_module_toggle, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
+    ModuleLifecycleToggleResult,
+};
 pub use installation::{
-    ArtifactInstallationStore, ArtifactRegistry, InstalledModuleArtifact, ModuleArtifactPackage,
-    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
-    SeaOrmArtifactInstallationStore,
+    ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord, ArtifactAdmissionStage,
+    ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore, ArtifactInstallationStore,
+    ArtifactRegistry, DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
+    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
+    OciArtifactReference, SeaOrmArtifactInstallationStore, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
+pub use lifecycle_writer::{
+    persist_module_settings, ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError,
+};
 #[cfg(feature = "oci-distribution")]
 pub use oci::OciDistributionArtifactRegistry;
 pub use operation_store::{
@@ -46,16 +60,18 @@ pub use operation_store::{
     TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
 };
 pub use policy::{
-    ModuleToggleValidationError, TenantModuleOverride, resolve_effective_modules,
-    validate_module_toggle,
+    resolve_effective_modules, validate_module_toggle, ModuleToggleValidationError,
+    TenantModuleOverride,
 };
 pub use recovery::{
-    ModuleOperationRecoveryError, ModuleOperationRecoveryPlan, ModulePostHookRetryRequest,
     failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation,
+    retry_failed_post_hook_operation, ModuleOperationRecoveryError, ModuleOperationRecoveryPlan,
+    ModulePostHookRetryRequest,
 };
-pub use runtime::{ArtifactRuntime, ArtifactRuntimeError};
-pub use seed_writer::{ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError};
+pub use runtime::{
+    ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,
+    ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver,
+};
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.
 pub struct ModulesModule;

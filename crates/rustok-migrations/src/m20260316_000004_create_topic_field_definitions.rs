@@ -1,4 +1,5 @@
 use rustok_core::field_schema::{create_field_definitions_table, drop_field_definitions_table};
+
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]

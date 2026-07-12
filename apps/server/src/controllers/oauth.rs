@@ -2,7 +2,6 @@
 //!
 //! `POST /oauth/token` — Token endpoint (client_credentials flow)
 
-use crate::routes::Routes;
 use axum::{
     extract::{ConnectInfo, Form, Query, State},
     http::{
@@ -1103,21 +1102,20 @@ async fn userinfo_handler_inner(
     Ok(Json(userinfo))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/oauth")
-        .add(
-            "/authorize",
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route(
+            "/api/oauth/authorize",
             get(authorize_browser_handler).post(authorize_handler),
         )
-        .add(
-            "/browser-session",
+        .route(
+            "/api/oauth/browser-session",
             post(create_browser_session_handler).delete(clear_browser_session_handler),
         )
-        .add("/consent", post(consent_handler))
-        .add("/token", post(token_handler))
-        .add("/userinfo", get(userinfo_handler))
-        .add("/revoke", post(revoke_handler))
+        .route("/api/oauth/consent", post(consent_handler))
+        .route("/api/oauth/token", post(token_handler))
+        .route("/api/oauth/userinfo", get(userinfo_handler))
+        .route("/api/oauth/revoke", post(revoke_handler))
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    sea_query::Expr,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -935,28 +936,52 @@ impl AiManagementService {
             )));
         }
 
-        let mut approval_active: ai_approval_requests::ActiveModel = approval.clone().into();
-        approval_active.status = Set(if input.approved {
-            "approved".to_string()
-        } else {
-            "rejected".to_string()
-        });
-        approval_active.reason = Set(input.reason.clone().or(approval.reason.clone()));
-        approval_active.resolved_by = Set(Some(operator.user_id));
-        approval_active.resolved_at = Set(Some(Utc::now().into()));
-        approval_active.updated_at = Set(Utc::now().into());
-        approval_active.update(db).await.map_err(db_err)?;
-
         let run = require_run(db, operator.tenant_id, approval.run_id).await?;
+        if run.status != "waiting_approval" || run.pending_approval_id != Some(approval.id) {
+            return Err(AiError::Validation(
+                "approval request is not the active run approval".to_string(),
+            ));
+        }
+
+        let claimed = ai_approval_requests::Entity::update_many()
+            .col_expr(
+                ai_approval_requests::Column::Status,
+                Expr::value("resolving".to_string()),
+            )
+            .filter(ai_approval_requests::Column::Id.eq(approval.id))
+            .filter(ai_approval_requests::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_approval_requests::Column::Status.eq("pending"))
+            .exec(db)
+            .await
+            .map_err(db_err)?;
+        if claimed.rows_affected != 1 {
+            return Err(AiError::Validation(
+                "approval request was already claimed".to_string(),
+            ));
+        }
+
         let mut run_active: ai_chat_runs::ActiveModel = run.clone().into();
 
         let access_context = access_context_for_operator(operator);
         let (tool_content, tool_metadata, trace) = if input.approved {
             let adapter = InProcessMcpAdapter::new(runtime, access_context)?;
             let started = std::time::Instant::now();
-            let tool_result = adapter
+            let tool_result = match adapter
                 .call_tool(&approval.tool_name, approval.tool_input.clone())
-                .await?;
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    let mut retryable: ai_approval_requests::ActiveModel = approval.clone().into();
+                    retryable.status = Set("pending".to_string());
+                    retryable.reason = Set(Some(format!(
+                        "tool execution failed and may be retried: {error}"
+                    )));
+                    retryable.updated_at = Set(Utc::now().into());
+                    retryable.update(db).await.map_err(db_err)?;
+                    return Err(error);
+                }
+            };
             let trace = ToolTrace {
                 tool_name: approval.tool_name.clone(),
                 input_payload: approval.tool_input.clone(),
@@ -1005,6 +1030,43 @@ impl AiManagementService {
         )
         .await?;
 
+        let mut approval_active: ai_approval_requests::ActiveModel = approval.clone().into();
+        approval_active.status = Set(if input.approved {
+            "approved".to_string()
+        } else {
+            "rejected".to_string()
+        });
+        approval_active.reason = Set(input.reason.clone().or(approval.reason.clone()));
+        approval_active.resolved_by = Set(Some(operator.user_id));
+        approval_active.resolved_at = Set(Some(Utc::now().into()));
+        approval_active.updated_at = Set(Utc::now().into());
+        approval_active.update(db).await.map_err(db_err)?;
+
+        let next_pending = ai_approval_requests::Entity::find()
+            .filter(ai_approval_requests::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_approval_requests::Column::RunId.eq(run.id))
+            .filter(
+                ai_approval_requests::Column::ApprovalBatchId.eq(&approval.approval_batch_id),
+            )
+            .filter(ai_approval_requests::Column::Status.eq("pending"))
+            .order_by_asc(ai_approval_requests::Column::CreatedAt)
+            .one(db)
+            .await
+            .map_err(db_err)?;
+        if let Some(next_pending) = next_pending {
+            run_active.status = Set("waiting_approval".to_string());
+            run_active.pending_approval_id = Set(Some(next_pending.id));
+            run_active.updated_at = Set(Utc::now().into());
+            let saved_run = run_active.update(db).await.map_err(db_err)?;
+            let detail = Self::chat_session_detail(db, operator.tenant_id, session.id)
+                .await?
+                .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
+            return Ok(AiSendMessageResult {
+                session: detail,
+                run: map_run_record(saved_run)?,
+            });
+        }
+
         run_active.status = Set("running".to_string());
         run_active.pending_approval_id = Set(None);
         run_active.updated_at = Set(Utc::now().into());
@@ -1028,16 +1090,31 @@ impl AiManagementService {
     }
 
     pub async fn cancel_run(
-        db: &DatabaseConnection,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         run_id: Uuid,
     ) -> AiResult<AiChatRunRecord> {
+        let db = runtime.db();
         let run = require_run(db, operator.tenant_id, run_id).await?;
+        if !matches!(run.status.as_str(), "running" | "waiting_approval") {
+            return Err(AiError::Validation(
+                "only running or waiting AI runs can be cancelled".to_string(),
+            ));
+        }
+        runtime.cancel_active_run(run_id);
         let mut active: ai_chat_runs::ActiveModel = run.into();
         active.status = Set("cancelled".to_string());
         active.completed_at = Set(Some(Utc::now().into()));
         active.updated_at = Set(Utc::now().into());
         let saved = active.update(db).await.map_err(db_err)?;
+        publish_ai_run_stream_event(
+            saved.session_id,
+            saved.id,
+            crate::streaming::AiRunStreamEventKind::Cancelled,
+            None,
+            None,
+            None,
+        );
         Ok(map_run_record(saved)?)
     }
 
@@ -1367,7 +1444,7 @@ impl AiManagementService {
         let access_context = access_context_for_operator(operator);
         let adapter = Arc::new(InProcessMcpAdapter::new(runtime, access_context)?);
         let policy = policy_from_model(tool_profile.as_ref());
-        let runtime = RigAgentDriver::new(provider, adapter, policy);
+        let agent_driver = RigAgentDriver::new(provider, adapter, policy);
         let stream_buffer = Arc::new(Mutex::new(String::new()));
         let stream_emitter = ProviderStreamEmitter::new({
             let stream_buffer = Arc::clone(&stream_buffer);
@@ -1387,7 +1464,8 @@ impl AiManagementService {
                 );
             }
         });
-        let outcome = match runtime
+        let cancellation = runtime.register_run_cancellation(run_id);
+        let outcome = match agent_driver
             .run(
                 &provider_config,
                 crate::model::RuntimeRequest {
@@ -1403,11 +1481,16 @@ impl AiManagementService {
                     locale: Some(resolved_locale.clone()),
                 },
                 Some(stream_emitter),
+                Some(cancellation),
             )
             .await
         {
             Ok(outcome) => outcome,
             Err(error) => {
+                runtime.complete_run_cancellation(run_id);
+                if error.to_string() == "AI run cancelled" {
+                    return Err(error);
+                }
                 mark_run_failed(db, operator.tenant_id, run_id, error.to_string()).await?;
                 publish_ai_run_stream_event(
                     session_id,
@@ -1510,7 +1593,7 @@ impl AiManagementService {
             RuntimeOutcome::WaitingApproval {
                 appended_messages,
                 traces,
-                pending_approval,
+                pending_approvals,
             } => {
                 persist_runtime_outputs(
                     db,
@@ -1521,12 +1604,27 @@ impl AiManagementService {
                     traces,
                 )
                 .await?;
-                let approval =
-                    insert_approval_request(db, operator, session_id, run_id, &pending_approval)
-                        .await?;
+                let approval_batch_id = Uuid::new_v4();
+                let mut approvals = Vec::with_capacity(pending_approvals.len());
+                for pending_approval in &pending_approvals {
+                    approvals.push(
+                        insert_approval_request(
+                            db,
+                            operator,
+                            session_id,
+                            run_id,
+                            approval_batch_id,
+                            pending_approval,
+                        )
+                        .await?,
+                    );
+                }
+                let first_approval = approvals.first().ok_or_else(|| {
+                    AiError::Runtime("waiting approval outcome has no pending calls".to_string())
+                })?;
                 let mut active: ai_chat_runs::ActiveModel = run.into();
                 active.status = Set("waiting_approval".to_string());
-                active.pending_approval_id = Set(Some(approval.id));
+                active.pending_approval_id = Set(Some(first_approval.id));
                 active.updated_at = Set(Utc::now().into());
                 run = active.update(db).await.map_err(db_err)?;
                 ai_metrics::observe_run_outcome(
@@ -1549,6 +1647,7 @@ impl AiManagementService {
             }
         }
 
+        runtime.complete_run_cancellation(run_id);
         let detail = Self::chat_session_detail(db, operator.tenant_id, session_id)
             .await?
             .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;

@@ -1,4 +1,3 @@
-use crate::routes::Routes;
 use axum::{
     extract::{Path, State},
     routing::get,
@@ -336,17 +335,22 @@ async fn delete_entry(
     Ok(Json(DeleteFlexResponse::success()))
 }
 
-pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("api/v1/flex/schemas")
-        .add("/", get(list_schemas).post(create_schema))
-        .add(
-            "/{schema_id}",
+pub fn router() -> crate::routes::ServerRouter {
+    axum::Router::new()
+        .route(
+            "/api/v1/flex/schemas/",
+            get(list_schemas).post(create_schema),
+        )
+        .route(
+            "/api/v1/flex/schemas/{schema_id}",
             get(get_schema).patch(update_schema).delete(delete_schema),
         )
-        .add("/{schema_id}/entries", get(list_entries).post(create_entry))
-        .add(
-            "/{schema_id}/entries/{entry_id}",
+        .route(
+            "/api/v1/flex/schemas/{schema_id}/entries",
+            get(list_entries).post(create_entry),
+        )
+        .route(
+            "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
             get(get_entry).patch(update_entry).delete(delete_entry),
         )
 }
@@ -379,12 +383,12 @@ mod tests {
     use crate::context::TenantContext;
     use crate::extractors::auth::CurrentUser;
     use crate::models::{flex_entries, flex_schemas, tenants, users};
-    use migration::Migrator;
     use rustok_api::Permission;
     use rustok_core::{
         field_schema::{FieldDefinition, FieldType},
         UserRole, UserStatus,
     };
+    use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};
     use serde_json::json;

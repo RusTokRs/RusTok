@@ -1,4 +1,5 @@
-use migration::Migrator;
+use rustok_migrations::Migrator;
+
 use rust_decimal::Decimal;
 use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
 use rustok_cart::services::CartService;

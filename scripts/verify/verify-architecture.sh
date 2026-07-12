@@ -199,7 +199,7 @@ fi
 # ─── 8. Migration naming convention ───
 header "8. Migration naming convention"
 
-MIGRATION_DIR="apps/server/migration/src"
+MIGRATION_DIR="crates/rustok-migrations/src"
 if [[ -d "$MIGRATION_DIR" ]]; then
     bad_names=$(find "$MIGRATION_DIR" -name "*.rs" -not -name "lib.rs" -not -name "mod.rs" | while read -r f; do
         basename_f=$(basename "$f")

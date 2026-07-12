@@ -106,8 +106,8 @@ mod tests {
     use crate::models::_entities::{roles, user_roles};
     use crate::models::{tenants, users};
     use chrono::Utc;
-    use migration::Migrator;
     use rustok_core::{UserRole, UserStatus};
+    use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
 

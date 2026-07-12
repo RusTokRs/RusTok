@@ -1,14 +1,6 @@
-/// Loco route isolation layer.
-///
-/// Server controllers should import this alias instead of importing
-/// `loco_rs::controller::*` directly. The final Axum router cutover should
-/// replace this module's public contract together with `App::routes`.
-pub use loco_rs::controller::{AppRoutes, Routes};
+//! Shared Axum router state for the executable server host.
 
-pub fn default_app_routes() -> AppRoutes {
-    AppRoutes::with_default_routes()
-}
+use crate::services::server_runtime_context::ServerAuthRuntime;
 
-pub fn mount_route(routes: AppRoutes, route: Routes) -> AppRoutes {
-    routes.add_route(route)
-}
+/// A router which still requires the host's auth/runtime state.
+pub type ServerRouter = axum::Router<ServerAuthRuntime>;
