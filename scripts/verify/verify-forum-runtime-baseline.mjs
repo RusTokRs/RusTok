@@ -22,7 +22,7 @@ if (args.has("--help")) {
 Options:
   --static-only    Validate baseline files and the ignored-test inventory only.
   --postgres       Run the green PostgreSQL tenant regression profile.
-  --known-defects  Run ignored FORUM-03..07 reproductions explicitly.
+  --known-defects  Run ignored FORUM-04..07 reproductions explicitly.
                    This diagnostic mode is expected to fail until defects are fixed.
   --help           Show this help.`);
   process.exit(0);
@@ -44,7 +44,6 @@ const files = {
 };
 
 const expectedKnownDefects = new Map([
-  ["forum_03_category_create_rolls_back_when_translation_insert_fails", "FORUM-03: category and initial translation creation must be atomic"],
   ["forum_04_category_cycle_is_rejected", "FORUM-04: category hierarchy must reject cycles"],
   ["forum_05_concurrent_replies_preserve_public_counters", "FORUM-05: concurrent approved replies must preserve topic and category counters"],
   ["forum_06_locked_topic_rejects_reply_creation", "FORUM-06: a locked topic must reject ordinary reply creation"],
@@ -173,7 +172,7 @@ if (staticOnly) process.exit(0);
 
 if (knownDefects) {
   requirePostgresUrl("--known-defects");
-  run("ignored FORUM-03..07 reproductions", "cargo", [
+  run("ignored FORUM-04..07 reproductions", "cargo", [
     "test",
     "-p",
     "rustok-forum",
@@ -225,6 +224,13 @@ run("SQLite lifecycle status regression", "cargo", [
   "rustok-forum",
   "--test",
   "status_lifecycle_sqlite",
+]);
+run("SQLite category atomicity regression", "cargo", [
+  "test",
+  "-p",
+  "rustok-forum",
+  "--test",
+  "category_atomicity_sqlite",
 ]);
 run("content orchestration compatibility", "cargo", [
   "test",

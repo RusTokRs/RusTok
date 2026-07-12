@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -41,6 +41,7 @@ impl CategoryService {
         let slug = normalize_required_slug(&input.slug)?;
         let now = Utc::now();
         let id = Uuid::new_v4();
+        let txn = self.db.begin().await?;
 
         forum_category::ActiveModel {
             id: Set(id),
@@ -55,7 +56,7 @@ impl CategoryService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
         forum_category_translation::ActiveModel {
@@ -67,9 +68,10 @@ impl CategoryService {
             slug: Set(slug),
             description: Set(input.description),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
+        txn.commit().await?;
         self.get(tenant_id, security, id, &locale).await
     }
 
@@ -128,9 +130,10 @@ impl CategoryService {
     ) -> ForumResult<CategoryResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
+        let txn = self.db.begin().await?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(ForumError::CategoryNotFound(category_id))?;
 
@@ -148,12 +151,13 @@ impl CategoryService {
         if let Some(moderated) = input.moderated {
             active.moderated = Set(moderated);
         }
-        active.update(&self.db).await?;
+        active.update(&txn).await?;
 
         let existing_translation = forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_category_translation::Column::CategoryId.eq(category_id))
             .filter(forum_category_translation::Column::Locale.eq(&locale))
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         match existing_translation {
@@ -173,7 +177,7 @@ impl CategoryService {
                 if input.description.is_some() {
                     active.description = Set(input.description);
                 }
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
             }
             None => {
                 let name = input.name.ok_or_else(|| {
@@ -196,11 +200,12 @@ impl CategoryService {
                     slug: Set(slug),
                     description: Set(input.description),
                 }
-                .insert(&self.db)
+                .insert(&txn)
                 .await?;
             }
         }
 
+        txn.commit().await?;
         self.get(tenant_id, security, category_id, &locale).await
     }
 
@@ -212,20 +217,24 @@ impl CategoryService {
         security: SecurityContext,
     ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumCategories, Action::Delete)?;
+        let txn = self.db.begin().await?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(ForumError::CategoryNotFound(category_id))?;
 
         forum_category_translation::Entity::delete_many()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-            .exec(&self.db)
+            .exec(&txn)
             .await?;
 
         forum_category::Entity::delete_by_id(category.id)
-            .exec(&self.db)
+            .exec(&txn)
             .await?;
+
+        txn.commit().await?;
         Ok(())
     }
 

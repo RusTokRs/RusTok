@@ -3,7 +3,9 @@ mod support;
 use std::sync::Arc;
 
 use rustok_core::{SecurityContext, UserRole};
-use rustok_forum::{CategoryService, CreateCategoryInput, CreateReplyInput, ReplyService};
+use rustok_forum::{
+    CategoryService, CreateCategoryInput, CreateReplyInput, ReplyService, UpdateCategoryInput,
+};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use tokio::sync::Barrier;
@@ -67,7 +69,6 @@ async fn forum_02_unknown_reply_status_is_rejected() -> TestResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "FORUM-03: category and initial translation creation must be atomic"]
 async fn forum_03_category_create_rolls_back_when_translation_insert_fails() -> TestResult<()> {
     let Some(context) = PostgresForumTestDb::setup("category_atomic_create").await? else {
         return Ok(());
@@ -125,6 +126,297 @@ FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_translation();
         if count != 0 {
             return Err(test_error(format!(
                 "category insert leaked after translation failure; remaining rows: {count}"
+            )));
+        }
+        Ok(())
+    }
+    .await;
+    context.cleanup().await?;
+    outcome
+}
+
+#[tokio::test]
+async fn forum_03_category_update_rolls_back_when_translation_update_fails() -> TestResult<()> {
+    let Some(context) = PostgresForumTestDb::setup("category_atomic_update").await? else {
+        return Ok(());
+    };
+    let outcome = async {
+        let tenant_id = Uuid::new_v4();
+        let service = CategoryService::new(context.db.clone());
+        let category = service
+            .create(
+                tenant_id,
+                admin_security(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Original category".to_string(),
+                    slug: "original-category".to_string(),
+                    description: Some("original description".to_string()),
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(3),
+                    moderated: false,
+                },
+            )
+            .await?;
+
+        execute(
+            &context.db,
+            r#"
+CREATE FUNCTION forum_test_reject_category_translation_update()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'forced category translation update failure';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER forum_test_reject_category_translation_update
+BEFORE UPDATE ON forum_category_translations
+FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_translation_update();
+"#,
+        )
+        .await?;
+
+        let result = service
+            .update(
+                tenant_id,
+                category.id,
+                admin_security(),
+                UpdateCategoryInput {
+                    locale: "en".to_string(),
+                    name: Some("Changed category".to_string()),
+                    slug: Some("changed-category".to_string()),
+                    description: Some("changed description".to_string()),
+                    icon: None,
+                    color: None,
+                    position: Some(99),
+                    moderated: Some(true),
+                },
+            )
+            .await;
+        if result.is_ok() {
+            return Err(test_error(
+                "forced translation update failure must make category update fail",
+            ));
+        }
+
+        let position = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT position::bigint AS value FROM forum_categories WHERE id = '{}'",
+                category.id
+            ),
+        )
+        .await?;
+        let moderated = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT CASE WHEN moderated THEN 1 ELSE 0 END AS value
+                 FROM forum_categories WHERE id = '{}'",
+                category.id
+            ),
+        )
+        .await?;
+        let changed_translation_count = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT COUNT(*) AS value
+                 FROM forum_category_translations
+                 WHERE category_id = '{}' AND name = 'Changed category'",
+                category.id
+            ),
+        )
+        .await?;
+
+        if position != 3 || moderated != 0 || changed_translation_count != 0 {
+            return Err(test_error(format!(
+                "category update leaked after translation failure: \
+                 position={position}, moderated={moderated}, changed_translation_count={changed_translation_count}"
+            )));
+        }
+        Ok(())
+    }
+    .await;
+    context.cleanup().await?;
+    outcome
+}
+
+#[tokio::test]
+async fn forum_03_category_locale_insert_rolls_back_category_update() -> TestResult<()> {
+    let Some(context) = PostgresForumTestDb::setup("category_atomic_locale_insert").await? else {
+        return Ok(());
+    };
+    let outcome = async {
+        let tenant_id = Uuid::new_v4();
+        let service = CategoryService::new(context.db.clone());
+        let category = service
+            .create(
+                tenant_id,
+                admin_security(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Original category".to_string(),
+                    slug: "original-category".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(4),
+                    moderated: false,
+                },
+            )
+            .await?;
+
+        execute(
+            &context.db,
+            r#"
+CREATE FUNCTION forum_test_reject_new_category_locale()
+RETURNS trigger AS $$
+BEGIN
+    IF NEW.locale = 'fr' THEN
+        RAISE EXCEPTION 'forced new category locale failure';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER forum_test_reject_new_category_locale
+BEFORE INSERT ON forum_category_translations
+FOR EACH ROW EXECUTE FUNCTION forum_test_reject_new_category_locale();
+"#,
+        )
+        .await?;
+
+        let result = service
+            .update(
+                tenant_id,
+                category.id,
+                admin_security(),
+                UpdateCategoryInput {
+                    locale: "fr".to_string(),
+                    name: Some("Catégorie modifiée".to_string()),
+                    slug: Some("categorie-modifiee".to_string()),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    position: Some(77),
+                    moderated: None,
+                },
+            )
+            .await;
+        if result.is_ok() {
+            return Err(test_error(
+                "forced new-locale insert failure must make category update fail",
+            ));
+        }
+
+        let position = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT position::bigint AS value FROM forum_categories WHERE id = '{}'",
+                category.id
+            ),
+        )
+        .await?;
+        let french_count = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT COUNT(*) AS value
+                 FROM forum_category_translations
+                 WHERE category_id = '{}' AND locale = 'fr'",
+                category.id
+            ),
+        )
+        .await?;
+
+        if position != 4 || french_count != 0 {
+            return Err(test_error(format!(
+                "new locale failure leaked category state: position={position}, french_count={french_count}"
+            )));
+        }
+        Ok(())
+    }
+    .await;
+    context.cleanup().await?;
+    outcome
+}
+
+#[tokio::test]
+async fn forum_03_category_delete_rolls_back_translation_delete() -> TestResult<()> {
+    let Some(context) = PostgresForumTestDb::setup("category_atomic_delete").await? else {
+        return Ok(());
+    };
+    let outcome = async {
+        let tenant_id = Uuid::new_v4();
+        let service = CategoryService::new(context.db.clone());
+        let category = service
+            .create(
+                tenant_id,
+                admin_security(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Protected category".to_string(),
+                    slug: "protected-category".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await?;
+
+        execute(
+            &context.db,
+            r#"
+CREATE FUNCTION forum_test_reject_category_delete()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'forced category delete failure';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER forum_test_reject_category_delete
+BEFORE DELETE ON forum_categories
+FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_delete();
+"#,
+        )
+        .await?;
+
+        let result = service
+            .delete(tenant_id, category.id, admin_security())
+            .await;
+        if result.is_ok() {
+            return Err(test_error(
+                "forced category delete failure must make category delete fail",
+            ));
+        }
+
+        let category_count = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT COUNT(*) AS value FROM forum_categories WHERE id = '{}'",
+                category.id
+            ),
+        )
+        .await?;
+        let translation_count = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT COUNT(*) AS value
+                 FROM forum_category_translations
+                 WHERE category_id = '{}'",
+                category.id
+            ),
+        )
+        .await?;
+
+        if category_count != 1 || translation_count != 1 {
+            return Err(test_error(format!(
+                "category delete failure leaked partial deletion: \
+                 categories={category_count}, translations={translation_count}"
             )));
         }
         Ok(())
