@@ -7,6 +7,7 @@ mod m20260329_000004_create_forum_user_stats;
 mod m20260329_000005_create_forum_topic_tags;
 mod m20260330_000001_drop_forum_topic_legacy_tags_column;
 mod m20260405_000001_add_metadata_to_forum_topics;
+mod m20260712_000001_enforce_forum_core_tenant_integrity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -22,6 +23,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260329_000005_create_forum_topic_tags::Migration),
         Box::new(m20260330_000001_drop_forum_topic_legacy_tags_column::Migration),
         Box::new(m20260405_000001_add_metadata_to_forum_topics::Migration),
+        Box::new(m20260712_000001_enforce_forum_core_tenant_integrity::Migration),
     ]
 }
 
