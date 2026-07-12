@@ -43,7 +43,7 @@ protocol surface is stdio only.
 
 - `npm run verify:mcp:admin-boundary`
 - `node scripts/verify/verify-api-surface-contract.mjs`
-- `node scripts/verify/verify-loco-inventory.mjs`
+- `node scripts/verify/verify-axum-runtime.mjs`
 - `cargo check -p rustok-mcp-admin --features ssr`
 - `cargo test -p rustok-mcp --lib`
 

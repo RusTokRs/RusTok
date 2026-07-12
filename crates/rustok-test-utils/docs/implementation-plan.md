@@ -47,4 +47,4 @@ runtime or domain behavior.
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
 - [Testing guide](../../../docs/guides/testing.md)
-- [Loco exit plan](../../../docs/architecture/loco-exit-plan.md)
+- [Axum runtime and operations CLI boundary](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)

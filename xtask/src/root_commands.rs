@@ -5,22 +5,19 @@ pub(crate) fn validate_module_local_docs_contract(slug: &str, module_root: &Path
         slug,
         &module_root.join("docs").join("README.md"),
         &[
-            "## Назначение",
-            "## Зона ответственности",
-            "## Интеграция",
-            "## Проверка",
-            "## Связанные документы",
+            "## Purpose",
+            "## Responsibility Zone",
+            "## Integration",
+            "## Verification",
+            "## Related Documentation",
         ],
     )?;
     validate_module_local_docs_file(
         slug,
         &module_root.join("docs").join("implementation-plan.md"),
         &[
-            "## Область работ",
-            "## Текущее состояние",
-            "## Этапы",
-            "## Проверка",
-            "## Правила обновления",
+            "## Current state",
+            "## Verification",
         ],
     )?;
 

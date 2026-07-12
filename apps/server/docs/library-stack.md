@@ -27,7 +27,7 @@ sed -n '1,220p' apps/server/Cargo.toml
 2. If the core server stack changes (added/removed a key library), update this file in the same PR.
 
 3. Historical Loco material is archived and must not guide implementation. The
-   active migration status is the [Loco exit plan](../../../docs/architecture/loco-exit-plan.md).
+   active runtime boundary is the [Axum runtime and operations CLI ADR](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).
 
 ## Document boundary
 

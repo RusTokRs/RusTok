@@ -1,8 +1,8 @@
 # Upstream snapshots for server core libraries
 
 This directory captures **fresh documentation links** for active server
-libraries. The pure Axum runtime does not treat the historical Loco snapshot
-as a current dependency or implementation guide.
+libraries. The pure Axum runtime uses only the active library snapshots listed
+below as implementation references.
 
 - Version source: `Cargo.lock`
 - Snapshot date: `2026-07-02`

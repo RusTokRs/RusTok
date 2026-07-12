@@ -425,6 +425,7 @@ fn validate_module_semantics_contract_rejects_path_module_with_non_first_party_o
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
     let metadata = ModulePackageMetadata {
         slug: "demo".to_string(),
@@ -457,6 +458,7 @@ fn validate_module_semantics_contract_rejects_required_module_without_core_trust
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
     let metadata = ModulePackageMetadata {
         slug: "demo".to_string(),
@@ -489,6 +491,7 @@ fn validate_module_semantics_contract_rejects_optional_module_with_core_trust_le
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
     let metadata = ModulePackageMetadata {
         slug: "demo".to_string(),
@@ -536,6 +539,7 @@ fn validate_module_kind_contract_rejects_required_module_without_core_kind() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_kind_contract("demo", &spec, &base)
@@ -576,6 +580,7 @@ fn validate_module_kind_contract_rejects_optional_module_declaring_core_kind() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_kind_contract("demo", &spec, &base)
@@ -845,6 +850,7 @@ fn validate_module_server_registry_contract_rejects_missing_server_feature() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_server_registry_contract(
@@ -933,6 +939,7 @@ fn validate_module_server_registry_contract_accepts_optional_runtime_module() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     validate_module_server_registry_contract(
@@ -1020,6 +1027,7 @@ fn validate_module_server_registry_contract_accepts_capability_only_always_linke
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     validate_module_server_registry_contract(
@@ -1109,6 +1117,7 @@ fn validate_module_server_registry_contract_rejects_required_module_missing_dire
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_server_registry_contract(
@@ -1202,6 +1211,7 @@ fn validate_module_server_registry_contract_rejects_optional_module_direct_regis
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_server_registry_contract(
@@ -1299,6 +1309,7 @@ fn validate_module_server_registry_contract_rejects_server_feature_dependency_dr
         rev: None,
         depends_on: Some(vec!["content".to_string(), "taxonomy".to_string()]),
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_server_registry_contract(
@@ -1364,6 +1375,7 @@ fn validate_default_enabled_server_contract_rejects_missing_server_default_featu
                     rev: None,
                     depends_on: None,
                     features: None,
+                    runtime: "module".to_string(),
                 },
             ),
             (
@@ -1378,6 +1390,7 @@ fn validate_default_enabled_server_contract_rejects_missing_server_default_featu
                     rev: None,
                     depends_on: Some(vec!["content".to_string()]),
                     features: None,
+                    runtime: "module".to_string(),
                 },
             ),
         ]),
@@ -1436,6 +1449,7 @@ fn validate_default_enabled_server_contract_rejects_required_module_in_default_e
                 rev: None,
                 depends_on: None,
                 features: None,
+                runtime: "module".to_string(),
             },
         )]),
         settings: Some(super::Settings {
@@ -1492,6 +1506,7 @@ fn validate_default_enabled_server_contract_accepts_present_server_default_featu
                     rev: None,
                     depends_on: None,
                     features: None,
+                    runtime: "module".to_string(),
                 },
             ),
             (
@@ -1506,6 +1521,7 @@ fn validate_default_enabled_server_contract_accepts_present_server_default_featu
                     rev: None,
                     depends_on: Some(vec!["content".to_string()]),
                     features: None,
+                    runtime: "module".to_string(),
                 },
             ),
         ]),
@@ -1563,6 +1579,7 @@ fn validate_default_enabled_server_contract_rejects_missing_optional_dependency_
                     rev: None,
                     depends_on: None,
                     features: None,
+                    runtime: "module".to_string(),
                 },
             ),
             (
@@ -1577,6 +1594,7 @@ fn validate_default_enabled_server_contract_rejects_missing_optional_dependency_
                     rev: None,
                     depends_on: Some(vec!["content".to_string()]),
                     features: None,
+                    runtime: "module".to_string(),
                 },
             ),
         ]),
@@ -1948,6 +1966,7 @@ fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_host_ui_contract(
@@ -2022,6 +2041,7 @@ fn validate_module_host_ui_contract_accepts_storefront_ssr_wiring() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     validate_module_host_ui_contract(
@@ -2146,6 +2166,7 @@ fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring()
         rev: None,
         depends_on: Some(vec!["comments".to_string()]),
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_host_ui_contract(
@@ -2241,6 +2262,7 @@ fn validate_module_host_ui_contract_rejects_non_canonical_ui_dependency_path() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_host_ui_contract(
@@ -2678,6 +2700,7 @@ fn validate_module_docs_navigation_contract_rejects_missing_ui_navigation_link()
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_docs_navigation_contract(
@@ -2728,6 +2751,7 @@ fn validate_module_docs_navigation_contract_accepts_documented_storefront_module
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     validate_module_docs_navigation_contract(
@@ -2784,6 +2808,7 @@ fn validate_module_docs_navigation_contract_rejects_missing_next_admin_showcase_
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_docs_navigation_contract(
@@ -2838,6 +2863,7 @@ fn validate_module_registry_docs_contract_rejects_missing_row() {
         rev: None,
         depends_on: None,
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_registry_docs_contract(&manifest_path, "demo", &spec)
@@ -2875,6 +2901,7 @@ fn validate_module_registry_docs_contract_rejects_dependency_drift() {
         rev: None,
         depends_on: Some(vec!["taxonomy".to_string()]),
         features: None,
+        runtime: "module".to_string(),
     };
 
     let error = validate_module_registry_docs_contract(&manifest_path, "demo", &spec)
@@ -2921,6 +2948,7 @@ fn validate_central_module_registry_inventory_contract_rejects_undocumented_modu
                 rev: None,
                 depends_on: None,
                 features: None,
+                runtime: "module".to_string(),
             },
         )]),
         settings: None,

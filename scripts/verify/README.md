@@ -24,7 +24,7 @@ node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 node scripts/verify/verify-api-surface-contract.mjs
-node scripts/verify/verify-loco-inventory.mjs
+node scripts/verify/verify-axum-runtime.mjs
 node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs

@@ -255,10 +255,8 @@ Minimum local verification path for changes in `apps/server`:
 - [Health and runtime guardrails](./health.md)
 - [Backend module guides](../../../docs/backend/README.md)
 - [Library stack](./library-stack.md)
-- [Plan to migrate from Loco RS to pure Axum and custom CLI](../../../docs/architecture/loco-exit-plan.md)
+- [Axum runtime and operations CLI boundary](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)
 - [Event transport contract](./event-transport.md)
-- [Core verification plan](./CORE_VERIFICATION_PLAN.md)
-- [Loco feature support inventory](./LOCO_FEATURE_SUPPORT.md) - historical inventory only; active roadmap is the Loco exit plan above
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Manifest layer contracts](../../../docs/modules/manifest.md)
 - [Runbook retry/compensation lifecycle hook failures](./module-lifecycle-retry-compensation-runbook.md)

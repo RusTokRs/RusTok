@@ -20,7 +20,7 @@
     "verify:i18n:contract": "node scripts/verify/verify-i18n-contract.mjs",
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs",
     "verify:api:surface-contract": "node scripts/verify/verify-api-surface-contract.mjs",
-    "verify:loco:inventory": "node scripts/verify/verify-loco-inventory.mjs",
+    "verify:axum:runtime": "node scripts/verify/verify-axum-runtime.mjs",
     "generate:cli-registry": "node scripts/generate/generate-cli-registry.mjs",
     "verify:cli-registry": "node scripts/generate/generate-cli-registry.mjs --check",
     "verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.mjs",

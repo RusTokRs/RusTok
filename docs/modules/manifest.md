@@ -24,6 +24,10 @@ The root manifest captures:
 - List of platform modules included in the build;
 - Source of each module: `path`, `git`, `crates-io`/`registry`;
 - Coarse-grained dependencies through `depends_on`;
+- `runtime = "module" | "extension"`: `module` is the default and is
+  materialized into `ModuleRegistry`; `extension` is a catalogued capability
+  contribution that is composed through the generic runtime/transport extension
+  seam and must not require an application-specific registry entry;
 - Platform-level settings, including `settings.default_enabled`.
 
 This is a runtime/build-level contract for the entire platform, not for an individual crate.
@@ -71,6 +75,12 @@ Practical rule:
 
 - `pub struct BlogModule;` + `impl RusToKModule for BlogModule` require `entry_type = "BlogModule"`;
 - A capability crate without `RusToKModule` may omit `entry_type`.
+
+An `extension` entry in `modules.toml` is intentionally not a
+`ModuleRegistry` entry. It may still own GraphQL/native transport and module
+UI declarations in `rustok-module.toml`. The host receives it through the
+generic contribution mechanism; adding a capability-specific import or feature
+to `apps/server` is not a substitute for that mechanism.
 
 ### Synchronization of Runtime Metadata
 

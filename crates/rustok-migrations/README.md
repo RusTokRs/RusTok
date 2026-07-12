@@ -33,4 +33,4 @@ installer workflow.
 - `rustok_migrations::Migrator`
 
 See [the database architecture](../../docs/architecture/database.md) and the
-[Loco exit plan](../../docs/architecture/loco-exit-plan.md).
+[Axum runtime and operations CLI boundary](../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).

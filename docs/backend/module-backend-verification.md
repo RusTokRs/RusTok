@@ -5,24 +5,17 @@ covers the changed boundary, but do not skip guardrails that protect the archite
 
 ## Fast Static Guardrails
 
-Run these for Loco/FBA/API surface work:
+Run these for Axum/FBA/API surface work:
 
 ```bash
 node scripts/verify/verify-api-surface-contract.mjs
-node scripts/verify/verify-loco-inventory.mjs
+node scripts/verify/verify-axum-runtime.mjs
 git diff --check
 ```
 
-Use `rg` to confirm source-level removals:
-
-```bash
-rg -n "loco_rs::controller::format|format::json" apps/server/src/controllers crates -g "*.rs"
-rg -n "loco_rs::app::AppContext" crates/rustok-*/ apps/server/src -g "*.rs"
-```
-
-If a file was intentionally removed or split, delete stale file-level checks instead of
-keeping guards for paths that no longer exist. Keep package-level dependency checks when the
-crate must still stay Loco-free.
+Use `verify-axum-runtime.mjs` to confirm that the server and standalone CLI
+entrypoints retain their explicit target boundaries. If a file is intentionally
+removed or split, update the marker list instead of preserving stale checks.
 
 ## Module Validation
 

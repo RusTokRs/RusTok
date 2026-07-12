@@ -1,4 +1,4 @@
-.PHONY: docs-sync-loco docs-check-loco docs-sync-server-libs docs-check-server-libs
+.PHONY: docs-sync-server-libs docs-check-server-libs
 .PHONY: dev-start dev-stop dev-restart dev-logs dev-status
 .PHONY: dev-admin dev-storefront dev-server
 .PHONY: rust-test rust-doc-test rust-deps
@@ -17,14 +17,6 @@ install-tailwind:
 # ============================================================================
 # Documentation targets
 # ============================================================================
-
-# Refresh metadata for the local Loco upstream docs snapshot.
-docs-sync-loco:
-	python3 scripts/loco_upstream_snapshot.py sync
-
-# Validate that the upstream snapshot metadata exists and is fresh enough.
-docs-check-loco:
-	python3 scripts/loco_upstream_snapshot.py check
 
 # Download fresh upstream docs snapshots for core server libraries.
 docs-sync-server-libs:
@@ -94,8 +86,6 @@ help:
 	@echo "RusToK Makefile Commands"
 	@echo ""
 	@echo "Documentation:"
-	@echo "  make docs-sync-loco        - Refresh Loco upstream docs snapshot"
-	@echo "  make docs-check-loco       - Validate Loco upstream snapshot"
 	@echo "  make docs-sync-server-libs - Download fresh server library docs"
 	@echo "  make docs-check-server-libs - Validate server library docs"
 	@echo ""

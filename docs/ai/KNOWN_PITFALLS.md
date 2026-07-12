@@ -11,11 +11,11 @@ status: verified
 
 Short list of typical mistakes before making code changes.
 
-## Loco
+## Axum Runtime
 
-- Do not add new dependencies on `loco_rs` outside the already classified inventory. Run `node scripts/verify/verify-loco-inventory.mjs` on Loco/Axum cutover.
-- Do not design new server-owned services around `loco_rs::app::AppContext`; use `ServerRuntimeContext` or narrow typed contexts.
-- Do not add new `loco_rs::controller::format` response formatting; use `rustok_web::json_response` or another `rustok-web` helper.
+- Preserve the Axum host path through `host::run()` and explicit runtime composition. Run `node scripts/verify/verify-axum-runtime.mjs` when touching host boundaries.
+- Design server-owned services around `ServerRuntimeContext` or narrow typed contexts.
+- Use `rustok_web::json_response` or another `rustok-web` helper for HTTP response formatting.
 - Do not move maintenance/CLI flows into the production server binary. The target layer is a separate `rustok-cli` over `rustok-cli-core` and module-local `cli/` adapters.
 - Do not reintroduce a Loco controller path or a second router/error contract;
   the active host is Axum-only and route/error changes must use the established

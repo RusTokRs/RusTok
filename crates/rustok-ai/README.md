@@ -33,10 +33,12 @@ Current implementation includes:
 - large operator/admin surfaces for both Leptos and Next.js hosts
 - dedicated AI diagnostics sub-routes for both admin hosts (`/ai/diagnostics`, `/dashboard/ai/diagnostics`)
 
-The AI capability implementation is complete pending final verification, but the host boundary is
-not complete: the platform owner must replace existing direct AI construction in `apps/server`
-with the generic module runtime/transport contribution mechanism. That platform prerequisite is
-tracked separately in the module implementation plan.
+Rig is the sole inference path, but the AI capability is not yet complete: the active
+registry-integrity repair must prove that public descriptors, compiled integrations, deployment
+targets, and Rig factories cannot drift. Separately, the host boundary is not complete: the
+platform owner must replace existing direct AI construction in `apps/server` with the generic
+module runtime/transport contribution mechanism. Both items are tracked in the module
+implementation plan.
 
 ## Responsibilities
 
