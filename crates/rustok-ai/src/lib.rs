@@ -43,6 +43,8 @@ pub use engine::{
     provider_factory_supports, AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy,
 };
 pub use error::{AiError, AiResult};
+#[cfg(all(feature = "graphql", feature = "server"))]
+pub use graphql_runtime::SeaOrmAiGraphqlRoleSlugProvider;
 #[cfg(feature = "graphql")]
 pub use graphql_runtime::{AiGraphqlRoleSlugProvider, AiGraphqlRoleSlugProviderHandle};
 pub use mcp::{McpClientAdapter, ToolExecutionResult};
