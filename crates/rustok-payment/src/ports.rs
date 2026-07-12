@@ -84,19 +84,40 @@ impl PaymentCollectionPort for crate::PaymentService {
             }
         }
 
-        self.create_collection(
-            tenant_id,
-            crate::CreatePaymentCollectionInput {
-                cart_id: request.cart_id,
-                order_id: request.order_id,
-                customer_id: request.customer_id,
-                currency_code: request.currency_code,
-                amount: request.amount,
-                metadata: request.metadata,
-            },
-        )
-        .await
-        .map_err(payment_error_to_port_error)
+        let cart_id = request.cart_id;
+        let create_result = self
+            .create_collection(
+                tenant_id,
+                crate::CreatePaymentCollectionInput {
+                    cart_id,
+                    order_id: request.order_id,
+                    customer_id: request.customer_id,
+                    currency_code: request.currency_code,
+                    amount: request.amount,
+                    metadata: request.metadata,
+                },
+            )
+            .await;
+
+        match create_result {
+            Ok(collection) => Ok(collection),
+            Err(create_error) => {
+                // PostgreSQL/SQLite enforce one active collection per cart. A
+                // concurrent creator can therefore win between the initial read
+                // and insert. Re-read before surfacing the storage error so this
+                // port preserves its create-or-reuse contract under contention.
+                if let Some(cart_id) = cart_id {
+                    if let Some(collection) = self
+                        .find_reusable_collection_by_cart(tenant_id, cart_id)
+                        .await
+                        .map_err(payment_error_to_port_error)?
+                    {
+                        return Ok(collection);
+                    }
+                }
+                Err(payment_error_to_port_error(create_error))
+            }
+        }
     }
 
     async fn read_collection_status(
