@@ -4,7 +4,7 @@
   "status": "static_matrix_locked",
   "generated_from": "crates/rustok-cart/contracts/cart-fba-registry.json",
   "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
-  "contract_version": "cart.checkout_snapshot.v1",
+  "contract_version": "cart.checkout.v2",
   "profiles": [
     "in_process",
     "remote_adapter_placeholder"
@@ -22,6 +22,30 @@
         "typed_port_error_mapping",
         "context_deadline_preserved"
       ]
+    },
+    {
+      "operation": "update_cart_checkout_context",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+    },
+    {
+      "operation": "begin_cart_checkout",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+    },
+    {
+      "operation": "release_cart_checkout",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+    },
+    {
+      "operation": "complete_cart_checkout",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
     }
   ],
   "fallback_smoke": {

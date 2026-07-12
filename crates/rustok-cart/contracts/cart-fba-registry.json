@@ -3,17 +3,21 @@
   "module": "cart",
   "role": "provider",
   "status": "in_progress",
-  "contract_version": "cart.checkout_snapshot.v1",
+  "contract_version": "cart.checkout.v2",
   "ports": [
     {
-      "name": "CartSnapshotReadPort",
+      "name": "CartCheckoutPort",
       "owner": "cart",
       "operations": [
-        "read_cart_checkout_snapshot"
+        "read_cart_checkout_snapshot",
+        "update_cart_checkout_context",
+        "begin_cart_checkout",
+        "release_cart_checkout",
+        "complete_cart_checkout"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
-      "idempotency_required": false,
+      "idempotency_required": true,
       "deadline_required": true
     }
   ],
@@ -63,6 +67,26 @@
           "typed_port_error_mapping",
           "context_deadline_preserved"
         ]
+      },
+      {
+        "operation": "update_cart_checkout_context",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      },
+      {
+        "operation": "begin_cart_checkout",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      },
+      {
+        "operation": "release_cart_checkout",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      },
+      {
+        "operation": "complete_cart_checkout",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
       }
     ],
     "fallback_smoke": {

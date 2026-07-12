@@ -106,6 +106,13 @@ The database transaction uses the existing `TransactionalEventBus` and
 installation/composition revision, and the outbox envelope are one commit. No
 module-specific second event journal is allowed.
 
+Dependency resolution now uses `pubgrub` behind the transport-neutral
+`ModuleResolutionProvider`. The adapter first collects an immutable candidate
+snapshot, filters it by trust, active/yanked/revoked status and runtime ABI,
+then writes only the selected exact versions and payload/manifest digests into
+the lock graph. Scope/module-kind policy, persisted solver snapshots, and
+stable derivation explanations remain owner-service work.
+
 ### M2 - Introduce the Facade
 
 - Expose explicit catalog, release, publication, installation, lifecycle,

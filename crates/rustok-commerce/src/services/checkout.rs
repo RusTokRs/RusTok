@@ -143,7 +143,15 @@ impl CheckoutService {
         let mut cart = self
             .cart_checkout_port
             .read_cart_checkout_snapshot(
-                checkout_cart_port_context(tenant_id, actor_id, input.cart_id, input.locale.as_deref(), None, "read", false),
+                checkout_cart_port_context(
+                    tenant_id,
+                    actor_id,
+                    input.cart_id,
+                    input.locale.as_deref(),
+                    None,
+                    "read",
+                    false,
+                ),
                 CartCheckoutSnapshotRequest {
                     cart_id: input.cart_id,
                     locale: input.locale.clone(),
@@ -155,16 +163,24 @@ impl CheckoutService {
             cart = self
                 .cart_checkout_port
                 .update_cart_checkout_context(
-                    checkout_cart_port_context(tenant_id, actor_id, cart.id, cart.locale_code.as_deref(), cart.channel_slug.as_deref(), "update_context", true),
+                    checkout_cart_port_context(
+                        tenant_id,
+                        actor_id,
+                        cart.id,
+                        cart.locale_code.as_deref(),
+                        cart.channel_slug.as_deref(),
+                        "update_context",
+                        true,
+                    ),
                     CartCheckoutContextUpdateRequest {
                         cart_id: cart.id,
                         input: UpdateCartContextInput {
-                        email: cart.email.clone(),
-                        region_id: cart.region_id,
-                        country_code: cart.country_code.clone(),
-                        locale_code: cart.locale_code.clone(),
-                        selected_shipping_option_id: input.shipping_option_id,
-                        shipping_selections: input.shipping_selections.clone(),
+                            email: cart.email.clone(),
+                            region_id: cart.region_id,
+                            country_code: cart.country_code.clone(),
+                            locale_code: cart.locale_code.clone(),
+                            selected_shipping_option_id: input.shipping_option_id,
+                            shipping_selections: input.shipping_selections.clone(),
                         },
                     },
                 )
@@ -173,7 +189,7 @@ impl CheckoutService {
         }
         if cart.status == "completed" {
             if let Some(response) = self
-                .recover_existing_checkout(tenant_id, cart.clone())
+                .recover_existing_checkout(tenant_id, actor_id, cart.clone())
                 .await?
             {
                 return Ok(response);
@@ -182,7 +198,7 @@ impl CheckoutService {
         }
         if cart.status == "checking_out" {
             if let Some(response) = self
-                .recover_existing_checkout(tenant_id, cart.clone())
+                .recover_existing_checkout(tenant_id, actor_id, cart.clone())
                 .await?
             {
                 return Ok(response);
@@ -198,7 +214,15 @@ impl CheckoutService {
         let cart = self
             .cart_checkout_port
             .begin_cart_checkout(
-                checkout_cart_port_context(tenant_id, actor_id, cart.id, cart.locale_code.as_deref(), cart.channel_slug.as_deref(), "begin", true),
+                checkout_cart_port_context(
+                    tenant_id,
+                    actor_id,
+                    cart.id,
+                    cart.locale_code.as_deref(),
+                    cart.channel_slug.as_deref(),
+                    "begin",
+                    true,
+                ),
                 CartCheckoutLifecycleRequest { cart_id: cart.id },
             )
             .await
@@ -588,7 +612,15 @@ impl CheckoutService {
             let cart = self
                 .cart_checkout_port
                 .complete_cart_checkout(
-                    checkout_cart_port_context(tenant_id, actor_id, cart.id, cart.locale_code.as_deref(), cart.channel_slug.as_deref(), "complete", true),
+                    checkout_cart_port_context(
+                        tenant_id,
+                        actor_id,
+                        cart.id,
+                        cart.locale_code.as_deref(),
+                        cart.channel_slug.as_deref(),
+                        "complete",
+                        true,
+                    ),
                     CartCheckoutLifecycleRequest { cart_id: cart.id },
                 )
                 .await
@@ -727,9 +759,34 @@ impl CheckoutService {
         Ok(())
     }
 
+    async fn release_cart_checkout(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        cart: &rustok_cart::dto::CartResponse,
+    ) -> Result<(), CheckoutError> {
+        self.cart_checkout_port
+            .release_cart_checkout(
+                checkout_cart_port_context(
+                    tenant_id,
+                    actor_id,
+                    cart.id,
+                    cart.locale_code.as_deref(),
+                    cart.channel_slug.as_deref(),
+                    "release",
+                    true,
+                ),
+                CartCheckoutLifecycleRequest { cart_id: cart.id },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| checkout_port_error("release_cart_checkout", error))
+    }
+
     async fn recover_existing_checkout(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         cart: rustok_cart::dto::CartResponse,
     ) -> CheckoutResult<Option<CompleteCheckoutResponse>> {
         let Some(payment_collection) = self
@@ -760,10 +817,21 @@ impl CheckoutService {
         }
 
         let cart = if cart.status == "checking_out" {
-            self.cart_service
-                .complete_cart(tenant_id, cart.id)
+            self.cart_checkout_port
+                .complete_cart_checkout(
+                    checkout_cart_port_context(
+                        tenant_id,
+                        actor_id,
+                        cart.id,
+                        cart.locale_code.as_deref(),
+                        cart.channel_slug.as_deref(),
+                        "recover_complete",
+                        true,
+                    ),
+                    CartCheckoutLifecycleRequest { cart_id: cart.id },
+                )
                 .await
-                .map_err(stage_error("finalize_recovered_cart"))?
+                .map_err(|error| checkout_port_error("complete_recovered_cart_checkout", error))?
         } else {
             cart
         };
@@ -1000,6 +1068,37 @@ fn checkout_product_port_context(
     match channel_slug {
         Some(channel_slug) => context.with_channel(channel_slug),
         None => context,
+    }
+}
+
+fn checkout_cart_port_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    cart_id: Uuid,
+    locale: Option<&str>,
+    channel_slug: Option<&str>,
+    operation: &str,
+    write: bool,
+) -> PortContext {
+    let locale = locale
+        .and_then(normalize_locale_tag)
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(actor_id.to_string()),
+        locale,
+        format!("checkout:{cart_id}:cart:{operation}"),
+    )
+    .with_deadline(Duration::from_secs(2));
+    let context = match channel_slug {
+        Some(channel_slug) => context.with_channel(channel_slug),
+        None => context,
+    };
+
+    if write {
+        context.with_idempotency_key(format!("checkout:{cart_id}:cart:{operation}"))
+    } else {
+        context
     }
 }
 

@@ -166,6 +166,7 @@ pub async fn complete_cart_checkout(
         runtime.db_clone(),
         event_bus.clone(),
         std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
+        std::sync::Arc::new(rustok_cart::CartService::new(runtime.db_clone())),
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
             runtime.db_clone(),
             event_bus.clone(),

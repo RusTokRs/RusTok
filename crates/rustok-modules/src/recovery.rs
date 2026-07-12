@@ -162,12 +162,10 @@ pub async fn retry_failed_post_hook_operation(
         });
     }
 
-    let operation = ModuleOperationJournal::record(
-        db,
-        retry_operation_request(&plan, request.requested_by),
-    )
-    .await
-    .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    let operation =
+        ModuleOperationJournal::record(db, retry_operation_request(&plan, request.requested_by))
+            .await
+            .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
     ModuleOperationJournal::mark_running(db, operation.id)
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
@@ -254,8 +252,7 @@ mod tests {
 
     #[test]
     fn retry_attempt_preserves_original_previous_state_for_compensation() {
-        let plan =
-            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")));
+        let plan = ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")));
         let request = retry_operation_request(&plan, Some("retry-operator".to_string()));
 
         assert_eq!(request.requested_enabled, plan.requested_enabled);

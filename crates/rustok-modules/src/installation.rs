@@ -16,7 +16,8 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor,
+    ModuleArtifactError,
 };
 
 const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
@@ -337,7 +338,9 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
         bytes: &[u8],
     ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
         if expected_media_type.trim().is_empty() {
-            return Err(ModuleInstallationError::Blob("artifact media type is empty".into()));
+            return Err(ModuleInstallationError::Blob(
+                "artifact media type is empty".into(),
+            ));
         }
         if sha256_digest(bytes) != expected_digest {
             return Err(ModuleInstallationError::PayloadDigestMismatch {
@@ -356,7 +359,11 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
             .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
             .insert(
                 staged.stage_id,
-                (staged.digest.clone(), staged.media_type.clone(), bytes.to_vec()),
+                (
+                    staged.digest.clone(),
+                    staged.media_type.clone(),
+                    bytes.to_vec(),
+                ),
             );
         Ok(staged)
     }

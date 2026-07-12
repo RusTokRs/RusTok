@@ -20,7 +20,8 @@ identity.
 - FFA status: `phase_b_ready`
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
-- FBA provider contract: `CartSnapshotReadPort` / `cart.checkout_snapshot.v1`
+- FBA provider contract: `CartCheckoutPort` / `cart.checkout.v2`, covering the
+  checkout snapshot plus context update and checkout lifecycle writes.
   in `crates/rustok-cart/contracts/cart-fba-registry.json`.
 - Static and no-compile runtime evidence:
   `crates/rustok-cart/contracts/evidence/cart-contract-test-static-matrix.json`
@@ -39,12 +40,13 @@ identity.
    **Done when:** any new surface consumes an owner-owned public contract with
    no cart business logic or presentation duplicated in the umbrella.
 
-2. **Execute the checkout-snapshot provider contract against a live adapter.**
+2. **Execute the checkout provider contract against a live adapter.**
    Turn the locked in-process/remote case matrix into provider execution and
    fallback evidence before considering FBA promotion.
    **Depends on:** a commerce consumer and remote-adapter test environment.
    **Done when:** deadline, typed-error, degraded-mode, and snapshot parity are
-   proven for the published `cart.checkout_snapshot.v1` contract.
+   proven for the published `cart.checkout.v2` contract, including write
+   idempotency and lifecycle recovery.
 
 3. **Document operational changes with checkout changes.** Add diagnostics only
    where runtime pressure identifies a concrete cart or snapshot failure mode,

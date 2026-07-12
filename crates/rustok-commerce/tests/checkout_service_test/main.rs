@@ -40,6 +40,7 @@ pub(crate) async fn setup() -> (
             db.clone(),
             event_bus.clone(),
             std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
+            std::sync::Arc::new(rustok_cart::CartService::new(db.clone())),
             std::sync::Arc::new(rustok_inventory::InventoryService::new(
                 db.clone(),
                 event_bus.clone(),

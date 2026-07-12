@@ -23,10 +23,10 @@ use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
-    ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
-    ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError, ModuleBindingIdempotency,
-    ArtifactPermissionDescriptor, ArtifactPersistenceContract, ArtifactUiContribution,
-    ModuleDependencyConstraint, ModuleRuntimeBinding,
+    ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind, ArtifactPermissionDescriptor,
+    ArtifactPersistenceContract, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
+    ArtifactSourceLineage, ArtifactUiContribution, ModuleArtifactDescriptor, ModuleArtifactError,
+    ModuleBindingIdempotency, ModuleDependencyConstraint, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind,
 };
 pub use contracts::{
@@ -50,11 +50,11 @@ pub use executor::{
 };
 pub use installation::{
     ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord, ArtifactAdmissionService,
-    ArtifactAdmissionStage,
-    ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore, ArtifactInstallationStore,
-    ArtifactRegistry, DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
-    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
-    OciArtifactReference, SeaOrmArtifactInstallationStore, StagedArtifactBlob,
+    ArtifactAdmissionStage, ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore,
+    ArtifactInstallationStore, ArtifactRegistry, DurableArtifactBlobStore,
+    InMemoryArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
+    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
+    SeaOrmArtifactInstallationStore, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{
@@ -77,8 +77,9 @@ pub use recovery::{
     ModulePostHookRetryRequest,
 };
 pub use resolution::{
-    ModuleResolutionCandidate, ModuleResolutionConflict, ModuleResolutionError,
-    ModuleResolutionProvider, ModuleResolutionResult,
+    resolve_module_dependencies, ModuleResolutionCandidate, ModuleResolutionConflict,
+    ModuleResolutionError, ModuleResolutionProvider, ModuleResolutionRequest,
+    ModuleResolutionResult,
 };
 pub use runtime::{
     ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,

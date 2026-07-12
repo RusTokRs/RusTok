@@ -119,6 +119,25 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   if (checkoutSource.includes('rustok_product::entities')) {
     fail('checkout must not import product entities outside the ProductCatalogReadPort boundary');
   }
+  for (const marker of [
+    'cart_checkout_port: Arc<dyn CartCheckoutPort>',
+    '.read_cart_checkout_snapshot(',
+    '.update_cart_checkout_context(',
+    '.begin_cart_checkout(',
+    '.release_cart_checkout(',
+    '.complete_cart_checkout(',
+    'checkout_cart_port_context(',
+    'CartCheckoutLifecycleRequest {',
+    'write: bool',
+    'context.with_idempotency_key(',
+  ]) {
+    if (!checkoutSource.includes(marker)) {
+      fail(`checkout cart provider-consumer boundary missing: ${marker}`);
+    }
+  }
+  if (checkoutSource.includes('CartService::new(')) {
+    fail('checkout must not construct CartService outside the CartCheckoutPort boundary');
+  }
 
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;

@@ -1,6 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
 use rustok_cart::CartService;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{CheckoutService, ShippingProfileService, StoreContextService};
 use rustok_fulfillment::FulfillmentService;
 
-use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
 use super::helpers::*;
 
 #[derive(Default)]
@@ -206,6 +206,7 @@ impl CommerceCheckoutMutation {
             db.clone(),
             event_bus.clone(),
             std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
+            std::sync::Arc::new(rustok_cart::CartService::new(db.clone())),
             std::sync::Arc::new(rustok_inventory::InventoryService::new(
                 db.clone(),
                 event_bus.clone(),

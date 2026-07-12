@@ -600,9 +600,11 @@ rollback without relying on workspace source composition.
 
 ### 3.2 Dependency Resolution and Lock Graph
 
-- [ ] Resolve semantic-version constraints with a maintained solver such as
+- [x] Resolve semantic-version constraints with a maintained solver such as
   `pubgrub` behind a deterministic provider adapter; do not implement a naive
-  recursive/backtracking resolver.
+  recursive/backtracking resolver. The current adapter builds an immutable
+  admitted-candidate snapshot before solving and writes selected versions and
+  digests to the owner lock-graph contract.
 - [ ] Include platform/runtime ABI, module kind, yanked/revoked status, scope,
   trust policy, and active-release constraints in the provider.
 - [ ] Persist the complete selected graph with exact semantic versions,

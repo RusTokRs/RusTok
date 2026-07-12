@@ -42,6 +42,10 @@ already handed to payment-owned storefront transport.
   snapshot validation. Checkout no longer imports product entities. This
   additive owner operation has static contract evidence only; the FBA status
   remains `in_progress` until provider-consumer execution is recorded.
+- Checkout now calls cart-owned `CartCheckoutPort` for snapshot reads, context
+  updates, and `begin/release/complete` lifecycle transitions. Every write has
+  a checkout-derived idempotency key and deadline; direct `CartService` use is
+  removed from checkout orchestration. Runtime evidence remains required.
 - FFA guardrails: `scripts/verify/verify-commerce-admin-boundary.mjs` locks
   `admin/src/transport/native_server_adapter.rs`, removed root GraphQL and state-machine aliases,
   and the core/transport/UI owner boundary;

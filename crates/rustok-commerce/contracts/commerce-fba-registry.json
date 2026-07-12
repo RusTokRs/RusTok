@@ -151,10 +151,10 @@
     },
     {
       "module": "cart",
-      "contract_version": "cart.checkout_snapshot.v1",
+      "contract_version": "cart.checkout.v2",
       "registry": "crates/rustok-cart/contracts/cart-fba-registry.json",
       "ports": [
-        "CartSnapshotReadPort"
+        "CartCheckoutPort"
       ],
       "profiles": [
         "checkout_cart_snapshot"
