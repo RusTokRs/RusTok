@@ -14,7 +14,10 @@ use rustok_api::module_registry_contract::{
     validate_module_registry_contract, ManifestModuleContract, ModuleRegistryContractError,
     RegistryModuleContract,
 };
-use rustok_build::{BuildExecutionPlan, DeploymentProfile, ModuleSpec as BuildModuleSpec};
+use rustok_build::{
+    BuildExecutionPlan, BuildRuntimeMode, DeploymentProfile, ModuleSpec as BuildModuleSpec,
+    RoleBuildPlan,
+};
 use rustok_core::ModuleRegistry;
 use semver::{Version, VersionReq};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -263,6 +266,7 @@ impl ManifestManager {
             storefront_frontend_build_plan(manifest, &cargo_profile, cargo_target.as_deref());
 
         BuildExecutionPlan {
+            runtime_mode: BuildRuntimeMode::Full,
             cargo_package,
             cargo_profile,
             cargo_target,
@@ -270,6 +274,38 @@ impl ManifestManager {
             cargo_command: command_parts.join(" "),
             admin_build,
             storefront_build,
+        }
+    }
+
+    /// Derives the compiled surfaces and host lifecycle for one deployable role.
+    pub fn role_build_plan(manifest: &ModulesManifest, mode: BuildRuntimeMode) -> RoleBuildPlan {
+        let mut role_manifest = manifest.clone();
+        match mode {
+            BuildRuntimeMode::Full => {}
+            BuildRuntimeMode::RegistryOnly | BuildRuntimeMode::Api | BuildRuntimeMode::Worker => {
+                role_manifest.build.server.embed_admin = false;
+                role_manifest.build.server.embed_storefront = false;
+            }
+            BuildRuntimeMode::AdminSsr => {
+                role_manifest.build.server.embed_admin = true;
+                role_manifest.build.server.embed_storefront = false;
+            }
+            BuildRuntimeMode::StorefrontSsr => {
+                role_manifest.build.server.embed_admin = false;
+                role_manifest.build.server.embed_storefront = true;
+            }
+        }
+        let mut execution_plan = Self::build_execution_plan(&role_manifest);
+        execution_plan.runtime_mode = mode;
+        let profile = match mode {
+            BuildRuntimeMode::Worker => DeploymentProfile::Worker,
+            BuildRuntimeMode::RegistryOnly => DeploymentProfile::Registry,
+            _ => Self::deployment_profile(&role_manifest),
+        };
+
+        RoleBuildPlan {
+            profile,
+            execution_plan,
         }
     }
 

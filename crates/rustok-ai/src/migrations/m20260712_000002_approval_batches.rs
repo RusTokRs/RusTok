@@ -75,7 +75,7 @@ mod tests {
         let column = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
-                "SELECT notnull FROM pragma_table_info('ai_approval_requests') WHERE name = 'approval_batch_id'"
+                "SELECT \"notnull\" FROM pragma_table_info('ai_approval_requests') WHERE name = 'approval_batch_id'"
                     .to_string(),
             ))
             .await

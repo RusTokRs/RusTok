@@ -134,7 +134,11 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - Product/search title filtering helpers are not server-owned services: product translation
   search predicates stay in the owner/foundation commerce search contract, and
   `apps/server` must not reintroduce `services::product_search`.
-- `apps/server` can run as a `full` host or as `registry_only`, but `host_mode` does not replace the deployment profile and does not change build/deploy semantics.
+- `apps/server` can run as a `full`, `registry_only`, `api`, `admin_ssr`,
+  `storefront_ssr`, or `worker` host. API and SSR modes skip background
+  workers; the worker mode completes normal runtime bootstrap and starts those
+  workers while mounting only health and metrics HTTP surfaces. `host_mode`
+  does not replace a deployment profile or choose build artifacts.
 - `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled` and `seo_bulk_enabled` are disabled so that cron/bulk loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
 - `development.yaml` keeps `database.max_connections: 30` because heavy admin bootstrap routes like AI control plane resolve several GraphQL root fields in parallel. This is a local debug guardrail for both admin panels, not a new production contract.
 - For registry/governance surfaces the server remains the canonical validator of lifecycle policy, `reason` / `reason_code` contract and allowed action set; thin clients may do preflight but do not define policy locally.
@@ -158,6 +162,10 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   no `install` parser. `rustok-installer-cli` owns `install plan`, `install
   preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   the shared executor-port extraction rather than server code.
+- When `rustok.build.enabled=true`, the HTTP installer also composes the
+  server-owned distributed deployment adapter. It derives a role-specific
+  `RoleBuildPlan`, executes/publishes the release, requires it to become
+  active, and persists a deployment receipt before installer verification.
 - The HTTP adapter for the Leptos wizard is available as a thin surface on top of the same
   pipeline: `GET /api/install/status`, `POST /api/install/plan`,
   `POST /api/install/preflight`, `POST /api/install/apply`,

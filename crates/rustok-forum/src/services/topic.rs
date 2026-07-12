@@ -131,6 +131,7 @@ impl TopicService {
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             topic_id: Set(topic_id),
+            tenant_id: Set(tenant_id),
             locale: Set(locale.clone()),
             title: Set(input.title),
             slug: Set(input
@@ -154,8 +155,13 @@ impl TopicService {
                 .map_err(|error| ForumError::Validation(error.to_string()))?;
         }
 
-        self.sync_channel_access_in_tx(&txn, topic_id, input.channel_slugs.as_deref())
-            .await?;
+        self.sync_channel_access_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+            input.channel_slugs.as_deref(),
+        )
+        .await?;
         self.sync_topic_tags_in_tx(&txn, tenant_id, topic_id, &locale, &normalized_tags)
             .await?;
         CategoryService::adjust_counters_in_tx(&txn, tenant_id, input.category_id, 1, 0).await?;
@@ -204,8 +210,8 @@ impl TopicService {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let topic = self.find_topic(tenant_id, topic_id).await?;
-        let translations = self.load_translations(topic_id).await?;
-        let channel_slugs = self.load_channel_slugs(topic_id).await?;
+        let translations = self.load_translations(tenant_id, topic_id).await?;
+        let channel_slugs = self.load_channel_slugs(tenant_id, topic_id).await?;
         let metadata = self
             .resolve_topic_metadata(
                 tenant_id,
@@ -307,6 +313,7 @@ impl TopicService {
 
         self.upsert_translation_in_tx(
             &txn,
+            tenant_id,
             topic_id,
             &locale,
             TopicTranslationUpsertInput {
@@ -319,8 +326,13 @@ impl TopicService {
         .await?;
 
         if input.channel_slugs.is_some() {
-            self.sync_channel_access_in_tx(&txn, topic_id, input.channel_slugs.as_deref())
-                .await?;
+            self.sync_channel_access_in_tx(
+                &txn,
+                tenant_id,
+                topic_id,
+                input.channel_slugs.as_deref(),
+            )
+            .await?;
         }
         if let Some(tags) = normalized_tags.as_ref() {
             self.sync_topic_tags_in_tx(&txn, tenant_id, topic_id, &locale, tags)
@@ -577,9 +589,11 @@ impl TopicService {
 
     async fn load_translations(
         &self,
+        tenant_id: Uuid,
         topic_id: Uuid,
     ) -> ForumResult<Vec<forum_topic_translation::Model>> {
         Ok(forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
             .all(&self.db)
             .await?)
@@ -587,12 +601,14 @@ impl TopicService {
 
     async fn load_translations_for_topics(
         &self,
+        tenant_id: Uuid,
         topic_ids: &[Uuid],
     ) -> ForumResult<Vec<forum_topic_translation::Model>> {
         if topic_ids.is_empty() {
             return Ok(Vec::new());
         }
         Ok(forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_translation::Column::TopicId.is_in(topic_ids.to_vec()))
             .all(&self.db)
             .await?)
@@ -600,10 +616,14 @@ impl TopicService {
 
     async fn load_translations_map_for_topics(
         &self,
+        tenant_id: Uuid,
         topic_ids: &[Uuid],
     ) -> ForumResult<HashMap<Uuid, Vec<forum_topic_translation::Model>>> {
         let mut map: HashMap<Uuid, Vec<forum_topic_translation::Model>> = HashMap::new();
-        for translation in self.load_translations_for_topics(topic_ids).await? {
+        for translation in self
+            .load_translations_for_topics(tenant_id, topic_ids)
+            .await?
+        {
             map.entry(translation.topic_id)
                 .or_default()
                 .push(translation);
@@ -611,8 +631,13 @@ impl TopicService {
         Ok(map)
     }
 
-    async fn load_channel_slugs(&self, topic_id: Uuid) -> ForumResult<Vec<String>> {
+    async fn load_channel_slugs(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<Vec<String>> {
         Ok(forum_topic_channel_access::Entity::find()
+            .filter(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_channel_access::Column::TopicId.eq(topic_id))
             .order_by_asc(forum_topic_channel_access::Column::ChannelSlug)
             .all(&self.db)
@@ -680,12 +705,14 @@ impl TopicService {
 
     async fn load_channel_slugs_map(
         &self,
+        tenant_id: Uuid,
         topic_ids: &[Uuid],
     ) -> ForumResult<HashMap<Uuid, Vec<String>>> {
         if topic_ids.is_empty() {
             return Ok(HashMap::new());
         }
         let rows = forum_topic_channel_access::Entity::find()
+            .filter(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_channel_access::Column::TopicId.is_in(topic_ids.to_vec()))
             .all(&self.db)
             .await?;
@@ -702,16 +729,19 @@ impl TopicService {
     async fn sync_channel_access_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         topic_id: Uuid,
         channel_slugs: Option<&[String]>,
     ) -> ForumResult<()> {
         forum_topic_channel_access::Entity::delete_many()
+            .filter(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_channel_access::Column::TopicId.eq(topic_id))
             .exec(txn)
             .await?;
 
         for channel_slug in normalize_channel_slugs(channel_slugs.unwrap_or(&[])) {
             forum_topic_channel_access::ActiveModel {
+                tenant_id: Set(tenant_id),
                 topic_id: Set(topic_id),
                 channel_slug: Set(channel_slug),
             }
@@ -780,8 +810,12 @@ impl TopicService {
         }
 
         let topic_ids: Vec<Uuid> = topics.iter().map(|topic| topic.id).collect();
-        let translations_by_topic_id = self.load_translations_map_for_topics(&topic_ids).await?;
-        let channels = self.load_channel_slugs_map(&topic_ids).await?;
+        let translations_by_topic_id = self
+            .load_translations_map_for_topics(tenant_id, &topic_ids)
+            .await?;
+        let channels = self
+            .load_channel_slugs_map(tenant_id, &topic_ids)
+            .await?;
         let solution_reply_ids = self.load_solution_reply_ids_map(&topic_ids).await?;
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
         let vote_summaries = VoteService::new(self.db.clone())
@@ -857,6 +891,7 @@ impl TopicService {
     async fn upsert_translation_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         topic_id: Uuid,
         locale: &str,
         input: TopicTranslationUpsertInput,
@@ -868,6 +903,7 @@ impl TopicService {
             content_json,
         } = input;
         let existing = forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
             .filter(forum_topic_translation::Column::Locale.eq(locale))
             .one(txn)
@@ -898,6 +934,7 @@ impl TopicService {
             }
             None => {
                 let seed = forum_topic_translation::Entity::find()
+                    .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
                     .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
                     .order_by_asc(forum_topic_translation::Column::CreatedAt)
                     .one(txn)
@@ -932,6 +969,7 @@ impl TopicService {
                 forum_topic_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     topic_id: Set(topic_id),
+                    tenant_id: Set(tenant_id),
                     locale: Set(locale.to_string()),
                     title: Set(title),
                     slug: Set(seed.and_then(|translation| translation.slug)),

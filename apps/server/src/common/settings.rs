@@ -425,13 +425,7 @@ pub enum TenantFallbackMode {
     DefaultTenant,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum RuntimeHostMode {
-    #[default]
-    Full,
-    RegistryOnly,
-}
+pub use rustok_build::BuildRuntimeMode as RuntimeHostMode;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RequestTrustSettings {
@@ -1007,6 +1001,29 @@ impl RuntimeSettings {
     pub fn is_registry_only(&self) -> bool {
         self.host_mode == RuntimeHostMode::RegistryOnly
     }
+
+    pub fn is_worker_only(&self) -> bool {
+        self.host_mode == RuntimeHostMode::Worker
+    }
+
+    pub fn is_api_only(&self) -> bool {
+        self.host_mode == RuntimeHostMode::Api
+    }
+
+    pub fn is_admin_ssr(&self) -> bool {
+        self.host_mode == RuntimeHostMode::AdminSsr
+    }
+
+    pub fn is_storefront_ssr(&self) -> bool {
+        self.host_mode == RuntimeHostMode::StorefrontSsr
+    }
+
+    pub fn runs_background_workers(&self) -> bool {
+        matches!(
+            self.host_mode,
+            RuntimeHostMode::Full | RuntimeHostMode::Worker
+        )
+    }
 }
 
 /// Cached, shared reference to the parsed [`RustokSettings`].
@@ -1036,10 +1053,14 @@ fn parse_runtime_host_mode(value: &str) -> Result<RuntimeHostMode, serde_json::E
     match value.trim().to_ascii_lowercase().as_str() {
         "full" => Ok(RuntimeHostMode::Full),
         "registry_only" => Ok(RuntimeHostMode::RegistryOnly),
+        "api" => Ok(RuntimeHostMode::Api),
+        "admin_ssr" => Ok(RuntimeHostMode::AdminSsr),
+        "storefront_ssr" => Ok(RuntimeHostMode::StorefrontSsr),
+        "worker" => Ok(RuntimeHostMode::Worker),
         other => Err(serde_json::Error::io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!(
-                "invalid RUSTOK_RUNTIME_HOST_MODE `{other}`; expected `full` or `registry_only`"
+                "invalid RUSTOK_RUNTIME_HOST_MODE `{other}`; expected `full`, `registry_only`, `api`, `admin_ssr`, `storefront_ssr`, or `worker`"
             ),
         ))),
     }
@@ -1923,6 +1944,45 @@ mod tests {
     }
 
     #[test]
+    fn parses_worker_runtime_host_mode() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _host_mode_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "runtime": {
+                    "host_mode": "worker"
+                }
+            }
+        });
+
+        let settings = RustokSettings::from_settings(&Some(raw)).expect("worker settings parse");
+        assert!(settings.runtime.is_worker_only());
+        assert!(!settings.runtime.is_registry_only());
+    }
+
+    #[test]
+    fn surface_runtime_modes_skip_background_workers() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _host_mode_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        for host_mode in ["api", "admin_ssr", "storefront_ssr"] {
+            let settings = RustokSettings::from_settings(&Some(serde_json::json!({
+                "rustok": { "runtime": { "host_mode": host_mode } }
+            })))
+            .expect("surface host mode parse");
+
+            assert!(!settings.runtime.runs_background_workers());
+        }
+    }
+
+    #[test]
     fn rejects_invalid_runtime_host_mode_env_override() {
         let _guard = env_lock().lock().expect("env lock poisoned");
         let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
@@ -1933,7 +1993,7 @@ mod tests {
         let err = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
             .expect_err("invalid host mode env override expected");
         assert!(err.to_string().contains(
-            "invalid RUSTOK_RUNTIME_HOST_MODE `broken`; expected `full` or `registry_only`"
+            "invalid RUSTOK_RUNTIME_HOST_MODE `broken`; expected `full`, `registry_only`, `api`, `admin_ssr`, `storefront_ssr`, or `worker`"
         ));
     }
 

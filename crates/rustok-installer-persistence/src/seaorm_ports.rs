@@ -1,8 +1,9 @@
 use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_installer::{
     DatabaseEngine, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
-    InstallDatabasePort, InstallDatabaseReady, InstallExecutionError, InstallPersistencePort,
-    InstallPlan, InstallReceipt, InstallReceiptRecord, InstallSchemaPort, InstallSeedOutcome,
+    InstallDatabasePort, InstallDatabaseReady, InstallDeploymentPort, InstallExecutionError,
+    InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord,
+    InstallRoleDeployment, InstallRoleDeploymentRequest, InstallSchemaPort, InstallSeedOutcome,
     InstallSeedPort, InstallSessionRecord, InstallState, InstallVerificationOutcome,
     InstallVerificationPort, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
     SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
@@ -169,6 +170,23 @@ impl InstallVerificationPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'
         tenant_id: Uuid,
     ) -> Result<InstallVerificationOutcome, InstallExecutionError> {
         verify_standalone_installation(runtime, plan, tenant_id, self.registry).await
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallDeploymentPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_> {
+    fn supports_distributed_deployment(&self) -> bool {
+        false
+    }
+
+    async fn deploy_role(
+        &self,
+        _runtime: &DatabaseConnection,
+        _request: InstallRoleDeploymentRequest,
+    ) -> Result<InstallRoleDeployment, InstallExecutionError> {
+        Err(InstallExecutionError::new(
+            "standalone installer apply has no configured distributed deployment adapter",
+        ))
     }
 }
 

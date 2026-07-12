@@ -127,10 +127,12 @@ bootstrap logic in the UI:
 An HTTP `InstallPlan` includes a versioned `topology` shape. The wizard may
 submit it with `composition: null`; the server replaces that field with the
 selected distribution revision and deterministic hash before preflight or
-apply. Distributed topology is rejected until a deployment adapter is
-available.
+apply. Distributed HTTP apply is available when `rustok.build.enabled=true`:
+the server builds and activates every selected role before completing the
+installer session. A CLI still reports distributed topology unavailable until
+it is given a deployment adapter.
 It records redacted receipts for preflight, config, database, migration, seed,
-admin, verify, and finalize stages.
+admin, each distributed role deployment, verify, and finalize stages.
 
 For mutating HTTP install requests, configure a setup token:
 

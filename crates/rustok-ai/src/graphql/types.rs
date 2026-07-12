@@ -372,7 +372,11 @@ mod stream_usage_tests {
             accumulated_content: None,
             error_message: None,
             tool_call: None,
-            usage: Some(ProviderUsage { input_tokens: 2, output_tokens: 3, total_tokens: 5 }),
+            usage: Some(ProviderUsage {
+                input_tokens: 2,
+                output_tokens: 3,
+                total_tokens: 5,
+            }),
             sequence: 1,
             created_at: Utc::now(),
         });
@@ -506,40 +510,10 @@ impl TryFrom<ToolCall> for AiToolCallGql {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
-pub struct AiProviderSettingGql {
-    pub key: String,
-    pub text_value: Option<String>,
-    pub integer_value: Option<i64>,
-    pub boolean_value: Option<bool>,
-}
-
-impl AiProviderSettingGql {
-    fn new(key: String, value: serde_json::Value) -> Self {
-        let text_value = value.as_str().map(ToString::to_string);
-        let integer_value = value.as_i64();
-        let boolean_value = value.as_bool();
-        Self {
-            key,
-            text_value,
-            integer_value,
-            boolean_value,
-        }
-    }
-}
-
-#[derive(Debug, Clone, SimpleObject)]
 pub struct AiCredentialRefGql {
     pub key: String,
     pub resolver: String,
     pub secret_key: String,
-}
-
-#[derive(Debug, Clone, InputObject)]
-pub struct AiProviderSettingInputGql {
-    pub key: String,
-    pub text_value: Option<String>,
-    pub integer_value: Option<i64>,
-    pub boolean_value: Option<bool>,
 }
 
 #[derive(Debug, Clone, InputObject)]

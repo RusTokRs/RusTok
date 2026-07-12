@@ -164,11 +164,15 @@ mod tests {
     use std::path::Path;
 
     use super::{build_manifest_snapshot_path, BuildCommandSpec};
-    use crate::{BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan, FrontendBuildTool};
+    use crate::{
+        BuildExecutionPlan, BuildRuntimeMode, FrontendArtifactKind, FrontendBuildPlan,
+        FrontendBuildTool,
+    };
 
     #[test]
     fn derives_command_spec_from_plan() {
         let plan = BuildExecutionPlan {
+            runtime_mode: BuildRuntimeMode::Full,
             cargo_package: "rustok-server".to_string(),
             cargo_profile: "release".to_string(),
             cargo_target: Some("x86_64-unknown-linux-gnu".to_string()),

@@ -17,6 +17,21 @@ pub fn build_execution_service(ctx: &ServerRuntimeContext) -> rustok_build::Buil
     )
 }
 
+/// Creates the shared build executor for a database opened by the installer.
+///
+/// Installer deployment uses the same execution and release-activation path as
+/// the runtime worker, but cannot depend on a pre-existing HTTP host context.
+pub fn build_execution_service_for_database(
+    db: sea_orm::DatabaseConnection,
+) -> rustok_build::BuildExecutionService {
+    rustok_build::BuildExecutionService::new(
+        db.clone(),
+        Arc::new(rustok_build::NoopBuildEventPublisher),
+        Arc::new(ServerReleaseActivationHook::new(db)),
+        workspace_root(),
+    )
+}
+
 pub fn build_execution_service_with_event_publisher(
     ctx: &ServerRuntimeContext,
     event_publisher: Arc<dyn rustok_build::BuildEventPublisher>,

@@ -7,8 +7,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use rustok_installer::{
-    evaluate_preflight, redact_install_plan, InstallApplyOptions, InstallApplyOutput,
-    InstallExecutor, InstallPlan,
+    evaluate_preflight_with_deployment, redact_install_plan, InstallApplyOptions,
+    InstallApplyOutput, InstallExecutor, InstallPlan,
 };
 use rustok_installer_persistence::{entities::install_step_receipt, InstallerPersistenceService};
 use rustok_web::HttpError;
@@ -146,11 +146,12 @@ async fn plan(
 
 async fn preflight(
     headers: HeaderMap,
+    State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
     require_setup_token(&headers, plan.environment.is_production())?;
     let plan = bind_selected_composition(plan);
-    let report = evaluate_preflight(&plan);
+    let report = evaluate_preflight_with_deployment(&plan, ctx.settings().build.enabled);
     Ok(Json(InstallPreflightResponse {
         passed: report.passed(),
         report,
@@ -160,6 +161,7 @@ async fn preflight(
 
 async fn apply(
     headers: HeaderMap,
+    State(ctx): State<ServerRuntimeContext>,
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     require_setup_token(&headers, request.plan.environment.is_production())?;
@@ -174,6 +176,7 @@ async fn apply(
         lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
         pg_admin_url: request.pg_admin_url,
     };
+    let executor = ServerInstallExecutor::new(ctx.settings().build.clone());
     INSTALL_JOBS.lock().await.insert(
         job_id,
         InstallJobStatusResponse {
@@ -190,7 +193,7 @@ async fn apply(
     );
 
     tokio::spawn(async move {
-        let result = ServerInstallExecutor.apply(plan, apply_options).await;
+        let result = executor.apply(plan, apply_options).await;
         let finished_at = Utc::now();
         let mut jobs = INSTALL_JOBS.lock().await;
         let Some(job) = jobs.get_mut(&job_id) else {

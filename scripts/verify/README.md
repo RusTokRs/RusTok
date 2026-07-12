@@ -61,6 +61,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | Sweep transport profiles for FFA surfaces | `node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs` |
 | Inventory admin native/write boundary check | `node scripts/verify/verify-inventory-admin-boundary.mjs` |
 | AI admin FFA boundary check | `node scripts/verify/verify-ai-admin-boundary.mjs` |
+| AI Rig-only cutover drift check | `node scripts/verify/verify-ai-rig-cutover.mjs` |
 | Tenant admin FFA boundary check | `node scripts/verify/verify-tenant-admin-boundary.mjs` |
 | Lifecycle bypass helper prohibition in production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
 | Provider/consumer parity check for page-builder contract | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
@@ -271,6 +272,26 @@ Example:
 npm run verify:ai:admin-boundary
 npm run verify:tenant:admin-boundary
 npm run verify:ffa:ui:migration
+```
+
+---
+
+### `verify-ai-rig-cutover.mjs`
+
+**AI Rig cutover guardrail** — fast source-level evidence for the pinned
+Rig-only provider boundary without Rust compilation.
+
+What it checks:
+
+- provider catalog and normalized stream cassettes remain pinned to Rig 0.39.0;
+- cassettes retain OpenAI-compatible, Anthropic, Gemini, cloud-auth, and local-target families;
+- typed `ProviderIntegration` dispatch and its snapshot test remain present;
+- removed legacy provider adapters, `AiRuntime`, and plaintext-secret storage markers do not return.
+
+Example:
+
+```bash
+npm run verify:ai:rig-cutover
 ```
 
 ---

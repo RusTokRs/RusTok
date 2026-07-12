@@ -296,6 +296,7 @@ impl PlatformCompositionBuildService {
                     manifest_ref: format!("platform_state:{}", snapshot.revision),
                     manifest_revision: snapshot.revision,
                     manifest_snapshot: manifest_json,
+                    artifact_identity: snapshot.manifest_hash.clone(),
                     requested_by: requested_by.clone(),
                     reason: Some(reason),
                     modules_delta: manifest_diff.summary(),
