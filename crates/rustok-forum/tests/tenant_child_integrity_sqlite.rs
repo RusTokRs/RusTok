@@ -1,0 +1,190 @@
+use rustok_core::MigrationSource;
+use rustok_forum::ForumModule;
+use rustok_taxonomy::TaxonomyModule;
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+};
+use sea_orm_migration::{MigrationTrait, SchemaManager};
+use uuid::Uuid;
+
+type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+#[tokio::test]
+async fn sqlite_rejects_cross_tenant_forum_child_rows() -> TestResult<()> {
+    let db = setup_sqlite().await?;
+    let tenant_a = Uuid::new_v4();
+    let tenant_b = Uuid::new_v4();
+    let category_a = Uuid::new_v4();
+    let category_b = Uuid::new_v4();
+    let topic_a = Uuid::new_v4();
+    let topic_b = Uuid::new_v4();
+    let reply_a = Uuid::new_v4();
+
+    execute(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_categories
+    (id, tenant_id, position, moderated, topic_count, reply_count)
+VALUES
+    ('{category_a}', '{tenant_a}', 0, 0, 0, 0),
+    ('{category_b}', '{tenant_b}', 0, 0, 0, 0)
+"#
+        ),
+    )
+    .await?;
+
+    execute(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_topics
+    (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
+VALUES
+    ('{topic_a}', '{tenant_a}', '{category_a}', 'open', '{{}}', 0, 0, 0),
+    ('{topic_b}', '{tenant_b}', '{category_b}', 'open', '{{}}', 0, 0, 0)
+"#
+        ),
+    )
+    .await?;
+
+    execute(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_replies
+    (id, tenant_id, topic_id, status, position)
+VALUES
+    ('{reply_a}', '{tenant_a}', '{topic_a}', 'approved', 1)
+"#
+        ),
+    )
+    .await?;
+
+    assert_rejected(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_topic_translations
+    (id, tenant_id, topic_id, locale, title, body, body_format)
+VALUES
+    ('{}', '{tenant_b}', '{topic_a}', 'en', 'Wrong tenant', 'Body', 'markdown')
+"#,
+            Uuid::new_v4()
+        ),
+        "cross-tenant topic translation",
+    )
+    .await?;
+
+    assert_rejected(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_reply_bodies
+    (id, tenant_id, reply_id, locale, body, body_format)
+VALUES
+    ('{}', '{tenant_b}', '{reply_a}', 'en', 'Wrong tenant', 'markdown')
+"#,
+            Uuid::new_v4()
+        ),
+        "cross-tenant reply body",
+    )
+    .await?;
+
+    assert_rejected(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_topic_channel_access
+    (tenant_id, topic_id, channel_slug)
+VALUES
+    ('{tenant_b}', '{topic_a}', 'private')
+"#
+        ),
+        "cross-tenant topic channel access",
+    )
+    .await?;
+
+    execute(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_topic_translations
+    (id, tenant_id, topic_id, locale, title, body, body_format)
+VALUES
+    ('{}', '{tenant_a}', '{topic_a}', 'en', 'Valid', 'Body', 'markdown')
+"#,
+            Uuid::new_v4()
+        ),
+    )
+    .await?;
+
+    execute(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_reply_bodies
+    (id, tenant_id, reply_id, locale, body, body_format)
+VALUES
+    ('{}', '{tenant_a}', '{reply_a}', 'en', 'Valid', 'markdown')
+"#,
+            Uuid::new_v4()
+        ),
+    )
+    .await?;
+
+    execute(
+        &db,
+        format!(
+            r#"
+INSERT INTO forum_topic_channel_access
+    (tenant_id, topic_id, channel_slug)
+VALUES
+    ('{tenant_a}', '{topic_a}', 'public')
+"#
+        ),
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn setup_sqlite() -> TestResult<DatabaseConnection> {
+    let url = format!(
+        "sqlite:file:forum_tenant_children_{}?mode=memory&cache=shared",
+        Uuid::new_v4()
+    );
+    let mut options = ConnectOptions::new(url);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+
+    let db = Database::connect(options).await?;
+    let manager = SchemaManager::new(&db);
+    for migration in TaxonomyModule.migrations() {
+        migration.up(&manager).await?;
+    }
+    for migration in ForumModule.migrations() {
+        migration.up(&manager).await?;
+    }
+    Ok(db)
+}
+
+async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
+    db.execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        .await?;
+    Ok(())
+}
+
+async fn assert_rejected(
+    db: &DatabaseConnection,
+    sql: String,
+    relation: &str,
+) -> TestResult<()> {
+    let result = db
+        .execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        .await;
+    assert!(result.is_err(), "{relation} must be rejected by SQLite");
+    Ok(())
+}

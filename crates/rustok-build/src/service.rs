@@ -81,13 +81,13 @@ impl BuildService {
     where
         C: sea_orm::ConnectionTrait,
     {
-        let manifest_hash = compute_manifest_snapshot_hash(&request.manifest_snapshot);
+        let manifest_hash = compute_build_request_hash(&request);
 
         if let Some(existing) = Self::find_build_by_hash_on(db, &manifest_hash).await? {
             if existing.status == BuildStatus::Success {
                 info!(
                     build_id = %existing.id,
-                    "Build with same manifest already exists, returning existing build"
+                    "Build with same immutable execution plan already exists, returning existing build"
                 );
                 return Ok((existing, false));
             }
@@ -562,24 +562,53 @@ impl BuildService {
     }
 }
 
-fn compute_manifest_snapshot_hash(snapshot: &serde_json::Value) -> String {
-    hash_manifest_snapshot(snapshot)
+fn compute_build_request_hash(request: &BuildRequest) -> String {
+    hash_manifest_snapshot(&serde_json::json!({
+        "manifest_snapshot": &request.manifest_snapshot,
+        "artifact_identity": &request.artifact_identity,
+        "profile": &request.profile,
+        "execution_plan": &request.execution_plan,
+    }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::compute_manifest_snapshot_hash;
-    use rustok_api::manifest_hash::hash_manifest_snapshot;
+    use std::collections::HashMap;
+
+    use super::compute_build_request_hash;
+    use crate::{BuildExecutionPlan, BuildRequest, BuildRuntimeMode, DeploymentProfile};
 
     #[test]
-    fn build_service_uses_shared_manifest_snapshot_hash_builder() {
+    fn build_request_hash_changes_for_each_runtime_mode() {
         let snapshot = serde_json::json!({
             "modules": {"catalog": {"version": "1.0.0"}},
             "profile": "default"
         });
-        assert_eq!(
-            compute_manifest_snapshot_hash(&snapshot),
-            hash_manifest_snapshot(&snapshot)
+        let request = |runtime_mode| BuildRequest {
+            manifest_ref: "platform_state:1".to_string(),
+            manifest_revision: 1,
+            manifest_snapshot: snapshot.clone(),
+            artifact_identity: "distribution_hash".to_string(),
+            requested_by: "test".to_string(),
+            reason: None,
+            modules_delta: "test".to_string(),
+            modules: HashMap::new(),
+            profile: DeploymentProfile::HeadlessApi,
+            execution_plan: BuildExecutionPlan {
+                runtime_mode,
+                cargo_package: "rustok-server".to_string(),
+                cargo_profile: "release".to_string(),
+                cargo_target: None,
+                cargo_features: Vec::new(),
+                cargo_command: "cargo build -p rustok-server --release".to_string(),
+                admin_build: None,
+                storefront_build: None,
+            },
+        };
+
+        assert_ne!(
+            compute_build_request_hash(&request(BuildRuntimeMode::Api)),
+            compute_build_request_hash(&request(BuildRuntimeMode::Worker)),
         );
     }
 }

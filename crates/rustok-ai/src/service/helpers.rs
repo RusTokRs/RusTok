@@ -1209,8 +1209,8 @@ mod tests {
         let target_id = ProviderTargetId::new("workload_vertex").unwrap();
         let targets = AiProviderTargetCatalog::new(vec![AiProviderTarget {
             id: target_id.clone(),
-            provider_slug: ProviderSlug::new("vertex_ai").unwrap(),
-            display_name: "Vertex workload identity".to_string(),
+            provider_slug: ProviderSlug::new("fastembed").unwrap(),
+            display_name: "FastEmbed workload identity".to_string(),
             auth: ProviderTargetAuth::WorkloadIdentity,
             settings: BTreeMap::new(),
         }])

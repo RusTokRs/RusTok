@@ -52,6 +52,10 @@ pub enum DeploymentProfile {
     ServerWithStorefront,
     #[sea_orm(string_value = "headless-api")]
     HeadlessApi,
+    #[sea_orm(string_value = "worker")]
+    Worker,
+    #[sea_orm(string_value = "registry")]
+    Registry,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]

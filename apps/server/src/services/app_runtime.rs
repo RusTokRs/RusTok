@@ -4,7 +4,7 @@ use crate::error::{Error, Result};
 use rustok_core::ModuleRegistry;
 
 use crate::auth::AuthConfig;
-use crate::common::settings::{RustokSettings, SharedRustokSettings};
+use crate::common::settings::{RuntimeHostMode, RustokSettings, SharedRustokSettings};
 use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
@@ -79,21 +79,31 @@ pub async fn bootstrap_app_runtime(
                 Error::BadRequest(format!("platform composition validation failed: {error}"))
             })?
     };
-    let deployment_surfaces = if settings.runtime.is_registry_only() {
-        DeploymentSurfaceContract {
-            profile: rustok_build::DeploymentProfile::HeadlessApi,
-            embed_admin: false,
-            embed_storefront: false,
+    let deployment_surfaces = match settings.runtime.host_mode {
+        RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker | RuntimeHostMode::Api => {
+            DeploymentSurfaceContract {
+                profile: rustok_build::DeploymentProfile::HeadlessApi,
+                embed_admin: false,
+                embed_storefront: false,
+            }
         }
-    } else {
-        let deployment_surfaces = ManifestManager::deployment_surface_contract(&manifest);
-        validate_compiled_surface_contract(
-            &deployment_surfaces,
-            cfg!(feature = "embed-admin"),
-            cfg!(feature = "embed-storefront"),
-        )?;
-        deployment_surfaces
+        RuntimeHostMode::AdminSsr => DeploymentSurfaceContract {
+            profile: rustok_build::DeploymentProfile::ServerWithAdmin,
+            embed_admin: true,
+            embed_storefront: false,
+        },
+        RuntimeHostMode::StorefrontSsr => DeploymentSurfaceContract {
+            profile: rustok_build::DeploymentProfile::ServerWithStorefront,
+            embed_admin: false,
+            embed_storefront: true,
+        },
+        RuntimeHostMode::Full => ManifestManager::deployment_surface_contract(&manifest),
     };
+    validate_compiled_surface_contract(
+        &deployment_surfaces,
+        cfg!(feature = "embed-admin"),
+        cfg!(feature = "embed-storefront"),
+    )?;
 
     let registry = modules::build_registry();
     let runtime_extensions = build_shared_runtime_extensions_with_host_providers(

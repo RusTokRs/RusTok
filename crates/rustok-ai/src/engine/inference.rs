@@ -26,7 +26,7 @@ use secrecy::ExposeSecret;
 use crate::{
     model::{
         AiProviderConfig, ChatMessage, ChatMessageRole, ProviderChatRequest, ProviderChatResponse,
-        ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent,
+        ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter,
         ProviderStructuredRequest, ProviderTestResult, ProviderUsage, ToolCall,
     },
     AiError, AiResult,

@@ -25,6 +25,15 @@ impl InstallEnvironment {
             _ => Err(format!("unknown install environment `{value}`")),
         }
     }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Demo => "demo",
+            Self::Test => "test",
+            Self::Production => "production",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +195,35 @@ pub enum InstallSurface {
     Registry,
 }
 
+impl InstallRole {
+    /// Returns whether a process role may own a selected runtime surface.
+    ///
+    /// A monolith intentionally owns every selected surface. Distributed roles
+    /// are single-purpose so an adapter cannot silently deploy an API-capable
+    /// process in place of a worker, registry, or SSR surface.
+    pub fn supports_surface(self, surface: InstallSurface) -> bool {
+        match self {
+            Self::Monolith => true,
+            Self::Api => surface == InstallSurface::Api,
+            Self::AdminSsr => surface == InstallSurface::Admin,
+            Self::StorefrontSsr => surface == InstallSurface::Storefront,
+            Self::Worker => surface == InstallSurface::Worker,
+            Self::Registry => surface == InstallSurface::Registry,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Monolith => "monolith",
+            Self::Api => "api",
+            Self::AdminSsr => "admin_ssr",
+            Self::StorefrontSsr => "storefront_ssr",
+            Self::Worker => "worker",
+            Self::Registry => "registry",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallRoleAssignment {
     pub role: InstallRole,
@@ -286,10 +324,22 @@ impl InstallTopology {
             {
                 return Err("distributed topology may not use the monolith role".to_string());
             }
+            if assignment.surfaces.is_empty() {
+                return Err(
+                    "install topology role assignment must own at least one surface".to_string(),
+                );
+            }
             for surface in &assignment.surfaces {
                 let key = *surface as u8;
                 if !selected_surfaces.contains(&key) || !assigned_surfaces.insert(key) {
                     return Err("install topology assigns a surface more than once or outside its selection".to_string());
+                }
+                if !assignment.role.supports_surface(*surface) {
+                    return Err(format!(
+                        "install role `{}` may not own surface `{}`",
+                        serde_name(assignment.role),
+                        serde_name(*surface),
+                    ));
                 }
             }
         }
@@ -306,6 +356,14 @@ impl InstallTopology {
         }
         Ok(())
     }
+}
+
+fn serde_name<T: Serialize>(value: T) -> String {
+    serde_json::to_value(value)
+        .expect("install topology enum serialization must be infallible")
+        .as_str()
+        .expect("install topology enum serialization must produce a string")
+        .to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -349,7 +407,7 @@ impl InstallPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::{InstallTopology, InstallTopologyMode, SeedProfile};
+    use super::{InstallRole, InstallSurface, InstallTopology, InstallTopologyMode, SeedProfile};
 
     #[test]
     fn development_seed_profile_enables_the_canonical_module_set() {
@@ -401,5 +459,22 @@ mod tests {
         let distributed = InstallTopology::for_mode(InstallTopologyMode::Distributed)
             .bind_composition("distribution@1".to_string(), "a".repeat(64));
         assert!(distributed.validate().is_ok());
+    }
+
+    #[test]
+    fn distributed_topology_rejects_a_role_owning_another_roles_surface() {
+        let mut topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
+            .bind_composition("distribution@1".to_string(), "a".repeat(64));
+        let api = topology
+            .roles
+            .iter_mut()
+            .find(|assignment| assignment.role == InstallRole::Api)
+            .unwrap();
+        api.surfaces = vec![InstallSurface::Worker];
+
+        assert_eq!(
+            topology.validate().unwrap_err(),
+            "install role `api` may not own surface `worker`"
+        );
     }
 }

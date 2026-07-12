@@ -30,7 +30,10 @@ pub use plan::{
     InstallPlan, InstallProfile, InstallRole, InstallRoleAssignment, InstallSurface,
     InstallTopology, InstallTopologyMode, ModuleSelection, SeedProfile, TenantBootstrap,
 };
-pub use preflight::{evaluate_preflight, PreflightIssue, PreflightReport, PreflightSeverity};
+pub use preflight::{
+    evaluate_preflight, evaluate_preflight_with_deployment, PreflightIssue, PreflightReport,
+    PreflightSeverity,
+};
 pub use receipt::{checksum_json, InstallReceipt, ReceiptError, ReceiptOutcome};
 pub use secrets::{
     redact_install_plan, redact_secret, resolve_local_secret_value, SecretMode, SecretRef,

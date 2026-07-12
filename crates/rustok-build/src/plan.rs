@@ -3,8 +3,41 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::build::DeploymentProfile;
+
+/// Runtime intent embedded in an immutable build plan.
+///
+/// Deployment adapters pass this value as `RUSTOK_RUNTIME_HOST_MODE` when
+/// starting the artifact. It is distinct from a build profile: the latter
+/// describes compiled surfaces, while this selects the host lifecycle.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildRuntimeMode {
+    #[default]
+    Full,
+    RegistryOnly,
+    Api,
+    AdminSsr,
+    StorefrontSsr,
+    Worker,
+}
+
+impl BuildRuntimeMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::RegistryOnly => "registry_only",
+            Self::Api => "api",
+            Self::AdminSsr => "admin_ssr",
+            Self::StorefrontSsr => "storefront_ssr",
+            Self::Worker => "worker",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BuildExecutionPlan {
+    pub runtime_mode: BuildRuntimeMode,
     pub cargo_package: String,
     pub cargo_profile: String,
     pub cargo_target: Option<String>,
@@ -14,6 +47,13 @@ pub struct BuildExecutionPlan {
     pub admin_build: Option<FrontendBuildPlan>,
     #[serde(default)]
     pub storefront_build: Option<FrontendBuildPlan>,
+}
+
+/// Role-specific build profile and immutable execution plan.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoleBuildPlan {
+    pub profile: DeploymentProfile,
+    pub execution_plan: BuildExecutionPlan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -21,6 +21,7 @@ pub mod graphql;
 pub mod guards;
 pub mod host;
 pub mod initializers;
+pub mod installer_deployment;
 pub mod installer_execution;
 pub mod middleware;
 pub mod models;

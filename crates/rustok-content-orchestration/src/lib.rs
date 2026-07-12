@@ -425,7 +425,7 @@ async fn promote_topic_to_post(
 ) -> ContentResult<PromoteTopicToPostOutput> {
     let requested_locale = normalize_locale(&input.locale)?;
     let topic = find_topic_in_tx(txn, tenant_id, input.topic_id).await?;
-    let translations = load_topic_translations_in_tx(txn, topic.id).await?;
+    let translations = load_topic_translations_in_tx(txn, tenant_id, topic.id).await?;
     let resolved = resolve_topic_translation(&translations, &requested_locale)?;
     let source_translation = resolved
         .item
@@ -610,6 +610,7 @@ async fn demote_post_to_topic(
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             topic_id: Set(topic_id),
+            tenant_id: Set(tenant_id),
             locale: Set(translation.locale.clone()),
             title: Set(translation.title.clone()),
             slug: Set(Some(post.slug.clone())),
@@ -686,7 +687,8 @@ async fn split_topic(
 ) -> ContentResult<SplitTopicOutput> {
     let requested_locale = normalize_locale(&input.locale)?;
     let source_topic = find_topic_in_tx(txn, tenant_id, input.topic_id).await?;
-    let source_translations = load_topic_translations_in_tx(txn, source_topic.id).await?;
+    let source_translations =
+        load_topic_translations_in_tx(txn, tenant_id, source_topic.id).await?;
     let resolved = resolve_topic_translation(&source_translations, &requested_locale)?;
     let moved_set: HashSet<Uuid> = input.reply_ids.iter().copied().collect();
     if moved_set.len() != input.reply_ids.len() {
@@ -745,6 +747,7 @@ async fn split_topic(
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             topic_id: Set(target_topic_id),
+            tenant_id: Set(tenant_id),
             locale: Set(translation.locale.clone()),
             title: Set(title),
             slug: Set(translation.slug.clone()),
@@ -773,6 +776,7 @@ async fn split_topic(
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             topic_id: Set(target_topic_id),
+            tenant_id: Set(tenant_id),
             locale: Set(requested_locale.clone()),
             title: Set(input.new_title.clone()),
             slug: Set(Some(normalize_slug(&input.new_title))),
@@ -801,7 +805,8 @@ async fn split_topic(
     refresh_forum_topic_stats_in_tx(txn, tenant_id, source_topic.id).await?;
     refresh_forum_topic_stats_in_tx(txn, tenant_id, target_topic_id).await?;
 
-    let target_translations = load_topic_translations_in_tx(txn, target_topic_id).await?;
+    let target_translations =
+        load_topic_translations_in_tx(txn, tenant_id, target_topic_id).await?;
     let url_updates = locales_from_topic_translations(&target_translations)?
         .into_iter()
         .map(|locale| CanonicalUrlMutation {
@@ -837,7 +842,8 @@ async fn merge_topics(
 ) -> ContentResult<MergeTopicsOutput> {
     let target_topic = find_topic_in_tx(txn, tenant_id, input.target_topic_id).await?;
     let source_ids = unique_source_ids(input.target_topic_id, &input.source_topic_ids)?;
-    let target_translations = load_topic_translations_in_tx(txn, target_topic.id).await?;
+    let target_translations =
+        load_topic_translations_in_tx(txn, tenant_id, target_topic.id).await?;
     let mut next_position = next_forum_reply_position_in_tx(txn, target_topic.id).await?;
     let mut moved_count = 0_u64;
     let now = Utc::now();
@@ -848,7 +854,8 @@ async fn merge_topics(
 
     for source_topic_id in &source_ids {
         let source_topic = find_topic_in_tx(txn, tenant_id, *source_topic_id).await?;
-        let source_translations = load_topic_translations_in_tx(txn, source_topic.id).await?;
+        let source_translations =
+            load_topic_translations_in_tx(txn, tenant_id, source_topic.id).await?;
         merge_locales.extend(locales_from_topic_translations(&source_translations)?);
         let replies = load_forum_reply_records_in_tx(txn, tenant_id, source_topic.id).await?;
         for record in &replies {
@@ -973,9 +980,11 @@ async fn find_post_in_tx(
 ))]
 async fn load_topic_translations_in_tx(
     txn: &DatabaseTransaction,
+    tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ContentResult<Vec<forum_topic_translation::Model>> {
     Ok(forum_topic_translation::Entity::find()
+        .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
         .all(txn)
         .await?)
@@ -1129,6 +1138,7 @@ async fn load_forum_reply_records_in_tx(
 
     let reply_ids = replies.iter().map(|reply| reply.id).collect::<Vec<_>>();
     let bodies = forum_reply_body::Entity::find()
+        .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
         .filter(forum_reply_body::Column::ReplyId.is_in(reply_ids))
         .all(txn)
         .await?;
@@ -1471,6 +1481,7 @@ async fn move_comments_to_forum_replies_in_tx(
             forum_reply_body::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 reply_id: Set(record.comment.id),
+                tenant_id: Set(tenant_id),
                 locale: Set(body.locale.clone()),
                 body: Set(body.body.clone()),
                 body_format: Set(body.body_format.clone()),

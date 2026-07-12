@@ -6,7 +6,9 @@ mod tests {
         StorefrontBuildConfig,
     };
     use crate::modules::build_registry;
-    use rustok_build::{DeploymentProfile, FrontendArtifactKind, FrontendBuildTool};
+    use rustok_build::{
+        BuildRuntimeMode, DeploymentProfile, FrontendArtifactKind, FrontendBuildTool,
+    };
     use serial_test::serial;
     use std::collections::HashMap;
     use tempfile::tempdir;
@@ -146,6 +148,32 @@ mod tests {
             storefront_build.command,
             "cargo build -p rustok-storefront --release --target x86_64-unknown-linux-gnu"
         );
+    }
+
+    #[test]
+    fn derives_single_role_build_plans_without_cross_role_surfaces() {
+        let mut manifest = ModulesManifest {
+            app: "rustok-server".to_string(),
+            ..ModulesManifest::default()
+        };
+        manifest.build.server.embed_admin = true;
+        manifest.build.server.embed_storefront = true;
+
+        let worker = ManifestManager::role_build_plan(&manifest, BuildRuntimeMode::Worker);
+        assert_eq!(worker.profile, DeploymentProfile::Worker);
+        assert_eq!(worker.execution_plan.runtime_mode, BuildRuntimeMode::Worker);
+        assert!(worker.execution_plan.cargo_features.is_empty());
+        assert!(worker.execution_plan.admin_build.is_none());
+        assert!(worker.execution_plan.storefront_build.is_none());
+
+        let admin = ManifestManager::role_build_plan(&manifest, BuildRuntimeMode::AdminSsr);
+        assert_eq!(admin.profile, DeploymentProfile::ServerWithAdmin);
+        assert_eq!(
+            admin.execution_plan.runtime_mode,
+            BuildRuntimeMode::AdminSsr
+        );
+        assert_eq!(admin.execution_plan.cargo_features, vec!["embed-admin"]);
+        assert!(admin.execution_plan.storefront_build.is_none());
     }
 
     #[test]

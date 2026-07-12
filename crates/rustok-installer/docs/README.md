@@ -76,9 +76,13 @@ distribution revision/hash before preflight and apply; a wizard never supplies
 that identity. `InstallDeploymentPort` and deterministic
 `InstallRoleDeploymentRequest` values define the neutral role hand-off: a host
 adapter must build, publish, wait for, and idempotently return an active release
-for the same composition, role, and surfaces. Distributed topology remains
-explicitly rejected until that adapter is composed into the apply executor;
-schema, tenant seed, and admin provisioning will still run only once. See the
+for the same composition, role, and surfaces. A distributed role is
+single-purpose (`api`, `admin_ssr`, `storefront_ssr`, `worker`, or `registry`)
+and may not claim another role's surface. The Axum server supplies the first
+adapter when `rustok.build.enabled=true`; it applies schema, tenant seed, and
+admin provisioning once, then records an active release receipt for each role.
+Standalone CLI preflight remains unavailable for distributed apply until it is
+configured with its own deployment adapter. See the
 [implementation plan](implementation-plan.md) for ownership and rollout.
 
 ## Related documents

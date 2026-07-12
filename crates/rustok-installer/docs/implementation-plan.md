@@ -101,9 +101,16 @@ enablement is performed afterwards.
    per-role request ordering. `execute_distributed_role_deployments` now moves
    the session through `deploying`, validates the active release against each
    immutable role request, and records one durable `deploy` receipt per role.
-   The executor still rejects distributed apply until a host adapter maps that
-   hand-off to `rustok-build` and composes this helper into the full state
-   machine.
+   The server host adapter now maps the hand-off to `rustok-build`, executes
+   the selected role plan, waits for an active release, and composes the helper
+   into the full state machine when `rustok.build.enabled=true`. Distributed
+   topology validation also rejects a role claiming a
+   surface owned by a different process role. `rustok-build::BuildRuntimeMode`
+   and `RoleBuildPlan` now persist role lifecycle intent with the immutable
+   build plan; the server manifest composer derives role-specific compiled
+   surfaces, and filesystem, HTTP, and container release hand-offs carry
+   `RUSTOK_RUNTIME_HOST_MODE` onward. Standalone CLI remains explicitly
+   unavailable until it receives an equivalent deployment adapter.
    **Done when:** an interrupted role deployment resumes from its own receipt
    and all deployed roles report the same composition revision.
    **Verification:** CI topology fixture with at least `api`, `admin_ssr`, and

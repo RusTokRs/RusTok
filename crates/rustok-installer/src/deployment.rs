@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    InstallComposition, InstallExecutionError, InstallPersistencePort, InstallPlan, InstallReceipt,
-    InstallRole, InstallSessionRecord, InstallState, InstallStep, InstallSurface,
-    InstallTopologyMode,
+    InstallComposition, InstallEnvironment, InstallExecutionError, InstallPersistencePort,
+    InstallPlan, InstallReceipt, InstallRole, InstallSessionRecord, InstallState, InstallStep,
+    InstallSurface, InstallTopologyMode,
 };
 
 /// One immutable role hand-off produced from a distributed install topology.
@@ -18,6 +18,7 @@ use crate::{
 pub struct InstallRoleDeploymentRequest {
     pub session_id: Uuid,
     pub tenant_id: Uuid,
+    pub environment: InstallEnvironment,
     pub composition: InstallComposition,
     pub role: InstallRole,
     pub surfaces: Vec<InstallSurface>,
@@ -59,6 +60,8 @@ pub struct DistributedDeploymentOutput {
 /// role is active and must reject a release for another composition.
 #[async_trait::async_trait]
 pub trait InstallDeploymentPort<R>: Send + Sync {
+    fn supports_distributed_deployment(&self) -> bool;
+
     async fn deploy_role(
         &self,
         runtime: &R,
@@ -95,6 +98,7 @@ pub fn distributed_deployment_requests(
             InstallRoleDeploymentRequest {
                 session_id,
                 tenant_id,
+                environment: plan.environment,
                 composition: composition.clone(),
                 role: assignment.role,
                 surfaces: assignment.surfaces,
@@ -289,6 +293,10 @@ mod tests {
 
     #[async_trait]
     impl InstallDeploymentPort<()> for FakePorts {
+        fn supports_distributed_deployment(&self) -> bool {
+            true
+        }
+
         async fn deploy_role(
             &self,
             _runtime: &(),
@@ -354,15 +362,10 @@ mod tests {
             .bind_composition("distribution@1".to_string(), "a".repeat(64));
         let ports = FakePorts::default();
 
-        let output = execute_distributed_role_deployments(
-            &ports,
-            &(),
-            &plan,
-            session(),
-            Uuid::nil(),
-        )
-        .await
-        .unwrap();
+        let output =
+            execute_distributed_role_deployments(&ports, &(), &plan, session(), Uuid::nil())
+                .await
+                .unwrap();
 
         assert_eq!(output.receipts.len(), 4);
         assert!(output
@@ -370,7 +373,10 @@ mod tests {
             .iter()
             .all(|receipt| receipt.deployment.composition.hash == "a".repeat(64)));
         assert_eq!(ports.receipts.lock().unwrap().len(), 4);
-        assert_eq!(ports.states.lock().unwrap().as_slice(), [InstallState::Deploying]);
+        assert_eq!(
+            ports.states.lock().unwrap().as_slice(),
+            &[InstallState::Deploying]
+        );
     }
 
     fn session() -> InstallSessionRecord {

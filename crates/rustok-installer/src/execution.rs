@@ -49,6 +49,7 @@ pub struct InstallApplyOutput {
     pub verify_receipt_checksum: String,
     pub finalize_receipt_id: Uuid,
     pub finalize_receipt_checksum: String,
+    pub deployment_receipts: Vec<crate::InstallRoleDeploymentReceipt>,
     pub next: Option<String>,
 }
 
@@ -209,9 +210,13 @@ where
         + InstallPersistencePort<P::Runtime>
         + InstallSeedPort<P::Runtime>
         + InstallAdminPort<P::Runtime>
-        + InstallVerificationPort<P::Runtime>,
+        + InstallVerificationPort<P::Runtime>
+        + crate::InstallDeploymentPort<P::Runtime>,
 {
-    let report = crate::evaluate_preflight(&plan);
+    let report = crate::evaluate_preflight_with_deployment(
+        &plan,
+        crate::InstallDeploymentPort::supports_distributed_deployment(ports),
+    );
     if !report.passed() {
         return Err(InstallExecutionError::new("installer preflight failed"));
     }
@@ -349,6 +354,20 @@ where
             InstallState::AdminProvisioned,
         )
         .await?;
+    let deployment_receipts = if plan.topology.mode == crate::InstallTopologyMode::Distributed {
+        let output = crate::execute_distributed_role_deployments(
+            ports,
+            &database.runtime,
+            &plan,
+            session,
+            seed_outcome.tenant_id,
+        )
+        .await?;
+        session = output.session;
+        output.receipts
+    } else {
+        Vec::new()
+    };
     let verify_outcome = ports
         .verify_installation(&database.runtime, &plan, seed_outcome.tenant_id)
         .await?;
@@ -408,6 +427,7 @@ where
         verify_receipt_checksum: verify.input_checksum,
         finalize_receipt_id: finalize.id,
         finalize_receipt_checksum: finalize.input_checksum,
+        deployment_receipts,
         next: None,
     })
 }
