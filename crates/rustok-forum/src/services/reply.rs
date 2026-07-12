@@ -100,6 +100,7 @@ impl ReplyService {
         forum_reply_body::ActiveModel {
             id: Set(Uuid::new_v4()),
             reply_id: Set(reply_id),
+            tenant_id: Set(tenant_id),
             locale: Set(locale.clone()),
             body: Set(prepared_body.body),
             body_format: Set(prepared_body.format),
@@ -155,7 +156,7 @@ impl ReplyService {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let reply = self.find_reply(tenant_id, reply_id).await?;
-        let bodies = self.load_bodies(reply_id).await?;
+        let bodies = self.load_bodies(tenant_id, reply_id).await?;
         let solution_reply_id = self
             .load_solution_reply_id_for_topic(reply.topic_id)
             .await?;
@@ -206,6 +207,7 @@ impl ReplyService {
         let txn = self.db.begin().await?;
         self.upsert_body_in_tx(
             &txn,
+            tenant_id,
             reply_id,
             &locale,
             prepared_body.body,
@@ -288,7 +290,7 @@ impl ReplyService {
             .await?;
         let solution_reply_id = self.load_solution_reply_id_for_topic(topic_id).await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
-        let bodies_map = self.load_bodies_map(&reply_ids).await?;
+        let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
         let vote_summaries = VoteService::new(self.db.clone())
             .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
             .await?;
@@ -370,7 +372,7 @@ impl ReplyService {
             .await?;
         let solution_reply_id = self.load_solution_reply_id_for_topic(topic_id).await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
-        let bodies_map = self.load_bodies_map(&reply_ids).await?;
+        let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
         let vote_summaries = VoteService::new(self.db.clone())
             .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
             .await?;
@@ -435,8 +437,13 @@ impl ReplyService {
         Ok(reply)
     }
 
-    async fn load_bodies(&self, reply_id: Uuid) -> ForumResult<Vec<forum_reply_body::Model>> {
+    async fn load_bodies(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<Vec<forum_reply_body::Model>> {
         Ok(forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
             .all(&self.db)
             .await?)
@@ -480,12 +487,14 @@ impl ReplyService {
 
     async fn load_bodies_map(
         &self,
+        tenant_id: Uuid,
         reply_ids: &[Uuid],
     ) -> ForumResult<HashMap<Uuid, Vec<forum_reply_body::Model>>> {
         if reply_ids.is_empty() {
             return Ok(HashMap::new());
         }
         let rows = forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_body::Column::ReplyId.is_in(reply_ids.to_vec()))
             .all(&self.db)
             .await?;
@@ -509,12 +518,14 @@ impl ReplyService {
     async fn upsert_body_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         reply_id: Uuid,
         locale: &str,
         body: String,
         body_format: String,
     ) -> ForumResult<()> {
         let existing = forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
             .filter(forum_reply_body::Column::Locale.eq(locale))
             .one(txn)
@@ -531,6 +542,7 @@ impl ReplyService {
             }
             None => {
                 let seed = forum_reply_body::Entity::find()
+                    .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
                     .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
                     .order_by_asc(forum_reply_body::Column::CreatedAt)
                     .one(txn)
@@ -538,6 +550,7 @@ impl ReplyService {
                 forum_reply_body::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     reply_id: Set(reply_id),
+                    tenant_id: Set(tenant_id),
                     locale: Set(locale.to_string()),
                     body: Set(if body.is_empty() {
                         seed.as_ref()

@@ -6,6 +6,8 @@ use uuid::Uuid;
 #[sea_orm(table_name = "forum_topic_channel_access")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
+    pub tenant_id: Uuid,
+    #[sea_orm(primary_key, auto_increment = false)]
     pub topic_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub channel_slug: String,
