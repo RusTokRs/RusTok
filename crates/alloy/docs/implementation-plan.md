@@ -24,13 +24,16 @@ Implemented:
 - generic Rhai kernel extraction into `rustok-sandbox`;
 - Alloy adapter over the neutral Rhai engine;
 - broker-backed HTTP capability bridge with no direct HTTP client;
+- versioned `AlloyDraftRequestBuilder` that pins draft ID, source revision,
+  source digest, sandbox phase, tenant, actor, input, grants, and limits;
 - immutable Rhai descriptor/source lineage staging, packaging, and forking
   helpers.
 
 Remaining:
 
-- production draft/manual/hook/scheduled execution still needs an explicit
-  `AlloyDraft` `SandboxRequest` path and atomic cutover to `SandboxRuntime`;
+- production draft/manual/hook/scheduled execution still needs atomic cutover
+  from the direct `ScriptEngine` path to `SandboxRuntime`; the request builder
+  exists but entity/parameter scope extensions are required before callers move;
 - entity/parameter semantics must become request-scoped Alloy extensions;
 - draft revision/CAS, review, and publication orchestration need owner contracts;
 - marketplace release import/fork needs a complete persisted workflow;

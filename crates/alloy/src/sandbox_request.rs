@@ -109,7 +109,7 @@ mod tests {
     use crate::{ScriptStatus, ScriptTrigger};
 
     fn script() -> Script {
-        let mut script = Script::new("draft", "input.value + 1", ScriptTrigger::manual());
+        let mut script = Script::new("draft", "input.value + 1", ScriptTrigger::Manual);
         script.id = Uuid::new_v4();
         script.version = 7;
         script.status = ScriptStatus::Draft;
