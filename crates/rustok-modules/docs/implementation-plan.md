@@ -63,6 +63,11 @@ Important intermediate limitations that must not be mistaken for the target:
   tenant, trace, and correlation contexts.
 - Add serialization and stale-revision tests.
 
+Current implementation: the shared command context, optimistic revision/CAS
+primitive, stable error envelope, and generic typed snapshot envelope are
+available from `rustok-modules`. Owner services will adopt these contracts as
+their write paths are moved; no server or admin compatibility facade was added.
+
 ### M2 - Introduce the Facade
 
 - Expose explicit catalog, release, publication, installation, lifecycle,

@@ -158,7 +158,6 @@ impl AiManagementService {
             provider_slug: Set(provider_slug.to_string()),
             provider_target_id: Set(input.provider_target_id.to_string()),
             model: Set(input.model),
-            settings: Set(json!({})),
             credential_refs: Set(serde_json::to_value(input.credential_refs).map_err(json_err)?),
             temperature: Set(input.temperature),
             max_tokens: Set(input.max_tokens),
@@ -201,7 +200,6 @@ impl AiManagementService {
         active.provider_slug = Set(provider_slug.to_string());
         active.provider_target_id = Set(input.provider_target_id.to_string());
         active.model = Set(input.model);
-        active.settings = Set(json!({}));
         active.credential_refs =
             Set(serde_json::to_value(input.credential_refs).map_err(json_err)?);
         active.temperature = Set(input.temperature);

@@ -63,6 +63,8 @@ pub struct ProviderUsagePolicy {
 pub struct AiProviderConfig {
     pub tenant_id: Uuid,
     pub provider_slug: ProviderSlug,
+    #[serde(default)]
+    pub target_auth: crate::ProviderTargetAuth,
     pub model: String,
     #[serde(default)]
     pub settings: BTreeMap<String, serde_json::Value>,

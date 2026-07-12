@@ -8,7 +8,7 @@ use std::fmt::{Display, Formatter};
 use crate::model::{
     AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiCredentialRefPayload,
     AiProviderProfilePayload, AiProviderSettingPayload, AiProviderTestResultPayload,
-    AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
+    AiProviderTargetPayload, AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -52,9 +52,8 @@ pub async fn fetch_session(
 pub async fn create_provider(
     slug: String,
     display_name: String,
-    provider_slug: String,
+    provider_target_id: String,
     model: String,
-    settings: Vec<AiProviderSettingPayload>,
     credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
@@ -66,9 +65,8 @@ pub async fn create_provider(
     ai_create_provider_native(
         slug,
         display_name,
-        provider_slug,
+        provider_target_id,
         model,
-        settings,
         credential_refs,
         temperature,
         max_tokens,
@@ -84,8 +82,8 @@ pub async fn create_provider(
 pub async fn update_provider(
     id: String,
     display_name: String,
+    provider_target_id: String,
     model: String,
-    settings: Vec<AiProviderSettingPayload>,
     credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
@@ -98,8 +96,8 @@ pub async fn update_provider(
     ai_update_provider_native(
         id,
         display_name,
+        provider_target_id,
         model,
-        settings,
         credential_refs,
         temperature,
         max_tokens,
@@ -291,11 +289,17 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
         ensure_ai_overview_permission(&auth.permissions)?;
         let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
+        let runtime = ai_runtime_from_context(&runtime_ctx)?;
         Ok(AiAdminBootstrap {
             metrics: map_runtime_metrics(rustok_ai::AiManagementService::metrics_snapshot()),
             provider_catalog: rustok_ai::provider_catalog()
                 .iter()
                 .map(map_provider_catalog_entry)
+                .collect(),
+            provider_targets: runtime
+                .provider_targets()
+                .entries()
+                .map(map_provider_target)
                 .collect(),
             providers: rustok_ai::AiManagementService::list_provider_profiles(&db, auth.tenant_id)
                 .await
@@ -371,9 +375,8 @@ async fn ai_session_native(
 async fn ai_create_provider_native(
     slug: String,
     display_name: String,
-    provider_slug: String,
+    provider_target_id: String,
     model: String,
-    settings: Vec<AiProviderSettingPayload>,
     credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
@@ -394,14 +397,14 @@ async fn ai_create_provider_native(
         let item = rustok_ai::AiManagementService::create_provider_profile(
             &db,
             &operator(&auth, &db).await?,
+            runtime.provider_targets(),
             runtime.egress_policy(),
             runtime.secret_registry(),
             rustok_ai::CreateAiProviderProfileInput {
                 slug,
                 display_name,
-                provider_slug: parse_provider_slug(&provider_slug)?,
+                provider_target_id: parse_provider_target_id(&provider_target_id)?,
                 model,
-                settings: parse_settings(settings)?,
                 credential_refs: parse_credential_refs(credential_refs)?,
                 temperature,
                 max_tokens,
@@ -423,9 +426,8 @@ async fn ai_create_provider_native(
         let _ = (
             slug,
             display_name,
-            provider_slug,
+            provider_target_id,
             model,
-            settings,
             credential_refs,
             temperature,
             max_tokens,
@@ -451,6 +453,7 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
         let runtime = ai_runtime_from_context(&runtime_ctx)?;
         let item = rustok_ai::AiManagementService::test_provider_profile(
             &db,
+            runtime.provider_targets(),
             runtime.secret_registry(),
             auth.tenant_id,
             parse_uuid(&id, "id")?,
@@ -476,8 +479,8 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
 async fn ai_update_provider_native(
     id: String,
     display_name: String,
+    provider_target_id: String,
     model: String,
-    settings: Vec<AiProviderSettingPayload>,
     credential_refs: Vec<AiCredentialRefPayload>,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
@@ -499,13 +502,14 @@ async fn ai_update_provider_native(
         let item = rustok_ai::AiManagementService::update_provider_profile(
             &db,
             &operator(&auth, &db).await?,
+            runtime.provider_targets(),
             runtime.egress_policy(),
             runtime.secret_registry(),
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiProviderProfileInput {
                 display_name,
+                provider_target_id: parse_provider_target_id(&provider_target_id)?,
                 model,
-                settings: parse_settings(settings)?,
                 credential_refs: parse_credential_refs(credential_refs)?,
                 temperature,
                 max_tokens,
@@ -528,8 +532,8 @@ async fn ai_update_provider_native(
         let _ = (
             id,
             display_name,
+            provider_target_id,
             model,
-            settings,
             credential_refs,
             temperature,
             max_tokens,
@@ -1119,6 +1123,9 @@ fn ai_runtime_from_context(
     if let Some(policy) = runtime_ctx.shared_get::<rustok_ai::SharedAiEgressPolicy>() {
         runtime = runtime.with_egress_policy(policy.0);
     }
+    if let Some(targets) = runtime_ctx.shared_get::<rustok_ai::SharedAiProviderTargetCatalog>() {
+        runtime = runtime.with_provider_targets(targets.0);
+    }
     Ok(runtime)
 }
 
@@ -1211,6 +1218,15 @@ fn map_provider_catalog_entry(
 }
 
 #[cfg(feature = "ssr")]
+fn map_provider_target(value: &rustok_ai::AiProviderTarget) -> AiProviderTargetPayload {
+    AiProviderTargetPayload {
+        id: value.id.to_string(),
+        provider_slug: value.provider_slug.to_string(),
+        display_name: value.display_name.clone(),
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_provider_field(value: &rustok_ai::ProviderConfigField) -> AiProviderFieldPayload {
     AiProviderFieldPayload {
         key: value.key.to_string(),
@@ -1227,17 +1243,8 @@ fn map_provider(value: rustok_ai::AiProviderProfileRecord) -> AiProviderProfileP
         slug: value.slug,
         display_name: value.display_name,
         provider_slug: value.provider_slug.to_string(),
+        provider_target_id: value.provider_target_id.to_string(),
         model: value.model,
-        settings: value
-            .settings
-            .into_iter()
-            .map(|(key, value)| AiProviderSettingPayload {
-                key,
-                text_value: value.as_str().map(ToString::to_string),
-                integer_value: value.as_i64(),
-                boolean_value: value.as_bool(),
-            })
-            .collect(),
         credential_refs: value
             .credential_refs
             .into_iter()
@@ -1576,6 +1583,11 @@ fn parse_execution_mode(value: &str) -> Result<rustok_ai::ExecutionMode, ServerF
 #[cfg(feature = "ssr")]
 fn parse_provider_slug(value: &str) -> Result<rustok_ai::ProviderSlug, ServerFnError> {
     rustok_ai::ProviderSlug::new(value).map_err(ServerFnError::new)
+}
+
+#[cfg(feature = "ssr")]
+fn parse_provider_target_id(value: &str) -> Result<rustok_ai::ProviderTargetId, ServerFnError> {
+    rustok_ai::ProviderTargetId::new(value).map_err(ServerFnError::new)
 }
 
 #[cfg(feature = "ssr")]

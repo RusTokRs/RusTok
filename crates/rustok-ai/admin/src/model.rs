@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct AiAdminBootstrap {
     pub metrics: AiRuntimeMetricsPayload,
     pub provider_catalog: Vec<AiProviderCatalogEntryPayload>,
+    pub provider_targets: Vec<AiProviderTargetPayload>,
     pub providers: Vec<AiProviderProfilePayload>,
     pub task_profiles: Vec<AiTaskProfilePayload>,
     pub tool_profiles: Vec<AiToolProfilePayload>,
@@ -43,8 +44,8 @@ pub struct AiProviderProfilePayload {
     pub slug: String,
     pub display_name: String,
     pub provider_slug: String,
+    pub provider_target_id: String,
     pub model: String,
-    pub settings: Vec<AiProviderSettingPayload>,
     pub credential_refs: Vec<AiCredentialRefPayload>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
@@ -66,6 +67,13 @@ pub struct AiProviderCatalogEntryPayload {
     pub credential_schema: Vec<AiProviderFieldPayload>,
     pub default_settings: Vec<AiProviderSettingPayload>,
     pub compiled_in: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiProviderTargetPayload {
+    pub id: String,
+    pub provider_slug: String,
+    pub display_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

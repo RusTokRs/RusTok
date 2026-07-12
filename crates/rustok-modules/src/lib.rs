@@ -1,6 +1,7 @@
 //! Module platform ownership: artifact identity, release lineage and lifecycle.
 
 mod artifact;
+mod contracts;
 mod executor;
 mod hooks;
 mod installation;
@@ -21,6 +22,10 @@ use sea_orm_migration::MigrationTrait;
 pub use artifact::{
     ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
     ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError,
+};
+pub use contracts::{
+    ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
+    ModuleControlPlaneSnapshot, ModuleErrorCode, ModuleSnapshotKind,
 };
 pub use executor::{
     ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleLifecycleToggleResult,

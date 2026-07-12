@@ -110,12 +110,30 @@ pub fn validate_provider_target_profile_contract(
     let target = targets.get(target_id).ok_or_else(|| {
         AiError::Validation(format!("unknown deployment provider target `{target_id}`"))
     })?;
-    validate_provider_profile_contract(
-        &target.provider_slug,
-        &target.settings,
-        credential_refs,
-        egress_policy,
-    )?;
+    match target.auth {
+        crate::ProviderTargetAuth::SecretRefs => validate_provider_profile_contract(
+            &target.provider_slug,
+            &target.settings,
+            credential_refs,
+            egress_policy,
+        )?,
+        crate::ProviderTargetAuth::WorkloadIdentity | crate::ProviderTargetAuth::None => {
+            let descriptor = crate::provider_catalog_entry(&target.provider_slug).ok_or_else(|| {
+                AiError::Validation(format!(
+                    "unknown Rig provider integration `{}`",
+                    target.provider_slug
+                ))
+            })?;
+            egress_policy
+                .validate_settings(descriptor, &target.settings)
+                .map_err(AiError::Validation)?;
+            if !credential_refs.is_empty() {
+                return Err(AiError::Validation(format!(
+                    "deployment target `{target_id}` does not accept tenant credential references"
+                )));
+            }
+        }
+    }
     Ok(target.provider_slug.clone())
 }
 
@@ -165,6 +183,7 @@ pub fn provider_config(
     Ok(AiProviderConfig {
         tenant_id: model.tenant_id,
         provider_slug,
+        target_auth: target.auth,
         model: model.model.clone(),
         settings: target.settings.clone(),
         credential_refs: serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?,

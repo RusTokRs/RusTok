@@ -435,6 +435,7 @@ mod tests {
         AiProviderConfig {
             tenant_id: Uuid::nil(),
             provider_slug: ProviderSlug::new("openai_compatible").unwrap(),
+            target_auth: crate::ProviderTargetAuth::SecretRefs,
             model: "test-model".to_string(),
             settings: BTreeMap::new(),
             credential_refs: BTreeMap::new(),

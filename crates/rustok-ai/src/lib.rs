@@ -35,7 +35,8 @@ pub use engine::{
 };
 pub use engine::{
     provider_catalog, provider_catalog_entry, ProviderCatalogEntry, ProviderConfigField,
-    ProviderDefaultSetting, ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetId,
+    ProviderDefaultSetting, ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetAuth,
+    ProviderTargetId,
 };
 #[cfg(feature = "server")]
 pub use engine::{

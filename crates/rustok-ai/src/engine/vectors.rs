@@ -309,6 +309,9 @@ async fn resolve_primary_credential(
     config: &AiProviderConfig,
     secrets: &rustok_secrets::SecretResolverRegistry,
 ) -> AiResult<Option<secrecy::SecretString>> {
+    if !matches!(config.target_auth, crate::ProviderTargetAuth::SecretRefs) {
+        return Ok(None);
+    }
     let descriptor = super::provider_catalog_entry(&config.provider_slug).ok_or_else(|| {
         AiError::InvalidConfig(format!("unknown provider `{}`", config.provider_slug))
     })?;

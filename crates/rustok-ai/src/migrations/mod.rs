@@ -1,4 +1,5 @@
 mod m20260710_000001_rig_provider_profiles;
+mod m20260712_000001_provider_targets;
 
 use rustok_core::MigrationSource;
 use sea_orm_migration::MigrationTrait;
@@ -14,5 +15,8 @@ impl MigrationSource for AiMigrationSource {
 }
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(m20260710_000001_rig_provider_profiles::Migration)]
+    vec![
+        Box::new(m20260710_000001_rig_provider_profiles::Migration),
+        Box::new(m20260712_000001_provider_targets::Migration),
+    ]
 }

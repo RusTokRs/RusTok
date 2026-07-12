@@ -108,6 +108,23 @@ pub struct AiProviderCatalogEntryGql {
     pub compiled_in: bool,
 }
 
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderTargetGql {
+    pub id: String,
+    pub provider_slug: String,
+    pub display_name: String,
+}
+
+impl From<&crate::AiProviderTarget> for AiProviderTargetGql {
+    fn from(value: &crate::AiProviderTarget) -> Self {
+        Self {
+            id: value.id.to_string(),
+            provider_slug: value.provider_slug.to_string(),
+            display_name: value.display_name.clone(),
+        }
+    }
+}
+
 impl From<&crate::ProviderCatalogEntry> for AiProviderCatalogEntryGql {
     fn from(value: &crate::ProviderCatalogEntry) -> Self {
         Self {
@@ -479,8 +496,8 @@ pub struct AiProviderProfileGql {
     pub slug: String,
     pub display_name: String,
     pub provider_slug: String,
+    pub provider_target_id: String,
     pub model: String,
-    pub settings: Vec<AiProviderSettingGql>,
     pub credential_refs: Vec<AiCredentialRefGql>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
@@ -500,12 +517,8 @@ impl From<AiProviderProfileRecord> for AiProviderProfileGql {
             slug: value.slug,
             display_name: value.display_name,
             provider_slug: value.provider_slug.to_string(),
+            provider_target_id: value.provider_target_id.to_string(),
             model: value.model,
-            settings: value
-                .settings
-                .into_iter()
-                .map(|(key, value)| AiProviderSettingGql::new(key, value))
-                .collect(),
             credential_refs: value
                 .credential_refs
                 .into_iter()

@@ -102,7 +102,18 @@ pub struct AiProviderTarget {
     pub provider_slug: ProviderSlug,
     pub display_name: String,
     #[serde(default)]
+    pub auth: ProviderTargetAuth,
+    #[serde(default)]
     pub settings: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTargetAuth {
+    #[default]
+    SecretRefs,
+    WorkloadIdentity,
+    None,
 }
 
 #[cfg(feature = "server")]
@@ -568,6 +579,28 @@ mod tests {
             assert_eq!(ProviderSlug::new(entry.slug).unwrap().as_str(), entry.slug);
             assert!(seen.insert(entry.slug));
         }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn provider_targets_reject_unknown_integrations_and_duplicate_ids() {
+        let known = AiProviderTarget {
+            id: ProviderTargetId::new("openai_primary").unwrap(),
+            provider_slug: ProviderSlug::new("openai").unwrap(),
+            display_name: "OpenAI primary".to_string(),
+            auth: ProviderTargetAuth::SecretRefs,
+            settings: BTreeMap::new(),
+        };
+        assert!(AiProviderTargetCatalog::new(vec![known.clone()]).is_ok());
+        assert!(AiProviderTargetCatalog::new(vec![known.clone(), known]).is_err());
+        let unknown = AiProviderTarget {
+            id: ProviderTargetId::new("unknown").unwrap(),
+            provider_slug: ProviderSlug::new("not_a_provider").unwrap(),
+            display_name: "Unknown".to_string(),
+            auth: ProviderTargetAuth::SecretRefs,
+            settings: BTreeMap::new(),
+        };
+        assert!(AiProviderTargetCatalog::new(vec![unknown]).is_err());
     }
 
     #[test]

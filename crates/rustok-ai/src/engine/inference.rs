@@ -146,23 +146,26 @@ pub async fn inference_for_slug(
 ) -> AiResult<Box<dyn InferenceEngine>> {
     let descriptor = super::provider_catalog_entry(slug)
         .ok_or_else(|| AiError::InvalidConfig(format!("unknown provider integration `{slug}`")))?;
-    let credential_field = descriptor.credentials.first();
-    let credential = match credential_field {
-        Some(field) => {
-            let reference = config.credential_refs.get(field.key).ok_or_else(|| {
-                AiError::InvalidConfig(format!(
-                    "provider credential reference `{}` is required",
-                    field.key
-                ))
-            })?;
-            Some(
-                secrets
-                    .resolve_for_tenant(config.tenant_id, reference)
-                    .await
-                    .map_err(|error| AiError::InvalidConfig(error.to_string()))?,
-            )
+    let credential = if matches!(config.target_auth, crate::ProviderTargetAuth::SecretRefs) {
+        match descriptor.credentials.first() {
+            Some(field) => {
+                let reference = config.credential_refs.get(field.key).ok_or_else(|| {
+                    AiError::InvalidConfig(format!(
+                        "provider credential reference `{}` is required",
+                        field.key
+                    ))
+                })?;
+                Some(
+                    secrets
+                        .resolve_for_tenant(config.tenant_id, reference)
+                        .await
+                        .map_err(|error| AiError::InvalidConfig(error.to_string()))?,
+                )
+            }
+            None => None,
         }
-        None => None,
+    } else {
+        None
     };
     let api_key = credential
         .as_ref()
