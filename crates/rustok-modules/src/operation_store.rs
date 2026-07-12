@@ -354,7 +354,7 @@ impl TenantModuleStateStore {
             .await
             .map_err(database_error)?;
         if let Some(row) = existing {
-            if !request.is_effectively_enabled {
+            if !request.is_core && !request.is_effectively_enabled {
                 return Err(ModuleOperationStoreError::ModuleNotEnabled(
                     request.module_slug,
                 ));
@@ -377,7 +377,7 @@ impl TenantModuleStateStore {
             ));
         }
         let id = rustok_core::generate_id();
-        let enabled = request.is_effectively_enabled;
+        let enabled = request.is_core || request.is_effectively_enabled;
         execute(
             db,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
@@ -481,7 +481,7 @@ mod tests {
                 module_slug: "modules".to_string(),
                 settings: json!({ "value": 2 }),
                 is_core: true,
-                is_effectively_enabled: true,
+                is_effectively_enabled: false,
             },
         )
         .await
@@ -495,7 +495,7 @@ mod tests {
                 module_slug: "modules".to_string(),
                 settings: json!({ "value": 3 }),
                 is_core: true,
-                is_effectively_enabled: true,
+                is_effectively_enabled: false,
             },
         )
         .await
