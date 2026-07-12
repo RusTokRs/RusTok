@@ -32,6 +32,11 @@ impl ModuleOperationRecoveryPlan {
             (ModuleOperationStatus::Failed, Some(message)) if message.starts_with("post-hook:") => {
                 ModuleOperationIssue::PostHookFailed
             }
+            (ModuleOperationStatus::Failed, Some(message))
+                if message.starts_with("state-commit:") =>
+            {
+                ModuleOperationIssue::OtherFailed
+            }
             (ModuleOperationStatus::Failed, Some(message)) if !message.is_empty() => {
                 ModuleOperationIssue::PreHookFailed
             }
@@ -227,6 +232,16 @@ mod tests {
         assert_eq!(
             pre_hook.recommended_action,
             ModuleOperationRecoveryAction::RepeatToggle
+        );
+
+        let state_commit = ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some(
+            "state-commit: module lifecycle persistence failed",
+        )));
+        assert_eq!(state_commit.issue, ModuleOperationIssue::OtherFailed);
+        assert!(!state_commit.retryable);
+        assert_eq!(
+            state_commit.recommended_action,
+            ModuleOperationRecoveryAction::None
         );
     }
 }
