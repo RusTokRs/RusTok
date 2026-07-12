@@ -47,11 +47,16 @@ pub struct ReleaseDeploymentService {
 
 impl ReleaseDeploymentService {
     pub fn new(ctx: &ServerRuntimeContext, config: BuildRuntimeSettings) -> Self {
+        Self::with_database(ctx.db_clone(), config)
+    }
+
+    /// Creates the host publication adapter for an installer-opened database.
+    pub fn with_database(db: sea_orm::DatabaseConnection, config: BuildRuntimeSettings) -> Self {
         Self {
             build_service: BuildService::with_runtime(
-                ctx.db_clone(),
+                db.clone(),
                 std::sync::Arc::new(rustok_build::NoopBuildEventPublisher),
-                std::sync::Arc::new(ServerReleaseActivationHook::new(ctx.db_clone())),
+                std::sync::Arc::new(ServerReleaseActivationHook::new(db)),
             ),
             config,
         }
@@ -224,6 +229,7 @@ async fn prepare_release_bundle(
         environment: release.environment.clone(),
         manifest_hash: release.manifest_hash.clone(),
         generated_at: Utc::now().to_rfc3339(),
+        runtime_mode: plan.runtime_mode,
         cargo_command: plan.cargo_command.clone(),
         cargo_target: plan.cargo_target.clone(),
         cargo_profile: plan.cargo_profile.clone(),
@@ -278,7 +284,7 @@ async fn publish_release_to_container(
 
     tokio::fs::write(
         &dockerfile_path,
-        container_runtime_dockerfile(&runtime_binary_name),
+        container_runtime_dockerfile(&runtime_binary_name, plan.runtime_mode),
     )
     .await
     .with_context(|| {
@@ -321,9 +327,17 @@ async fn publish_release_to_container(
                 &image,
                 &release.id,
                 &release.environment,
+                plan.runtime_mode,
                 &bundle.release_dir,
             );
-            run_rollout_command(&command, &bundle.release_dir, &image, release).await?;
+            run_rollout_command(
+                &command,
+                &bundle.release_dir,
+                &image,
+                release,
+                plan.runtime_mode,
+            )
+            .await?;
             ReleasePublishState::Active
         } else {
             ReleasePublishState::Deploying
@@ -350,6 +364,7 @@ struct ReleaseBundleManifest {
     environment: String,
     manifest_hash: String,
     generated_at: String,
+    runtime_mode: rustok_build::BuildRuntimeMode,
     cargo_command: String,
     cargo_target: Option<String>,
     cargo_profile: String,
@@ -367,6 +382,7 @@ struct RemoteReleasePublishRequest {
     environment: String,
     manifest_hash: String,
     generated_at: String,
+    runtime_mode: rustok_build::BuildRuntimeMode,
     cargo_command: String,
     cargo_target: Option<String>,
     cargo_profile: String,
@@ -584,6 +600,7 @@ async fn publish_release_to_http(
         environment: release.environment.clone(),
         manifest_hash: release.manifest_hash.clone(),
         generated_at: Utc::now().to_rfc3339(),
+        runtime_mode: plan.runtime_mode,
         cargo_command: plan.cargo_command.clone(),
         cargo_target: plan.cargo_target.clone(),
         cargo_profile: plan.cargo_profile.clone(),
@@ -692,7 +709,10 @@ fn sanitize_image_tag_component(value: &str) -> String {
     }
 }
 
-fn container_runtime_dockerfile(binary_name: &str) -> String {
+fn container_runtime_dockerfile(
+    binary_name: &str,
+    runtime_mode: rustok_build::BuildRuntimeMode,
+) -> String {
     format!(
         "FROM debian:bookworm-slim AS runtime\n\
 WORKDIR /app\n\
@@ -704,8 +724,10 @@ RUN apt-get update && apt-get install -y \\\n\
 COPY artifacts/{binary_name} /app/{binary_name}\n\
 COPY migration ./migration\n\
 COPY config ./config\n\
+ENV RUSTOK_RUNTIME_HOST_MODE={runtime_mode}\n\
 EXPOSE 5150\n\
-CMD [\"./{binary_name}\", \"start\"]\n"
+CMD [\"./{binary_name}\", \"start\"]\n",
+        runtime_mode = runtime_mode.as_str(),
     )
 }
 
@@ -714,12 +736,14 @@ fn render_rollout_command(
     image: &str,
     release_id: &str,
     environment: &str,
+    runtime_mode: rustok_build::BuildRuntimeMode,
     bundle_dir: &Path,
 ) -> String {
     template
         .replace("{image}", image)
         .replace("{release_id}", release_id)
         .replace("{environment}", environment)
+        .replace("{runtime_mode}", runtime_mode.as_str())
         .replace("{bundle_dir}", &bundle_dir.to_string_lossy())
 }
 
@@ -728,6 +752,7 @@ async fn run_rollout_command(
     current_dir: &Path,
     image: &str,
     release: &Release,
+    runtime_mode: rustok_build::BuildRuntimeMode,
 ) -> anyhow::Result<()> {
     let mut process = if cfg!(windows) {
         let mut process = Command::new("cmd");
@@ -743,6 +768,7 @@ async fn run_rollout_command(
         .current_dir(current_dir)
         .env("RUSTOK_RELEASE_ID", &release.id)
         .env("RUSTOK_RELEASE_ENVIRONMENT", &release.environment)
+        .env("RUSTOK_RUNTIME_HOST_MODE", runtime_mode.as_str())
         .env("RUSTOK_CONTAINER_IMAGE", image)
         .env(
             "RUSTOK_RELEASE_BUNDLE_DIR",
@@ -860,13 +886,13 @@ fn parse_remote_publish_state(status: Option<&str>) -> anyhow::Result<ReleasePub
 mod tests {
     use super::{
         binary_file_name, compiled_binary_path, container_image_reference,
-        container_runtime_binary_name, externalized_path, parse_remote_publish_state,
-        render_rollout_command, resolve_artifact_root, sanitize_image_tag_component,
-        ReleasePublishState, RemoteReleasePublishRequest,
+        container_runtime_binary_name, container_runtime_dockerfile, externalized_path,
+        parse_remote_publish_state, render_rollout_command, resolve_artifact_root,
+        sanitize_image_tag_component, ReleasePublishState, RemoteReleasePublishRequest,
     };
     use crate::common::settings::BuildDeploymentSettings;
     use rustok_build::release::Model as Release;
-    use rustok_build::BuildExecutionPlan;
+    use rustok_build::{BuildExecutionPlan, BuildRuntimeMode};
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -879,6 +905,7 @@ mod tests {
     #[test]
     fn derives_binary_path_from_plan() {
         let plan = BuildExecutionPlan {
+            runtime_mode: BuildRuntimeMode::Full,
             cargo_package: "rustok-server".to_string(),
             cargo_profile: "release".to_string(),
             cargo_target: Some("x86_64-unknown-linux-gnu".to_string()),
@@ -920,6 +947,7 @@ mod tests {
             environment: "prod".to_string(),
             manifest_hash: "hash".to_string(),
             generated_at: "2026-03-14T00:00:00Z".to_string(),
+            runtime_mode: BuildRuntimeMode::AdminSsr,
             cargo_command: "cargo build -p rustok-server --release".to_string(),
             cargo_target: Some("x86_64-unknown-linux-gnu".to_string()),
             cargo_profile: "release".to_string(),
@@ -932,6 +960,7 @@ mod tests {
         assert_eq!(json["release_id"], "rel_1");
         assert_eq!(json["environment"], "prod");
         assert_eq!(json["binary_file_name"], "rustok-server.exe");
+        assert_eq!(json["runtime_mode"], "admin_ssr");
         assert_eq!(json["cargo_features"][0], "embed-admin");
     }
 
@@ -950,6 +979,7 @@ mod tests {
     #[test]
     fn container_backend_requires_non_windows_binary() {
         let plan = BuildExecutionPlan {
+            runtime_mode: BuildRuntimeMode::Full,
             cargo_package: "rustok-server".to_string(),
             cargo_profile: "release".to_string(),
             cargo_target: Some("x86_64-pc-windows-msvc".to_string()),
@@ -963,6 +993,13 @@ mod tests {
         assert!(error
             .to_string()
             .contains("container deployment backend requires a linux server artifact"));
+    }
+
+    #[test]
+    fn container_dockerfile_sets_the_selected_runtime_mode() {
+        let dockerfile = container_runtime_dockerfile("rustok-server", BuildRuntimeMode::Worker);
+
+        assert!(dockerfile.contains("ENV RUSTOK_RUNTIME_HOST_MODE=worker"));
     }
 
     #[test]
@@ -987,16 +1024,17 @@ mod tests {
     #[test]
     fn rollout_command_renders_placeholders() {
         let rendered = render_rollout_command(
-            "./deploy.sh {image} {release_id} {environment} {bundle_dir}",
+            "./deploy.sh {image} {release_id} {environment} {runtime_mode} {bundle_dir}",
             "registry.example.com/rustok/server:prod-rel_1",
             "rel_1",
             "prod",
+            BuildRuntimeMode::Worker,
             Path::new("/tmp/release"),
         );
 
         assert_eq!(
             rendered,
-            "./deploy.sh registry.example.com/rustok/server:prod-rel_1 rel_1 prod /tmp/release"
+            "./deploy.sh registry.example.com/rustok/server:prod-rel_1 rel_1 prod worker /tmp/release"
         );
     }
 

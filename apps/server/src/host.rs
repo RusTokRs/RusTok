@@ -76,7 +76,7 @@ pub async fn run() -> Result<()> {
 
     initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri).await?;
 
-    let router = application_router(rustok_settings.runtime.is_registry_only()).with_state(
+    let router = application_router(rustok_settings.runtime.host_mode).with_state(
         ServerAuthRuntime::new(runtime_ctx.clone(), auth_config.clone()),
     );
     let router = bootstrap_application_router(
@@ -99,13 +99,17 @@ pub async fn run() -> Result<()> {
         .map_err(Error::Io)
 }
 
-fn application_router(registry_only: bool) -> ServerRouter {
+fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> ServerRouter {
     let router = Router::new()
         .merge(controllers::health::router())
-        .merge(controllers::metrics::router())
-        .merge(controllers::swagger::router());
+        .merge(controllers::metrics::router());
 
-    if registry_only {
+    if host_mode == crate::common::settings::RuntimeHostMode::Worker {
+        return router;
+    }
+
+    let router = router.merge(controllers::swagger::router());
+    if host_mode == crate::common::settings::RuntimeHostMode::RegistryOnly {
         return router.merge(controllers::marketplace_registry::read_only_router());
     }
 
@@ -180,10 +184,16 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{application_router, resolve_database_uri};
+    use crate::common::settings::RuntimeHostMode;
 
     #[test]
     fn registry_only_router_is_composable_without_domain_routes() {
-        let _ = application_router(true);
+        let _ = application_router(RuntimeHostMode::RegistryOnly);
+    }
+
+    #[test]
+    fn worker_router_is_composable_without_http_application_surfaces() {
+        let _ = application_router(RuntimeHostMode::Worker);
     }
 
     #[test]

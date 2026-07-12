@@ -225,8 +225,8 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     #[cfg(feature = "mod-seo")]
     let seo_bulk_worker_enabled = settings.runtime.background_workers.seo_bulk_enabled;
 
-    if settings.runtime.is_registry_only() {
-        tracing::info!("Skipping background workers for registry-only host mode");
+    if !settings.runtime.runs_background_workers() {
+        tracing::info!(host_mode = ?settings.runtime.host_mode, "Skipping background workers for non-worker host mode");
         return Ok(());
     }
 

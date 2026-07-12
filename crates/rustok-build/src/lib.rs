@@ -18,8 +18,8 @@ pub use events::{
 pub use execution::{build_manifest_snapshot_path, run_build_command, BuildCommandSpec};
 pub use executor::BuildExecutionService;
 pub use plan::{
-    parse_execution_plan, BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan,
-    FrontendBuildTool,
+    parse_execution_plan, BuildExecutionPlan, BuildRuntimeMode, FrontendArtifactKind,
+    FrontendBuildPlan, FrontendBuildTool, RoleBuildPlan,
 };
 pub use release::ReleaseStatus;
 pub use report::BuildExecutionReport;

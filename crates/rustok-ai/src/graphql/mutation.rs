@@ -431,36 +431,6 @@ impl AiMutation {
     }
 }
 
-fn provider_settings(
-    inputs: Vec<super::types::AiProviderSettingInputGql>,
-) -> Result<BTreeMap<String, serde_json::Value>> {
-    let mut settings = BTreeMap::new();
-    for input in inputs {
-        let values = [
-            input.text_value.map(serde_json::Value::String),
-            input.integer_value.map(serde_json::Value::from),
-            input.boolean_value.map(serde_json::Value::from),
-        ];
-        let mut values = values.into_iter().flatten();
-        let value = values.next().ok_or_else(|| {
-            async_graphql::Error::new(format!("setting `{}` has no typed value", input.key))
-        })?;
-        if values.next().is_some() {
-            return Err(async_graphql::Error::new(format!(
-                "setting `{}` has more than one typed value",
-                input.key
-            )));
-        }
-        if settings.insert(input.key.clone(), value).is_some() {
-            return Err(async_graphql::Error::new(format!(
-                "setting `{}` is duplicated",
-                input.key
-            )));
-        }
-    }
-    Ok(settings)
-}
-
 fn credential_refs(
     inputs: Vec<super::types::AiCredentialRefInputGql>,
 ) -> Result<BTreeMap<String, rustok_secrets::SecretRef>> {

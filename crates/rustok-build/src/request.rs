@@ -11,6 +11,10 @@ pub struct BuildRequest {
     pub manifest_ref: String,
     pub manifest_revision: i64,
     pub manifest_snapshot: serde_json::Value,
+    /// Immutable selected artifact identity in addition to the mutable
+    /// manifest snapshot. Distributed installer roles use the distribution
+    /// composition hash here.
+    pub artifact_identity: String,
     pub requested_by: String,
     pub reason: Option<String>,
     pub modules_delta: String,

@@ -32,6 +32,17 @@ impl PreflightReport {
 }
 
 pub fn evaluate_preflight(plan: &InstallPlan) -> PreflightReport {
+    evaluate_preflight_with_deployment(plan, false)
+}
+
+/// Evaluates installer policy with the deployment capability selected by a host.
+///
+/// A plan alone cannot prove whether a host can build and activate distributed
+/// roles, so CLI and HTTP adapters must supply that capability explicitly.
+pub fn evaluate_preflight_with_deployment(
+    plan: &InstallPlan,
+    distributed_deployment_available: bool,
+) -> PreflightReport {
     let mut issues = Vec::new();
 
     if plan.environment == InstallEnvironment::Production
@@ -53,7 +64,9 @@ pub fn evaluate_preflight(plan: &InstallPlan) -> PreflightReport {
     if let Err(message) = plan.topology.validate() {
         issues.push(error("invalid_topology", &message));
     }
-    if plan.topology.mode == crate::InstallTopologyMode::Distributed {
+    if plan.topology.mode == crate::InstallTopologyMode::Distributed
+        && !distributed_deployment_available
+    {
         issues.push(error(
             "distributed_topology_unavailable",
             "Distributed topology requires a deployment adapter and is not available for apply yet.",
@@ -258,6 +271,9 @@ mod tests {
             .issues
             .iter()
             .any(|issue| issue.code == "distributed_topology_unavailable"));
+
+        let adapter_report = evaluate_preflight_with_deployment(&plan, true);
+        assert!(adapter_report.passed());
     }
 
     #[test]

@@ -135,7 +135,7 @@ pub fn compose_application_router(
     runtime: AppRuntimeBootstrap,
     rustok_settings: &RustokSettings,
 ) -> Result<AxumRouter> {
-    if rustok_settings.runtime.is_registry_only() {
+    if rustok_settings.runtime.is_registry_only() || rustok_settings.runtime.is_worker_only() {
         return Ok(router
             .layer(Extension(runtime.registry))
             // Rate limiting must be present to prevent resource exhaustion even
@@ -144,8 +144,8 @@ pub fn compose_application_router(
                 runtime.rate_limit_state,
                 rate_limit_for_paths,
             ))
-            // Auth context must be resolved so registry handlers can enforce
-            // authentication (RTK-001: actor derived from AuthContextExtension).
+            // Registry handlers require optional authentication, while worker
+            // health/metrics endpoints retain the same bounded middleware.
             .layer(axum_middleware::from_fn_with_state(
                 auth_runtime,
                 middleware::auth_context::resolve_optional,
