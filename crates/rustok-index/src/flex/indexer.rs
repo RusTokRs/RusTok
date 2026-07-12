@@ -222,7 +222,7 @@ impl FlexIndexer {
         let ids = rows.into_iter().map(|row| row.id).collect();
         run_bounded_reindex(self.clone(), ctx, ids, "reindex_schema_entries")
             .await
-            .strict_completed(self.name(), "reindex_schema_entries")
+            .strict_completed(Indexer::name(self), "reindex_schema_entries")
     }
 
     async fn delete_schema_entries_from_index(
@@ -309,7 +309,7 @@ impl Indexer for FlexIndexer {
         let ids = rows.into_iter().map(|row| row.id).collect();
         run_bounded_reindex(self.clone(), ctx, ids, "reindex_all")
             .await
-            .strict_completed(self.name(), "reindex_all")
+            .strict_completed(Indexer::name(self), "reindex_all")
     }
 }
 
