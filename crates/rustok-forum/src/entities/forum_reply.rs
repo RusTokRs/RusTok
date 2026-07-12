@@ -2,6 +2,8 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::state_machine::ReplyStatus;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "forum_replies")]
 pub struct Model {
@@ -11,7 +13,7 @@ pub struct Model {
     pub topic_id: Uuid,
     pub author_id: Option<Uuid>,
     pub parent_reply_id: Option<Uuid>,
-    pub status: String,
+    pub status: ReplyStatus,
     pub position: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

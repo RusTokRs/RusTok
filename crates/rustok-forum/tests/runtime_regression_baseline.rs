@@ -26,6 +26,11 @@ const REQUIRED_TENANT_CONSTRAINTS: &[&str] = &[
     "fk_forum_topic_tags_term_tenant",
 ];
 
+const REQUIRED_LIFECYCLE_CONSTRAINTS: &[&str] = &[
+    "chk_forum_topics_status",
+    "chk_forum_replies_status",
+];
+
 const REQUIRED_TENANT_INDEXES: &[&str] = &[
     "uq_forum_category_translations_tenant_category_locale",
     "uq_forum_topic_translations_tenant_topic_locale",
@@ -64,16 +69,21 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
         .map(|row| row.try_get("", "conname"))
         .collect::<Result<BTreeSet<String>, _>>()?;
 
-    let missing_constraints = REQUIRED_TENANT_CONSTRAINTS
-        .iter()
-        .filter(|name| !constraints.contains(*name))
-        .copied()
-        .collect::<Vec<_>>();
-    if !missing_constraints.is_empty() {
-        return Err(test_error(format!(
-            "forum tenant baseline is missing constraints: {}",
-            missing_constraints.join(", ")
-        )));
+    for (label, required) in [
+        ("tenant", REQUIRED_TENANT_CONSTRAINTS),
+        ("lifecycle", REQUIRED_LIFECYCLE_CONSTRAINTS),
+    ] {
+        let missing_constraints = required
+            .iter()
+            .filter(|name| !constraints.contains(*name))
+            .copied()
+            .collect::<Vec<_>>();
+        if !missing_constraints.is_empty() {
+            return Err(test_error(format!(
+                "forum {label} baseline is missing constraints: {}",
+                missing_constraints.join(", ")
+            )));
+        }
     }
 
     let index_rows = context

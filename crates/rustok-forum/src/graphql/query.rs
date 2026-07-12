@@ -20,13 +20,13 @@ use uuid::Uuid;
 use crate::{
     CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult,
     ForumWidgetCatalogResponse, ForumWidgetContractService, ReplyResponse, ReplyService,
-    TopicListItem, TopicResponse, TopicService, UserStatsService,
+    ReplyStatus, TopicListItem, TopicResponse, TopicService, UserStatsService,
 };
 
 use super::types::*;
 
 const MODULE_SLUG: &str = "forum";
-const PUBLIC_REPLY_STATUSES: [&str; 1] = [crate::constants::reply_status::APPROVED];
+const PUBLIC_REPLY_STATUSES: [ReplyStatus; 1] = [ReplyStatus::Approved];
 
 #[derive(Default)]
 pub struct ForumQuery;

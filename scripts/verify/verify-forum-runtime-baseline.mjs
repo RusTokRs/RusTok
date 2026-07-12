@@ -22,7 +22,7 @@ if (args.has("--help")) {
 Options:
   --static-only    Validate baseline files and the ignored-test inventory only.
   --postgres       Run the green PostgreSQL tenant regression profile.
-  --known-defects  Run ignored FORUM-02..07 reproductions explicitly.
+  --known-defects  Run ignored FORUM-03..07 reproductions explicitly.
                    This diagnostic mode is expected to fail until defects are fixed.
   --help           Show this help.`);
   process.exit(0);
@@ -39,11 +39,11 @@ const files = {
   support: "crates/rustok-forum/tests/support/postgres.rs",
   greenBaseline: "crates/rustok-forum/tests/runtime_regression_baseline.rs",
   knownRegressions: "crates/rustok-forum/tests/known_regressions.rs",
+  statusMigration:
+    "crates/rustok-forum/src/migrations/m20260712_000004_enforce_forum_status_lifecycle.rs",
 };
 
 const expectedKnownDefects = new Map([
-  ["forum_02_unknown_topic_status_is_rejected", "FORUM-02: topic lifecycle status must be database-enforced and typed"],
-  ["forum_02_unknown_reply_status_is_rejected", "FORUM-02: reply lifecycle status must be database-enforced and typed"],
   ["forum_03_category_create_rolls_back_when_translation_insert_fails", "FORUM-03: category and initial translation creation must be atomic"],
   ["forum_04_category_cycle_is_rejected", "FORUM-04: category hierarchy must reject cycles"],
   ["forum_05_concurrent_replies_preserve_public_counters", "FORUM-05: concurrent approved replies must preserve topic and category counters"],
@@ -76,6 +76,7 @@ function verifyStaticBaseline() {
   const support = text(files.support);
   const greenBaseline = text(files.greenBaseline);
   const known = text(files.knownRegressions);
+  const statusMigration = text(files.statusMigration);
 
   for (const token of [
     "RUSTOK_FORUM_TEST_DATABASE_URL",
@@ -94,9 +95,21 @@ function verifyStaticBaseline() {
     "postgres_forum_tenant_schema_baseline_is_green",
     "REQUIRED_TENANT_CONSTRAINTS",
     "REQUIRED_TENANT_INDEXES",
+    "REQUIRED_LIFECYCLE_CONSTRAINTS",
   ]) {
     if (!greenBaseline.includes(token)) {
       fail(`${files.greenBaseline}: missing green baseline token ${token}`);
+    }
+  }
+
+  for (const token of [
+    "chk_forum_topics_status",
+    "chk_forum_replies_status",
+    "forum_topics_status_insert",
+    "forum_replies_status_insert",
+  ]) {
+    if (!statusMigration.includes(token)) {
+      fail(`${files.statusMigration}: missing lifecycle token ${token}`);
     }
   }
 
@@ -160,7 +173,7 @@ if (staticOnly) process.exit(0);
 
 if (knownDefects) {
   requirePostgresUrl("--known-defects");
-  run("ignored FORUM-02..07 reproductions", "cargo", [
+  run("ignored FORUM-03..07 reproductions", "cargo", [
     "test",
     "-p",
     "rustok-forum",
@@ -206,6 +219,13 @@ run("SQLite tenant relation regression", "cargo", [
   "--test",
   "tenant_relation_integrity_sqlite",
 ]);
+run("SQLite lifecycle status regression", "cargo", [
+  "test",
+  "-p",
+  "rustok-forum",
+  "--test",
+  "status_lifecycle_sqlite",
+]);
 run("content orchestration compatibility", "cargo", [
   "test",
   "-p",
@@ -218,6 +238,8 @@ if (postgres) {
     "tenant_integrity",
     "tenant_child_integrity_postgres",
     "tenant_relation_integrity_postgres",
+    "runtime_regression_baseline",
+    "known_regressions",
   ]) {
     run(`PostgreSQL ${testName}`, "cargo", [
       "test",

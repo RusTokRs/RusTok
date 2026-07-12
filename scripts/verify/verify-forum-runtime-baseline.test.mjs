@@ -19,5 +19,5 @@ test("forum runtime baseline static inventory is self-consistent", () => {
     0,
     `static verifier failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
-  assert.match(result.stdout, /10 tracked known defects/);
+  assert.match(result.stdout, /8 tracked known defects/);
 });

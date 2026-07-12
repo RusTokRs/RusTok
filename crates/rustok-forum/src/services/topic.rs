@@ -42,7 +42,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
-use crate::constants::topic_status;
+use crate::state_machine::TopicStatus;
 use crate::dto::{
     CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput,
 };
@@ -113,7 +113,7 @@ impl TopicService {
             tenant_id: Set(tenant_id),
             category_id: Set(input.category_id),
             author_id: Set(security.user_id),
-            status: Set(topic_status::OPEN.to_string()),
+            status: Set(TopicStatus::Open),
             metadata: Set(prepared_custom_fields
                 .metadata
                 .clone()
@@ -483,7 +483,7 @@ impl TopicService {
 
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::Status.eq(topic_status::OPEN));
+            .filter(forum_topic::Column::Status.eq(TopicStatus::Open));
         if let Some(category_id) = filter.category_id {
             select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
         }
@@ -580,11 +580,11 @@ impl TopicService {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         topic_id: Uuid,
-        status: &str,
+        status: TopicStatus,
     ) -> ForumResult<()> {
         let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
         let mut active: forum_topic::ActiveModel = topic.into();
-        active.status = Set(status.to_string());
+        active.status = Set(status);
         active.updated_at = Set(Utc::now().into());
         active.update(txn).await?;
         Ok(())
@@ -882,7 +882,7 @@ impl TopicService {
                     .and_then(|translation| translation.slug.clone())
                     .unwrap_or_default(),
                 metadata,
-                status: topic.status.clone(),
+                status: topic.status.to_string(),
                 channel_slugs: channels.get(&topic.id).cloned().unwrap_or_default(),
                 vote_score: vote_summaries
                     .get(&topic.id)
@@ -1155,7 +1155,7 @@ fn to_topic_response(
         body_format,
         content_json,
         metadata: parts.metadata,
-        status: topic.status,
+        status: topic.status.to_string(),
         tags: parts.tags,
         channel_slugs: parts.channel_slugs,
         vote_score: parts.vote_summary.score,

@@ -12,7 +12,6 @@ use rustok_api::{Action, Resource};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::constants::reply_status;
 use crate::entities::forum_solution;
 use crate::error::ForumError;
 use crate::error::ForumResult;
@@ -216,7 +215,7 @@ impl ModerationService {
                 "Reply belongs to another topic".to_string(),
             ));
         }
-        if reply.status != reply_status::APPROVED {
+        if reply.status != ReplyStatus::Approved {
             return Err(ForumError::Validation(
                 "Only approved replies can be marked as solutions".to_string(),
             ));
@@ -311,15 +310,18 @@ impl ModerationService {
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
         let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
-        let current = ReplyStatus::from_str_value(&reply.status).ok_or_else(|| {
-            crate::error::ForumError::Validation(format!("Unknown reply status: {}", reply.status))
-        })?;
+        if reply.topic_id != topic_id {
+            return Err(ForumError::Validation(
+                "Reply belongs to another topic".to_string(),
+            ));
+        }
+        let current = reply.status;
         current.validate_transition(&target)?;
 
-        let old_status = current.as_str().to_string();
-        let new_status = target.as_str().to_string();
+        let old_status = current.to_string();
+        let new_status = target.to_string();
 
-        ReplyService::set_status_in_tx(&txn, tenant_id, reply_id, &new_status).await?;
+        ReplyService::set_status_in_tx(&txn, tenant_id, reply_id, target).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -347,16 +349,15 @@ impl ModerationService {
         security: SecurityContext,
         target: TopicStatus,
     ) -> ForumResult<()> {
-        let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
-        let topic = topic_service.find_topic(tenant_id, topic_id).await?;
-        let current = TopicStatus::from_str_value(&topic.status).unwrap_or(TopicStatus::Open);
+        let txn = self.db.begin().await?;
+        let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        let current = topic.status;
         current.validate_transition(&target)?;
 
-        let old_status = current.as_str().to_string();
-        let new_status = target.as_str().to_string();
+        let old_status = current.to_string();
+        let new_status = target.to_string();
 
-        let txn = self.db.begin().await?;
-        TopicService::set_status_in_tx(&txn, tenant_id, topic_id, &new_status).await?;
+        TopicService::set_status_in_tx(&txn, tenant_id, topic_id, target).await?;
         self.event_bus
             .publish_in_tx(
                 &txn,

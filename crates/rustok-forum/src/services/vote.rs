@@ -12,7 +12,7 @@ use rustok_core::SecurityContext;
 
 use rustok_api::{Action, Resource};
 
-use crate::constants::{reply_status, topic_status};
+use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::entities::{forum_reply, forum_reply_vote, forum_topic, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
@@ -45,7 +45,7 @@ impl VoteService {
         validate_vote_value(value)?;
 
         let topic = self.find_topic(tenant_id, topic_id).await?;
-        if topic.status == topic_status::ARCHIVED {
+        if topic.status == TopicStatus::Archived {
             return Err(ForumError::Validation(
                 "Archived topics cannot receive votes".to_string(),
             ));
@@ -93,7 +93,7 @@ impl VoteService {
         validate_vote_value(value)?;
 
         let reply = self.find_reply(tenant_id, reply_id).await?;
-        if reply.status != reply_status::APPROVED {
+        if reply.status != ReplyStatus::Approved {
             return Err(ForumError::Validation(
                 "Only approved replies can receive votes".to_string(),
             ));

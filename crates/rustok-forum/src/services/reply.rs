@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -14,7 +14,7 @@ use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::constants::{reply_status, topic_status};
+use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::dto::{
     CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
 };
@@ -50,10 +50,10 @@ impl ReplyService {
         let category =
             CategoryService::find_category_in_tx(&txn, tenant_id, topic.category_id).await?;
 
-        if topic.status == topic_status::CLOSED {
+        if topic.status == TopicStatus::Closed {
             return Err(ForumError::TopicClosed);
         }
-        if topic.status == topic_status::ARCHIVED {
+        if topic.status == TopicStatus::Archived {
             return Err(ForumError::TopicArchived);
         }
 
@@ -85,11 +85,10 @@ impl ReplyService {
             author_id: Set(security.user_id),
             parent_reply_id: Set(input.parent_reply_id),
             status: Set(if category.moderated {
-                reply_status::PENDING
+                ReplyStatus::Pending
             } else {
-                reply_status::APPROVED
-            }
-            .to_string()),
+                ReplyStatus::Approved
+            }),
             position: Set(position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -316,7 +315,7 @@ impl ReplyService {
                     topic_id: reply.topic_id,
                     author_id: reply.author_id,
                     content_preview: preview,
-                    status: reply.status,
+                    status: reply.status.to_string(),
                     vote_score: vote_summaries
                         .get(&reply.id)
                         .map(|summary| summary.score)
@@ -362,7 +361,7 @@ impl ReplyService {
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
-        statuses: Option<&[&str]>,
+        statuses: Option<&[ReplyStatus]>,
     ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = filter
@@ -433,11 +432,11 @@ impl ReplyService {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         reply_id: Uuid,
-        status: &str,
+        status: ReplyStatus,
     ) -> ForumResult<forum_reply::Model> {
         let reply = Self::find_reply_in_tx(txn, tenant_id, reply_id).await?;
         let mut active: forum_reply::ActiveModel = reply.clone().into();
-        active.status = Set(status.to_string());
+        active.status = Set(status);
         active.updated_at = Set(Utc::now().into());
         active.update(txn).await?;
         Ok(reply)
@@ -474,7 +473,7 @@ impl ReplyService {
         topic_id: Uuid,
         page: u64,
         per_page: u64,
-        statuses: Option<&[&str]>,
+        statuses: Option<&[ReplyStatus]>,
     ) -> ForumResult<(Vec<forum_reply::Model>, u64)> {
         let mut query = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -482,12 +481,12 @@ impl ReplyService {
             .order_by_asc(forum_reply::Column::Position);
 
         if let Some(statuses) = statuses {
-            let normalized_statuses: Vec<String> = statuses
-                .iter()
-                .map(|status| (*status).to_string())
-                .collect();
-            if !normalized_statuses.is_empty() {
-                query = query.filter(forum_reply::Column::Status.is_in(normalized_statuses));
+            if !statuses.is_empty() {
+                let mut condition = Condition::any();
+                for status in statuses {
+                    condition = condition.add(forum_reply::Column::Status.eq(*status));
+                }
+                query = query.filter(condition);
             }
         }
 
@@ -623,7 +622,7 @@ fn to_reply_response(
         content,
         content_format,
         content_json,
-        status: reply.status,
+        status: reply.status.to_string(),
         vote_score: vote_summary.score,
         current_user_vote: vote_summary.current_user_vote,
         is_solution: Some(reply.id) == solution_reply_id,

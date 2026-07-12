@@ -7,6 +7,7 @@ use rustok_forum::dto::{
     CreateCategoryInput, CreateReplyInput, CreateTopicInput, ListTopicsFilter,
 };
 use rustok_forum::error::ForumError;
+use rustok_forum::{ReplyStatus, TopicStatus};
 use uuid::Uuid;
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -38,6 +39,28 @@ fn reply_status_values() {
     assert_eq!(reply_status::APPROVED, "approved");
     assert_eq!(reply_status::REJECTED, "rejected");
     assert_eq!(reply_status::HIDDEN, "hidden");
+}
+
+#[test]
+fn typed_statuses_preserve_existing_wire_values() {
+    assert_eq!(
+        serde_json::to_value(TopicStatus::Archived).expect("serialize topic status"),
+        "archived"
+    );
+    assert_eq!(
+        serde_json::from_value::<TopicStatus>(serde_json::json!("closed"))
+            .expect("deserialize topic status"),
+        TopicStatus::Closed
+    );
+    assert_eq!(
+        serde_json::to_value(ReplyStatus::Approved).expect("serialize reply status"),
+        "approved"
+    );
+    assert_eq!(
+        serde_json::from_value::<ReplyStatus>(serde_json::json!("flagged"))
+            .expect("deserialize reply status"),
+        ReplyStatus::Flagged
+    );
 }
 
 // ── DTO defaults ─────────────────────────────────────────────────────────────

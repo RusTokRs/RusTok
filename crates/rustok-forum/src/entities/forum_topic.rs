@@ -2,6 +2,8 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::state_machine::TopicStatus;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "forum_topics")]
 pub struct Model {
@@ -10,7 +12,7 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub category_id: Uuid,
     pub author_id: Option<Uuid>,
-    pub status: String,
+    pub status: TopicStatus,
     pub metadata: Json,
     pub is_pinned: bool,
     pub is_locked: bool,

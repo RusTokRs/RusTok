@@ -58,7 +58,6 @@ use rustok_content::{
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_forum::constants::{reply_status, topic_status};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -67,7 +66,7 @@ use rustok_forum::constants::{reply_status, topic_status};
 ))]
 use rustok_forum::{
     forum_category, forum_reply, forum_reply_body, forum_topic, forum_topic_tag,
-    forum_topic_translation,
+    forum_topic_translation, ReplyStatus, TopicStatus,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -379,16 +378,15 @@ fn locales_from_strs<'a>(locales: impl IntoIterator<Item = &'a str>) -> ContentR
     feature = "mod-comments"
 ))]
 fn map_forum_reply_status_to_comment_status(
-    status: &str,
+    status: ReplyStatus,
     updated_at: chrono::DateTime<chrono::FixedOffset>,
 ) -> (CommentStatus, Option<chrono::DateTime<chrono::FixedOffset>>) {
     match status {
-        reply_status::APPROVED => (CommentStatus::Approved, None),
-        reply_status::PENDING => (CommentStatus::Pending, None),
-        reply_status::FLAGGED => (CommentStatus::Spam, None),
-        reply_status::DELETED => (CommentStatus::Trash, Some(updated_at)),
-        reply_status::REJECTED | reply_status::HIDDEN => (CommentStatus::Trash, None),
-        _ => (CommentStatus::Pending, None),
+        ReplyStatus::Approved => (CommentStatus::Approved, None),
+        ReplyStatus::Pending => (CommentStatus::Pending, None),
+        ReplyStatus::Flagged => (CommentStatus::Spam, None),
+        ReplyStatus::Deleted => (CommentStatus::Trash, Some(updated_at)),
+        ReplyStatus::Rejected | ReplyStatus::Hidden => (CommentStatus::Trash, None),
     }
 }
 
@@ -401,13 +399,13 @@ fn map_forum_reply_status_to_comment_status(
 fn map_comment_status_to_forum_reply_status(
     status: CommentStatus,
     deleted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
-) -> &'static str {
+) -> ReplyStatus {
     match status {
-        CommentStatus::Approved => reply_status::APPROVED,
-        CommentStatus::Pending => reply_status::PENDING,
-        CommentStatus::Spam => reply_status::FLAGGED,
-        CommentStatus::Trash if deleted_at.is_some() => reply_status::DELETED,
-        CommentStatus::Trash => reply_status::HIDDEN,
+        CommentStatus::Approved => ReplyStatus::Approved,
+        CommentStatus::Pending => ReplyStatus::Pending,
+        CommentStatus::Spam => ReplyStatus::Flagged,
+        CommentStatus::Trash if deleted_at.is_some() => ReplyStatus::Deleted,
+        CommentStatus::Trash => ReplyStatus::Hidden,
     }
 }
 
@@ -454,9 +452,9 @@ async fn promote_topic_to_post(
     let reply_records = load_forum_reply_records_in_tx(txn, tenant_id, topic.id).await?;
     let post_id = Uuid::new_v4();
     let now = Utc::now();
-    let post_status = match topic.status.as_str() {
-        topic_status::ARCHIVED => "archived",
-        _ => "published",
+    let post_status = match topic.status {
+        TopicStatus::Archived => "archived",
+        TopicStatus::Open | TopicStatus::Closed => "published",
     };
 
     blog_post::ActiveModel {
@@ -585,8 +583,8 @@ async fn demote_post_to_topic(
     let topic_id = Uuid::new_v4();
     let now = Utc::now();
     let topic_status_value = match post.status.as_str() {
-        "archived" => topic_status::ARCHIVED,
-        _ => topic_status::OPEN,
+        "archived" => TopicStatus::Archived,
+        _ => TopicStatus::Open,
     };
 
     forum_topic::ActiveModel {
@@ -594,7 +592,7 @@ async fn demote_post_to_topic(
         tenant_id: Set(tenant_id),
         category_id: Set(input.forum_category_id),
         author_id: Set(Some(post.author_id)),
-        status: Set(topic_status_value.to_string()),
+        status: Set(topic_status_value),
         metadata: Set(serde_json::json!({})),
         is_pinned: Set(false),
         is_locked: Set(false),
@@ -1176,7 +1174,7 @@ async fn move_forum_replies_to_comments_in_tx(
     let now = Utc::now();
     let active_comments = reply_records
         .iter()
-        .filter(|record| record.reply.status != reply_status::DELETED)
+        .filter(|record| record.reply.status != ReplyStatus::Deleted)
         .count() as i32;
     let thread_id = Uuid::new_v4();
     comment_thread::ActiveModel {
@@ -1199,7 +1197,7 @@ async fn move_forum_replies_to_comments_in_tx(
                 ContentError::validation("Reply author is required for conversion")
             })?;
         let (status, deleted_at) =
-            map_forum_reply_status_to_comment_status(&record.reply.status, record.reply.updated_at);
+            map_forum_reply_status_to_comment_status(record.reply.status, record.reply.updated_at);
         comment::ActiveModel {
             id: Set(record.reply.id),
             tenant_id: Set(tenant_id),
@@ -1468,8 +1466,7 @@ async fn move_comments_to_forum_replies_in_tx(
             status: Set(map_comment_status_to_forum_reply_status(
                 record.comment.status,
                 record.comment.deleted_at,
-            )
-            .to_string()),
+            )),
             position: Set(record.comment.position),
             created_at: Set(record.comment.created_at),
             updated_at: Set(record.comment.updated_at),

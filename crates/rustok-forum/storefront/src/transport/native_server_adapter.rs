@@ -30,7 +30,8 @@ async fn storefront_forum_native(
         use rustok_api::{HostRuntimeContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
-            CategoryService, ListRepliesFilter, ListTopicsFilter, ReplyService, TopicService,
+            CategoryService, ListRepliesFilter, ListTopicsFilter, ReplyService, ReplyStatus,
+            TopicService,
         };
         use rustok_outbox::TransactionalEventBus;
 
@@ -145,7 +146,7 @@ async fn storefront_forum_native(
                             per_page: 20,
                         },
                         Some(tenant.default_locale.as_str()),
-                        Some(&["approved"]),
+                        Some(&[ReplyStatus::Approved]),
                     )
                     .await
                     .map_err(server_error)?;

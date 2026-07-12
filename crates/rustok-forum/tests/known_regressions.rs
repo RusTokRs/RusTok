@@ -13,7 +13,6 @@ use support::postgres::{execute, expect_rejected, PostgresForumTestDb};
 use support::{test_error, TestResult};
 
 #[tokio::test]
-#[ignore = "FORUM-02: topic lifecycle status must be database-enforced and typed"]
 async fn forum_02_unknown_topic_status_is_rejected() -> TestResult<()> {
     let Some(context) = PostgresForumTestDb::setup("unknown_topic_status").await? else {
         return Ok(());
@@ -41,7 +40,6 @@ async fn forum_02_unknown_topic_status_is_rejected() -> TestResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "FORUM-02: reply lifecycle status must be database-enforced and typed"]
 async fn forum_02_unknown_reply_status_is_rejected() -> TestResult<()> {
     let Some(context) = PostgresForumTestDb::setup("unknown_reply_status").await? else {
         return Ok(());

@@ -5,6 +5,8 @@ use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::state_machine::TopicStatus;
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateTopicInput {
     pub locale: String,
@@ -36,7 +38,7 @@ pub struct UpdateTopicInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
 pub struct ListTopicsFilter {
     pub category_id: Option<Uuid>,
-    pub status: Option<String>,
+    pub status: Option<TopicStatus>,
     pub locale: Option<String>,
     #[serde(default = "default_page")]
     pub page: u64,
@@ -111,7 +113,8 @@ pub struct TopicListItem {
 
 #[cfg(test)]
 mod tests {
-    use super::TopicResponse;
+    use super::{ListTopicsFilter, TopicResponse};
+    use crate::state_machine::TopicStatus;
     use serde_json::json;
     use uuid::Uuid;
 
@@ -147,6 +150,17 @@ mod tests {
             created_at: "2024-01-01T00:00:00Z".into(),
             updated_at: "2024-01-01T00:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn list_topics_filter_uses_typed_status_wire_value() {
+        let filter: ListTopicsFilter =
+            serde_json::from_value(json!({"status": "closed"})).expect("deserialize status");
+        assert_eq!(filter.status, Some(TopicStatus::Closed));
+        assert_eq!(
+            serde_json::to_value(&filter).expect("serialize filter")["status"],
+            "closed"
+        );
     }
 
     #[test]

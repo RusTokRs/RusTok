@@ -28,6 +28,10 @@
 /// - Archived → Open     (reopen)
 use std::fmt;
 
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
 use crate::constants::{reply_status, topic_status};
 
 // ============================================================================
@@ -35,10 +39,27 @@ use crate::constants::{reply_status, topic_status};
 // ============================================================================
 
 /// Enumerated topic status with validated transitions.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    EnumIter,
+    DeriveActiveEnum,
+    Serialize,
+    Deserialize,
+    ToSchema,
+)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[serde(rename_all = "snake_case")]
 pub enum TopicStatus {
+    #[sea_orm(string_value = "open")]
     Open,
+    #[sea_orm(string_value = "closed")]
     Closed,
+    #[sea_orm(string_value = "archived")]
     Archived,
 }
 
@@ -98,13 +119,33 @@ impl fmt::Display for TopicStatus {
 // ============================================================================
 
 /// Enumerated reply status with validated transitions.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    EnumIter,
+    DeriveActiveEnum,
+    Serialize,
+    Deserialize,
+    ToSchema,
+)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[serde(rename_all = "snake_case")]
 pub enum ReplyStatus {
+    #[sea_orm(string_value = "pending")]
     Pending,
+    #[sea_orm(string_value = "approved")]
     Approved,
+    #[sea_orm(string_value = "rejected")]
     Rejected,
+    #[sea_orm(string_value = "hidden")]
     Hidden,
+    #[sea_orm(string_value = "flagged")]
     Flagged,
+    #[sea_orm(string_value = "deleted")]
     Deleted,
 }
 
