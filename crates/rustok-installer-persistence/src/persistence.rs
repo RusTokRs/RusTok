@@ -171,6 +171,7 @@ fn install_state_value(state: InstallState) -> &'static str {
         InstallState::SchemaApplied => "schema_applied",
         InstallState::SeedApplied => "seed_applied",
         InstallState::AdminProvisioned => "admin_provisioned",
+        InstallState::Deploying => "deploying",
         InstallState::Verified => "verified",
         InstallState::Completed => "completed",
         InstallState::Failed => "failed",

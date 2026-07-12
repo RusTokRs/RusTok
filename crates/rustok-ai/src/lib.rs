@@ -27,12 +27,12 @@ pub use direct::{
     DirectExecutionResult, DirectTaskHandler, MediaImageAssetHandler, ProductCopyHandler,
 };
 #[cfg(feature = "server")]
-pub use engine::{inference_for_slug, InferenceEngine};
-#[cfg(feature = "server")]
 pub use engine::{
-    embed, rerank, EmbeddingRequest, EmbeddingResponse, RerankItem, RerankRequest,
-    RerankResponse, RigAgentDriver,
+    embed, rerank, EmbeddingRequest, EmbeddingResponse, RerankItem, RerankRequest, RerankResponse,
+    RigAgentDriver,
 };
+#[cfg(feature = "server")]
+pub use engine::{inference_for_slug, InferenceEngine};
 pub use engine::{
     provider_catalog, provider_catalog_entry, ProviderCatalogEntry, ProviderConfigField,
     ProviderDefaultSetting, ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetAuth,
@@ -51,13 +51,14 @@ pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};
 #[cfg(feature = "server")]
 pub use migrations::AiMigrationSource;
 pub use model::{
-    AiAlloyOperation, AiAlloyTaskInput, AiBlogDraftTaskInput, AiImageAssetTaskInput,
-    AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage,
-    ChatMessageRole, DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval,
-    ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
-    ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest, ProviderUsage,
-    ProviderTestResult, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall,
-    ToolDefinition, ToolTrace,
+    default_provider_capabilities, AiAlloyOperation, AiAlloyTaskInput, AiBlogDraftTaskInput,
+    AiImageAssetTaskInput, AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace,
+    AiRunRequest, ChatMessage, ChatMessageRole, DirectExecutionTarget, ExecutionMode,
+    ExecutionOverride, PendingApproval, ProviderCapability, ProviderChatRequest,
+    ProviderChatResponse, ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter,
+    ProviderStreamEvent, ProviderStructuredRequest, ProviderTestResult, ProviderUsage,
+    ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall, ToolDefinition,
+    ToolTrace,
 };
 pub use policy::ToolExecutionPolicy;
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
@@ -69,8 +70,7 @@ pub use service::{
     AiToolProfileRecord, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
     CreateAiToolProfileInput, ResumeAiApprovalInput, RunAiTaskJobInput, SendAiChatMessageInput,
     SharedAiEgressPolicy, SharedAiModuleRegistry, SharedAiProviderTargetCatalog,
-    SharedAiSecretResolverRegistry,
-    StartAiChatSessionInput, UpdateAiProviderProfileInput,
+    SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiProviderProfileInput,
     UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
 };
 #[cfg(feature = "server")]

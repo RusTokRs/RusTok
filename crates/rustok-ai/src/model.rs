@@ -31,6 +31,33 @@ impl ProviderCapability {
     }
 }
 
+/// Derives the tenant-facing default capabilities from the deployment's
+/// catalogued provider descriptor. Both GraphQL and native transports call this
+/// function when an operator leaves the capability selection empty.
+pub fn default_provider_capabilities(
+    provider_slug: &crate::ProviderSlug,
+) -> Vec<ProviderCapability> {
+    let Some(descriptor) = crate::provider_catalog_entry(provider_slug) else {
+        return Vec::new();
+    };
+    let mut capabilities = Vec::new();
+    for feature in descriptor.features {
+        let capability = match feature {
+            crate::ProviderFeature::Chat => Some(ProviderCapability::TextGeneration),
+            crate::ProviderFeature::StructuredOutput => {
+                Some(ProviderCapability::StructuredGeneration)
+            }
+            crate::ProviderFeature::Image => Some(ProviderCapability::ImageGeneration),
+            crate::ProviderFeature::Multimodal => Some(ProviderCapability::MultimodalUnderstanding),
+            _ => None,
+        };
+        if let Some(capability) = capability.filter(|value| !capabilities.contains(value)) {
+            capabilities.push(capability);
+        }
+    }
+    capabilities
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
@@ -114,7 +141,8 @@ impl ProviderUsage {
 
 #[cfg(test)]
 mod provider_usage_tests {
-    use super::ProviderUsage;
+    use super::{default_provider_capabilities, ProviderCapability, ProviderUsage};
+    use crate::ProviderSlug;
 
     #[test]
     fn derives_missing_total_without_overflow() {
@@ -124,6 +152,20 @@ mod provider_usage_tests {
             u64::MAX
         );
         assert_eq!(ProviderUsage::normalized(3, 5, Some(9)).total_tokens, 9);
+    }
+
+    #[test]
+    fn derives_catalog_defaults_once_for_all_transports() {
+        let capabilities = default_provider_capabilities(&ProviderSlug::openai_compatible());
+        assert!(capabilities.contains(&ProviderCapability::TextGeneration));
+        assert!(capabilities.contains(&ProviderCapability::StructuredGeneration));
+        assert_eq!(
+            capabilities
+                .iter()
+                .filter(|value| **value == ProviderCapability::TextGeneration)
+                .count(),
+            1
+        );
     }
 }
 

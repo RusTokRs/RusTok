@@ -1,0 +1,47 @@
+{
+  "rig_version": "0.39.0",
+  "cassettes": [
+    {
+      "family": "openai_compatible",
+      "events": [
+        { "kind": "text", "value": "Hel" },
+        { "kind": "text", "value": "lo" },
+        { "kind": "tool_call", "id": "call-1", "name": "catalog.read", "arguments": { "id": "42" } },
+        { "kind": "usage", "input_tokens": 3, "output_tokens": 5, "total_tokens": 8 }
+      ],
+      "terminal": { "kind": "completed" }
+    },
+    {
+      "family": "anthropic",
+      "events": [
+        { "kind": "text", "value": "Claude" },
+        { "kind": "usage", "input_tokens": 11, "output_tokens": 7, "total_tokens": 18 }
+      ],
+      "terminal": { "kind": "failed", "error": "provider overloaded" }
+    },
+    {
+      "family": "gemini",
+      "events": [
+        { "kind": "text", "value": "Gemini" },
+        { "kind": "tool_call", "id": "call-2", "name": "catalog.search", "arguments": { "query": "Rig" } }
+      ],
+      "terminal": { "kind": "cancelled" }
+    },
+    {
+      "family": "cloud_auth",
+      "events": [
+        { "kind": "text", "value": "Bedrock" },
+        { "kind": "usage", "input_tokens": 2, "output_tokens": 4, "total_tokens": 6 }
+      ],
+      "terminal": { "kind": "completed" }
+    },
+    {
+      "family": "deployment_local",
+      "events": [
+        { "kind": "text", "value": "Ollama" },
+        { "kind": "usage", "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
+      ],
+      "terminal": { "kind": "completed" }
+    }
+  ]
+}

@@ -58,6 +58,47 @@ pub struct AiProviderProfilePayload {
     pub metadata: String,
 }
 
+#[cfg(test)]
+mod provider_profile_payload_tests {
+    use super::{AiCredentialRefPayload, AiProviderProfilePayload};
+
+    #[test]
+    fn native_profile_payload_exposes_secret_references_but_never_connection_secrets_or_endpoints()
+    {
+        let payload = AiProviderProfilePayload {
+            id: "profile-1".to_string(),
+            slug: "primary".to_string(),
+            display_name: "Primary".to_string(),
+            provider_slug: "openai_compatible".to_string(),
+            provider_target_id: "openai_primary".to_string(),
+            model: "gpt-test".to_string(),
+            credential_refs: vec![AiCredentialRefPayload {
+                key: "api_key".to_string(),
+                resolver: "env".to_string(),
+                secret_key: "RUSTOK_AI_LIVE_OPENAI".to_string(),
+            }],
+            temperature: None,
+            max_tokens: None,
+            is_active: true,
+            has_credentials: true,
+            capabilities: vec!["text_generation".to_string()],
+            allowed_task_profiles: Vec::new(),
+            denied_task_profiles: Vec::new(),
+            restricted_role_slugs: Vec::new(),
+            metadata: "{}".to_string(),
+        };
+        let serialized = serde_json::to_value(payload).expect("native payload serializes");
+        assert!(serialized.get("provider_target_id").is_some());
+        assert!(serialized.get("credential_refs").is_some());
+        for forbidden in ["base_url", "endpoint", "api_key", "api_key_secret"] {
+            assert!(
+                serialized.get(forbidden).is_none(),
+                "must not expose `{forbidden}`"
+            );
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AiProviderCatalogEntryPayload {
     pub slug: String,

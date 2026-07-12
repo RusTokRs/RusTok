@@ -2,7 +2,7 @@
 id: doc://docs/architecture/loco-exit-plan.md
 kind: implementation_plan
 language: markdown
-status: draft
+status: in_progress
 ---
 # Loco RS Exit Plan
 
@@ -12,13 +12,13 @@ The plan replaces the previous direction of "integrate Loco deeper". The old `ap
 
 ## Execution Checkpoint
 
-- Current phase: `phase_1_runtime_context_and_request_extractors`
-- Last checkpoint: introduced `rustok_api::HostRuntimeContext`, `apps/server` passes it into Leptos `#[server]` functions; `rustok-index-admin`, `rustok-outbox-admin`, `rustok-channel-admin`, `rustok-ai-admin`, `rustok-search-admin`, `rustok-product` admin/storefront, `rustok-seo-admin`, `rustok-mcp-admin`, `rustok-inventory-admin` and `rustok-cart-storefront` native transports no longer import `loco_rs::app::AppContext`. `rustok-ai-admin` and `rustok-search-admin` resolve their required DB/event handles through `HostRuntimeContext`, with no `loco-rs` or `rustok-outbox/loco-adapter` package dependency; `rustok-commerce-storefront` no longer carries a package-level `loco-rs` dependency after its native code had already moved to owner checkout runtimes; backend foundation crates `rustok-runtime`, `rustok-web`, `rustok-fba`, `rustok-cli-core`, `rustok-cli`, `rustok-cli-platform`, `rustok-cli-registry` and `rustok-distribution` were added so executable runtime/web/FBA/CLI helpers do not continue to expand `rustok-api` or `apps/server`; `rustok-distribution` is the single selected-module registry composition for the HTTP host and standalone operations; `rustok-cli-registry` is backed by generated source from root `cli-registry.toml` and module `[provides.cli]` metadata; `rustok-cli-platform` provides `core version` through `CommandProvider::execute`; `apps/server/src/controllers/health.rs`, `apps/server/src/controllers/users.rs`, `apps/server/src/controllers/channel.rs` and `apps/server/src/controllers/auth.rs` now use `rustok_web::json_response` instead of Loco response formatting while keeping Loco `Routes` for the later Axum router slice; `scripts/verify/verify-loco-inventory.mjs` classifies remaining Loco entrypoints; ADR `2026-07-02-axum-runtime-and-ops-cli-boundary` accepted.
-- Runtime composition note: `apps/server` now supplies `Arc<ModuleRuntimeExtensions>` as a typed `HostRuntimeContext` handle to native server functions. `rustok-auth-admin` consumes that handle for owner mutation runtimes and its database handle for owner reads, without accessing the server Loco shared store.
-- Next step: verify the first real module-local provider, `rustok-media-cli` / `media cleanup`, then remove the matching Loco task. Its adapter explicitly bootstraps `StorageService` from the CLI `storage` settings snapshot and uses the database supplied by `RuntimeComposition`; it does not recreate server shared-store initialization. Continue server controller response/error boundary slices through `rustok-web` when touching controllers.
-- Open blockers: none for Phase 1 planning; before Phase 4, targeted integration smoke for pure Axum startup will be needed.
+- Current phase: `phase_5_closeout_and_ci_evidence`
+- Last checkpoint: `apps/server` now starts through the pure Axum `host::run()` path; Loco application/hooks/routes/testing bridges were removed. The separate `rustok-cli` owns migration, seed, install, and maintenance providers. Active server, installer, CLI, distribution, and outbox source paths no longer import `loco_rs` or `rustok_outbox::loco`; the workspace manifest and lockfile contain no `loco-rs` package.
+- Runtime composition note: `ServerRuntimeContext`, `HostRuntimeContext`, `rustok-runtime`, `rustok-web`, `rustok-fba`, and `rustok-distribution` provide RusToK-owned runtime, web, FBA, and selected-composition boundaries. Native module adapters receive typed handles instead of a Loco shared store.
+- Next step: retain the classified Loco inventory guard, refresh reference/OpenAPI artifacts in CI, and finish archival wording for historical reference material. These are closeout/documentation tasks, not a second runtime migration.
+- Open blockers: none. Full compilation and integration verification are intentionally delegated to CI.
 - Hand-off notes for next agent: do not add compatibility wrappers and dual execution paths; each cutover must migrate all internal callers to the target contract and remove the replaced Loco path in the same change set.
-- Last updated at (UTC): 2026-07-10T00:00:00Z
+- Last updated at (UTC): 2026-07-12T00:00:00Z
 
 ## Goal
 
@@ -311,7 +311,7 @@ Exit gate: inventory script passes, allowlist is fixed, new Loco imports without
 - [x] Migrate auth controller JSON response formatting from `loco_rs::controller::format` to `rustok_web::json_response`; Loco `Routes` remains for the router cutover slice.
 - [x] Migrate marketplace registry/governance REST handlers to `ServerRuntimeContext`; artifact storage and remote executor settings are read through neutral runtime state.
 - [x] Migrate swagger, installer status/receipts, admin DLQ, MCP management/remote tools and build WebSocket handlers to `ServerRuntimeContext`; Loco `Routes` remains only a routing adapter until Phase 2.
-- [ ] Migrate Leptos server functions to `HostRuntimeContext`/typed narrow contexts.
+- [x] Migrate Leptos server functions to `HostRuntimeContext`/typed narrow contexts.
 - [x] Migrate `rustok-tenant-admin` native bootstrap server function to `HostRuntimeContext` and remove its `loco-rs` dependency.
 - [x] Migrate `rustok-region-admin` native CRUD server functions to `HostRuntimeContext` and remove its `loco-rs` dependency.
 - [x] Migrate `rustok-comments-admin` native moderation server functions to `HostRuntimeContext` and remove its `loco-rs` dependency.
@@ -340,7 +340,7 @@ Exit gate: inventory script passes, allowlist is fixed, new Loco imports without
 - [x] Migrate `rustok-mcp-admin` native MCP control-plane server functions to `HostRuntimeContext`, provide DB and `ModuleRuntimeExtensions` through neutral typed host handles, and remove its `loco-rs` dependency while preserving GraphQL selected path.
 - [x] Migrate `rustok-inventory-admin` native read/write server functions to `HostRuntimeContext`, provide `TransactionalEventBus` through neutral typed host handles, and remove its `loco-rs` / `loco-adapter` dependency.
 - [x] Remove the stale `loco-rs` package dependency from `rustok-commerce-storefront` after the aggregate checkout code had already moved to Loco-free owner runtimes.
-- [ ] Migrate module/capability crates where `loco_rs::app::AppContext` is currently used as a service locator.
+- [x] Migrate module/capability crates from `loco_rs::app::AppContext` service-location to typed host/runtime contexts.
 
 Exit gate: module-owned crates and UI packages do not import `loco_rs::app::AppContext`; Loco context remains only in server bootstrap/tests allowlist.
 
@@ -402,8 +402,8 @@ Exit gate: all maintenance flows run through `rustok-cli ...`; server binary doe
 - [x] Dismantle `impl Hooks for App` into explicit Axum host/bootstrap/lifecycle functions.
 - [x] Replace Loco initializers with ordered bootstrap phases driven by `host::run()` and `ServerRuntimeContext`.
 - [x] Migrate worker startup/shutdown to the explicit host lifecycle signal.
-- [x] Introduce `crate::testing::get_server_app_context` as the local server test fixture bridge and move `app.rs`, `app_runtime` and `app_lifecycle` tests off direct `loco_rs::tests_cfg` imports; guardrails now forbid direct `loco_rs::tests_cfg` anywhere under `apps/server/src` except the bridge.
-- [~] Migrate tests from `loco_rs::tests_cfg` to `rustok-test-utils`; server integration tenant fixture now uses the neutral migration-backed DB helper, while the broader test audit remains.
+- [x] Replace server Loco test bridges with `ServerRuntimeContext` and neutral `rustok-test-utils` fixtures; no `apps/server/src/testing.rs` bridge remains.
+- [x] Migrate server tests from `loco_rs::tests_cfg` to neutral runtime and migration-backed fixtures.
 - [x] Remove dependency on `loco_rs::cli`.
 
 Exit gate: server binary starts as a pure Axum runtime in targeted integration smoke.
@@ -411,10 +411,10 @@ Exit gate: server binary starts as a pure Axum runtime in targeted integration s
 ### Phase 5. Last Adapters and Dependency Removal
 
 - [x] Remove `EmailProvider::Loco`; server email delivery uses native SMTP or explicit disabled mode.
-- [ ] Remove `rustok-outbox/loco-adapter` and `rustok_outbox::loco`.
-- [~] Remove `loco-rs` from workspace and package manifests. The dependency is absent from active manifests; `Cargo.lock` pruning remains coupled to the final lockfile refresh.
-- [ ] Update `Cargo.lock`.
-- [ ] Archive Loco reference docs, scripts and CI freshness checks.
+- [x] Remove `rustok-outbox/loco-adapter` and `rustok_outbox::loco` from active source paths.
+- [x] Remove `loco-rs` from workspace manifests and `Cargo.lock`.
+- [x] Refresh `Cargo.lock` without the Loco package.
+- [~] Archive Loco reference documentation while retaining classified inventory and freshness guards for the documented historical material.
 
 Exit gate: `rg "loco_rs|loco-rs|cargo loco|rustok_outbox::loco"` finds no active code/config paths; only archived docs with a link to this plan are allowed.
 

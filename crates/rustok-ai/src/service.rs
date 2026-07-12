@@ -120,6 +120,34 @@ async fn next_pending_approval_in_batch(
         .map_err(db_err)
 }
 
+enum ApprovalBatchRunTransition {
+    WaitingForNext,
+    ReadyToContinue,
+}
+
+async fn transition_run_after_approval_resolution(
+    db: &impl sea_orm::ConnectionTrait,
+    tenant_id: Uuid,
+    run: ai_chat_runs::Model,
+    approval_batch_id: &str,
+) -> AiResult<(ai_chat_runs::Model, ApprovalBatchRunTransition)> {
+    let next_pending =
+        next_pending_approval_in_batch(db, tenant_id, run.id, approval_batch_id).await?;
+    let mut active: ai_chat_runs::ActiveModel = run.into();
+    active.updated_at = Set(Utc::now().into());
+    let transition = if let Some(next_pending) = next_pending {
+        active.status = Set("waiting_approval".to_string());
+        active.pending_approval_id = Set(Some(next_pending.id));
+        ApprovalBatchRunTransition::WaitingForNext
+    } else {
+        active.status = Set("running".to_string());
+        active.pending_approval_id = Set(None);
+        active.error_message = Set(None);
+        ApprovalBatchRunTransition::ReadyToContinue
+    };
+    Ok((active.update(db).await.map_err(db_err)?, transition))
+}
+
 fn validate_approval_resolution_policy(
     approval_status: &str,
     approved: bool,
@@ -147,11 +175,12 @@ fn validate_approval_resolution_policy(
 #[cfg(test)]
 mod approval_outcome_tests {
     use super::{approval_execution_outcome, ApprovalExecutionOutcome};
-    use crate::entities::ai_approval_requests;
+    use crate::entities::{ai_approval_requests, ai_chat_runs, ai_tool_traces};
+    use crate::model::ToolTrace;
     use chrono::Utc;
     use sea_orm::{
         ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend,
-        EntityTrait, Statement,
+        EntityTrait, Statement, TransactionTrait,
     };
     use uuid::Uuid;
 
@@ -171,6 +200,62 @@ mod approval_outcome_tests {
         .await
         .expect("approval test schema");
         db
+    }
+
+    async fn add_chat_run_test_schema(db: &DatabaseConnection) {
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE ai_chat_runs (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL,\
+                provider_profile_id TEXT NOT NULL, task_profile_id TEXT NULL, tool_profile_id TEXT NULL,\
+                status TEXT NOT NULL, model TEXT NOT NULL, execution_mode TEXT NOT NULL,\
+                execution_path TEXT NOT NULL, requested_locale TEXT NULL, resolved_locale TEXT NOT NULL,\
+                temperature REAL NULL, max_tokens INTEGER NULL, error_message TEXT NULL,\
+                pending_approval_id TEXT NULL, decision_trace TEXT NOT NULL, metadata TEXT NOT NULL,\
+                created_at TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NULL,\
+                updated_at TEXT NOT NULL\
+            )"
+            .to_string(),
+        ))
+        .await
+        .expect("chat run test schema");
+    }
+
+    async fn insert_waiting_run(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        session_id: Uuid,
+        run_id: Uuid,
+        pending_approval_id: Uuid,
+    ) -> ai_chat_runs::Model {
+        let now = Utc::now();
+        ai_chat_runs::ActiveModel {
+            id: Set(run_id),
+            tenant_id: Set(tenant_id),
+            session_id: Set(session_id),
+            provider_profile_id: Set(Uuid::new_v4()),
+            task_profile_id: Set(None),
+            tool_profile_id: Set(None),
+            status: Set("waiting_approval".to_string()),
+            model: Set("test-model".to_string()),
+            execution_mode: Set("mcp_tooling".to_string()),
+            execution_path: Set("mcp_tooling".to_string()),
+            requested_locale: Set(None),
+            resolved_locale: Set("en".to_string()),
+            temperature: Set(None),
+            max_tokens: Set(None),
+            error_message: Set(Some("awaiting approval".to_string())),
+            pending_approval_id: Set(Some(pending_approval_id)),
+            decision_trace: Set(serde_json::json!({})),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(now.into()),
+            started_at: Set(Utc::now().into()),
+            completed_at: Set(None),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(db)
+        .await
+        .expect("insert waiting run")
     }
 
     #[test]
@@ -199,13 +284,9 @@ mod approval_outcome_tests {
 
     #[test]
     fn rejects_stale_policy_without_reexecuting_a_durable_outcome() {
-        let stale_policy = super::validate_approval_resolution_policy(
-            "pending",
-            true,
-            false,
-            "catalog.write",
-        )
-        .expect_err("pending approval must observe current policy");
+        let stale_policy =
+            super::validate_approval_resolution_policy("pending", true, false, "catalog.write")
+                .expect_err("pending approval must observe current policy");
         assert!(stale_policy.to_string().contains("no longer allowed"));
         super::validate_approval_resolution_policy("executed", true, false, "catalog.write")
             .expect("staged external outcome may be finalized after a policy change");
@@ -268,14 +349,11 @@ mod approval_outcome_tests {
             .expect("reload approval")
             .expect("approval persists");
         assert_eq!(reloaded.status, "executed");
-        assert!(super::claim_approval_resolution(
-            &db,
-            approval.tenant_id,
-            approval.id,
-            "executed",
-        )
-        .await
-        .expect("first resolver claims staged approval"));
+        assert!(
+            super::claim_approval_resolution(&db, approval.tenant_id, approval.id, "executed",)
+                .await
+                .expect("first resolver claims staged approval")
+        );
         assert!(!super::claim_approval_resolution(
             &db,
             approval.tenant_id,
@@ -287,8 +365,9 @@ mod approval_outcome_tests {
     }
 
     #[tokio::test]
-    async fn selects_only_the_next_pending_approval_from_its_batch() {
+    async fn selects_next_pending_approval_through_mixed_batch_resolutions() {
         let db = approval_test_db().await;
+        add_chat_run_test_schema(&db).await;
         let tenant_id = Uuid::new_v4();
         let session_id = Uuid::new_v4();
         let run_id = Uuid::new_v4();
@@ -323,6 +402,7 @@ mod approval_outcome_tests {
             .await
             .expect("insert approval batch member");
         }
+        let run = insert_waiting_run(&db, tenant_id, session_id, run_id, first_id).await;
 
         let next = super::next_pending_approval_in_batch(&db, tenant_id, run_id, "batch-a")
             .await
@@ -330,16 +410,86 @@ mod approval_outcome_tests {
             .expect("pending approval");
         assert_eq!(next.id, first_id);
         let mut resolved: ai_approval_requests::ActiveModel = next.into();
-        resolved.status = Set("approved".to_string());
-        resolved.update(&db).await.expect("resolve first approval");
-        assert_eq!(
-            super::next_pending_approval_in_batch(&db, tenant_id, run_id, "batch-a")
+        resolved.status = Set("rejected".to_string());
+        resolved.update(&db).await.expect("reject first approval");
+        let (run, transition) =
+            super::transition_run_after_approval_resolution(&db, tenant_id, run, "batch-a")
                 .await
-                .expect("find second pending")
-                .expect("second approval")
-                .id,
-            second_id
-        );
+                .expect("advance batch to next approval");
+        assert!(matches!(
+            transition,
+            super::ApprovalBatchRunTransition::WaitingForNext
+        ));
+        assert_eq!(run.pending_approval_id, Some(second_id));
+        let second = super::next_pending_approval_in_batch(&db, tenant_id, run_id, "batch-a")
+            .await
+            .expect("find second pending")
+            .expect("second approval");
+        assert_eq!(second.id, second_id);
+        let mut approved: ai_approval_requests::ActiveModel = second.into();
+        approved.status = Set("approved".to_string());
+        approved.update(&db).await.expect("approve second approval");
+        let (run, transition) =
+            super::transition_run_after_approval_resolution(&db, tenant_id, run, "batch-a")
+                .await
+                .expect("advance completed batch");
+        assert!(matches!(
+            transition,
+            super::ApprovalBatchRunTransition::ReadyToContinue
+        ));
+        assert_eq!(run.status, "running");
+        assert_eq!(run.pending_approval_id, None);
+        assert_eq!(run.error_message, None);
+    }
+
+    #[tokio::test]
+    async fn rolls_back_trace_when_later_finalization_write_fails() {
+        let db = approval_test_db().await;
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE ai_tool_traces (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL,\
+                run_id TEXT NOT NULL, tool_name TEXT NOT NULL, status TEXT NOT NULL,\
+                input_payload TEXT NOT NULL, output_payload TEXT NULL, error_message TEXT NULL,\
+                duration_ms INTEGER NULL, sensitive BOOLEAN NOT NULL, created_at TEXT NOT NULL,\
+                updated_at TEXT NOT NULL\
+            )"
+            .to_string(),
+        ))
+        .await
+        .expect("tool trace test schema");
+        let transaction = db.begin().await.expect("begin finalization transaction");
+        super::insert_tool_trace(
+            &transaction,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &ToolTrace {
+                tool_name: "catalog.write".to_string(),
+                input_payload: serde_json::json!({ "id": "42" }),
+                output_payload: Some(serde_json::json!({ "ok": true })),
+                status: "completed".to_string(),
+                duration_ms: 5,
+                sensitive: true,
+                error_message: None,
+                created_at: Utc::now(),
+            },
+        )
+        .await
+        .expect("insert trace before later finalization step");
+        assert!(transaction
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "INSERT INTO ai_chat_messages (id) VALUES ('missing-table')".to_string(),
+            ))
+            .await
+            .is_err());
+        drop(transaction);
+        assert!(ai_tool_traces::Entity::find()
+            .all(&db)
+            .await
+            .expect("read rolled-back traces")
+            .is_empty());
     }
 }
 
@@ -455,6 +605,11 @@ impl AiManagementService {
             &input.credential_refs,
             egress_policy,
         )?;
+        for reference in input.credential_refs.values() {
+            secrets
+                .validate_reference_for_tenant(operator.tenant_id, reference)
+                .map_err(|error| AiError::Validation(error.to_string()))?;
+        }
         let profile = ai_provider_profiles::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(operator.tenant_id),
@@ -500,6 +655,11 @@ impl AiManagementService {
             &input.credential_refs,
             egress_policy,
         )?;
+        for reference in input.credential_refs.values() {
+            secrets
+                .validate_reference_for_tenant(operator.tenant_id, reference)
+                .map_err(|error| AiError::Validation(error.to_string()))?;
+        }
         let mut active: ai_provider_profiles::ActiveModel = existing.into();
         active.display_name = Set(input.display_name);
         active.provider_slug = Set(provider_slug.to_string());
@@ -1248,15 +1408,12 @@ impl AiManagementService {
             ));
         }
 
-        if !claim_approval_resolution(db, operator.tenant_id, approval.id, &approval.status)
-            .await?
+        if !claim_approval_resolution(db, operator.tenant_id, approval.id, &approval.status).await?
         {
             return Err(AiError::Validation(
                 "approval request was already claimed".to_string(),
             ));
         }
-
-        let mut run_active: ai_chat_runs::ActiveModel = run.clone().into();
 
         let access_context = access_context_for_operator(operator);
         let (tool_content, tool_metadata, trace) = if input.approved {
@@ -1356,18 +1513,14 @@ impl AiManagementService {
         approval_active.updated_at = Set(Utc::now().into());
         approval_active.update(&transaction).await.map_err(db_err)?;
 
-        let next_pending = next_pending_approval_in_batch(
+        let (saved_run, transition) = transition_run_after_approval_resolution(
             &transaction,
             operator.tenant_id,
-            run.id,
+            run,
             &approval.approval_batch_id,
         )
         .await?;
-        if let Some(next_pending) = next_pending {
-            run_active.status = Set("waiting_approval".to_string());
-            run_active.pending_approval_id = Set(Some(next_pending.id));
-            run_active.updated_at = Set(Utc::now().into());
-            let saved_run = run_active.update(&transaction).await.map_err(db_err)?;
+        if matches!(transition, ApprovalBatchRunTransition::WaitingForNext) {
             transaction.commit().await.map_err(db_err)?;
             let detail = Self::chat_session_detail(db, operator.tenant_id, session.id)
                 .await?
@@ -1378,18 +1531,13 @@ impl AiManagementService {
             });
         }
 
-        run_active.status = Set("running".to_string());
-        run_active.pending_approval_id = Set(None);
-        run_active.updated_at = Set(Utc::now().into());
-        run_active.error_message = Set(None);
-        run_active.update(&transaction).await.map_err(db_err)?;
         transaction.commit().await.map_err(db_err)?;
 
         Self::continue_run(
             runtime,
             operator,
             session.id,
-            run.id,
+            saved_run.id,
             provider,
             task_profile,
             tool_profile,

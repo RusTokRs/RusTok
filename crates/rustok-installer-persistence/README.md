@@ -1,5 +1,7 @@
 # rustok-installer-persistence
 
+## Purpose
+
 `rustok-installer-persistence` is the SeaORM adapter for installer database
 readiness, schema application, durable sessions, step receipts, and reusable
 bootstrap persistence. It owns the entity mappings and persistence service for
@@ -30,3 +32,13 @@ the schema created by `rustok-migrations`.
 
 `apps/server` and the platform CLI are adapters over this crate; neither owns a
 second mapping or persistence implementation.
+
+## Interactions
+
+- `rustok-installer` owns the neutral plan, state, receipt, seed, and port
+  contracts implemented here with SeaORM.
+- `rustok-migrations` supplies the globally composed `Migrator`; this adapter
+  applies it once for the shared installation database.
+- `apps/server` and `rustok-installer-cli` compose this adapter with their
+  selected `rustok-distribution` registry and must not duplicate its database
+  mappings or bootstrap writers.

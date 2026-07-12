@@ -609,6 +609,55 @@ mod usage_tests {
     }
 }
 
+#[cfg(test)]
+mod live_connectivity_tests {
+    use super::inference_for_slug;
+    use crate::model::AiProviderConfig;
+    use rustok_secrets::{EnvResolver, SecretAccessPolicy, SecretResolverRegistry};
+
+    /// Deployment-only connectivity probe. It is ignored by default because it
+    /// makes real network calls and resolves only explicitly prefixed env keys.
+    #[tokio::test]
+    #[ignore = "requires deployment-owned RUSTOK_AI_LIVE_PROVIDER_CONFIGS_JSON and provider credentials"]
+    async fn probes_each_declared_live_provider_target() {
+        let raw = std::env::var("RUSTOK_AI_LIVE_PROVIDER_CONFIGS_JSON").expect(
+            "set RUSTOK_AI_LIVE_PROVIDER_CONFIGS_JSON to a non-empty JSON array of AiProviderConfig values",
+        );
+        let configs: Vec<AiProviderConfig> = serde_json::from_str(&raw)
+            .expect("live provider configs must be valid AiProviderConfig JSON");
+        assert!(
+            !configs.is_empty(),
+            "at least one deployment-owned live target is required"
+        );
+        let secrets = SecretResolverRegistry::builder()
+            .resolver(
+                "env",
+                EnvResolver,
+                SecretAccessPolicy::Prefix(vec!["RUSTOK_AI_LIVE_".to_string()]),
+            )
+            .build();
+
+        for config in configs {
+            let provider = inference_for_slug(&config.provider_slug, &config, &secrets)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!("{} live factory failed: {error}", config.provider_slug)
+                });
+            let result = provider
+                .test_connection(&config)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!("{} live connectivity failed: {error}", config.provider_slug)
+                });
+            assert!(
+                result.ok,
+                "{} live connectivity was not accepted",
+                config.provider_slug
+            );
+        }
+    }
+}
+
 fn map_request(request: ProviderChatRequest) -> AiResult<CompletionRequest> {
     let mut messages = request
         .messages

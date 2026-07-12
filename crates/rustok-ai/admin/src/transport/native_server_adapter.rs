@@ -395,6 +395,18 @@ async fn ai_create_provider_native(
         let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
         let runtime = ai_runtime_from_context(&runtime_ctx)?;
+        let provider_target_id = parse_provider_target_id(&provider_target_id)?;
+        let provider_slug = runtime
+            .provider_targets()
+            .get(&provider_target_id)
+            .ok_or_else(|| ServerFnError::new("unknown deployment provider target"))?
+            .provider_slug
+            .clone();
+        let capabilities = if capabilities.is_empty() {
+            rustok_ai::default_provider_capabilities(&provider_slug)
+        } else {
+            parse_capabilities(capabilities)?
+        };
         let item = rustok_ai::AiManagementService::create_provider_profile(
             &db,
             &operator(&auth, &db).await?,
@@ -404,12 +416,12 @@ async fn ai_create_provider_native(
             rustok_ai::CreateAiProviderProfileInput {
                 slug,
                 display_name,
-                provider_target_id: parse_provider_target_id(&provider_target_id)?,
+                provider_target_id,
                 model,
                 credential_refs: parse_credential_refs(credential_refs)?,
                 temperature,
                 max_tokens,
-                capabilities: parse_capabilities(capabilities)?,
+                capabilities,
                 usage_policy: rustok_ai::ProviderUsagePolicy {
                     allowed_task_profiles,
                     denied_task_profiles,

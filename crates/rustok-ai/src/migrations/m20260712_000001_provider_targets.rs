@@ -10,10 +10,14 @@ impl MigrationTrait for Migration {
         let connection = manager.get_connection();
         let backend = manager.get_database_backend();
         let custom_endpoint_query = match backend {
-            DbBackend::Postgres => "SELECT slug FROM ai_provider_profiles \
-                 WHERE COALESCE(settings->>'base_url', '') <> '' ORDER BY slug",
-            DbBackend::Sqlite => "SELECT slug FROM ai_provider_profiles \
-                 WHERE COALESCE(json_extract(settings, '$.base_url'), '') <> '' ORDER BY slug",
+            DbBackend::Postgres => {
+                "SELECT slug FROM ai_provider_profiles \
+                 WHERE COALESCE(settings->>'base_url', '') <> '' ORDER BY slug"
+            }
+            DbBackend::Sqlite => {
+                "SELECT slug FROM ai_provider_profiles \
+                 WHERE COALESCE(json_extract(settings, '$.base_url'), '') <> '' ORDER BY slug"
+            }
             other => {
                 return Err(DbErr::Migration(format!(
                     "AI provider target migration does not support database backend {other:?}"
@@ -21,7 +25,10 @@ impl MigrationTrait for Migration {
             }
         };
         let rows = connection
-            .query_all(Statement::from_string(backend, custom_endpoint_query.to_string()))
+            .query_all(Statement::from_string(
+                backend,
+                custom_endpoint_query.to_string(),
+            ))
             .await?;
         if !rows.is_empty() {
             let profiles = rows
@@ -130,6 +137,62 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(columns.contains(&("provider_target_id".to_string(), 1)));
         assert!(!columns.iter().any(|(name, _)| name == "settings"));
+    }
+
+    #[tokio::test]
+    async fn maps_each_legacy_provider_slug_to_its_named_deployment_target() {
+        let database = legacy_database("{}").await;
+        for (slug, provider_slug) in [
+            ("anthropic_primary", "anthropic"),
+            ("gemini_primary", "gemini"),
+        ] {
+            database
+                .execute_unprepared(&format!(
+                    "INSERT INTO ai_provider_profiles (slug, provider_slug, settings) \
+                     VALUES ('{slug}', '{provider_slug}', '{{}}')"
+                ))
+                .await
+                .unwrap();
+        }
+        Migration.up(&SchemaManager::new(&database)).await.unwrap();
+        let rows = database
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT slug, provider_slug, provider_target_id FROM ai_provider_profiles ORDER BY slug"
+                    .to_string(),
+            ))
+            .await
+            .unwrap();
+        let mappings = rows
+            .iter()
+            .map(|row| {
+                (
+                    String::try_get(row, "", "slug").unwrap(),
+                    String::try_get(row, "", "provider_slug").unwrap(),
+                    String::try_get(row, "", "provider_target_id").unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            mappings,
+            vec![
+                (
+                    "anthropic_primary".to_string(),
+                    "anthropic".to_string(),
+                    "anthropic".to_string()
+                ),
+                (
+                    "gemini_primary".to_string(),
+                    "gemini".to_string(),
+                    "gemini".to_string()
+                ),
+                (
+                    "primary".to_string(),
+                    "openai_compatible".to_string(),
+                    "openai_compatible".to_string(),
+                ),
+            ]
+        );
     }
 
     #[tokio::test]

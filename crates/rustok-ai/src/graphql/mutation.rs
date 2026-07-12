@@ -59,8 +59,8 @@ impl AiMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let runtime = ctx.data::<crate::AiHostRuntime>()?;
-        let provider_target_id =
-            crate::ProviderTargetId::new(input.provider_target_id).map_err(async_graphql::Error::new)?;
+        let provider_target_id = crate::ProviderTargetId::new(input.provider_target_id)
+            .map_err(async_graphql::Error::new)?;
         let provider_slug = runtime
             .provider_targets()
             .get(&provider_target_id)
@@ -68,7 +68,7 @@ impl AiMutation {
             .provider_slug
             .clone();
         let capabilities = if input.capabilities.is_empty() {
-            default_capabilities_for_provider(&provider_slug)
+            crate::default_provider_capabilities(&provider_slug)
         } else {
             input.capabilities.into_iter().map(Into::into).collect()
         };
@@ -109,8 +109,8 @@ impl AiMutation {
         let operator = operator_context(ctx, auth).await?;
         let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
-        let provider_target_id =
-            crate::ProviderTargetId::new(input.provider_target_id).map_err(async_graphql::Error::new)?;
+        let provider_target_id = crate::ProviderTargetId::new(input.provider_target_id)
+            .map_err(async_graphql::Error::new)?;
         let credential_refs = credential_refs(input.credential_refs)?;
         let item = crate::AiManagementService::update_provider_profile(
             db,
@@ -478,30 +478,4 @@ fn credential_refs(
         }
     }
     Ok(refs)
-}
-
-fn default_capabilities_for_provider(
-    provider_slug: &crate::ProviderSlug,
-) -> Vec<crate::ProviderCapability> {
-    let Some(descriptor) = crate::provider_catalog_entry(provider_slug) else {
-        return Vec::new();
-    };
-    let mut capabilities = Vec::new();
-    for feature in descriptor.features {
-        let capability = match feature {
-            crate::ProviderFeature::Chat => Some(crate::ProviderCapability::TextGeneration),
-            crate::ProviderFeature::StructuredOutput => {
-                Some(crate::ProviderCapability::StructuredGeneration)
-            }
-            crate::ProviderFeature::Image => Some(crate::ProviderCapability::ImageGeneration),
-            crate::ProviderFeature::Multimodal => {
-                Some(crate::ProviderCapability::MultimodalUnderstanding)
-            }
-            _ => None,
-        };
-        if let Some(capability) = capability.filter(|value| !capabilities.contains(value)) {
-            capabilities.push(capability);
-        }
-    }
-    capabilities
 }

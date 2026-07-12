@@ -1,13 +1,13 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use chrono::Utc;
-use tokio::sync::watch;
 use rig::{
     agent::{AgentRun, AgentRunStep, InvalidToolCallHookAction, ModelTurn, ModelTurnOutcome},
     completion::Usage,
     message::UserContent,
     OneOrMany,
 };
+use tokio::sync::watch;
 
 use crate::{
     engine::{assistant_choice, map_message, map_rig_message, InferenceEngine},
@@ -412,6 +412,8 @@ mod tests {
         calls: Mutex<Vec<String>>,
     }
 
+    struct FailingMcp;
+
     #[async_trait]
     impl McpClientAdapter for RecordingMcp {
         async fn list_tools(&self) -> AiResult<Vec<ToolDefinition>> {
@@ -441,6 +443,26 @@ mod tests {
                 content: "published".to_string(),
                 raw_payload: serde_json::json!({"published": true}),
             })
+        }
+    }
+
+    #[async_trait]
+    impl McpClientAdapter for FailingMcp {
+        async fn list_tools(&self) -> AiResult<Vec<ToolDefinition>> {
+            Ok(vec![ToolDefinition {
+                name: "publish".to_string(),
+                description: "Publish a draft".to_string(),
+                input_schema: serde_json::json!({"type": "object"}),
+                sensitive: false,
+            }])
+        }
+
+        async fn call_tool(
+            &self,
+            _name: &str,
+            _arguments: serde_json::Value,
+        ) -> AiResult<ToolExecutionResult> {
+            Err(crate::AiError::Mcp("tool backend unavailable".to_string()))
         }
     }
 
@@ -735,6 +757,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tool_failure_is_persistable_as_a_failed_trace() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: None,
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: vec![ToolCall {
+                        id: "publish-1".to_string(),
+                        name: "publish".to_string(),
+                        arguments: serde_json::json!({ "id": "draft-1" }),
+                    }],
+                    metadata: serde_json::Value::Null,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                raw_payload: serde_json::Value::Null,
+            }])),
+        });
+        let driver = RigAgentDriver::new(
+            engine,
+            Arc::new(FailingMcp),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+        let RuntimeOutcome::Failed {
+            traces,
+            error_message,
+            ..
+        } = outcome
+        else {
+            panic!("tool backend failure must stop the turn with a trace")
+        };
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].status, "failed");
+        assert!(traces[0]
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("unavailable")));
+        assert!(error_message.contains("unavailable"));
+    }
+
+    #[tokio::test]
     async fn max_turns_stops_a_tool_loop_after_the_budget_is_exhausted() {
         let engine = Arc::new(ScriptedEngine {
             responses: Mutex::new(VecDeque::from([
@@ -806,6 +872,68 @@ mod tests {
             mcp.calls.lock().await.as_slice(),
             ["publish", "publish", "publish"]
         );
+    }
+
+    #[tokio::test]
+    async fn resumes_from_canonical_persisted_tool_history_without_checkpoint() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: Some("The prior tool result was applied.".to_string()),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: serde_json::Value::Null,
+                },
+                finish_reason: Some("stop".to_string()),
+                raw_payload: serde_json::Value::Null,
+            }])),
+        });
+        let mcp = Arc::new(RecordingMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp.clone(),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+        let mut recovered = request();
+        recovered.messages.extend([
+            ChatMessage {
+                role: ChatMessageRole::Assistant,
+                content: None,
+                name: None,
+                tool_call_id: None,
+                tool_calls: vec![ToolCall {
+                    id: "persisted-call".to_string(),
+                    name: "publish".to_string(),
+                    arguments: serde_json::json!({ "id": "draft-1" }),
+                }],
+                metadata: serde_json::json!({ "persisted": true }),
+            },
+            ChatMessage {
+                role: ChatMessageRole::Tool,
+                content: Some("published".to_string()),
+                name: Some("publish".to_string()),
+                tool_call_id: Some("persisted-call".to_string()),
+                tool_calls: Vec::new(),
+                metadata: serde_json::json!({ "approval_approved": true }),
+            },
+        ]);
+
+        let outcome = driver.run(&config(), recovered, None, None).await.unwrap();
+        let RuntimeOutcome::Completed {
+            appended_messages, ..
+        } = outcome
+        else {
+            panic!("persisted tool history should resume directly into a model turn")
+        };
+        assert_eq!(
+            appended_messages
+                .last()
+                .and_then(|message| message.content.as_deref()),
+            Some("The prior tool result was applied.")
+        );
+        assert!(mcp.calls.lock().await.is_empty());
     }
 
     #[tokio::test]

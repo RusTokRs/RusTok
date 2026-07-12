@@ -4,6 +4,7 @@
 //! Those layers should call these typed contracts instead of reimplementing
 //! install state, checksum, secret-redaction, and preflight policy rules.
 
+mod deployment;
 mod execution;
 mod plan;
 mod preflight;
@@ -12,6 +13,11 @@ mod secrets;
 mod seed;
 mod state;
 
+pub use deployment::{
+    distributed_deployment_requests, execute_distributed_role_deployments,
+    DistributedDeploymentOutput, InstallDeploymentPort, InstallRoleDeployment,
+    InstallRoleDeploymentReceipt, InstallRoleDeploymentRequest,
+};
 pub use execution::{
     execute_install_apply, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
     InstallApplyOutput, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,

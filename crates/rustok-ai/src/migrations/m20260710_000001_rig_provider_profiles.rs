@@ -136,6 +136,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn preserves_all_supported_legacy_provider_slugs_without_plaintext_fallback() {
+        let database = legacy_database(None).await;
+        for (slug, provider_kind) in [
+            ("anthropic_primary", "anthropic"),
+            ("gemini_primary", "gemini"),
+        ] {
+            database
+                .execute_unprepared(&format!(
+                    "INSERT INTO ai_provider_profiles (slug, provider_kind, base_url, api_key_secret) \
+                     VALUES ('{slug}', '{provider_kind}', 'https://gateway.example.test/{provider_kind}', NULL)"
+                ))
+                .await
+                .unwrap();
+        }
+        Migration.up(&SchemaManager::new(&database)).await.unwrap();
+
+        let rows = database
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT slug, provider_slug, settings, credential_refs FROM ai_provider_profiles ORDER BY slug"
+                    .to_string(),
+            ))
+            .await
+            .unwrap();
+        let migrated = rows
+            .iter()
+            .map(|row| {
+                (
+                    String::try_get(row, "", "slug").unwrap(),
+                    String::try_get(row, "", "provider_slug").unwrap(),
+                    String::try_get(row, "", "settings").unwrap(),
+                    String::try_get(row, "", "credential_refs").unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            migrated,
+            vec![
+                (
+                    "anthropic_primary".to_string(),
+                    "anthropic".to_string(),
+                    r#"{"base_url":"https://gateway.example.test/anthropic"}"#.to_string(),
+                    "{}".to_string(),
+                ),
+                (
+                    "gemini_primary".to_string(),
+                    "gemini".to_string(),
+                    r#"{"base_url":"https://gateway.example.test/gemini"}"#.to_string(),
+                    "{}".to_string(),
+                ),
+                (
+                    "primary".to_string(),
+                    "openai_compatible".to_string(),
+                    r#"{"base_url":"https://gateway.example.test/v1"}"#.to_string(),
+                    "{}".to_string(),
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn rejects_plaintext_secret_before_schema_mutation() {
         let database = legacy_database(Some("do-not-migrate")).await;
         let error = Migration

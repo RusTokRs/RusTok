@@ -16,5 +16,7 @@ distribution build.
 - `apps/server` uses the registry for HTTP host composition.
 - Standalone operational adapters can use the same registry without importing
   `apps/server`.
+- `rustok-installer` receives the trusted `composition_identity()` through its
+  CLI and HTTP hosts; installer plans never accept this identity from a wizard.
 - Module CLI adapters remain owner-local and are aggregated separately by
   `rustok-cli-registry`.

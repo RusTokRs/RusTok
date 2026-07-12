@@ -109,19 +109,11 @@ impl SecretResolverRegistry {
         tenant_id: Uuid,
         reference: &SecretRef,
     ) -> Result<SecretString, SecretError> {
-        if reference.key.trim().is_empty() {
-            return Err(SecretError::BlankKey);
-        }
+        self.validate_reference_for_tenant(tenant_id, reference)?;
         let registration = self
             .resolvers
             .get(&reference.resolver)
-            .ok_or_else(|| SecretError::ResolverNotFound(reference.resolver.clone()))?;
-        if !registration.policy.allows(tenant_id, &reference.key) {
-            return Err(SecretError::ForbiddenKey {
-                resolver: reference.resolver.clone(),
-                key: reference.key.clone(),
-            });
-        }
+            .expect("validated secret resolver registration must exist");
         {
             let cache = self.cache.read().await;
             if let Some(cached) = cache.get(reference) {
@@ -139,6 +131,31 @@ impl SecretResolverRegistry {
             },
         );
         Ok(value)
+    }
+
+    /// Validates an externally persisted secret reference without resolving or
+    /// exposing its value. Profile create/update paths use this before writing
+    /// a reference so invalid resolver aliases and tenant-forbidden keys fail
+    /// at the management boundary rather than during model inference.
+    pub fn validate_reference_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        reference: &SecretRef,
+    ) -> Result<(), SecretError> {
+        if reference.key.trim().is_empty() {
+            return Err(SecretError::BlankKey);
+        }
+        let registration = self
+            .resolvers
+            .get(&reference.resolver)
+            .ok_or_else(|| SecretError::ResolverNotFound(reference.resolver.clone()))?;
+        if !registration.policy.allows(tenant_id, &reference.key) {
+            return Err(SecretError::ForbiddenKey {
+                resolver: reference.resolver.clone(),
+                key: reference.key.clone(),
+            });
+        }
+        Ok(())
     }
 
     pub async fn invalidate(&self, reference: Option<&SecretRef>) {
@@ -321,6 +338,40 @@ mod tests {
             .await
             .expect_err("unknown resolver must fail");
         assert!(error.to_string().contains("vault-prod"));
+    }
+
+    #[test]
+    fn reference_validation_rejects_unknown_alias_and_cross_tenant_key_without_resolving() {
+        let tenant = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let registry = SecretResolverRegistry::builder()
+            .resolver(
+                "env",
+                EnvResolver,
+                SecretAccessPolicy::TenantPrefix {
+                    prefix: "tenants/".to_string(),
+                },
+            )
+            .build();
+        assert!(registry
+            .validate_reference_for_tenant(
+                tenant,
+                &SecretRef {
+                    resolver: "missing".to_string(),
+                    key: "tenants/ignored/key".to_string(),
+                },
+            )
+            .is_err());
+        let error = registry
+            .validate_reference_for_tenant(
+                other,
+                &SecretRef {
+                    resolver: "env".to_string(),
+                    key: format!("tenants/{tenant}/provider-key"),
+                },
+            )
+            .expect_err("other tenant must not validate this key");
+        assert!(matches!(error, SecretError::ForbiddenKey { .. }));
     }
 
     #[tokio::test]

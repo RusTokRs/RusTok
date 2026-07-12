@@ -13,7 +13,7 @@ to the role of model host.
   server-owned egress policy; credentials are external `SecretRef` values, never plaintext;
 - call MCP tools through a separate `McpClientAdapter`, rather than mixing provider logic with MCP server;
 - store the chat/runtime model: sessions, messages, runs, tool traces, approval requests;
-- provide `apps/server` with a canonical service layer for the persisted control plane.
+- provide a capability-owned canonical service layer for the persisted control plane.
 
 ## What is already implemented
 
@@ -31,7 +31,7 @@ to the role of model host.
 - current MVP wiring uses `rustok-mcp` and does not extend `rustok-mcp` with provider-specific responsibilities;
 - Alloy/MCP tool traces and approval-gated execution are already part of the persisted chat flow.
 
-### Persisted Control Plane in `apps/server`
+### Persisted Control Plane and Host Composition
 
 - tables:
   - `ai_provider_profiles`
@@ -44,9 +44,11 @@ to the role of model host.
 - owner-owned GraphQL query/mutation/subscription surface in `crates/rustok-ai/src/graphql` for providers,
   tool profiles, sessions, traces and approvals;
 - server-side orchestration service `AiManagementService`;
-- `AiHostRuntime` as host-neutral runtime contract: `apps/server` and Leptos SSR adapter compose it at their
-  boundary, and `rustok-ai` does not accept Loco `AppContext` and does not depend on the Loco crate;
-- `apps/server` stores secrets, runtime settings and audit trail, not UI.
+- `AiHostRuntime` is a host-neutral runtime contract; `rustok-ai` does not accept Loco
+  `AppContext` and does not depend on the Loco crate;
+- the target host integration is a generic manifest/runtime contribution contract. Removing
+  existing direct AI construction from `apps/server` is a platform-owned prerequisite and is
+  explicitly tracked as blocked in the implementation plan.
 - Runtime observability now operates in two layers:
   - persisted `decision_trace` and run/session metadata in the control plane;
   - in-process `AiManagementService::metrics_snapshot()` and Prometheus module/span telemetry for router resolution and run outcomes.
@@ -57,6 +59,9 @@ to the role of model host.
   provider-backed text runs in both admin hosts for `OpenAI-compatible`, `Anthropic` and `Gemini`.
 - direct verticals use the same streaming contract, so direct Alloy / content jobs do
   not lose the live delta/update surface compared to the runtime/MCP path.
+- offline Rig protocol cassettes cover the normalized OpenAI-compatible, Anthropic,
+  Gemini, cloud-auth, and deployment-local stream families; network protocol parsing
+  remains inside Rig rather than reappearing as RusToK SSE code.
 - in addition to live subscription, the server layer now holds a bounded recent-event cache; it is accessible
   via `AiManagementService::recent_stream_events(...)` and GraphQL query
   `aiRecentRunStreamEvents(sessionId?, limit?)` for diagnostics and session detail.
@@ -88,6 +93,23 @@ to the role of model host.
 - browser-target verification for the Leptos package now includes a separate `hydrate` check, so that
   the WebSocket streaming path is tested not only on SSR.
 
+### Opt-in live provider connectivity
+
+Live provider probes are intentionally excluded from default test gates. An
+operator may run the ignored test only with deployment-owned configuration:
+
+```powershell
+$env:RUSTOK_AI_LIVE_PROVIDER_CONFIGS_JSON = '[{...}]'
+cargo test -p rustok-ai --features server -- --ignored probes_each_declared_live_provider_target
+```
+
+The JSON value is a non-empty array of `AiProviderConfig` values. A credential
+reference must use resolver `env` and a key starting with `RUSTOK_AI_LIVE_`;
+the test registers only that prefix. Endpoints, cloud identity, model settings,
+and the list of targets remain operator/deployment configuration, never tenant
+input. The test makes real provider requests and must not be enabled in shared
+or default CI.
+
 ## Scope
 
 ### What stays in `rustok-ai`
@@ -106,13 +128,13 @@ to the role of model host.
 - tool surface and identity/policy/runtime binding;
 - absence of provider-specific orchestration and model-host responsibilities.
 
-### What stays in `apps/server`
+### Host boundary
 
-- persisted control plane;
-- common GraphQL schema/transport composition root;
-- `AiGraphqlRoleSlugProvider` adapter on top of server-owned RBAC persistence;
-- Leptos `#[server]` integration path;
-- composition root for runtime wiring.
+- `apps/server` must remain capability-neutral: it may consume generic module runtime and
+  transport contributions, but it must not import AI-specific runtime, GraphQL, secret, or
+  provider-policy types;
+- the platform owner supplies the generic contribution mechanism; `rustok-ai` supplies the
+  AI contribution through that mechanism once it exists.
 
 ## What is not yet implemented
 

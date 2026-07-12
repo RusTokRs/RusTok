@@ -33,8 +33,10 @@ Current implementation includes:
 - large operator/admin surfaces for both Leptos and Next.js hosts
 - dedicated AI diagnostics sub-routes for both admin hosts (`/ai/diagnostics`, `/dashboard/ai/diagnostics`)
 
-The current implementation is sufficient to treat `rustok-ai` as MVP-complete for the initial
-RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing MVP foundation.
+The AI capability implementation is complete pending final verification, but the host boundary is
+not complete: the platform owner must replace existing direct AI construction in `apps/server`
+with the generic module runtime/transport contribution mechanism. That platform prerequisite is
+tracked separately in the module implementation plan.
 
 ## Responsibilities
 
@@ -53,7 +55,8 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
   `CatalogService`.
 - Support direct blog-draft jobs that create or update localized drafts through `rustok-blog` /
   `PostService`.
-- Provide the canonical persisted control-plane service layer used by `apps/server`.
+- Provide the canonical capability-owned persisted control-plane service layer through a
+  host-neutral runtime contribution.
 - Publish in-process runtime observability snapshots for router and run health.
 - Publish session-scoped live run events (`started`, `delta`, `completed`, `failed`,
   `waiting_approval`) for operator/admin surfaces.
@@ -75,10 +78,10 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
   `alloy_code` for Alloy Script Assist, `image_asset` for image generation + media persistence,
   `product_copy` for tenant-locale-bound commerce translation updates, and `blog_draft` for
   tenant-locale-bound blog draft creation/update.
-- Uses the database connection composed by `apps/server` for provider profiles, tool profiles,
-  sessions, task profiles, runs, traces, and approvals.
-- Owns AI GraphQL resolvers and uses the shared GraphQL/WebSocket host in `apps/server` only for
-  schema composition and transport.
+- Uses a host-provided database connection for provider profiles, tool profiles, sessions, task
+  profiles, runs, traces, and approvals.
+- Owns AI GraphQL resolvers and native transport contributions; the future host consumes only
+  their generic module contribution contract.
 - Ships a large Leptos operator/admin UI package in `crates/rustok-ai/admin`.
 - Ships a large Next.js operator/admin UI package through `apps/next-admin/packages/rustok-ai`.
 

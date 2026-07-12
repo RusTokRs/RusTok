@@ -96,6 +96,14 @@ enablement is performed afterwards.
    `rustok-build`, wait for the selected deployment adapter, and record
    per-role receipts. The schema, tenant seed, and admin provisioning stages
    run once for the shared database; role retries must not repeat them.
+   `InstallDeploymentPort`, `InstallRoleDeploymentRequest`, and
+   `InstallRoleDeployment` establish the neutral hand-off and deterministic
+   per-role request ordering. `execute_distributed_role_deployments` now moves
+   the session through `deploying`, validates the active release against each
+   immutable role request, and records one durable `deploy` receipt per role.
+   The executor still rejects distributed apply until a host adapter maps that
+   hand-off to `rustok-build` and composes this helper into the full state
+   machine.
    **Done when:** an interrupted role deployment resumes from its own receipt
    and all deployed roles report the same composition revision.
    **Verification:** CI topology fixture with at least `api`, `admin_ssr`, and

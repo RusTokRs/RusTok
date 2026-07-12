@@ -80,7 +80,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   constructed from explicit DB and `TransactionalEventBus`; conversion GraphQL resolvers read this handle from schema data,
   not through framework-owned application context.
 - Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; auth, OAuth and users REST request/response DTOs and OpenAPI schema derives also belong to `rustok-auth::rest`. The server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services, registers the corresponding runtimes in shared runtime extensions, and keeps auth/OAuth/users HTTP controllers as route/extractor/response adapters that re-export or import owner DTOs for Swagger and route compatibility. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`.
-- AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, and Alloy runtime handles. `rustok-ai` does not read Loco `AppContext`; the Leptos admin adapter remains a host-boundary point that assembles this runtime from the current app context.
+- AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, and Alloy runtime handles. The Leptos admin adapter remains a host-boundary point that assembles this runtime from neutral host state.
 - MCP GraphQL query/mutation/types and REST/control-plane DTOs belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService`, registers `McpManagementRuntime`, and keeps HTTP controllers as Axum adapters that import owner DTOs and actor parsing.
 - Content GraphQL dataloaders for `nodes`, `node_translations`, and `bodies` live in
   `rustok-content`; `apps/server` only registers owner-owned loader types in the schema builder.
@@ -94,8 +94,8 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   Alloy runtime bootstrap also registers `SharedAlloyRuntime` via `ServerRuntimeContext` from an explicit DB handle,
   and Alloy GraphQL receives this runtime as schema-owned data without a framework-global context.
 - User complex fields and build progress subscription use schema-owned `DatabaseConnection`
-  directly and also do not depend on the Loco host context.
-- Host-owned `RootQuery` also does not extract Loco `AppContext`: DB-only read paths use
+  directly and do not depend on a framework-global host context.
+- Host-owned `RootQuery` also does not extract a framework-global context: DB-only read paths use
   schema-owned `DatabaseConnection`, and marketplace/cache paths use `ServerRuntimeContext`.
 - All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
   accepts explicit runtime dependencies. `services/graphql_schema.rs` also accepts only
@@ -128,7 +128,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on a
   framework-global context. Optional module HTTP composition recognizes manifest-declared Axum routers:
   `rustok-blog` is merged from its `HostRuntimeContext` entrypoint.
-- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, auth context receives `ServerAuthRuntime`; Loco `AppContext` remains only in router/controller boundary adapters for the current host.
+- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, and auth context receives `ServerAuthRuntime`.
 - Module-owned event listeners are assembled from `ModuleRegistry` into a common `EventDispatcher`; `apps/server` no longer holds separate host-owned index/search/workflow listener paths.
 - Server migrator is the backend composition root for module-owned schema: content-family modules (`blog`, `pages`, `comments`) and search must connect here via `crates/rustok-*/src/migrations`, otherwise external Next/Leptos admin surfaces get a working route shell without the needed tables.
 - Product/search title filtering helpers are not server-owned services: product translation
@@ -206,7 +206,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - manifest-driven composition of owner-owned `flex::graphql::FlexQuery` / `flex::graphql::FlexMutation` and
   registration of the concrete persistence adapter in `FlexGraphqlRuntime`; standalone Flex
   and attached field-definition resolver/DTO/error/RBAC/event mapping is not placed in `apps/server`;
-- Loco/Axum REST handler for standalone Flex, which uses owner-owned `flex::rest`
+- Axum REST handler for standalone Flex, which uses owner-owned `flex::rest`
   request/response DTO, request-to-command mapping, and view mapping; the server does not own Flex REST contract types;
 - SeaORM adapter for standalone Flex, which stores persisted schema rows,
   but performs fields_config parsing/schema build/serialization, localized key derivation, row-to-view mapping, normalize/defaults/strip/validate, shared/localized split, read resolution, and PATCH merge via owner-owned helpers from `flex::standalone`;

@@ -25,13 +25,16 @@ bootstrap logic.
 - Provide preflight policy checks that are independent from any specific UI.
 - Define a consumer-owned seed workflow over narrow tenant, identity, role and
   module ports, without server model dependencies.
+- Define versioned topology, trusted composition binding, and neutral
+  distributed-role deployment hand-offs without build-provider dependencies.
 
 ## Interactions
 
 - `apps/server` is a thin HTTP/setup-wizard adapter over these contracts; it
   must not own a second installation state machine.
-- `rustok-cli` is the target operator adapter for `install` commands. The full
-  provider is planned; the current CLI provider covers seed operations only.
+- `rustok-installer-cli`, selected by `rustok-cli`, provides `install plan`,
+  `install preflight`, `install apply`, `install status`, and `seed apply`
+  through the shared executor; it does not import `apps/server`.
 - `xtask install-dev` remains a dev convenience wrapper and will delegate to
   the platform CLI/executor rather than the production server binary.
 - The current executor adapters resolve local secret refs (`env`, `file`,
@@ -43,9 +46,10 @@ bootstrap logic.
 - Durable SeaORM session and receipt storage is owned by
   `rustok-installer-persistence`; this foundation crate deliberately keeps no
   database adapter.
-- Monolith and distributed deployment intent is documented in
-  [the implementation plan](docs/implementation-plan.md). Build and deployment
-  execution belong to `rustok-build` and `rustok-distribution`, not this crate.
+- `rustok-distribution` binds the selected composition revision/hash before
+  preflight and apply. `rustok-build` owns role build/release execution; a host
+  adapter will fulfill this crate's `InstallDeploymentPort` without moving
+  deployment-provider code into the installer.
 
 ## Entry Points
 

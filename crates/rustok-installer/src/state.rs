@@ -11,6 +11,7 @@ pub enum InstallState {
     SchemaApplied,
     SeedApplied,
     AdminProvisioned,
+    Deploying,
     Verified,
     Completed,
     Failed,
@@ -27,6 +28,7 @@ pub enum InstallStep {
     Migrate,
     Seed,
     Admin,
+    Deploy,
     Verify,
     Finalize,
     Rollback,
@@ -52,6 +54,8 @@ impl InstallState {
                 | (SchemaApplied, SeedApplied)
                 | (SeedApplied, AdminProvisioned)
                 | (AdminProvisioned, Verified)
+                | (AdminProvisioned, Deploying)
+                | (Deploying, Verified)
                 | (Verified, Completed)
                 | (_, Failed)
                 | (Draft, RolledBackFreshInstall)
@@ -61,6 +65,7 @@ impl InstallState {
                 | (SchemaApplied, RestoreRequired)
                 | (SeedApplied, RestoreRequired)
                 | (AdminProvisioned, RestoreRequired)
+                | (Deploying, RestoreRequired)
                 | (Verified, RestoreRequired)
         )
     }
@@ -116,5 +121,16 @@ mod tests {
         assert!(InstallState::SchemaApplied
             .transition_to(InstallState::RestoreRequired)
             .is_ok());
+    }
+
+    #[test]
+    fn distributed_deployment_must_run_before_verification() {
+        let state = InstallState::AdminProvisioned
+            .transition_to(InstallState::Deploying)
+            .unwrap()
+            .transition_to(InstallState::Verified)
+            .unwrap();
+
+        assert_eq!(state, InstallState::Verified);
     }
 }

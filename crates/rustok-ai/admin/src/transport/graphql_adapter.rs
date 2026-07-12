@@ -141,6 +141,49 @@ subscription AiSessionEvents($sessionId: UUID!) {
 }
 "#;
 
+#[cfg(test)]
+mod contract_tests {
+    use super::{AI_BOOTSTRAP_QUERY, AI_SESSION_EVENTS_SUBSCRIPTION, AI_SESSION_QUERY};
+
+    fn assert_safe_provider_selection(document: &str) {
+        for field in [
+            "providerTargetId",
+            "credentialRefs { key resolver secretKey }",
+            "aiProviderTargets { id providerSlug displayName }",
+        ] {
+            assert!(
+                document.contains(field),
+                "missing transport field `{field}`"
+            );
+        }
+        for forbidden in ["baseUrl", "apiKey", "api_key_secret", "endpoint"] {
+            assert!(
+                !document.contains(forbidden),
+                "tenant transport must not expose `{forbidden}`"
+            );
+        }
+    }
+
+    #[test]
+    fn bootstrap_uses_the_same_safe_target_and_credential_shape_as_native_transport() {
+        assert_safe_provider_selection(AI_BOOTSTRAP_QUERY);
+    }
+
+    #[test]
+    fn session_and_subscription_preserve_typed_stream_parity() {
+        for document in [AI_SESSION_QUERY, AI_SESSION_EVENTS_SUBSCRIPTION] {
+            for field in [
+                "eventKind",
+                "toolCall { id name arguments }",
+                "usage { inputTokens outputTokens totalTokens }",
+                "sequence",
+            ] {
+                assert!(document.contains(field), "missing stream field `{field}`");
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AiGraphqlRequest<V> {
     pub operation_name: &'static str,

@@ -609,6 +609,17 @@ pub fn publish_provider_stream_event(
     stream_buffer: &Arc<Mutex<String>>,
     event: ProviderStreamEvent,
 ) {
+    let hub = ai_run_stream_hub();
+    publish_provider_stream_event_to_hub(&hub, session_id, run_id, stream_buffer, event);
+}
+
+fn publish_provider_stream_event_to_hub(
+    hub: &crate::streaming::AiRunStreamHub,
+    session_id: Uuid,
+    run_id: Uuid,
+    stream_buffer: &Arc<Mutex<String>>,
+    event: ProviderStreamEvent,
+) {
     match event {
         ProviderStreamEvent::TextDelta(delta) => {
             let accumulated_content = {
@@ -618,20 +629,46 @@ pub fn publish_provider_stream_event(
                 accumulated.push_str(&delta);
                 accumulated.clone()
             };
-            publish_ai_run_stream_event(
+            hub.publish(AiRunStreamEvent {
                 session_id,
                 run_id,
-                AiRunStreamEventKind::Delta,
-                Some(delta),
-                Some(accumulated_content),
-                None,
-            );
+                event_kind: AiRunStreamEventKind::Delta,
+                content_delta: Some(delta),
+                accumulated_content: Some(accumulated_content),
+                error_message: None,
+                tool_call: None,
+                usage: None,
+                sequence: 0,
+                created_at: Utc::now(),
+            });
         }
         ProviderStreamEvent::ToolCall(tool_call) => {
-            publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
+            hub.publish(AiRunStreamEvent {
+                session_id,
+                run_id,
+                event_kind: AiRunStreamEventKind::ToolCall,
+                content_delta: None,
+                accumulated_content: None,
+                error_message: None,
+                tool_call: Some(tool_call),
+                usage: None,
+                sequence: 0,
+                created_at: Utc::now(),
+            });
         }
         ProviderStreamEvent::Usage(usage) => {
-            publish_ai_run_usage_stream_event(session_id, run_id, usage);
+            hub.publish(AiRunStreamEvent {
+                session_id,
+                run_id,
+                event_kind: AiRunStreamEventKind::Usage,
+                content_delta: None,
+                accumulated_content: None,
+                error_message: None,
+                tool_call: None,
+                usage: Some(usage),
+                sequence: 0,
+                created_at: Utc::now(),
+            });
         }
     }
 }
@@ -899,20 +936,61 @@ pub async fn session_has_user_messages(
 mod tests {
     use super::{
         build_task_job_user_message, enrich_decision_trace, publish_provider_stream_event,
-        runtime_execution_target, task_allows_free_locale, validate_locale_tag,
-        validate_provider_target_profile_contract,
+        publish_provider_stream_event_to_hub, runtime_execution_target, task_allows_free_locale,
+        validate_locale_tag, validate_provider_target_profile_contract,
     };
     use crate::model::{
         AiRunDecisionTrace, ExecutionMode, ProviderStreamEvent, ProviderUsage, ToolCall,
     };
-    use crate::streaming::{ai_run_stream_hub, AiRunStreamEventKind};
+    use crate::streaming::{
+        ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub,
+    };
     use crate::{
         AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy, ProviderSlug,
         ProviderTargetAuth, ProviderTargetId,
     };
+    use chrono::Utc;
+    use serde::Deserialize;
     use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
+
+    #[derive(Deserialize)]
+    struct StreamCassetteDocument {
+        rig_version: String,
+        cassettes: Vec<StreamCassette>,
+    }
+
+    #[derive(Deserialize)]
+    struct StreamCassette {
+        family: String,
+        events: Vec<StreamCassetteEvent>,
+        terminal: StreamCassetteTerminal,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    enum StreamCassetteEvent {
+        Text {
+            value: String,
+        },
+        ToolCall {
+            id: String,
+            name: String,
+            arguments: serde_json::Value,
+        },
+        Usage {
+            input_tokens: u64,
+            output_tokens: u64,
+            total_tokens: u64,
+        },
+    }
+
+    #[derive(Deserialize)]
+    struct StreamCassetteTerminal {
+        kind: String,
+        error: Option<String>,
+    }
 
     #[test]
     fn provider_events_are_normalized_once_before_transport_publication() {
@@ -952,6 +1030,99 @@ mod tests {
         assert_eq!(tool.tool_call.expect("tool call").name, "catalog.read");
         assert_eq!(usage.usage.expect("usage").total_tokens, 5);
         assert_eq!([delta.sequence, tool.sequence, usage.sequence], [1, 2, 3]);
+    }
+
+    #[test]
+    fn rig_stream_cassettes_cover_every_supported_protocol_family() {
+        let document: StreamCassetteDocument = serde_json::from_str(include_str!(
+            "../../contracts/rig-0.39-stream-cassettes.json"
+        ))
+        .expect("stream cassette document is valid JSON");
+        assert_eq!(document.rig_version, "0.39.0");
+        assert_eq!(
+            document
+                .cassettes
+                .iter()
+                .map(|cassette| cassette.family.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "openai_compatible",
+                "anthropic",
+                "gemini",
+                "cloud_auth",
+                "deployment_local"
+            ]
+        );
+        for cassette in document.cassettes {
+            let hub = AiRunStreamHub::new(32);
+            let mut receiver = hub.subscribe();
+            let session_id = Uuid::new_v4();
+            let run_id = Uuid::new_v4();
+            let buffer = Arc::new(Mutex::new(String::new()));
+            for event in &cassette.events {
+                let event = match event {
+                    StreamCassetteEvent::Text { value } => {
+                        ProviderStreamEvent::TextDelta(value.clone())
+                    }
+                    StreamCassetteEvent::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    } => ProviderStreamEvent::ToolCall(ToolCall {
+                        id: id.clone(),
+                        name: name.clone(),
+                        arguments: arguments.clone(),
+                    }),
+                    StreamCassetteEvent::Usage {
+                        input_tokens,
+                        output_tokens,
+                        total_tokens,
+                    } => ProviderStreamEvent::Usage(ProviderUsage::normalized(
+                        *input_tokens,
+                        *output_tokens,
+                        Some(*total_tokens),
+                    )),
+                };
+                publish_provider_stream_event_to_hub(&hub, session_id, run_id, &buffer, event);
+            }
+            let terminal_kind = match cassette.terminal.kind.as_str() {
+                "completed" => AiRunStreamEventKind::Completed,
+                "failed" => AiRunStreamEventKind::Failed,
+                "cancelled" => AiRunStreamEventKind::Cancelled,
+                other => panic!("unsupported terminal fixture kind `{other}`"),
+            };
+            let terminal = AiRunStreamEvent {
+                session_id,
+                run_id,
+                event_kind: terminal_kind,
+                content_delta: None,
+                accumulated_content: None,
+                error_message: cassette.terminal.error.clone(),
+                tool_call: None,
+                usage: None,
+                sequence: 0,
+                created_at: Utc::now(),
+            };
+            assert!(hub.publish(terminal.clone()));
+            assert!(!hub.publish(terminal));
+            let events = (0..=cassette.events.len())
+                .map(|_| receiver.try_recv().expect("normalized stream event"))
+                .collect::<Vec<_>>();
+            assert!(events
+                .iter()
+                .enumerate()
+                .all(|(index, event)| event.sequence == (index + 1) as u64));
+            assert!(events
+                .iter()
+                .all(|event| event.session_id == session_id && event.run_id == run_id));
+            assert!(events
+                .iter()
+                .any(|event| event.event_kind == AiRunStreamEventKind::Delta
+                    && event.accumulated_content.is_some()));
+            let terminal = events.last().expect("terminal event");
+            assert_eq!(terminal.event_kind, terminal_kind);
+            assert_eq!(terminal.error_message, cassette.terminal.error);
+        }
     }
 
     #[test]
@@ -1031,5 +1202,40 @@ mod tests {
         .expect_err("private origin requires an explicit deployment egress policy");
 
         assert!(error.to_string().contains("loopback"));
+    }
+
+    #[test]
+    fn target_contract_rejects_unknown_targets_and_credentials_for_non_secret_auth() {
+        let target_id = ProviderTargetId::new("workload_vertex").unwrap();
+        let targets = AiProviderTargetCatalog::new(vec![AiProviderTarget {
+            id: target_id.clone(),
+            provider_slug: ProviderSlug::new("vertex_ai").unwrap(),
+            display_name: "Vertex workload identity".to_string(),
+            auth: ProviderTargetAuth::WorkloadIdentity,
+            settings: BTreeMap::new(),
+        }])
+        .unwrap();
+        let policy = ProviderEgressPolicy::default();
+        let unknown = ProviderTargetId::new("not_catalogued").unwrap();
+        assert!(validate_provider_target_profile_contract(
+            &targets,
+            &unknown,
+            &BTreeMap::new(),
+            &policy,
+        )
+        .is_err());
+        let credentials = BTreeMap::from([(
+            "api_key".to_string(),
+            rustok_secrets::SecretRef {
+                resolver: "env".to_string(),
+                key: "RUSTOK_AI_FORBIDDEN".to_string(),
+            },
+        )]);
+        let error =
+            validate_provider_target_profile_contract(&targets, &target_id, &credentials, &policy)
+                .expect_err("workload identity target must reject tenant credential refs");
+        assert!(error
+            .to_string()
+            .contains("does not accept tenant credential references"));
     }
 }

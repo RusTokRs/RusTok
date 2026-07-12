@@ -73,9 +73,12 @@ background job; the UI must not duplicate migration, seed, or admin logic.
 The topology contract distinguishes a one-role `monolith` from a distributed
 deployment descriptor. Trusted CLI and HTTP hosts bind the selected
 distribution revision/hash before preflight and apply; a wizard never supplies
-that identity. Distributed topology is represented but explicitly rejected
-until a deployment adapter can build/deploy roles from one composition revision
-while applying shared schema, tenant seed, and admin provisioning only once. See the
+that identity. `InstallDeploymentPort` and deterministic
+`InstallRoleDeploymentRequest` values define the neutral role hand-off: a host
+adapter must build, publish, wait for, and idempotently return an active release
+for the same composition, role, and surfaces. Distributed topology remains
+explicitly rejected until that adapter is composed into the apply executor;
+schema, tenant seed, and admin provisioning will still run only once. See the
 [implementation plan](implementation-plan.md) for ownership and rollout.
 
 ## Related documents
