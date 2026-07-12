@@ -91,7 +91,7 @@ impl FlexIndexer {
             .map_err(IndexError::from)?;
 
         let Some(row) = row else {
-            debug!(entry_id = %entry_id, "Flex entry not found, skipping index");
+            debug!(entry_id = %entry_id, "Flex entry not found");
             return Ok(None);
         };
 
@@ -220,8 +220,9 @@ impl FlexIndexer {
             .map_err(IndexError::from)?;
 
         let ids = rows.into_iter().map(|row| row.id).collect();
-        let stats = run_bounded_reindex(self.clone(), ctx, ids, "reindex_schema_entries").await;
-        Ok(stats.scheduled)
+        run_bounded_reindex(self.clone(), ctx, ids, "reindex_schema_entries")
+            .await
+            .strict_completed(Indexer::name(self), "reindex_schema_entries")
     }
 
     async fn delete_schema_entries_from_index(
@@ -270,9 +271,15 @@ impl Indexer for FlexIndexer {
 
     #[instrument(skip(self, ctx))]
     async fn index_one(&self, ctx: &IndexerContext, entity_id: Uuid) -> IndexResult<()> {
-        if let Some(model) = self.build_index_entry(ctx, entity_id).await? {
-            self.upsert_index_entry(&model).await?;
-            debug!(entry_id = %entity_id, "Indexed flex entry");
+        match self.build_index_entry(ctx, entity_id).await? {
+            Some(model) => {
+                self.upsert_index_entry(&model).await?;
+                debug!(entry_id = %entity_id, "Indexed flex entry");
+            }
+            None => {
+                self.delete_entry_from_index(ctx.tenant_id, entity_id).await?;
+                debug!(entry_id = %entity_id, tenant_id = %ctx.tenant_id, "Removed stale flex index entry");
+            }
         }
 
         Ok(())
@@ -300,8 +307,9 @@ impl Indexer for FlexIndexer {
             .map_err(IndexError::from)?;
 
         let ids = rows.into_iter().map(|row| row.id).collect();
-        let stats = run_bounded_reindex(self.clone(), ctx, ids, "reindex_all").await;
-        Ok(stats.scheduled)
+        run_bounded_reindex(self.clone(), ctx, ids, "reindex_all")
+            .await
+            .strict_completed(Indexer::name(self), "reindex_all")
     }
 }
 
