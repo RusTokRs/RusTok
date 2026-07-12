@@ -776,6 +776,8 @@ mod tests {
                 bindings: Vec::new(),
                 dependencies: Vec::new(),
                 permissions: Vec::new(),
+                settings_schema: None,
+                data_schema: None,
             },
             media_type: media_type_for(kind).to_string(),
             payload,

@@ -53,6 +53,8 @@ pub fn stage_rhai_module_release(
         bindings: Vec::new(),
         dependencies: Vec::new(),
         permissions: Vec::new(),
+        settings_schema: None,
+        data_schema: None,
     };
     descriptor
         .validate()

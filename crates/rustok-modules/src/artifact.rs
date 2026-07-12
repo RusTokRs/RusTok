@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thiserror::Error;
 
 use rustok_sandbox::{CapabilityName, SandboxExecutorKind};
@@ -85,6 +86,10 @@ pub struct ModuleArtifactDescriptor {
     pub dependencies: Vec<ModuleDependencyConstraint>,
     #[serde(default)]
     pub permissions: Vec<ArtifactPermissionDescriptor>,
+    #[serde(default)]
+    pub settings_schema: Option<Value>,
+    #[serde(default)]
+    pub data_schema: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,6 +247,12 @@ impl ModuleArtifactDescriptor {
                 ));
             }
         }
+        for schema in [&self.settings_schema, &self.data_schema]
+            .into_iter()
+            .flatten()
+        {
+            validate_local_schema_references(schema)?;
+        }
         Ok(())
     }
 
@@ -366,6 +377,8 @@ pub enum ModuleArtifactError {
     InvalidPermission(String),
     #[error("artifact permission `{0}` is declared more than once")]
     DuplicatePermission(String),
+    #[error("artifact schema contains a non-local `$ref` `{0}")]
+    NonLocalSchemaReference(String),
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
@@ -388,6 +401,28 @@ fn valid_digest(value: &str) -> bool {
         && value[7..]
             .chars()
             .all(|character| character.is_ascii_hexdigit())
+}
+
+fn validate_local_schema_references(schema: &Value) -> Result<(), ModuleArtifactError> {
+    match schema {
+        Value::Object(object) => {
+            if let Some(Value::String(reference)) = object.get("$ref") {
+                if !reference.starts_with('#') {
+                    return Err(ModuleArtifactError::NonLocalSchemaReference(reference.clone()));
+                }
+            }
+            for value in object.values() {
+                validate_local_schema_references(value)?;
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                validate_local_schema_references(value)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -418,6 +453,8 @@ mod tests {
             bindings: Vec::new(),
             dependencies: Vec::new(),
             permissions: Vec::new(),
+            settings_schema: None,
+            data_schema: None,
         }
     }
 

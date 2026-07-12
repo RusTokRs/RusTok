@@ -90,7 +90,7 @@ impl ModuleDefinition {
                     }
                 })
                 .collect(),
-            settings_schema: None,
+            settings_schema: descriptor.settings_schema.clone(),
             bindings: Vec::new(),
             ui: None,
             capabilities: Vec::new(),
