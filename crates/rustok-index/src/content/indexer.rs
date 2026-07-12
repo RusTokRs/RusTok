@@ -228,7 +228,7 @@ impl ContentIndexer {
                 $27, $28,
                 $29, $30, $31, NOW()
             )
-            ON CONFLICT (node_id, locale) DO UPDATE SET
+            ON CONFLICT (tenant_id, node_id, locale) DO UPDATE SET
                 kind = EXCLUDED.kind,
                 status = EXCLUDED.status,
                 title = EXCLUDED.title,
@@ -299,13 +299,13 @@ impl ContentIndexer {
             .map_err(crate::error::IndexError::from)
     }
 
-    /// Remove all locales for a node from index_content
+    /// Remove all locales for a tenant-owned node from index_content.
     #[instrument(skip(self))]
-    async fn delete_node_from_index(&self, node_id: Uuid) -> IndexResult<()> {
+    async fn delete_node_from_index(&self, tenant_id: Uuid, node_id: Uuid) -> IndexResult<()> {
         let stmt = Statement::from_sql_and_values(
             self.backend(),
-            "DELETE FROM index_content WHERE node_id = $1",
-            vec![node_id.into()],
+            "DELETE FROM index_content WHERE tenant_id = $1 AND node_id = $2",
+            vec![tenant_id.into(), node_id.into()],
         );
         self.db
             .execute(stmt)
@@ -314,13 +314,18 @@ impl ContentIndexer {
             .map_err(crate::error::IndexError::from)
     }
 
-    /// Remove a specific locale for a node from index_content
+    /// Remove a specific locale for a tenant-owned node from index_content.
     #[instrument(skip(self))]
-    async fn delete_node_locale_from_index(&self, node_id: Uuid, locale: &str) -> IndexResult<()> {
+    async fn delete_node_locale_from_index(
+        &self,
+        tenant_id: Uuid,
+        node_id: Uuid,
+        locale: &str,
+    ) -> IndexResult<()> {
         let stmt = Statement::from_sql_and_values(
             self.backend(),
-            "DELETE FROM index_content WHERE node_id = $1 AND locale = $2",
-            vec![node_id.into(), locale.into()],
+            "DELETE FROM index_content WHERE tenant_id = $1 AND node_id = $2 AND locale = $3",
+            vec![tenant_id.into(), node_id.into(), locale.into()],
         );
         self.db
             .execute(stmt)
@@ -344,7 +349,7 @@ impl ContentIndexer {
         let rows = LocaleRow::find_by_statement(stmt)
             .all(&self.db)
             .await
-            .unwrap_or_default();
+            .map_err(crate::error::IndexError::from)?;
 
         if rows.is_empty() {
             Ok(vec!["en".to_string()])
@@ -382,23 +387,25 @@ impl Indexer for ContentIndexer {
     async fn index_one(&self, ctx: &IndexerContext, entity_id: Uuid) -> IndexResult<()> {
         let locales = self.get_tenant_locales(ctx).await?;
 
-        let mut failed = 0usize;
+        let mut failures = Vec::new();
         for locale in &locales {
             if let Err(err) = self.index_locale(ctx, entity_id, locale).await {
-                failed += 1;
                 warn!(
                     node_id = %entity_id,
                     locale = locale,
                     error = %err,
                     "Failed to index content locale; continuing with remaining locales"
                 );
+                failures.push(format!("{locale}: {err}"));
             }
         }
 
-        if failed > 0 && failed == locales.len() {
+        if !failures.is_empty() {
             return Err(crate::error::IndexError::Index(format!(
-                "Failed to index node {entity_id} in all {} locale(s)",
-                locales.len()
+                "Failed to index node {entity_id} in {}/{} locale(s): {}",
+                failures.len(),
+                locales.len(),
+                failures.join("; ")
             )));
         }
 
@@ -407,9 +414,8 @@ impl Indexer for ContentIndexer {
 
     #[instrument(skip(self, ctx))]
     async fn remove_one(&self, ctx: &IndexerContext, entity_id: Uuid) -> IndexResult<()> {
-        let _ = ctx;
-        debug!(node_id = %entity_id, "Removing from content index");
-        self.delete_node_from_index(entity_id).await
+        debug!(node_id = %entity_id, tenant_id = %ctx.tenant_id, "Removing from content index");
+        self.delete_node_from_index(ctx.tenant_id, entity_id).await
     }
 
     #[instrument(skip(self, ctx))]
@@ -430,7 +436,7 @@ impl Indexer for ContentIndexer {
         let rows = IdRow::find_by_statement(stmt)
             .all(&self.db)
             .await
-            .unwrap_or_default();
+            .map_err(crate::error::IndexError::from)?;
 
         let ids = rows.into_iter().map(|row| row.id).collect();
         let stats = run_bounded_reindex(self.clone(), ctx, ids, "reindex_all").await;
@@ -455,7 +461,7 @@ impl LocaleIndexer for ContentIndexer {
                 debug!(node_id = %entity_id, locale = locale, "Indexed content");
             }
             None => {
-                self.delete_node_locale_from_index(entity_id, locale)
+                self.delete_node_locale_from_index(ctx.tenant_id, entity_id, locale)
                     .await?;
             }
         }
@@ -465,12 +471,13 @@ impl LocaleIndexer for ContentIndexer {
 
     async fn remove_locale(
         &self,
-        _ctx: &IndexerContext,
+        ctx: &IndexerContext,
         entity_id: Uuid,
         locale: &str,
     ) -> IndexResult<()> {
-        debug!(node_id = %entity_id, locale = locale, "Removed locale from content index");
-        self.delete_node_locale_from_index(entity_id, locale).await
+        debug!(node_id = %entity_id, tenant_id = %ctx.tenant_id, locale = locale, "Removed locale from content index");
+        self.delete_node_locale_from_index(ctx.tenant_id, entity_id, locale)
+            .await
     }
 }
 
@@ -568,7 +575,7 @@ impl ContentIndexer {
         let rows = IdRow::find_by_statement(stmt)
             .all(&self.db)
             .await
-            .unwrap_or_default();
+            .map_err(crate::error::IndexError::from)?;
 
         let ids = rows.into_iter().map(|row| row.id).collect();
         let _stats = run_bounded_reindex(self.clone(), ctx, ids, "reindex_category_nodes").await;
