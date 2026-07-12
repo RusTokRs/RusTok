@@ -8,7 +8,7 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactBlobStore, ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ArtifactReleaseRef,
-    InstalledModuleArtifact, ModuleInstallationError, ModuleRuntimeBinding,
+    InstalledModuleArtifact, ModuleDependencyLockGraph, ModuleInstallationError, ModuleRuntimeBinding,
 };
 
 /// Executes an installed immutable artifact without involving the server's
@@ -271,6 +271,8 @@ mod tests {
                 digest: package.descriptor.artifact_digest.clone(),
             },
             descriptor: package.descriptor.clone(),
+            dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
+                .expect("empty dependency lock"),
             installed_at: Utc::now(),
         };
         let observed = Arc::new(Mutex::new(None));
@@ -323,6 +325,8 @@ mod tests {
                 entrypoint: "other".to_string(),
                 ..package.descriptor.clone()
             },
+            dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
+                .expect("empty dependency lock"),
             installed_at: Utc::now(),
         };
         let runtime = ArtifactRuntime::new(

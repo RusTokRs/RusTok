@@ -8,9 +8,9 @@
   "degraded_modes": ["preserve_cart_checkout_state", "show_cart_refresh_required"],
   "cases": [
     { "operation": "read_cart_checkout_snapshot", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_cart(", ".map_err(cart_error_to_port_error)"] },
-    { "operation": "update_cart_checkout_context", "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.update_context(", ".map_err(cart_error_to_port_error)"] },
-    { "operation": "begin_cart_checkout", "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.begin_checkout(", ".map_err(cart_error_to_port_error)"] },
-    { "operation": "release_cart_checkout", "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.release_checkout(", ".map_err(cart_error_to_port_error)"] },
-    { "operation": "complete_cart_checkout", "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.complete_cart(", ".map_err(cart_error_to_port_error)"] }
+    { "operation": "update_cart_checkout_context", "source_order": ["context.require_write_semantics()?", "self.update_context(", ".map_err(cart_error_to_port_error)"] },
+    { "operation": "begin_cart_checkout", "source_order": ["context.require_write_semantics()?", "self.begin_checkout(", ".map_err(cart_error_to_port_error)"] },
+    { "operation": "release_cart_checkout", "source_order": ["context.require_write_semantics()?", "self.release_checkout(", ".map_err(cart_error_to_port_error)"] },
+    { "operation": "complete_cart_checkout", "source_order": ["context.require_write_semantics()?", "self.complete_cart(", ".map_err(cart_error_to_port_error)"] }
   ]
 }

@@ -75,7 +75,7 @@ impl CartCheckoutPort for crate::CartService {
         context: PortContext,
         request: CartCheckoutContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.update_context(tenant_id, request.cart_id, request.input)
             .await
@@ -87,7 +87,7 @@ impl CartCheckoutPort for crate::CartService {
         context: PortContext,
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.begin_checkout(tenant_id, request.cart_id)
             .await
@@ -99,7 +99,7 @@ impl CartCheckoutPort for crate::CartService {
         context: PortContext,
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.release_checkout(tenant_id, request.cart_id)
             .await
@@ -111,7 +111,7 @@ impl CartCheckoutPort for crate::CartService {
         context: PortContext,
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.complete_cart(tenant_id, request.cart_id)
             .await

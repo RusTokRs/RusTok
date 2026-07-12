@@ -17,7 +17,7 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor,
-    ModuleArtifactError,
+    ModuleArtifactError, ModuleDependencyLockGraph,
 };
 
 const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
@@ -116,6 +116,10 @@ pub struct InstalledModuleArtifact {
     pub reference: OciArtifactReference,
     pub release: ArtifactReleaseRef,
     pub descriptor: ModuleArtifactDescriptor,
+    /// Exact resolved dependencies admitted with this installation. Runtime
+    /// execution receives only this immutable graph, never a live registry
+    /// lookup or a floating version constraint.
+    pub dependency_lock: ModuleDependencyLockGraph,
     pub installed_at: DateTime<Utc>,
 }
 
@@ -129,6 +133,26 @@ pub enum ModuleInstallationScope {
 }
 
 impl InstalledModuleArtifact {
+    pub fn validate_dependency_lock(&self) -> Result<(), ModuleInstallationError> {
+        self.dependency_lock
+            .validate()
+            .map_err(|error| ModuleInstallationError::DependencyLock(error.to_string()))?;
+        for dependency in &self.descriptor.dependencies {
+            if !self
+                .dependency_lock
+                .nodes
+                .iter()
+                .any(|node| node.slug == dependency.slug)
+            {
+                return Err(ModuleInstallationError::DependencyLock(format!(
+                    "resolved graph does not select declared dependency `{}`",
+                    dependency.slug
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub fn sandbox_request(
         &self,
         payload: Vec<u8>,
@@ -136,6 +160,7 @@ impl InstalledModuleArtifact {
         input: Value,
         policy: SandboxPolicy,
     ) -> Result<SandboxRequest, ModuleInstallationError> {
+        self.validate_dependency_lock()?;
         let executor = self
             .descriptor
             .payload_kind
@@ -476,17 +501,18 @@ async fn configure_rls_scope<C: ConnectionTrait>(
 
 fn installation_insert_sql(backend: DbBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=14)
+        DbBackend::Postgres => (1..=17)
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>(),
-        _ => (1..=14)
+        _ => (1..=17)
             .map(|index| format!("?{index}"))
             .collect::<Vec<_>>(),
     };
     format!(
         "INSERT INTO module_artifact_installations (\
             installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
-            slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, installed_at\
+            slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
+            dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at\
          ) VALUES ({})",
         placeholders.join(", ")
     )
@@ -501,6 +527,8 @@ fn installation_values(
         ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
     };
     let descriptor = serde_json::to_value(&artifact.descriptor)
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    let dependency_lock = serde_json::to_value(&artifact.dependency_lock)
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let installation_id = uuid_value(artifact.installation_id, backend);
     let tenant_id = optional_uuid_value(tenant_id, backend);
@@ -522,6 +550,9 @@ fn installation_values(
         artifact.descriptor.artifact_digest.clone().into(),
         artifact.descriptor.entrypoint.clone().into(),
         SqlValue::Json(Some(Box::new(descriptor))),
+        (artifact.dependency_lock.graph_revision as i64).into(),
+        artifact.dependency_lock.graph_digest.clone().into(),
+        SqlValue::Json(Some(Box::new(dependency_lock))),
         installed_at,
     ])
 }
@@ -570,6 +601,7 @@ where
         media_type: &str,
         payload: &[u8],
     ) -> Result<(), ModuleInstallationError> {
+        artifact.validate_dependency_lock()?;
         let staged = self
             .blobs
             .stage(&artifact.descriptor.artifact_digest, media_type, payload)
@@ -599,6 +631,7 @@ where
         &self,
         reference: OciArtifactReference,
         scope: ModuleInstallationScope,
+        dependency_lock: ModuleDependencyLockGraph,
         installed_at: DateTime<Utc>,
     ) -> Result<InstalledModuleArtifact, ModuleInstallationError> {
         reference.validate()?;
@@ -620,6 +653,7 @@ where
             reference: package.reference,
             release,
             descriptor: package.descriptor,
+            dependency_lock,
             installed_at,
         };
         self.admission
@@ -653,6 +687,8 @@ pub enum ModuleInstallationError {
     Blob(String),
     #[error("admitted artifact blob `{0}` is unavailable")]
     BlobNotFound(String),
+    #[error("artifact dependency lock is invalid: {0}")]
+    DependencyLock(String),
 }
 
 fn media_type_for(kind: ArtifactPayloadKind) -> &'static str {
@@ -793,6 +829,10 @@ mod tests {
         }
     }
 
+    fn empty_dependency_lock() -> ModuleDependencyLockGraph {
+        ModuleDependencyLockGraph::create(0, Vec::new()).expect("empty dependency lock")
+    }
+
     #[tokio::test]
     async fn reconciler_discards_only_unpublished_staging() {
         let blobs = InMemoryArtifactBlobStore::default();
@@ -831,7 +871,12 @@ mod tests {
         );
 
         let installed = installer
-            .install(reference, ModuleInstallationScope::Platform, Utc::now())
+            .install(
+                reference,
+                ModuleInstallationScope::Platform,
+                empty_dependency_lock(),
+                Utc::now(),
+            )
             .await
             .expect("install");
 
@@ -851,7 +896,12 @@ mod tests {
 
         assert!(matches!(
             installer
-                .install(reference, ModuleInstallationScope::Platform, Utc::now())
+                .install(
+                    reference,
+                    ModuleInstallationScope::Platform,
+                    empty_dependency_lock(),
+                    Utc::now(),
+                )
                 .await,
             Err(ModuleInstallationError::StaticPromotionRequired)
         ));
@@ -871,7 +921,7 @@ mod tests {
             tenant_id: Uuid::new_v4(),
         };
         let installed = installer
-            .install(reference, scope.clone(), Utc::now())
+            .install(reference, scope.clone(), empty_dependency_lock(), Utc::now())
             .await
             .expect("install");
 
@@ -926,6 +976,7 @@ mod tests {
             .install(
                 reference,
                 ModuleInstallationScope::Tenant { tenant_id },
+                empty_dependency_lock(),
                 Utc::now(),
             )
             .await
@@ -934,7 +985,8 @@ mod tests {
         let row = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
-                "SELECT installation_id, scope_kind, tenant_id, manifest_digest, payload_digest \
+                "SELECT installation_id, scope_kind, tenant_id, manifest_digest, payload_digest, \
+                 dependency_graph_revision, dependency_graph_digest \
                  FROM module_artifact_installations"
                     .to_string(),
             ))
@@ -960,6 +1012,16 @@ mod tests {
         assert_eq!(
             String::try_get(&row, "", "payload_digest").expect("payload digest"),
             installed.descriptor.artifact_digest
+        );
+        assert_eq!(
+            i64::try_get(&row, "", "dependency_graph_revision")
+                .expect("dependency graph revision"),
+            installed.dependency_lock.graph_revision as i64
+        );
+        assert_eq!(
+            String::try_get(&row, "", "dependency_graph_digest")
+                .expect("dependency graph digest"),
+            installed.dependency_lock.graph_digest
         );
     }
 }
