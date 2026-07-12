@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    ArtifactModuleKind, ArtifactPermissionDescriptor, ArtifactReleaseRef, ModuleArtifactDescriptor,
-    ModuleDependencyConstraint, ModuleRuntimeBinding,
+    ArtifactModuleKind, ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactUiContribution,
+    ModuleArtifactDescriptor, ModuleDependencyConstraint, ModuleRuntimeBinding,
 };
 
 /// Whether a definition is permanently active platform infrastructure or can
@@ -55,7 +55,7 @@ pub struct ModuleDefinition {
     #[serde(default)]
     pub bindings: Vec<ModuleRuntimeBinding>,
     #[serde(default)]
-    pub ui: Option<serde_json::Value>,
+    pub ui: Vec<ArtifactUiContribution>,
     #[serde(default)]
     pub capabilities: Vec<String>,
 }
@@ -90,9 +90,9 @@ impl ModuleDefinition {
                     }
                 })
                 .collect(),
-            settings_schema: descriptor.settings_schema.clone(),
+            settings_schema: None,
             bindings: Vec::new(),
-            ui: None,
+            ui: Vec::new(),
             capabilities: Vec::new(),
         }
     }
@@ -111,9 +111,9 @@ impl ModuleDefinition {
             },
             dependencies: descriptor.dependencies.clone(),
             permissions: descriptor.permissions.clone(),
-            settings_schema: None,
+            settings_schema: descriptor.settings_schema.clone(),
             bindings: descriptor.bindings.clone(),
-            ui: None,
+            ui: descriptor.ui_contributions.clone(),
             capabilities: descriptor
                 .capabilities
                 .iter()

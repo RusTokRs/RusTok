@@ -90,6 +90,8 @@ pub struct ModuleArtifactDescriptor {
     pub settings_schema: Option<Value>,
     #[serde(default)]
     pub data_schema: Option<Value>,
+    #[serde(default)]
+    pub ui_contributions: Vec<ArtifactUiContribution>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +104,16 @@ pub struct ModuleDependencyConstraint {
 pub struct ArtifactPermissionDescriptor {
     pub key: String,
     pub label: String,
+}
+
+/// Host-rendered declarative contribution. It is metadata only: marketplace
+/// artifacts never inject executable UI code into a host process.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactUiContribution {
+    pub id: String,
+    pub surface: String,
+    pub localization_digest: String,
+    pub permission: String,
 }
 
 /// Declarative runtime binding admitted with an immutable artifact descriptor.
@@ -253,6 +265,21 @@ impl ModuleArtifactDescriptor {
         {
             validate_local_schema_references(schema)?;
         }
+        for (index, contribution) in self.ui_contributions.iter().enumerate() {
+            if contribution.id.trim().is_empty()
+                || contribution.surface.trim().is_empty()
+                || !valid_digest(&contribution.localization_digest)
+                || !contribution.permission.starts_with(&permission_prefix)
+            {
+                return Err(ModuleArtifactError::InvalidUiContribution(contribution.id.clone()));
+            }
+            if self.ui_contributions[..index]
+                .iter()
+                .any(|previous| previous.id == contribution.id)
+            {
+                return Err(ModuleArtifactError::DuplicateUiContribution(contribution.id.clone()));
+            }
+        }
         Ok(())
     }
 
@@ -379,6 +406,10 @@ pub enum ModuleArtifactError {
     DuplicatePermission(String),
     #[error("artifact schema contains a non-local `$ref` `{0}")]
     NonLocalSchemaReference(String),
+    #[error("artifact UI contribution `{0}` is invalid")]
+    InvalidUiContribution(String),
+    #[error("artifact UI contribution `{0}` is declared more than once")]
+    DuplicateUiContribution(String),
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
     ForkSlugMismatch { expected: String, received: String },
     #[error("forked artifact version must be newer than `{parent}`, received `{received}`")]
@@ -408,7 +439,9 @@ fn validate_local_schema_references(schema: &Value) -> Result<(), ModuleArtifact
         Value::Object(object) => {
             if let Some(Value::String(reference)) = object.get("$ref") {
                 if !reference.starts_with('#') {
-                    return Err(ModuleArtifactError::NonLocalSchemaReference(reference.clone()));
+                    return Err(ModuleArtifactError::NonLocalSchemaReference(
+                        reference.clone(),
+                    ));
                 }
             }
             for value in object.values() {
@@ -455,6 +488,7 @@ mod tests {
             permissions: Vec::new(),
             settings_schema: None,
             data_schema: None,
+            ui_contributions: Vec::new(),
         }
     }
 
@@ -592,6 +626,18 @@ mod tests {
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidPermission(_))
+        ));
+    }
+
+    #[test]
+    fn schemas_reject_network_and_file_references() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.settings_schema = Some(serde_json::json!({
+            "$ref": "https://schemas.example/settings.json"
+        }));
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::NonLocalSchemaReference(_))
         ));
     }
 
