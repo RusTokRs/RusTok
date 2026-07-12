@@ -8,11 +8,10 @@ mod vectors;
 
 pub use catalog::{
     provider_catalog, provider_catalog_entry, ProviderCatalogEntry, ProviderConfigField,
-    ProviderDefaultSetting,
-    ProviderFeature, ProviderFieldKind, ProviderSlug,
+    ProviderDefaultSetting, ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetId,
 };
 #[cfg(feature = "server")]
-pub use catalog::ProviderEgressPolicy;
+pub use catalog::{AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy};
 #[cfg(feature = "server")]
 pub use catalog::provider_factory_supports;
 #[cfg(feature = "server")]

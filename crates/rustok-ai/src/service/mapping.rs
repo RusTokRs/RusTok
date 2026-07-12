@@ -8,7 +8,7 @@ use crate::entities::{
 use crate::model::{
     AiRunDecisionTrace, ChatMessage, ChatMessageRole, ProviderUsagePolicy, TaskProfile, ToolTrace,
 };
-use crate::{AiError, AiResult, ProviderSlug};
+use crate::{AiError, AiResult, ProviderSlug, ProviderTargetId};
 
 use super::helpers::{
     capability_from_slug, capability_list, execution_mode_from_slug, json_err,
@@ -27,8 +27,8 @@ pub fn map_provider_profile(
         slug: model.slug,
         display_name: model.display_name,
         provider_slug: provider_slug_from_str(&model.provider_slug)?,
+        provider_target_id: ProviderTargetId::new(model.provider_target_id).map_err(AiError::Runtime)?,
         model: model.model,
-        settings: serde_json::from_value(model.settings).map_err(json_err)?,
         credential_refs: serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?,
         temperature: model.temperature,
         max_tokens: model.max_tokens,

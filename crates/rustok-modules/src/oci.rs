@@ -1,7 +1,7 @@
 //! OCI Distribution adapter for immutable module artifacts.
 
 use async_trait::async_trait;
-use oci_distribution::{secrets::RegistryAuth, Client, Reference};
+use oci_distribution::{Client, Reference, secrets::RegistryAuth};
 
 use crate::{
     ArtifactRegistry, ModuleArtifactPackage, ModuleInstallationError, OciArtifactReference,

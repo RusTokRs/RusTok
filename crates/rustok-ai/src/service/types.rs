@@ -13,7 +13,7 @@ use crate::model::{
     AiRunDecisionTrace, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderCapability,
     ProviderUsagePolicy, ToolCall, ToolTrace,
 };
-use crate::ProviderSlug;
+use crate::{ProviderSlug, ProviderTargetId};
 
 #[derive(Clone)]
 pub struct SharedAiModuleRegistry(pub ModuleRegistry);
@@ -25,6 +25,9 @@ pub struct SharedAiSecretResolverRegistry(pub SecretResolverRegistry);
 pub struct SharedAiEgressPolicy(pub crate::ProviderEgressPolicy);
 
 #[derive(Clone)]
+pub struct SharedAiProviderTargetCatalog(pub crate::AiProviderTargetCatalog);
+
+#[derive(Clone)]
 pub struct AiHostRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -33,6 +36,7 @@ pub struct AiHostRuntime {
     alloy_runtime: Option<alloy::SharedAlloyRuntime>,
     secret_registry: SecretResolverRegistry,
     egress_policy: crate::ProviderEgressPolicy,
+    provider_targets: crate::AiProviderTargetCatalog,
 }
 
 impl AiHostRuntime {
@@ -49,6 +53,8 @@ impl AiHostRuntime {
             alloy_runtime: None,
             secret_registry: SecretResolverRegistry::builder().build(),
             egress_policy: crate::ProviderEgressPolicy::default(),
+            provider_targets: crate::AiProviderTargetCatalog::from_environment()
+                .expect("invalid deployment AI provider target configuration"),
         }
     }
 
@@ -78,6 +84,18 @@ impl AiHostRuntime {
 
     pub fn egress_policy(&self) -> &crate::ProviderEgressPolicy {
         &self.egress_policy
+    }
+
+    pub fn with_provider_targets(
+        mut self,
+        provider_targets: crate::AiProviderTargetCatalog,
+    ) -> Self {
+        self.provider_targets = provider_targets;
+        self
+    }
+
+    pub fn provider_targets(&self) -> &crate::AiProviderTargetCatalog {
+        &self.provider_targets
     }
 
     pub fn db(&self) -> &DatabaseConnection {
@@ -120,9 +138,8 @@ pub struct AiOperatorContext {
 pub struct CreateAiProviderProfileInput {
     pub slug: String,
     pub display_name: String,
-    pub provider_slug: ProviderSlug,
+    pub provider_target_id: ProviderTargetId,
     pub model: String,
-    pub settings: BTreeMap<String, serde_json::Value>,
     pub credential_refs: BTreeMap<String, SecretRef>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
@@ -134,8 +151,8 @@ pub struct CreateAiProviderProfileInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAiProviderProfileInput {
     pub display_name: String,
+    pub provider_target_id: ProviderTargetId,
     pub model: String,
-    pub settings: BTreeMap<String, serde_json::Value>,
     pub credential_refs: BTreeMap<String, SecretRef>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
@@ -240,8 +257,8 @@ pub struct AiProviderProfileRecord {
     pub slug: String,
     pub display_name: String,
     pub provider_slug: ProviderSlug,
+    pub provider_target_id: ProviderTargetId,
     pub model: String,
-    pub settings: BTreeMap<String, serde_json::Value>,
     pub credential_refs: BTreeMap<String, SecretRef>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,

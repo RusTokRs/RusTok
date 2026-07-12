@@ -868,9 +868,8 @@ impl From<crate::ProviderTestResult> for AiProviderTestResultGql {
 pub struct CreateAiProviderProfileInputGql {
     pub slug: String,
     pub display_name: String,
-    pub provider_slug: String,
+    pub provider_target_id: String,
     pub model: String,
-    pub settings: Vec<AiProviderSettingInputGql>,
     pub credential_refs: Vec<AiCredentialRefInputGql>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
@@ -882,8 +881,8 @@ pub struct CreateAiProviderProfileInputGql {
 #[derive(Debug, Clone, InputObject)]
 pub struct UpdateAiProviderProfileInputGql {
     pub display_name: String,
+    pub provider_target_id: String,
     pub model: String,
-    pub settings: Vec<AiProviderSettingInputGql>,
     pub credential_refs: Vec<AiCredentialRefInputGql>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,

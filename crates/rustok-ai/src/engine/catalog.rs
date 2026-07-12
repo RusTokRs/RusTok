@@ -63,6 +63,92 @@ impl AsRef<str> for ProviderSlug {
     }
 }
 
+/// Stable deployment-owned connection identifier.
+///
+/// Tenant records may select this value, but never supply the endpoint or
+/// cloud coordinates represented by the target.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProviderTargetId(String);
+
+impl ProviderTargetId {
+    pub fn new(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into().trim().to_ascii_lowercase();
+        if value.is_empty()
+            || !value
+                .chars()
+                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+        {
+            return Err("provider target id must be non-empty lowercase ASCII".to_string());
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ProviderTargetId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiProviderTarget {
+    pub id: ProviderTargetId,
+    pub provider_slug: ProviderSlug,
+    pub display_name: String,
+    #[serde(default)]
+    pub settings: BTreeMap<String, serde_json::Value>,
+}
+
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Default)]
+pub struct AiProviderTargetCatalog {
+    targets: BTreeMap<ProviderTargetId, AiProviderTarget>,
+}
+
+#[cfg(feature = "server")]
+impl AiProviderTargetCatalog {
+    pub fn new(targets: Vec<AiProviderTarget>) -> Result<Self, String> {
+        let mut values = BTreeMap::new();
+        for target in targets {
+            if provider_catalog_entry(&target.provider_slug).is_none() {
+                return Err(format!(
+                    "provider target `{}` references unknown integration `{}`",
+                    target.id, target.provider_slug
+                ));
+            }
+            if values.insert(target.id.clone(), target).is_some() {
+                return Err("provider target ids must be unique".to_string());
+            }
+        }
+        Ok(Self { targets: values })
+    }
+
+    /// Reads deployment configuration only. Values in this JSON must never be
+    /// accepted through tenant-facing transports.
+    pub fn from_environment() -> Result<Self, String> {
+        let Some(raw) = std::env::var_os("RUSTOK_AI_PROVIDER_TARGETS_JSON") else {
+            return Ok(Self::default());
+        };
+        let targets = serde_json::from_str::<Vec<AiProviderTarget>>(&raw.to_string_lossy())
+            .map_err(|error| format!("invalid RUSTOK_AI_PROVIDER_TARGETS_JSON: {error}"))?;
+        Self::new(targets)
+    }
+
+    pub fn get(&self, id: &ProviderTargetId) -> Option<&AiProviderTarget> {
+        self.targets.get(id)
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = &AiProviderTarget> {
+        self.targets.values()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderFeature {

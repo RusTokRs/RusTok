@@ -75,7 +75,7 @@ impl AuthCommandProvider {
             .map_err(command_failed)?;
         Ok(
             CommandOutcome::success("Expired auth sessions removed").with_data(serde_json::json!({
-                "deleted_sessions": result.rows_affected,
+                "deleted_sessions": result.rows_affected(),
             })),
         )
     }
@@ -171,7 +171,7 @@ async fn resolve_tenant_id(
         )
         .await
         .map(|tenant| tenant.id)
-        .map_err(command_failed)
+        .map_err(|error| command_failed(error.message))
 }
 
 fn options(args: &serde_json::Value) -> CliCoreResult<&serde_json::Map<String, serde_json::Value>> {

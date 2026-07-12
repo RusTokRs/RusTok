@@ -163,32 +163,38 @@ impl RigAgentDriver {
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
-                    if let Some(call) = calls.iter().find(|call| {
-                        self.tool_policy
-                            .is_tool_allowed(&call.tool_call.function.name)
-                            && self
-                                .tool_policy
-                                .is_tool_sensitive(&call.tool_call.function.name)
-                    }) {
-                        return Ok(RuntimeOutcome::WaitingApproval {
-                            appended_messages,
-                            traces,
-                            pending_approval: PendingApproval {
-                                tool_name: call.tool_call.function.name.clone(),
-                                tool_call_id: call.tool_call.id.clone(),
-                                input_payload: call.tool_call.function.arguments.clone(),
-                                reason: format!(
-                                    "Tool `{}` requires operator approval before execution",
-                                    call.tool_call.function.name
-                                ),
-                            },
+                    let pending_approval = calls
+                        .iter()
+                        .find(|call| {
+                            self.tool_policy
+                                .is_tool_allowed(&call.tool_call.function.name)
+                                && self
+                                    .tool_policy
+                                    .is_tool_sensitive(&call.tool_call.function.name)
+                        })
+                        .map(|call| PendingApproval {
+                            tool_name: call.tool_call.function.name.clone(),
+                            tool_call_id: call.tool_call.id.clone(),
+                            input_payload: call.tool_call.function.arguments.clone(),
+                            reason: format!(
+                                "Tool `{}` requires operator approval before execution",
+                                call.tool_call.function.name
+                            ),
                         });
-                    }
+                    let pending_sensitive_call_id = pending_approval
+                        .as_ref()
+                        .map(|approval| approval.tool_call_id.clone());
 
                     let mut results = Vec::with_capacity(calls.len());
                     for call in calls {
                         let name = call.tool_call.function.name.clone();
                         let arguments = call.tool_call.function.arguments.clone();
+                        if pending_sensitive_call_id
+                            .as_ref()
+                            .is_some_and(|id| id == &call.tool_call.id)
+                        {
+                            continue;
+                        }
                         let started = std::time::Instant::now();
                         if !self.tool_policy.is_tool_allowed(&name) {
                             let reason = format!(
@@ -269,6 +275,13 @@ impl RigAgentDriver {
                                 });
                             }
                         }
+                    }
+                    if let Some(pending_approval) = pending_approval {
+                        return Ok(RuntimeOutcome::WaitingApproval {
+                            appended_messages,
+                            traces,
+                            pending_approval,
+                        });
                     }
                     run.tool_results(results)
                         .map_err(|error| AiError::Runtime(error.to_string()))?;
@@ -488,6 +501,55 @@ mod tests {
         };
         assert_eq!(pending_approval.tool_name, "publish");
         assert!(mcp.calls.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sensitive_tool_defers_only_itself_in_a_multi_tool_turn() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: None,
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: vec![
+                        ToolCall {
+                            id: "publish-1".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({"id": "draft-1"}),
+                        },
+                        ToolCall {
+                            id: "notify-1".to_string(),
+                            name: "notify".to_string(),
+                            arguments: serde_json::json!({"channel": "operator"}),
+                        },
+                    ],
+                    metadata: serde_json::Value::Null,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                raw_payload: serde_json::Value::Null,
+            }])),
+        });
+        let mcp = Arc::new(RecordingMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp.clone(),
+            ToolExecutionPolicy::new(None, Vec::new(), vec!["publish".to_string()]),
+        );
+
+        let outcome = driver.run(&config(), request(), None).await.unwrap();
+        let RuntimeOutcome::WaitingApproval {
+            pending_approval,
+            traces,
+            ..
+        } = outcome
+        else {
+            panic!("the sensitive tool must wait for approval")
+        };
+        assert_eq!(pending_approval.tool_name, "publish");
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].tool_name, "notify");
+        assert_eq!(mcp.calls.lock().await.as_slice(), ["notify".to_string()]);
     }
 
     #[tokio::test]

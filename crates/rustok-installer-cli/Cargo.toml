@@ -9,6 +9,7 @@ description = "Operational seed command adapter for the RusToK installer"
 async-trait.workspace = true
 rustok-auth.workspace = true
 rustok-cli-core.workspace = true
+rustok-core.workspace = true
 rustok-distribution = { workspace = true, features = ["mod-cart", "mod-customer", "mod-product", "mod-profiles", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment", "mod-commerce", "mod-content", "mod-blog", "mod-forum", "mod-comments", "mod-pages", "mod-page_builder", "mod-taxonomy", "mod-alloy", "mod-flex", "mod-media", "mod-seo", "mod-workflow"] }
 rustok-installer.workspace = true
 rustok-modules.workspace = true

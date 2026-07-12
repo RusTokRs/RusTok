@@ -101,6 +101,24 @@ pub fn validate_provider_profile_contract(
     Ok(())
 }
 
+pub fn validate_provider_target_profile_contract(
+    targets: &crate::AiProviderTargetCatalog,
+    target_id: &crate::ProviderTargetId,
+    credential_refs: &std::collections::BTreeMap<String, rustok_secrets::SecretRef>,
+    egress_policy: &ProviderEgressPolicy,
+) -> AiResult<crate::ProviderSlug> {
+    let target = targets.get(target_id).ok_or_else(|| {
+        AiError::Validation(format!("unknown deployment provider target `{target_id}`"))
+    })?;
+    validate_provider_profile_contract(
+        &target.provider_slug,
+        &target.settings,
+        credential_refs,
+        egress_policy,
+    )?;
+    Ok(target.provider_slug.clone())
+}
+
 pub fn capability_from_slug(value: &str) -> AiResult<ProviderCapability> {
     match value {
         "text_generation" => Ok(ProviderCapability::TextGeneration),
@@ -126,12 +144,29 @@ pub fn execution_mode_from_slug(value: &str) -> AiResult<ExecutionMode> {
     }
 }
 
-pub fn provider_config(model: &ai_provider_profiles::Model) -> AiResult<AiProviderConfig> {
+pub fn provider_config(
+    model: &ai_provider_profiles::Model,
+    targets: &crate::AiProviderTargetCatalog,
+) -> AiResult<AiProviderConfig> {
+    let target_id = crate::ProviderTargetId::new(&model.provider_target_id)
+        .map_err(AiError::InvalidConfig)?;
+    let target = targets.get(&target_id).ok_or_else(|| {
+        AiError::InvalidConfig(format!(
+            "deployment provider target `{target_id}` is unavailable"
+        ))
+    })?;
+    let provider_slug = provider_slug_from_str(&model.provider_slug)?;
+    if target.provider_slug != provider_slug {
+        return Err(AiError::InvalidConfig(format!(
+            "provider profile `{}` does not match deployment target `{target_id}`",
+            model.slug
+        )));
+    }
     Ok(AiProviderConfig {
         tenant_id: model.tenant_id,
-        provider_slug: provider_slug_from_str(&model.provider_slug)?,
+        provider_slug,
         model: model.model.clone(),
-        settings: serde_json::from_value(model.settings.clone()).map_err(json_err)?,
+        settings: target.settings.clone(),
         credential_refs: serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?,
         temperature: model.temperature,
         max_tokens: model.max_tokens.map(|value| value.max(0) as u32),

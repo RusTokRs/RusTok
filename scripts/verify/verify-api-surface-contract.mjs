@@ -576,7 +576,7 @@ requireContains('apps/server/src/services/module_event_dispatcher.rs', 'AuthUser
 requireNotContains('apps/server/src/app.rs', 'async fn seed(', 'server no longer exposes the Loco seed hook');
 requireNotContains('apps/server/src/lib.rs', 'pub mod seeds;', 'server no longer links the superseded seed service');
 requireContains('crates/rustok-installer-cli/src/lib.rs', '"seed", "apply"', 'installer CLI adapter exposes typed seed application');
-requireContains('crates/rustok-installer-cli/src/lib.rs', 'ModuleSeedDbWriter::new', 'installer CLI seed adapter uses the module-owned lifecycle writer');
+requireContains('crates/rustok-installer-cli/src/lib.rs', 'ModuleLifecycleDbWriter::new', 'installer CLI seed adapter uses the module-owned lifecycle writer');
 requireNotContains('crates/rustok-installer-cli/src/lib.rs', 'apps/server', 'installer CLI seed adapter is host-independent');
 requireContains('crates/rustok-media/rustok-module.toml', '[provides.cli]', 'media module declares its CLI provider');
 requireContains('crates/rustok-media/rustok-module.toml', 'factory = "rustok_media_cli::command_provider"', 'media module CLI provider uses its local adapter factory');

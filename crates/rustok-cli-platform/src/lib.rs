@@ -2,6 +2,7 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_runtime::{db_clone, RuntimeComposition};
+use sea_orm_migration::MigratorTrait;
 
 mod db_baseline;
 mod rebuild;
@@ -26,6 +27,8 @@ impl CommandProvider for PlatformCommandProvider {
                 "Execute a queued manifest-derived build plan",
             )
             .with_dry_run(),
+            CommandDescriptor::new("migrate", "up", "Apply pending schema migrations"),
+            CommandDescriptor::new("migrate", "status", "List pending schema migrations"),
         ]
     }
 
@@ -43,6 +46,24 @@ impl CommandProvider for PlatformCommandProvider {
             ("core", "rebuild") => {
                 let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
                 rebuild::execute(&db, &request.args, request.dry_run).await
+            }
+            ("migrate", "up") => {
+                let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
+                migration::Migrator::up(&db, None)
+                    .await
+                    .map_err(command_failed)?;
+                Ok(CommandOutcome::success("Schema migrations applied"))
+            }
+            ("migrate", "status") => {
+                let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
+                let pending = migration::Migrator::get_pending_migrations(&db)
+                    .await
+                    .map_err(command_failed)?
+                    .into_iter()
+                    .map(|migration| migration.name().to_string())
+                    .collect::<Vec<_>>();
+                Ok(CommandOutcome::success("Schema migration status collected")
+                    .with_data(serde_json::json!({ "pending": pending })))
             }
             _ => Err(CliCoreError::UnknownCommand {
                 namespace: request.namespace,

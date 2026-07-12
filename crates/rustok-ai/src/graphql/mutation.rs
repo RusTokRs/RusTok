@@ -59,26 +59,31 @@ impl AiMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let runtime = ctx.data::<crate::AiHostRuntime>()?;
-        let provider_slug =
-            crate::ProviderSlug::new(input.provider_slug).map_err(async_graphql::Error::new)?;
+        let provider_target_id =
+            crate::ProviderTargetId::new(input.provider_target_id).map_err(async_graphql::Error::new)?;
+        let provider_slug = runtime
+            .provider_targets()
+            .get(&provider_target_id)
+            .ok_or_else(|| async_graphql::Error::new("unknown deployment provider target"))?
+            .provider_slug
+            .clone();
         let capabilities = if input.capabilities.is_empty() {
             default_capabilities_for_provider(&provider_slug)
         } else {
             input.capabilities.into_iter().map(Into::into).collect()
         };
-        let settings = provider_settings(input.settings)?;
         let credential_refs = credential_refs(input.credential_refs)?;
         let item = crate::AiManagementService::create_provider_profile(
             db,
             &operator,
+            runtime.provider_targets(),
             runtime.egress_policy(),
             runtime.secret_registry(),
             crate::CreateAiProviderProfileInput {
                 slug: input.slug,
                 display_name: input.display_name,
-                provider_slug,
+                provider_target_id,
                 model: input.model,
-                settings,
                 credential_refs,
                 temperature: input.temperature,
                 max_tokens: input.max_tokens,
@@ -104,18 +109,20 @@ impl AiMutation {
         let operator = operator_context(ctx, auth).await?;
         let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
-        let settings = provider_settings(input.settings)?;
+        let provider_target_id =
+            crate::ProviderTargetId::new(input.provider_target_id).map_err(async_graphql::Error::new)?;
         let credential_refs = credential_refs(input.credential_refs)?;
         let item = crate::AiManagementService::update_provider_profile(
             db,
             &operator,
+            runtime.provider_targets(),
             runtime.egress_policy(),
             runtime.secret_registry(),
             id,
             crate::UpdateAiProviderProfileInput {
                 display_name: input.display_name,
+                provider_target_id,
                 model: input.model,
-                settings,
                 credential_refs,
                 temperature: input.temperature,
                 max_tokens: input.max_tokens,

@@ -6,9 +6,9 @@ use thiserror::Error;
 use rustok_core::ModuleRegistry;
 
 use crate::{
-    run_module_lifecycle_hook, validate_module_toggle, ModuleLifecycleHookPhase,
-    ModuleOperationJournal, ModuleOperationRequest, ModuleToggleValidationError,
-    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
+    ModuleLifecycleHookPhase, ModuleOperationJournal, ModuleOperationRequest,
+    ModuleToggleValidationError, TenantModuleStateRecord, TenantModuleStateRequest,
+    TenantModuleStateStore, run_module_lifecycle_hook, validate_module_toggle,
 };
 
 #[derive(Clone, Debug)]

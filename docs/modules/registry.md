@@ -118,7 +118,7 @@ Product/search Next storefront metadata boundary update as of 2026-07-02: `apps/
 | `core` | none | `not_started` | `not_started` | `no_ui_boundary` | [Live plan](../../crates/rustok-core/docs/implementation-plan.md) |
 | `api` | none | `not_started` | `not_started` | `no_ui_boundary` | [Live plan](../../crates/rustok-api/docs/implementation-plan.md) |
 | `runtime` | none | `not_started` | `not_started` | `no_ui_boundary` | [Live plan](../../crates/rustok-runtime/docs/implementation-plan.md) |
-| `modules` | none | `not_started` | `in_progress` | `no_ui_boundary` | [Live plan](../../crates/rustok-modules/docs/implementation-plan.md); artifact descriptor and lineage contracts select neutral sandbox executors. |
+| `modules` | none | `not_started` | `in_progress` | `no_ui_boundary` | [Live plan](../../crates/rustok-modules/docs/implementation-plan.md); lifecycle/recovery and digest-pinned installation/runtime foundations are owner-owned, while the artifact-aware definition catalog/dispatcher, CAS, composition/governance and transport cutover remain in progress. |
 | `web` | none | `not_started` | `not_started` | `no_ui_boundary` | [Live plan](../../crates/rustok-web/docs/implementation-plan.md) |
 | `alloy` | none | `not_started` | `in_progress` | `no_ui_boundary` | [Live plan](../../crates/alloy/docs/implementation-plan.md); `crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`, and `npm run verify:alloy:runtime-contract`. |
 | `comments` | admin | `in_progress` | `in_progress` | `core_transport_ui` | [Live plan](../../crates/rustok-comments/docs/implementation-plan.md); `crates/rustok-comments/contracts/comments-fba-registry.json`, `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`, and `scripts/verify/verify-comments-admin-boundary.mjs`. |
@@ -316,7 +316,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 
 | Slug | Crate | Role |
 |---|---|---|
-| `modules` | `rustok-modules` | Mandatory artifact, marketplace, installation and tenant-policy control plane; delegates isolated execution to `rustok-sandbox` |
+| `modules` | `rustok-modules` | Mandatory artifact, marketplace, installation, lifecycle, build/publication orchestration and tenant-policy control plane; delegates isolated execution to `rustok-sandbox` and isolated Rust compilation to the build-worker boundary |
 | `auth` | `rustok-auth` | Auth lifecycle, credentials, tokens |
 | `cache` | `rustok-cache` | Cache backend factory, Redis/in-memory fallback |
 | `channel` | `rustok-channel` | Platform channel context, bindings, resolution |

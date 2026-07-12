@@ -35,11 +35,12 @@ pub use engine::{
 };
 pub use engine::{
     provider_catalog, provider_catalog_entry, ProviderCatalogEntry, ProviderConfigField,
-    ProviderDefaultSetting,
-    ProviderFeature, ProviderFieldKind, ProviderSlug,
+    ProviderDefaultSetting, ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetId,
 };
 #[cfg(feature = "server")]
-pub use engine::{provider_factory_supports, ProviderEgressPolicy};
+pub use engine::{
+    provider_factory_supports, AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy,
+};
 pub use error::{AiError, AiResult};
 #[cfg(feature = "graphql")]
 pub use graphql_runtime::{AiGraphqlRoleSlugProvider, AiGraphqlRoleSlugProviderHandle};
@@ -66,7 +67,8 @@ pub use service::{
     AiProviderProfileRecord, AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord,
     AiToolProfileRecord, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
     CreateAiToolProfileInput, ResumeAiApprovalInput, RunAiTaskJobInput, SendAiChatMessageInput,
-    SharedAiEgressPolicy, SharedAiModuleRegistry, SharedAiSecretResolverRegistry,
+    SharedAiEgressPolicy, SharedAiModuleRegistry, SharedAiProviderTargetCatalog,
+    SharedAiSecretResolverRegistry,
     StartAiChatSessionInput, UpdateAiProviderProfileInput,
     UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
 };

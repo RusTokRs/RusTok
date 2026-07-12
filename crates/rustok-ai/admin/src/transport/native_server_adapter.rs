@@ -7,15 +7,15 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiCredentialRefPayload,
-    AiProviderCatalogEntryPayload, AiProviderFieldPayload, AiProviderProfilePayload,
-    AiProviderSettingPayload, AiProviderTestResultPayload, AiSendMessageResultPayload,
-    AiTaskProfilePayload, AiToolProfilePayload,
+    AiProviderProfilePayload, AiProviderSettingPayload, AiProviderTestResultPayload,
+    AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
     AiApprovalRequestPayload, AiChatMessagePayload, AiChatSessionSummaryPayload,
     AiMetricBucketPayload, AiRecentRunPayload, AiRunStreamEventKindPayload,
     AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiToolCallPayload, AiToolTracePayload,
+    AiProviderCatalogEntryPayload, AiProviderFieldPayload,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

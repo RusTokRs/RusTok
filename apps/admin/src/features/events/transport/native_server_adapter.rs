@@ -1,8 +1,6 @@
 use leptos::prelude::*;
 
-use crate::features::events::model::{
-    EventsStatus, EventsStatusResponse, PlatformSettingsPayload, PlatformSettingsResponse,
-};
+use crate::features::events::model::{EventsStatusResponse, PlatformSettingsResponse};
 
 #[cfg(feature = "ssr")]
 fn server_error(message: impl Into<String>) -> ServerFnError {

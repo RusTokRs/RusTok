@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
-use crate::model::RbacModulePermissionGroup;
-use crate::model::{RbacAdminBootstrap, RbacRoleInfo};
+use crate::model::{RbacModulePermissionGroup, RbacRoleInfo};
+use crate::model::RbacAdminBootstrap;
 
 #[server(prefix = "/api/fn", endpoint = "rbac/bootstrap")]
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {

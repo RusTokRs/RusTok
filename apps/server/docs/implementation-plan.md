@@ -4,6 +4,36 @@
 
 Strengthen `apps/server` as the central backend runtime with formal API contracts, predictable operational diagnostics, and hardened security gates.
 
+## Module Platform Handoff
+
+The server is the host and transport composition layer for the module platform;
+it is not the owner of module marketplace/control-plane business logic. The
+canonical sequence is maintained in the
+[module-platform implementation plan](../../../docs/modules/module-control-plane-consolidation-plan.md).
+
+Server work for that plan is:
+
+- mount the `rustok-modules` facade through authenticated tenant/actor contexts;
+- supply database, OCI, trust, build scheduling, events, audit, clock, and other
+  infrastructure adapters;
+- migrate platform composition, build enqueue, registry governance, effective
+  policy, GraphQL, and native adapters to owner operations;
+- split compile-time Core/static implementation registration from the durable
+  artifact-aware definition catalog and runtime dispatcher;
+- supply platform content-addressed artifact storage, transactional outbox, and
+  multi-node reconciliation adapters;
+- preserve transactional and transport parity guarantees during cutover;
+- delete replaced service business logic, error taxonomies, direct writes, and
+  optional runtime Cargo references;
+- keep only Core/bootstrap and explicitly promoted native modules in static
+  host composition.
+
+The server must never compile untrusted module source, load marketplace native
+libraries, or modify its source/Cargo graph during runtime installation.
+It must also never fetch an external OCI payload for every execution, grant an
+artifact raw infrastructure clients, or require an artifact-only module to
+implement `RusToKModule` in process.
+
 ## Improvements
 
 ### Architecture debt

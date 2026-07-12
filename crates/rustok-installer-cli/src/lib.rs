@@ -7,7 +7,7 @@ use rustok_installer::{
     SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
     SeedUser, SeedUserRequest,
 };
-use rustok_modules::ModuleSeedDbWriter;
+use rustok_modules::ModuleLifecycleDbWriter;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_runtime::{db_clone, RuntimeComposition};
 use rustok_tenant::{CreateTenantInput, TenantService};
@@ -44,9 +44,14 @@ impl CommandProvider for InstallerCommandProvider {
                 "Seed profile validated; dry run does not mutate state.",
             ));
         }
-        let db = db_clone(self.runtime.require_host().map_err(failed)?);
+        let db = db_clone(
+            self.runtime
+                .require_host()
+                .map_err(|error| failed(error.to_string()))?,
+        );
         let options = &request.args["options"];
         let profile = option(options, "profile")
+            .as_deref()
             .map(SeedProfile::parse_cli_value)
             .transpose()
             .map_err(input)?
@@ -179,8 +184,8 @@ impl SeedModulePort for ModulePort<'_> {
         enabled: bool,
         actor: &str,
     ) -> Result<(), SeedExecutionError> {
-        ModuleSeedDbWriter::new(self.db.clone(), self.registry, self.defaults.clone())
-            .set_enabled(tenant_id, module_slug, enabled, actor)
+        ModuleLifecycleDbWriter::new(self.db.clone(), self.registry, self.defaults.clone())
+            .toggle(tenant_id, module_slug, enabled, actor)
             .await
             .map_err(seed_error)
     }

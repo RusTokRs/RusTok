@@ -23,10 +23,10 @@ pub use artifact::{
     ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError,
 };
 pub use executor::{
-    execute_module_toggle, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
-    ModuleLifecycleToggleResult,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleLifecycleToggleResult,
+    execute_module_toggle,
 };
-pub use hooks::{run_module_lifecycle_hook, ModuleLifecycleHookError, ModuleLifecycleHookPhase};
+pub use hooks::{ModuleLifecycleHookError, ModuleLifecycleHookPhase, run_module_lifecycle_hook};
 pub use installation::{
     ArtifactInstallationStore, ArtifactRegistry, InstalledModuleArtifact, ModuleArtifactPackage,
     ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
@@ -37,20 +37,20 @@ pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleO
 pub use oci::OciDistributionArtifactRegistry;
 pub use operation_store::{
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStoreError, TenantModuleStateRecord, TenantModuleStateRequest,
-    TenantModuleStateStore,
+    ModuleOperationStoreError, TenantModuleSettingsRecord, TenantModuleSettingsRequest,
+    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
 };
 pub use policy::{
-    resolve_effective_modules, validate_module_toggle, ModuleToggleValidationError,
-    TenantModuleOverride,
+    ModuleToggleValidationError, TenantModuleOverride, resolve_effective_modules,
+    validate_module_toggle,
 };
 pub use recovery::{
+    ModuleOperationRecoveryError, ModuleOperationRecoveryPlan, ModulePostHookRetryRequest,
     failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation, ModuleOperationRecoveryError, ModuleOperationRecoveryPlan,
-    ModulePostHookRetryRequest,
+    retry_failed_post_hook_operation,
 };
 pub use runtime::{ArtifactRuntime, ArtifactRuntimeError};
-pub use seed_writer::{ModuleSeedDbWriter, ModuleSeedDbWriterError};
+pub use seed_writer::{ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError};
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.
 pub struct ModulesModule;

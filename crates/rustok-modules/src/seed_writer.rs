@@ -1,25 +1,25 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_core::ModuleRegistry;
 
 use crate::{
-    execute_module_toggle, resolve_effective_modules, ModuleLifecycleExecutionError,
-    ModuleLifecycleToggleRequest, TenantModuleOverride,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, TenantModuleOverride,
+    execute_module_toggle, resolve_effective_modules,
 };
 
-/// Database-backed module seed adapter shared by installer and CLI composition.
+/// Database-backed module lifecycle adapter for executable host composition.
 ///
 /// The caller supplies the selected distribution registry and its declared
 /// defaults; this adapter owns the durable override read and lifecycle write.
-pub struct ModuleSeedDbWriter<'a> {
+pub struct ModuleLifecycleDbWriter<'a> {
     db: DatabaseConnection,
     registry: &'a ModuleRegistry,
     default_enabled_modules: Vec<String>,
 }
 
-impl<'a> ModuleSeedDbWriter<'a> {
+impl<'a> ModuleLifecycleDbWriter<'a> {
     pub fn new(
         db: DatabaseConnection,
         registry: &'a ModuleRegistry,
@@ -32,13 +32,13 @@ impl<'a> ModuleSeedDbWriter<'a> {
         }
     }
 
-    pub async fn set_enabled(
+    pub async fn toggle(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
         enabled: bool,
         actor: &str,
-    ) -> Result<(), ModuleSeedDbWriterError> {
+    ) -> Result<(), ModuleLifecycleDbWriterError> {
         let overrides = self.overrides(tenant_id).await?;
         let effective_enabled_modules = resolve_effective_modules(
             self.registry,
@@ -59,14 +59,14 @@ impl<'a> ModuleSeedDbWriter<'a> {
             },
         )
         .await
-        .map_err(ModuleSeedDbWriterError::Lifecycle)?;
+        .map_err(ModuleLifecycleDbWriterError::Lifecycle)?;
         Ok(())
     }
 
     async fn overrides(
         &self,
         tenant_id: Uuid,
-    ) -> Result<Vec<TenantModuleOverride>, ModuleSeedDbWriterError> {
+    ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Postgres => {
@@ -96,7 +96,7 @@ impl<'a> ModuleSeedDbWriter<'a> {
         &self,
         tenant_id: Uuid,
         module_slug: &str,
-    ) -> Result<serde_json::Value, ModuleSeedDbWriterError> {
+    ) -> Result<serde_json::Value, ModuleLifecycleDbWriterError> {
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Postgres => {
@@ -121,13 +121,13 @@ impl<'a> ModuleSeedDbWriter<'a> {
 }
 
 #[derive(Debug, Error)]
-pub enum ModuleSeedDbWriterError {
-    #[error("module seed persistence failed: {0}")]
+pub enum ModuleLifecycleDbWriterError {
+    #[error("module lifecycle persistence failed: {0}")]
     Database(String),
     #[error(transparent)]
     Lifecycle(#[from] ModuleLifecycleExecutionError),
 }
 
-fn database_error(error: impl std::fmt::Display) -> ModuleSeedDbWriterError {
-    ModuleSeedDbWriterError::Database(error.to_string())
+fn database_error(error: impl std::fmt::Display) -> ModuleLifecycleDbWriterError {
+    ModuleLifecycleDbWriterError::Database(error.to_string())
 }

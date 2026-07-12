@@ -146,7 +146,7 @@ splits the backend and the external Trunk host.
 
 `apps/admin` in standalone debug runs as a CSR host, so Trunk must build the binary artifact
 `rustok-admin`, not the library artifact `rustok_admin`. This is specified in `index.html` via
-`data-target-name="rustok-admin"`: the binary runs `main()` and mounts the shell in `body`.
+`data-target-name="rustok-admin-app"`: the binary runs `main()` and mounts the shell in `body`.
 
 Tailwind CSS for this debug profile is built by the Trunk post-build hook `scripts\tailwind-build.cmd`.
 The hook writes `output.css` to `TRUNK_STAGING_DIR`, so CSS survives the `dist` cleanup inside the Trunk pipeline.

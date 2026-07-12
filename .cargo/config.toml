@@ -206,3 +206,6 @@ vcs = "git"
 [env]
 # Avoid CI failures when /tmp is mounted with limited space (e.g. coverage builds).
 TMPDIR = { value = "/var/tmp", force = true }
+# Required by playwright-rs 0.14 at compile time; the crate bundles the
+# protocol compatible with Playwright 1.60.0.
+PLAYWRIGHT_DRIVER_VERSION = { value = "1.60.0", force = true }

@@ -138,14 +138,15 @@ impl AiManagementService {
     pub async fn create_provider_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
+        provider_targets: &crate::AiProviderTargetCatalog,
         egress_policy: &crate::ProviderEgressPolicy,
         secrets: &rustok_secrets::SecretResolverRegistry,
         input: CreateAiProviderProfileInput,
     ) -> AiResult<AiProviderProfileRecord> {
         validate_slug(&input.slug)?;
-        validate_provider_profile_contract(
-            &input.provider_slug,
-            &input.settings,
+        let provider_slug = validate_provider_target_profile_contract(
+            provider_targets,
+            &input.provider_target_id,
             &input.credential_refs,
             egress_policy,
         )?;
@@ -154,9 +155,10 @@ impl AiManagementService {
             tenant_id: Set(operator.tenant_id),
             slug: Set(input.slug),
             display_name: Set(input.display_name),
-            provider_slug: Set(input.provider_slug.to_string()),
+            provider_slug: Set(provider_slug.to_string()),
+            provider_target_id: Set(input.provider_target_id.to_string()),
             model: Set(input.model),
-            settings: Set(serde_json::to_value(input.settings).map_err(json_err)?),
+            settings: Set(json!({})),
             credential_refs: Set(serde_json::to_value(input.credential_refs).map_err(json_err)?),
             temperature: Set(input.temperature),
             max_tokens: Set(input.max_tokens),
@@ -181,23 +183,25 @@ impl AiManagementService {
     pub async fn update_provider_profile(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,
+        provider_targets: &crate::AiProviderTargetCatalog,
         egress_policy: &crate::ProviderEgressPolicy,
         secrets: &rustok_secrets::SecretResolverRegistry,
         id: Uuid,
         input: UpdateAiProviderProfileInput,
     ) -> AiResult<AiProviderProfileRecord> {
         let existing = require_provider_profile(db, operator.tenant_id, id).await?;
-        let provider_slug = provider_slug_from_str(&existing.provider_slug)?;
-        validate_provider_profile_contract(
-            &provider_slug,
-            &input.settings,
+        let provider_slug = validate_provider_target_profile_contract(
+            provider_targets,
+            &input.provider_target_id,
             &input.credential_refs,
             egress_policy,
         )?;
         let mut active: ai_provider_profiles::ActiveModel = existing.into();
         active.display_name = Set(input.display_name);
+        active.provider_slug = Set(provider_slug.to_string());
+        active.provider_target_id = Set(input.provider_target_id.to_string());
         active.model = Set(input.model);
-        active.settings = Set(serde_json::to_value(input.settings).map_err(json_err)?);
+        active.settings = Set(json!({}));
         active.credential_refs =
             Set(serde_json::to_value(input.credential_refs).map_err(json_err)?);
         active.temperature = Set(input.temperature);
@@ -233,13 +237,14 @@ impl AiManagementService {
 
     pub async fn test_provider_profile(
         db: &DatabaseConnection,
+        provider_targets: &crate::AiProviderTargetCatalog,
         secrets: &rustok_secrets::SecretResolverRegistry,
         tenant_id: Uuid,
         id: Uuid,
     ) -> AiResult<ProviderTestResult> {
         let profile = require_provider_profile(db, tenant_id, id).await?;
         secrets.invalidate(None).await;
-        let config = provider_config(&profile)?;
+        let config = provider_config(&profile, provider_targets)?;
         if crate::provider_factory_supports(&config.provider_slug, crate::ProviderFeature::Chat) {
             let provider = inference_for_slug(&config.provider_slug, &config, secrets).await?;
             return provider.test_connection(&config).await;
@@ -924,6 +929,13 @@ impl AiManagementService {
             Some(id) => Some(require_tool_profile(db, operator.tenant_id, id).await?),
             None => None,
         };
+        let tool_policy = policy_from_model(tool_profile.as_ref());
+        if input.approved && !tool_policy.is_tool_allowed(&approval.tool_name) {
+            return Err(AiError::Validation(format!(
+                "tool `{}` is no longer allowed by the execution policy",
+                approval.tool_name
+            )));
+        }
 
         let mut approval_active: ai_approval_requests::ActiveModel = approval.clone().into();
         approval_active.status = Set(if input.approved {
@@ -940,54 +952,41 @@ impl AiManagementService {
         let run = require_run(db, operator.tenant_id, approval.run_id).await?;
         let mut run_active: ai_chat_runs::ActiveModel = run.clone().into();
 
-        if !input.approved {
-            run_active.status = Set("failed".to_string());
-            run_active.error_message = Set(Some("tool execution rejected by operator".to_string()));
-            run_active.pending_approval_id = Set(None);
-            run_active.completed_at = Set(Some(Utc::now().into()));
-            run_active.updated_at = Set(Utc::now().into());
-            let saved_run = run_active.update(db).await.map_err(db_err)?;
-            insert_message(
-                db,
-                operator.tenant_id,
-                session.id,
-                Some(saved_run.id),
-                Some(operator.user_id),
-                ChatMessage {
-                    role: ChatMessageRole::Assistant,
-                    content: Some("Tool execution was rejected by the operator.".to_string()),
-                    name: None,
-                    tool_call_id: None,
-                    tool_calls: Vec::new(),
-                    metadata: json!({ "approval_rejected": true }),
-                },
-            )
-            .await?;
-            let detail = Self::chat_session_detail(db, operator.tenant_id, session.id)
-                .await?
-                .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
-            return Ok(AiSendMessageResult {
-                session: detail,
-                run: map_run_record(saved_run)?,
-            });
-        }
-
         let access_context = access_context_for_operator(operator);
-        let tool_policy = policy_from_model(tool_profile.as_ref());
-        let adapter = InProcessMcpAdapter::new(runtime, access_context)?;
-        let started = std::time::Instant::now();
-        let tool_result = adapter
-            .call_tool(&approval.tool_name, approval.tool_input.clone())
-            .await?;
-        let trace = ToolTrace {
-            tool_name: approval.tool_name.clone(),
-            input_payload: approval.tool_input.clone(),
-            output_payload: Some(tool_result.raw_payload.clone()),
-            status: "completed".to_string(),
-            duration_ms: started.elapsed().as_millis() as i64,
-            sensitive: tool_policy.is_tool_sensitive(&approval.tool_name),
-            error_message: None,
-            created_at: Utc::now(),
+        let (tool_content, tool_metadata, trace) = if input.approved {
+            let adapter = InProcessMcpAdapter::new(runtime, access_context)?;
+            let started = std::time::Instant::now();
+            let tool_result = adapter
+                .call_tool(&approval.tool_name, approval.tool_input.clone())
+                .await?;
+            let trace = ToolTrace {
+                tool_name: approval.tool_name.clone(),
+                input_payload: approval.tool_input.clone(),
+                output_payload: Some(tool_result.raw_payload.clone()),
+                status: "completed".to_string(),
+                duration_ms: started.elapsed().as_millis() as i64,
+                sensitive: tool_policy.is_tool_sensitive(&approval.tool_name),
+                error_message: None,
+                created_at: Utc::now(),
+            };
+            (
+                tool_result.content,
+                json!({ "raw_payload": tool_result.raw_payload, "approval_approved": true }),
+                trace,
+            )
+        } else {
+            let content = "Tool execution was rejected by the operator.".to_string();
+            let trace = ToolTrace {
+                tool_name: approval.tool_name.clone(),
+                input_payload: approval.tool_input.clone(),
+                output_payload: Some(json!({ "reason": "approval_rejected" })),
+                status: "rejected".to_string(),
+                duration_ms: 0,
+                sensitive: tool_policy.is_tool_sensitive(&approval.tool_name),
+                error_message: None,
+                created_at: Utc::now(),
+            };
+            (content, json!({ "approval_rejected": true }), trace)
         };
 
         insert_tool_trace(db, operator.tenant_id, session.id, run.id, &trace).await?;
@@ -999,11 +998,11 @@ impl AiManagementService {
             Some(operator.user_id),
             ChatMessage {
                 role: ChatMessageRole::Tool,
-                content: Some(tool_result.content),
+                content: Some(tool_content),
                 name: Some(approval.tool_name.clone()),
                 tool_call_id: Some(approval.tool_call_id.clone()),
                 tool_calls: Vec::new(),
-                metadata: json!({ "raw_payload": tool_result.raw_payload }),
+                metadata: tool_metadata,
             },
         )
         .await?;
@@ -1259,7 +1258,7 @@ impl AiManagementService {
                             )
                         })?,
                 };
-                let provider_config = provider_config(&provider_profile)?;
+                let provider_config = provider_config(&provider_profile, runtime.provider_targets())?;
                 let provider = Arc::<dyn InferenceEngine>::from(
                     inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry())
                         .await?,
@@ -1363,7 +1362,7 @@ impl AiManagementService {
             }
         }
 
-        let provider_config = provider_config(&provider_profile)?;
+        let provider_config = provider_config(&provider_profile, runtime.provider_targets())?;
         let provider = Arc::<dyn InferenceEngine>::from(
             inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry()).await?,
         );

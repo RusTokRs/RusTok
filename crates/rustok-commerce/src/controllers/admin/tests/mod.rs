@@ -8,13 +8,11 @@ use rust_decimal::Decimal;
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 pub use rustok_api::{AuthContextExtension, TenantContextExtension};
-use rustok_core::events::EventTransport;
 use rustok_test_utils::db::setup_test_db;
-use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};
+use rustok_test_utils::mock_transactional_event_bus;
 pub use sea_orm::ConnectionTrait;
 use serde_json::json;
 pub use std::str::FromStr;
-use std::sync::Arc;
 pub use tower::util::ServiceExt;
 use uuid::Uuid;
 

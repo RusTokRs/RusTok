@@ -16,7 +16,7 @@ Pre-hook errors (before commit) are not covered here: for them committed state d
 
 1. **Committed state is not rolled back automatically.**
 2. **`module_operations` remains the source of truth for audit trail** (including `correlation_id`, `requested_by`, `requested_enabled`).
-3. **Retry is performed via canonical lifecycle service**, preferably via `ModuleLifecycleService::retry_failed_post_hook_operation(...)`, to repeat only post-hook for already committed target-state and create new journal attempt.
+3. **Retry is performed through the module-owned recovery operation**, exposed by `ModuleLifecycleService::retry_failed_post_hook_operation(...)`, to repeat only post-hook for already committed target-state and create a new journal attempt.
 4. **Compensation is performed by separate conscious operation** via `ModuleLifecycleService::compensate_failed_operation(...)` or equivalent canonical toggle in reverse direction, not by hidden rollback inside failed post-hook path.
 
 ## Basic diagnostics

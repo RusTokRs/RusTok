@@ -1,15 +1,14 @@
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    Set,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 use thiserror::Error;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    execute_module_toggle, failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
     ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
-    ModuleOperationStatus, ModulePostHookRetryRequest, ModuleToggleValidationError,
+    ModuleOperationStoreError, ModulePostHookRetryRequest, ModuleToggleValidationError,
+    TenantModuleSettingsRequest, TenantModuleStateStore, execute_module_toggle,
+    failed_module_operation_recovery_plans, module_operation_recovery_plan,
+    retry_failed_post_hook_operation,
 };
 
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
@@ -84,10 +83,6 @@ pub enum UpdateModuleSettingsError {
 }
 
 impl ModuleLifecycleService {
-    fn generate_correlation_id() -> String {
-        uuid::Uuid::new_v4().to_string()
-    }
-
     pub async fn toggle_module(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
@@ -245,51 +240,29 @@ impl ModuleLifecycleService {
                 }
             })?;
 
-        let existing = TenantModulesEntity::find()
-            .filter(tenant_modules::Column::TenantId.eq(tenant_id))
-            .filter(tenant_modules::Column::ModuleSlug.eq(module_slug))
-            .one(db)
-            .await?;
-
         let is_core = registry.is_core(module_slug);
         let is_effectively_enabled =
             EffectiveModulePolicyService::is_enabled(db, registry, tenant_id, module_slug)
                 .await
                 .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?;
-
-        match existing {
-            Some(model) => {
-                if !is_effectively_enabled {
-                    return Err(UpdateModuleSettingsError::ModuleNotEnabled(
-                        module_slug.to_string(),
-                    ));
-                }
-
-                let was_enabled = model.enabled;
-                let mut active: tenant_modules::ActiveModel = model.into();
-                active.enabled = Set(is_core || was_enabled);
-                active.settings = Set(settings);
-                Ok(active.update(db).await?)
-            }
-            None if is_core || is_effectively_enabled => {
-                let module = tenant_modules::ActiveModel {
-                    id: Set(rustok_core::generate_id()),
-                    tenant_id: Set(tenant_id),
-                    module_slug: Set(module_slug.to_string()),
-                    enabled: Set(is_effectively_enabled),
-                    settings: Set(settings),
-                    created_at: sea_orm::ActiveValue::NotSet,
-                    updated_at: sea_orm::ActiveValue::NotSet,
-                }
-                .insert(db)
-                .await?;
-
-                Ok(module)
-            }
-            None => Err(UpdateModuleSettingsError::ModuleNotEnabled(
-                module_slug.to_string(),
-            )),
-        }
+        let state = TenantModuleStateStore::persist_settings(
+            db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                settings,
+                is_core,
+                is_effectively_enabled,
+            },
+        )
+        .await
+        .map_err(map_module_settings_store_error)?;
+        TenantModulesEntity::find_by_id(state.id)
+            .one(db)
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound("tenant_modules.settings_state".to_string()).into()
+            })
     }
 
     async fn current_module_settings(
@@ -355,12 +328,23 @@ fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationReco
     }
 }
 
+fn map_module_settings_store_error(error: ModuleOperationStoreError) -> UpdateModuleSettingsError {
+    match error {
+        ModuleOperationStoreError::ModuleNotEnabled(module_slug) => {
+            UpdateModuleSettingsError::ModuleNotEnabled(module_slug)
+        }
+        ModuleOperationStoreError::Database(error) => {
+            UpdateModuleSettingsError::Database(DbErr::Custom(error))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
-    use crate::modules::{build_registry, ManifestManager, ManifestModuleSpec, ModulesManifest};
+    use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
     use migration::Migrator;
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
@@ -408,14 +392,6 @@ mod tests {
         assert!(!ModuleOperationStatus::Running.is_terminal());
         assert!(ModuleOperationStatus::Committed.is_terminal());
         assert!(ModuleOperationStatus::Failed.is_terminal());
-    }
-
-    #[test]
-    fn generated_correlation_id_is_uuid_v4_string() {
-        let value = ModuleLifecycleService::generate_correlation_id();
-        assert_eq!(value.len(), 36);
-        let parsed = uuid::Uuid::parse_str(&value).expect("correlation id must be valid UUID");
-        assert_eq!(parsed.get_version_num(), 4);
     }
 
     struct OptionalSettingsModule;

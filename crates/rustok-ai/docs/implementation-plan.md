@@ -58,7 +58,10 @@ requires an intentional snapshot change and the catalog factory test to pass.
 
 Rig agent recovery does not execute unknown or policy-denied tool calls. It
 persists a synthetic skipped tool result and lets the model finish the turn;
-sensitive calls remain explicit approval boundaries.
+sensitive calls remain explicit approval boundaries. Both an approval and a
+rejection are persisted as a canonical tool result before the run is restored:
+the rejection never invokes the tool, while approval is rechecked against the
+current execution policy immediately before invocation.
 The execution driver repeats policy enforcement immediately before every MCP
 call, including multi-tool turns, so provider output cannot bypass the
 advertised-tool filter.

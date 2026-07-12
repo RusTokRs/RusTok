@@ -16,17 +16,15 @@ use rustok_api::RequestContext;
 use rustok_api::{AuthContext, ChannelContext, TenantContext};
 pub use rustok_api::{AuthContextExtension, ChannelContextExtension, TenantContextExtension};
 use rustok_cart::dto::SetCartAdjustmentInput;
-use rustok_core::events::EventTransport;
 use rustok_pricing::{PriceResolutionContext, PricingService};
 use rustok_region::dto::{CreateRegionInput, RegionResponse, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::db::setup_test_db;
-use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};
+use rustok_test_utils::mock_transactional_event_bus;
 pub use sea_orm::ConnectionTrait;
 use sea_orm::{DatabaseBackend, Statement};
 use serde_json::json;
 pub use std::str::FromStr;
-use std::sync::Arc;
 pub use tower::util::ServiceExt;
 use uuid::Uuid;
 

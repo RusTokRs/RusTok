@@ -40,6 +40,8 @@ pub struct ModuleOperationSnapshot {
 pub enum ModuleOperationStoreError {
     #[error("module operation store database error: {0}")]
     Database(String),
+    #[error("module `{0}` is not enabled for this tenant")]
+    ModuleNotEnabled(String),
 }
 
 /// Owner-owned persistence for lifecycle operation journaling.
@@ -59,6 +61,21 @@ pub struct TenantModuleStateRecord {
     pub id: Uuid,
     pub previous_enabled: bool,
     pub changed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TenantModuleSettingsRequest {
+    pub tenant_id: Uuid,
+    pub module_slug: String,
+    pub settings: serde_json::Value,
+    pub is_core: bool,
+    pub is_effectively_enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TenantModuleSettingsRecord {
+    pub id: Uuid,
+    pub enabled: bool,
 }
 
 /// Owner-owned persistence for a tenant's explicit module state row.
@@ -314,6 +331,71 @@ impl TenantModuleStateStore {
             changed: true,
         })
     }
+
+    pub async fn persist_settings<C: ConnectionTrait>(
+        db: &C,
+        request: TenantModuleSettingsRequest,
+    ) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
+        let backend = db.get_database_backend();
+        let select = match backend {
+            DbBackend::Postgres => {
+                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+            }
+            _ => {
+                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+            }
+        };
+        let existing = db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                select,
+                vec![request.tenant_id.into(), request.module_slug.clone().into()],
+            ))
+            .await
+            .map_err(database_error)?;
+        if let Some(row) = existing {
+            if !request.is_effectively_enabled {
+                return Err(ModuleOperationStoreError::ModuleNotEnabled(
+                    request.module_slug,
+                ));
+            }
+            let id: Uuid = row.try_get("", "id").map_err(database_error)?;
+            let previous_enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
+            let enabled = request.is_core || previous_enabled;
+            execute(
+                db,
+                "UPDATE tenant_modules SET enabled = {1}, settings = {2}, updated_at = CURRENT_TIMESTAMP WHERE id = {3}",
+                vec![enabled.into(), json_value(request.settings), id.into()],
+            )
+            .await?;
+            return Ok(TenantModuleSettingsRecord { id, enabled });
+        }
+
+        if !request.is_core && !request.is_effectively_enabled {
+            return Err(ModuleOperationStoreError::ModuleNotEnabled(
+                request.module_slug,
+            ));
+        }
+        let id = rustok_core::generate_id();
+        let enabled = request.is_effectively_enabled;
+        execute(
+            db,
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
+            vec![
+                id.into(),
+                request.tenant_id.into(),
+                request.module_slug.into(),
+                enabled.into(),
+                json_value(request.settings),
+            ],
+        )
+        .await?;
+        Ok(TenantModuleSettingsRecord { id, enabled })
+    }
+}
+
+fn json_value(value: serde_json::Value) -> sea_orm::Value {
+    sea_orm::Value::Json(Some(Box::new(value)))
 }
 
 async fn execute<C: ConnectionTrait>(
@@ -340,4 +422,85 @@ fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
         };
         sql.replace(format!("{{{index}}}").as_str(), parameter.as_str())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{Database, Statement};
+    use serde_json::json;
+
+    use super::*;
+
+    async fn database() -> sea_orm::DatabaseConnection {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE tenant_modules (\
+                    id TEXT PRIMARY KEY NOT NULL, \
+                    tenant_id TEXT NOT NULL, \
+                    module_slug TEXT NOT NULL, \
+                    enabled BOOLEAN NOT NULL, \
+                    settings JSON NOT NULL, \
+                    updated_at TEXT\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("tenant modules table");
+        database
+    }
+
+    #[tokio::test]
+    async fn settings_persistence_enforces_effective_enablement_and_keeps_core_enabled() {
+        let database = database().await;
+        let tenant_id = Uuid::new_v4();
+        let disabled = TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_module".to_string(),
+                settings: json!({ "value": 1 }),
+                is_core: false,
+                is_effectively_enabled: false,
+            },
+        )
+        .await;
+        assert!(matches!(
+            disabled,
+            Err(ModuleOperationStoreError::ModuleNotEnabled(module_slug))
+                if module_slug == "optional_module"
+        ));
+
+        let core = TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "modules".to_string(),
+                settings: json!({ "value": 2 }),
+                is_core: true,
+                is_effectively_enabled: true,
+            },
+        )
+        .await
+        .expect("core settings");
+        assert!(core.enabled);
+
+        let updated = TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "modules".to_string(),
+                settings: json!({ "value": 3 }),
+                is_core: true,
+                is_effectively_enabled: true,
+            },
+        )
+        .await
+        .expect("updated core settings");
+        assert_eq!(updated.id, core.id);
+        assert!(updated.enabled);
+    }
 }

@@ -11,7 +11,7 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_core::events::EventTransport;
-use rustok_customer::{CustomerProfileEnrichmentRequest, CustomerReadPort, CustomerService};
+use rustok_customer::CustomerService;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_profiles::{ProfileService, ProfileVisibility, ProfilesReader};
@@ -53,7 +53,10 @@ impl ProfilesCommandProvider {
         let visibility = visibility(options)?;
         let dry_run = request.dry_run || flag(options, "dry_run");
         let emit_events = flag(options, "emit_events");
-        let host = self.runtime.require_host().map_err(command_failed)?;
+        let host = self
+            .runtime
+            .require_host()
+            .map_err(|error| command_failed(error.to_string()))?;
         let db = db_clone(host);
         let context = port_context(tenant_id);
         let tenant = TenantService::new(db.clone())
@@ -65,17 +68,15 @@ impl ProfilesCommandProvider {
                 },
             )
             .await
-            .map_err(command_failed)?;
+            .map_err(|error| command_failed(error.message))?;
         let users = AuthUserBackfillDbReader::new(db.clone())
             .list_users_for_profile_backfill(AuthUserBackfillReadRequest { tenant_id, limit })
             .await
             .map_err(command_failed)?;
         let enrichments = CustomerService::new(db.clone())
             .list_profile_enrichment(
-                context,
-                CustomerProfileEnrichmentRequest {
-                    user_ids: users.iter().map(|user| user.id).collect(),
-                },
+                tenant_id,
+                &users.iter().map(|user| user.id).collect::<Vec<_>>(),
             )
             .await
             .map_err(command_failed)?

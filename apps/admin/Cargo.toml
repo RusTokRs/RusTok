@@ -8,6 +8,13 @@ description.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "rustok-admin-app"
+path = "src/main.rs"
+test = false
+bench = false
+doc = false
+
 [features]
 default = ["csr"]
 csr = ["leptos/csr", "leptos_i18n/csr", "rustok-mcp-admin/csr", "rustok-workflow-admin/csr", "rustok-auth-admin/csr"]

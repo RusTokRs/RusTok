@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use rustok_api::{PortActor, PortContext};
 use rustok_cli_core::{CliCoreError, CliCoreResult, CommandOutcome};
 use rustok_tenant::{TenantReadPort, TenantService};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TryGetable, Value};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 use serde::Serialize;
 use std::{fs, time::Duration as StdDuration};
 use uuid::Uuid;
@@ -223,7 +223,7 @@ async fn resolve_tenant_id(
         )
         .await
         .map(|tenant| tenant.id)
-        .map_err(command_failed)
+        .map_err(|error| command_failed(error.message))
 }
 
 fn parse_top_n(options: &serde_json::Map<String, serde_json::Value>) -> CliCoreResult<usize> {

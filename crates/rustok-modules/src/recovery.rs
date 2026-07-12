@@ -5,9 +5,9 @@ use sea_orm::DatabaseConnection;
 use thiserror::Error;
 
 use crate::{
-    run_module_lifecycle_hook, ModuleLifecycleHookPhase, ModuleOperationIssue,
-    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryAction,
-    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
+    ModuleLifecycleHookPhase, ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
+    ModuleOperationRecoveryAction, ModuleOperationRequest, ModuleOperationSnapshot,
+    ModuleOperationStatus, run_module_lifecycle_hook,
 };
 
 /// Transport-neutral recovery view of a failed lifecycle operation.
@@ -186,4 +186,48 @@ pub async fn retry_failed_post_hook_operation(
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
     Ok(operation)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn snapshot(error_message: Option<&str>) -> ModuleOperationSnapshot {
+        ModuleOperationSnapshot {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            module_slug: "sample_module".to_string(),
+            requested_enabled: true,
+            previous_effective_enabled: false,
+            status: ModuleOperationStatus::Failed,
+            requested_by: Some("operator".to_string()),
+            correlation_id: Some(Uuid::new_v4().to_string()),
+            error_message: error_message.map(str::to_string),
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn only_post_hook_failures_are_retryable() {
+        let post_hook =
+            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")));
+        assert_eq!(post_hook.issue, ModuleOperationIssue::PostHookFailed);
+        assert!(post_hook.retryable);
+        assert_eq!(
+            post_hook.recommended_action,
+            ModuleOperationRecoveryAction::RetryPostHook
+        );
+
+        let pre_hook =
+            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("pre-hook: denied")));
+        assert_eq!(pre_hook.issue, ModuleOperationIssue::PreHookFailed);
+        assert!(!pre_hook.retryable);
+        assert_eq!(
+            pre_hook.recommended_action,
+            ModuleOperationRecoveryAction::RepeatToggle
+        );
+    }
 }

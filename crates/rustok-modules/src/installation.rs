@@ -184,7 +184,7 @@ pub trait ArtifactRegistry: Send + Sync {
 #[async_trait]
 pub trait ArtifactInstallationStore: Send + Sync {
     async fn save(&self, artifact: &InstalledModuleArtifact)
-        -> Result<(), ModuleInstallationError>;
+    -> Result<(), ModuleInstallationError>;
 }
 
 /// SeaORM adapter for the module-owned installation table. The OCI payload is

@@ -142,6 +142,7 @@ pub mod ai_provider_profiles {
         pub slug: String,
         pub display_name: String,
         pub provider_slug: String,
+        pub provider_target_id: String,
         pub model: String,
         pub settings: Json,
         pub credential_refs: Json,
