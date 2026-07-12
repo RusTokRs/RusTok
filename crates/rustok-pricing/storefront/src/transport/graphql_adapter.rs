@@ -7,8 +7,10 @@ use crate::model::{
     PricingChannelOption, PricingPriceListOption, PricingProductDetail, PricingProductList,
     PricingProductListItem, PricingProductTranslation, PricingVariant, StorefrontPricingData,
 };
+use futures::future::try_join_all;
 use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter, $channelId: UUID, $channelSlug: String) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id title handle sellerId vendor productType createdAt publishedAt } } storefrontPricingChannels { id slug name isActive isDefault status } storefrontActivePriceLists(channelId: $channelId, channelSlug: $channelSlug) { id name listType channelId channelSlug ruleKind adjustmentPercent } }";
 const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { storefrontPricingProduct(locale: $locale, handle: $handle, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { id status sellerId vendor productType publishedAt translations { locale title handle description } variants { id title sku prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale regionId priceListId channelId channelSlug minQuantity maxQuantity } } } }";
@@ -202,18 +204,36 @@ pub(crate) async fn fetch_storefront_pricing(
     )
     .await?;
 
-    let mut items = Vec::new();
-    for item in list_response.storefront_products.items {
-        let detail = if item.handle.trim().is_empty() {
-            None
-        } else {
-            fetch_storefront_pricing_detail(StorefrontPricingDetailQuery {
-                handle: item.handle.clone(),
-                locale: query.locale.clone(),
-                ..StorefrontPricingDetailQuery::default()
-            })
-            .await?
-        };
+    let StorefrontProductsResponse {
+        storefront_products,
+        available_channels,
+        active_price_lists,
+    } = list_response;
+    let list_locale = query.locale.clone();
+    let detailed_items = try_join_all(storefront_products.items.into_iter().map(|item| {
+        let locale = list_locale.clone();
+        async move {
+            let detail = if item.handle.trim().is_empty() {
+                None
+            } else {
+                fetch_storefront_pricing_detail(StorefrontPricingDetailQuery {
+                    handle: item.handle.clone(),
+                    locale,
+                    ..StorefrontPricingDetailQuery::default()
+                })
+                .await?
+            };
+            Ok::<_, ApiError>((item, detail))
+        }
+    }))
+    .await?;
+
+    let mut details_by_handle = HashMap::new();
+    let mut items = Vec::with_capacity(detailed_items.len());
+    for (item, detail) in detailed_items {
+        if let Some(detail) = detail.as_ref() {
+            details_by_handle.insert(item.handle.clone(), detail.clone());
+        }
         items.push(resolve_graphql_pricing_list_item(item, detail.as_ref()));
     }
 
@@ -225,27 +245,40 @@ pub(crate) async fn fetch_storefront_pricing(
         .map(ToOwned::to_owned)
         .or_else(|| items.first().map(|item| item.handle.clone()));
     let selected_product = if let Some(handle) = resolved_handle.clone() {
-        fetch_storefront_pricing_detail(StorefrontPricingDetailQuery {
-            handle,
-            locale: query.locale,
-            currency_code: resolution_context
-                .as_ref()
-                .map(|value| value.currency_code.clone()),
-            region_id: resolution_context
-                .as_ref()
-                .and_then(|value| value.region_id.clone()),
-            price_list_id: resolution_context
-                .as_ref()
-                .and_then(|value| value.price_list_id.clone()),
-            channel_id: resolution_context
-                .as_ref()
-                .and_then(|value| value.channel_id.clone()),
-            channel_slug: resolution_context
-                .as_ref()
-                .and_then(|value| value.channel_slug.clone()),
-            quantity: resolution_context.as_ref().map(|value| value.quantity),
-        })
-        .await?
+        if resolution_context.is_none() {
+            if let Some(detail) = details_by_handle.remove(&handle) {
+                Some(detail)
+            } else {
+                fetch_storefront_pricing_detail(StorefrontPricingDetailQuery {
+                    handle,
+                    locale: query.locale,
+                    ..StorefrontPricingDetailQuery::default()
+                })
+                .await?
+            }
+        } else {
+            fetch_storefront_pricing_detail(StorefrontPricingDetailQuery {
+                handle,
+                locale: query.locale,
+                currency_code: resolution_context
+                    .as_ref()
+                    .map(|value| value.currency_code.clone()),
+                region_id: resolution_context
+                    .as_ref()
+                    .and_then(|value| value.region_id.clone()),
+                price_list_id: resolution_context
+                    .as_ref()
+                    .and_then(|value| value.price_list_id.clone()),
+                channel_id: resolution_context
+                    .as_ref()
+                    .and_then(|value| value.channel_id.clone()),
+                channel_slug: resolution_context
+                    .as_ref()
+                    .and_then(|value| value.channel_slug.clone()),
+                quantity: resolution_context.as_ref().map(|value| value.quantity),
+            })
+            .await?
+        }
     } else {
         None
     };
@@ -253,16 +286,16 @@ pub(crate) async fn fetch_storefront_pricing(
     Ok(StorefrontPricingData {
         products: PricingProductList {
             items,
-            total: list_response.storefront_products.total,
-            page: list_response.storefront_products.page,
-            per_page: list_response.storefront_products.per_page,
-            has_next: list_response.storefront_products.has_next,
+            total: storefront_products.total,
+            page: storefront_products.page,
+            per_page: storefront_products.per_page,
+            has_next: storefront_products.has_next,
         },
         selected_product,
         selected_handle: resolved_handle,
         resolution_context,
-        available_channels: list_response.available_channels,
-        active_price_lists: list_response.active_price_lists,
+        available_channels,
+        active_price_lists,
     })
 }
 
