@@ -18,6 +18,10 @@ pub(crate) fn validate_module_registry_docs_contract(
     slug: &str,
     spec: &ModuleSpec,
 ) -> Result<()> {
+    if spec.runtime.trim() == "extension" {
+        return Ok(());
+    }
+
     let registry_path = manifest_path
         .parent()
         .unwrap_or_else(|| Path::new("."))

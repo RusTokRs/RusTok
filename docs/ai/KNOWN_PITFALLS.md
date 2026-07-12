@@ -104,9 +104,8 @@ Short list of typical mistakes before making code changes.
 
 ## Mandatory Check Before Changes
 
-If the task touches Loco/Iggy/MCP/Outbox/Telemetry/Database/Frontend:
+If the task touches Axum runtime/Iggy/MCP/Outbox/Telemetry/Database/Frontend:
 1. First open the corresponding reference package:
-   - `docs/architecture/loco-exit-plan.md`
    - `DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md`
    - `docs/references/iggy/README.md`
    - `docs/references/mcp/README.md`

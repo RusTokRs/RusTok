@@ -45,7 +45,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | After module refactoring | `./scripts/verify/verify-all.sh -v` |
 | PR review | `./scripts/verify/verify-all.sh -v` |
 | Added a new endpoint | `./scripts/verify/verify-all.sh api-quality` + `node scripts/verify/verify-api-surface-contract.mjs` |
-| Touching Loco/Axum cutover | `node scripts/verify/verify-loco-inventory.mjs` |
+| Touching Axum runtime boundaries | `node scripts/verify/verify-axum-runtime.mjs` |
 | Exporting OpenAPI and GraphQL contracts | `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` |
 | Added a new event | `./scripts/verify/verify-all.sh events` |
 | Anti-bypass drift check | `./scripts/verify/verify-all.sh anti-bypass` |
@@ -197,19 +197,19 @@ node scripts/verify/verify-runtime-context-invariants.mjs
 
 ---
 
-### `verify-loco-inventory.mjs`
-**Loco RS exit inventory guardrail** — fast source-level gate for the Loco RS exit plan.
+### `verify-axum-runtime.mjs`
+**Axum runtime boundary guardrail** — fast source-level gate for the server and
+standalone CLI entrypoints.
 
 What it checks:
-- scans `apps/`, `crates/`, `scripts/`, `docs/`, `Cargo.toml` and `Cargo.lock` for `loco_rs`, `loco-rs`, `cargo loco`, `rustok_outbox::loco`;
-- classifies each current occurrence by roadmap category (`host_runtime`, `server_task`, `module_ui_adapter`, `dependency_manifest`, `docs`, etc.);
-- fails on any new unclassified Loco occurrence to prevent Phase 0 inventory from spreading.
+- the composed server host, bootstrap, router, and lifecycle boundaries exist;
+- the standalone CLI and runtime composition entrypoints exist.
 
 Example:
 
 ```bash
-node scripts/verify/verify-loco-inventory.mjs
-npm run verify:loco:inventory
+node scripts/verify/verify-axum-runtime.mjs
+npm run verify:axum:runtime
 ```
 
 ---

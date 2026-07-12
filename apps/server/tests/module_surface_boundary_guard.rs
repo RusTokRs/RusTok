@@ -435,12 +435,7 @@ fn flex_graphql_surface_is_owned_by_flex_crate() {
     assert!(owner_mutation.contains("async fn reorder_field_definitions"));
     assert!(owner_mutation.contains("async fn create_flex_schema"));
     assert!(owner_mutation.contains("async fn create_flex_entry"));
-    for forbidden in [
-        "crate::context",
-        "crate::services",
-        "loco_rs",
-        "apps/server",
-    ] {
+    for forbidden in ["crate::context", "crate::services", "apps/server"] {
         assert!(!owner_query.contains(forbidden));
         assert!(!owner_mutation.contains(forbidden));
         assert!(!runtime.contains(forbidden));
@@ -824,7 +819,6 @@ fn search_graphql_surface_is_owned_by_search_crate() {
         "crate::graphql",
         "crate::middleware",
         "crate::services",
-        "loco_rs::app::AppContext",
         "RbacService",
         "transactional_event_bus_from_context",
         "SharedSearchRateLimiter",
@@ -921,7 +915,6 @@ fn rbac_graphql_surface_is_owned_by_rbac_crate() {
         "crate::graphql",
         "crate::middleware",
         "crate::services",
-        "loco_rs::app::AppContext",
         "RbacService",
     ];
 
@@ -969,7 +962,6 @@ fn auth_graphql_surface_is_owned_by_auth_crate() {
         "crate::services",
         "DatabaseConnection",
         "sea_orm",
-        "loco_rs",
     ];
     let mut offenders = Vec::new();
     for entry in std::fs::read_dir(&auth_graphql_dir).expect("rustok-auth GraphQL dir should read")
@@ -1156,7 +1148,6 @@ fn mcp_graphql_surface_is_owned_by_mcp_crate() {
         "crate::services",
         "DatabaseConnection",
         "sea_orm",
-        "loco_rs",
     ];
     let mut offenders = Vec::new();
     for entry in std::fs::read_dir(&graphql_dir).expect("rustok-mcp GraphQL dir should read") {

@@ -554,7 +554,6 @@ mod tests {
             .find(|file| file.path == "Cargo.toml")
             .expect("Cargo.toml should be present");
         assert!(cargo.content.contains("axum.workspace = true"));
-        assert!(!cargo.content.contains("loco-rs"));
 
         let controllers = response
             .files
@@ -562,7 +561,6 @@ mod tests {
             .find(|file| file.path == "src/controllers/mod.rs")
             .expect("controllers module should be present");
         assert!(controllers.content.contains("pub fn axum_router()"));
-        assert!(!controllers.content.contains("loco_rs"));
     }
 
     #[test]

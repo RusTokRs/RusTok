@@ -94,6 +94,8 @@ to the role of model host.
 - browser-target verification for the Leptos package now includes a separate `hydrate` check, so that
   the WebSocket streaming path is tested not only on SSR.
 
+## Verification
+
 ### Opt-in live provider connectivity
 
 Live provider probes are intentionally excluded from default test gates. An
@@ -111,6 +113,8 @@ and the list of targets remain operator/deployment configuration, never tenant
 input. The test makes real provider requests and must not be enabled in shared
 or default CI.
 
+## Responsibility Zone
+
 ## Scope
 
 ### What stays in `rustok-ai`
@@ -122,6 +126,8 @@ or default CI.
 - server-side management service;
 - GraphQL query/mutation/subscription roots, DTO and permission checks;
 - capability-owned large operator/admin UI packages.
+
+## Integration
 
 ### What stays in `rustok-mcp`
 
@@ -145,7 +151,7 @@ or default CI.
 - remote MCP bootstrap beyond the current Rustok server wiring;
 - separate marketplace/publish flow for AI artifacts.
 
-## Related documents
+## Related Documentation
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)
