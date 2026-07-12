@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use sea_orm::{
     sea_query::{LockBehavior, LockType},
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::from_value;
 use uuid::Uuid;
@@ -130,6 +130,7 @@ impl OutboxRelay {
     }
 
     pub async fn process_pending_once(&self, max_batch_hint: Option<u64>) -> Result<usize> {
+        self.validate_config()?;
         if max_batch_hint == Some(0) {
             return Err(Error::Validation(
                 "outbox max_batch_hint must be greater than zero".to_string(),
@@ -140,12 +141,11 @@ impl OutboxRelay {
             .min(self.config.batch_size);
         let claimed = self.claim_batch(batch_size).await?;
         let claimed_count = claimed.len();
-        let max_concurrency = self.config.max_concurrency.max(1);
         let mut tasks = tokio::task::JoinSet::new();
         let mut first_error = None;
 
         for model in claimed {
-            while tasks.len() >= max_concurrency {
+            while tasks.len() >= self.config.max_concurrency {
                 Self::collect_dispatch_result(&mut tasks, &mut first_error).await;
             }
 
@@ -162,6 +162,35 @@ impl OutboxRelay {
         }
 
         Ok(claimed_count)
+    }
+
+    fn validate_config(&self) -> Result<()> {
+        if self.config.batch_size == 0 {
+            return Err(Error::Validation(
+                "outbox relay batch_size must be greater than zero".to_string(),
+            ));
+        }
+        if self.config.max_attempts <= 0 {
+            return Err(Error::Validation(
+                "outbox relay max_attempts must be greater than zero".to_string(),
+            ));
+        }
+        if self.config.max_concurrency == 0 {
+            return Err(Error::Validation(
+                "outbox relay max_concurrency must be greater than zero".to_string(),
+            ));
+        }
+        if self.config.claim_ttl.is_zero() {
+            return Err(Error::Validation(
+                "outbox relay claim_ttl must be greater than zero".to_string(),
+            ));
+        }
+        if self.config.worker_id.trim().is_empty() {
+            return Err(Error::Validation(
+                "outbox relay worker_id must not be empty".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     async fn claim_batch(&self, batch_size: u64) -> Result<Vec<entity::Model>> {
@@ -203,6 +232,12 @@ impl OutboxRelay {
 
         entity::Entity::update_many()
             .filter(entity::Column::Id.is_in(candidate_ids.clone()))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(
+                Condition::any()
+                    .add(entity::Column::NextAttemptAt.is_null())
+                    .add(entity::Column::NextAttemptAt.lte(now)),
+            )
             .filter(
                 Condition::any()
                     .add(entity::Column::ClaimedAt.is_null())
@@ -218,8 +253,9 @@ impl OutboxRelay {
 
         let claimed = entity::Entity::find()
             .filter(entity::Column::Id.is_in(candidate_ids))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(entity::Column::ClaimedBy.eq(worker_id))
-            .filter(entity::Column::ClaimedAt.is_not_null())
+            .filter(entity::Column::ClaimedAt.eq(now))
             .all(&txn)
             .await?;
 
@@ -252,79 +288,125 @@ impl OutboxRelay {
     async fn process_claimed_event(&self, model: &entity::Model) -> Result<()> {
         let started = Instant::now();
         let event_id = model.id;
-        let envelope: EventEnvelope = from_value(model.payload.clone())?;
+        let envelope: EventEnvelope = match from_value(model.payload.clone()) {
+            Ok(envelope) => envelope,
+            Err(error) => {
+                let elapsed_ms = started.elapsed().as_millis() as u64;
+                self.record_processed(elapsed_ms, false);
+                tracing::warn!(
+                    event_id = %event_id,
+                    error = %error,
+                    "Outbox event payload is invalid"
+                );
+                return self
+                    .mark_failed_attempt(model, Error::Serialization(error))
+                    .await;
+            }
+        };
 
         let publish_result = self.target.publish(envelope).await;
         let elapsed_ms = started.elapsed().as_millis() as u64;
-        self.metrics
-            .latency_ms_total
-            .fetch_add(elapsed_ms, Ordering::Relaxed);
-        self.metrics.processed_total.fetch_add(1, Ordering::Relaxed);
 
         match publish_result {
             Ok(()) => {
                 tracing::info!(event_id = %event_id, latency_ms = elapsed_ms, "Outbox event dispatched");
-                self.mark_dispatched(event_id).await?;
-                self.metrics.success_total.fetch_add(1, Ordering::Relaxed);
+                self.mark_dispatched(model).await?;
+                self.record_processed(elapsed_ms, true);
                 Ok(())
             }
             Err(err) => {
                 tracing::warn!(event_id = %event_id, error = %err, "Outbox event dispatch failed");
-                self.metrics.failure_total.fetch_add(1, Ordering::Relaxed);
+                self.record_processed(elapsed_ms, false);
                 self.mark_failed_attempt(model, err).await
             }
         }
     }
 
-    async fn mark_dispatched(&self, event_id: Uuid) -> Result<()> {
-        let mut active: entity::ActiveModel = entity::Entity::find_by_id(event_id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| Error::NotFound(format!("sys_event {event_id}")))?
-            .into();
-        active.status = Set(SysEventStatus::Dispatched);
-        active.dispatched_at = Set(Some(Utc::now()));
-        active.claimed_by = Set(None);
-        active.claimed_at = Set(None);
-        active.last_error = Set(None);
-        active.next_attempt_at = Set(None);
-        active.update(&self.db).await?;
-        Ok(())
+    fn record_processed(&self, elapsed_ms: u64, succeeded: bool) {
+        self.metrics
+            .latency_ms_total
+            .fetch_add(elapsed_ms, Ordering::Relaxed);
+        self.metrics.processed_total.fetch_add(1, Ordering::Relaxed);
+        if succeeded {
+            self.metrics.success_total.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.metrics.failure_total.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    async fn mark_dispatched(&self, model: &entity::Model) -> Result<()> {
+        let result = entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(model.id))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
+            .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
+            .set(entity::ActiveModel {
+                status: Set(SysEventStatus::Dispatched),
+                dispatched_at: Set(Some(Utc::now())),
+                claimed_by: Set(None),
+                claimed_at: Set(None),
+                last_error: Set(None),
+                next_attempt_at: Set(None),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        self.ensure_claim_owned(model.id, result.rows_affected)
     }
 
     async fn mark_failed_attempt(&self, model: &entity::Model, error: Error) -> Result<()> {
-        let retry_count = model.retry_count + 1;
-        let mut active: entity::ActiveModel = entity::Entity::find_by_id(model.id)
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| Error::NotFound(format!("sys_event {}", model.id)))?
-            .into();
+        let retry_count = model.retry_count.saturating_add(1);
+        let (status, next_attempt_at, moved_to_dlq) = if retry_count >= self.config.max_attempts {
+            (SysEventStatus::Failed, None, true)
+        } else {
+            (
+                SysEventStatus::Pending,
+                Some(Utc::now() + self.backoff_duration(retry_count)),
+                false,
+            )
+        };
 
-        active.retry_count = Set(retry_count);
-        active.last_error = Set(Some(error.to_string()));
-        active.claimed_by = Set(None);
-        active.claimed_at = Set(None);
+        let result = entity::Entity::update_many()
+            .filter(entity::Column::Id.eq(model.id))
+            .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+            .filter(entity::Column::ClaimedBy.eq(model.claimed_by.clone()))
+            .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
+            .set(entity::ActiveModel {
+                retry_count: Set(retry_count),
+                last_error: Set(Some(error.to_string())),
+                claimed_by: Set(None),
+                claimed_at: Set(None),
+                status: Set(status),
+                next_attempt_at: Set(next_attempt_at),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+        self.ensure_claim_owned(model.id, result.rows_affected)?;
 
-        if retry_count >= self.config.max_attempts {
-            active.status = Set(SysEventStatus::Failed);
-            active.next_attempt_at = Set(None);
+        if moved_to_dlq {
             tracing::error!(event_id = %model.id, retry_count, "Outbox event moved to DLQ (failed)");
             self.metrics.dlq_total.fetch_add(1, Ordering::Relaxed);
         } else {
-            let next_attempt_at = Utc::now() + self.backoff_duration(retry_count);
-            active.status = Set(SysEventStatus::Pending);
-            active.next_attempt_at = Set(Some(next_attempt_at));
             tracing::info!(
                 event_id = %model.id,
                 retry_count,
-                next_attempt_at = %next_attempt_at,
+                next_attempt_at = ?next_attempt_at,
                 "Outbox event scheduled for retry"
             );
             self.metrics.retry_total.fetch_add(1, Ordering::Relaxed);
         }
-
-        active.update(&self.db).await?;
         Ok(())
+    }
+
+    fn ensure_claim_owned(&self, event_id: Uuid, rows_affected: u64) -> Result<()> {
+        if rows_affected == 1 {
+            Ok(())
+        } else {
+            Err(Error::External(format!(
+                "outbox event {event_id} claim was lost before completion"
+            )))
+        }
     }
 
     fn backoff_duration(&self, retry_count: i32) -> chrono::Duration {
@@ -334,5 +416,143 @@ impl OutboxRelay {
         let max_ms = self.config.backoff_max.as_millis();
         let bounded = cmp::min(millis, max_ms) as i64;
         chrono::Duration::milliseconds(bounded)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::any::Any;
+
+    use async_trait::async_trait;
+    use sea_orm::{ActiveModelTrait, Database, EntityTrait, Set};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+    use rustok_core::events::{EventTransport, ReliabilityLevel};
+
+    use super::*;
+    use crate::migration::SysEventsMigration;
+
+    struct RejectUnexpectedPublish;
+
+    #[async_trait]
+    impl EventTransport for RejectUnexpectedPublish {
+        async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+            Err(Error::External(
+                "invalid payload must not reach transport".to_string(),
+            ))
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::InMemory
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    async fn database() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.expect("database");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("sys_events migration");
+        db
+    }
+
+    #[tokio::test]
+    async fn invalid_payload_reaches_dlq_instead_of_remaining_claimed() {
+        let db = database().await;
+        let event_id = Uuid::new_v4();
+        entity::ActiveModel {
+            id: Set(event_id),
+            event_type: Set("invalid.event".to_string()),
+            schema_version: Set(1),
+            payload: Set(serde_json::json!({ "not": "an envelope" })),
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(Utc::now()),
+            dispatched_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert poison event");
+
+        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish)).with_config(
+            RelayConfig {
+                max_attempts: 1,
+                worker_id: "poison-test".to_string(),
+                ..RelayConfig::default()
+            },
+        );
+
+        assert_eq!(relay.process_pending_once(Some(1)).await.expect("relay"), 1);
+
+        let event = entity::Entity::find_by_id(event_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("event");
+        assert_eq!(event.status, SysEventStatus::Failed);
+        assert_eq!(event.retry_count, 1);
+        assert!(event.claimed_by.is_none());
+        assert!(event.claimed_at.is_none());
+        assert!(event
+            .last_error
+            .as_deref()
+            .is_some_and(|message| message.contains("Serialization error")));
+    }
+
+    #[tokio::test]
+    async fn stale_worker_cannot_complete_a_reclaimed_event() {
+        let db = database().await;
+        let event_id = Uuid::new_v4();
+        entity::ActiveModel {
+            id: Set(event_id),
+            event_type: Set("invalid.event".to_string()),
+            schema_version: Set(1),
+            payload: Set(serde_json::json!({ "not": "an envelope" })),
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(Some("old-worker".to_string())),
+            claimed_at: Set(Some(Utc::now())),
+            created_at: Set(Utc::now()),
+            dispatched_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert claimed event");
+
+        let old_model = entity::Entity::find_by_id(event_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("event");
+        let mut reclaimed: entity::ActiveModel = old_model.clone().into();
+        reclaimed.claimed_by = Set(Some("new-worker".to_string()));
+        reclaimed.claimed_at = Set(Some(Utc::now() + chrono::Duration::seconds(1)));
+        reclaimed.update(&db).await.expect("reclaim event");
+
+        let relay = OutboxRelay::new(db.clone(), Arc::new(RejectUnexpectedPublish)).with_config(
+            RelayConfig {
+                worker_id: "old-worker".to_string(),
+                ..RelayConfig::default()
+            },
+        );
+        assert!(relay.mark_dispatched(&old_model).await.is_err());
+
+        let event = entity::Entity::find_by_id(event_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("event");
+        assert_eq!(event.status, SysEventStatus::Pending);
+        assert_eq!(event.claimed_by.as_deref(), Some("new-worker"));
     }
 }

@@ -32,6 +32,11 @@ impl ModuleOperationRecoveryPlan {
             (ModuleOperationStatus::Failed, Some(message)) if message.starts_with("post-hook:") => {
                 ModuleOperationIssue::PostHookFailed
             }
+            (ModuleOperationStatus::Failed, Some(message))
+                if message.starts_with("state-commit:") =>
+            {
+                ModuleOperationIssue::OtherFailed
+            }
             (ModuleOperationStatus::Failed, Some(message)) if !message.is_empty() => {
                 ModuleOperationIssue::PreHookFailed
             }
@@ -117,6 +122,20 @@ pub async fn failed_module_operation_recovery_plans(
         })
 }
 
+fn retry_operation_request(
+    plan: &ModuleOperationRecoveryPlan,
+    requested_by: Option<String>,
+) -> ModuleOperationRequest {
+    ModuleOperationRequest {
+        tenant_id: plan.tenant_id,
+        module_slug: plan.module_slug.clone(),
+        requested_enabled: plan.requested_enabled,
+        previous_effective_enabled: plan.previous_effective_enabled,
+        requested_by,
+        correlation_id: uuid::Uuid::new_v4().to_string(),
+    }
+}
+
 pub async fn retry_failed_post_hook_operation(
     db: &DatabaseConnection,
     dispatcher: &ModuleExecutionDispatcher<'_>,
@@ -145,14 +164,7 @@ pub async fn retry_failed_post_hook_operation(
 
     let operation = ModuleOperationJournal::record(
         db,
-        ModuleOperationRequest {
-            tenant_id: plan.tenant_id,
-            module_slug: plan.module_slug.clone(),
-            requested_enabled: plan.requested_enabled,
-            previous_effective_enabled: current_enabled,
-            requested_by: request.requested_by,
-            correlation_id: uuid::Uuid::new_v4().to_string(),
-        },
+        retry_operation_request(&plan, request.requested_by),
     )
     .await
     .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
@@ -227,6 +239,33 @@ mod tests {
         assert_eq!(
             pre_hook.recommended_action,
             ModuleOperationRecoveryAction::RepeatToggle
+        );
+
+        let state_commit = ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some(
+            "state-commit: module lifecycle persistence failed",
+        )));
+        assert_eq!(state_commit.issue, ModuleOperationIssue::OtherFailed);
+        assert!(!state_commit.retryable);
+        assert_eq!(
+            state_commit.recommended_action,
+            ModuleOperationRecoveryAction::None
+        );
+    }
+
+    #[test]
+    fn retry_attempt_preserves_original_previous_state_for_compensation() {
+        let plan =
+            ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some("post-hook: timeout")));
+        let request = retry_operation_request(&plan, Some("retry-operator".to_string()));
+
+        assert_eq!(request.requested_enabled, plan.requested_enabled);
+        assert_eq!(
+            request.previous_effective_enabled,
+            plan.previous_effective_enabled
+        );
+        assert_ne!(
+            request.previous_effective_enabled,
+            request.requested_enabled
         );
     }
 }
