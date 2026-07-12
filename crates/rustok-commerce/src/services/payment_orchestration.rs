@@ -18,6 +18,12 @@ const MANUAL_PROVIDER_ID: &str = "manual";
 pub enum PaymentOrchestrationError {
     #[error("payment provider error: {0}")]
     Provider(#[source] PaymentError),
+    #[error("payment provider error after refund {refund_id} was reserved: {source}")]
+    ProviderAfterRefundReservation {
+        refund_id: Uuid,
+        #[source]
+        source: PaymentError,
+    },
     #[error("payment error: {0}")]
     Payment(#[from] PaymentError),
 }
@@ -27,10 +33,9 @@ pub type PaymentOrchestrationResult<T> = Result<T, PaymentOrchestrationError>;
 /// Commerce-owned payment orchestration for post-checkout operator paths.
 ///
 /// The umbrella module may choose *when* payment side effects are needed, but it
-/// must route provider calls through the payment owner registry before asking
-/// `PaymentService` to persist lifecycle changes. This keeps refund/cancel paths
-/// aligned with checkout authorize/capture and avoids provider-specific logic in
-/// REST, GraphQL, or host adapters.
+/// must route provider calls through the payment owner registry. Refund capacity
+/// is reserved in the payment owner before a provider side effect is attempted so
+/// concurrent requests cannot externally refund more than the captured amount.
 pub struct PaymentOrchestrationService {
     payment_service: PaymentService,
     payment_provider_registry: PaymentProviderRegistry,
@@ -109,36 +114,43 @@ impl PaymentOrchestrationService {
             .get_collection(tenant_id, collection_id)
             .await?;
         let provider_id = provider_id_for_collection(&collection);
+
+        // Reserve refundable capacity before invoking an external provider. If the
+        // provider outcome is unknown, keep the pending refund for reconciliation;
+        // automatically cancelling it could allow a duplicate external refund.
+        let refund = self
+            .payment_service
+            .create_refund(tenant_id, collection_id, input.clone())
+            .await?;
+
         self.payment_provider_registry
             .execute_refund(
                 provider_id.as_str(),
                 PaymentProviderOperationRequest {
                     tenant_id,
                     collection_id,
-                    amount: input.amount,
-                    currency_code: collection.currency_code.clone(),
-                    idempotency_key: Some(format!(
-                        "payment_collection:{}:refund:{}",
-                        collection_id, input.amount
-                    )),
+                    amount: refund.amount,
+                    currency_code: refund.currency_code.clone(),
+                    idempotency_key: Some(format!("payment_refund:{}", refund.id)),
                     metadata: merge_provider_context(
-                        input.metadata.clone(),
+                        input.metadata,
                         serde_json::json!({
                             "commerce_orchestration": {
                                 "operation": "create_refund",
-                                "reason": input.reason.clone(),
+                                "refund_id": refund.id,
+                                "reason": input.reason,
                             }
                         }),
                     ),
                 },
             )
             .await
-            .map_err(PaymentOrchestrationError::Provider)?;
+            .map_err(|source| PaymentOrchestrationError::ProviderAfterRefundReservation {
+                refund_id: refund.id,
+                source,
+            })?;
 
-        Ok(self
-            .payment_service
-            .create_refund(tenant_id, collection_id, input)
-            .await?)
+        Ok(refund)
     }
 
     pub async fn complete_refund(
