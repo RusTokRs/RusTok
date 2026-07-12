@@ -25,6 +25,7 @@ pub use release::ReleaseStatus;
 pub use report::BuildExecutionReport;
 pub use request::{BuildRequest, ModuleSpec, ReleaseArtifactBundle};
 pub use runtime::{
-    NoopReleaseActivationHook, ReleaseActivationHook, ReleasePublishRequest, ReleasePublisherPort,
+    DeploymentBackend, DeploymentSettings, NoopReleaseActivationHook, ReleaseActivationHook,
+    ReleasePublishRequest, ReleasePublisherPort,
 };
 pub use service::BuildService;

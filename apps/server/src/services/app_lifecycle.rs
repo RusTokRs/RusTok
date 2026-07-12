@@ -368,7 +368,7 @@ async fn build_worker_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     let executor = build_execution_service(&runtime_ctx);
-    let release_backend = ReleaseDeploymentService::new(&runtime_ctx, config.clone());
+    let release_backend = ReleaseDeploymentService::new(&runtime_ctx, config.deployment.clone());
     let poll_interval = Duration::from_millis(config.poll_interval_ms);
 
     loop {

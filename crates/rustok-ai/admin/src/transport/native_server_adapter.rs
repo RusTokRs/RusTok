@@ -1598,39 +1598,8 @@ fn parse_execution_mode(value: &str) -> Result<rustok_ai::ExecutionMode, ServerF
 }
 
 #[cfg(feature = "ssr")]
-fn parse_provider_slug(value: &str) -> Result<rustok_ai::ProviderSlug, ServerFnError> {
-    rustok_ai::ProviderSlug::new(value).map_err(ServerFnError::new)
-}
-
-#[cfg(feature = "ssr")]
 fn parse_provider_target_id(value: &str) -> Result<rustok_ai::ProviderTargetId, ServerFnError> {
     rustok_ai::ProviderTargetId::new(value).map_err(ServerFnError::new)
-}
-
-#[cfg(feature = "ssr")]
-fn parse_settings(
-    values: Vec<AiProviderSettingPayload>,
-) -> Result<std::collections::BTreeMap<String, serde_json::Value>, ServerFnError> {
-    let mut settings = std::collections::BTreeMap::new();
-    for value in values {
-        let candidates = [
-            value.text_value.map(serde_json::Value::String),
-            value.integer_value.map(serde_json::Value::from),
-            value.boolean_value.map(serde_json::Value::from),
-        ];
-        let mut candidates = candidates.into_iter().flatten();
-        let typed_value = candidates
-            .next()
-            .ok_or_else(|| ServerFnError::new(format!("Setting `{}` has no value", value.key)))?;
-        if candidates.next().is_some() || settings.insert(value.key.clone(), typed_value).is_some()
-        {
-            return Err(ServerFnError::new(format!(
-                "Setting `{}` is ambiguous or duplicated",
-                value.key
-            )));
-        }
-    }
-    Ok(settings)
 }
 
 #[cfg(feature = "ssr")]

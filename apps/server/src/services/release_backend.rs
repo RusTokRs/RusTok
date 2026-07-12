@@ -7,9 +7,7 @@ use reqwest::multipart;
 use serde::Serialize;
 use tokio::process::Command;
 
-use crate::common::settings::{
-    BuildDeploymentBackendKind, BuildDeploymentSettings, BuildRuntimeSettings,
-};
+use crate::common::settings::{BuildDeploymentBackendKind, BuildDeploymentSettings};
 use crate::services::release_activation_hook::ServerReleaseActivationHook;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_build::build::Model as Build;
@@ -42,16 +40,16 @@ struct PreparedReleaseBundle {
 
 pub struct ReleaseDeploymentService {
     build_service: BuildService,
-    config: BuildRuntimeSettings,
+    config: BuildDeploymentSettings,
 }
 
 impl ReleaseDeploymentService {
-    pub fn new(ctx: &ServerRuntimeContext, config: BuildRuntimeSettings) -> Self {
+    pub fn new(ctx: &ServerRuntimeContext, config: BuildDeploymentSettings) -> Self {
         Self::with_database(ctx.db_clone(), config)
     }
 
     /// Creates the host publication adapter for an installer-opened database.
-    pub fn with_database(db: sea_orm::DatabaseConnection, config: BuildRuntimeSettings) -> Self {
+    pub fn with_database(db: sea_orm::DatabaseConnection, config: BuildDeploymentSettings) -> Self {
         Self {
             build_service: BuildService::with_runtime(
                 db.clone(),
@@ -84,7 +82,7 @@ impl ReleaseDeploymentService {
             .await?;
 
         let outcome = match publish_release_artifacts(
-            &self.config.deployment,
+            &self.config,
             &release,
             &build,
             &plan,
@@ -106,7 +104,7 @@ impl ReleaseDeploymentService {
 
         match outcome.state {
             ReleasePublishState::Deploying => {
-                if activate && self.config.deployment.backend != BuildDeploymentBackendKind::Http {
+                if activate && self.config.backend != BuildDeploymentBackendKind::Http {
                     self.build_service.activate_release(&release.id).await
                 } else {
                     Ok(release)

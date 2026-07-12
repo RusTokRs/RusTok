@@ -99,11 +99,13 @@ impl InstallDeploymentPort<DatabaseConnection> for ServerInstallerDeploymentAdap
             .ensure_release_for_build(build.id, request.environment.as_str(), false)
             .await
             .map_err(execution_error)?;
-        let release =
-            ReleaseDeploymentService::with_database(runtime.clone(), self.build_settings.clone())
-                .publish_release(&release.id, true)
-                .await
-                .map_err(execution_error)?;
+        let release = ReleaseDeploymentService::with_database(
+            runtime.clone(),
+            self.build_settings.deployment.clone(),
+        )
+        .publish_release(&release.id, true)
+        .await
+        .map_err(execution_error)?;
         if release.status != ReleaseStatus::Active {
             return Err(InstallExecutionError::new(format!(
                 "deployment for role `{}` is not active yet",

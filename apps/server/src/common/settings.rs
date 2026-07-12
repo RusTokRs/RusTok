@@ -343,35 +343,9 @@ pub struct BuildRuntimeSettings {
     pub deployment: BuildDeploymentSettings,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BuildDeploymentSettings {
-    #[serde(default)]
-    pub backend: BuildDeploymentBackendKind,
-    #[serde(default = "default_build_deployment_filesystem_root_dir")]
-    pub filesystem_root_dir: String,
-    #[serde(default)]
-    pub public_base_url: Option<String>,
-    #[serde(default)]
-    pub endpoint_url: Option<String>,
-    #[serde(default)]
-    pub bearer_token: Option<String>,
-    #[serde(default = "default_build_deployment_docker_bin")]
-    pub docker_bin: String,
-    #[serde(default)]
-    pub image_repository: Option<String>,
-    #[serde(default)]
-    pub rollout_command: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum BuildDeploymentBackendKind {
-    #[default]
-    RecordOnly,
-    Filesystem,
-    Http,
-    Container,
-}
+pub use rustok_build::{
+    DeploymentBackend as BuildDeploymentBackendKind, DeploymentSettings as BuildDeploymentSettings,
+};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RateLimitSettings {
@@ -529,21 +503,6 @@ impl Default for BuildRuntimeSettings {
             auto_release_environment: None,
             auto_activate_release: false,
             deployment: BuildDeploymentSettings::default(),
-        }
-    }
-}
-
-impl Default for BuildDeploymentSettings {
-    fn default() -> Self {
-        Self {
-            backend: BuildDeploymentBackendKind::RecordOnly,
-            filesystem_root_dir: default_build_deployment_filesystem_root_dir(),
-            public_base_url: None,
-            endpoint_url: None,
-            bearer_token: None,
-            docker_bin: default_build_deployment_docker_bin(),
-            image_repository: None,
-            rollout_command: None,
         }
     }
 }

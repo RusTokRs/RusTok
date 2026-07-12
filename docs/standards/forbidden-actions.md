@@ -207,10 +207,10 @@ pub async fn create_product(input: CreateProductInput) -> Result<Json<Product>> 
 // ✅ REQUIRED — controller calls service
 pub async fn create_product(
     RequireProductsCreate(user): RequireProductsCreate,
-    State(ctx): State<AppContext>,
+    State(runtime): State<ServerRuntimeContext>,
     Json(input): Json<CreateProductInput>,
-) -> loco_rs::Result<Json<ProductResponse>> {
-    let product = ProductService::create(&ctx, &input).await?;
+) -> Result<Json<ProductResponse>, rustok_web::HttpError> {
+    let product = ProductService::create(runtime.db(), &input).await?;
     Ok(Json(product.into()))
 }
 ```
@@ -449,8 +449,8 @@ Must not create a parallel "pure Axum" lifecycle — `Hooks::routes`, `Hooks::af
 // ❌ FORBIDDEN — custom error types in controllers
 pub async fn handler() -> Result<Json<Data>, MyCustomError> { }
 
-// ✅ REQUIRED — loco_rs::Result
-pub async fn handler() -> loco_rs::Result<Json<Data>> { }
+// ✅ REQUIRED — rustok-web error mapping
+pub async fn handler() -> Result<Json<Data>, rustok_web::HttpError> { }
 ```
 
 **Consequences:** Incompatible error responses, middleware cannot handle the error.

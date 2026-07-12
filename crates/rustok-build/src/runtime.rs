@@ -1,8 +1,67 @@
 //! Host integration ports for build/release lifecycle side effects.
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::release::Model as Release;
+
+/// Deployment backend selected by an executable host or operational CLI.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DeploymentBackend {
+    #[default]
+    RecordOnly,
+    Filesystem,
+    Http,
+    Container,
+}
+
+/// Serializable release-publication settings shared by executable hosts.
+///
+/// Secret resolution and host-specific process execution remain outside this
+/// contract. A host passes the already resolved HTTP bearer token when needed.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DeploymentSettings {
+    #[serde(default)]
+    pub backend: DeploymentBackend,
+    #[serde(default = "default_filesystem_root_dir")]
+    pub filesystem_root_dir: String,
+    #[serde(default)]
+    pub public_base_url: Option<String>,
+    #[serde(default)]
+    pub endpoint_url: Option<String>,
+    #[serde(default)]
+    pub bearer_token: Option<String>,
+    #[serde(default = "default_docker_bin")]
+    pub docker_bin: String,
+    #[serde(default)]
+    pub image_repository: Option<String>,
+    #[serde(default)]
+    pub rollout_command: Option<String>,
+}
+
+impl Default for DeploymentSettings {
+    fn default() -> Self {
+        Self {
+            backend: DeploymentBackend::RecordOnly,
+            filesystem_root_dir: default_filesystem_root_dir(),
+            public_base_url: None,
+            endpoint_url: None,
+            bearer_token: None,
+            docker_bin: default_docker_bin(),
+            image_repository: None,
+            rollout_command: None,
+        }
+    }
+}
+
+fn default_filesystem_root_dir() -> String {
+    "artifacts/releases".to_string()
+}
+
+fn default_docker_bin() -> String {
+    "docker".to_string()
+}
 
 /// Typed request for a host-owned release publication operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
