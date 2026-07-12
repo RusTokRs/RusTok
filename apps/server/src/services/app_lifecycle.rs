@@ -15,6 +15,7 @@ use crate::services::event_transport_factory::{
 use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::release_backend::ReleaseDeploymentService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use rustok_build::ReleasePublisherPort;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::SeoService;
 
@@ -392,9 +393,14 @@ async fn build_worker_loop(
                             .ensure_release_for_build(report.build_id, environment, false)
                             .await
                         {
-                            Ok(release) => match release_backend
-                                .publish_release(&release.id, config.auto_activate_release)
-                                .await
+                            Ok(release) => match ReleasePublisherPort::publish_release(
+                                &release_backend,
+                                rustok_build::ReleasePublishRequest {
+                                    release_id: release.id.clone(),
+                                    activate: config.auto_activate_release,
+                                },
+                            )
+                            .await
                             {
                                 Ok(published_release) => tracing::info!(
                                     build_id = %report.build_id,

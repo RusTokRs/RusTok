@@ -3,8 +3,8 @@ use leptos::task::spawn_local;
 use leptos_use::use_interval_fn;
 use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
-    InstallProfile, ModuleSelection, SecretMode, SecretRef, SecretValue, SeedProfile,
-    TenantBootstrap,
+    InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode, SecretRef,
+    SecretValue, SeedProfile, TenantBootstrap,
 };
 
 use crate::features::installer::transport;
@@ -723,6 +723,7 @@ fn build_install_plan(
             enable: parse_module_list(&enable_modules),
             disable: parse_module_list(&disable_modules),
         },
+        topology: InstallTopology::for_mode(InstallTopologyMode::Monolith),
         seed_profile: parse_seed_profile(&seed_profile)?,
         secrets_mode: parse_secret_mode(&secrets_mode)?,
     })

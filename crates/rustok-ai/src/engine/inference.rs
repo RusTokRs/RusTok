@@ -5,11 +5,13 @@ use std::{
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
+use rig::prelude::ImageGenerationClient;
 use rig::{
     client::CompletionClient,
     completion::{
         CompletionModel, CompletionRequest, Message, ToolDefinition as RigToolDefinition,
     },
+    image_generation::ImageGenerationModel,
     message::{AssistantContent, ToolCall as RigToolCall, ToolFunction, UserContent},
     providers::{
         anthropic, azure, chatgpt, cohere, copilot, deepseek, galadriel, gemini, groq, huggingface,
@@ -17,17 +19,15 @@ use rig::{
         perplexity, together, xai, xiaomimimo, zai,
     },
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},
-    image_generation::ImageGenerationModel,
     OneOrMany,
 };
-use rig::prelude::ImageGenerationClient;
 use secrecy::ExposeSecret;
 
 use crate::{
     model::{
         AiProviderConfig, ChatMessage, ChatMessageRole, ProviderChatRequest, ProviderChatResponse,
         ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent,
-        ProviderTestResult, ProviderUsage, ProviderStructuredRequest, ToolCall,
+        ProviderStructuredRequest, ProviderTestResult, ProviderUsage, ToolCall,
     },
     AiError, AiResult,
 };
@@ -243,7 +243,9 @@ pub async fn inference_for_slug(
                 .settings
                 .get("api_version")
                 .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| AiError::InvalidConfig("Azure API version is required".to_string()))?;
+                .ok_or_else(|| {
+                    AiError::InvalidConfig("Azure API version is required".to_string())
+                })?;
             let client = azure::Client::builder()
                 .api_key(api_key)
                 .azure_endpoint(endpoint.to_string())
@@ -547,7 +549,11 @@ async fn stream_with<M: CompletionModel>(
             }
             let arguments = serde_json::from_str(&arguments)
                 .unwrap_or_else(|_| serde_json::Value::String(arguments));
-            emitter.emit_tool_call(ToolCall { id, name, arguments });
+            emitter.emit_tool_call(ToolCall {
+                id,
+                name,
+                arguments,
+            });
         }
     }
     let raw_payload = stream
@@ -557,7 +563,7 @@ async fn stream_with<M: CompletionModel>(
         .unwrap_or_else(|| serde_json::json!({"provider": provider, "streaming": true}));
     if let Some(usage) = extract_usage(&raw_payload) {
         if let Some(emitter) = &emitter {
-            emitter.emit(ProviderStreamEvent::Usage(usage));
+            emitter.emit_usage(usage);
         }
     }
     Ok(map_response(
@@ -582,13 +588,9 @@ fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage> {
         .unwrap_or(0);
     let total_tokens = usage
         .get("total_tokens")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(input_tokens + output_tokens);
-    (input_tokens > 0 || output_tokens > 0 || total_tokens > 0).then_some(ProviderUsage {
-        input_tokens,
-        output_tokens,
-        total_tokens,
-    })
+        .and_then(serde_json::Value::as_u64);
+    (input_tokens > 0 || output_tokens > 0 || total_tokens.unwrap_or(0) > 0)
+        .then(|| ProviderUsage::normalized(input_tokens, output_tokens, total_tokens))
 }
 
 #[cfg(test)]
@@ -599,7 +601,9 @@ mod usage_tests {
     fn normalizes_openai_and_anthropic_token_names() {
         let openai = extract_usage(&serde_json::json!({"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}})).unwrap();
         assert_eq!(openai.total_tokens, 8);
-        let anthropic = extract_usage(&serde_json::json!({"usage":{"input_tokens":3,"output_tokens":5}})).unwrap();
+        let anthropic =
+            extract_usage(&serde_json::json!({"usage":{"input_tokens":3,"output_tokens":5}}))
+                .unwrap();
         assert_eq!(anthropic.total_tokens, 8);
         assert!(extract_usage(&serde_json::json!({})).is_none());
     }

@@ -538,8 +538,41 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
 /// identity, validation and lifecycle boundary.
 pub struct ModuleInstaller<R, S, B> {
     registry: R,
+    admission: ArtifactAdmissionService<S, B>,
+}
+
+/// Owner-owned admission entrypoint. Infrastructure supplies the durable CAS
+/// and transactional metadata/outbox adapters; this service owns their order.
+pub struct ArtifactAdmissionService<S, B> {
     store: S,
     blobs: B,
+}
+
+impl<S, B> ArtifactAdmissionService<S, B>
+where
+    S: ArtifactAdmissionStore,
+    B: DurableArtifactBlobStore,
+{
+    pub fn new(store: S, blobs: B) -> Self {
+        Self { store, blobs }
+    }
+
+    pub async fn admit(
+        &self,
+        artifact: &InstalledModuleArtifact,
+        media_type: &str,
+        payload: &[u8],
+    ) -> Result<(), ModuleInstallationError> {
+        let staged = self
+            .blobs
+            .stage(&artifact.descriptor.artifact_digest, media_type, payload)
+            .await?;
+        if let Err(error) = self.blobs.publish(&staged).await {
+            let _ = self.blobs.discard(&staged).await;
+            return Err(error);
+        }
+        self.store.commit_admission(artifact, &staged).await
+    }
 }
 
 impl<R, S, B> ModuleInstaller<R, S, B>
@@ -551,8 +584,7 @@ where
     pub fn new(registry: R, store: S, blobs: B) -> Self {
         Self {
             registry,
-            store,
-            blobs,
+            admission: ArtifactAdmissionService::new(store, blobs),
         }
     }
 
@@ -583,19 +615,9 @@ where
             descriptor: package.descriptor,
             installed_at,
         };
-        let staged = self
-            .blobs
-            .stage(
-                &artifact.descriptor.artifact_digest,
-                &package.media_type,
-                &package.payload,
-            )
+        self.admission
+            .admit(&artifact, &package.media_type, &package.payload)
             .await?;
-        if let Err(error) = self.blobs.publish(&staged).await {
-            let _ = self.blobs.discard(&staged).await;
-            return Err(error);
-        }
-        self.store.commit_admission(&artifact, &staged).await?;
         Ok(artifact)
     }
 }

@@ -7,15 +7,16 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiCredentialRefPayload,
-    AiProviderProfilePayload, AiProviderSettingPayload, AiProviderTestResultPayload,
-    AiProviderTargetPayload, AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
+    AiProviderProfilePayload, AiProviderSettingPayload, AiProviderTargetPayload,
+    AiProviderTestResultPayload, AiSendMessageResultPayload, AiTaskProfilePayload,
+    AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
     AiApprovalRequestPayload, AiChatMessagePayload, AiChatSessionSummaryPayload,
-    AiMetricBucketPayload, AiRecentRunPayload, AiRunStreamEventKindPayload,
-    AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiProviderUsagePayload, AiStreamToolCallPayload, AiToolCallPayload, AiToolTracePayload,
-    AiProviderCatalogEntryPayload, AiProviderFieldPayload,
+    AiMetricBucketPayload, AiProviderCatalogEntryPayload, AiProviderFieldPayload,
+    AiRecentRunPayload, AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiToolCallPayload,
+    AiToolTracePayload,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1116,9 +1117,10 @@ fn ai_runtime_from_context(
         })?
         .0;
 
-    let mut runtime = rustok_ai::AiHostRuntime::new(runtime_ctx.db_clone(), event_bus, module_registry)
-        .with_storage(runtime_ctx.shared_get::<rustok_storage::StorageService>())
-        .with_alloy_runtime(runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>());
+    let mut runtime =
+        rustok_ai::AiHostRuntime::new(runtime_ctx.db_clone(), event_bus, module_registry)
+            .with_storage(runtime_ctx.shared_get::<rustok_storage::StorageService>())
+            .with_alloy_runtime(runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>());
     if let Some(registry) = runtime_ctx.shared_get::<rustok_ai::SharedAiSecretResolverRegistry>() {
         runtime = runtime.with_secret_registry(registry.0);
     }
@@ -1608,7 +1610,8 @@ fn parse_settings(
         let typed_value = candidates
             .next()
             .ok_or_else(|| ServerFnError::new(format!("Setting `{}` has no value", value.key)))?;
-        if candidates.next().is_some() || settings.insert(value.key.clone(), typed_value).is_some() {
+        if candidates.next().is_some() || settings.insert(value.key.clone(), typed_value).is_some()
+        {
             return Err(ServerFnError::new(format!(
                 "Setting `{}` is ambiguous or duplicated",
                 value.key
@@ -1658,35 +1661,5 @@ fn map_send_result(value: rustok_ai::AiSendMessageResult) -> AiSendMessageResult
 
 #[cfg(feature = "ssr")]
 fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPayload {
-    AiRunStreamEventPayload {
-        session_id: value.session_id.to_string(),
-        run_id: value.run_id.to_string(),
-        event_kind: match value.event_kind {
-            rustok_ai::AiRunStreamEventKind::Started => AiRunStreamEventKindPayload::Started,
-            rustok_ai::AiRunStreamEventKind::Delta => AiRunStreamEventKindPayload::Delta,
-            rustok_ai::AiRunStreamEventKind::ToolCall => AiRunStreamEventKindPayload::ToolCall,
-            rustok_ai::AiRunStreamEventKind::Usage => AiRunStreamEventKindPayload::Usage,
-            rustok_ai::AiRunStreamEventKind::Completed => AiRunStreamEventKindPayload::Completed,
-            rustok_ai::AiRunStreamEventKind::Failed => AiRunStreamEventKindPayload::Failed,
-            rustok_ai::AiRunStreamEventKind::Cancelled => AiRunStreamEventKindPayload::Cancelled,
-            rustok_ai::AiRunStreamEventKind::WaitingApproval => {
-                AiRunStreamEventKindPayload::WaitingApproval
-            }
-        },
-        content_delta: value.content_delta,
-        accumulated_content: value.accumulated_content,
-        error_message: value.error_message,
-        tool_call: value.tool_call.map(|value| AiStreamToolCallPayload {
-            id: value.id,
-            name: value.name,
-            arguments: value.arguments.to_string(),
-        }),
-        usage: value.usage.map(|value| AiProviderUsagePayload {
-            input_tokens: value.input_tokens,
-            output_tokens: value.output_tokens,
-            total_tokens: value.total_tokens,
-        }),
-        sequence: value.sequence,
-        created_at: value.created_at.to_rfc3339(),
-    }
+    value.into()
 }

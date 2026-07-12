@@ -10937,6 +10937,7 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "flex",
+ "rustok-api",
  "rustok-auth",
  "rustok-blog",
  "rustok-cache",
@@ -10970,6 +10971,8 @@ dependencies = [
  "rustok-taxonomy",
  "rustok-tenant",
  "rustok-workflow",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -2,7 +2,7 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.full-dev.yml --profile full-dev up -d --build
 #
 # This configuration extends docker-compose.yml and adds:
-# - RusToK server (Loco backend)
+# - RusToK server (Axum backend)
 # - Next.js admin panel
 # - Leptos admin panel
 # - Next.js storefront
@@ -11,7 +11,7 @@
 
 services:
   # ============================================================================
-  # Backend Server (Loco + Rust)
+  # Backend Server (Axum + Rust)
   # ============================================================================
   server:
     build:

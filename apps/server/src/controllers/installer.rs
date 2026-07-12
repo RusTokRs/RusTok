@@ -138,6 +138,7 @@ async fn plan(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
     require_setup_token(&headers, plan.environment.is_production())?;
+    let plan = bind_selected_composition(plan);
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
     }))
@@ -148,6 +149,7 @@ async fn preflight(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
     require_setup_token(&headers, plan.environment.is_production())?;
+    let plan = bind_selected_composition(plan);
     let report = evaluate_preflight(&plan);
     Ok(Json(InstallPreflightResponse {
         passed: report.passed(),
@@ -161,6 +163,7 @@ async fn apply(
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     require_setup_token(&headers, request.plan.environment.is_production())?;
+    let plan = bind_selected_composition(request.plan);
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
     let apply_options = InstallerApplyOptions {
@@ -187,9 +190,7 @@ async fn apply(
     );
 
     tokio::spawn(async move {
-        let result = ServerInstallExecutor
-            .apply(request.plan, apply_options)
-            .await;
+        let result = ServerInstallExecutor.apply(plan, apply_options).await;
         let finished_at = Utc::now();
         let mut jobs = INSTALL_JOBS.lock().await;
         let Some(job) = jobs.get_mut(&job_id) else {
@@ -220,6 +221,14 @@ async fn apply(
             status_url: format!("/api/install/jobs/{job_id}"),
         }),
     ))
+}
+
+fn bind_selected_composition(mut plan: InstallPlan) -> InstallPlan {
+    let composition = rustok_distribution::composition_identity();
+    plan.topology = plan
+        .topology
+        .bind_composition(composition.revision, composition.hash);
+    plan
 }
 
 async fn job_status(

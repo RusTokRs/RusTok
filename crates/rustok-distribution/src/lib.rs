@@ -15,6 +15,35 @@ use rustok_outbox::OutboxModule;
 use rustok_rbac::RbacModule;
 use rustok_search::SearchModule;
 use rustok_tenant::TenantModule;
+use serde::Serialize;
+
+/// Immutable identity of the modules compiled into this distribution.
+///
+/// `revision` is a readable package release label; `hash` is the canonical
+/// identity used by installer receipts and topology descriptors.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompositionIdentity {
+    pub revision: String,
+    pub hash: String,
+    pub modules: Vec<CompositionModule>,
+}
+
+/// Canonical module metadata included in a distribution composition hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompositionModule {
+    pub slug: String,
+    pub version: String,
+    pub kind: CompositionModuleKind,
+    pub dependencies: Vec<String>,
+}
+
+/// Stable module classification retained in the composition identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompositionModuleKind {
+    Core,
+    Optional,
+}
 
 /// Builds the module registry for the features selected in this distribution.
 pub fn build_registry() -> ModuleRegistry {
@@ -124,4 +153,61 @@ pub fn build_registry() -> ModuleRegistry {
     }
 
     registry
+}
+
+/// Returns the deterministic identity of the selected compile-time module set.
+pub fn composition_identity() -> CompositionIdentity {
+    let modules = build_registry()
+        .list()
+        .into_iter()
+        .map(|module| {
+            let mut dependencies = module
+                .dependencies()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            dependencies.sort();
+            CompositionModule {
+                slug: module.slug().to_string(),
+                version: module.version().to_string(),
+                kind: match module.kind() {
+                    rustok_core::ModuleKind::Core => CompositionModuleKind::Core,
+                    rustok_core::ModuleKind::Optional => CompositionModuleKind::Optional,
+                },
+                dependencies,
+            }
+        })
+        .collect::<Vec<_>>();
+    let revision = format!("rustok-distribution@{}", env!("CARGO_PKG_VERSION"));
+    let snapshot = serde_json::json!({
+        "schema_version": 1,
+        "revision": &revision,
+        "modules": &modules,
+    });
+    let hash = rustok_api::manifest_hash::hash_manifest_snapshot(&snapshot);
+
+    CompositionIdentity {
+        revision,
+        hash,
+        modules,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::composition_identity;
+
+    #[test]
+    fn selected_composition_identity_is_stable_and_contains_modules() {
+        let first = composition_identity();
+        let second = composition_identity();
+
+        assert_eq!(first, second);
+        assert_eq!(first.hash.len(), 64);
+        assert!(first
+            .hash
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
+        assert!(first.modules.iter().any(|module| module.slug == "tenant"));
+    }
 }

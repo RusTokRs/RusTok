@@ -33,6 +33,7 @@ mod-workflow = ["dep:rustok-workflow"]
 
 [dependencies]
 rustok-core.workspace = true
+rustok-api.workspace = true
 rustok-modules.workspace = true
 rustok-auth.workspace = true
 rustok-cache.workspace = true
@@ -67,3 +68,5 @@ rustok-seo = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
 alloy = { workspace = true, optional = true }
 flex.workspace = true
+serde.workspace = true
+serde_json.workspace = true

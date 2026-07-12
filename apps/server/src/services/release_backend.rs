@@ -15,7 +15,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_build::build::Model as Build;
 use rustok_build::release::Model as Release;
 use rustok_build::{BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan};
-use rustok_build::{BuildService, ReleaseArtifactBundle};
+use rustok_build::{
+    BuildService, ReleaseArtifactBundle, ReleasePublishRequest, ReleasePublisherPort,
+};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ReleasePublishState {
@@ -108,6 +110,13 @@ impl ReleaseDeploymentService {
             ReleasePublishState::Active => self.build_service.activate_release(&release.id).await,
             ReleasePublishState::Failed => self.build_service.fail_release(&release.id).await,
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl ReleasePublisherPort for ReleaseDeploymentService {
+    async fn publish_release(&self, request: ReleasePublishRequest) -> anyhow::Result<Release> {
+        ReleaseDeploymentService::publish_release(self, &request.release_id, request.activate).await
     }
 }
 

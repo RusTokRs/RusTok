@@ -492,6 +492,17 @@ requireContains('crates/rustok-installer/src/secrets.rs', 'pub fn parse_cli_valu
 requireContains('crates/rustok-installer/src/execution.rs', 'pub async fn execute_install_apply', 'installer owns canonical apply sequencing');
 requireContains('crates/rustok-installer/src/execution.rs', 'pub trait InstallDatabasePort', 'installer owns database stage port');
 requireContains('crates/rustok-installer/src/execution.rs', 'pub trait InstallPersistencePort', 'installer owns persistence stage port');
+requireContains('crates/rustok-distribution/src/lib.rs', 'pub struct CompositionIdentity', 'distribution owns the selected composition identity');
+requireContains('crates/rustok-distribution/src/lib.rs', 'pub fn composition_identity()', 'distribution exposes deterministic composition identity');
+requireContains('crates/rustok-distribution/src/lib.rs', 'hash_manifest_snapshot(&snapshot)', 'distribution hashes a canonical composition snapshot');
+requireContains('crates/rustok-installer/src/plan.rs', 'pub struct InstallTopology', 'installer owns the versioned topology descriptor');
+requireContains('crates/rustok-installer/src/plan.rs', 'pub fn bind_composition', 'installer topology accepts trusted host composition binding');
+requireContains('crates/rustok-installer/src/plan.rs', 'leaves a selected surface without exactly one owner', 'installer topology validates exact surface ownership');
+requireContains('crates/rustok-installer/src/preflight.rs', 'distributed_topology_unavailable', 'installer explicitly rejects distributed apply before a deployment adapter exists');
+requireContains('crates/rustok-installer-cli/src/lib.rs', 'rustok_distribution::composition_identity()', 'installer CLI binds plans to its selected distribution');
+requireContains('apps/server/src/controllers/installer.rs', 'fn bind_selected_composition', 'installer HTTP binds plans to the server selected distribution');
+requireContains('apps/server/src/controllers/installer.rs', 'rustok_distribution::composition_identity()', 'installer HTTP reads the server selected distribution identity');
+requireNotContains('apps/admin/src/pages/installer.rs', 'rustok_distribution::', 'installer wizard does not import distribution internals');
 requireContains('crates/rustok-installer-persistence/src/seaorm_ports.rs', 'pub struct SeaOrmInstallerApplyPorts', 'SeaORM installer adapter owns standalone apply composition');
 requireContains('crates/rustok-installer-persistence/src/seaorm_ports.rs', 'impl InstallVerificationPort<DatabaseConnection> for SeaOrmInstallerApplyPorts', 'standalone SeaORM apply adapter verifies installation through its own port');
 requireContains('crates/rustok-auth/src/bootstrap.rs', 'pub async fn find_user(', 'auth exposes the installer verification identity lookup');
@@ -817,6 +828,9 @@ requireContains('crates/rustok-build/src/release.rs', '#[sea_orm(table_name = "r
 requireContains('crates/rustok-build/src/plan.rs', 'pub struct BuildExecutionPlan', 'build capability owns immutable execution-plan contracts');
 requireContains('crates/rustok-build/src/report.rs', 'pub struct BuildExecutionReport', 'build capability owns executor result contracts');
 requireContains('crates/rustok-build/src/runtime.rs', 'trait ReleaseActivationHook', 'build capability defines an explicit post-activation host port');
+requireContains('crates/rustok-build/src/runtime.rs', 'trait ReleasePublisherPort', 'build capability defines an explicit release-publication host port');
+requireContains('apps/server/src/services/release_backend.rs', 'impl ReleasePublisherPort for ReleaseDeploymentService', 'server release backend implements the build-owned publication port');
+requireContains('apps/server/src/services/app_lifecycle.rs', 'ReleasePublisherPort::publish_release(', 'server build worker publishes releases through the build-owned port');
 requireContains('crates/rustok-build/src/executor.rs', 'pub struct BuildExecutionService', 'build capability owns queued build execution');
 requireNotContains('crates/rustok-build/src/executor.rs', 'apps/server', 'build executor is host-independent');
 requireNotContains('apps/server/src/modules/manifest/types.rs', 'pub struct BuildExecutionPlan', 'server manifest layer does not own build execution plans');

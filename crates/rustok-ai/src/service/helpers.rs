@@ -16,7 +16,7 @@ use crate::entities::{
 };
 use crate::model::{
     AiProviderConfig, AiRunDecisionTrace, ChatMessage, ChatMessageRole, ExecutionMode,
-    PendingApproval, ProviderCapability, ProviderUsagePolicy, ToolTrace,
+    PendingApproval, ProviderCapability, ProviderStreamEvent, ProviderUsagePolicy, ToolTrace,
 };
 use crate::policy::ToolExecutionPolicy;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind};
@@ -73,7 +73,9 @@ pub fn validate_provider_profile_contract(
     egress_policy: &ProviderEgressPolicy,
 ) -> AiResult<()> {
     let descriptor = crate::provider_catalog_entry(provider_slug).ok_or_else(|| {
-        AiError::Validation(format!("unknown Rig provider integration `{provider_slug}`"))
+        AiError::Validation(format!(
+            "unknown Rig provider integration `{provider_slug}`"
+        ))
     })?;
     if !descriptor.compiled_in {
         return Err(AiError::Validation(format!(
@@ -118,12 +120,13 @@ pub fn validate_provider_target_profile_contract(
             egress_policy,
         )?,
         crate::ProviderTargetAuth::WorkloadIdentity | crate::ProviderTargetAuth::None => {
-            let descriptor = crate::provider_catalog_entry(&target.provider_slug).ok_or_else(|| {
-                AiError::Validation(format!(
-                    "unknown Rig provider integration `{}`",
-                    target.provider_slug
-                ))
-            })?;
+            let descriptor =
+                crate::provider_catalog_entry(&target.provider_slug).ok_or_else(|| {
+                    AiError::Validation(format!(
+                        "unknown Rig provider integration `{}`",
+                        target.provider_slug
+                    ))
+                })?;
             egress_policy
                 .validate_settings(descriptor, &target.settings)
                 .map_err(AiError::Validation)?;
@@ -167,8 +170,8 @@ pub fn provider_config(
     targets: &crate::AiProviderTargetCatalog,
     egress_policy: &ProviderEgressPolicy,
 ) -> AiResult<AiProviderConfig> {
-    let target_id = crate::ProviderTargetId::new(&model.provider_target_id)
-        .map_err(AiError::InvalidConfig)?;
+    let target_id =
+        crate::ProviderTargetId::new(&model.provider_target_id).map_err(AiError::InvalidConfig)?;
     let target = targets.get(&target_id).ok_or_else(|| {
         AiError::InvalidConfig(format!(
             "deployment provider target `{target_id}` is unavailable"
@@ -183,13 +186,8 @@ pub fn provider_config(
     }
     let credential_refs =
         serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?;
-    validate_provider_target_profile_contract(
-        targets,
-        &target_id,
-        &credential_refs,
-        egress_policy,
-    )
-    .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+    validate_provider_target_profile_contract(targets, &target_id, &credential_refs, egress_policy)
+        .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
     Ok(AiProviderConfig {
         tenant_id: model.tenant_id,
         provider_slug,
@@ -603,6 +601,41 @@ pub fn publish_ai_run_usage_stream_event(
     });
 }
 
+/// Normalizes the provider stream boundary into the single canonical RusToK event contract.
+/// Provider-specific payload shapes must be resolved before this function is called.
+pub fn publish_provider_stream_event(
+    session_id: Uuid,
+    run_id: Uuid,
+    stream_buffer: &Arc<Mutex<String>>,
+    event: ProviderStreamEvent,
+) {
+    match event {
+        ProviderStreamEvent::TextDelta(delta) => {
+            let accumulated_content = {
+                let mut accumulated = stream_buffer
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                accumulated.push_str(&delta);
+                accumulated.clone()
+            };
+            publish_ai_run_stream_event(
+                session_id,
+                run_id,
+                AiRunStreamEventKind::Delta,
+                Some(delta),
+                Some(accumulated_content),
+                None,
+            );
+        }
+        ProviderStreamEvent::ToolCall(tool_call) => {
+            publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
+        }
+        ProviderStreamEvent::Usage(usage) => {
+            publish_ai_run_usage_stream_event(session_id, run_id, usage);
+        }
+    }
+}
+
 pub fn read_stream_buffer(buffer: &Arc<Mutex<String>>) -> String {
     buffer.lock().map(|value| value.clone()).unwrap_or_default()
 }
@@ -755,13 +788,16 @@ where
     .map_err(db_err)
 }
 
-pub async fn insert_tool_trace(
-    db: &DatabaseConnection,
+pub async fn insert_tool_trace<C>(
+    db: &C,
     tenant_id: Uuid,
     session_id: Uuid,
     run_id: Uuid,
     trace: &ToolTrace,
-) -> AiResult<ai_tool_traces::Model> {
+) -> AiResult<ai_tool_traces::Model>
+where
+    C: ConnectionTrait,
+{
     ai_tool_traces::ActiveModel {
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
@@ -862,15 +898,61 @@ pub async fn session_has_user_messages(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_task_job_user_message, enrich_decision_trace, runtime_execution_target,
-        task_allows_free_locale, validate_locale_tag, validate_provider_target_profile_contract,
+        build_task_job_user_message, enrich_decision_trace, publish_provider_stream_event,
+        runtime_execution_target, task_allows_free_locale, validate_locale_tag,
+        validate_provider_target_profile_contract,
     };
-    use crate::model::{AiRunDecisionTrace, ExecutionMode};
+    use crate::model::{
+        AiRunDecisionTrace, ExecutionMode, ProviderStreamEvent, ProviderUsage, ToolCall,
+    };
+    use crate::streaming::{ai_run_stream_hub, AiRunStreamEventKind};
     use crate::{
         AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy, ProviderSlug,
         ProviderTargetAuth, ProviderTargetId,
     };
     use std::collections::BTreeMap;
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+
+    #[test]
+    fn provider_events_are_normalized_once_before_transport_publication() {
+        let session_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
+        let buffer = Arc::new(Mutex::new(String::new()));
+        let mut receiver = ai_run_stream_hub().subscribe();
+
+        publish_provider_stream_event(
+            session_id,
+            run_id,
+            &buffer,
+            ProviderStreamEvent::TextDelta("hello".to_string()),
+        );
+        publish_provider_stream_event(
+            session_id,
+            run_id,
+            &buffer,
+            ProviderStreamEvent::ToolCall(ToolCall {
+                id: "call-1".to_string(),
+                name: "catalog.read".to_string(),
+                arguments: serde_json::json!({ "id": 7 }),
+            }),
+        );
+        publish_provider_stream_event(
+            session_id,
+            run_id,
+            &buffer,
+            ProviderStreamEvent::Usage(ProviderUsage::normalized(2, 3, None)),
+        );
+
+        let delta = receiver.try_recv().expect("delta event");
+        let tool = receiver.try_recv().expect("tool event");
+        let usage = receiver.try_recv().expect("usage event");
+        assert_eq!(delta.event_kind, AiRunStreamEventKind::Delta);
+        assert_eq!(delta.accumulated_content.as_deref(), Some("hello"));
+        assert_eq!(tool.tool_call.expect("tool call").name, "catalog.read");
+        assert_eq!(usage.usage.expect("usage").total_tokens, 5);
+        assert_eq!([delta.sequence, tool.sequence, usage.sequence], [1, 2, 3]);
+    }
 
     #[test]
     fn validate_locale_tag_normalizes_common_bcp47_forms() {

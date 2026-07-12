@@ -101,6 +101,32 @@ pub struct ProviderUsage {
     pub total_tokens: u64,
 }
 
+impl ProviderUsage {
+    pub fn normalized(input_tokens: u64, output_tokens: u64, total_tokens: Option<u64>) -> Self {
+        Self {
+            input_tokens,
+            output_tokens,
+            total_tokens: total_tokens
+                .unwrap_or_else(|| input_tokens.saturating_add(output_tokens)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod provider_usage_tests {
+    use super::ProviderUsage;
+
+    #[test]
+    fn derives_missing_total_without_overflow() {
+        assert_eq!(ProviderUsage::normalized(3, 5, None).total_tokens, 8);
+        assert_eq!(
+            ProviderUsage::normalized(u64::MAX, 1, None).total_tokens,
+            u64::MAX
+        );
+        assert_eq!(ProviderUsage::normalized(3, 5, Some(9)).total_tokens, 9);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: ChatMessageRole,
@@ -170,6 +196,10 @@ impl ProviderStreamEmitter {
 
     pub fn emit_tool_call(&self, tool_call: ToolCall) {
         self.emit(ProviderStreamEvent::ToolCall(tool_call));
+    }
+
+    pub fn emit_usage(&self, usage: ProviderUsage) {
+        self.emit(ProviderStreamEvent::Usage(usage));
     }
 }
 

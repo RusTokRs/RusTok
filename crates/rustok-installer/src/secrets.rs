@@ -293,6 +293,8 @@ mod tests {
                 },
             },
             modules: crate::ModuleSelection::default(),
+            topology: crate::InstallTopology::for_mode(crate::InstallTopologyMode::Monolith)
+                .bind_composition("test".to_string(), "a".repeat(64)),
             seed_profile: crate::SeedProfile::Dev,
             secrets_mode: SecretMode::DotenvFile,
         };

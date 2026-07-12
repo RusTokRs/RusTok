@@ -129,6 +129,185 @@ pub struct ModuleSelection {
     pub disable: Vec<String>,
 }
 
+/// Immutable selected-distribution identity bound by a trusted executable host.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallComposition {
+    pub revision: String,
+    pub hash: String,
+}
+
+/// Deployment topology selected for one installation plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallTopology {
+    pub schema_version: u8,
+    pub mode: InstallTopologyMode,
+    /// A wizard may submit an unbound topology shape. CLI and HTTP hosts bind
+    /// this field from their selected distribution before preflight or apply.
+    pub composition: Option<InstallComposition>,
+    pub surfaces: Vec<InstallSurface>,
+    pub roles: Vec<InstallRoleAssignment>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallTopologyMode {
+    Monolith,
+    Distributed,
+}
+
+impl InstallTopologyMode {
+    pub fn parse_cli_value(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "monolith" => Ok(Self::Monolith),
+            "distributed" => Ok(Self::Distributed),
+            _ => Err(format!("unknown install topology `{value}`")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallRole {
+    Monolith,
+    Api,
+    AdminSsr,
+    StorefrontSsr,
+    Worker,
+    Registry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallSurface {
+    Api,
+    Admin,
+    Storefront,
+    Worker,
+    Registry,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallRoleAssignment {
+    pub role: InstallRole,
+    pub surfaces: Vec<InstallSurface>,
+}
+
+impl InstallTopology {
+    pub fn for_mode(mode: InstallTopologyMode) -> Self {
+        let surfaces = vec![
+            InstallSurface::Api,
+            InstallSurface::Admin,
+            InstallSurface::Storefront,
+            InstallSurface::Worker,
+        ];
+        let roles = match mode {
+            InstallTopologyMode::Monolith => vec![InstallRoleAssignment {
+                role: InstallRole::Monolith,
+                surfaces: surfaces.clone(),
+            }],
+            InstallTopologyMode::Distributed => vec![
+                InstallRoleAssignment {
+                    role: InstallRole::Api,
+                    surfaces: vec![InstallSurface::Api],
+                },
+                InstallRoleAssignment {
+                    role: InstallRole::AdminSsr,
+                    surfaces: vec![InstallSurface::Admin],
+                },
+                InstallRoleAssignment {
+                    role: InstallRole::StorefrontSsr,
+                    surfaces: vec![InstallSurface::Storefront],
+                },
+                InstallRoleAssignment {
+                    role: InstallRole::Worker,
+                    surfaces: vec![InstallSurface::Worker],
+                },
+            ],
+        };
+        Self {
+            schema_version: 1,
+            mode,
+            composition: None,
+            surfaces,
+            roles,
+        }
+    }
+
+    pub fn bind_composition(mut self, revision: String, hash: String) -> Self {
+        self.composition = Some(InstallComposition { revision, hash });
+        self
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != 1 {
+            return Err(format!(
+                "unsupported install topology schema version `{}`",
+                self.schema_version
+            ));
+        }
+        let composition = self.composition.as_ref().ok_or_else(|| {
+            "install topology is not bound to a distribution composition".to_string()
+        })?;
+        if composition.revision.trim().is_empty() {
+            return Err("install topology composition revision is required".to_string());
+        }
+        if composition.hash.len() != 64
+            || !composition
+                .hash
+                .chars()
+                .all(|value| value.is_ascii_hexdigit())
+        {
+            return Err(
+                "install topology composition hash must be a SHA-256 hex value".to_string(),
+            );
+        }
+        let mut selected_surfaces = std::collections::BTreeSet::new();
+        for surface in &self.surfaces {
+            if !selected_surfaces.insert(*surface as u8) {
+                return Err("install topology selects a surface more than once".to_string());
+            }
+        }
+        if selected_surfaces.is_empty() {
+            return Err("install topology must select at least one surface".to_string());
+        }
+        let mut assigned_roles = std::collections::BTreeSet::new();
+        let mut assigned_surfaces = std::collections::BTreeSet::new();
+        for assignment in &self.roles {
+            if !assigned_roles.insert(assignment.role as u8) {
+                return Err("install topology assigns a role more than once".to_string());
+            }
+            if self.mode == InstallTopologyMode::Monolith
+                && assignment.role != InstallRole::Monolith
+            {
+                return Err("monolith topology may only use the monolith role".to_string());
+            }
+            if self.mode == InstallTopologyMode::Distributed
+                && assignment.role == InstallRole::Monolith
+            {
+                return Err("distributed topology may not use the monolith role".to_string());
+            }
+            for surface in &assignment.surfaces {
+                let key = *surface as u8;
+                if !selected_surfaces.contains(&key) || !assigned_surfaces.insert(key) {
+                    return Err("install topology assigns a surface more than once or outside its selection".to_string());
+                }
+            }
+        }
+        if self.mode == InstallTopologyMode::Monolith && self.roles.len() != 1 {
+            return Err("monolith topology requires exactly one role".to_string());
+        }
+        if self.mode == InstallTopologyMode::Distributed && self.roles.len() < 2 {
+            return Err("distributed topology requires at least two roles".to_string());
+        }
+        if assigned_surfaces != selected_surfaces {
+            return Err(
+                "install topology leaves a selected surface without exactly one owner".to_string(),
+            );
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallPlan {
     pub environment: InstallEnvironment,
@@ -137,6 +316,7 @@ pub struct InstallPlan {
     pub tenant: TenantBootstrap,
     pub admin: AdminBootstrap,
     pub modules: ModuleSelection,
+    pub topology: InstallTopology,
     pub seed_profile: SeedProfile,
     pub secrets_mode: SecretMode,
 }
@@ -146,6 +326,7 @@ impl InstallPlan {
         database_url: SecretValue,
         tenant: TenantBootstrap,
         admin: AdminBootstrap,
+        composition: InstallComposition,
     ) -> Self {
         Self {
             environment: InstallEnvironment::Production,
@@ -158,6 +339,8 @@ impl InstallPlan {
             tenant,
             admin,
             modules: ModuleSelection::default(),
+            topology: InstallTopology::for_mode(InstallTopologyMode::Monolith)
+                .bind_composition(composition.revision, composition.hash),
             seed_profile: SeedProfile::Minimal,
             secrets_mode: SecretMode::ExternalSecret,
         }
@@ -166,7 +349,7 @@ impl InstallPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::SeedProfile;
+    use super::{InstallTopology, InstallTopologyMode, SeedProfile};
 
     #[test]
     fn development_seed_profile_enables_the_canonical_module_set() {
@@ -208,5 +391,15 @@ mod tests {
             DatabaseEngine::parse_cli_value("postgresql"),
             Ok(DatabaseEngine::Postgres)
         );
+    }
+
+    #[test]
+    fn topology_requires_bound_composition_and_exact_surface_ownership() {
+        let unbound = InstallTopology::for_mode(InstallTopologyMode::Monolith);
+        assert!(unbound.validate().is_err());
+
+        let distributed = InstallTopology::for_mode(InstallTopologyMode::Distributed)
+            .bind_composition("distribution@1".to_string(), "a".repeat(64));
+        assert!(distributed.validate().is_ok());
     }
 }

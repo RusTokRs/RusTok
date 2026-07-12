@@ -124,6 +124,11 @@ bootstrap logic in the UI:
 `POST /api/install/plan` and `POST /api/install/preflight` accept an
 `InstallPlan` JSON body. `POST /api/install/apply` accepts
 `{ "plan": <InstallPlan>, "lock_owner": "operator", "lock_ttl_secs": 900 }`.
+An HTTP `InstallPlan` includes a versioned `topology` shape. The wizard may
+submit it with `composition: null`; the server replaces that field with the
+selected distribution revision and deterministic hash before preflight or
+apply. Distributed topology is rejected until a deployment adapter is
+available.
 It records redacted receipts for preflight, config, database, migration, seed,
 admin, verify, and finalize stages.
 

@@ -324,6 +324,75 @@ pub struct AiRunStreamEventPayload {
     pub created_at: String,
 }
 
+#[cfg(feature = "ssr")]
+impl From<rustok_ai::AiRunStreamEvent> for AiRunStreamEventPayload {
+    fn from(value: rustok_ai::AiRunStreamEvent) -> Self {
+        Self {
+            session_id: value.session_id.to_string(),
+            run_id: value.run_id.to_string(),
+            event_kind: match value.event_kind {
+                rustok_ai::AiRunStreamEventKind::Started => AiRunStreamEventKindPayload::Started,
+                rustok_ai::AiRunStreamEventKind::Delta => AiRunStreamEventKindPayload::Delta,
+                rustok_ai::AiRunStreamEventKind::ToolCall => AiRunStreamEventKindPayload::ToolCall,
+                rustok_ai::AiRunStreamEventKind::Usage => AiRunStreamEventKindPayload::Usage,
+                rustok_ai::AiRunStreamEventKind::Completed => {
+                    AiRunStreamEventKindPayload::Completed
+                }
+                rustok_ai::AiRunStreamEventKind::Failed => AiRunStreamEventKindPayload::Failed,
+                rustok_ai::AiRunStreamEventKind::Cancelled => {
+                    AiRunStreamEventKindPayload::Cancelled
+                }
+                rustok_ai::AiRunStreamEventKind::WaitingApproval => {
+                    AiRunStreamEventKindPayload::WaitingApproval
+                }
+            },
+            content_delta: value.content_delta,
+            accumulated_content: value.accumulated_content,
+            error_message: value.error_message,
+            tool_call: value.tool_call.map(|value| AiStreamToolCallPayload {
+                id: value.id,
+                name: value.name,
+                arguments: value.arguments.to_string(),
+            }),
+            usage: value.usage.map(|value| AiProviderUsagePayload {
+                input_tokens: value.input_tokens,
+                output_tokens: value.output_tokens,
+                total_tokens: value.total_tokens,
+            }),
+            sequence: value.sequence,
+            created_at: value.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod stream_event_payload_tests {
+    use super::{AiRunStreamEventKindPayload, AiRunStreamEventPayload};
+
+    #[test]
+    fn preserves_typed_usage_and_sequence_at_native_transport_boundary() {
+        let payload = AiRunStreamEventPayload::from(rustok_ai::AiRunStreamEvent {
+            session_id: uuid::Uuid::new_v4(),
+            run_id: uuid::Uuid::new_v4(),
+            event_kind: rustok_ai::AiRunStreamEventKind::Usage,
+            content_delta: None,
+            accumulated_content: None,
+            error_message: None,
+            tool_call: None,
+            usage: Some(rustok_ai::ProviderUsage::normalized(4, 6, None)),
+            sequence: 7,
+            created_at: chrono::Utc::now(),
+        });
+
+        assert!(matches!(
+            payload.event_kind,
+            AiRunStreamEventKindPayload::Usage
+        ));
+        assert_eq!(payload.usage.expect("usage").total_tokens, 10);
+        assert_eq!(payload.sequence, 7);
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

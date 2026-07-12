@@ -20,8 +20,9 @@ pub use execution::{
     InstallVerificationPort,
 };
 pub use plan::{
-    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
-    InstallProfile, ModuleSelection, SeedProfile, TenantBootstrap,
+    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallComposition, InstallEnvironment,
+    InstallPlan, InstallProfile, InstallRole, InstallRoleAssignment, InstallSurface,
+    InstallTopology, InstallTopologyMode, ModuleSelection, SeedProfile, TenantBootstrap,
 };
 pub use preflight::{evaluate_preflight, PreflightIssue, PreflightReport, PreflightSeverity};
 pub use receipt::{checksum_json, InstallReceipt, ReceiptError, ReceiptOutcome};

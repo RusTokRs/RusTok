@@ -9,8 +9,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::build::{
-    ActiveModel as BuildActiveModel, BuildStage, BuildStatus,
-    Entity as BuildEntity, Model as Build,
+    ActiveModel as BuildActiveModel, BuildStage, BuildStatus, Entity as BuildEntity, Model as Build,
 };
 use crate::release::{
     ActiveModel as ReleaseActiveModel, Entity as ReleaseEntity, Model as Release, ReleaseStatus,

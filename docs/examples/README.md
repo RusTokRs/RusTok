@@ -44,7 +44,7 @@ Source: `docs/guides/quickstart.md`, `scripts/dev-start.sh`.
 
 ### 2) Installer preflight (no migrations)
 
-Send an `InstallPlan` JSON document to `POST /api/install/preflight`. The
+Send an `InstallPlan` JSON document, including a versioned topology shape, to `POST /api/install/preflight`. The
 production server binary does not accept `install` subcommands; see the
 [installer HTTP adapter](../guides/quickstart.md#installer-http-adapter).
 

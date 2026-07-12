@@ -51,11 +51,11 @@ RestoreRequired
 
 ## Current adapters and target topology
 
-The server CLI parser was removed with the Axum cutover. `apps/server` currently
-hosts the thin HTTP adapter and composes the first apply executor; `rustok-cli`
-currently exposes seed operations only. The planned full `rustok-cli install`
-provider will perform `plan`, `preflight`, `apply`, and status/receipt reads
-through that same typed executor.
+The server CLI parser was removed with the Axum cutover. `apps/server` hosts a
+thin HTTP adapter; `rustok-cli install plan|preflight|apply|status` and
+`rustok-cli seed apply` use the shared typed executor and SeaORM adapters. The
+standalone apply adapter opens the target database itself, so a requested
+database may be created before a CLI runtime database exists.
 
 An apply operation resolves local secret refs `env:<VAR>`, `file:<path>`,
 `mounted-file:<path>`, `dotenv:<path>#<VAR>` and `dotenv:<VAR>`. External
@@ -70,15 +70,18 @@ The HTTP adapter publishes a thin wizard surface:
 `GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` starts a
 background job; the UI must not duplicate migration, seed, or admin logic.
 
-The topology contract distinguishes a one-role `monolith` from a future
-distributed deployment descriptor. A distributed run will build/deploy several
-roles from one composition revision while applying shared schema, tenant seed,
-and admin provisioning only once. See the
+The topology contract distinguishes a one-role `monolith` from a distributed
+deployment descriptor. Trusted CLI and HTTP hosts bind the selected
+distribution revision/hash before preflight and apply; a wizard never supplies
+that identity. Distributed topology is represented but explicitly rejected
+until a deployment adapter can build/deploy roles from one composition revision
+while applying shared schema, tenant seed, and admin provisioning only once. See the
 [implementation plan](implementation-plan.md) for ownership and rollout.
 
 ## Related documents
 
 - [Hybrid installer ADR](../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md)
+- [Installer topology composition identity ADR](../../../DECISIONS/2026-07-12-installer-topology-composition-identity.md)
 - [Module architecture](../../../docs/architecture/modules.md)
 - [Platform database schema](../../../docs/architecture/database.md)
 - [Installer implementation plan](implementation-plan.md)

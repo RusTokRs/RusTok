@@ -5,10 +5,11 @@ pub mod types;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
-    sea_query::Expr,
+    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition,
+    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    TransactionTrait,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -17,6 +18,7 @@ use uuid::Uuid;
 use rustok_api::Permission;
 
 use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
+use crate::engine::RigAgentDriver;
 use crate::engine::{inference_for_slug, InferenceEngine};
 use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
@@ -25,10 +27,9 @@ use crate::entities::{
 use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
 use crate::model::{
     ChatMessage, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderStreamEmitter,
-    ProviderStreamEvent, ProviderTestResult, RuntimeOutcome, ToolTrace,
+    ProviderTestResult, RuntimeOutcome, ToolTrace,
 };
 use crate::router::AiRouter;
-use crate::engine::RigAgentDriver;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
 use crate::{AiError, AiResult, McpClientAdapter};
 
@@ -38,6 +39,264 @@ pub use mcp::*;
 pub use types::*;
 
 pub struct AiManagementService;
+
+/// Durable result of one approved external tool execution.
+///
+/// It is written before the result is appended to the canonical chat history.
+/// If the latter write fails, retrying approval finalization replays this value
+/// and never invokes the external tool a second time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ApprovalExecutionOutcome {
+    content: String,
+    raw_payload: serde_json::Value,
+    duration_ms: i64,
+}
+
+fn approval_execution_outcome(
+    metadata: &serde_json::Value,
+) -> AiResult<Option<ApprovalExecutionOutcome>> {
+    metadata
+        .get("execution_outcome")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(json_err)
+}
+
+async fn persist_approval_execution_outcome(
+    db: &DatabaseConnection,
+    approval: &ai_approval_requests::Model,
+    outcome: &ApprovalExecutionOutcome,
+) -> AiResult<ai_approval_requests::Model> {
+    let mut metadata = approval.metadata.clone();
+    if !metadata.is_object() {
+        metadata = json!({});
+    }
+    metadata["execution_outcome"] = serde_json::to_value(outcome).map_err(json_err)?;
+    let mut active: ai_approval_requests::ActiveModel = approval.clone().into();
+    active.metadata = Set(metadata);
+    active.status = Set("executed".to_string());
+    active.updated_at = Set(Utc::now().into());
+    active.update(db).await.map_err(db_err)
+}
+
+/// Claims one approval transition with compare-and-set semantics.
+/// The caller supplies the observed state so an already-running resolver can
+/// never obtain a second lease for the same tool call.
+async fn claim_approval_resolution(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    approval_id: Uuid,
+    expected_status: &str,
+) -> AiResult<bool> {
+    let claimed = ai_approval_requests::Entity::update_many()
+        .col_expr(
+            ai_approval_requests::Column::Status,
+            Expr::value("resolving".to_string()),
+        )
+        .filter(ai_approval_requests::Column::Id.eq(approval_id))
+        .filter(ai_approval_requests::Column::TenantId.eq(tenant_id))
+        .filter(ai_approval_requests::Column::Status.eq(expected_status))
+        .exec(db)
+        .await
+        .map_err(db_err)?;
+    Ok(claimed.rows_affected == 1)
+}
+
+async fn next_pending_approval_in_batch(
+    db: &impl sea_orm::ConnectionTrait,
+    tenant_id: Uuid,
+    run_id: Uuid,
+    approval_batch_id: &str,
+) -> AiResult<Option<ai_approval_requests::Model>> {
+    ai_approval_requests::Entity::find()
+        .filter(ai_approval_requests::Column::TenantId.eq(tenant_id))
+        .filter(ai_approval_requests::Column::RunId.eq(run_id))
+        .filter(ai_approval_requests::Column::ApprovalBatchId.eq(approval_batch_id))
+        .filter(ai_approval_requests::Column::Status.eq("pending"))
+        .order_by_asc(ai_approval_requests::Column::CreatedAt)
+        .one(db)
+        .await
+        .map_err(db_err)
+}
+
+#[cfg(test)]
+mod approval_outcome_tests {
+    use super::{approval_execution_outcome, ApprovalExecutionOutcome};
+    use crate::entities::ai_approval_requests;
+    use chrono::Utc;
+    use sea_orm::{
+        ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend,
+        EntityTrait, Statement,
+    };
+    use uuid::Uuid;
+
+    async fn approval_test_db() -> DatabaseConnection {
+        let db = rustok_test_utils::setup_test_db().await;
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE ai_approval_requests (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL,\
+                run_id TEXT NOT NULL, approval_batch_id TEXT NOT NULL, tool_name TEXT NOT NULL,\
+                tool_call_id TEXT NOT NULL, tool_input TEXT NOT NULL, reason TEXT NULL,\
+                status TEXT NOT NULL, resolved_by TEXT NULL, resolved_at TEXT NULL,\
+                metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+            )"
+            .to_string(),
+        ))
+        .await
+        .expect("approval test schema");
+        db
+    }
+
+    #[test]
+    fn decodes_only_a_complete_durable_execution_outcome() {
+        let outcome = ApprovalExecutionOutcome {
+            content: "done".to_string(),
+            raw_payload: serde_json::json!({ "record": "42" }),
+            duration_ms: 12,
+        };
+        let metadata = serde_json::json!({ "execution_outcome": outcome });
+        assert_eq!(
+            approval_execution_outcome(&metadata)
+                .unwrap()
+                .expect("outcome")
+                .content,
+            "done"
+        );
+        assert!(approval_execution_outcome(&serde_json::json!({}))
+            .unwrap()
+            .is_none());
+        assert!(approval_execution_outcome(&serde_json::json!({
+            "execution_outcome": { "content": "missing fields" }
+        }))
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn stages_external_execution_before_history_finalization() {
+        let db = approval_test_db().await;
+        let now = Utc::now();
+        let approval = ai_approval_requests::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(Uuid::new_v4()),
+            session_id: Set(Uuid::new_v4()),
+            run_id: Set(Uuid::new_v4()),
+            approval_batch_id: Set("batch-1".to_string()),
+            tool_name: Set("catalog.read".to_string()),
+            tool_call_id: Set("call-1".to_string()),
+            tool_input: Set(serde_json::json!({ "id": "42" })),
+            reason: Set(None),
+            status: Set("resolving".to_string()),
+            resolved_by: Set(None),
+            resolved_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(now.into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert pending approval");
+        let staged = super::persist_approval_execution_outcome(
+            &db,
+            &approval,
+            &ApprovalExecutionOutcome {
+                content: "tool response".to_string(),
+                raw_payload: serde_json::json!({ "record": "42" }),
+                duration_ms: 21,
+            },
+        )
+        .await
+        .expect("stage external outcome");
+
+        assert_eq!(staged.status, "executed");
+        assert_eq!(
+            approval_execution_outcome(&staged.metadata)
+                .expect("decode staged outcome")
+                .expect("outcome")
+                .content,
+            "tool response"
+        );
+        let reloaded = ai_approval_requests::Entity::find_by_id(approval.id)
+            .one(&db)
+            .await
+            .expect("reload approval")
+            .expect("approval persists");
+        assert_eq!(reloaded.status, "executed");
+        assert!(super::claim_approval_resolution(
+            &db,
+            approval.tenant_id,
+            approval.id,
+            "executed",
+        )
+        .await
+        .expect("first resolver claims staged approval"));
+        assert!(!super::claim_approval_resolution(
+            &db,
+            approval.tenant_id,
+            approval.id,
+            "executed",
+        )
+        .await
+        .expect("second resolver sees compare-and-set miss"));
+    }
+
+    #[tokio::test]
+    async fn selects_only_the_next_pending_approval_from_its_batch() {
+        let db = approval_test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let session_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+        let first_created_at = Utc::now();
+        let second_created_at = first_created_at.clone() + chrono::Duration::seconds(1);
+        let other_batch_created_at = Utc::now();
+        for (id, batch, status, created_at) in [
+            (first_id, "batch-a", "pending", first_created_at),
+            (second_id, "batch-a", "pending", second_created_at),
+            (Uuid::new_v4(), "batch-b", "pending", other_batch_created_at),
+        ] {
+            ai_approval_requests::ActiveModel {
+                id: Set(id),
+                tenant_id: Set(tenant_id),
+                session_id: Set(session_id),
+                run_id: Set(run_id),
+                approval_batch_id: Set(batch.to_string()),
+                tool_name: Set("catalog.read".to_string()),
+                tool_call_id: Set(format!("call-{id}")),
+                tool_input: Set(serde_json::json!({})),
+                reason: Set(None),
+                status: Set(status.to_string()),
+                resolved_by: Set(None),
+                resolved_at: Set(None),
+                metadata: Set(serde_json::json!({})),
+                created_at: Set(created_at.into()),
+                updated_at: Set(Utc::now().into()),
+            }
+            .insert(&db)
+            .await
+            .expect("insert approval batch member");
+        }
+
+        let next = super::next_pending_approval_in_batch(&db, tenant_id, run_id, "batch-a")
+            .await
+            .expect("find first pending")
+            .expect("pending approval");
+        assert_eq!(next.id, first_id);
+        let mut resolved: ai_approval_requests::ActiveModel = next.into();
+        resolved.status = Set("approved".to_string());
+        resolved.update(&db).await.expect("resolve first approval");
+        assert_eq!(
+            super::next_pending_approval_in_batch(&db, tenant_id, run_id, "batch-a")
+                .await
+                .expect("find second pending")
+                .expect("second approval")
+                .id,
+            second_id
+        );
+    }
+}
 
 impl AiManagementService {
     pub fn metrics_snapshot() -> AiRuntimeMetricsSnapshot {
@@ -250,7 +509,10 @@ impl AiManagementService {
             return provider.test_connection(&config).await;
         }
         let started = std::time::Instant::now();
-        if crate::provider_factory_supports(&config.provider_slug, crate::ProviderFeature::Embeddings) {
+        if crate::provider_factory_supports(
+            &config.provider_slug,
+            crate::ProviderFeature::Embeddings,
+        ) {
             crate::embed(
                 &config,
                 secrets,
@@ -261,7 +523,10 @@ impl AiManagementService {
                 },
             )
             .await?;
-        } else if crate::provider_factory_supports(&config.provider_slug, crate::ProviderFeature::Rerank) {
+        } else if crate::provider_factory_supports(
+            &config.provider_slug,
+            crate::ProviderFeature::Rerank,
+        ) {
             crate::rerank(
                 &config,
                 secrets,
@@ -912,9 +1177,14 @@ impl AiManagementService {
             .await
             .map_err(db_err)?
             .ok_or_else(|| AiError::NotFound("approval request not found".to_string()))?;
-        if approval.status != "pending" {
+        if !matches!(approval.status.as_str(), "pending" | "executed") {
             return Err(AiError::Validation(
-                "approval request is not pending".to_string(),
+                "approval request is not available for resolution".to_string(),
+            ));
+        }
+        if approval.status == "executed" && !input.approved {
+            return Err(AiError::Validation(
+                "an executed approval must be finalized as approved".to_string(),
             ));
         }
 
@@ -930,7 +1200,10 @@ impl AiManagementService {
             None => None,
         };
         let tool_policy = policy_from_model(tool_profile.as_ref());
-        if input.approved && !tool_policy.is_tool_allowed(&approval.tool_name) {
+        if input.approved
+            && approval.status == "pending"
+            && !tool_policy.is_tool_allowed(&approval.tool_name)
+        {
             return Err(AiError::Validation(format!(
                 "tool `{}` is no longer allowed by the execution policy",
                 approval.tool_name
@@ -944,18 +1217,9 @@ impl AiManagementService {
             ));
         }
 
-        let claimed = ai_approval_requests::Entity::update_many()
-            .col_expr(
-                ai_approval_requests::Column::Status,
-                Expr::value("resolving".to_string()),
-            )
-            .filter(ai_approval_requests::Column::Id.eq(approval.id))
-            .filter(ai_approval_requests::Column::TenantId.eq(operator.tenant_id))
-            .filter(ai_approval_requests::Column::Status.eq("pending"))
-            .exec(db)
-            .await
-            .map_err(db_err)?;
-        if claimed.rows_affected != 1 {
+        if !claim_approval_resolution(db, operator.tenant_id, approval.id, &approval.status)
+            .await?
+        {
             return Err(AiError::Validation(
                 "approval request was already claimed".to_string(),
             ));
@@ -965,37 +1229,51 @@ impl AiManagementService {
 
         let access_context = access_context_for_operator(operator);
         let (tool_content, tool_metadata, trace) = if input.approved {
-            let adapter = InProcessMcpAdapter::new(runtime, access_context)?;
-            let started = std::time::Instant::now();
-            let tool_result = match adapter
-                .call_tool(&approval.tool_name, approval.tool_input.clone())
-                .await
-            {
-                Ok(value) => value,
-                Err(error) => {
-                    let mut retryable: ai_approval_requests::ActiveModel = approval.clone().into();
-                    retryable.status = Set("pending".to_string());
-                    retryable.reason = Set(Some(format!(
-                        "tool execution failed and may be retried: {error}"
-                    )));
-                    retryable.updated_at = Set(Utc::now().into());
-                    retryable.update(db).await.map_err(db_err)?;
-                    return Err(error);
+            let outcome = match approval_execution_outcome(&approval.metadata)? {
+                Some(outcome) => outcome,
+                None => {
+                    let adapter = InProcessMcpAdapter::new(runtime, access_context)?;
+                    let started = std::time::Instant::now();
+                    let tool_result = match adapter
+                        .call_tool(&approval.tool_name, approval.tool_input.clone())
+                        .await
+                    {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let mut retryable: ai_approval_requests::ActiveModel =
+                                approval.clone().into();
+                            retryable.status = Set("pending".to_string());
+                            retryable.reason = Set(Some(format!(
+                                "tool execution failed and may be retried: {error}"
+                            )));
+                            retryable.updated_at = Set(Utc::now().into());
+                            retryable.update(db).await.map_err(db_err)?;
+                            return Err(error);
+                        }
+                    };
+                    let outcome = ApprovalExecutionOutcome {
+                        content: tool_result.content,
+                        raw_payload: tool_result.raw_payload,
+                        duration_ms: started.elapsed().as_millis() as i64,
+                    };
+                    let _persisted =
+                        persist_approval_execution_outcome(db, &approval, &outcome).await?;
+                    outcome
                 }
             };
             let trace = ToolTrace {
                 tool_name: approval.tool_name.clone(),
                 input_payload: approval.tool_input.clone(),
-                output_payload: Some(tool_result.raw_payload.clone()),
+                output_payload: Some(outcome.raw_payload.clone()),
                 status: "completed".to_string(),
-                duration_ms: started.elapsed().as_millis() as i64,
+                duration_ms: outcome.duration_ms,
                 sensitive: tool_policy.is_tool_sensitive(&approval.tool_name),
                 error_message: None,
                 created_at: Utc::now(),
             };
             (
-                tool_result.content,
-                json!({ "raw_payload": tool_result.raw_payload, "approval_approved": true }),
+                outcome.content,
+                json!({ "raw_payload": outcome.raw_payload, "approval_approved": true }),
                 trace,
             )
         } else {
@@ -1013,9 +1291,13 @@ impl AiManagementService {
             (content, json!({ "approval_rejected": true }), trace)
         };
 
-        insert_tool_trace(db, operator.tenant_id, session.id, run.id, &trace).await?;
+        // The external effect has already been durably staged above. Finalize all
+        // RusToK records atomically so a database failure cannot duplicate a
+        // tool trace or chat message on the next resume attempt.
+        let transaction = db.begin().await.map_err(db_err)?;
+        insert_tool_trace(&transaction, operator.tenant_id, session.id, run.id, &trace).await?;
         insert_message(
-            db,
+            &transaction,
             operator.tenant_id,
             session.id,
             Some(run.id),
@@ -1041,24 +1323,21 @@ impl AiManagementService {
         approval_active.resolved_by = Set(Some(operator.user_id));
         approval_active.resolved_at = Set(Some(Utc::now().into()));
         approval_active.updated_at = Set(Utc::now().into());
-        approval_active.update(db).await.map_err(db_err)?;
+        approval_active.update(&transaction).await.map_err(db_err)?;
 
-        let next_pending = ai_approval_requests::Entity::find()
-            .filter(ai_approval_requests::Column::TenantId.eq(operator.tenant_id))
-            .filter(ai_approval_requests::Column::RunId.eq(run.id))
-            .filter(
-                ai_approval_requests::Column::ApprovalBatchId.eq(&approval.approval_batch_id),
-            )
-            .filter(ai_approval_requests::Column::Status.eq("pending"))
-            .order_by_asc(ai_approval_requests::Column::CreatedAt)
-            .one(db)
-            .await
-            .map_err(db_err)?;
+        let next_pending = next_pending_approval_in_batch(
+            &transaction,
+            operator.tenant_id,
+            run.id,
+            &approval.approval_batch_id,
+        )
+        .await?;
         if let Some(next_pending) = next_pending {
             run_active.status = Set("waiting_approval".to_string());
             run_active.pending_approval_id = Set(Some(next_pending.id));
             run_active.updated_at = Set(Utc::now().into());
-            let saved_run = run_active.update(db).await.map_err(db_err)?;
+            let saved_run = run_active.update(&transaction).await.map_err(db_err)?;
+            transaction.commit().await.map_err(db_err)?;
             let detail = Self::chat_session_detail(db, operator.tenant_id, session.id)
                 .await?
                 .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
@@ -1072,7 +1351,8 @@ impl AiManagementService {
         run_active.pending_approval_id = Set(None);
         run_active.updated_at = Set(Utc::now().into());
         run_active.error_message = Set(None);
-        run_active.update(db).await.map_err(db_err)?;
+        run_active.update(&transaction).await.map_err(db_err)?;
+        transaction.commit().await.map_err(db_err)?;
 
         Self::continue_run(
             runtime,
@@ -1309,28 +1589,7 @@ impl AiManagementService {
                 let stream_emitter = ProviderStreamEmitter::new({
                     let stream_buffer = Arc::clone(&stream_buffer);
                     move |event| {
-                        match event {
-                            ProviderStreamEvent::TextDelta(delta) => {
-                                let mut accumulated = stream_buffer
-                                    .lock()
-                                    .expect("AI stream buffer mutex poisoned");
-                                accumulated.push_str(&delta);
-                                publish_ai_run_stream_event(
-                                    session_id,
-                                    run_id,
-                                    crate::streaming::AiRunStreamEventKind::Delta,
-                                    Some(delta),
-                                    Some(accumulated.clone()),
-                                    None,
-                                );
-                            }
-                            ProviderStreamEvent::ToolCall(tool_call) => {
-                                publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
-                            }
-                            ProviderStreamEvent::Usage(usage) => {
-                                publish_ai_run_usage_stream_event(session_id, run_id, usage);
-                            }
-                        }
+                        publish_provider_stream_event(session_id, run_id, &stream_buffer, event)
                     }
                 });
                 let task_input_json = match task_input_json {
@@ -1466,30 +1725,7 @@ impl AiManagementService {
         let stream_buffer = Arc::new(Mutex::new(String::new()));
         let stream_emitter = ProviderStreamEmitter::new({
             let stream_buffer = Arc::clone(&stream_buffer);
-            move |event| {
-                match event {
-                    ProviderStreamEvent::TextDelta(delta) => {
-                        let mut accumulated = stream_buffer
-                            .lock()
-                            .expect("AI stream buffer mutex poisoned");
-                        accumulated.push_str(&delta);
-                        publish_ai_run_stream_event(
-                            session_id,
-                            run_id,
-                            crate::streaming::AiRunStreamEventKind::Delta,
-                            Some(delta),
-                            Some(accumulated.clone()),
-                            None,
-                        );
-                    }
-                    ProviderStreamEvent::ToolCall(tool_call) => {
-                        publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
-                    }
-                    ProviderStreamEvent::Usage(usage) => {
-                        publish_ai_run_usage_stream_event(session_id, run_id, usage);
-                    }
-                }
-            }
+            move |event| publish_provider_stream_event(session_id, run_id, &stream_buffer, event)
         });
         let cancellation = runtime.register_run_cancellation(run_id);
         let outcome = match agent_driver

@@ -50,6 +50,16 @@ pub fn evaluate_preflight(plan: &InstallPlan) -> PreflightReport {
         ));
     }
 
+    if let Err(message) = plan.topology.validate() {
+        issues.push(error("invalid_topology", &message));
+    }
+    if plan.topology.mode == crate::InstallTopologyMode::Distributed {
+        issues.push(error(
+            "distributed_topology_unavailable",
+            "Distributed topology requires a deployment adapter and is not available for apply yet.",
+        ));
+    }
+
     if plan.environment.is_production() && plan.secrets_mode == SecretMode::DotenvFile {
         issues.push(error(
             "dotenv_production",
@@ -128,8 +138,8 @@ fn known_sample_secret(value: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::{
-        AdminBootstrap, DatabaseConfig, InstallProfile, ModuleSelection, SecretRef, SecretValue,
-        SeedProfile, TenantBootstrap,
+        AdminBootstrap, DatabaseConfig, InstallProfile, InstallTopology, InstallTopologyMode,
+        ModuleSelection, SecretRef, SecretValue, SeedProfile, TenantBootstrap,
     };
 
     fn production_plan(
@@ -158,9 +168,15 @@ mod tests {
                 password: admin_password,
             },
             modules: ModuleSelection::default(),
+            topology: bound_topology(),
             seed_profile: SeedProfile::Minimal,
             secrets_mode: SecretMode::ExternalSecret,
         }
+    }
+
+    fn bound_topology() -> InstallTopology {
+        InstallTopology::for_mode(InstallTopologyMode::Monolith)
+            .bind_composition("test".to_string(), "a".repeat(64))
     }
 
     #[test]
@@ -222,6 +238,29 @@ mod tests {
     }
 
     #[test]
+    fn distributed_topology_requires_a_deployment_adapter() {
+        let mut plan = production_plan(
+            DatabaseEngine::Postgres,
+            SecretValue::Reference {
+                reference: SecretRef {
+                    backend: "vault".to_string(),
+                    key: "admin".to_string(),
+                },
+            },
+        );
+        plan.topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
+            .bind_composition("distribution@1".to_string(), "a".repeat(64));
+
+        let report = evaluate_preflight(&plan);
+
+        assert!(!report.passed());
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "distributed_topology_unavailable"));
+    }
+
+    #[test]
     fn local_sample_secret_warns_without_failing() {
         let plan = InstallPlan {
             environment: InstallEnvironment::Local,
@@ -244,6 +283,7 @@ mod tests {
                 },
             },
             modules: ModuleSelection::default(),
+            topology: bound_topology(),
             seed_profile: SeedProfile::Dev,
             secrets_mode: SecretMode::DotenvFile,
         };

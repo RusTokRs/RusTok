@@ -52,6 +52,10 @@ enablement is performed afterwards.
    composition revision/hash, and validation that every selected surface has
    exactly one owner. Map existing `InstallProfile` values into this descriptor
    without treating them as deployment topology aliases.
+   The descriptor and trusted selected-distribution revision/hash binding are
+   implemented. A plan represents monolith and distributed topology, serializes
+   deterministically, and rejects duplicated/missing role ownership. Distributed
+   apply remains explicitly unavailable until a deployment adapter is added.
    **Done when:** a plan can represent monolith and distributed installations,
    serialize deterministically, and rejects duplicated/missing role ownership.
    **Verification:** focused installer contract tests and a deterministic plan

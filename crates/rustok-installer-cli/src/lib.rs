@@ -4,8 +4,9 @@ use rustok_cli_core::{
 use rustok_installer::{
     evaluate_preflight, execute_install_apply, execute_seed_profile, redact_install_plan,
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions, InstallEnvironment,
-    InstallPlan, InstallProfile, ModuleSelection, SecretMode, SecretRef, SecretValue,
-    SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest, TenantBootstrap,
+    InstallPlan, InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode,
+    SecretRef, SecretValue, SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest,
+    TenantBootstrap,
 };
 use rustok_installer_persistence::{
     InstallerPersistenceService, SeaOrmInstallerApplyPorts, SeaOrmInstallerBootstrapPorts,
@@ -245,6 +246,13 @@ fn parse_install_plan(args: &serde_json::Value) -> Result<InstallPlan, CliCoreEr
     let options = &args["options"];
     let database_url = secret_option(options, "database_url", "database_secret_ref")?;
     let admin_password = secret_option(options, "admin_password", "admin_password_ref")?;
+    let topology_mode = option(options, "topology")
+        .as_deref()
+        .map(InstallTopologyMode::parse_cli_value)
+        .transpose()
+        .map_err(input)?
+        .unwrap_or(InstallTopologyMode::Monolith);
+    let composition = rustok_distribution::composition_identity();
     Ok(InstallPlan {
         environment: option(options, "environment")
             .as_deref()
@@ -280,6 +288,8 @@ fn parse_install_plan(args: &serde_json::Value) -> Result<InstallPlan, CliCoreEr
             enable: csv_option(options, "enable_modules"),
             disable: csv_option(options, "disable_modules"),
         },
+        topology: InstallTopology::for_mode(topology_mode)
+            .bind_composition(composition.revision, composition.hash),
         seed_profile: option(options, "seed_profile")
             .as_deref()
             .map(SeedProfile::parse_cli_value)

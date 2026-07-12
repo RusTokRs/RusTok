@@ -42,7 +42,8 @@ pub use executor::{
     ModuleLifecycleToggleResult,
 };
 pub use installation::{
-    ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord, ArtifactAdmissionStage,
+    ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord, ArtifactAdmissionService,
+    ArtifactAdmissionStage,
     ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore, ArtifactInstallationStore,
     ArtifactRegistry, DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
     ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
