@@ -54,22 +54,6 @@ fmt-fix = "fmt --all"
 ci = "fmt --all -- --check && clippy --workspace --all-targets -- -D warnings && test --workspace"
 
 # ============================================================================
-# Database Operations
-# ============================================================================
-
-# Reset database (drop + create + migrate)
-db-reset = "loco db reset"
-
-# Run pending migrations
-db-migrate = "loco db migrate"
-
-# Show migration status
-db-status = "loco db status"
-
-# Create a new migration
-db-new = "loco db create-migration"
-
-# ============================================================================
 # Build Operations
 # ============================================================================
 
