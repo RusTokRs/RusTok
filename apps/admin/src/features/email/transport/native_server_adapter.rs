@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-use crate::features::email::model::PlatformSettingsResponse;
+use crate::features::email::model::{PlatformSettingsPayload, PlatformSettingsResponse};
 
 #[cfg(feature = "ssr")]
 fn server_error(message: impl Into<String>) -> ServerFnError {

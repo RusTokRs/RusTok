@@ -3,15 +3,39 @@ use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{CartError, CartResponse};
+use crate::{CartError, CartResponse, UpdateCartContextInput};
 
-/// Transport-neutral owner boundary for cart checkout snapshots.
+/// Transport-neutral owner boundary for cart checkout snapshots and lifecycle.
 #[async_trait]
-pub trait CartSnapshotReadPort: Send + Sync {
+pub trait CartCheckoutPort: Send + Sync {
     async fn read_cart_checkout_snapshot(
         &self,
         context: PortContext,
         request: CartCheckoutSnapshotRequest,
+    ) -> Result<CartResponse, PortError>;
+
+    async fn update_cart_checkout_context(
+        &self,
+        context: PortContext,
+        request: CartCheckoutContextUpdateRequest,
+    ) -> Result<CartResponse, PortError>;
+
+    async fn begin_cart_checkout(
+        &self,
+        context: PortContext,
+        request: CartCheckoutLifecycleRequest,
+    ) -> Result<CartResponse, PortError>;
+
+    async fn release_cart_checkout(
+        &self,
+        context: PortContext,
+        request: CartCheckoutLifecycleRequest,
+    ) -> Result<CartResponse, PortError>;
+
+    async fn complete_cart_checkout(
+        &self,
+        context: PortContext,
+        request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError>;
 }
 
@@ -21,8 +45,19 @@ pub struct CartCheckoutSnapshotRequest {
     pub locale: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CartCheckoutContextUpdateRequest {
+    pub cart_id: Uuid,
+    pub input: UpdateCartContextInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CartCheckoutLifecycleRequest {
+    pub cart_id: Uuid,
+}
+
 #[async_trait]
-impl CartSnapshotReadPort for crate::CartService {
+impl CartCheckoutPort for crate::CartService {
     async fn read_cart_checkout_snapshot(
         &self,
         context: PortContext,
@@ -31,6 +66,54 @@ impl CartSnapshotReadPort for crate::CartService {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.get_cart(tenant_id, request.cart_id)
+            .await
+            .map_err(cart_error_to_port_error)
+    }
+
+    async fn update_cart_checkout_context(
+        &self,
+        context: PortContext,
+        request: CartCheckoutContextUpdateRequest,
+    ) -> Result<CartResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        self.update_context(tenant_id, request.cart_id, request.input)
+            .await
+            .map_err(cart_error_to_port_error)
+    }
+
+    async fn begin_cart_checkout(
+        &self,
+        context: PortContext,
+        request: CartCheckoutLifecycleRequest,
+    ) -> Result<CartResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        self.begin_checkout(tenant_id, request.cart_id)
+            .await
+            .map_err(cart_error_to_port_error)
+    }
+
+    async fn release_cart_checkout(
+        &self,
+        context: PortContext,
+        request: CartCheckoutLifecycleRequest,
+    ) -> Result<CartResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        self.release_checkout(tenant_id, request.cart_id)
+            .await
+            .map_err(cart_error_to_port_error)
+    }
+
+    async fn complete_cart_checkout(
+        &self,
+        context: PortContext,
+        request: CartCheckoutLifecycleRequest,
+    ) -> Result<CartResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        self.complete_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
     }

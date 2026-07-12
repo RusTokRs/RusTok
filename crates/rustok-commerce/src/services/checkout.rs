@@ -5,8 +5,11 @@ use validator::Validate;
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
-use rustok_cart::CartService;
 use rustok_cart::error::CartError;
+use rustok_cart::{
+    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
+    CartCheckoutSnapshotRequest,
+};
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
@@ -76,7 +79,7 @@ pub type CheckoutResult<T> = Result<T, CheckoutError>;
 
 pub struct CheckoutService {
     db: DatabaseConnection,
-    cart_service: CartService,
+    cart_checkout_port: Arc<dyn CartCheckoutPort>,
     inventory_reservation_port: Arc<dyn InventoryReservationPort>,
     product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
     order_service: OrderService,
@@ -92,12 +95,13 @@ impl CheckoutService {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
         region_read_port: Arc<dyn rustok_region::RegionReadPort>,
+        cart_checkout_port: Arc<dyn CartCheckoutPort>,
         inventory_reservation_port: Arc<dyn InventoryReservationPort>,
         product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
     ) -> Self {
         Self {
             db: db.clone(),
-            cart_service: CartService::new(db.clone()),
+            cart_checkout_port,
             inventory_reservation_port,
             product_catalog_read_port,
             order_service: OrderService::new(db.clone(), event_bus),
@@ -137,27 +141,35 @@ impl CheckoutService {
             .map_err(|error| CheckoutError::Validation(error.to_string()))?;
 
         let mut cart = self
-            .cart_service
-            .get_cart(tenant_id, input.cart_id)
+            .cart_checkout_port
+            .read_cart_checkout_snapshot(
+                checkout_cart_port_context(tenant_id, actor_id, input.cart_id, input.locale.as_deref(), None, "read", false),
+                CartCheckoutSnapshotRequest {
+                    cart_id: input.cart_id,
+                    locale: input.locale.clone(),
+                },
+            )
             .await
-            .map_err(stage_error("load_cart"))?;
+            .map_err(|error| checkout_port_error("read_cart_checkout_snapshot", error))?;
         if input.shipping_selections.is_some() || input.shipping_option_id.is_some() {
             cart = self
-                .cart_service
-                .update_context(
-                    tenant_id,
-                    cart.id,
-                    UpdateCartContextInput {
+                .cart_checkout_port
+                .update_cart_checkout_context(
+                    checkout_cart_port_context(tenant_id, actor_id, cart.id, cart.locale_code.as_deref(), cart.channel_slug.as_deref(), "update_context", true),
+                    CartCheckoutContextUpdateRequest {
+                        cart_id: cart.id,
+                        input: UpdateCartContextInput {
                         email: cart.email.clone(),
                         region_id: cart.region_id,
                         country_code: cart.country_code.clone(),
                         locale_code: cart.locale_code.clone(),
                         selected_shipping_option_id: input.shipping_option_id,
                         shipping_selections: input.shipping_selections.clone(),
+                        },
                     },
                 )
                 .await
-                .map_err(stage_error("update_cart_shipping"))?;
+                .map_err(|error| checkout_port_error("update_cart_checkout_context", error))?;
         }
         if cart.status == "completed" {
             if let Some(response) = self
@@ -184,15 +196,18 @@ impl CheckoutService {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
         let cart = self
-            .cart_service
-            .begin_checkout(tenant_id, cart.id)
+            .cart_checkout_port
+            .begin_cart_checkout(
+                checkout_cart_port_context(tenant_id, actor_id, cart.id, cart.locale_code.as_deref(), cart.channel_slug.as_deref(), "begin", true),
+                CartCheckoutLifecycleRequest { cart_id: cart.id },
+            )
             .await
-            .map_err(stage_error("begin_checkout"))?;
+            .map_err(|error| checkout_port_error("begin_cart_checkout", error))?;
         if let Err(error) = self
             .validate_cart_inventory(tenant_id, actor_id, &cart)
             .await
         {
-            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+            let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
             return Err(error);
         }
         let context = match self
@@ -210,7 +225,7 @@ impl CheckoutService {
         {
             Ok(context) => context,
             Err(error) => {
-                let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+                let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
                 return Err(stage_error("resolve_context")(error));
             }
         };
@@ -223,7 +238,7 @@ impl CheckoutService {
             )
             .await
         {
-            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+            let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
             return Err(error);
         }
         let order_metadata = merge_checkout_metadata(
@@ -571,10 +586,13 @@ impl CheckoutService {
                 .map_err(stage_error("mark_order_paid"))?;
 
             let cart = self
-                .cart_service
-                .complete_cart(tenant_id, cart.id)
+                .cart_checkout_port
+                .complete_cart_checkout(
+                    checkout_cart_port_context(tenant_id, actor_id, cart.id, cart.locale_code.as_deref(), cart.channel_slug.as_deref(), "complete", true),
+                    CartCheckoutLifecycleRequest { cart_id: cart.id },
+                )
                 .await
-                .map_err(stage_error("complete_cart"))?;
+                .map_err(|error| checkout_port_error("complete_cart_checkout", error))?;
 
             Ok(CompleteCheckoutResponse {
                 cart,
@@ -588,7 +606,7 @@ impl CheckoutService {
         .await;
 
         if should_release_checkout_lock(&checkout_result) {
-            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+            let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
         }
 
         checkout_result
