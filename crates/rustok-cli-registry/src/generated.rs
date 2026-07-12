@@ -16,5 +16,7 @@ pub fn generated_providers(runtime: &RuntimeComposition) -> Vec<Box<dyn CommandP
         rustok_profiles_cli::command_provider(runtime),
         // rbac / rbac
         rustok_rbac_cli::command_provider(runtime),
+        // seed / seed
+        rustok_installer_cli::command_provider(runtime),
     ]
 }

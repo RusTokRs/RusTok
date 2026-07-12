@@ -10,6 +10,7 @@ chrono.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 rustok-core.workspace = true
+rustok-api.workspace = true
 rustok-events.workspace = true
 sea-orm.workspace = true
 serde.workspace = true

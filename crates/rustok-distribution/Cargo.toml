@@ -1,0 +1,69 @@
+[package]
+name = "rustok-distribution"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Selected RusToK distribution module composition"
+
+[features]
+default = []
+mod-cart = ["dep:rustok-cart"]
+mod-customer = ["dep:rustok-customer"]
+mod-product = ["dep:rustok-product", "mod-taxonomy"]
+mod-profiles = ["dep:rustok-profiles", "mod-taxonomy"]
+mod-region = ["dep:rustok-region"]
+mod-pricing = ["dep:rustok-pricing", "mod-product"]
+mod-inventory = ["dep:rustok-inventory", "mod-product"]
+mod-order = ["dep:rustok-order"]
+mod-payment = ["dep:rustok-payment"]
+mod-fulfillment = ["dep:rustok-fulfillment"]
+mod-commerce = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment"]
+mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
+mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
+mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
+mod-comments = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments"]
+mod-pages = ["dep:rustok-pages", "mod-content", "mod-page_builder"]
+mod-page_builder = ["dep:rustok-page-builder"]
+mod-taxonomy = ["dep:rustok-taxonomy", "mod-content"]
+mod-alloy = ["dep:alloy"]
+mod-flex = []
+mod-media = ["dep:rustok-media"]
+mod-seo = ["dep:rustok-seo", "mod-content"]
+mod-workflow = ["dep:rustok-workflow"]
+
+[dependencies]
+rustok-core.workspace = true
+rustok-modules.workspace = true
+rustok-auth.workspace = true
+rustok-cache.workspace = true
+rustok-channel.workspace = true
+rustok-email.workspace = true
+rustok-index.workspace = true
+rustok-outbox.workspace = true
+rustok-rbac.workspace = true
+rustok-search.workspace = true
+rustok-tenant.workspace = true
+rustok-cart = { workspace = true, optional = true }
+rustok-customer = { workspace = true, optional = true }
+rustok-product = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, optional = true }
+rustok-region = { workspace = true, optional = true }
+rustok-pricing = { workspace = true, optional = true }
+rustok-inventory = { workspace = true, optional = true }
+rustok-order = { workspace = true, optional = true }
+rustok-payment = { workspace = true, optional = true }
+rustok-fulfillment = { workspace = true, optional = true }
+rustok-commerce = { workspace = true, optional = true }
+rustok-content = { workspace = true, optional = true }
+rustok-content-orchestration.workspace = true
+rustok-blog = { workspace = true, optional = true }
+rustok-forum = { workspace = true, optional = true }
+rustok-comments = { workspace = true, optional = true }
+rustok-pages = { workspace = true, optional = true }
+rustok-page-builder = { workspace = true, optional = true }
+rustok-taxonomy = { workspace = true, optional = true }
+rustok-media = { workspace = true, optional = true }
+rustok-seo = { workspace = true, optional = true }
+rustok-workflow = { workspace = true, optional = true }
+alloy = { workspace = true, optional = true }
+flex.workspace = true

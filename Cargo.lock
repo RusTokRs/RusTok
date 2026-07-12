@@ -11310,6 +11310,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "sea-orm",
@@ -11473,6 +11474,7 @@ dependencies = [
  "rustok-auth-cli",
  "rustok-cli-core",
  "rustok-cli-platform",
+ "rustok-installer-cli",
  "rustok-media-cli",
  "rustok-profiles-cli",
  "rustok-rbac-cli",
@@ -11772,6 +11774,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-distribution"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "flex",
+ "rustok-auth",
+ "rustok-blog",
+ "rustok-cache",
+ "rustok-cart",
+ "rustok-channel",
+ "rustok-comments",
+ "rustok-commerce",
+ "rustok-content",
+ "rustok-content-orchestration",
+ "rustok-core",
+ "rustok-customer",
+ "rustok-email",
+ "rustok-forum",
+ "rustok-fulfillment",
+ "rustok-index",
+ "rustok-inventory",
+ "rustok-media",
+ "rustok-modules",
+ "rustok-order",
+ "rustok-outbox",
+ "rustok-page-builder",
+ "rustok-pages",
+ "rustok-payment",
+ "rustok-pricing",
+ "rustok-product",
+ "rustok-profiles",
+ "rustok-rbac",
+ "rustok-region",
+ "rustok-search",
+ "rustok-seo",
+ "rustok-taxonomy",
+ "rustok-tenant",
+ "rustok-workflow",
+]
+
+[[package]]
 name = "rustok-e2e-rust"
 version = "0.1.0"
 dependencies = [
@@ -12049,6 +12092,24 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-installer-cli"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-auth",
+ "rustok-cli-core",
+ "rustok-distribution",
+ "rustok-installer",
+ "rustok-modules",
+ "rustok-rbac",
+ "rustok-runtime",
+ "rustok-tenant",
+ "sea-orm",
+ "serde_json",
  "uuid",
 ]
 
@@ -12994,6 +13055,7 @@ dependencies = [
  "rustok-content-orchestration",
  "rustok-core",
  "rustok-customer",
+ "rustok-distribution",
  "rustok-email",
  "rustok-events",
  "rustok-forum",

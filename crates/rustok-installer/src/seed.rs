@@ -130,7 +130,8 @@ pub async fn execute_seed_profile(
             .await?;
     }
 
-    let admin = if let Some(admin) = request.admin {
+    let admin = if let Some(mut admin) = request.admin {
+        admin.tenant_id = tenant.id;
         let user = identity_port.ensure_seed_user(admin).await?;
         role_port
             .assign_seed_role(tenant.id, user.id, UserRole::SuperAdmin)

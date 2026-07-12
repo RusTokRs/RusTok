@@ -5,9 +5,9 @@ use sea_orm::DatabaseConnection;
 use thiserror::Error;
 
 use crate::{
-    ModuleLifecycleHookPhase, ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
-    ModuleOperationRecoveryAction, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStatus, run_module_lifecycle_hook,
+    run_module_lifecycle_hook, ModuleLifecycleHookPhase, ModuleOperationIssue,
+    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecoveryAction,
+    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
 };
 
 /// Transport-neutral recovery view of a failed lifecycle operation.

@@ -1,19 +1,4 @@
 mod manifest;
-mod registry_codegen {
-    include!(concat!(env!("OUT_DIR"), "/modules_registry_codegen.rs"));
-}
-
-use rustok_auth::AuthModule;
-use rustok_cache::CacheModule;
-use rustok_channel::ChannelModule;
-use rustok_core::ModuleRegistry;
-use rustok_email::EmailModule;
-use rustok_index::IndexModule;
-use rustok_modules::ModulesModule;
-use rustok_outbox::OutboxModule;
-use rustok_rbac::RbacModule;
-use rustok_search::SearchModule;
-use rustok_tenant::TenantModule;
 
 pub(crate) use manifest::module_setting_shape_value;
 pub use manifest::{
@@ -21,23 +6,7 @@ pub use manifest::{
     CatalogModuleVersion, DeploymentSurfaceContract, InstalledManifestModule, ManifestDiff,
     ManifestError, ManifestManager, ManifestModuleSpec, ModuleSettingSpec, ModulesManifest,
 };
-
-pub fn build_registry() -> ModuleRegistry {
-    let cache_module = CacheModule::new();
-    let registry = ModuleRegistry::new()
-        .register(ModulesModule)
-        .register(AuthModule)
-        .register(cache_module)
-        .register(ChannelModule)
-        .register(EmailModule)
-        .register(IndexModule)
-        .register(SearchModule)
-        .register(OutboxModule)
-        .register(TenantModule)
-        .register(RbacModule);
-
-    registry_codegen::register_optional_modules(registry)
-}
+pub use rustok_distribution::build_registry;
 
 #[cfg(test)]
 mod contract_tests {

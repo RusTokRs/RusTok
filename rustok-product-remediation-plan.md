@@ -88,7 +88,7 @@ source markers or no-compile evidence.
 | Prevent tenant/user substitution through GraphQL variables | resolved | Product write mutations no longer expose tenant/user GraphQL variables. |
 | Prevent internal DB message leakage through the API | partial | Product service GraphQL read/write mapper is safe and logs internal failures; direct SeaORM helper paths, correlation-id propagation, and complete read-transport coverage remain open. |
 | Bound `metadata`, validation, rule, snapshot, and other JSONB inputs | resolved | Product schema inputs now require bounded JSON (64 KiB, depth 32); metadata/override/rule payloads must be objects, and JSON attribute values use the same bound. Clone snapshots are server-generated. |
-| Negative tenant-substitution tests for all read/write flows | partial | `graphql_runtime_parity_test` proves substituted `tenantId` is rejected for every current product read root (`product`, `products`, schema/EAV reads, `storefrontProduct`, and `storefrontProducts`) and rejects `createProduct` when `AuthContext.tenant_id` differs from `TenantContext`. Every remaining mutation still needs equivalent negative runtime coverage. |
+| Negative tenant-substitution tests for all read/write flows | partial | `graphql_runtime_parity_test` proves substituted `tenantId` is rejected for every current product read root (`product`, `products`, schema/EAV reads, `storefrontProduct`, and `storefrontProducts`) and rejects `createProduct` when `AuthContext.tenant_id` differs from `TenantContext`. The schema guardrail verifies that every one of the 15 product mutations binds the trusted actor and exposes neither tenant nor user arguments. Every remaining mutation still needs equivalent negative runtime coverage. |
 
 ## Documentation and FBA status
 

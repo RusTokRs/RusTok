@@ -1,6 +1,6 @@
 //! Owner-owned RBAC persistence consistency diagnostics.
 
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]

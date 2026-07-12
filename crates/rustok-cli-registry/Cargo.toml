@@ -13,5 +13,6 @@ rustok-auth-cli.workspace = true
 rustok-media-cli.workspace = true
 rustok-profiles-cli.workspace = true
 rustok-rbac-cli.workspace = true
+rustok-installer-cli.workspace = true
 rustok-runtime.workspace = true
 serde_json.workspace = true

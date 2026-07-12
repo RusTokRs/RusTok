@@ -26,7 +26,6 @@ pub mod middleware;
 pub mod models;
 pub mod modules;
 pub mod routes;
-pub mod seeds;
 pub mod services;
 #[cfg(test)]
 pub mod testing;

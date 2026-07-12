@@ -499,6 +499,16 @@ for (const marker of [
 ]) {
   requireSource(commerceCatalogMutation, marker, commerceCatalogMutationPath);
 }
+const productMutationActorBindings = [
+  ...commerceCatalogMutation.matchAll(/product_mutation_actor\(ctx\)\?/g),
+].length;
+if (productMutationActorBindings !== 15) {
+  fail(
+    `${commerceCatalogMutationPath} must bind the trusted product mutation actor in every product mutation; found ${productMutationActorBindings}`,
+  );
+}
+forbidSource(commerceCatalogMutation, 'tenant_id: Uuid', commerceCatalogMutationPath);
+forbidSource(commerceCatalogMutation, 'user_id: Uuid', commerceCatalogMutationPath);
 for (const marker of [
   'struct ProductWriteTransaction',
   'publish_in_tx(&self.transaction',

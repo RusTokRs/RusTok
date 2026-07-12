@@ -12,6 +12,7 @@ mod operation_store;
 mod policy;
 mod recovery;
 mod runtime;
+mod seed_writer;
 
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
@@ -22,10 +23,10 @@ pub use artifact::{
     ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError,
 };
 pub use executor::{
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleLifecycleToggleResult,
-    execute_module_toggle,
+    execute_module_toggle, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
+    ModuleLifecycleToggleResult,
 };
-pub use hooks::{ModuleLifecycleHookError, ModuleLifecycleHookPhase, run_module_lifecycle_hook};
+pub use hooks::{run_module_lifecycle_hook, ModuleLifecycleHookError, ModuleLifecycleHookPhase};
 pub use installation::{
     ArtifactInstallationStore, ArtifactRegistry, InstalledModuleArtifact, ModuleArtifactPackage,
     ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
@@ -40,15 +41,16 @@ pub use operation_store::{
     TenantModuleStateStore,
 };
 pub use policy::{
-    ModuleToggleValidationError, TenantModuleOverride, resolve_effective_modules,
-    validate_module_toggle,
+    resolve_effective_modules, validate_module_toggle, ModuleToggleValidationError,
+    TenantModuleOverride,
 };
 pub use recovery::{
-    ModuleOperationRecoveryError, ModuleOperationRecoveryPlan, ModulePostHookRetryRequest,
     failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation,
+    retry_failed_post_hook_operation, ModuleOperationRecoveryError, ModuleOperationRecoveryPlan,
+    ModulePostHookRetryRequest,
 };
 pub use runtime::{ArtifactRuntime, ArtifactRuntimeError};
+pub use seed_writer::{ModuleSeedDbWriter, ModuleSeedDbWriterError};
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.
 pub struct ModulesModule;

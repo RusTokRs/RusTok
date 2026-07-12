@@ -114,7 +114,7 @@ pub fn resolve_effective_modules(
 
 #[cfg(test)]
 mod tests {
-    use super::{TenantModuleOverride, resolve_effective_modules};
+    use super::{resolve_effective_modules, TenantModuleOverride};
     use crate::ModulesModule;
     use rustok_core::ModuleRegistry;
 

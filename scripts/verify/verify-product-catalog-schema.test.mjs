@@ -292,6 +292,20 @@ assert(
   `expected inventory bootstrap contract failure, got ${missingInventoryBootstrapResult.stderr}`,
 );
 
+const missingMutationActorBinding = copyFixture();
+replaceInFixture(
+  missingMutationActorBinding,
+  'crates/rustok-commerce/src/graphql/mutations/catalog.rs',
+  'product_mutation_actor(ctx)?',
+  'product_mutation_actor_drift(ctx)?',
+);
+const missingMutationActorBindingResult = run(missingMutationActorBinding);
+assert(missingMutationActorBindingResult.status !== 0, 'expected missing mutation actor binding to fail');
+assert(
+  missingMutationActorBindingResult.stderr.includes('trusted product mutation actor'),
+  `expected mutation actor binding failure, got ${missingMutationActorBindingResult.stderr}`,
+);
+
 const missingDetachedReadMarker = copyFixture();
 replaceInFixture(
   missingDetachedReadMarker,

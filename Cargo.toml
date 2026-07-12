@@ -239,6 +239,9 @@ rustok-fba = { path = "crates/rustok-fba" }
 rustok-cli-core = { path = "crates/rustok-cli-core" }
 rustok-cli-registry = { path = "crates/rustok-cli-registry" }
 rustok-cli-platform = { path = "crates/rustok-cli-platform" }
+rustok-distribution = { path = "crates/rustok-distribution" }
+rustok-installer = { path = "crates/rustok-installer" }
+rustok-installer-cli = { path = "crates/rustok-installer-cli" }
 rustok-build = { path = "crates/rustok-build" }
 rustok-graphql = { path = "crates/rustok-graphql" }
 rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }

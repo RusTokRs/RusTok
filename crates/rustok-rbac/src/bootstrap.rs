@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use thiserror::Error;
 use uuid::Uuid;
 

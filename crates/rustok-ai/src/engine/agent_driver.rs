@@ -607,22 +607,56 @@ mod tests {
     #[tokio::test]
     async fn max_turns_stops_a_tool_loop_after_the_budget_is_exhausted() {
         let engine = Arc::new(ScriptedEngine {
-            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
-                assistant_message: ChatMessage {
-                    role: ChatMessageRole::Assistant,
-                    content: None,
-                    name: None,
-                    tool_call_id: None,
-                    tool_calls: vec![ToolCall {
-                        id: "publish-1".to_string(),
-                        name: "publish".to_string(),
-                        arguments: serde_json::json!({"id": "draft-1"}),
-                    }],
-                    metadata: serde_json::Value::Null,
+            responses: Mutex::new(VecDeque::from([
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: None,
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: vec![ToolCall {
+                            id: "publish-1".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({"id": "draft-1"}),
+                        }],
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("tool_calls".to_string()),
+                    raw_payload: serde_json::Value::Null,
                 },
-                finish_reason: Some("tool_calls".to_string()),
-                raw_payload: serde_json::Value::Null,
-            }])),
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: None,
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: vec![ToolCall {
+                            id: "publish-2".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({"id": "draft-1"}),
+                        }],
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("tool_calls".to_string()),
+                    raw_payload: serde_json::Value::Null,
+                },
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: None,
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: vec![ToolCall {
+                            id: "publish-3".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({"id": "draft-1"}),
+                        }],
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("tool_calls".to_string()),
+                    raw_payload: serde_json::Value::Null,
+                },
+            ])),
         });
         let mcp = Arc::new(RecordingMcp::default());
         let driver = RigAgentDriver::new(
@@ -638,6 +672,9 @@ mod tests {
             .await
             .expect_err("max turn budget must stop the next model step");
         assert!(error.to_string().contains("turn"));
-        assert_eq!(mcp.calls.lock().await.as_slice(), ["publish"]);
+        assert_eq!(
+            mcp.calls.lock().await.as_slice(),
+            ["publish", "publish", "publish"]
+        );
     }
 }

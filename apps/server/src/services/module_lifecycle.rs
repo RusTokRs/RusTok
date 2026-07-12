@@ -1,16 +1,15 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    Set, TransactionTrait,
+    Set,
 };
 use thiserror::Error;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
+    execute_module_toggle, failed_module_operation_recovery_plans, module_operation_recovery_plan,
+    retry_failed_post_hook_operation, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
     ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
     ModuleOperationStatus, ModulePostHookRetryRequest, ModuleToggleValidationError,
-    execute_module_toggle, failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation,
 };
 
 use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
@@ -306,133 +305,6 @@ impl ModuleLifecycleService {
             .map(|model| model.settings)
             .unwrap_or_else(|| serde_json::json!({})))
     }
-
-    async fn commit_module_state(
-        db: &DatabaseConnection,
-        operation_id: uuid::Uuid,
-        tenant_id: uuid::Uuid,
-        module_slug: &str,
-        enabled: bool,
-    ) -> Result<tenant_modules::Model, DbErr> {
-        let module_slug = module_slug.to_string();
-
-        db.transaction::<_, tenant_modules::Model, DbErr>(move |txn| {
-            let module_slug = module_slug.clone();
-            Box::pin(async move {
-                let (module, _, _) =
-                    Self::persist_module_state_on(txn, tenant_id, &module_slug, enabled).await?;
-
-                ModuleOperationJournal::mark_committed(txn, operation_id)
-                    .await
-                    .map_err(|error| DbErr::Custom(error.to_string()))?;
-
-                Ok(module)
-            })
-        })
-        .await
-        .map_err(|err| match err {
-            sea_orm::TransactionError::Connection(db_err) => db_err,
-            sea_orm::TransactionError::Transaction(db_err) => db_err,
-        })
-    }
-
-    async fn persist_module_state(
-        db: &DatabaseConnection,
-        tenant_id: uuid::Uuid,
-        module_slug: &str,
-        enabled: bool,
-    ) -> Result<(tenant_modules::Model, bool, bool), DbErr> {
-        let module_slug = module_slug.to_string();
-
-        db.transaction::<_, (tenant_modules::Model, bool, bool), DbErr>(move |txn| {
-            let module_slug = module_slug.clone();
-            Box::pin(async move {
-                Self::persist_module_state_on(txn, tenant_id, &module_slug, enabled).await
-            })
-        })
-        .await
-        .map_err(|err| match err {
-            sea_orm::TransactionError::Connection(db_err) => db_err,
-            sea_orm::TransactionError::Transaction(db_err) => db_err,
-        })
-    }
-
-    async fn persist_module_state_on<C>(
-        db: &C,
-        tenant_id: uuid::Uuid,
-        module_slug: &str,
-        enabled: bool,
-    ) -> Result<(tenant_modules::Model, bool, bool), DbErr>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
-        let state = TenantModuleStateStore::persist(
-            db,
-            TenantModuleStateRequest {
-                tenant_id,
-                module_slug: module_slug.to_string(),
-                enabled,
-            },
-        )
-        .await
-        .map_err(|error| DbErr::Custom(error.to_string()))?;
-        let module = TenantModulesEntity::find_by_id(state.id)
-            .one(db)
-            .await?
-            .ok_or_else(|| DbErr::RecordNotFound("tenant_modules.persisted_state".to_string()))?;
-        Ok((module, state.previous_enabled, state.changed))
-    }
-
-    async fn record_operation(
-        db: &DatabaseConnection,
-        tenant_id: uuid::Uuid,
-        module_slug: &str,
-        requested_enabled: bool,
-        previous_effective_enabled: bool,
-        requested_by: Option<String>,
-    ) -> Result<ModuleOperationRecord, DbErr> {
-        ModuleOperationJournal::record(
-            db,
-            ModuleOperationRequest {
-                tenant_id,
-                module_slug: module_slug.to_string(),
-                requested_enabled,
-                previous_effective_enabled,
-                requested_by,
-                correlation_id: Self::generate_correlation_id(),
-            },
-        )
-        .await
-        .map_err(|error| DbErr::Custom(error.to_string()))
-    }
-
-    async fn mark_operation_committed(
-        db: &DatabaseConnection,
-        operation_id: uuid::Uuid,
-    ) -> Result<(), DbErr> {
-        ModuleOperationJournal::mark_committed(db, operation_id)
-            .await
-            .map_err(|error| DbErr::Custom(error.to_string()))
-    }
-
-    async fn mark_operation_failed(
-        db: &DatabaseConnection,
-        operation_id: uuid::Uuid,
-        error_message: &str,
-    ) -> Result<(), DbErr> {
-        ModuleOperationJournal::mark_failed(db, operation_id, error_message)
-            .await
-            .map_err(|error| DbErr::Custom(error.to_string()))
-    }
-
-    async fn mark_operation_running(
-        db: &DatabaseConnection,
-        operation_id: uuid::Uuid,
-    ) -> Result<(), DbErr> {
-        ModuleOperationJournal::mark_running(db, operation_id)
-            .await
-            .map_err(|error| DbErr::Custom(error.to_string()))
-    }
 }
 
 fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModuleError {
@@ -488,7 +360,7 @@ mod tests {
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
-    use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
+    use crate::modules::{build_registry, ManifestManager, ManifestModuleSpec, ModulesManifest};
     use migration::Migrator;
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;

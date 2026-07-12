@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
@@ -10,7 +9,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::build::{
-    ActiveModel as BuildActiveModel, BuildStage, BuildStatus, DeploymentProfile,
+    ActiveModel as BuildActiveModel, BuildStage, BuildStatus,
     Entity as BuildEntity, Model as Build,
 };
 use crate::release::{

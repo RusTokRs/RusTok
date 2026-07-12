@@ -7,13 +7,11 @@ use loco_rs::{
     environment::Environment,
     Result,
 };
-use std::path::Path;
 
 use crate::channels;
 use crate::common::settings::RustokSettings;
 use crate::controllers;
 use crate::routes::{self, AppRoutes, Routes};
-use crate::seeds;
 use crate::services::app_lifecycle::resolve_boot_database_uri;
 use crate::services::server_bootstrap::bootstrap_application_router;
 use crate::services::server_runtime_context::{
@@ -177,13 +175,6 @@ impl Hooks for App {
             "Database truncation complete"
         );
         Ok(())
-    }
-
-    async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
-        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
-        seeds::seed(&runtime_ctx, path)
-            .await
-            .map_err(|error| Error::Message(format!("Seed execution failed: {error}")))
     }
 
     /// Graceful shutdown: stop background workers and flush telemetry.
