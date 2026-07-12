@@ -14,7 +14,9 @@ target id, model, policy, and permitted external credential references; it
 never supplies an endpoint, cloud project/region/identity, or plaintext
 secret. The catalog remains locked to
 `contracts/rig-0.39-provider-catalog.json`; updating Rig or adding a provider
-requires an intentional snapshot change and factory evidence.
+requires an intentional snapshot change and executable factory evidence. The
+snapshot is an inventory guard, not evidence that every advertised feature can
+be materialized by the selected build.
 
 `apps/server` still contains legacy direct AI runtime construction. That is a
 platform-owned prerequisite, not a `rustok-ai` implementation concern: the
@@ -26,6 +28,7 @@ the platform owner removes that coupling.
 
 - FFA status: `in_progress`.
 - FBA status: `in_progress` (`core_transport_ui`).
+- Structural shape: `core_transport_ui`.
 - `rustok-ai` composes owner-provided registration APIs from `ai-content`,
   `ai-order`, `ai-product`, `ai-media`, and `ai-alloy`; it must not reclaim
   their task identity or policy.
@@ -43,11 +46,11 @@ the platform owner removes that coupling.
 
 | Work item | Status | Completion evidence |
 |---|---|---|
-| Rig-only inference cutover and provider snapshot | `implemented_pending_verification` | Closed `ProviderIntegration` dispatch drives chat/image/vector factories; pinned snapshot, descriptor/factory parity, offline protocol cassettes, and ignored deployment-owned live probes are implemented. Targeted Rust execution remains deferred to R4. |
-| Deployment-owned provider targets | `implemented_pending_verification` | `ProviderTargetId`, deployment catalog, GraphQL/native/Next selection, irreversible migration, egress/unknown-target guards, and transport-safe DTO evidence are implemented. Full transport execution remains deferred to R4. |
-| Secret boundary | `implemented_pending_verification` | Resolver policy, rotation invalidation, non-resolving alias/key validation before profile persistence, tenant-prefix tests, and no secret values in owner DTOs are implemented. Resolver emulator/live suites remain deferred to R4. |
-| Agent approvals and restart | `implemented_pending_verification` | Durable batch ids, CAS claims, staged external outcomes, transactional finalization, recovery transitions, and canonical-history restart tests are implemented. Targeted Rust execution remains deferred to R4. |
-| Streaming/cancellation | `implemented_pending_verification` | Cancellation, `cancelled` state, monotonic sequence, duplicate-terminal suppression, Rig tool-call assembly, usage mapping, and provider-family cassettes are implemented. Targeted Rust execution remains deferred to R4. |
+| Rig-only inference cutover and provider snapshot | `in_progress` | Rig is the only inference path and the 0.39 inventory is pinned. The active registry-integrity repair must make the descriptor own the factory binding, reject integrations not compiled into this deployment at target-catalog load time, and replace the current feature-membership assertion with executable factory coverage. |
+| Deployment-owned provider targets | `completed` | `ProviderTargetId`, deployment catalog, GraphQL/native/Next selection, migration, egress guards, and safe DTOs are covered by server and GraphQL test gates. |
+| Secret boundary | `completed` | Resolver policy, rotation invalidation, non-resolving validation, tenant-prefix tests, and secret-safe DTOs are covered by the dedicated secrets gate and server tests. |
+| Agent approvals and restart | `completed` | Durable batches, CAS claims, staged outcomes, transactional finalization, recovery, and canonical-history restart are covered by the server test gate. |
+| Streaming/cancellation | `completed` | Cancellation, sequence, terminal suppression, tool-call assembly, usage mapping, and cassettes are covered by server and GraphQL test gates. |
 | Generic host contribution | `blocked_platform` | Platform-owned manifest/runtime extension removes direct AI imports and construction from `apps/server`. |
 | Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
 
@@ -86,7 +89,7 @@ active.
 | R1. Approval recovery and restart | `in_progress` | An approved external tool result is now staged in approval metadata under `executed` before history finalization; retry replays that durable outcome instead of invoking MCP again, and trace/message/approval/run finalization is transactional. A `rustok-test-utils` SQLite fixture proves durable staging, compare-and-set rejection of a duplicate resolver, mixed reject/approve service-level progression (`waiting_approval` → next id → `running`), and rollback of an earlier trace when a later finalization write fails. Stale policy rejects a still-pending call but cannot silently discard an already-executed outcome. Agent tests cover failed tool traces, max-turn enforcement, and restart from canonical persisted messages/tool results without a Rig checkpoint. Implementation is complete; targeted Rust execution remains deferred with the requested no-long-compilation constraint. | Run the targeted service and agent tests in R4; they prove compare-and-set ownership, complete-batch resume, retry semantics, transaction rollback, and restart without a serialized Rig checkpoint. |
 | R2. Provider protocol evidence | `in_progress` | `rig-0.39-stream-cassettes.json` and a reusable isolated-hub harness cover OpenAI-compatible, Anthropic, Gemini, cloud-auth, and deployment-local normalized Rig events: text deltas, assembled tool calls, usage, accumulated content, provider errors, cancellation, monotonic sequencing, and exactly-once terminal suppression. The catalog checks the pinned snapshot plus descriptor/integration/feature parity. An ignored live probe reads only deployment-owned `AiProviderConfig` JSON and `RUSTOK_AI_LIVE_*` env secret refs. Implementation is complete; offline and opt-in test execution is deferred to R4. | Offline cassette and registry tests cover every declared integration family. The ignored live probe is excluded from default gates and must run only against explicitly configured deployment targets. |
 | R3. Security, migration, and transport parity | `in_progress` | Migration tests now preserve all three legacy slugs and map their no-endpoint profiles to matching deployment target ids; existing tests retain plaintext preflight and legacy-column removal evidence. Service contract tests reject unknown target ids, private origins, and tenant credential refs for workload-identity targets. `rustok-secrets` now validates resolver alias/key policy without resolving a value, and provider profile create/update applies that validation before persistence. GraphQL query documents and native DTO serialization tests lock the safe target/credential/stream shape and reject endpoint/plaintext fields. Empty capabilities now derive through one shared descriptor function in both GraphQL and native create paths. Remaining work is executing the full transport suites. | Security, migration, and parity suites exercise identical owner-owned semantics at both transports and expose no plaintext secret fallback. |
-| R4. Final verification and evidence | `in_progress` | Observed fast evidence: changed-file `rustfmt --check`, `git diff --check`, `verify:ai:admin-boundary`, `verify:ai:rig-cutover`, `verify:ai:fba-baseline`, `verify:orchestrator:fba-runtime-order`, and `verify:ai:domain-verticals` pass. Still run the deferred targeted Rust suites, frontend typecheck/lint, module validation, i18n/FFA checks, and workspace check when long compilation is allowed. Keep README, local status rows, central registry, and FFA/FBA evidence tied to observed results. | All required gates pass, or each external failure is recorded with owner and reproducible evidence. |
+| R4. Final verification and evidence | `in_progress` | Observed fast evidence: changed-file `rustfmt --check`, `git diff --check`, `verify:ai:admin-boundary`, `verify:ai:rig-cutover`, `verify:ai:fba-baseline`, `verify:orchestrator:fba-runtime-order`, `verify:ai:domain-verticals`, and `verify:i18n:ui` pass. Rust gates passed: `rustok-secrets` 7/7, `rustok-ai` server 59/59 plus 1 ignored deployment-live probe, server + GraphQL 60/60 plus 1 ignored probe, and `rustok-ai-admin` SSR 17/17. Next Admin typecheck and lint pass. The aggregate FFA verifier is blocked by missing structural-shape lines in 15 unrelated module plans; this plan supplies its required line. Scoped module validation is unavailable because `rustok-ai` has no registered manifest/slug. A workspace check remains. | All required gates pass, or each external failure is recorded with owner and reproducible evidence. |
 
 ### Platform dependency (outside the AI change set)
 

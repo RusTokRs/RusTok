@@ -37,6 +37,14 @@ pub(crate) struct ModuleSpec {
     pub(crate) depends_on: Option<Vec<String>>,
     #[allow(dead_code)]
     pub(crate) features: Option<Vec<String>>,
+    /// `module` entries are materialized into `ModuleRegistry`; `extension`
+    /// entries contribute host capabilities through the generic extension seam.
+    #[serde(default = "default_module_runtime")]
+    pub(crate) runtime: String,
+}
+
+fn default_module_runtime() -> String {
+    "module".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +86,10 @@ pub(crate) struct ModulePackageMetadata {
     pub(crate) recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
     pub(crate) showcase_admin_surfaces: Vec<String>,
+    /// Mirrors `modules.toml` runtime and makes a non-`RusToKModule`
+    /// capability explicit in its publishable package contract.
+    #[serde(default = "default_module_runtime")]
+    pub(crate) runtime: String,
 }
 
 #[derive(Debug, Deserialize, Default)]

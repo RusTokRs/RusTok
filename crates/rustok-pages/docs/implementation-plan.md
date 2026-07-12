@@ -23,6 +23,7 @@ surface. `verify-page-builder-pages-legacy-bridge.mjs` locks that behaviour.
   present and must keep the core/transport/UI boundary.
 - FBA status: `in_progress` — Pages has the reference consumer metadata and
   static fallback coverage, but no observed tenant control-plane evidence.
+- Structural shape: `core_transport_ui`
 - Evidence: `scripts/verify/verify-pages-ui-boundary.mjs`,
   `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json`,
   and `crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json`.

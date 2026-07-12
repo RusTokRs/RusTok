@@ -11,6 +11,7 @@ README, while the provider contract is in the FBA registry.
 
 - FFA status: `not_started` — this support adapter has no UI boundary.
 - FBA status: `boundary_ready` (`no_ui_boundary`).
+- Structural shape: `no_ui_boundary`
 - Static evidence records `MediaAssetReadPort` / `media.asset_read.v1`, the
   `get_image_descriptor` and `get_asset` operations, and degraded modes
   `skip_asset_enrichment`, `proxy_storage_relative_url`, and

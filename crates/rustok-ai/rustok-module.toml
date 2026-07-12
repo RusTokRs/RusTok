@@ -1,0 +1,29 @@
+[module]
+slug = "ai"
+name = "AI"
+version = "0.1.0"
+description = "Rig-based AI orchestration capability and operator control plane"
+ownership = "first_party"
+trust_level = "verified"
+runtime = "extension"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+showcase_admin_surfaces = ["next-admin"]
+
+[marketplace]
+category = "automation"
+tags = ["ai", "agents", "rig", "orchestration"]
+
+[provides.graphql]
+query = "graphql::AiQuery"
+mutation = "graphql::AiMutation"
+
+[provides.admin_ui]
+leptos_crate = "rustok-ai-admin"
+route_segment = "ai"
+nav_label = "AI"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

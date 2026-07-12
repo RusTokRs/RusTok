@@ -14,6 +14,7 @@ surface.
 
 - FFA status: `phase_b_ready`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
+- Structural shape: `core_transport_ui`
 - `SearchQueryPort` and `SearchSuggestionPort` are provider contracts in
   `crates/rustok-search/contracts/search-fba-registry.json`.
 - Evidence: `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`,

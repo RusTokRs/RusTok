@@ -12,6 +12,12 @@ The cross-component sequence and completion rules are defined by the
 
 ## Current State
 
+## FFA/FBA status
+
+- FFA status: `not_started`
+- FBA status: `in_progress`
+- Structural shape: `no_ui_boundary`
+
 Implemented:
 
 - mandatory `ModulesModule` Core entrypoint;

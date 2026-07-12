@@ -42,7 +42,11 @@ pub(crate) fn generate_registry() -> Result<()> {
     code.push_str("// Generated from modules.toml\n\n");
     code.push_str("use rustok_core::ModuleRegistry;\n\n");
 
-    for (slug, spec) in &manifest.modules {
+    for (slug, spec) in manifest
+        .modules
+        .iter()
+        .filter(|(_, spec)| spec.runtime.trim() != "extension")
+    {
         let module_struct = to_pascal_case(slug);
         let crate_name = spec.crate_name.replace("-", "_");
         code.push_str(&format!("use {}::{}Module;\n", crate_name, module_struct));
@@ -52,7 +56,11 @@ pub(crate) fn generate_registry() -> Result<()> {
     code.push_str("pub fn build_registry() -> ModuleRegistry {\n");
     code.push_str("    let mut registry = ModuleRegistry::new();\n\n");
 
-    for slug in manifest.modules.keys() {
+    for (slug, spec) in manifest
+        .modules
+        .iter()
+        .filter(|(_, spec)| spec.runtime.trim() != "extension")
+    {
         let module_struct = to_pascal_case(slug);
         code.push_str(&format!("    // Register {} module\n", slug));
         code.push_str(&format!(
@@ -67,7 +75,12 @@ pub(crate) fn generate_registry() -> Result<()> {
     fs::write(output_path, code).context("Failed to write generated.rs")?;
 
     println!("[ok] Generated: {}", output_path.display());
-    println!("  Registered {} modules", manifest.modules.len());
+    let registry_modules = manifest
+        .modules
+        .values()
+        .filter(|spec| spec.runtime.trim() != "extension")
+        .count();
+    println!("  Registered {} modules", registry_modules);
 
     Ok(())
 }

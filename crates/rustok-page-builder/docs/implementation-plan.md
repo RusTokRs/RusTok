@@ -26,6 +26,7 @@ and waiver policy before a tenant can be promoted.
   and no-compile evidence are ready; runtime integration and live evidence are
   still open.
 - Evidence: `contracts/page-builder-fba-registry.json`,
+- Structural shape: `no_ui_boundary`
   `contracts/page-builder-adapter-seams.json`,
   `scripts/verify/verify-page-builder-endpoint-adapters.mjs`, and
   `scripts/verify/verify-page-builder-transport-bridge.mjs`, and

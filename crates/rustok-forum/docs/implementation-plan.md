@@ -20,6 +20,7 @@ an observed control-plane run after the `pages` reference consumer is ready.
 - FBA status: `in_progress` — the Forum/Page Builder consumer contract and
   fallback matrix exist, while live provider-consumer runtime evidence is not
   yet accepted for rollout.
+- Structural shape: `core_transport_ui`
 - Evidence: `scripts/verify/verify-forum-admin-boundary.mjs`,
   `scripts/verify/verify-forum-storefront-boundary.mjs`,
   `contracts/evidence/fw2-fallback-static-matrix.json`, and

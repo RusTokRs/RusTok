@@ -9,8 +9,9 @@ to the role of model host.
 ## Purpose
 
 - hold a provider-agnostic Rig engine contract for AI orchestration;
-- provide a registry-driven Rig 0.39 runtime. `base_url` is a typed provider setting subject to
-  server-owned egress policy; credentials are external `SecretRef` values, never plaintext;
+- provide a registry-driven Rig 0.39 runtime. A `base_url`, when required, is a typed
+  deployment-target setting subject to server-owned egress policy; credentials are external
+  `SecretRef` values, never plaintext;
 - call MCP tools through a separate `McpClientAdapter`, rather than mixing provider logic with MCP server;
 - store the chat/runtime model: sessions, messages, runs, tool traces, approval requests;
 - provide a capability-owned canonical service layer for the persisted control plane.

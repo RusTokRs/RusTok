@@ -8,6 +8,14 @@ pub(crate) fn validate_module_server_registry_contract(
     manifest: &ModulePackageManifest,
     module_root: &Path,
 ) -> Result<()> {
+    // Capability extensions are catalogued modules, but are deliberately not
+    // `RusToKModule` registry entries. Their eventual host composition is
+    // supplied by the generic runtime-extension contract, rather than an
+    // AI-/capability-specific import in apps/server.
+    if spec.runtime.trim() == "extension" {
+        return Ok(());
+    }
+
     let workspace_root = manifest_path.parent().with_context(|| {
         format!(
             "Failed to resolve workspace root from modules manifest {}",

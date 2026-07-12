@@ -13,6 +13,7 @@ additive `v1` surfaces, while Rust and Next storefronts consume the canonical
 
 - FFA status: `in_progress`.
 - FBA status: `in_progress` (`core_transport_ui`).
+- Structural shape: `core_transport_ui`
 - The admin package has core/transport/UI ownership and a neutral
   `HostRuntimeContext` native path; GraphQL and REST remain parallel control
   surfaces. `scripts/verify/verify-seo-admin-boundary.mjs` protects that

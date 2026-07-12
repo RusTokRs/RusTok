@@ -21,6 +21,14 @@ pub(crate) fn validate_module_package_metadata(
         );
     }
 
+    if !matches!(metadata.runtime.trim(), "module" | "extension") {
+        anyhow::bail!(
+            "Module '{}' has invalid runtime '{}'; expected 'module' or 'extension'",
+            slug,
+            metadata.runtime
+        );
+    }
+
     let recommended = validate_admin_surfaces(
         slug,
         "recommended_admin_surfaces",

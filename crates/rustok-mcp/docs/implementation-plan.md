@@ -13,6 +13,7 @@ protocol surface is stdio only.
 
 - FFA status: `in_progress`.
 - FBA status: `in_progress` (`core_transport_ui`).
+- Structural shape: `core_transport_ui`
 - `McpManagementPort` is the owner contract. The Leptos package uses
   `HostRuntimeContext` for native `#[server]` functions while retaining the
   parallel GraphQL/headless adapter. Next and Leptos hosts mount owner packages

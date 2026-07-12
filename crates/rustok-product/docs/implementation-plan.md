@@ -53,6 +53,7 @@ validation and attribute outbox events.
   the core/transport/UI split and native/GraphQL parity.
 - FBA status: `boundary_ready` — read-port policy, metadata, and fallback
   profiles are source-locked; no persistence-backed execution has been shown.
+- Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
   `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,

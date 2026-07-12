@@ -21,6 +21,7 @@ consumer path.
   native/GraphQL parity and the core/transport/UI boundary.
 - FBA status: `in_progress` — provider metadata and static contract evidence
   are ready, while runtime contract and fallback execution remain pending.
+- Structural shape: `core_transport_ui`
 - Evidence: `crates/rustok-pricing/contracts/pricing-fba-registry.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json`,
   `crates/rustok-pricing/contracts/evidence/pricing-runtime-contract-smoke.json`,

@@ -5,6 +5,14 @@ pub(crate) fn validate_module_semantics_contract(
     spec: &ModuleSpec,
     metadata: &ModulePackageMetadata,
 ) -> Result<()> {
+    if spec.runtime.trim() != metadata.runtime.trim() {
+        anyhow::bail!(
+            "Module '{slug}' runtime mismatch between modules.toml ('{}') and rustok-module.toml ('{}')",
+            spec.runtime,
+            metadata.runtime
+        );
+    }
+
     let ownership = metadata.ownership.trim();
     let trust_level = metadata.trust_level.trim();
 

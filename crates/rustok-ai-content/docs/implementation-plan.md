@@ -12,6 +12,7 @@ maintained in the crate and module README.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
+- Structural shape: `core_transport_ui`
 - The module-owned admin package separates core, selected transport, and
   Leptos UI, but its concrete host rendering remains incomplete.
 - `content_ai_policy_matrix` is the canonical source of moderation approval

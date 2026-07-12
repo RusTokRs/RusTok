@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 use crate::release::Model as Release;
 
@@ -63,6 +64,50 @@ fn default_docker_bin() -> String {
     "docker".to_string()
 }
 
+/// Filesystem locations supplied by an executable host for release publication.
+///
+/// Build and release persistence must not infer a repository layout from the
+/// crate that composes a publisher. Container publication receives its runtime
+/// assets explicitly for the same reason.
+#[derive(Debug, Clone)]
+pub struct DeploymentWorkspace {
+    root: PathBuf,
+    migration_dir: Option<PathBuf>,
+    config_dir: Option<PathBuf>,
+}
+
+impl DeploymentWorkspace {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self {
+            root: root.into(),
+            migration_dir: None,
+            config_dir: None,
+        }
+    }
+
+    pub fn with_runtime_assets(
+        mut self,
+        migration_dir: impl Into<PathBuf>,
+        config_dir: impl Into<PathBuf>,
+    ) -> Self {
+        self.migration_dir = Some(migration_dir.into());
+        self.config_dir = Some(config_dir.into());
+        self
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn migration_dir(&self) -> Option<&Path> {
+        self.migration_dir.as_deref()
+    }
+
+    pub fn config_dir(&self) -> Option<&Path> {
+        self.config_dir.as_deref()
+    }
+}
+
 /// Typed request for a host-owned release publication operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleasePublishRequest {
@@ -98,5 +143,39 @@ pub struct NoopReleaseActivationHook;
 impl ReleaseActivationHook for NoopReleaseActivationHook {
     async fn after_release_activated(&self, _release: &Release) -> anyhow::Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{DeploymentBackend, DeploymentSettings, DeploymentWorkspace};
+
+    #[test]
+    fn deployment_settings_default_to_record_only() {
+        let settings = DeploymentSettings::default();
+
+        assert_eq!(settings.backend, DeploymentBackend::RecordOnly);
+        assert_eq!(settings.filesystem_root_dir, "artifacts/releases");
+        assert_eq!(settings.docker_bin, "docker");
+    }
+
+    #[test]
+    fn deployment_workspace_requires_host_supplied_paths() {
+        let workspace = DeploymentWorkspace::new("C:/workspace").with_runtime_assets(
+            "C:/workspace/apps/server/migration",
+            "C:/workspace/apps/server/config",
+        );
+
+        assert_eq!(workspace.root(), Path::new("C:/workspace"));
+        assert_eq!(
+            workspace.migration_dir(),
+            Some(Path::new("C:/workspace/apps/server/migration"))
+        );
+        assert_eq!(
+            workspace.config_dir(),
+            Some(Path::new("C:/workspace/apps/server/config"))
+        );
     }
 }

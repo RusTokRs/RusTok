@@ -12,6 +12,7 @@ persistence or provider routing.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
+- Structural shape: `core_transport_ui`
 - `ProductCatalogReadPort` / `product.catalog_read.v1` provides
   `read_product_projection`. Degraded behavior is `generate_from_prompt_only`,
   `skip_catalog_enrichment`, and `require_operator_review`.

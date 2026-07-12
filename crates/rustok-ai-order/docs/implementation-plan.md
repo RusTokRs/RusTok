@@ -12,6 +12,7 @@ order runtime or execute provider calls.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
+- Structural shape: `core_transport_ui`
 - `CheckoutCompletionPort` / `order.checkout_completion.v1` supports
   `read_order_status`. Degraded behavior is
   `generate_summary_without_live_status`, `require_operator_review`, and

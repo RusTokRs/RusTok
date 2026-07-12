@@ -12,7 +12,9 @@ use crate::services::release_activation_hook::ServerReleaseActivationHook;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_build::build::Model as Build;
 use rustok_build::release::Model as Release;
-use rustok_build::{BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan};
+use rustok_build::{
+    BuildExecutionPlan, DeploymentWorkspace, FrontendArtifactKind, FrontendBuildPlan,
+};
 use rustok_build::{
     BuildService, ReleaseArtifactBundle, ReleasePublishRequest, ReleasePublisherPort,
 };
@@ -41,15 +43,25 @@ struct PreparedReleaseBundle {
 pub struct ReleaseDeploymentService {
     build_service: BuildService,
     config: BuildDeploymentSettings,
+    workspace: DeploymentWorkspace,
 }
 
 impl ReleaseDeploymentService {
     pub fn new(ctx: &ServerRuntimeContext, config: BuildDeploymentSettings) -> Self {
-        Self::with_database(ctx.db_clone(), config)
+        Self::with_database_in_workspace(ctx.db_clone(), config, server_deployment_workspace())
     }
 
     /// Creates the host publication adapter for an installer-opened database.
     pub fn with_database(db: sea_orm::DatabaseConnection, config: BuildDeploymentSettings) -> Self {
+        Self::with_database_in_workspace(db, config, server_deployment_workspace())
+    }
+
+    /// Creates a publication adapter with host-supplied artifact and runtime paths.
+    pub fn with_database_in_workspace(
+        db: sea_orm::DatabaseConnection,
+        config: BuildDeploymentSettings,
+        workspace: DeploymentWorkspace,
+    ) -> Self {
         Self {
             build_service: BuildService::with_runtime(
                 db.clone(),
@@ -57,6 +69,7 @@ impl ReleaseDeploymentService {
                 std::sync::Arc::new(ServerReleaseActivationHook::new(db)),
             ),
             config,
+            workspace,
         }
     }
 
@@ -83,6 +96,7 @@ impl ReleaseDeploymentService {
 
         let outcome = match publish_release_artifacts(
             &self.config,
+            &self.workspace,
             &release,
             &build,
             &plan,
@@ -125,6 +139,7 @@ impl ReleasePublisherPort for ReleaseDeploymentService {
 
 async fn publish_release_artifacts(
     config: &BuildDeploymentSettings,
+    workspace: &DeploymentWorkspace,
     release: &Release,
     build: &Build,
     plan: &BuildExecutionPlan,
@@ -136,24 +151,25 @@ async fn publish_release_artifacts(
             state: ReleasePublishState::Deploying,
         }),
         BuildDeploymentBackendKind::Filesystem => {
-            publish_release_to_filesystem(config, release, build, plan).await
+            publish_release_to_filesystem(config, workspace, release, build, plan).await
         }
         BuildDeploymentBackendKind::Http => {
-            publish_release_to_http(config, release, build, plan).await
+            publish_release_to_http(config, workspace, release, build, plan).await
         }
         BuildDeploymentBackendKind::Container => {
-            publish_release_to_container(config, release, build, plan, activate).await
+            publish_release_to_container(config, workspace, release, build, plan, activate).await
         }
     }
 }
 
 async fn publish_release_to_filesystem(
     config: &BuildDeploymentSettings,
+    workspace: &DeploymentWorkspace,
     release: &Release,
     build: &Build,
     plan: &BuildExecutionPlan,
 ) -> anyhow::Result<ReleasePublishOutcome> {
-    let bundle = prepare_release_bundle(config, release, build, plan).await?;
+    let bundle = prepare_release_bundle(config, workspace, release, build, plan).await?;
 
     Ok(ReleasePublishOutcome {
         artifacts: ReleaseArtifactBundle {
@@ -168,11 +184,12 @@ async fn publish_release_to_filesystem(
 
 async fn prepare_release_bundle(
     config: &BuildDeploymentSettings,
+    workspace: &DeploymentWorkspace,
     release: &Release,
     build: &Build,
     plan: &BuildExecutionPlan,
 ) -> anyhow::Result<PreparedReleaseBundle> {
-    let root_dir = resolve_artifact_root(&config.filesystem_root_dir);
+    let root_dir = resolve_artifact_root(workspace, &config.filesystem_root_dir);
     let release_dir = root_dir.join(&release.id);
     let artifacts_dir = release_dir.join("artifacts");
 
@@ -185,7 +202,7 @@ async fn prepare_release_bundle(
             )
         })?;
 
-    let source_binary = compiled_binary_path(plan);
+    let source_binary = compiled_binary_path(workspace, plan);
     if !tokio::fs::try_exists(&source_binary).await.unwrap_or(false) {
         bail!(
             "compiled server artifact not found for release {}: {}",
@@ -210,12 +227,14 @@ async fn prepare_release_bundle(
 
     let (admin_artifact_url, admin_artifact_path) = publish_frontend_artifact(
         &artifacts_dir,
+        workspace,
         config.public_base_url.as_deref(),
         plan.admin_build.as_ref(),
     )
     .await?;
     let (storefront_artifact_url, storefront_artifact_path) = publish_frontend_artifact(
         &artifacts_dir,
+        workspace,
         config.public_base_url.as_deref(),
         plan.storefront_build.as_ref(),
     )
@@ -262,17 +281,21 @@ async fn prepare_release_bundle(
 
 async fn publish_release_to_container(
     config: &BuildDeploymentSettings,
+    workspace: &DeploymentWorkspace,
     release: &Release,
     build: &Build,
     plan: &BuildExecutionPlan,
     activate: bool,
 ) -> anyhow::Result<ReleasePublishOutcome> {
-    let bundle = prepare_release_bundle(config, release, build, plan).await?;
+    let bundle = prepare_release_bundle(config, workspace, release, build, plan).await?;
     let runtime_binary_name = container_runtime_binary_name(plan)?;
     let image = container_image_reference(config, release)?;
-    let app_server_root = workspace_root().join("apps").join("server");
-    let migration_source = app_server_root.join("migration");
-    let config_source = app_server_root.join("config");
+    let migration_source = workspace.migration_dir().ok_or_else(|| {
+        anyhow!("container deployment requires an explicit migration runtime asset directory")
+    })?;
+    let config_source = workspace.config_dir().ok_or_else(|| {
+        anyhow!("container deployment requires an explicit config runtime asset directory")
+    })?;
     let migration_target = bundle.release_dir.join("migration");
     let config_target = bundle.release_dir.join("config");
     let dockerfile_path = bundle.release_dir.join("Dockerfile.container");
@@ -403,25 +426,32 @@ struct RemoteReleasePublishResponse {
     storefront_artifact_url: Option<String>,
 }
 
-fn resolve_artifact_root(raw: &str) -> PathBuf {
+fn resolve_artifact_root(workspace: &DeploymentWorkspace, raw: &str) -> PathBuf {
     let path = PathBuf::from(raw);
     if path.is_absolute() {
         path
     } else {
-        workspace_root().join(path)
+        workspace.root().join(path)
     }
 }
 
-fn workspace_root() -> PathBuf {
+fn server_deployment_workspace() -> DeploymentWorkspace {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
         .map(PathBuf::from)
+        .map(|root| {
+            let app_server_root = root.join("apps").join("server");
+            DeploymentWorkspace::new(root).with_runtime_assets(
+                app_server_root.join("migration"),
+                app_server_root.join("config"),
+            )
+        })
         .expect("workspace root should be resolvable from apps/server")
 }
 
-fn compiled_binary_path(plan: &BuildExecutionPlan) -> PathBuf {
-    let mut path = workspace_root().join("target");
+fn compiled_binary_path(workspace: &DeploymentWorkspace, plan: &BuildExecutionPlan) -> PathBuf {
+    let mut path = workspace.root().join("target");
     if let Some(target) = &plan.cargo_target {
         path.push(target);
     }
@@ -435,6 +465,7 @@ fn compiled_binary_path(plan: &BuildExecutionPlan) -> PathBuf {
 
 async fn publish_frontend_artifact(
     artifacts_dir: &Path,
+    workspace: &DeploymentWorkspace,
     public_base_url: Option<&str>,
     plan: Option<&FrontendBuildPlan>,
 ) -> anyhow::Result<(Option<String>, Option<String>)> {
@@ -442,7 +473,7 @@ async fn publish_frontend_artifact(
         return Ok((None, None));
     };
 
-    let source_path = workspace_root().join(&plan.artifact_path);
+    let source_path = workspace.root().join(&plan.artifact_path);
     if !tokio::fs::try_exists(&source_path).await.unwrap_or(false) {
         bail!(
             "compiled {} artifact not found: {}",
@@ -566,6 +597,7 @@ fn build_execution_plan(build: &Build) -> anyhow::Result<BuildExecutionPlan> {
 
 async fn publish_release_to_http(
     config: &BuildDeploymentSettings,
+    workspace: &DeploymentWorkspace,
     release: &Release,
     _build: &Build,
     plan: &BuildExecutionPlan,
@@ -574,7 +606,7 @@ async fn publish_release_to_http(
         .endpoint_url
         .as_deref()
         .ok_or_else(|| anyhow!("http deployment backend requires endpoint_url"))?;
-    let binary_path = compiled_binary_path(plan);
+    let binary_path = compiled_binary_path(workspace, plan);
     if !tokio::fs::try_exists(&binary_path).await.unwrap_or(false) {
         bail!(
             "compiled server artifact not found for release {}: {}",
@@ -886,7 +918,8 @@ mod tests {
         binary_file_name, compiled_binary_path, container_image_reference,
         container_runtime_binary_name, container_runtime_dockerfile, externalized_path,
         parse_remote_publish_state, render_rollout_command, resolve_artifact_root,
-        sanitize_image_tag_component, ReleasePublishState, RemoteReleasePublishRequest,
+        sanitize_image_tag_component, server_deployment_workspace, ReleasePublishState,
+        RemoteReleasePublishRequest,
     };
     use crate::common::settings::BuildDeploymentSettings;
     use rustok_build::release::Model as Release;
@@ -895,7 +928,8 @@ mod tests {
 
     #[test]
     fn resolves_relative_artifact_root_inside_workspace() {
-        let root = resolve_artifact_root("artifacts/releases");
+        let workspace = server_deployment_workspace();
+        let root = resolve_artifact_root(&workspace, "artifacts/releases");
         assert!(root.ends_with(PathBuf::from("artifacts").join("releases")));
         assert!(root.is_absolute());
     }
@@ -913,7 +947,8 @@ mod tests {
             storefront_build: None,
         };
 
-        let path = compiled_binary_path(&plan);
+        let workspace = server_deployment_workspace();
+        let path = compiled_binary_path(&workspace, &plan);
         assert!(
             path.to_string_lossy()
                 .contains("target\\x86_64-unknown-linux-gnu\\release")
