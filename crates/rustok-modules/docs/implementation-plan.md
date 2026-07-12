@@ -110,8 +110,17 @@ Dependency resolution now uses `pubgrub` behind the transport-neutral
 `ModuleResolutionProvider`. The adapter first collects an immutable candidate
 snapshot, filters it by trust, active/yanked/revoked status and runtime ABI,
 then writes only the selected exact versions and payload/manifest digests into
-the lock graph. Scope/module-kind policy, persisted solver snapshots, and
-stable derivation explanations remain owner-service work.
+the lock graph. Every `InstalledModuleArtifact` now persists that graph with
+its revision and digest in the same installation transaction, and runtime
+execution rejects a missing or tampered declared dependency. Scope/module-kind
+policy, persisted solver input snapshots, and stable derivation explanations
+remain owner-service work.
+
+The shared transactional outbox remains the required event boundary, but it is
+not wired into platform admission yet: its envelope currently requires a tenant
+UUID while platform commands explicitly allow no tenant. A dedicated routing
+contract must decide how platform admission events are addressed before that
+atomic metadata-plus-outbox adapter is added; no synthetic tenant is used.
 
 ### M2 - Introduce the Facade
 

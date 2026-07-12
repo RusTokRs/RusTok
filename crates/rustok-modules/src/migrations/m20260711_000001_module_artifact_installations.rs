@@ -3,9 +3,10 @@ use sea_orm_migration::prelude::*;
 
 /// Creates the control-plane-owned, digest-pinned installation record.
 ///
-/// Artifact bytes remain in the OCI registry/object store; this table stores
-/// only the immutable reference and descriptor required for admission. On
-/// PostgreSQL, the host sets `rustok.tenant_id` for tenant-scoped connections.
+/// Artifact bytes remain in the platform CAS; this table stores the immutable
+/// registry provenance, admitted descriptor, and exact dependency lock needed
+/// for reproducible execution. On PostgreSQL, the host sets
+/// `rustok.tenant_id` for tenant-scoped connections.
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 

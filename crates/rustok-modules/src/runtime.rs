@@ -8,7 +8,8 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactBlobStore, ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ArtifactReleaseRef,
-    InstalledModuleArtifact, ModuleDependencyLockGraph, ModuleInstallationError, ModuleRuntimeBinding,
+    InstalledModuleArtifact, ModuleDependencyLockGraph, ModuleInstallationError,
+    ModuleRuntimeBinding,
 };
 
 /// Executes an installed immutable artifact without involving the server's

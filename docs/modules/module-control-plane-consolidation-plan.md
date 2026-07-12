@@ -353,7 +353,7 @@ and installed artifacts.
 
 ### 1.2 Remaining Runtime Work
 
-- [ ] Add an explicit Alloy draft request builder using
+- [x] Add an explicit Alloy draft request builder using
   `SandboxSubject::AlloyDraft` and a revision number.
 - [ ] Replace Alloy's direct production execution path atomically with
   `SandboxRuntime`; do not retain a fallback executor.
@@ -607,7 +607,7 @@ rollback without relying on workspace source composition.
   digests to the owner lock-graph contract.
 - [ ] Include platform/runtime ABI, module kind, yanked/revoked status, scope,
   trust policy, and active-release constraints in the provider.
-- [ ] Persist the complete selected graph with exact semantic versions,
+- [x] Persist the complete selected graph with exact semantic versions,
   manifest/payload digests, and a graph revision/hash.
 - [ ] Produce stable human/machine conflict explanations from solver derivation
   evidence without exposing library-specific types as the public API.

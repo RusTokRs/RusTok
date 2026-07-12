@@ -20,6 +20,7 @@ pub mod migrations;
 pub mod model;
 pub mod runner;
 pub mod runtime;
+pub mod sandbox_request;
 pub mod scheduler;
 pub mod storage;
 pub mod utils;
@@ -48,6 +49,9 @@ pub use runner::{
     ExecutionOutcome, ExecutionResult, HookOutcome, ScriptExecutor, ScriptOrchestrator,
 };
 pub use runtime::{build_alloy_runtime, AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime};
+pub use sandbox_request::{
+    AlloyDraftRequestBuilder, AlloyDraftRequestError, ALLOY_DRAFT_RHAI_MEDIA_TYPE,
+};
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
 

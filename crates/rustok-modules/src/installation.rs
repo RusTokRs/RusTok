@@ -3,10 +3,11 @@ use chrono::{DateTime, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
 };
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Mutex;
 use thiserror::Error;
 use uuid::Uuid;
@@ -137,16 +138,59 @@ impl InstalledModuleArtifact {
         self.dependency_lock
             .validate()
             .map_err(|error| ModuleInstallationError::DependencyLock(error.to_string()))?;
-        for dependency in &self.descriptor.dependencies {
-            if !self
+        let mut reachable = BTreeSet::new();
+        let mut pending = self
+            .descriptor
+            .dependencies
+            .iter()
+            .map(|dependency| dependency.slug.as_str())
+            .collect::<Vec<_>>();
+        while let Some(slug) = pending.pop() {
+            if !reachable.insert(slug) {
+                continue;
+            }
+            let node = self
                 .dependency_lock
                 .nodes
                 .iter()
-                .any(|node| node.slug == dependency.slug)
-            {
+                .find(|node| node.slug == slug)
+                .ok_or_else(|| {
+                    ModuleInstallationError::DependencyLock(format!(
+                        "resolved graph does not select declared dependency `{slug}`"
+                    ))
+                })?;
+            pending.extend(node.dependencies.iter().map(String::as_str));
+        }
+        if reachable.len() != self.dependency_lock.nodes.len() {
+            return Err(ModuleInstallationError::DependencyLock(
+                "resolved graph contains dependencies unreachable from the artifact descriptor"
+                    .into(),
+            ));
+        }
+        for dependency in &self.descriptor.dependencies {
+            let node = self
+                .dependency_lock
+                .nodes
+                .iter()
+                .find(|node| node.slug == dependency.slug)
+                .expect("declared dependencies were checked while walking the graph");
+            let version = Version::parse(&node.version).map_err(|error| {
+                ModuleInstallationError::DependencyLock(format!(
+                    "resolved dependency `{}` has invalid version: {error}",
+                    node.slug
+                ))
+            })?;
+            let requirement =
+                VersionReq::parse(&dependency.version_requirement).map_err(|error| {
+                    ModuleInstallationError::DependencyLock(format!(
+                        "declared dependency `{}` has invalid requirement: {error}",
+                        dependency.slug
+                    ))
+                })?;
+            if !requirement.matches(&version) {
                 return Err(ModuleInstallationError::DependencyLock(format!(
-                    "resolved graph does not select declared dependency `{}`",
-                    dependency.slug
+                    "resolved dependency `{}` version `{version}` does not satisfy `{}`",
+                    dependency.slug, dependency.version_requirement
                 )));
             }
         }
@@ -530,6 +574,12 @@ fn installation_values(
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let dependency_lock = serde_json::to_value(&artifact.dependency_lock)
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    let dependency_graph_revision = i64::try_from(artifact.dependency_lock.graph_revision)
+        .map_err(|_| {
+            ModuleInstallationError::DependencyLock(
+                "graph revision exceeds database integer range".into(),
+            )
+        })?;
     let installation_id = uuid_value(artifact.installation_id, backend);
     let tenant_id = optional_uuid_value(tenant_id, backend);
     let installed_at = match backend {
@@ -550,7 +600,7 @@ fn installation_values(
         artifact.descriptor.artifact_digest.clone().into(),
         artifact.descriptor.entrypoint.clone().into(),
         SqlValue::Json(Some(Box::new(descriptor))),
-        (artifact.dependency_lock.graph_revision as i64).into(),
+        dependency_graph_revision.into(),
         artifact.dependency_lock.graph_digest.clone().into(),
         SqlValue::Json(Some(Box::new(dependency_lock))),
         installed_at,
@@ -921,7 +971,12 @@ mod tests {
             tenant_id: Uuid::new_v4(),
         };
         let installed = installer
-            .install(reference, scope.clone(), empty_dependency_lock(), Utc::now())
+            .install(
+                reference,
+                scope.clone(),
+                empty_dependency_lock(),
+                Utc::now(),
+            )
             .await
             .expect("install");
 
@@ -1014,13 +1069,11 @@ mod tests {
             installed.descriptor.artifact_digest
         );
         assert_eq!(
-            i64::try_get(&row, "", "dependency_graph_revision")
-                .expect("dependency graph revision"),
+            i64::try_get(&row, "", "dependency_graph_revision").expect("dependency graph revision"),
             installed.dependency_lock.graph_revision as i64
         );
         assert_eq!(
-            String::try_get(&row, "", "dependency_graph_digest")
-                .expect("dependency graph digest"),
+            String::try_get(&row, "", "dependency_graph_digest").expect("dependency graph digest"),
             installed.dependency_lock.graph_digest
         );
     }
