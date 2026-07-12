@@ -282,15 +282,23 @@ pub struct AiLiveStreamStatePayload {
     pub connected: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AiRunStreamEventKindPayload {
     Started,
     Delta,
+    ToolCall,
     Completed,
     Failed,
     Cancelled,
     WaitingApproval,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiStreamToolCallPayload {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,6 +310,7 @@ pub struct AiRunStreamEventPayload {
     pub content_delta: Option<String>,
     pub accumulated_content: Option<String>,
     pub error_message: Option<String>,
+    pub tool_call: Option<AiStreamToolCallPayload>,
     pub sequence: u64,
     pub created_at: String,
 }

@@ -1261,7 +1261,7 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
 }
 
 fn is_production_environment() -> bool {
-    ["RUST_ENV", "APP_ENV", "LOCO_ENV"].iter().any(|key| {
+    ["RUST_ENV", "APP_ENV"].iter().any(|key| {
         std::env::var(key)
             .map(|value| {
                 matches!(
@@ -1298,7 +1298,6 @@ mod tests {
     const REDIS_URL_ENV: &str = "REDIS_URL";
     const RUST_ENV_ENV: &str = "RUST_ENV";
     const APP_ENV_ENV: &str = "APP_ENV";
-    const LOCO_ENV_ENV: &str = "LOCO_ENV";
     const EMAIL_DISABLED_PROD_OVERRIDE_ENV: &str = "RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION";
 
     fn env_lock() -> &'static Mutex<()> {
@@ -1442,7 +1441,6 @@ mod tests {
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
-        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
         let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
         let _rust_env_guard = EnvVarGuard::set(RUST_ENV_ENV, "production");
 
@@ -1468,7 +1466,6 @@ mod tests {
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
-        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
         let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
         let _app_env_guard = EnvVarGuard::set(APP_ENV_ENV, "prod");
 
@@ -1493,9 +1490,8 @@ mod tests {
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
-        let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
+        let _app_env_guard = EnvVarGuard::set(APP_ENV_ENV, "production");
         let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
-        let _loco_env_guard = EnvVarGuard::set(LOCO_ENV_ENV, "production");
 
         let raw = serde_json::json!({
             "rustok": {
@@ -1520,7 +1516,6 @@ mod tests {
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
-        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
         let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
         let _rust_env_guard = EnvVarGuard::set(RUST_ENV_ENV, "production");
 
@@ -1545,7 +1540,6 @@ mod tests {
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
         let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
-        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
         let _rust_env_guard = EnvVarGuard::set(RUST_ENV_ENV, "production");
         let _override_guard = EnvVarGuard::set(EMAIL_DISABLED_PROD_OVERRIDE_ENV, "true");
 

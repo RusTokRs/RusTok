@@ -7,7 +7,7 @@ pub use rustok_auth::{
 use crate::error::Result;
 use serde::Deserialize;
 
-// ─── Loco bridge ─────────────────────────────────────────────────────
+// ─── Server adapter ───────────────────────────────────────────────────
 // Thin wrappers that convert `rustok_auth::AuthError` to the server error bridge.
 // All server code imports from `crate::auth`, never directly from `rustok_auth`.
 

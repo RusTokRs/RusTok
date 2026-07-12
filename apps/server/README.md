@@ -8,7 +8,7 @@
 
 - Compose platform modules into the live runtime.
 - Expose GraphQL, HTTP, and Leptos server-function surfaces.
-- Host runtime orchestration, migrations, background tasks, and platform-owned control planes.
+- Host runtime orchestration, background tasks, and platform-owned control planes.
 
 ## Entry points
 
@@ -25,7 +25,8 @@
 
 ## Auth config
 
-`apps/server/src/auth.rs` is the only bridge from Loco config into `rustok-auth`.
+`apps/server/src/auth.rs` adapts the host configuration snapshot into
+`rustok-auth`.
 `auth.jwt.secret` remains the HS256 default secret source. Optional runtime
 overrides live under `settings.rustok.auth`:
 

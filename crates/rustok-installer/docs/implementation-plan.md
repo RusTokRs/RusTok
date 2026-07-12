@@ -8,12 +8,14 @@ secret-reference, receipt, checksum, and seed-workflow contracts. Its
 `monolith`, `hybrid_admin`, `headless_next`, and `headless_leptos`), but it does
 not yet describe a deployable distributed topology.
 
-The current apply executor is composed by `apps/server` for the HTTP setup
-surface. Durable session and receipt state now uses the shared
-`rustok-installer-persistence` SeaORM adapter rather than server models. The
-platform CLI has a seed provider, but no full install command provider has been
-registered yet. Therefore neither the server adapter nor a frontend profile is
-evidence that distributed installation is implemented.
+The canonical apply sequencing now runs in `rustok-installer`; `apps/server`
+provides the first SeaORM/domain stage adapter for the HTTP setup surface.
+Durable session and receipt state uses the shared
+`rustok-installer-persistence` adapter rather than server models. The
+platform CLI has `install plan`, `install preflight`, `install status`, and
+seed providers, but no typed `install apply` provider yet. Therefore neither
+the server adapter nor a frontend profile is evidence that distributed
+installation is implemented.
 
 ## FFA/FBA boundary
 
@@ -60,8 +62,11 @@ enablement is performed afterwards.
    hand-off. Move orchestration sequencing into this crate; keep SeaORM,
    Axum, background jobs, and credential resolution in adapters.
    The durable session/receipt adapter is already outside the HTTP host in
-   `rustok-installer-persistence`. **Done when:** server HTTP and CLI adapters
-   invoke one executor and no server-local install state machine remains.
+   `rustok-installer-persistence`. Typed database, schema, persistence, seed,
+   admin and verification port contracts now live in `rustok-installer`; the
+   server SeaORM adapter invokes the shared state machine. **Done when:**
+   server HTTP and CLI adapters invoke one executor and no server-local install
+   state machine remains.
    **Verification:** installer sequencing tests using fakes plus adapter
    contract tests.
 

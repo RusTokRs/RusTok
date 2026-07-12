@@ -14,7 +14,7 @@ use crate::model::{
 use crate::model::{
     AiApprovalRequestPayload, AiChatMessagePayload, AiChatSessionSummaryPayload,
     AiMetricBucketPayload, AiRecentRunPayload, AiRunStreamEventKindPayload,
-    AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiToolCallPayload, AiToolTracePayload,
+    AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiStreamToolCallPayload, AiToolCallPayload, AiToolTracePayload,
     AiProviderCatalogEntryPayload, AiProviderFieldPayload,
 };
 
@@ -454,6 +454,7 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
         let item = rustok_ai::AiManagementService::test_provider_profile(
             &db,
             runtime.provider_targets(),
+            runtime.egress_policy(),
             runtime.secret_registry(),
             auth.tenant_id,
             parse_uuid(&id, "id")?,
@@ -1663,6 +1664,7 @@ fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPaylo
         event_kind: match value.event_kind {
             rustok_ai::AiRunStreamEventKind::Started => AiRunStreamEventKindPayload::Started,
             rustok_ai::AiRunStreamEventKind::Delta => AiRunStreamEventKindPayload::Delta,
+            rustok_ai::AiRunStreamEventKind::ToolCall => AiRunStreamEventKindPayload::ToolCall,
             rustok_ai::AiRunStreamEventKind::Completed => AiRunStreamEventKindPayload::Completed,
             rustok_ai::AiRunStreamEventKind::Failed => AiRunStreamEventKindPayload::Failed,
             rustok_ai::AiRunStreamEventKind::Cancelled => AiRunStreamEventKindPayload::Cancelled,
@@ -1673,6 +1675,11 @@ fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPaylo
         content_delta: value.content_delta,
         accumulated_content: value.accumulated_content,
         error_message: value.error_message,
+        tool_call: value.tool_call.map(|value| AiStreamToolCallPayload {
+            id: value.id,
+            name: value.name,
+            arguments: value.arguments.to_string(),
+        }),
         sequence: value.sequence,
         created_at: value.created_at.to_rfc3339(),
     }

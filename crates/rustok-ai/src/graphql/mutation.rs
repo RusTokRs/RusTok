@@ -149,6 +149,7 @@ impl AiMutation {
         let item = crate::AiManagementService::test_provider_profile(
             db,
             runtime.provider_targets(),
+            runtime.egress_policy(),
             runtime.secret_registry(),
             auth.tenant_id,
             id,

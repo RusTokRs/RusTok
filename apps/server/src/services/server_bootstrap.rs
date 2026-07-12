@@ -104,8 +104,8 @@ pub(crate) fn known_sample_superadmin_password(password: &str) -> Option<&'stati
 
 /// Builds the fully composed HTTP router from explicit host-owned inputs.
 ///
-/// No Loco types cross this boundary. The current Loco hook and the future
-/// Axum entrypoint both provide the same inputs to this one bootstrap path.
+/// No framework-global context crosses this boundary. The Axum entrypoint
+/// provides these explicit inputs to the single bootstrap path.
 pub async fn bootstrap_application_router(
     router: AxumRouter,
     runtime_ctx: ServerRuntimeContext,

@@ -69,7 +69,7 @@ export const foundationFbaRuntimeSmokeModules = [
         'set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)',
         'get_or_load_with_coalescing'
       ]],
-      ['apps/server/src/installer_cli.rs', [
+      ['apps/server/src/installer_execution.rs', [
         'TenantReadPort',
         'read_installer_tenant_by_slug(db, &plan.tenant.slug)',
         'TenantReadSelector::Slug(slug.to_string())',

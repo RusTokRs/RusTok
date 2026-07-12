@@ -103,131 +103,39 @@ Password: admin12345
 
 ## 🔧 Manual Launch Without Docker
 
-### Installer Preflight / Plan
-
-The product installer is evolving as a hybrid layer on top of `rustok-installer`.
-At the current stage, the safe `preflight`/`plan` commands are available, which do not
-connect to the DB or run migrations:
-
-```bash
-cargo run -p rustok-server --bin rustok-server -- install preflight \
-  --environment local \
-  --profile dev-local \
-  --database-engine postgres \
-  --database-url postgres://rustok:rustok@localhost:5432/rustok_dev \
-  --admin-email admin@local \
-  --admin-password admin12345 \
-  --tenant-slug demo \
-  --tenant-name "Demo Workspace" \
-  --seed-profile dev \
-  --secrets-mode dotenv-file
-
-cargo run -p rustok-server --bin rustok-server -- install plan \
-  --environment production \
-  --profile monolith \
-  --database-engine postgres \
-  --database-secret-ref vault:rustok/database-url \
-  --admin-email admin@example.com \
-  --admin-password-ref vault:rustok/admin-password \
-  --tenant-slug default \
-  --tenant-name "Default Workspace" \
-  --seed-profile minimal \
-  --secrets-mode external-secret
-```
-
-`preflight` returns a JSON report with warning/error issues. `plan` returns a
-redacted snapshot and never prints plaintext secrets.
-
-`apply` runs the current CLI bootstrap end-to-end: preflight, target DB check
-via `SELECT 1`, server `Migrator::up`, tenant/module seed, creating or
-syncing the superadmin, verify and finalize. The command creates an installer session,
-places a lock, writes `Preflight` / `Config` / `Database` /
-`Migrate` / `Seed` / `Admin` / `Verify` / `Finalize` receipts and transitions the session to
-`completed`.
-
-```bash
-cargo run -p rustok-server --bin rustok-server -- install apply \
-  --environment local \
-  --profile dev-local \
-  --database-engine postgres \
-  --database-url postgres://rustok:rustok@localhost:5432/rustok_dev \
-  --admin-email admin@local \
-  --admin-password admin12345 \
-  --tenant-slug demo \
-  --tenant-name "Demo Workspace" \
-  --seed-profile dev \
-  --secrets-mode dotenv-file \
-  --lock-owner local-cli
-```
-
-If you need to create the PostgreSQL database/role first, add `--create-database`.
-By default, the installer uses the admin URL
-`postgres://postgres:postgres@localhost:5432/postgres`; to use a different admin user,
-pass it explicitly.
-
-```bash
-cargo run -p rustok-server --bin rustok-server -- install apply \
-  --database-url postgres://rustok:rustok@localhost:5432/rustok_dev \
-  --create-database \
-  --pg-admin-url postgres://postgres:<password>@localhost:5432/postgres
-```
-
-`install apply` resolves local secret refs without outputting plaintext in receipts:
-
-```bash
-cargo run -p rustok-server --bin rustok-server -- install apply \
-  --database-secret-ref env:DATABASE_URL \
-  --admin-password-ref env:SUPERADMIN_PASSWORD \
-  --admin-email admin@local \
-  --tenant-slug demo \
-  --tenant-name "Demo Workspace" \
-  --seed-profile minimal \
-  --secrets-mode env
-
-cargo run -p rustok-server --bin rustok-server -- install apply \
-  --database-secret-ref dotenv:.env.dev#DATABASE_URL \
-  --admin-password-ref file:/run/secrets/rustok_admin_password \
-  --admin-email admin@local \
-  --tenant-slug demo \
-  --tenant-name "Demo Workspace" \
-  --seed-profile minimal \
-  --secrets-mode mounted-file
-```
-
-Supported backends for `apply`: `env:<VAR>`, `file:<path>`,
-`mounted-file:<path>`, `dotenv:<path>#<VAR>` and `dotenv:<VAR>` for reading from
-a local `.env`. External backends like `vault:*`, `kubernetes:*` and cloud
-secret managers are currently contract-level refs for `plan`/`preflight`, but
-`apply` will fail with an explicit error until the resolver is connected.
-
 ### Installer HTTP Adapter
 
-The Leptos wizard should use a thin HTTP adapter rather than duplicating bootstrap
-logic in the UI:
+The product installer is a hybrid layer on top of `rustok-installer`.
+The production server binary does not parse `install` commands. The typed
+platform CLI provides `install plan`, `install preflight`, `install status`,
+and `seed apply`. `install apply` waits for the shared executor-port
+extraction; use this HTTP adapter for execution until then.
+
+The Leptos wizard should use a thin HTTP adapter rather than duplicating
+bootstrap logic in the UI:
 
 - `GET /api/install/status`
 - `POST /api/install/plan`
 - `POST /api/install/preflight`
-- `POST /api/install/apply` — returns `202 Accepted` and `job_id`
-- `GET /api/install/jobs/{job_id}` — polling status of background job
-- `GET /api/install/sessions/{session_id}/receipts` — persisted step receipts
+- `POST /api/install/apply` returns `202 Accepted` and `job_id`
+- `GET /api/install/jobs/{job_id}` polls the background job
+- `GET /api/install/sessions/{session_id}/receipts` reads persisted receipts
 
-For mutating HTTP install requests, a setup token can be set:
+`POST /api/install/plan` and `POST /api/install/preflight` accept an
+`InstallPlan` JSON body. `POST /api/install/apply` accepts
+`{ "plan": <InstallPlan>, "lock_owner": "operator", "lock_ttl_secs": 900 }`.
+It records redacted receipts for preflight, config, database, migration, seed,
+admin, verify, and finalize stages.
+
+For mutating HTTP install requests, configure a setup token:
 
 ```powershell
 $env:RUSTOK_INSTALL_SETUP_TOKEN="local-setup-token"
 ```
 
-The client sends it via `x-rustok-setup-token` or
-`Authorization: Bearer <token>`. Production HTTP apply without
-`RUSTOK_INSTALL_SETUP_TOKEN` is rejected; the CLI remains the canonical path for CI/CD
-and headless installs.
-
-Wizard flow: send `plan`, then `preflight`; after a successful preflight,
-call `apply`, save `job_id`, poll `/api/install/jobs/{job_id}` until
-`succeeded` or `failed`, and build the progress stream from
-`/api/install/sessions/{session_id}/receipts`, once `session_id` appears in
-the job output or `/api/install/status`.
+The client sends it with `x-rustok-setup-token` or
+`Authorization: Bearer <token>`. Production HTTP apply without the token is
+rejected.
 
 ### Bootstrap Without Docker Compose
 
@@ -244,17 +152,17 @@ cargo xtask install-dev --create-db --pg-admin-url postgres://postgres:<password
 ```
 
 The command checks local tools, prepares `.env.dev`, `apps/next-admin/.env.local`,
-creates `modules.local.toml` for standalone UI and delegates bootstrap to
-`target/debug/rustok-server install apply`: migrations, dev seed, superadmin,
-verify/finalize and installer receipts all go through a single install pipeline.
+creates `modules.local.toml` for standalone UI, then delegates schema migration
+and the development seed profile to `target/debug/rustok-cli`. It is a local
+convenience wrapper, not a replacement for the durable installer HTTP pipeline.
 After bootstrap, the server and admin panels are started separately so that logs and debug sessions do not mix.
 The local `development.yaml` retains the full backend surface but disables maintenance workers
 `workflow_cron_enabled` and `seo_bulk_enabled`, so that interactive admin debugging does not compete with cron/bulk loops for the DB pool.
 
-If `target/debug/rustok-server` is not yet built, first run:
+If `target/debug/rustok-cli` is not yet built, first run:
 
 ```bash
-cargo build -p rustok-server --bin rustok-server
+cargo build -p rustok-cli --bin rustok-cli
 cargo xtask install-dev
 ```
 

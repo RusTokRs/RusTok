@@ -111,9 +111,9 @@ call a native adapter directly.
   It does not contain its own bootstrap logic: the screen collects an `InstallPlan`,
   calls `/api/install/preflight`, invokes `/api/install/apply`, polls
   `/api/install/jobs/{job_id}`, and shows persisted receipts from
-  `/api/install/sessions/{session_id}/receipts`. The CLI `rustok-server install ...`
-  remains the canonical automation/operator path, and the web layer works as a thin
-  facade over `apps/server` and `rustok-installer`. This route is accessible before
+  `/api/install/sessions/{session_id}/receipts`. The web layer works as a thin
+  facade over `apps/server` and `rustok-installer`; full typed CLI install commands
+  follow the shared executor-port extraction. This route is accessible before
   normal admin-auth, because the first install may not yet have a created
   superadmin; mutating install requests are protected by a setup-token guard on
   `/api/install/*`. The wizard does not prefill a sample admin password and admin

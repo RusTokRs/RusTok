@@ -18,6 +18,9 @@ bootstrap logic.
   canonical parsing and the profile module set), and tenant enablement inputs.
 - Track install state transitions and resumable step receipts.
 - Redact secrets and distinguish secret references from plaintext setup input.
+- Resolve local `env`, file, mounted-file and dotenv secret references through
+  one reusable installer contract; external secret managers remain explicit
+  adapter work.
 - Provide deterministic checksums for idempotent step skipping.
 - Provide preflight policy checks that are independent from any specific UI.
 - Define a consumer-owned seed workflow over narrow tenant, identity, role and

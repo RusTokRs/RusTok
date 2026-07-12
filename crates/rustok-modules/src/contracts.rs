@@ -80,7 +80,7 @@ pub enum ModuleErrorCode {
 }
 
 impl ModuleErrorCode {
-    pub const fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Validation => "validation",
             Self::NotFound => "not_found",

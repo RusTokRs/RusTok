@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::plan::InstallPlan;
 
@@ -49,6 +50,138 @@ impl SecretRef {
 pub enum SecretValue {
     Plaintext { value: String },
     Reference { reference: SecretRef },
+}
+
+/// Resolves setup secrets from local operator-managed sources.
+///
+/// External secret-manager references remain explicit contracts until their
+/// provider-specific resolver is supplied by an executable adapter.
+pub fn resolve_local_secret_value(
+    secret: &SecretValue,
+    label: &str,
+) -> Result<String, SecretResolutionError> {
+    match secret {
+        SecretValue::Plaintext { value } => Ok(value.clone()),
+        SecretValue::Reference { reference } => resolve_local_secret_ref(reference, label),
+    }
+}
+
+fn resolve_local_secret_ref(
+    reference: &SecretRef,
+    label: &str,
+) -> Result<String, SecretResolutionError> {
+    match normalize(&reference.backend).as_str() {
+        "env" => std::env::var(&reference.key).map_err(|_| SecretResolutionError::new(format!(
+            "{label} env secret `{}` is not set",
+            reference.key
+        ))),
+        "file" | "mounted_file" | "mounted-file" => read_secret_file(&reference.key, label),
+        "dotenv" | "dotenv_file" | "dotenv-file" => read_dotenv_secret(&reference.key, label),
+        "external_secret" | "external-secret" | "vault" | "kubernetes" | "k8s" | "aws"
+        | "gcp" | "azure" => Err(SecretResolutionError::new(format!(
+            "{label} secret backend `{}` requires an external secret resolver, which is not implemented yet",
+            reference.backend
+        ))),
+        backend => Err(SecretResolutionError::new(format!(
+            "{label} secret backend `{backend}` is not supported by install apply"
+        ))),
+    }
+}
+
+fn read_secret_file(path: &str, label: &str) -> Result<String, SecretResolutionError> {
+    let value = std::fs::read_to_string(path).map_err(|error| {
+        SecretResolutionError::new(format!(
+            "failed to read {label} secret file `{path}`: {error}"
+        ))
+    })?;
+    let value = strip_secret_newline(value);
+    if value.is_empty() {
+        return Err(SecretResolutionError::new(format!(
+            "{label} secret file `{path}` is empty"
+        )));
+    }
+    Ok(value)
+}
+
+fn read_dotenv_secret(reference_key: &str, label: &str) -> Result<String, SecretResolutionError> {
+    let (path, key) = reference_key
+        .split_once('#')
+        .unwrap_or((".env", reference_key));
+    if path.trim().is_empty() || key.trim().is_empty() {
+        return Err(SecretResolutionError::new(format!(
+            "{label} dotenv secret ref must use `dotenv:<path>#<KEY>` or `dotenv:<KEY>`"
+        )));
+    }
+
+    let contents = std::fs::read_to_string(path).map_err(|error| {
+        SecretResolutionError::new(format!(
+            "failed to read {label} dotenv file `{path}`: {error}"
+        ))
+    })?;
+    let Some(value) = parse_dotenv_value(&contents, key.trim()) else {
+        return Err(SecretResolutionError::new(format!(
+            "{label} dotenv key `{}` was not found in `{path}`",
+            key.trim()
+        )));
+    };
+    if value.is_empty() {
+        return Err(SecretResolutionError::new(format!(
+            "{label} dotenv key `{}` in `{path}` is empty",
+            key.trim()
+        )));
+    }
+    Ok(value)
+}
+
+fn parse_dotenv_value(contents: &str, key: &str) -> Option<String> {
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line).trim_start();
+        let Some((candidate, value)) = line.split_once('=') else {
+            continue;
+        };
+        if candidate.trim() == key {
+            return Some(unquote_dotenv_value(value.trim()));
+        }
+    }
+    None
+}
+
+fn unquote_dotenv_value(value: &str) -> String {
+    if value.len() >= 2
+        && ((value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\'')))
+    {
+        value[1..value.len() - 1].to_string()
+    } else {
+        strip_secret_newline(value.to_string())
+    }
+}
+
+fn strip_secret_newline(mut value: String) -> String {
+    while value.ends_with('\n') || value.ends_with('\r') {
+        value.pop();
+    }
+    value
+}
+
+fn normalize(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
+#[derive(Debug, Error)]
+#[error("secret resolution failed: {message}")]
+pub struct SecretResolutionError {
+    message: String,
+}
+
+impl SecretResolutionError {
+    fn new(message: String) -> Self {
+        Self { message }
+    }
 }
 
 impl SecretValue {
@@ -169,5 +302,21 @@ mod tests {
         assert!(!redacted.contains("admin12345"));
         assert!(!redacted.contains("rustok:rustok"));
         assert!(redacted.contains("***"));
+    }
+
+    #[test]
+    fn local_secret_resolver_rejects_external_backends_explicitly() {
+        let error = resolve_local_secret_value(
+            &SecretValue::Reference {
+                reference: SecretRef {
+                    backend: "vault".to_string(),
+                    key: "secret/rustok/db".to_string(),
+                },
+            },
+            "database URL",
+        )
+        .expect_err("external resolvers are not built into the foundation");
+
+        assert!(error.to_string().contains("external secret resolver"));
     }
 }

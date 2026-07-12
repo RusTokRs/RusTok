@@ -1,11 +1,14 @@
 use eyre::{bail, eyre, Result};
 use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_installer::{
-    evaluate_preflight, execute_seed_profile, redact_install_plan, DatabaseEngine,
-    InstallApplyOptions, InstallApplyOutput, InstallExecutionError, InstallExecutor, InstallPlan,
-    InstallReceipt, InstallState, InstallStep, SecretRef, SecretValue, SeedExecutionError,
-    SeedExecutionRequest, SeedIdentityPort, SeedModulePort, SeedProfile, SeedRolePort, SeedTenant,
-    SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest, TenantBootstrap,
+    execute_seed_profile, DatabaseEngine, InstallAdminOutcome, InstallAdminPort,
+    InstallApplyOptions, InstallApplyOutput, InstallDatabasePort, InstallDatabaseReady,
+    InstallExecutionError, InstallExecutor, InstallPersistencePort, InstallPlan, InstallReceipt,
+    InstallReceiptRecord, InstallSchemaPort, InstallSeedOutcome, InstallSeedPort,
+    InstallSessionRecord, InstallState, InstallVerificationOutcome, InstallVerificationPort,
+    SeedExecutionError, SeedExecutionRequest, SeedIdentityPort, SeedModulePort, SeedProfile,
+    SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
+    TenantBootstrap,
 };
 use rustok_installer_persistence::InstallerPersistenceService;
 use rustok_migrations::Migrator;
@@ -31,227 +34,11 @@ const INSTALLER_TENANT_READ_DEADLINE: Duration = Duration::from_secs(15);
 
 pub async fn apply_plan(
     plan: InstallPlan,
-    options: InstallerApplyOptions,
+    options: InstallApplyOptions,
 ) -> Result<InstallerApplyOutput> {
-    let lock_owner = options.lock_owner;
-    let lock_ttl_secs = options.lock_ttl_secs.max(1);
-    let pg_admin_url = options.pg_admin_url;
-    let report = evaluate_preflight(&plan);
-    if !report.passed() {
-        bail!("installer preflight failed")
-    }
-
-    let database_url = resolve_database_url(&plan)?;
-    let database_ready = prepare_database(&plan, &database_url, pg_admin_url.as_deref()).await?;
-    apply_schema_migrations(&database_ready.connection).await?;
-    let plan_snapshot = redact_install_plan(&plan);
-    let db = database_ready.connection.clone();
-    let persistence = InstallerPersistenceService::new(db);
-    let session = persistence
-        .create_session(&plan, None, None)
+    rustok_installer::execute_install_apply(&ServerInstallerPorts, plan, options)
         .await
-        .map_err(|error| eyre!("failed to create installer session: {error}"))?;
-    let session = persistence
-        .acquire_lock(
-            session,
-            &lock_owner,
-            chrono::Duration::seconds(lock_ttl_secs),
-        )
-        .await
-        .map_err(|error| eyre!("failed to acquire installer lock: {error}"))?;
-    let receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Preflight,
-        &plan_snapshot,
-        serde_json::json!({
-            "report": report,
-            "mode": "apply",
-            "note": "preflight receipt recorded after database and schema bootstrap"
-        }),
-    )?;
-    let receipt = persistence
-        .record_receipt(&receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer preflight receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, rustok_installer::InstallState::PreflightPassed)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-    let config_receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Config,
-        &plan_snapshot,
-        serde_json::json!({
-            "source": "cli",
-            "secrets_mode": plan.secrets_mode,
-            "redacted": true
-        }),
-    )?;
-    let config_receipt = persistence
-        .record_receipt(&config_receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer config receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, InstallState::ConfigPrepared)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-    let database_receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Database,
-        &plan_snapshot,
-        serde_json::json!({
-            "database_engine": plan.database.engine,
-            "database_name": database_ready.database_name,
-            "create_if_missing": plan.database.create_if_missing,
-            "created_database": database_ready.created_database,
-            "checked": true
-        }),
-    )?;
-    let database_receipt = persistence
-        .record_receipt(&database_receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer database receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, InstallState::DatabaseReady)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-    let migrate_receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Migrate,
-        &plan_snapshot,
-        serde_json::json!({
-            "migrator": "rustok-migrations::Migrator",
-            "limit": null,
-            "applied": "up_to_latest"
-        }),
-    )?;
-    let migrate_receipt = persistence
-        .record_receipt(&migrate_receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer migrate receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, InstallState::SchemaApplied)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-    let seed_outcome = apply_seed_profile(&database_ready.connection, &plan).await?;
-    let session = persistence
-        .set_tenant_id(session.id, seed_outcome.tenant_id)
-        .await
-        .map_err(|error| eyre!("failed to attach tenant to installer session: {error}"))?;
-    let seed_receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Seed,
-        &plan_snapshot,
-        serde_json::json!({
-            "seed_profile": plan.seed_profile,
-            "tenant_id": seed_outcome.tenant_id,
-            "tenant_slug": seed_outcome.tenant_slug,
-            "tenant_created": seed_outcome.tenant_created,
-            "enabled_modules": seed_outcome.enabled_modules,
-            "disabled_modules": seed_outcome.disabled_modules,
-            "demo_customer_created": seed_outcome.demo_customer_created
-        }),
-    )?;
-    let seed_receipt = persistence
-        .record_receipt(&seed_receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer seed receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, InstallState::SeedApplied)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-    let admin_password = resolve_admin_password(&plan)?;
-    let admin_outcome = provision_admin(
-        &database_ready.connection,
-        &plan,
-        seed_outcome.tenant_id,
-        &admin_password,
-    )
-    .await?;
-    let admin_receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Admin,
-        &plan_snapshot,
-        serde_json::json!({
-            "tenant_id": seed_outcome.tenant_id,
-            "admin_email": admin_outcome.email,
-            "admin_user_id": admin_outcome.user_id,
-            "admin_created": admin_outcome.created,
-            "role": "super_admin"
-        }),
-    )?;
-    let admin_receipt = persistence
-        .record_receipt(&admin_receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer admin receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, InstallState::AdminProvisioned)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-    let verify_outcome =
-        verify_installation(&database_ready.connection, &plan, seed_outcome.tenant_id).await?;
-    let verify_receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Verify,
-        &plan_snapshot,
-        serde_json::json!({
-            "tenant_id": verify_outcome.tenant_id,
-            "tenant_slug": verify_outcome.tenant_slug,
-            "admin_user_id": verify_outcome.admin_user_id,
-            "enabled_modules": verify_outcome.enabled_modules
-        }),
-    )?;
-    let verify_receipt = persistence
-        .record_receipt(&verify_receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer verify receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, InstallState::Verified)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-    let finalize_receipt = InstallReceipt::success(
-        session.id.to_string(),
-        InstallStep::Finalize,
-        &plan_snapshot,
-        serde_json::json!({
-            "completed": true,
-            "tenant_id": verify_outcome.tenant_id,
-            "tenant_slug": verify_outcome.tenant_slug
-        }),
-    )?;
-    let finalize_receipt = persistence
-        .record_receipt(&finalize_receipt)
-        .await
-        .map_err(|error| eyre!("failed to record installer finalize receipt: {error}"))?;
-    let session = persistence
-        .set_state(session.id, InstallState::Completed)
-        .await
-        .map_err(|error| eyre!("failed to update installer session state: {error}"))?;
-
-    Ok(InstallerApplyOutput {
-        status: "completed".to_string(),
-        session_id: session.id,
-        tenant_id: session.tenant_id,
-        lock_owner: session.lock_owner,
-        lock_expires_at: session.lock_expires_at,
-        preflight_receipt_id: receipt.id,
-        preflight_receipt_checksum: receipt.input_checksum,
-        config_receipt_id: config_receipt.id,
-        config_receipt_checksum: config_receipt.input_checksum,
-        database_receipt_id: database_receipt.id,
-        database_receipt_checksum: database_receipt.input_checksum,
-        migrate_receipt_id: migrate_receipt.id,
-        migrate_receipt_checksum: migrate_receipt.input_checksum,
-        seed_receipt_id: seed_receipt.id,
-        seed_receipt_checksum: seed_receipt.input_checksum,
-        admin_receipt_id: admin_receipt.id,
-        admin_receipt_checksum: admin_receipt.input_checksum,
-        verify_receipt_id: verify_receipt.id,
-        verify_receipt_checksum: verify_receipt.input_checksum,
-        finalize_receipt_id: finalize_receipt.id,
-        finalize_receipt_checksum: finalize_receipt.input_checksum,
-        next: None,
-    })
+        .map_err(|error| eyre!(error.to_string()))
 }
 
 /// HTTP-host adapter for the portable installer executor contract.
@@ -263,11 +50,201 @@ impl InstallExecutor for ServerInstallExecutor {
         &self,
         plan: InstallPlan,
         options: InstallApplyOptions,
-    ) -> Result<InstallApplyOutput, InstallExecutionError> {
+    ) -> std::result::Result<InstallApplyOutput, InstallExecutionError> {
         apply_plan(plan, options)
             .await
             .map_err(|error| InstallExecutionError::new(error.to_string()))
     }
+}
+
+/// SeaORM and domain-writer adapter for the portable installer state machine.
+struct ServerInstallerPorts;
+
+#[async_trait::async_trait]
+impl InstallDatabasePort for ServerInstallerPorts {
+    type Runtime = DatabaseConnection;
+
+    async fn prepare_database(
+        &self,
+        plan: &InstallPlan,
+        database_url: &str,
+        options: &InstallApplyOptions,
+    ) -> std::result::Result<InstallDatabaseReady<Self::Runtime>, InstallExecutionError> {
+        let ready = prepare_database(plan, database_url, options.pg_admin_url.as_deref())
+            .await
+            .map_err(execution_error)?;
+        Ok(InstallDatabaseReady {
+            runtime: ready.connection,
+            database_name: ready.database_name,
+            created_database: ready.created_database,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallSchemaPort<DatabaseConnection> for ServerInstallerPorts {
+    async fn apply_schema(
+        &self,
+        runtime: &DatabaseConnection,
+    ) -> std::result::Result<(), InstallExecutionError> {
+        apply_schema_migrations(runtime)
+            .await
+            .map_err(execution_error)
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
+    async fn create_session(
+        &self,
+        runtime: &DatabaseConnection,
+        plan: &InstallPlan,
+    ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
+        InstallerPersistenceService::new(runtime.clone())
+            .create_session(plan, None, None)
+            .await
+            .map(session_record)
+            .map_err(execution_error)
+    }
+
+    async fn acquire_lock(
+        &self,
+        runtime: &DatabaseConnection,
+        session: InstallSessionRecord,
+        owner: &str,
+        ttl_secs: i64,
+    ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
+        let persistence = InstallerPersistenceService::new(runtime.clone());
+        let model = persistence
+            .get_session(session.id)
+            .await
+            .map_err(execution_error)?
+            .ok_or_else(|| {
+                InstallExecutionError::new(format!("install session {} not found", session.id))
+            })?;
+        persistence
+            .acquire_lock(model, owner, chrono::Duration::seconds(ttl_secs.max(1)))
+            .await
+            .map(session_record)
+            .map_err(execution_error)
+    }
+
+    async fn record_receipt(
+        &self,
+        runtime: &DatabaseConnection,
+        receipt: &InstallReceipt,
+    ) -> std::result::Result<InstallReceiptRecord, InstallExecutionError> {
+        InstallerPersistenceService::new(runtime.clone())
+            .record_receipt(receipt)
+            .await
+            .map(|model| InstallReceiptRecord {
+                id: model.id,
+                input_checksum: model.input_checksum,
+            })
+            .map_err(execution_error)
+    }
+
+    async fn set_state(
+        &self,
+        runtime: &DatabaseConnection,
+        session_id: Uuid,
+        state: InstallState,
+    ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
+        InstallerPersistenceService::new(runtime.clone())
+            .set_state(session_id, state)
+            .await
+            .map(session_record)
+            .map_err(execution_error)
+    }
+
+    async fn set_tenant_id(
+        &self,
+        runtime: &DatabaseConnection,
+        session_id: Uuid,
+        tenant_id: Uuid,
+    ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
+        InstallerPersistenceService::new(runtime.clone())
+            .set_tenant_id(session_id, tenant_id)
+            .await
+            .map(session_record)
+            .map_err(execution_error)
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallSeedPort<DatabaseConnection> for ServerInstallerPorts {
+    async fn apply_seed(
+        &self,
+        runtime: &DatabaseConnection,
+        plan: &InstallPlan,
+    ) -> std::result::Result<InstallSeedOutcome, InstallExecutionError> {
+        apply_seed_profile(runtime, plan)
+            .await
+            .map(|outcome| InstallSeedOutcome {
+                tenant_id: outcome.tenant_id,
+                tenant_slug: outcome.tenant_slug,
+                tenant_created: outcome.tenant_created,
+                enabled_modules: outcome.enabled_modules,
+                disabled_modules: outcome.disabled_modules,
+                demo_customer_created: outcome.demo_customer_created,
+            })
+            .map_err(execution_error)
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallAdminPort<DatabaseConnection> for ServerInstallerPorts {
+    async fn provision_admin(
+        &self,
+        runtime: &DatabaseConnection,
+        plan: &InstallPlan,
+        tenant_id: Uuid,
+        password: &str,
+    ) -> std::result::Result<InstallAdminOutcome, InstallExecutionError> {
+        provision_admin(runtime, plan, tenant_id, password)
+            .await
+            .map(|outcome| InstallAdminOutcome {
+                user_id: outcome.user_id,
+                email: outcome.email,
+                created: outcome.created,
+            })
+            .map_err(execution_error)
+    }
+}
+
+#[async_trait::async_trait]
+impl InstallVerificationPort<DatabaseConnection> for ServerInstallerPorts {
+    async fn verify_installation(
+        &self,
+        runtime: &DatabaseConnection,
+        plan: &InstallPlan,
+        tenant_id: Uuid,
+    ) -> std::result::Result<InstallVerificationOutcome, InstallExecutionError> {
+        verify_installation(runtime, plan, tenant_id)
+            .await
+            .map(|outcome| InstallVerificationOutcome {
+                tenant_id: outcome.tenant_id,
+                tenant_slug: outcome.tenant_slug,
+                admin_user_id: outcome.admin_user_id,
+                enabled_modules: outcome.enabled_modules,
+            })
+            .map_err(execution_error)
+    }
+}
+
+fn session_record(
+    model: rustok_installer_persistence::entities::install_session::Model,
+) -> InstallSessionRecord {
+    InstallSessionRecord {
+        id: model.id,
+        tenant_id: model.tenant_id,
+        lock_owner: model.lock_owner,
+        lock_expires_at: model.lock_expires_at,
+    }
+}
+
+fn execution_error(error: impl std::fmt::Display) -> InstallExecutionError {
+    InstallExecutionError::new(error.to_string())
 }
 
 struct DatabaseReady {
@@ -595,7 +572,7 @@ async fn read_installer_tenant_by_slug(
     let tenant_service = TenantService::new(db.clone());
     let context = PortContext::new(
         slug.to_string(),
-        PortActor::service("rustok-server.installer"),
+        PortActor::service("rustok-installer.execution"),
         "und",
         format!("installer:tenant-read:{slug}"),
     )
@@ -733,108 +710,6 @@ fn quote_ident(value: &str) -> String {
 
 fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
-}
-
-fn resolve_database_url(plan: &InstallPlan) -> Result<String> {
-    resolve_secret_value(&plan.database.url, "database URL")
-}
-
-fn resolve_admin_password(plan: &InstallPlan) -> Result<String> {
-    resolve_secret_value(&plan.admin.password, "admin password")
-}
-
-fn resolve_secret_value(secret: &SecretValue, label: &str) -> Result<String> {
-    match secret {
-        SecretValue::Plaintext { value } => Ok(value.clone()),
-        SecretValue::Reference { reference } => resolve_secret_ref(reference, label),
-    }
-}
-
-fn resolve_secret_ref(reference: &SecretRef, label: &str) -> Result<String> {
-    match normalize(&reference.backend).as_str() {
-        "env" => std::env::var(&reference.key)
-            .map_err(|_| eyre!("{label} env secret `{}` is not set", reference.key)),
-        "file" | "mounted_file" | "mounted-file" => read_secret_file(&reference.key, label),
-        "dotenv" | "dotenv_file" | "dotenv-file" => read_dotenv_secret(&reference.key, label),
-        "external_secret" | "external-secret" | "vault" | "kubernetes" | "k8s" | "aws" | "gcp"
-        | "azure" => bail!(
-            "{label} secret backend `{}` requires an external secret resolver, which is not implemented yet",
-            reference.backend
-        ),
-        backend => bail!("{label} secret backend `{backend}` is not supported by install apply"),
-    }
-}
-
-fn read_secret_file(path: &str, label: &str) -> Result<String> {
-    let value = std::fs::read_to_string(path)
-        .map_err(|error| eyre!("failed to read {label} secret file `{path}`: {error}"))?;
-    let value = strip_secret_newline(value);
-    if value.is_empty() {
-        bail!("{label} secret file `{path}` is empty");
-    }
-    Ok(value)
-}
-
-fn read_dotenv_secret(reference_key: &str, label: &str) -> Result<String> {
-    let (path, key) = reference_key
-        .split_once('#')
-        .unwrap_or((".env", reference_key));
-    if path.trim().is_empty() || key.trim().is_empty() {
-        bail!("{label} dotenv secret ref must use `dotenv:<path>#<KEY>` or `dotenv:<KEY>`");
-    }
-
-    let contents = std::fs::read_to_string(path)
-        .map_err(|error| eyre!("failed to read {label} dotenv file `{path}`: {error}"))?;
-    let Some(value) = parse_dotenv_value(&contents, key.trim()) else {
-        bail!(
-            "{label} dotenv key `{}` was not found in `{path}`",
-            key.trim()
-        );
-    };
-    if value.is_empty() {
-        bail!("{label} dotenv key `{}` in `{path}` is empty", key.trim());
-    }
-    Ok(value)
-}
-
-fn parse_dotenv_value(contents: &str, key: &str) -> Option<String> {
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let line = line.strip_prefix("export ").unwrap_or(line).trim_start();
-        let Some((candidate, value)) = line.split_once('=') else {
-            continue;
-        };
-        if candidate.trim() != key {
-            continue;
-        }
-        return Some(unquote_dotenv_value(value.trim()));
-    }
-    None
-}
-
-fn unquote_dotenv_value(value: &str) -> String {
-    if value.len() >= 2
-        && ((value.starts_with('"') && value.ends_with('"'))
-            || (value.starts_with('\'') && value.ends_with('\'')))
-    {
-        value[1..value.len() - 1].to_string()
-    } else {
-        strip_secret_newline(value.to_string())
-    }
-}
-
-fn strip_secret_newline(mut value: String) -> String {
-    while value.ends_with('\n') || value.ends_with('\r') {
-        value.pop();
-    }
-    value
-}
-
-fn normalize(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
 }
 
 #[cfg(test)]

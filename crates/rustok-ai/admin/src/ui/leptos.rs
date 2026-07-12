@@ -687,6 +687,7 @@ pub fn AiAdmin() -> impl IntoView {
                             let status = match event.event_kind {
                                 AiRunStreamEventKindPayload::Started => "STARTED",
                                 AiRunStreamEventKindPayload::Delta => "STREAMING",
+                                AiRunStreamEventKindPayload::ToolCall => "TOOL_CALL",
                                 AiRunStreamEventKindPayload::Completed => "COMPLETED",
                                 AiRunStreamEventKindPayload::Failed => "FAILED",
                                 AiRunStreamEventKindPayload::Cancelled => "CANCELLED",
@@ -696,6 +697,9 @@ pub fn AiAdmin() -> impl IntoView {
                             let content = event
                                 .accumulated_content
                                 .or(event.content_delta)
+                                .or(event.tool_call.map(|tool_call| {
+                                    format!("{}({})", tool_call.name, tool_call.arguments)
+                                }))
                                 .unwrap_or_default();
                             let is_terminal = matches!(
                                 event.event_kind,
@@ -1859,6 +1863,9 @@ pub(crate) fn stream_event_kind_label(
     match value {
         model::AiRunStreamEventKindPayload::Started => t(locale, "ai.status.started", "STARTED"),
         model::AiRunStreamEventKindPayload::Delta => t(locale, "ai.status.delta", "DELTA"),
+        model::AiRunStreamEventKindPayload::ToolCall => {
+            t(locale, "ai.status.toolCall", "TOOL CALL")
+        }
         model::AiRunStreamEventKindPayload::Completed => {
             t(locale, "ai.status.completed", "COMPLETED")
         }

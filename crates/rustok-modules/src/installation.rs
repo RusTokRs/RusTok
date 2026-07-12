@@ -711,6 +711,25 @@ mod tests {
         }
     }
 
+    struct RecoveryStore(Vec<ArtifactAdmissionRecoveryRecord>);
+
+    #[async_trait]
+    impl ArtifactAdmissionStore for RecoveryStore {
+        async fn commit_admission(
+            &self,
+            _artifact: &InstalledModuleArtifact,
+            _staged: &StagedArtifactBlob,
+        ) -> Result<(), ModuleInstallationError> {
+            Ok(())
+        }
+
+        async fn unfinished_admissions(
+            &self,
+        ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
+            Ok(self.0.clone())
+        }
+    }
+
     fn package(kind: ArtifactPayloadKind) -> ModuleArtifactPackage {
         let payload = b"let result = input.value; result".to_vec();
         let digest = sha256_digest(&payload);
@@ -733,6 +752,32 @@ mod tests {
             media_type: media_type_for(kind).to_string(),
             payload,
         }
+    }
+
+    #[tokio::test]
+    async fn reconciler_discards_only_unpublished_staging() {
+        let blobs = InMemoryArtifactBlobStore::default();
+        let payload = b"staged module payload";
+        let digest = sha256_digest(payload);
+        let staged = blobs
+            .stage(&digest, RHAI_MEDIA_TYPE, payload)
+            .await
+            .expect("stage blob");
+        let reconciler = ArtifactAdmissionReconciler::new(
+            blobs,
+            RecoveryStore(vec![ArtifactAdmissionRecoveryRecord {
+                staged,
+                stage: ArtifactAdmissionStage::Staged,
+            }]),
+        );
+
+        assert_eq!(
+            reconciler
+                .discard_unpublished_staging()
+                .await
+                .expect("reconcile"),
+            1
+        );
     }
 
     #[tokio::test]

@@ -238,8 +238,11 @@ pub async fn rerank(
         .map(ExposeSecret::expose_secret)
         .unwrap_or("");
     let base_url = setting_str(config, "base_url").unwrap_or("");
-    let response = match config.provider_slug.as_str() {
-        "voyage_ai" => {
+    let integration = ProviderIntegration::from_slug(&config.provider_slug).ok_or_else(|| {
+        AiError::InvalidConfig(format!("unknown provider `{}`", config.provider_slug))
+    })?;
+    let response = match integration {
+        ProviderIntegration::VoyageAi => {
             let mut builder = voyageai::Client::builder().api_key(api_key);
             if !base_url.is_empty() {
                 builder = builder.base_url(base_url);
@@ -249,9 +252,10 @@ pub async fn rerank(
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             rerank_with(client.rerank_model(request.model), request.query, request.documents).await?
         }
-        slug => {
+        _ => {
             return Err(AiError::InvalidConfig(format!(
-                "Rig provider `{slug}` does not expose reranking"
+                "Rig provider `{}` does not expose reranking",
+                config.provider_slug
             )))
         }
     };

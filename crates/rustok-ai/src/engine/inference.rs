@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -13,7 +16,7 @@ use rig::{
         hyperbolic, llamafile, minimax, mira, mistral, moonshot, ollama, openai, openrouter,
         perplexity, together, xai, xiaomimimo, zai,
     },
-    streaming::StreamedAssistantContent,
+    streaming::{StreamedAssistantContent, ToolCallDeltaContent},
     image_generation::ImageGenerationModel,
     OneOrMany,
 };
@@ -144,11 +147,9 @@ pub async fn inference_for_slug(
     config: &AiProviderConfig,
     secrets: &rustok_secrets::SecretResolverRegistry,
 ) -> AiResult<Box<dyn InferenceEngine>> {
-    let integration = ProviderIntegration::from_slug(slug).ok_or_else(|| {
-        AiError::InvalidConfig(format!("unknown provider integration `{slug}`"))
-    })?;
     let descriptor = super::provider_catalog_entry(slug)
         .ok_or_else(|| AiError::InvalidConfig(format!("unknown provider integration `{slug}`")))?;
+    let integration = descriptor.integration;
     let credential = if matches!(config.target_auth, crate::ProviderTargetAuth::SecretRefs) {
         match descriptor.credentials.first() {
             Some(field) => {
@@ -502,6 +503,8 @@ async fn stream_with<M: CompletionModel>(
         .stream(request)
         .await
         .map_err(|error| AiError::Provider(error.to_string()))?;
+    let mut assembled_tool_calls = BTreeMap::<String, (String, String, String)>::new();
+    let mut emitted_tool_call_ids = HashSet::new();
     while let Some(item) = stream.next().await {
         match item.map_err(|error| AiError::Provider(error.to_string()))? {
             StreamedAssistantContent::Text(text) => {
@@ -509,11 +512,42 @@ async fn stream_with<M: CompletionModel>(
                     emitter.emit_text_delta(text.text);
                 }
             }
-            StreamedAssistantContent::ToolCall { .. }
-            | StreamedAssistantContent::ToolCallDelta { .. }
-            | StreamedAssistantContent::Reasoning(_)
+            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                emitted_tool_call_ids.insert(tool_call.id.clone());
+                if let Some(emitter) = &emitter {
+                    emitter.emit_tool_call(ToolCall {
+                        id: tool_call.id,
+                        name: tool_call.function.name,
+                        arguments: tool_call.function.arguments,
+                    });
+                }
+            }
+            StreamedAssistantContent::ToolCallDelta {
+                id,
+                internal_call_id,
+                content,
+            } => {
+                let entry = assembled_tool_calls
+                    .entry(internal_call_id)
+                    .or_insert_with(|| (id, String::new(), String::new()));
+                match content {
+                    ToolCallDeltaContent::Name(name) => entry.1 = name,
+                    ToolCallDeltaContent::Delta(delta) => entry.2.push_str(&delta),
+                }
+            }
+            StreamedAssistantContent::Reasoning(_)
             | StreamedAssistantContent::ReasoningDelta { .. }
             | StreamedAssistantContent::Final(_) => {}
+        }
+    }
+    if let Some(emitter) = &emitter {
+        for (_internal_id, (id, name, arguments)) in assembled_tool_calls {
+            if name.is_empty() || emitted_tool_call_ids.contains(&id) {
+                continue;
+            }
+            let arguments = serde_json::from_str(&arguments)
+                .unwrap_or_else(|_| serde_json::Value::String(arguments));
+            emitter.emit_tool_call(ToolCall { id, name, arguments });
         }
     }
     let raw_payload = stream

@@ -1,7 +1,7 @@
 # Hybrid RusTok installer
 
 - Date: 2026-04-26
-- Status: Accepted
+- Status: Superseded by the standalone CLI and Axum-host exit plan
 
 ## Context
 
@@ -23,8 +23,9 @@ RusTok uses a hybrid installer model:
 1. `crates/rustok-installer` becomes a shared installer-core and the source of
    truth for install plan, state machine, preflight policy, secret references,
    receipts, and checksum/idempotency contract.
-2. CLI `rustok-server install ...` will be the canonical operator interface for
-   automation, CI/CD, and production runs.
+2. A standalone typed `rustok-cli install ...` interface will be the canonical
+   operator interface for automation, CI/CD, and production runs. The former
+   server parser is not a supported execution path.
 3. The web wizard will be a thin facade on top of the same installer-core and HTTP adapter,
    not a separate implementation of bootstrap logic.
 4. `cargo xtask install-dev` and `scripts/dev-start.sh` are preserved as backward

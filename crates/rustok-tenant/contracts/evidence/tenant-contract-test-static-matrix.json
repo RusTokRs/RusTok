@@ -45,7 +45,7 @@
   },
   "installer_integration": {
     "status": "runtime_verified",
-    "source": "apps/server/src/installer_cli.rs",
+    "source": "apps/server/src/installer_execution.rs",
     "assertions": [
       "installer_seed_inspection_uses_tenant_read_port",
       "installer_verify_uses_tenant_read_port",

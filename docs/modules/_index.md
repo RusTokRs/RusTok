@@ -59,6 +59,7 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-cli-platform` | [docs](../../crates/rustok-cli-platform/docs/README.md) | [plan](../../crates/rustok-cli-platform/docs/implementation-plan.md) |
 | `rustok-migrations` | [README](../../crates/rustok-migrations/README.md) | - |
 | `rustok-installer` | [docs](../../crates/rustok-installer/docs/README.md) | [plan](../../crates/rustok-installer/docs/implementation-plan.md) |
+| `rustok-installer-cli` | [README](../../crates/rustok-installer-cli/README.md) | - |
 | `rustok-installer-persistence` | [README](../../crates/rustok-installer-persistence/README.md) | - |
 | `rustok-build` | [docs](../../crates/rustok-build/docs/README.md) | [plan](../../crates/rustok-build/docs/implementation-plan.md) |
 | `rustok-cli-registry` | [docs](../../crates/rustok-cli-registry/docs/README.md) | [plan](../../crates/rustok-cli-registry/docs/implementation-plan.md) |

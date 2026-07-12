@@ -44,7 +44,7 @@
       "profile": "embedded_native",
       "operation": "installer_tenant_resolution",
       "execution_status": "no_compile_source_locked",
-      "source": "apps/server/src/installer_cli.rs",
+      "source": "apps/server/src/installer_execution.rs",
       "assertions": [
         "installer_consumes_tenant_read_port",
         "slug_selector_preserved",

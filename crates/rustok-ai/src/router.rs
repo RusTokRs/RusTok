@@ -522,6 +522,30 @@ mod tests {
     }
 
     #[test]
+    fn candidate_rejects_profile_capability_missing_from_rig_descriptor() {
+        let provider = provider(
+            1,
+            "vertex-vision-claim",
+            ProviderSlug::new("vertex_ai").unwrap(),
+            vec![ProviderCapability::MultimodalUnderstanding],
+            ProviderUsagePolicy::default(),
+        );
+        let task = task_profile(
+            12,
+            "vision_analysis",
+            ProviderCapability::MultimodalUnderstanding,
+            vec![],
+            vec![],
+        );
+
+        let (status, reason) = provider_candidate_status(&provider, &task, &[]);
+
+        assert_eq!(status, RouterCandidateStatus::MissingIntegrationFeature);
+        assert!(reason.contains("vertex_ai"));
+        assert!(reason.contains("Multimodal"));
+    }
+
+    #[test]
     fn explain_provider_candidates_records_all_policy_reasons() {
         let inactive = RouterProviderProfile {
             is_active: false,

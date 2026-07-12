@@ -12,6 +12,7 @@ rustok-cli-core.workspace = true
 rustok-core.workspace = true
 rustok-distribution = { workspace = true, features = ["mod-cart", "mod-customer", "mod-product", "mod-profiles", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment", "mod-commerce", "mod-content", "mod-blog", "mod-forum", "mod-comments", "mod-pages", "mod-page_builder", "mod-taxonomy", "mod-alloy", "mod-flex", "mod-media", "mod-seo", "mod-workflow"] }
 rustok-installer.workspace = true
+rustok-installer-persistence.workspace = true
 rustok-modules.workspace = true
 rustok-rbac.workspace = true
 rustok-runtime.workspace = true
@@ -19,3 +20,6 @@ rustok-tenant.workspace = true
 sea-orm.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

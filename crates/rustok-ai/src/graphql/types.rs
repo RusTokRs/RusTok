@@ -187,6 +187,7 @@ pub enum AiExecutionModeGql {
 pub enum AiRunStreamEventKindGql {
     Started,
     Delta,
+    ToolCall,
     Completed,
     Failed,
     Cancelled,
@@ -198,6 +199,7 @@ impl From<AiRunStreamEventKind> for AiRunStreamEventKindGql {
         match value {
             AiRunStreamEventKind::Started => Self::Started,
             AiRunStreamEventKind::Delta => Self::Delta,
+            AiRunStreamEventKind::ToolCall => Self::ToolCall,
             AiRunStreamEventKind::Completed => Self::Completed,
             AiRunStreamEventKind::Failed => Self::Failed,
             AiRunStreamEventKind::Cancelled => Self::Cancelled,
@@ -248,6 +250,13 @@ pub struct AiRuntimeMetricsGql {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
+pub struct AiStreamToolCallGql {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
 pub struct AiRunStreamEventGql {
     pub session_id: Uuid,
     pub run_id: Uuid,
@@ -255,6 +264,7 @@ pub struct AiRunStreamEventGql {
     pub content_delta: Option<String>,
     pub accumulated_content: Option<String>,
     pub error_message: Option<String>,
+    pub tool_call: Option<AiStreamToolCallGql>,
     pub sequence: u64,
     pub created_at: DateTime<Utc>,
 }
@@ -319,6 +329,11 @@ impl From<AiRunStreamEvent> for AiRunStreamEventGql {
             content_delta: value.content_delta,
             accumulated_content: value.accumulated_content,
             error_message: value.error_message,
+            tool_call: value.tool_call.map(|value| AiStreamToolCallGql {
+                id: value.id,
+                name: value.name,
+                arguments: value.arguments.to_string(),
+            }),
             sequence: value.sequence,
             created_at: value.created_at,
         }

@@ -8,8 +8,7 @@ This document establishes the **core backend stack libraries** in `apps/server` 
 
 | Library | Role in server | Where to look in repository |
 |---|---|---|
-| `loco-rs` | Backend framework, bootstrap app, env/config/runtime conventions | `apps/server/src/app.rs`, `apps/server/src/main.rs`, `apps/server/docs/loco/` |
-| `axum` | HTTP routing, handlers, middleware integration | `apps/server/src/controllers/**`, `apps/server/src/middleware/**` |
+| `axum` | Backend framework, bootstrap, HTTP routing, handlers and middleware integration | `apps/server/src/host.rs`, `apps/server/src/controllers/**`, `apps/server/src/middleware/**` |
 | `sea-orm` | ORM, entities, queries, migrations | `apps/server/src/models/**`, `crates/rustok-migrations/**` |
 | `async-graphql` | GraphQL schema/query/mutation/resolvers | `apps/server/src/graphql/**` |
 | `tokio` | Async runtime for I/O and background tasks | server entry point and async services in `apps/server/src/**` |
@@ -27,13 +26,8 @@ sed -n '1,220p' apps/server/Cargo.toml
 
 2. If the core server stack changes (added/removed a key library), update this file in the same PR.
 
-3. For Loco-specific context and freshness policy use:
-
-- `apps/server/docs/loco/README.md`
-- `make docs-check-loco`
-- `make docs-sync-loco`
-- `apps/server/docs/upstream-libraries/README.md`
-- `make docs-sync-server-libs` / `make docs-check-server-libs`
+3. Historical Loco material is archived and must not guide implementation. The
+   active migration status is the [Loco exit plan](../../../docs/architecture/loco-exit-plan.md).
 
 ## Document boundary
 

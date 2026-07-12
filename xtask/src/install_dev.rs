@@ -55,7 +55,7 @@ pub(crate) fn install_dev(args: &[String]) -> Result<()> {
     }
 
     if !options.no_bootstrap {
-        run_server_bootstrap(&options)?;
+        run_dev_bootstrap(&options)?;
     }
 
     print_next_steps(&options);
@@ -419,7 +419,7 @@ fn upsert_env_key(content: String, key: &str, value: &str) -> String {
     result
 }
 
-fn run_server_bootstrap(options: &InstallDevOptions) -> Result<()> {
+fn run_dev_bootstrap(options: &InstallDevOptions) -> Result<()> {
     let manifest_path = std::env::current_dir()
         .context("Failed to resolve repository root")?
         .join("modules.local.toml")
@@ -450,43 +450,34 @@ fn run_server_bootstrap(options: &InstallDevOptions) -> Result<()> {
     envs.insert("SEED_TENANT_SLUG".to_string(), options.tenant_slug.clone());
     envs.insert("SEED_TENANT_NAME".to_string(), options.tenant_name.clone());
 
-    let args = vec![
-        "install".to_string(),
+    run_cli_binary(
+        &["migrate".to_string(), "up".to_string()],
+        &envs,
+        options.dry_run,
+    )?;
+    let seed_args = vec![
+        "seed".to_string(),
         "apply".to_string(),
-        "--environment".to_string(),
-        "local".to_string(),
         "--profile".to_string(),
-        "dev-local".to_string(),
-        "--database-engine".to_string(),
-        "postgres".to_string(),
-        "--database-url".to_string(),
-        options.database_url.clone(),
-        "--admin-email".to_string(),
-        options.admin_email.clone(),
-        "--admin-password".to_string(),
+        "dev".to_string(),
+        "--password".to_string(),
         options.admin_password.clone(),
+        "--email".to_string(),
+        options.admin_email.clone(),
+        "--name".to_string(),
+        "Super Admin".to_string(),
         "--tenant-slug".to_string(),
         options.tenant_slug.clone(),
         "--tenant-name".to_string(),
         options.tenant_name.clone(),
-        "--seed-profile".to_string(),
-        "dev".to_string(),
-        "--secrets-mode".to_string(),
-        "dotenv-file".to_string(),
-        "--lock-owner".to_string(),
-        "xtask-install-dev".to_string(),
     ];
-    run_server_binary(&args, &envs, options.dry_run)?;
+    run_cli_binary(&seed_args, &envs, options.dry_run)?;
 
     Ok(())
 }
 
-fn run_server_binary(
-    args: &[String],
-    envs: &BTreeMap<String, String>,
-    dry_run: bool,
-) -> Result<()> {
-    let binary = server_binary_path();
+fn run_cli_binary(args: &[String], envs: &BTreeMap<String, String>, dry_run: bool) -> Result<()> {
+    let binary = cli_binary_path();
     let rendered = format!("{} {}", binary.display(), render_command_args(args));
     if dry_run {
         println!("[dry-run] {rendered}");
@@ -495,14 +486,14 @@ fn run_server_binary(
 
     if !binary.exists() {
         bail!(
-            "Server binary is missing at {}. Build it first with `cargo build -p rustok-server --bin rustok-server`, then rerun `cargo xtask install-dev`.",
+            "Platform CLI is missing at {}. Build it first with `cargo build -p rustok-cli --bin rustok-cli`, then rerun `cargo xtask install-dev`.",
             binary.display()
         );
     }
 
     println!("[run] {rendered}");
     let mut command = Command::new(&binary);
-    command.args(args).current_dir("apps/server");
+    command.args(args);
     for (key, value) in envs {
         command.env(key, value);
     }
@@ -525,18 +516,18 @@ fn render_command_args(args: &[String]) -> String {
             continue;
         }
         rendered.push(arg.clone());
-        if arg == "--admin-password" {
+        if arg == "--admin-password" || arg == "--password" {
             redact_next = true;
         }
     }
     rendered.join(" ")
 }
 
-fn server_binary_path() -> PathBuf {
+fn cli_binary_path() -> PathBuf {
     let exe = if cfg!(windows) {
-        "rustok-server.exe"
+        "rustok-cli.exe"
     } else {
-        "rustok-server"
+        "rustok-cli"
     };
     std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
@@ -572,14 +563,14 @@ fn print_next_steps(options: &InstallDevOptions) {
     println!("Next commands:");
     if cfg!(windows) {
         println!(
-            "  $env:RUSTOK_MODULES_MANIFEST='modules.local.toml'; $env:SUPERADMIN_EMAIL='{}'; $env:SUPERADMIN_PASSWORD='{}'; cargo run -p rustok-server --bin rustok-server -- start",
+            "  $env:RUSTOK_MODULES_MANIFEST='modules.local.toml'; $env:SUPERADMIN_EMAIL='{}'; $env:SUPERADMIN_PASSWORD='{}'; cargo run -p rustok-server --bin rustok-server",
             options.admin_email, options.admin_password
         );
         println!("  cd apps/next-admin; npm run dev");
         println!("  cd apps/admin; trunk serve --port 3001");
     } else {
         println!(
-            "  RUSTOK_MODULES_MANIFEST=modules.local.toml SUPERADMIN_EMAIL='{}' SUPERADMIN_PASSWORD='{}' cargo run -p rustok-server --bin rustok-server -- start",
+            "  RUSTOK_MODULES_MANIFEST=modules.local.toml SUPERADMIN_EMAIL='{}' SUPERADMIN_PASSWORD='{}' cargo run -p rustok-server --bin rustok-server",
             options.admin_email, options.admin_password
         );
         println!("  (cd apps/next-admin && npm run dev)");
@@ -600,7 +591,7 @@ fn print_install_dev_usage() {
     println!("  - optionally creates PostgreSQL role/database");
     println!("  - writes .env.dev and apps/next-admin/.env.local");
     println!("  - creates modules.local.toml with standalone frontend surfaces");
-    println!("  - runs server migrations and dev seed");
+    println!("  - runs platform CLI migrations and the dev seed profile");
     println!();
     println!("Options:");
     println!("  --create-db                 Create role/database using --pg-admin-url");

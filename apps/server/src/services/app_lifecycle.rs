@@ -536,9 +536,11 @@ mod tests {
         connect_runtime_workers_with_runtime, resolve_boot_database_uri,
         should_use_local_sqlite_fallback, BuildWorkerHandle, OutboxRelayWorkerHandle,
     };
-    use crate::testing::get_server_app_context;
+    use crate::common::settings::{BuildRuntimeSettings, RustokSettings};
+    use crate::services::server_runtime_context::ServerRuntimeContext;
     use rustok_core::events::MemoryTransport;
     use rustok_outbox::{OutboxRelay, OutboxTransport};
+    use rustok_test_utils::setup_test_db;
     use std::{sync::Arc, time::Duration};
 
     use crate::services::event_transport_factory::{EventRuntime, RelayRuntimeConfig};
@@ -600,18 +602,18 @@ mod tests {
 
     #[tokio::test]
     async fn connect_runtime_workers_is_idempotent_for_outbox_relay_handle() {
-        let ctx = get_server_app_context().await;
+        let db = setup_test_db().await;
         let relay_config = RelayRuntimeConfig {
             interval: Duration::from_secs(60),
-            relay: OutboxRelay::new(ctx.db.clone(), Arc::new(MemoryTransport::new())),
+            relay: OutboxRelay::new(db.clone(), Arc::new(MemoryTransport::new())),
         };
         let runtime = Arc::new(EventRuntime {
-            transport: Arc::new(OutboxTransport::new(ctx.db.clone())),
+            transport: Arc::new(OutboxTransport::new(db.clone())),
             relay_config: Some(relay_config),
             channel_capacity: 128,
             relay_fallback_active: false,
         });
-        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+        let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         runtime_ctx.shared_insert(runtime);
 
         connect_runtime_workers_with_runtime(runtime_ctx.clone())
@@ -638,22 +640,24 @@ mod tests {
 
     #[tokio::test]
     async fn connect_runtime_workers_is_idempotent_for_build_worker_handle() {
-        let mut ctx = get_server_app_context().await;
-        ctx.config.settings = Some(serde_json::json!({
-            "rustok": {
-                "build": {
-                    "enabled": true,
-                    "poll_interval_ms": 1000
-                }
-            }
-        }));
+        let db = setup_test_db().await;
         let runtime = Arc::new(EventRuntime {
-            transport: Arc::new(OutboxTransport::new(ctx.db.clone())),
+            transport: Arc::new(OutboxTransport::new(db.clone())),
             relay_config: None,
             channel_capacity: 128,
             relay_fallback_active: false,
         });
-        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+        let runtime_ctx = ServerRuntimeContext::new(
+            db,
+            RustokSettings {
+                build: BuildRuntimeSettings {
+                    enabled: true,
+                    poll_interval_ms: 1_000,
+                    ..BuildRuntimeSettings::default()
+                },
+                ..RustokSettings::default()
+            },
+        );
         runtime_ctx.shared_insert(runtime);
 
         connect_runtime_workers_with_runtime(runtime_ctx.clone())

@@ -96,7 +96,7 @@ mod tests {
         let provider = command_provider(&runtime);
         let commands = provider.commands();
 
-        assert_eq!(commands.len(), 2);
+        assert_eq!(commands.len(), 5);
         assert_eq!(commands[0].namespace, "core");
         assert_eq!(commands[0].name, "version");
     }

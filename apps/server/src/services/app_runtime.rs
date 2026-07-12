@@ -368,8 +368,8 @@ mod tests {
     use super::validate_compiled_surface_contract;
     use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
     use crate::modules::DeploymentSurfaceContract;
-    use crate::testing::get_server_app_context;
     use rustok_build::DeploymentProfile;
+    use rustok_test_utils::setup_test_db_with_migrations;
 
     #[test]
     fn compiled_surface_contract_rejects_missing_embedded_admin() {
@@ -421,7 +421,6 @@ mod tests {
 
     #[tokio::test]
     async fn bootstrap_registry_only_runtime_forces_headless_surfaces() {
-        let ctx = get_server_app_context().await;
         let settings = RustokSettings {
             runtime: RuntimeSettings {
                 host_mode: RuntimeHostMode::RegistryOnly,
@@ -430,13 +429,14 @@ mod tests {
             ..RustokSettings::default()
         };
 
-        let runtime_ctx =
-            crate::services::server_runtime_context::ServerRuntimeContext::from_loco_app_context(
-                &ctx,
-            );
+        let db = setup_test_db_with_migrations::<rustok_migrations::Migrator>().await;
+        let runtime_ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            db,
+            settings.clone(),
+        );
         let auth_config =
-            crate::services::server_runtime_context::auth_config_from_loco_app_context(&ctx)
-                .expect("test host context should provide auth configuration");
+            crate::auth::auth_config_from_host_settings("test-secret".to_string(), 3_600, None)
+                .expect("test auth configuration should be valid");
         let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config, &settings)
             .await
             .expect("registry-only runtime should bootstrap");

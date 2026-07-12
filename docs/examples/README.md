@@ -44,19 +44,9 @@ Source: `docs/guides/quickstart.md`, `scripts/dev-start.sh`.
 
 ### 2) Installer preflight (no migrations)
 
-```bash
-cargo run -p rustok-server --bin rustok-server -- install preflight \
-  --environment local \
-  --profile dev-local \
-  --database-engine postgres \
-  --database-url postgres://rustok:rustok@localhost:5432/rustok_dev \
-  --admin-email admin@local \
-  --admin-password admin12345 \
-  --tenant-slug demo \
-  --tenant-name "Demo Workspace" \
-  --seed-profile dev \
-  --secrets-mode dotenv-file
-```
+Send an `InstallPlan` JSON document to `POST /api/install/preflight`. The
+production server binary does not accept `install` subcommands; see the
+[installer HTTP adapter](../guides/quickstart.md#installer-http-adapter).
 
 Expected result:
 

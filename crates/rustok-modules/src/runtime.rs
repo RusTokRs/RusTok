@@ -8,7 +8,7 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactBlobStore, ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ArtifactReleaseRef,
-    InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError, ModuleRuntimeBinding,
+    InstalledModuleArtifact, ModuleInstallationError, ModuleRuntimeBinding,
 };
 
 /// Executes an installed immutable artifact without involving the server's
@@ -102,7 +102,7 @@ impl<B, I, P> ArtifactRuntimeLifecycleExecutor<B, I, P>
 where
     B: ArtifactBlobStore,
 {
-    pub fn new(runtime: ArtifactRuntime<R>, installations: I, policies: P) -> Self {
+    pub fn new(runtime: ArtifactRuntime<B>, installations: I, policies: P) -> Self {
         Self {
             runtime,
             installations,
@@ -147,30 +147,6 @@ where
     }
 }
 
-fn verify_runtime_package(
-    artifact: &InstalledModuleArtifact,
-    package: &ModuleArtifactPackage,
-) -> Result<(), ArtifactRuntimeError> {
-    if package.reference != artifact.reference {
-        return Err(ArtifactRuntimeError::RegistryIdentityMismatch {
-            installed: artifact.reference.canonical(),
-            received: package.reference.canonical(),
-        });
-    }
-    package.verify()?;
-    if package.descriptor != artifact.descriptor {
-        return Err(ArtifactRuntimeError::DescriptorMismatch {
-            installation_id: artifact.installation_id,
-        });
-    }
-    if package.release_ref() != artifact.release {
-        return Err(ArtifactRuntimeError::ReleaseMismatch {
-            installation_id: artifact.installation_id,
-        });
-    }
-    Ok(())
-}
-
 #[derive(Debug, Error)]
 pub enum ArtifactRuntimeError {
     #[error("artifact binding `{0}` is not admitted for this installation")]
@@ -208,7 +184,8 @@ mod tests {
     use super::*;
     use crate::{
         ArtifactPayloadKind, ArtifactReleaseRef, InMemoryArtifactBlobStore,
-        ModuleArtifactDescriptor, ModuleInstallationScope, OciArtifactReference,
+        ModuleArtifactDescriptor, ModuleArtifactPackage, ModuleInstallationScope,
+        OciArtifactReference,
     };
 
     struct DenyBroker;

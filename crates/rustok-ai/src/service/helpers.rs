@@ -165,6 +165,7 @@ pub fn execution_mode_from_slug(value: &str) -> AiResult<ExecutionMode> {
 pub fn provider_config(
     model: &ai_provider_profiles::Model,
     targets: &crate::AiProviderTargetCatalog,
+    egress_policy: &ProviderEgressPolicy,
 ) -> AiResult<AiProviderConfig> {
     let target_id = crate::ProviderTargetId::new(&model.provider_target_id)
         .map_err(AiError::InvalidConfig)?;
@@ -180,13 +181,22 @@ pub fn provider_config(
             model.slug
         )));
     }
+    let credential_refs =
+        serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?;
+    validate_provider_target_profile_contract(
+        targets,
+        &target_id,
+        &credential_refs,
+        egress_policy,
+    )
+    .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
     Ok(AiProviderConfig {
         tenant_id: model.tenant_id,
         provider_slug,
         target_auth: target.auth,
         model: model.model.clone(),
         settings: target.settings.clone(),
-        credential_refs: serde_json::from_value(model.credential_refs.clone()).map_err(json_err)?,
+        credential_refs,
         temperature: model.temperature,
         max_tokens: model.max_tokens.map(|value| value.max(0) as u32),
         capabilities: capability_list(&model.capabilities)?,
@@ -548,6 +558,25 @@ pub fn publish_ai_run_stream_event(
         content_delta,
         accumulated_content,
         error_message,
+        tool_call: None,
+        sequence: 0,
+        created_at: Utc::now(),
+    });
+}
+
+pub fn publish_ai_run_tool_call_stream_event(
+    session_id: Uuid,
+    run_id: Uuid,
+    tool_call: crate::model::ToolCall,
+) {
+    ai_run_stream_hub().publish(AiRunStreamEvent {
+        session_id,
+        run_id,
+        event_kind: AiRunStreamEventKind::ToolCall,
+        content_delta: None,
+        accumulated_content: None,
+        error_message: None,
+        tool_call: Some(tool_call),
         sequence: 0,
         created_at: Utc::now(),
     });
@@ -813,9 +842,14 @@ pub async fn session_has_user_messages(
 mod tests {
     use super::{
         build_task_job_user_message, enrich_decision_trace, runtime_execution_target,
-        task_allows_free_locale, validate_locale_tag,
+        task_allows_free_locale, validate_locale_tag, validate_provider_target_profile_contract,
     };
     use crate::model::{AiRunDecisionTrace, ExecutionMode};
+    use crate::{
+        AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy, ProviderSlug,
+        ProviderTargetAuth, ProviderTargetId,
+    };
+    use std::collections::BTreeMap;
 
     #[test]
     fn validate_locale_tag_normalizes_common_bcp47_forms() {
@@ -868,5 +902,31 @@ mod tests {
             runtime_execution_target(ExecutionMode::Direct),
             "direct:runtime"
         );
+    }
+
+    #[test]
+    fn deployment_target_contract_rechecks_egress_before_runtime_materialization() {
+        let target_id = ProviderTargetId::new("local_ollama").unwrap();
+        let targets = AiProviderTargetCatalog::new(vec![AiProviderTarget {
+            id: target_id.clone(),
+            provider_slug: ProviderSlug::new("ollama").unwrap(),
+            display_name: "Local Ollama".to_string(),
+            auth: ProviderTargetAuth::None,
+            settings: BTreeMap::from([(
+                "base_url".to_string(),
+                serde_json::json!("http://127.0.0.1:11434"),
+            )]),
+        }])
+        .unwrap();
+
+        let error = validate_provider_target_profile_contract(
+            &targets,
+            &target_id,
+            &BTreeMap::new(),
+            &ProviderEgressPolicy::default(),
+        )
+        .expect_err("private origin requires an explicit deployment egress policy");
+
+        assert!(error.to_string().contains("loopback"));
     }
 }

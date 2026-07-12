@@ -163,6 +163,7 @@ pub fn AiDiagnosticsPanel(ui_locale: Option<String>, bootstrap: AiAdminBootstrap
                                                                     .accumulated_content
                                                                     .clone()
                                                                     .or(event.content_delta.clone())
+                                                                    .or(event.tool_call.clone().map(|tool_call| format!("{}({})", tool_call.name, tool_call.arguments)))
                                                                     .unwrap_or_else(|| t(ui_locale_diagnostics.as_deref(), "ai.common.noTextualDelta", "(no textual delta)"))}
                                                             </div>
                                                             <Show when=move || has_error>

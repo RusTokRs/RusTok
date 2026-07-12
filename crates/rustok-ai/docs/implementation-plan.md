@@ -43,11 +43,11 @@ the platform owner removes that coupling.
 
 | Work item | Status | Completion evidence |
 |---|---|---|
-| Rig-only inference cutover and provider snapshot | `in_progress` | Registry/factory parity, protocol cassettes, and opt-in live checks for every declared integration. |
+| Rig-only inference cutover and provider snapshot | `in_progress` | Descriptors now carry a closed typed `ProviderIntegration` dispatch key used by chat/image and vector factories. Still required: registry/factory parity tests, protocol cassettes, and opt-in live checks for every declared integration. |
 | Deployment-owned provider targets | `in_progress` | `ProviderTargetId`, deployment catalog, GraphQL/native/Next target selection, and the irreversible profile migration are implemented. Still required: deployment configuration fixtures and rejection/parity tests for every non-catalogued target. |
 | Secret boundary | `in_progress` | Resolver policy, rotation invalidation, resolver emulator tests, and no secret values in transport/telemetry. |
-| Agent approvals and restart | `in_progress` | A model turn now persists a durable `approval_batch_id` for all sensitive calls and claims each approval with compare-and-set. Still required: failure-recovery transaction coverage and persisted-history restart evidence. |
-| Streaming/cancellation | `in_progress` | Cancellation tokens, `cancelled` state, per-run monotonic event sequences, and hub-side duplicate-terminal suppression are implemented. Still required: Rig usage/tool-call event mapping and cassette coverage. |
+| Agent approvals and restart | `in_progress` | A model turn now persists a durable `approval_batch_id` for all sensitive calls, claims each approval with compare-and-set, and migration-tests the legacy backfill. Still required: failure-recovery transaction coverage and persisted-history restart evidence. |
+| Streaming/cancellation | `in_progress` | Cancellation tokens, `cancelled` state, per-run monotonic event sequences, hub-side duplicate-terminal suppression, and Rig tool-call assembly are implemented. Still required: usage mapping where the provider exposes it and cassette coverage. |
 | Generic host contribution | `blocked_platform` | Platform-owned manifest/runtime extension removes direct AI imports and construction from `apps/server`. |
 | Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
 
@@ -56,9 +56,13 @@ target selector in the new contract and transport forms. The migration rejects
 legacy custom endpoints rather than silently converting them: an operator must
 first create the named deployment target. A target owns endpoint and cloud
 settings; `SecretRef` remains the only tenant-controlled connection input,
-constrained by the server-owned resolver policy. The remaining registry repair
-is to make the factory dispatch the sole typed integration source instead of
-relying on parallel catalog/factory matching.
+constrained by the server-owned resolver policy. The descriptor-owned typed
+integration key is now the factory dispatch source; the remaining registry
+work is evidence coverage for each pinned Rig integration.
+
+Runtime materialization repeats target schema, credential-shape, and egress
+validation before constructing a Rig client. A deployment configuration change
+therefore cannot bypass the checks that were applied when a profile was saved.
 
 Rig agent recovery never executes unknown or policy-denied tool calls. It
 persists a synthetic skipped result and lets the model finish the turn. A

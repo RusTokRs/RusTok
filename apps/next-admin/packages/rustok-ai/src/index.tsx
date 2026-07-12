@@ -206,6 +206,7 @@ type RunStreamEvent = {
   eventKind:
     | 'STARTED'
     | 'DELTA'
+    | 'TOOL_CALL'
     | 'COMPLETED'
     | 'FAILED'
     | 'CANCELLED'
@@ -213,9 +214,16 @@ type RunStreamEvent = {
   contentDelta?: string | null;
   accumulatedContent?: string | null;
   errorMessage?: string | null;
+  toolCall?: { id: string; name: string; arguments: string } | null;
   sequence: number;
   createdAt: string;
 };
+
+function formatStreamToolCall(
+  toolCall: RunStreamEvent['toolCall']
+): string | null {
+  return toolCall ? `${toolCall.name}(${toolCall.arguments})` : null;
+}
 
 type DirectSubmitKind =
   | 'blog_draft'
@@ -305,6 +313,7 @@ const BOOTSTRAP_QUERY = `
       contentDelta
       accumulatedContent
       errorMessage
+      toolCall { id name arguments }
       sequence
       createdAt
     }
@@ -334,6 +343,7 @@ const SESSION_QUERY = `
       contentDelta
       accumulatedContent
       errorMessage
+      toolCall { id name arguments }
       sequence
       createdAt
     }
@@ -349,6 +359,7 @@ const AI_SESSION_EVENTS_SUBSCRIPTION = `
       contentDelta
       accumulatedContent
       errorMessage
+      toolCall { id name arguments }
       sequence
       createdAt
     }
@@ -1005,7 +1016,11 @@ export function AiAdminPage(props: AiAdminPageProps) {
           return {
             runId: streamEvent.runId,
             status: streamEvent.eventKind.toLowerCase(),
-            content: streamEvent.accumulatedContent ?? current?.content ?? '',
+            content:
+              streamEvent.accumulatedContent ??
+              formatStreamToolCall(streamEvent.toolCall) ??
+              current?.content ??
+              '',
             errorMessage: streamEvent.errorMessage,
             sequence: streamEvent.sequence,
             connected: true
@@ -3339,9 +3354,11 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           <div className='text-muted-foreground'>
                             {new Date(event.createdAt).toLocaleString()}
                           </div>
-                          {event.accumulatedContent || event.contentDelta ? (
+                          {event.accumulatedContent || event.contentDelta || event.toolCall ? (
                             <div className='mt-1 whitespace-pre-wrap'>
-                              {event.accumulatedContent ?? event.contentDelta}
+                              {event.accumulatedContent ??
+                                event.contentDelta ??
+                                formatStreamToolCall(event.toolCall)}
                             </div>
                           ) : null}
                           {event.errorMessage ? (

@@ -79,7 +79,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - `rustok-content-orchestration` is registered by the host as `SharedContentOrchestrationService`,
   constructed from explicit DB and `TransactionalEventBus`; conversion GraphQL resolvers read this handle from schema data,
   not through framework-owned application context.
-- Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; auth, OAuth and users REST request/response DTOs and OpenAPI schema derives also belong to `rustok-auth::rest`. The server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services, registers the corresponding runtimes in shared runtime extensions, and keeps auth/OAuth/users HTTP controllers as route/extractor/response adapters that re-export or import owner DTOs for Swagger and route compatibility. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`, without Loco compatibility entrypoints. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`; the full Loco `AppContext` remains only in bootstrap/REST boundary adapters that assemble these dependencies.
+- Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; auth, OAuth and users REST request/response DTOs and OpenAPI schema derives also belong to `rustok-auth::rest`. The server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services, registers the corresponding runtimes in shared runtime extensions, and keeps auth/OAuth/users HTTP controllers as route/extractor/response adapters that re-export or import owner DTOs for Swagger and route compatibility. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`.
 - AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, and Alloy runtime handles. `rustok-ai` does not read Loco `AppContext`; the Leptos admin adapter remains a host-boundary point that assembles this runtime from the current app context.
 - MCP GraphQL query/mutation/types and REST/control-plane DTOs belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService`, registers `McpManagementRuntime`, and keeps HTTP controllers as Axum adapters that import owner DTOs and actor parsing.
 - Content GraphQL dataloaders for `nodes`, `node_translations`, and `bodies` live in
@@ -87,47 +87,47 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - System GraphQL may publish media usage, but reads it through `rustok-media::load_media_usage_snapshot`,
   without directly importing module-owned media entities.
 - Settings and system GraphQL resolvers receive `ServerRuntimeContext`, DB, and schema-owned
-  `TransactionalEventBus` through GraphQL data. They do not extract or adapt Loco `AppContext`;
-  the request/connection boundary continues to pass it only for resolvers that have not yet been migrated.
+  `TransactionalEventBus` through GraphQL data. They do not extract or adapt a framework-global
+  application context.
 - App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
 - `host::run` owns YAML configuration loading, database connection and graceful shutdown for the pure Axum executable; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition.
   Alloy runtime bootstrap also registers `SharedAlloyRuntime` via `ServerRuntimeContext` from an explicit DB handle,
-  and Alloy GraphQL receives this runtime as schema-owned data without Loco `AppContext`.
-  Loco `AppContext` inside bootstrap remains only for current boundary adapters such as the mailer.
+  and Alloy GraphQL receives this runtime as schema-owned data without a framework-global context.
 - User complex fields and build progress subscription use schema-owned `DatabaseConnection`
   directly and also do not depend on the Loco host context.
 - Host-owned `RootQuery` also does not extract Loco `AppContext`: DB-only read paths use
   schema-owned `DatabaseConnection`, and marketplace/cache paths use `ServerRuntimeContext`.
 - All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
-  does not import Loco. `services/graphql_schema.rs` also accepts only `ServerRuntimeContext`;
-  the current app bootstrap/controller boundary is responsible for the one-time adaptation of the host context.
+  accepts explicit runtime dependencies. `services/graphql_schema.rs` also accepts only
+  `ServerRuntimeContext`.
 - Server event runtime builds the regular and transactional event bus from `ServerRuntimeContext`; `rustok-outbox`
   exposes no Loco adapter or framework-specific composition path.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass framework context into request/connection data.
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
-  for JSON response formatting; Loco `Routes` and error helpers remain separate Phase 2 routing/error
-  cutover inventory.
+  for JSON response formatting.
 - Metrics handler and the entire metrics helper pipeline use `ServerRuntimeContext`; the mailer
   state is passed via a separate `ServerEmailRuntime`, and worker handles are read through a scoped shared API.
 - Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
   event transport, rate limits, worker lifecycle, and email backend state; JSON response formatting
-  goes through `rustok_web::json_response` while Loco route assembly remains Phase 2 inventory.
+  goes through `rustok_web::json_response`.
 - Channel and standalone Flex REST handlers receive `ServerRuntimeContext`; channel JSON response
   formatting goes through `rustok_web::json_response`, and Flex controller tests assemble the same
-  neutral runtime fixture without creating Loco `AppContext`.
+  neutral runtime fixture.
 - Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
-  additionally receive `ServerEmailRuntime`. The controller does not read Loco config, DB, or mailer directly,
-  and JSON response formatting goes through `rustok_web::json_response`.
-- Module guard and server channel contract are typed through `ServerRuntimeContext`; Loco `AppContext`
-  is not a request/channel contract for server-owned runtime paths.
+  additionally receive `ServerEmailRuntime`. The controller receives explicit config, DB, and mailer
+  dependencies, and JSON response formatting goes through `rustok_web::json_response`.
+- Module guard and server channel contract are typed through `ServerRuntimeContext`; no
+  framework-global application context is a request/channel contract for server-owned runtime paths.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; Loco `AppContext` no longer participates in OAuth request state.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Swagger document filtering, installer persistence reads, admin DLQ, MCP management/remote tools
-  and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on Loco state. Optional module HTTP composition now also recognizes manifest-declared Axum routers: `rustok-blog` is merged from its `HostRuntimeContext` entrypoint without a Loco route adapter.
+  and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on a
+  framework-global context. Optional module HTTP composition recognizes manifest-declared Axum routers:
+  `rustok-blog` is merged from its `HostRuntimeContext` entrypoint.
 - Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, auth context receives `ServerAuthRuntime`; Loco `AppContext` remains only in router/controller boundary adapters for the current host.
 - Module-owned event listeners are assembled from `ModuleRegistry` into a common `EventDispatcher`; `apps/server` no longer holds separate host-owned index/search/workflow listener paths.
 - Server migrator is the backend composition root for module-owned schema: content-family modules (`blog`, `pages`, `comments`) and search must connect here via `crates/rustok-*/src/migrations`, otherwise external Next/Leptos admin surfaces get a working route shell without the needed tables.
@@ -150,27 +150,13 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` perform recovery only via `ModuleLifecycleService` and `modules:manage`, without raw SQL/bypass rollback.
 - GraphQL auth surface `me.permissions` returns a request-scoped RBAC snapshot for headless/mobile UI gating; this does not replace server-side permission enforcement on mutations/queries.
 - MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`) and Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`) with the same persisted token binding, policy enforcement, and audit trail. Scaffold tools in remote transport use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
-- The hybrid product installer is introduced via support crate `rustok-installer`:
-  CLI `rustok-server install ...` and `/api/install/*` endpoints must
-  delegate plan/state/receipt/preflight semantics to this crate. The web wizard
-  must not become a separate implementation of the bootstrap logic.
-- The current initial CLI surface is already available as an offline pre-apply layer:
-  `rustok-server install preflight ...` validates the install plan and returns a
-  JSON report, while `rustok-server install plan ...` prints a redacted plan snapshot
-  without connecting to the DB and without running migrations.
-- `rustok-server install apply ...` performs the current CLI bootstrap end-to-end:
-  preflight, with `--create-database` it can create a PostgreSQL database/role
-  via `--pg-admin-url`, checks the target DB via `SELECT 1`, runs the server
-  `Migrator::up`, creates `install_sessions` through
-  `rustok-installer-persistence`, places a session lock, executes
-  tenant/module seed, creates or synchronizes superadmin, verifies the result,
-  writes `Preflight` / `Config` / `Database` / `Migrate` / `Seed` / `Admin` /
-  `Verify` / `Finalize` receipts and transitions the session to `completed`.
-  `apply` resolves local secret refs `env:<VAR>`, `file:<path>`,
-  `mounted-file:<path>`, `dotenv:<path>#<VAR>`, and `dotenv:<VAR>`; external
-  backends such as `vault:*`, `kubernetes:*`, and cloud secret managers are
-  accepted only as contract-level refs for `plan`/`preflight` and fail-fast
-  on `apply` until an external resolver is connected.
+- The hybrid product installer is introduced through `rustok-installer` and
+  `rustok-installer-persistence`. `/api/install/*` delegates plan, receipt,
+  preflight and execution semantics to these shared crates; the web wizard
+  must not become a separate bootstrap implementation. The server binary has
+  no `install` parser. `rustok-installer-cli` owns `install plan`, `install
+  preflight`, `install status`, and `seed apply`; typed `install apply` follows
+  the shared executor-port extraction.
 - The HTTP adapter for the Leptos wizard is available as a thin surface on top of the same
   pipeline: `GET /api/install/status`, `POST /api/install/plan`,
   `POST /api/install/preflight`, `POST /api/install/apply`,

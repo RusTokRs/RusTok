@@ -1,6 +1,7 @@
-# Loco.rs docs index for RusToK
+# Archived Loco.rs Documentation Index
 
-This document is a **navigation index** for Loco documentation in this repository.
+Status: archived. This document is a navigation index for historical Loco
+documentation retained for audit context only.
 
 ## ⚠️ For AI agents: read first
 
@@ -20,11 +21,13 @@ Short rule: **real code in `apps/server` is more important than abstract advice 
    - This is a pinned copy of the official Loco.rs documentation.
    - The source version is recorded in [`./upstream/VERSION`](./upstream/VERSION).
 
-> **Rule for AI agents and contributors:** when in doubt about Loco, **first check `upstream/`**, and only then refer to the local notes below.
+> **Rule for AI agents and contributors:** do not use `upstream/` or the local
+> notes below to guide implementation. The active server architecture is Axum.
 
 ## Repo-specific notes (RusToK differences from default Loco only)
 
-- The server implementation lives in `apps/server` and may introduce project constraints on top of default Loco capabilities.
+- The historical server implementation lived in `apps/server`; the active host
+  is documented in `apps/server/docs/README.md`.
 - When designing changes, priority is given to real code and current modules (`app.rs`, `controllers/`, `models/`, `migration/`).
 - Brief changes to local practices are tracked in [`changes.md`](./changes.md).
 
@@ -36,14 +39,14 @@ scripts/docs/sync_loco_docs.sh
 
 ## What matters for AI agents
 
-- Loco.rs is already used as the backend framework — do not suggest replacing the framework for basic tasks.
+- Loco.rs is no longer used as the backend framework.
 - For auth, permissions, migrations, and controllers, rely on current project patterns, not abstract "universal" recipes.
 - If there are discrepancies between general guidance and the actual implementation — priority goes to real code in `apps/server`.
 
 ## How to keep this context fresh
 
 - When changing server architecture, update this file in the same PR.
-- When making major changes to the Loco layer, add brief notes to `apps/server/docs/loco/changes.md`.
+- Do not add new implementation notes to this archived directory.
 
 ## Upstream snapshot freshness
 

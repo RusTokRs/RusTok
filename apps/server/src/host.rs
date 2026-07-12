@@ -161,7 +161,6 @@ async fn connect_database(
 fn load_config() -> Result<HostConfig> {
     let environment = std::env::var("RUSTOK_ENV")
         .or_else(|_| std::env::var("APP_ENV"))
-        .or_else(|_| std::env::var("LOCO_ENV"))
         .unwrap_or_else(|_| "development".to_string());
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")

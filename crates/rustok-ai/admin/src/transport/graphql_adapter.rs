@@ -85,6 +85,7 @@ query AiBootstrap {
     contentDelta
     accumulatedContent
     errorMessage
+    toolCall { id name arguments }
     sequence
     createdAt
   }
@@ -114,6 +115,7 @@ query AiSession($id: UUID!) {
     contentDelta
     accumulatedContent
     errorMessage
+    toolCall { id name arguments }
     sequence
     createdAt
   }
@@ -129,6 +131,7 @@ subscription AiSessionEvents($sessionId: UUID!) {
     contentDelta
     accumulatedContent
     errorMessage
+    toolCall { id name arguments }
     sequence
     createdAt
   }

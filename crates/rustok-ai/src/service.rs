@@ -237,13 +237,14 @@ impl AiManagementService {
     pub async fn test_provider_profile(
         db: &DatabaseConnection,
         provider_targets: &crate::AiProviderTargetCatalog,
+        egress_policy: &crate::ProviderEgressPolicy,
         secrets: &rustok_secrets::SecretResolverRegistry,
         tenant_id: Uuid,
         id: Uuid,
     ) -> AiResult<ProviderTestResult> {
         let profile = require_provider_profile(db, tenant_id, id).await?;
         secrets.invalidate(None).await;
-        let config = provider_config(&profile, provider_targets)?;
+        let config = provider_config(&profile, provider_targets, egress_policy)?;
         if crate::provider_factory_supports(&config.provider_slug, crate::ProviderFeature::Chat) {
             let provider = inference_for_slug(&config.provider_slug, &config, secrets).await?;
             return provider.test_connection(&config).await;
@@ -1308,19 +1309,25 @@ impl AiManagementService {
                 let stream_emitter = ProviderStreamEmitter::new({
                     let stream_buffer = Arc::clone(&stream_buffer);
                     move |event| {
-                        let ProviderStreamEvent::TextDelta(delta) = event;
-                        let mut accumulated = stream_buffer
-                            .lock()
-                            .expect("AI stream buffer mutex poisoned");
-                        accumulated.push_str(&delta);
-                        publish_ai_run_stream_event(
-                            session_id,
-                            run_id,
-                            crate::streaming::AiRunStreamEventKind::Delta,
-                            Some(delta),
-                            Some(accumulated.clone()),
-                            None,
-                        );
+                        match event {
+                            ProviderStreamEvent::TextDelta(delta) => {
+                                let mut accumulated = stream_buffer
+                                    .lock()
+                                    .expect("AI stream buffer mutex poisoned");
+                                accumulated.push_str(&delta);
+                                publish_ai_run_stream_event(
+                                    session_id,
+                                    run_id,
+                                    crate::streaming::AiRunStreamEventKind::Delta,
+                                    Some(delta),
+                                    Some(accumulated.clone()),
+                                    None,
+                                );
+                            }
+                            ProviderStreamEvent::ToolCall(tool_call) => {
+                                publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
+                            }
+                        }
                     }
                 });
                 let task_input_json = match task_input_json {
@@ -1333,7 +1340,11 @@ impl AiManagementService {
                             )
                         })?,
                 };
-                let provider_config = provider_config(&provider_profile, runtime.provider_targets())?;
+                let provider_config = provider_config(
+                    &provider_profile,
+                    runtime.provider_targets(),
+                    runtime.egress_policy(),
+                )?;
                 let provider = Arc::<dyn InferenceEngine>::from(
                     inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry())
                         .await?,
@@ -1437,7 +1448,11 @@ impl AiManagementService {
             }
         }
 
-        let provider_config = provider_config(&provider_profile, runtime.provider_targets())?;
+        let provider_config = provider_config(
+            &provider_profile,
+            runtime.provider_targets(),
+            runtime.egress_policy(),
+        )?;
         let provider = Arc::<dyn InferenceEngine>::from(
             inference_for_slug(&provider_slug, &provider_config, runtime.secret_registry()).await?,
         );
@@ -1449,19 +1464,25 @@ impl AiManagementService {
         let stream_emitter = ProviderStreamEmitter::new({
             let stream_buffer = Arc::clone(&stream_buffer);
             move |event| {
-                let ProviderStreamEvent::TextDelta(delta) = event;
-                let mut accumulated = stream_buffer
-                    .lock()
-                    .expect("AI stream buffer mutex poisoned");
-                accumulated.push_str(&delta);
-                publish_ai_run_stream_event(
-                    session_id,
-                    run_id,
-                    crate::streaming::AiRunStreamEventKind::Delta,
-                    Some(delta),
-                    Some(accumulated.clone()),
-                    None,
-                );
+                match event {
+                    ProviderStreamEvent::TextDelta(delta) => {
+                        let mut accumulated = stream_buffer
+                            .lock()
+                            .expect("AI stream buffer mutex poisoned");
+                        accumulated.push_str(&delta);
+                        publish_ai_run_stream_event(
+                            session_id,
+                            run_id,
+                            crate::streaming::AiRunStreamEventKind::Delta,
+                            Some(delta),
+                            Some(accumulated.clone()),
+                            None,
+                        );
+                    }
+                    ProviderStreamEvent::ToolCall(tool_call) => {
+                        publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
+                    }
+                }
             }
         });
         let cancellation = runtime.register_run_cancellation(run_id);

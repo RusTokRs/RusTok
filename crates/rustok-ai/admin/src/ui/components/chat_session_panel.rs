@@ -260,6 +260,7 @@ pub fn AiChatSessionPanel(
                                                                                     {event
                                                                                         .accumulated_content
                                                                                         .or(event.content_delta)
+                                                                                        .or(event.tool_call.map(|tool_call| format!("{}({})", tool_call.name, tool_call.arguments)))
                                                                                         .unwrap_or_else(|| t(ui_locale_runs.as_deref(), "ai.common.noTextualDelta", "(no textual delta)"))}
                                                                                 </div>
                                                                                 <Show when=move || has_error>

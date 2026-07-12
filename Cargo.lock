@@ -7060,43 +7060,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "migration"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "rust_decimal",
- "rustok-api",
- "rustok-auth",
- "rustok-blog",
- "rustok-cart",
- "rustok-channel",
- "rustok-comments",
- "rustok-commerce",
- "rustok-content",
- "rustok-core",
- "rustok-customer",
- "rustok-forum",
- "rustok-fulfillment",
- "rustok-index",
- "rustok-inventory",
- "rustok-order",
- "rustok-pages",
- "rustok-payment",
- "rustok-pricing",
- "rustok-product",
- "rustok-region",
- "rustok-search",
- "rustok-seo",
- "rustok-taxonomy",
- "rustok-test-utils",
- "rustok-workflow",
- "sea-orm-migration",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10646,10 +10609,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "migration",
  "rustok-api",
  "rustok-build",
  "rustok-cli-core",
+ "rustok-migrations",
  "rustok-runtime",
  "rustok-tenant",
  "sea-orm",
@@ -11309,6 +11272,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-installer-persistence"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rustok-core",
+ "rustok-installer",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-inventory"
 version = "0.1.0"
 dependencies = [
@@ -11447,6 +11423,43 @@ dependencies = [
  "sea-orm",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "rustok-migrations"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "rust_decimal",
+ "rustok-api",
+ "rustok-auth",
+ "rustok-blog",
+ "rustok-cart",
+ "rustok-channel",
+ "rustok-comments",
+ "rustok-commerce",
+ "rustok-content",
+ "rustok-core",
+ "rustok-customer",
+ "rustok-forum",
+ "rustok-fulfillment",
+ "rustok-index",
+ "rustok-inventory",
+ "rustok-order",
+ "rustok-pages",
+ "rustok-payment",
+ "rustok-pricing",
+ "rustok-product",
+ "rustok-region",
+ "rustok-search",
+ "rustok-seo",
+ "rustok-taxonomy",
+ "rustok-test-utils",
+ "rustok-workflow",
+ "sea-orm-migration",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -12223,7 +12236,6 @@ dependencies = [
  "jsonwebtoken",
  "leptos 0.8.20",
  "leptos_axum",
- "migration",
  "mime_guess",
  "moka",
  "once_cell",
@@ -12257,9 +12269,11 @@ dependencies = [
  "rustok-iggy",
  "rustok-index",
  "rustok-installer",
+ "rustok-installer-persistence",
  "rustok-inventory",
  "rustok-mcp",
  "rustok-media",
+ "rustok-migrations",
  "rustok-modules",
  "rustok-order",
  "rustok-outbox",

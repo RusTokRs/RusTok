@@ -87,7 +87,7 @@ pub enum ChatMessageRole {
     Tool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -131,9 +131,10 @@ pub struct ProviderStructuredRequest {
     pub output_schema: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProviderStreamEvent {
     TextDelta(String),
+    ToolCall(ToolCall),
 }
 
 #[derive(Clone)]
@@ -157,6 +158,10 @@ impl ProviderStreamEmitter {
 
     pub fn emit_text_delta(&self, delta: impl Into<String>) {
         self.emit(ProviderStreamEvent::TextDelta(delta.into()));
+    }
+
+    pub fn emit_tool_call(&self, tool_call: ToolCall) {
+        self.emit(ProviderStreamEvent::ToolCall(tool_call));
     }
 }
 

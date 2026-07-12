@@ -68,7 +68,6 @@ impl AsRef<str> for ProviderSlug {
 /// Provider slugs are persisted/public strings; this enum is the internal
 /// dispatch key used by every Rig factory. Adding a slug therefore requires an
 /// explicit compiler-checked factory branch.
-#[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderIntegration {
     OpenAi,
@@ -103,10 +102,9 @@ pub(crate) enum ProviderIntegration {
     Fastembed,
 }
 
-#[cfg(feature = "server")]
 impl ProviderIntegration {
-    pub(crate) fn from_slug(slug: &ProviderSlug) -> Option<Self> {
-        Some(match slug.as_str() {
+    const fn from_static_slug(slug: &str) -> Self {
+        match slug {
             "openai" => Self::OpenAi,
             "openai_compatible" => Self::OpenAiCompatible,
             "anthropic" => Self::Anthropic,
@@ -137,8 +135,12 @@ impl ProviderIntegration {
             "vertex_ai" => Self::VertexAi,
             "gemini_grpc" => Self::GeminiGrpc,
             "fastembed" => Self::Fastembed,
-            _ => return None,
-        })
+            _ => panic!("unknown provider integration slug"),
+        }
+    }
+
+    pub(crate) fn from_slug(slug: &ProviderSlug) -> Option<Self> {
+        provider_catalog_entry(slug).map(|entry| entry.integration)
     }
 }
 
@@ -280,6 +282,8 @@ pub struct ProviderDefaultSetting {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ProviderCatalogEntry {
+    #[serde(skip)]
+    pub(crate) integration: ProviderIntegration,
     pub slug: &'static str,
     pub display_name: &'static str,
     pub features: &'static [ProviderFeature],
@@ -491,6 +495,7 @@ const EMBEDDINGS: &[ProviderFeature] = &[ProviderFeature::Embeddings];
 macro_rules! entry {
     ($slug:literal, $name:literal, $features:expr, $settings:expr, $credentials:expr) => {
         ProviderCatalogEntry {
+            integration: ProviderIntegration::from_static_slug($slug),
             slug: $slug,
             display_name: $name,
             features: $features,
@@ -552,6 +557,7 @@ static CATALOG: &[ProviderCatalogEntry] = &[
     entry!("mistral", "Mistral", CHAT_EMBED, BASE_URL, API_KEY),
     entry!("moonshot", "Moonshot", CHAT, BASE_URL, API_KEY),
     ProviderCatalogEntry {
+        integration: ProviderIntegration::Ollama,
         slug: "ollama",
         display_name: "Ollama",
         features: CHAT_EMBED,
@@ -583,6 +589,7 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         API_KEY
     ),
     ProviderCatalogEntry {
+        integration: ProviderIntegration::Fastembed,
         slug: "fastembed",
         display_name: "FastEmbed",
         features: EMBEDDINGS,
@@ -603,9 +610,10 @@ pub fn provider_catalog_entry(slug: &ProviderSlug) -> Option<&'static ProviderCa
 
 #[cfg(feature = "server")]
 pub fn provider_factory_supports(slug: &ProviderSlug, feature: ProviderFeature) -> bool {
-    ProviderIntegration::from_slug(slug).is_some()
-        && provider_catalog_entry(slug)
-            .is_some_and(|entry| entry.features.contains(&feature))
+    provider_catalog_entry(slug).is_some_and(|entry| {
+        let _integration = entry.integration;
+        entry.features.contains(&feature)
+    })
 }
 
 #[cfg(test)]
@@ -683,7 +691,7 @@ mod tests {
         for entry in provider_catalog().iter().filter(|entry| entry.compiled_in) {
             let slug = ProviderSlug::new(entry.slug).unwrap();
             assert!(
-                ProviderIntegration::from_slug(&slug).is_some(),
+                ProviderIntegration::from_slug(&slug) == Some(entry.integration),
                 "{} is catalogued without a typed integration dispatch key",
                 entry.slug
             );

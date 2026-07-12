@@ -13,7 +13,11 @@ mod seed;
 mod state;
 
 pub use execution::{
-    InstallApplyOptions, InstallApplyOutput, InstallExecutionError, InstallExecutor,
+    execute_install_apply, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
+    InstallApplyOutput, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,
+    InstallExecutor, InstallPersistencePort, InstallReceiptRecord, InstallSchemaPort,
+    InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallVerificationOutcome,
+    InstallVerificationPort,
 };
 pub use plan::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
@@ -21,7 +25,10 @@ pub use plan::{
 };
 pub use preflight::{evaluate_preflight, PreflightIssue, PreflightReport, PreflightSeverity};
 pub use receipt::{checksum_json, InstallReceipt, ReceiptError, ReceiptOutcome};
-pub use secrets::{redact_install_plan, redact_secret, SecretMode, SecretRef, SecretValue};
+pub use secrets::{
+    redact_install_plan, redact_secret, resolve_local_secret_value, SecretMode, SecretRef,
+    SecretResolutionError, SecretValue,
+};
 pub use seed::{
     execute_seed_profile, SeedExecutionError, SeedExecutionOutcome, SeedExecutionRequest,
     SeedIdentityPort, SeedModulePort, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,

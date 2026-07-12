@@ -3,10 +3,13 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_installer::{
-    execute_seed_profile, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
+    evaluate_preflight, execute_seed_profile, redact_install_plan, AdminBootstrap, DatabaseConfig,
+    DatabaseEngine, InstallEnvironment, InstallPlan, InstallProfile, ModuleSelection, SecretMode,
+    SecretRef, SecretValue, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
     SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
-    SeedUser, SeedUserRequest,
+    SeedUser, SeedUserRequest, TenantBootstrap,
 };
+use rustok_installer_persistence::InstallerPersistenceService;
 use rustok_modules::ModuleLifecycleDbWriter;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_runtime::{db_clone, RuntimeComposition};
@@ -25,19 +28,38 @@ pub fn command_provider(runtime: &RuntimeComposition) -> Box<dyn CommandProvider
 #[async_trait::async_trait]
 impl CommandProvider for InstallerCommandProvider {
     fn commands(&self) -> Vec<CommandDescriptor> {
-        vec![CommandDescriptor::new(
-            "seed",
-            "apply",
-            "Apply a typed tenant seed profile",
-        )]
+        vec![
+            CommandDescriptor::new("seed", "apply", "Apply a typed tenant seed profile"),
+            CommandDescriptor::new(
+                "install",
+                "plan",
+                "Validate and render a redacted installer plan without database access",
+            ),
+            CommandDescriptor::new(
+                "install",
+                "preflight",
+                "Validate installer policy without database access or mutation",
+            ),
+            CommandDescriptor::new(
+                "install",
+                "status",
+                "Read the latest durable installer session",
+            ),
+        ]
     }
 
     async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
-        if (request.namespace.as_str(), request.name.as_str()) != ("seed", "apply") {
-            return Err(CliCoreError::UnknownCommand {
-                namespace: request.namespace,
-                name: request.name,
-            });
+        match (request.namespace.as_str(), request.name.as_str()) {
+            ("install", "plan") => return install_plan_command(&request.args),
+            ("install", "preflight") => return install_preflight_command(&request.args),
+            ("install", "status") => return self.install_status_command().await,
+            ("seed", "apply") => {}
+            _ => {
+                return Err(CliCoreError::UnknownCommand {
+                    namespace: request.namespace,
+                    name: request.name,
+                })
+            }
         }
         if request.dry_run {
             return Ok(CommandOutcome::success(
@@ -100,6 +122,36 @@ impl CommandProvider for InstallerCommandProvider {
         .await
         .map_err(failed)?;
         Ok(CommandOutcome::success("Seed profile applied").with_data(serde_json::json!({ "tenant_id": result.tenant.id, "tenant_slug": result.tenant.slug, "enabled_modules": result.enabled_modules })))
+    }
+}
+
+impl InstallerCommandProvider {
+    async fn install_status_command(&self) -> CliCoreResult<CommandOutcome> {
+        let db = db_clone(
+            self.runtime
+                .require_host()
+                .map_err(|error| failed(error.to_string()))?,
+        );
+        let session = InstallerPersistenceService::new(db)
+            .latest_session()
+            .await
+            .map_err(failed)?;
+        match session {
+            Some(session) => Ok(
+                CommandOutcome::success("Installer status collected").with_data(
+                    serde_json::json!({
+                        "initialized": true,
+                        "session": session,
+                    }),
+                ),
+            ),
+            None => Ok(
+                CommandOutcome::success("Installer has not started").with_data(serde_json::json!({
+                    "initialized": false,
+                    "session": null,
+                })),
+            ),
+        }
     }
 }
 
@@ -198,6 +250,115 @@ fn option(options: &serde_json::Value, name: &str) -> Option<String> {
         .map(ToString::to_string)
         .filter(|value| !value.trim().is_empty())
 }
+
+fn install_plan_command(args: &serde_json::Value) -> CliCoreResult<CommandOutcome> {
+    let plan = parse_install_plan(args)?;
+    Ok(CommandOutcome::success("Installer plan validated")
+        .with_data(serde_json::json!({ "redacted_plan": redact_install_plan(&plan) })))
+}
+
+fn install_preflight_command(args: &serde_json::Value) -> CliCoreResult<CommandOutcome> {
+    let plan = parse_install_plan(args)?;
+    let report = evaluate_preflight(&plan);
+    let message = if report.passed() {
+        "Installer preflight passed"
+    } else {
+        "Installer preflight failed"
+    };
+    Ok(
+        CommandOutcome::success(message).with_data(serde_json::json!({
+            "passed": report.passed(),
+            "report": report,
+            "redacted_plan": redact_install_plan(&plan),
+        })),
+    )
+}
+
+fn parse_install_plan(args: &serde_json::Value) -> Result<InstallPlan, CliCoreError> {
+    let options = &args["options"];
+    let database_url = secret_option(options, "database_url", "database_secret_ref")?;
+    let admin_password = secret_option(options, "admin_password", "admin_password_ref")?;
+    Ok(InstallPlan {
+        environment: option(options, "environment")
+            .as_deref()
+            .map(InstallEnvironment::parse_cli_value)
+            .transpose()
+            .map_err(input)?
+            .unwrap_or(InstallEnvironment::Local),
+        profile: option(options, "profile")
+            .as_deref()
+            .map(InstallProfile::parse_cli_value)
+            .transpose()
+            .map_err(input)?
+            .unwrap_or(InstallProfile::DevLocal),
+        database: DatabaseConfig {
+            engine: option(options, "database_engine")
+                .as_deref()
+                .map(DatabaseEngine::parse_cli_value)
+                .transpose()
+                .map_err(input)?
+                .unwrap_or(DatabaseEngine::Postgres),
+            url: database_url,
+            create_if_missing: options["create_database"].as_bool().unwrap_or(false),
+        },
+        tenant: TenantBootstrap {
+            slug: option(options, "tenant_slug").unwrap_or_else(|| "demo".to_string()),
+            name: option(options, "tenant_name").unwrap_or_else(|| "Demo Workspace".to_string()),
+        },
+        admin: AdminBootstrap {
+            email: option(options, "admin_email").unwrap_or_else(|| "admin@local".to_string()),
+            password: admin_password,
+        },
+        modules: ModuleSelection {
+            enable: csv_option(options, "enable_modules"),
+            disable: csv_option(options, "disable_modules"),
+        },
+        seed_profile: option(options, "seed_profile")
+            .as_deref()
+            .map(SeedProfile::parse_cli_value)
+            .transpose()
+            .map_err(input)?
+            .unwrap_or(SeedProfile::Dev),
+        secrets_mode: option(options, "secrets_mode")
+            .as_deref()
+            .map(SecretMode::parse_cli_value)
+            .transpose()
+            .map_err(input)?
+            .unwrap_or(SecretMode::Env),
+    })
+}
+
+fn secret_option(
+    options: &serde_json::Value,
+    plaintext_name: &str,
+    reference_name: &str,
+) -> Result<SecretValue, CliCoreError> {
+    if let Some(value) = option(options, plaintext_name) {
+        return Ok(SecretValue::Plaintext { value });
+    }
+    if let Some(value) = option(options, reference_name) {
+        return SecretRef::parse_cli_value(&value)
+            .map(|reference| SecretValue::Reference { reference })
+            .map_err(input);
+    }
+    Err(input(format!(
+        "install command requires --{plaintext_name} or --{reference_name}"
+    )))
+}
+
+fn csv_option(options: &serde_json::Value, name: &str) -> Vec<String> {
+    option(options, name)
+        .into_iter()
+        .flat_map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .filter(|value| !value.is_empty())
+        .collect()
+}
 fn environment(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -215,4 +376,34 @@ fn failed(error: impl std::fmt::Display) -> CliCoreError {
 }
 fn seed_error(error: impl std::fmt::Display) -> SeedExecutionError {
     SeedExecutionError::Dependency(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{command_provider, RuntimeComposition};
+    use rustok_cli_core::{CommandProvider, CommandRequest};
+
+    #[tokio::test]
+    async fn plan_command_redacts_plaintext_secrets_without_runtime_database() {
+        let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
+        let provider = command_provider(&runtime);
+        let outcome = provider
+            .execute(CommandRequest {
+                namespace: "install".to_string(),
+                name: "plan".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "database_url": "postgres://rustok:secret@localhost/rustok",
+                        "admin_password": "admin12345"
+                    }
+                }),
+                dry_run: false,
+            })
+            .await
+            .expect("plan command should not require a database runtime");
+
+        assert_eq!(outcome.exit_code, 0);
+        assert!(!outcome.data.to_string().contains("admin12345"));
+        assert!(!outcome.data.to_string().contains("rustok:secret"));
+    }
 }

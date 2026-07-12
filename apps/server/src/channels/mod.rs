@@ -12,7 +12,7 @@
 //! ## Adding a new channel
 //!
 //! 1. Create `src/channels/<name>.rs` implementing [`RustokChannel`].
-//! 2. Register the Axum route in `src/app.rs` → `routes()`.
+//! 2. Register the Axum route through the host router composition.
 //! 3. Add a row to the table above.
 
 use async_trait::async_trait;
@@ -25,7 +25,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 /// Implementors receive an upgraded WebSocket and are responsible for the full
 /// connection lifecycle (auth handshake, message loop, cleanup on disconnect).
 ///
-/// Unlike Loco Channels, `RustokChannel` uses the server's own auth mechanism
+/// `RustokChannel` uses the server's own auth mechanism
 /// (Bearer JWT validated before the upgrade) and does not depend on
 /// a framework-owned channel controller.
 #[async_trait]

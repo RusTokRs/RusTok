@@ -36,3 +36,51 @@ impl MigrationTrait for Migration {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Migration;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
+    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+
+    #[tokio::test]
+    async fn backfills_legacy_approvals_into_individual_durable_batches() {
+        let database = Database::connect("sqlite::memory:").await.unwrap();
+        database
+            .execute_unprepared(
+                "CREATE TABLE ai_approval_requests (id TEXT NOT NULL, run_id TEXT NOT NULL)",
+            )
+            .await
+            .unwrap();
+        database
+            .execute_unprepared(
+                "INSERT INTO ai_approval_requests (id, run_id) VALUES ('approval-1', 'run-1')",
+            )
+            .await
+            .unwrap();
+
+        Migration.up(&SchemaManager::new(&database)).await.unwrap();
+        let row = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT approval_batch_id FROM ai_approval_requests".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            String::try_get(&row, "", "approval_batch_id").unwrap(),
+            "run-1:approval-1"
+        );
+        let column = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT notnull FROM pragma_table_info('ai_approval_requests') WHERE name = 'approval_batch_id'"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(i64::try_get(&column, "", "notnull").unwrap(), 1);
+    }
+}
