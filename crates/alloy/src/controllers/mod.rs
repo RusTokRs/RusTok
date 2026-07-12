@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
+    Json,
 };
 use chrono::Utc;
 use rustok_api::{HostRuntimeContext, TenantContext};
@@ -12,7 +12,6 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime,
     api::{
         CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
         ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
@@ -22,9 +21,10 @@ use crate::{
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
     utils::{dynamic_to_json, json_to_dynamic},
+    ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime,
 };
 
-pub const LOCO_EXECUTION_HISTORY_ROUTES: &[&str] = &["/executions", "/scripts/{id}/executions"];
+pub use crate::api::AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES;
 
 #[derive(Clone)]
 pub struct AlloyHttpRuntime {
@@ -411,12 +411,12 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 
 #[cfg(test)]
 mod tests {
-    use super::LOCO_EXECUTION_HISTORY_ROUTES;
+    use super::EXECUTION_HISTORY_ROUTES;
 
     #[test]
-    fn loco_execution_history_routes_match_operator_contract() {
+    fn execution_history_routes_match_operator_contract() {
         assert_eq!(
-            LOCO_EXECUTION_HISTORY_ROUTES,
+            EXECUTION_HISTORY_ROUTES,
             &["/executions", "/scripts/{id}/executions"]
         );
     }

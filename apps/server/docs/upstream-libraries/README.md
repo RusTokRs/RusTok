@@ -1,6 +1,8 @@
 # Upstream snapshots for server core libraries
 
-This directory captures **fresh documentation links** for key server libraries.
+This directory captures **fresh documentation links** for active server
+libraries. The pure Axum runtime does not treat the historical Loco snapshot
+as a current dependency or implementation guide.
 
 - Version source: `Cargo.lock`
 - Snapshot date: `2026-07-02`
@@ -12,7 +14,6 @@ This directory captures **fresh documentation links** for key server libraries.
 
 | Crate | Version (`Cargo.lock`) | Docs.rs crate page | Rustdoc index | Local metadata |
 |---|---:|---|---|---|
-| `loco-rs` | `0.16.4` | [crate](https://docs.rs/crate/loco-rs/0.16.4) | [rustdoc](https://docs.rs/loco-rs/0.16.4/loco_rs/) | `apps/server/docs/upstream-libraries/loco-rs/metadata.json` |
 | `axum` | `0.8.9` | [crate](https://docs.rs/crate/axum/0.8.9) | [rustdoc](https://docs.rs/axum/0.8.9/axum/) | `apps/server/docs/upstream-libraries/axum/metadata.json` |
 | `sea-orm` | `1.1.20` | [crate](https://docs.rs/crate/sea-orm/1.1.20) | [rustdoc](https://docs.rs/sea-orm/1.1.20/sea_orm/) | `apps/server/docs/upstream-libraries/sea-orm/metadata.json` |
 | `async-graphql` | `7.2.1` | [crate](https://docs.rs/crate/async-graphql/7.2.1) | [rustdoc](https://docs.rs/async-graphql/7.2.1/async_graphql/) | `apps/server/docs/upstream-libraries/async-graphql/metadata.json` |

@@ -89,7 +89,11 @@ impl AuthUserBootstrapDbWriter {
             })
     }
 
-    async fn find_user(
+    /// Reads an existing bootstrap identity without creating or updating it.
+    ///
+    /// Installer verification uses this owner-owned lookup instead of reaching
+    /// into host user entities.
+    pub async fn find_user(
         &self,
         tenant_id: Uuid,
         email: &str,

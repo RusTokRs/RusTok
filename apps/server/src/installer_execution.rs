@@ -1,18 +1,12 @@
 use eyre::{bail, eyre, Result};
-use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_installer::{
-    execute_seed_profile, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
-    InstallApplyOutput, InstallDatabasePort, InstallDatabaseReady, InstallExecutionError,
-    InstallExecutor, InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord,
-    InstallSchemaPort, InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallState,
-    InstallVerificationOutcome, InstallVerificationPort, SeedExecutionError, SeedExecutionRequest,
-    SeedIdentityPort, SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort,
-    SeedTenantRequest, SeedUser, SeedUserRequest, TenantBootstrap,
+    InstallAdminOutcome, InstallAdminPort, InstallApplyOptions, InstallApplyOutput,
+    InstallDatabasePort, InstallDatabaseReady, InstallExecutionError, InstallExecutor,
+    InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord, InstallSchemaPort,
+    InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallState,
+    InstallVerificationOutcome, InstallVerificationPort,
 };
-use rustok_installer_persistence::SeaOrmInstallerPorts;
-use rustok_migrations::Migrator;
-use rustok_modules::ModuleLifecycleDbWriter;
-use rustok_rbac::RbacRoleAssignmentDbWriter;
+use rustok_installer_persistence::{SeaOrmInstallerBootstrapPorts, SeaOrmInstallerPorts};
 use rustok_tenant::{
     PortActor, PortContext, PortErrorKind, TenantReadPort, TenantReadProjection, TenantReadRequest,
     TenantReadSelector, TenantService,
@@ -24,15 +18,17 @@ use uuid::Uuid;
 use crate::models::users;
 use crate::modules::build_registry;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::rbac_service::RbacService;
 
 const INSTALLER_TENANT_READ_DEADLINE: Duration = Duration::from_secs(15);
 
 pub async fn apply_plan(
     plan: InstallPlan,
     options: InstallApplyOptions,
-) -> Result<InstallerApplyOutput> {
-    rustok_installer::execute_install_apply(&ServerInstallerPorts, plan, options)
+) -> Result<InstallApplyOutput> {
+    let ports = ServerInstallerPorts {
+        registry: build_registry(),
+    };
+    rustok_installer::execute_install_apply(&ports, plan, options)
         .await
         .map_err(|error| eyre!(error.to_string()))
 }
@@ -53,8 +49,11 @@ impl InstallExecutor for ServerInstallExecutor {
     }
 }
 
-/// SeaORM and domain-writer adapter for the portable installer state machine.
-struct ServerInstallerPorts;
+/// Host composition supplies the module registry; every SeaORM mutation is
+/// delegated to the reusable installer persistence adapter.
+struct ServerInstallerPorts {
+    registry: rustok_core::ModuleRegistry,
+}
 
 #[async_trait::async_trait]
 impl InstallDatabasePort for ServerInstallerPorts {
@@ -143,17 +142,13 @@ impl InstallSeedPort<DatabaseConnection> for ServerInstallerPorts {
         runtime: &DatabaseConnection,
         plan: &InstallPlan,
     ) -> std::result::Result<InstallSeedOutcome, InstallExecutionError> {
-        apply_seed_profile(runtime, plan)
-            .await
-            .map(|outcome| InstallSeedOutcome {
-                tenant_id: outcome.tenant_id,
-                tenant_slug: outcome.tenant_slug,
-                tenant_created: outcome.tenant_created,
-                enabled_modules: outcome.enabled_modules,
-                disabled_modules: outcome.disabled_modules,
-                demo_customer_created: outcome.demo_customer_created,
-            })
-            .map_err(execution_error)
+        SeaOrmInstallerBootstrapPorts::new(
+            runtime.clone(),
+            &self.registry,
+            plan.seed_profile.default_enabled_modules(),
+        )
+        .apply_seed_profile(plan, "installer")
+        .await
     }
 }
 
@@ -166,14 +161,13 @@ impl InstallAdminPort<DatabaseConnection> for ServerInstallerPorts {
         tenant_id: Uuid,
         password: &str,
     ) -> std::result::Result<InstallAdminOutcome, InstallExecutionError> {
-        provision_admin(runtime, plan, tenant_id, password)
-            .await
-            .map(|outcome| InstallAdminOutcome {
-                user_id: outcome.user_id,
-                email: outcome.email,
-                created: outcome.created,
-            })
-            .map_err(execution_error)
+        SeaOrmInstallerBootstrapPorts::new(
+            runtime.clone(),
+            &self.registry,
+            plan.seed_profile.default_enabled_modules(),
+        )
+        .provision_admin(plan, tenant_id, password)
+        .await
     }
 }
 
@@ -185,257 +179,18 @@ impl InstallVerificationPort<DatabaseConnection> for ServerInstallerPorts {
         plan: &InstallPlan,
         tenant_id: Uuid,
     ) -> std::result::Result<InstallVerificationOutcome, InstallExecutionError> {
-        verify_installation(runtime, plan, tenant_id)
+        verify_installation(runtime, plan, tenant_id, &self.registry)
             .await
-            .map(|outcome| InstallVerificationOutcome {
-                tenant_id: outcome.tenant_id,
-                tenant_slug: outcome.tenant_slug,
-                admin_user_id: outcome.admin_user_id,
-                enabled_modules: outcome.enabled_modules,
-            })
-            .map_err(execution_error)
+            .map_err(|error| InstallExecutionError::new(error.to_string()))
     }
-}
-
-struct ServerInstallerSeedTenantPort<'a> {
-    db: &'a DatabaseConnection,
-}
-
-struct ServerInstallerSeedIdentityPort<'a> {
-    db: &'a DatabaseConnection,
-}
-
-struct ServerInstallerSeedRolePort<'a> {
-    db: &'a DatabaseConnection,
-}
-
-struct ServerInstallerSeedModulePort<'a> {
-    db: &'a DatabaseConnection,
-    registry: rustok_core::ModuleRegistry,
-    defaults: Vec<String>,
-}
-
-#[async_trait::async_trait]
-impl SeedTenantPort for ServerInstallerSeedTenantPort<'_> {
-    async fn ensure_seed_tenant(
-        &self,
-        request: SeedTenantRequest,
-    ) -> Result<SeedTenant, SeedExecutionError> {
-        let (tenant, created) = TenantService::new(self.db.clone())
-            .ensure_tenant(rustok_tenant::CreateTenantInput {
-                name: request.name,
-                slug: request.slug,
-                domain: request.domain,
-            })
-            .await
-            .map_err(seed_dependency_error)?;
-        Ok(SeedTenant {
-            id: tenant.id,
-            slug: tenant.slug,
-            created,
-        })
-    }
-}
-
-#[async_trait::async_trait]
-impl SeedIdentityPort for ServerInstallerSeedIdentityPort<'_> {
-    async fn ensure_seed_user(
-        &self,
-        request: SeedUserRequest,
-    ) -> Result<SeedUser, SeedExecutionError> {
-        let user = ensure_installer_user(self.db, &request)
-            .await
-            .map_err(seed_dependency_error)?;
-        Ok(user)
-    }
-}
-
-#[async_trait::async_trait]
-impl SeedRolePort for ServerInstallerSeedRolePort<'_> {
-    async fn assign_seed_role(
-        &self,
-        tenant_id: Uuid,
-        user_id: Uuid,
-        role: rustok_core::UserRole,
-    ) -> Result<(), SeedExecutionError> {
-        RbacRoleAssignmentDbWriter::new(self.db.clone())
-            .assign_role_permissions(tenant_id, user_id, role)
-            .await
-            .map_err(seed_dependency_error)?;
-        RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
-        Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl SeedModulePort for ServerInstallerSeedModulePort<'_> {
-    async fn set_seed_module_enabled(
-        &self,
-        tenant_id: Uuid,
-        module_slug: &str,
-        enabled: bool,
-        actor: &str,
-    ) -> Result<(), SeedExecutionError> {
-        ModuleLifecycleDbWriter::new(self.db.clone(), &self.registry, self.defaults.clone())
-            .toggle(tenant_id, module_slug, enabled, actor)
-            .await
-            .map_err(seed_dependency_error)
-    }
-}
-
-fn seed_dependency_error(error: impl std::fmt::Display) -> SeedExecutionError {
-    SeedExecutionError::Dependency(error.to_string())
-}
-
-#[derive(Debug)]
-struct SeedOutcome {
-    tenant_id: Uuid,
-    tenant_slug: String,
-    tenant_created: bool,
-    enabled_modules: Vec<String>,
-    disabled_modules: Vec<String>,
-    demo_customer_created: bool,
-}
-
-async fn apply_seed_profile(db: &DatabaseConnection, plan: &InstallPlan) -> Result<SeedOutcome> {
-    let mut enabled_modules = plan.seed_profile.default_enabled_modules();
-    enabled_modules.extend(plan.modules.enable.iter().cloned());
-    let tenant_port = ServerInstallerSeedTenantPort { db };
-    let identity_port = ServerInstallerSeedIdentityPort { db };
-    let role_port = ServerInstallerSeedRolePort { db };
-    let module_port = ServerInstallerSeedModulePort {
-        db,
-        registry: build_registry(),
-        defaults: plan.seed_profile.default_enabled_modules(),
-    };
-    let outcome = execute_seed_profile(
-        SeedExecutionRequest {
-            profile: plan.seed_profile,
-            tenant: SeedTenantRequest {
-                name: plan.tenant.name.clone(),
-                slug: plan.tenant.slug.clone(),
-                domain: None,
-            },
-            enabled_modules,
-            disabled_modules: plan.modules.disable.clone(),
-            admin: None,
-            demo_customer_password: (plan.seed_profile == SeedProfile::Dev)
-                .then(|| "dev-password-123".to_string()),
-            actor: "installer".to_string(),
-        },
-        &tenant_port,
-        &identity_port,
-        &role_port,
-        &module_port,
-    )
-    .await
-    .map_err(|error| eyre!("failed to apply installer seed profile: {error}"))?;
-
-    Ok(SeedOutcome {
-        tenant_id: outcome.tenant.id,
-        tenant_slug: outcome.tenant.slug,
-        tenant_created: outcome.tenant.created,
-        enabled_modules: outcome.enabled_modules,
-        disabled_modules: outcome.disabled_modules,
-        demo_customer_created: outcome
-            .demo_customer
-            .map(|user| user.created)
-            .unwrap_or(false),
-    })
-}
-
-#[derive(Debug)]
-struct AdminOutcome {
-    user_id: Uuid,
-    email: String,
-    created: bool,
-}
-
-async fn provision_admin(
-    db: &DatabaseConnection,
-    plan: &InstallPlan,
-    tenant_id: Uuid,
-    password: &str,
-) -> Result<AdminOutcome> {
-    ensure_user_with_role(
-        db,
-        tenant_id,
-        &plan.admin.email,
-        "Super Admin",
-        password,
-        rustok_core::UserRole::SuperAdmin,
-    )
-    .await
-}
-
-async fn ensure_user_with_role(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    email: &str,
-    name: &str,
-    password: &str,
-    role: rustok_core::UserRole,
-) -> Result<AdminOutcome> {
-    let user = ensure_installer_user(
-        db,
-        &SeedUserRequest {
-            tenant_id,
-            email: email.to_string(),
-            name: name.to_string(),
-            password: password.to_string(),
-        },
-    )
-    .await?;
-    RbacService::assign_role_permissions(db, &user.id, &tenant_id, role)
-        .await
-        .map_err(|error| eyre!("failed to assign installer user role: {error}"))?;
-
-    Ok(AdminOutcome {
-        user_id: user.id,
-        email: user.email,
-        created: user.created,
-    })
-}
-
-async fn ensure_installer_user(
-    db: &DatabaseConnection,
-    request: &SeedUserRequest,
-) -> Result<SeedUser> {
-    let user = AuthUserBootstrapDbWriter::new(db.clone())
-        .ensure_user(AuthUserBootstrapRequest {
-            tenant_id: request.tenant_id,
-            email: request.email.clone(),
-            name: request.name.clone(),
-            password: request.password.clone(),
-        })
-        .await
-        .map_err(|error| {
-            eyre!(
-                "failed to provision installer user `{}`: {error}",
-                request.email
-            )
-        })?;
-
-    Ok(SeedUser {
-        id: user.id,
-        email: user.email,
-        created: true,
-    })
-}
-
-#[derive(Debug)]
-struct VerifyOutcome {
-    tenant_id: Uuid,
-    tenant_slug: String,
-    admin_user_id: Uuid,
-    enabled_modules: Vec<String>,
 }
 
 async fn verify_installation(
     db: &DatabaseConnection,
     plan: &InstallPlan,
     tenant_id: Uuid,
-) -> Result<VerifyOutcome> {
+    registry: &rustok_core::ModuleRegistry,
+) -> Result<InstallVerificationOutcome> {
     let tenant = read_installer_tenant_by_slug(db, &plan.tenant.slug)
         .await
         .map_err(|error| eyre!("failed to verify installer tenant: {error}"))?
@@ -452,12 +207,11 @@ async fn verify_installation(
         .await
         .map_err(|error| eyre!("failed to verify installer admin user: {error}"))?
         .ok_or_else(|| eyre!("installer admin `{}` was not created", plan.admin.email))?;
-    let registry = build_registry();
-    let enabled_modules = EffectiveModulePolicyService::list_enabled(db, &registry, tenant.id)
+    let enabled_modules = EffectiveModulePolicyService::list_enabled(db, registry, tenant.id)
         .await
         .map_err(|error| eyre!("failed to verify installer module enablement: {error}"))?;
 
-    Ok(VerifyOutcome {
+    Ok(InstallVerificationOutcome {
         tenant_id: tenant.id,
         tenant_slug: tenant.slug,
         admin_user_id: admin.id,
@@ -483,8 +237,8 @@ async fn read_installer_tenant_by_slug(
     };
 
     match tenant_service.read_tenant(context, request).await {
-        // treat missing tenant as create candidate; all other port errors must surface.
         Ok(tenant) => Ok(Some(tenant)),
+        // treat missing tenant as create candidate; all other port errors surface.
         Err(error) if error.kind == PortErrorKind::NotFound => Ok(None),
         Err(error) => Err(eyre!(
             "tenant read projection `{slug}` failed through TenantReadPort ({}): {}",

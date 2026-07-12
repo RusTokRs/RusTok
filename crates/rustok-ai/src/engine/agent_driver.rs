@@ -798,7 +798,7 @@ mod tests {
         limited_request.max_turns = 1;
 
         let error = driver
-            .run(&config(), limited_request, None)
+            .run(&config(), limited_request, None, None)
             .await
             .expect_err("max turn budget must stop the next model step");
         assert!(error.to_string().contains("turn"));

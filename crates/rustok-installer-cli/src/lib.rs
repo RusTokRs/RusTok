@@ -1,19 +1,16 @@
-use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_installer::{
-    evaluate_preflight, execute_seed_profile, redact_install_plan, AdminBootstrap, DatabaseConfig,
-    DatabaseEngine, InstallEnvironment, InstallPlan, InstallProfile, ModuleSelection, SecretMode,
-    SecretRef, SecretValue, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
-    SeedModulePort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
-    SeedUser, SeedUserRequest, TenantBootstrap,
+    evaluate_preflight, execute_install_apply, execute_seed_profile, redact_install_plan,
+    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions, InstallEnvironment,
+    InstallPlan, InstallProfile, ModuleSelection, SecretMode, SecretRef, SecretValue,
+    SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest, TenantBootstrap,
 };
-use rustok_installer_persistence::InstallerPersistenceService;
-use rustok_modules::ModuleLifecycleDbWriter;
-use rustok_rbac::RbacRoleAssignmentDbWriter;
+use rustok_installer_persistence::{
+    InstallerPersistenceService, SeaOrmInstallerApplyPorts, SeaOrmInstallerBootstrapPorts,
+};
 use rustok_runtime::{db_clone, RuntimeComposition};
-use rustok_tenant::{CreateTenantInput, TenantService};
 
 pub struct InstallerCommandProvider {
     runtime: RuntimeComposition,
@@ -42,6 +39,11 @@ impl CommandProvider for InstallerCommandProvider {
             ),
             CommandDescriptor::new(
                 "install",
+                "apply",
+                "Apply the typed installer plan through the shared executor",
+            ),
+            CommandDescriptor::new(
+                "install",
                 "status",
                 "Read the latest durable installer session",
             ),
@@ -52,6 +54,11 @@ impl CommandProvider for InstallerCommandProvider {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("install", "plan") => return install_plan_command(&request.args),
             ("install", "preflight") => return install_preflight_command(&request.args),
+            ("install", "apply") => {
+                return self
+                    .install_apply_command(&request.args, request.dry_run)
+                    .await
+            }
             ("install", "status") => return self.install_status_command().await,
             ("seed", "apply") => {}
             _ => {
@@ -96,14 +103,8 @@ impl CommandProvider for InstallerCommandProvider {
             password: password.clone(),
         });
         let registry = rustok_distribution::build_registry();
-        let tenant_port = TenantPort { db: db.clone() };
-        let identity_port = IdentityPort { db: db.clone() };
-        let role_port = RolePort { db: db.clone() };
-        let module_port = ModulePort {
-            db: db.clone(),
-            registry: &registry,
-            defaults: profile.default_enabled_modules(),
-        };
+        let ports =
+            SeaOrmInstallerBootstrapPorts::new(db, &registry, profile.default_enabled_modules());
         let result = execute_seed_profile(
             SeedExecutionRequest {
                 profile,
@@ -114,10 +115,10 @@ impl CommandProvider for InstallerCommandProvider {
                 demo_customer_password: Some(password),
                 actor: "rustok-cli seed apply".to_string(),
             },
-            &tenant_port,
-            &identity_port,
-            &role_port,
-            &module_port,
+            &ports,
+            &ports,
+            &ports,
+            &ports,
         )
         .await
         .map_err(failed)?;
@@ -126,6 +127,37 @@ impl CommandProvider for InstallerCommandProvider {
 }
 
 impl InstallerCommandProvider {
+    async fn install_apply_command(
+        &self,
+        args: &serde_json::Value,
+        dry_run: bool,
+    ) -> CliCoreResult<CommandOutcome> {
+        let plan = parse_install_plan(args)?;
+        let report = evaluate_preflight(&plan);
+        if dry_run {
+            return Ok(
+                CommandOutcome::success("Installer apply dry run completed").with_data(
+                    serde_json::json!({
+                        "passed": report.passed(),
+                        "report": report,
+                        "redacted_plan": redact_install_plan(&plan),
+                    }),
+                ),
+            );
+        }
+        if !report.passed() {
+            return Err(failed("installer preflight failed"));
+        }
+
+        let registry = rustok_distribution::build_registry();
+        let ports = SeaOrmInstallerApplyPorts::new(&registry);
+        let output = execute_install_apply(&ports, plan, parse_apply_options(args)?)
+            .await
+            .map_err(failed)?;
+        Ok(CommandOutcome::success("Installer apply completed")
+            .with_data(serde_json::to_value(output).map_err(failed)?))
+    }
+
     async fn install_status_command(&self) -> CliCoreResult<CommandOutcome> {
         let db = db_clone(
             self.runtime
@@ -152,94 +184,6 @@ impl InstallerCommandProvider {
                 })),
             ),
         }
-    }
-}
-
-struct TenantPort {
-    db: sea_orm::DatabaseConnection,
-}
-struct IdentityPort {
-    db: sea_orm::DatabaseConnection,
-}
-struct RolePort {
-    db: sea_orm::DatabaseConnection,
-}
-struct ModulePort<'a> {
-    db: sea_orm::DatabaseConnection,
-    registry: &'a rustok_core::ModuleRegistry,
-    defaults: Vec<String>,
-}
-
-#[async_trait::async_trait]
-impl SeedTenantPort for TenantPort {
-    async fn ensure_seed_tenant(
-        &self,
-        request: SeedTenantRequest,
-    ) -> Result<SeedTenant, SeedExecutionError> {
-        let (tenant, created) = TenantService::new(self.db.clone())
-            .ensure_tenant(CreateTenantInput {
-                name: request.name,
-                slug: request.slug,
-                domain: request.domain,
-            })
-            .await
-            .map_err(seed_error)?;
-        Ok(SeedTenant {
-            id: tenant.id,
-            slug: tenant.slug,
-            created,
-        })
-    }
-}
-#[async_trait::async_trait]
-impl SeedIdentityPort for IdentityPort {
-    async fn ensure_seed_user(
-        &self,
-        request: SeedUserRequest,
-    ) -> Result<SeedUser, SeedExecutionError> {
-        let user = AuthUserBootstrapDbWriter::new(self.db.clone())
-            .ensure_user(AuthUserBootstrapRequest {
-                tenant_id: request.tenant_id,
-                email: request.email,
-                name: request.name,
-                password: request.password,
-            })
-            .await
-            .map_err(seed_error)?;
-        Ok(SeedUser {
-            id: user.id,
-            email: user.email,
-            created: user.created,
-        })
-    }
-}
-#[async_trait::async_trait]
-impl SeedRolePort for RolePort {
-    async fn assign_seed_role(
-        &self,
-        tenant_id: uuid::Uuid,
-        user_id: uuid::Uuid,
-        role: rustok_core::UserRole,
-    ) -> Result<(), SeedExecutionError> {
-        RbacRoleAssignmentDbWriter::new(self.db.clone())
-            .assign_role_permissions(tenant_id, user_id, role)
-            .await
-            .map_err(seed_error)
-    }
-}
-#[async_trait::async_trait]
-impl SeedModulePort for ModulePort<'_> {
-    async fn set_seed_module_enabled(
-        &self,
-        tenant_id: uuid::Uuid,
-        module_slug: &str,
-        enabled: bool,
-        actor: &str,
-    ) -> Result<(), SeedExecutionError> {
-        ModuleLifecycleDbWriter::new(self.db.clone(), self.registry, self.defaults.clone())
-            .toggle(tenant_id, module_slug, enabled, actor)
-            .await
-            .map_err(seed_error)
     }
 }
 
@@ -272,6 +216,29 @@ fn install_preflight_command(args: &serde_json::Value) -> CliCoreResult<CommandO
             "redacted_plan": redact_install_plan(&plan),
         })),
     )
+}
+
+fn parse_apply_options(args: &serde_json::Value) -> Result<InstallApplyOptions, CliCoreError> {
+    let options = &args["options"];
+    let lock_ttl_secs = option(options, "lock_ttl_secs")
+        .map(|value| {
+            value
+                .parse::<i64>()
+                .map_err(|_| input("--lock-ttl-secs must be a positive integer number of seconds"))
+        })
+        .transpose()?
+        .unwrap_or(InstallApplyOptions::default().lock_ttl_secs);
+    if lock_ttl_secs < 1 {
+        return Err(input(
+            "--lock-ttl-secs must be a positive integer number of seconds",
+        ));
+    }
+    Ok(InstallApplyOptions {
+        lock_owner: option(options, "lock_owner")
+            .unwrap_or_else(|| "rustok-cli install apply".to_string()),
+        lock_ttl_secs,
+        pg_admin_url: option(options, "pg_admin_url"),
+    })
 }
 
 fn parse_install_plan(args: &serde_json::Value) -> Result<InstallPlan, CliCoreError> {
@@ -374,10 +341,6 @@ fn failed(error: impl std::fmt::Display) -> CliCoreError {
         message: error.to_string(),
     }
 }
-fn seed_error(error: impl std::fmt::Display) -> SeedExecutionError {
-    SeedExecutionError::Dependency(error.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::{command_provider, RuntimeComposition};
@@ -403,6 +366,31 @@ mod tests {
             .expect("plan command should not require a database runtime");
 
         assert_eq!(outcome.exit_code, 0);
+        assert!(!outcome.data.to_string().contains("admin12345"));
+        assert!(!outcome.data.to_string().contains("rustok:secret"));
+    }
+
+    #[tokio::test]
+    async fn apply_dry_run_uses_shared_preflight_without_runtime_database() {
+        let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
+        let provider = command_provider(&runtime);
+        let outcome = provider
+            .execute(CommandRequest {
+                namespace: "install".to_string(),
+                name: "apply".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "database_url": "postgres://rustok:secret@localhost/rustok",
+                        "admin_password": "admin12345"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect("apply dry run should not require a database runtime");
+
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.data["passed"], serde_json::json!(true));
         assert!(!outcome.data.to_string().contains("admin12345"));
         assert!(!outcome.data.to_string().contains("rustok:secret"));
     }

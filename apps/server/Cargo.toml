@@ -165,7 +165,7 @@ bytes = "1.0"
 ipnet = "2.12"
 url = "2.5"
 
-# Loco extras
+# Server migration and schema composition
 rustok-migrations = { path = "../../crates/rustok-migrations" }
 sea-orm-migration.workspace = true
 

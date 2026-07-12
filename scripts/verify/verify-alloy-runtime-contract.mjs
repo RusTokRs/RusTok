@@ -207,7 +207,7 @@ hasAll(axumRoutes, [
 
 const locoRoutes = read('crates/alloy/src/controllers/mod.rs');
 hasAll(locoRoutes, [
-  'LOCO_EXECUTION_HISTORY_ROUTES: &[&str] = &["/executions", "/scripts/{id}/executions"]',
+  'AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES',
   'list_recent_executions',
   'list_script_executions'
 ], 'loco routes');

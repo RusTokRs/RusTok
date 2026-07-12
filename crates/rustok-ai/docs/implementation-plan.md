@@ -47,7 +47,7 @@ the platform owner removes that coupling.
 | Deployment-owned provider targets | `in_progress` | `ProviderTargetId`, deployment catalog, GraphQL/native/Next target selection, and the irreversible profile migration are implemented. Still required: deployment configuration fixtures and rejection/parity tests for every non-catalogued target. |
 | Secret boundary | `in_progress` | Resolver policy, rotation invalidation, resolver emulator tests, and no secret values in transport/telemetry. |
 | Agent approvals and restart | `in_progress` | A model turn now persists a durable `approval_batch_id` for all sensitive calls, claims each approval with compare-and-set, and migration-tests the legacy backfill. Still required: failure-recovery transaction coverage and persisted-history restart evidence. |
-| Streaming/cancellation | `in_progress` | Cancellation tokens, `cancelled` state, per-run monotonic event sequences, hub-side duplicate-terminal suppression, and Rig tool-call assembly are implemented. Still required: usage mapping where the provider exposes it and cassette coverage. |
+| Streaming/cancellation | `in_progress` | Cancellation tokens, `cancelled` state, per-run monotonic event sequences, hub-side duplicate-terminal suppression, Rig tool-call assembly, and final-response token usage mapping are implemented. Still required: protocol cassette coverage. |
 | Generic host contribution | `blocked_platform` | Platform-owned manifest/runtime extension removes direct AI imports and construction from `apps/server`. |
 | Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
 
@@ -79,6 +79,8 @@ The final policy check occurs immediately before an approved MCP invocation.
 - `cargo test -p rustok-ai --features server metrics::tests direct::tests service::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server migrations::m20260710_000001_rig_provider_profiles::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::agent_driver::tests -- --nocapture`
+- `cargo test -p rustok-ai --features server service::tests::approval_batch_recovery -- --nocapture`
+- `cargo test -p rustok-ai --features server engine::inference::usage_tests streaming::tests::preserves_usage_payload graphql::types::stream_usage_tests -- --nocapture`
 - `cargo test -p rustok-secrets`
 - `cargo test -p rustok-ai --features server,graphql --lib`
 - Next admin typecheck/lint and Leptos native/GraphQL target-catalog parity tests

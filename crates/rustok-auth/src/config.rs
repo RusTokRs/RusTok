@@ -26,7 +26,7 @@ pub enum JwtAlgorithm {
 /// Auth configuration — framework-agnostic.
 ///
 /// The server is responsible for constructing this from whatever config source
-/// it uses (Loco YAML, env vars, etc.). `rustok-auth` never reads config files.
+/// it uses (YAML, environment variables, etc.). `rustok-auth` never reads config files.
 #[derive(Debug, Clone)]
 pub struct AuthConfig {
     pub secret: String,

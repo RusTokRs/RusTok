@@ -26,8 +26,8 @@ use secrecy::ExposeSecret;
 use crate::{
     model::{
         AiProviderConfig, ChatMessage, ChatMessageRole, ProviderChatRequest, ProviderChatResponse,
-        ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter, ProviderTestResult,
-        ProviderStructuredRequest, ToolCall,
+        ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent,
+        ProviderTestResult, ProviderUsage, ProviderStructuredRequest, ToolCall,
     },
     AiError, AiResult,
 };
@@ -555,19 +555,17 @@ async fn stream_with<M: CompletionModel>(
         .as_ref()
         .and_then(|value| serde_json::to_value(value).ok())
         .unwrap_or_else(|| serde_json::json!({"provider": provider, "streaming": true}));
+    if let Some(usage) = extract_usage(&raw_payload) {
+        if let Some(emitter) = &emitter {
+            emitter.emit(ProviderStreamEvent::Usage(usage));
+        }
+    }
     Ok(map_response(
         stream.choice.into_iter().collect(),
         stream.message_id,
         raw_payload,
         provider,
     ))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ProviderUsage {
-    input_tokens: u64,
-    output_tokens: u64,
-    total_tokens: u64,
 }
 
 fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage> {

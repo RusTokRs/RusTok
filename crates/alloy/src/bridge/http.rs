@@ -5,7 +5,7 @@ use rustok_sandbox::rhai::RhaiHostExtension;
 use rustok_sandbox::{
     CapabilityCall, CapabilityName, SandboxError, SandboxHost, SandboxRequest, SandboxSubject,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::utils::{dynamic_to_json, json_to_dynamic};
 

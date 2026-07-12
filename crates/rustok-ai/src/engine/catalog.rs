@@ -103,42 +103,6 @@ pub(crate) enum ProviderIntegration {
 }
 
 impl ProviderIntegration {
-    const fn from_static_slug(slug: &str) -> Self {
-        match slug {
-            "openai" => Self::OpenAi,
-            "openai_compatible" => Self::OpenAiCompatible,
-            "anthropic" => Self::Anthropic,
-            "azure_openai" => Self::AzureOpenAi,
-            "chatgpt" => Self::ChatGpt,
-            "github_copilot" => Self::GithubCopilot,
-            "cohere" => Self::Cohere,
-            "deepseek" => Self::DeepSeek,
-            "galadriel" => Self::Galadriel,
-            "gemini" => Self::Gemini,
-            "groq" => Self::Groq,
-            "hugging_face" => Self::HuggingFace,
-            "hyperbolic" => Self::Hyperbolic,
-            "llamafile" => Self::Llamafile,
-            "minimax" => Self::MiniMax,
-            "mira" => Self::Mira,
-            "mistral" => Self::Mistral,
-            "moonshot" => Self::Moonshot,
-            "ollama" => Self::Ollama,
-            "openrouter" => Self::OpenRouter,
-            "perplexity" => Self::Perplexity,
-            "together" => Self::Together,
-            "voyage_ai" => Self::VoyageAi,
-            "xai" => Self::Xai,
-            "xiaomi_mimo" => Self::XiaomiMimo,
-            "zai" => Self::Zai,
-            "aws_bedrock" => Self::AwsBedrock,
-            "vertex_ai" => Self::VertexAi,
-            "gemini_grpc" => Self::GeminiGrpc,
-            "fastembed" => Self::Fastembed,
-            _ => panic!("unknown provider integration slug"),
-        }
-    }
-
     pub(crate) fn from_slug(slug: &ProviderSlug) -> Option<Self> {
         provider_catalog_entry(slug).map(|entry| entry.integration)
     }
@@ -493,9 +457,9 @@ const EMBED_RERANK: &[ProviderFeature] = &[ProviderFeature::Embeddings, Provider
 const EMBEDDINGS: &[ProviderFeature] = &[ProviderFeature::Embeddings];
 
 macro_rules! entry {
-    ($slug:literal, $name:literal, $features:expr, $settings:expr, $credentials:expr) => {
+    ($integration:path, $slug:literal, $name:literal, $features:expr, $settings:expr, $credentials:expr) => {
         ProviderCatalogEntry {
-            integration: ProviderIntegration::from_static_slug($slug),
+            integration: $integration,
             slug: $slug,
             display_name: $name,
             features: $features,
@@ -508,54 +472,59 @@ macro_rules! entry {
 }
 
 static CATALOG: &[ProviderCatalogEntry] = &[
-    entry!("openai", "OpenAI", CHAT_EMBED_IMAGE, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::OpenAi, "openai", "OpenAI", CHAT_EMBED_IMAGE, BASE_URL, API_KEY),
     entry!(
+        ProviderIntegration::OpenAiCompatible,
         "openai_compatible",
         "OpenAI-compatible",
         CHAT_EMBED_IMAGE,
         BASE_URL,
         API_KEY
     ),
-    entry!("anthropic", "Anthropic", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Anthropic, "anthropic", "Anthropic", CHAT, BASE_URL, API_KEY),
     entry!(
+        ProviderIntegration::AzureOpenAi,
         "azure_openai",
         "Azure OpenAI",
         CHAT_EMBED,
         AZURE_OPENAI_SETTINGS,
         API_KEY
     ),
-    entry!("chatgpt", "ChatGPT", CHAT, BASE_URL, TOKEN),
+    entry!(ProviderIntegration::ChatGpt, "chatgpt", "ChatGPT", CHAT, BASE_URL, TOKEN),
     entry!(
+        ProviderIntegration::GithubCopilot,
         "github_copilot",
         "GitHub Copilot",
         CHAT_EMBED,
         BASE_URL,
         TOKEN
     ),
-    entry!("cohere", "Cohere", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!("deepseek", "DeepSeek", CHAT, BASE_URL, API_KEY),
-    entry!("galadriel", "Galadriel", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Cohere, "cohere", "Cohere", CHAT_EMBED, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::DeepSeek, "deepseek", "DeepSeek", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Galadriel, "galadriel", "Galadriel", CHAT, BASE_URL, API_KEY),
     entry!(
+        ProviderIntegration::Gemini,
         "gemini",
         "Google Gemini",
         CHAT_EMBED_IMAGE,
         BASE_URL,
         API_KEY
     ),
-    entry!("groq", "Groq", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Groq, "groq", "Groq", CHAT, BASE_URL, API_KEY),
     entry!(
+        ProviderIntegration::HuggingFace,
         "hugging_face",
         "Hugging Face",
         CHAT_IMAGE,
         BASE_URL,
         API_KEY
     ),
-    entry!("hyperbolic", "Hyperbolic", CHAT, BASE_URL, API_KEY),
-    entry!("llamafile", "Llamafile", CHAT_EMBED, LOCAL_URL, &[]),
-    entry!("minimax", "MiniMax", CHAT, BASE_URL, API_KEY),
-    entry!("mira", "Mira", CHAT, BASE_URL, API_KEY),
-    entry!("mistral", "Mistral", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!("moonshot", "Moonshot", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Hyperbolic, "hyperbolic", "Hyperbolic", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Llamafile, "llamafile", "Llamafile", CHAT_EMBED, LOCAL_URL, &[]),
+    entry!(ProviderIntegration::MiniMax, "minimax", "MiniMax", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Mira, "mira", "Mira", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Mistral, "mistral", "Mistral", CHAT_EMBED, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Moonshot, "moonshot", "Moonshot", CHAT, BASE_URL, API_KEY),
     ProviderCatalogEntry {
         integration: ProviderIntegration::Ollama,
         slug: "ollama",
@@ -566,22 +535,24 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         default_settings: OLLAMA_DEFAULTS,
         compiled_in: true,
     },
-    entry!("openrouter", "OpenRouter", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!("perplexity", "Perplexity", CHAT, BASE_URL, API_KEY),
-    entry!("together", "Together AI", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!("voyage_ai", "Voyage AI", EMBED_RERANK, BASE_URL, API_KEY),
-    entry!("xai", "xAI", CHAT_IMAGE, BASE_URL, API_KEY),
-    entry!("xiaomi_mimo", "Xiaomi MiMo", CHAT, BASE_URL, API_KEY),
-    entry!("zai", "Z.ai", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::OpenRouter, "openrouter", "OpenRouter", CHAT_EMBED, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Perplexity, "perplexity", "Perplexity", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Together, "together", "Together AI", CHAT_EMBED, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::VoyageAi, "voyage_ai", "Voyage AI", EMBED_RERANK, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Xai, "xai", "xAI", CHAT_IMAGE, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::XiaomiMimo, "xiaomi_mimo", "Xiaomi MiMo", CHAT, BASE_URL, API_KEY),
+    entry!(ProviderIntegration::Zai, "zai", "Z.ai", CHAT, BASE_URL, API_KEY),
     entry!(
+        ProviderIntegration::AwsBedrock,
         "aws_bedrock",
         "AWS Bedrock",
         CHAT_EMBED_IMAGE,
         AWS_SETTINGS,
         &[]
     ),
-    entry!("vertex_ai", "Google Vertex AI", CHAT, VERTEX_SETTINGS, &[]),
+    entry!(ProviderIntegration::VertexAi, "vertex_ai", "Google Vertex AI", CHAT, VERTEX_SETTINGS, &[]),
     entry!(
+        ProviderIntegration::GeminiGrpc,
         "gemini_grpc",
         "Google Gemini gRPC",
         CHAT_EMBED,

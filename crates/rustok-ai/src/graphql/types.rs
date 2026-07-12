@@ -188,6 +188,7 @@ pub enum AiRunStreamEventKindGql {
     Started,
     Delta,
     ToolCall,
+    Usage,
     Completed,
     Failed,
     Cancelled,
@@ -200,6 +201,7 @@ impl From<AiRunStreamEventKind> for AiRunStreamEventKindGql {
             AiRunStreamEventKind::Started => Self::Started,
             AiRunStreamEventKind::Delta => Self::Delta,
             AiRunStreamEventKind::ToolCall => Self::ToolCall,
+            AiRunStreamEventKind::Usage => Self::Usage,
             AiRunStreamEventKind::Completed => Self::Completed,
             AiRunStreamEventKind::Failed => Self::Failed,
             AiRunStreamEventKind::Cancelled => Self::Cancelled,
@@ -257,6 +259,13 @@ pub struct AiStreamToolCallGql {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderUsageGql {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
 pub struct AiRunStreamEventGql {
     pub session_id: Uuid,
     pub run_id: Uuid,
@@ -265,6 +274,7 @@ pub struct AiRunStreamEventGql {
     pub accumulated_content: Option<String>,
     pub error_message: Option<String>,
     pub tool_call: Option<AiStreamToolCallGql>,
+    pub usage: Option<AiProviderUsageGql>,
     pub sequence: u64,
     pub created_at: DateTime<Utc>,
 }
@@ -334,9 +344,39 @@ impl From<AiRunStreamEvent> for AiRunStreamEventGql {
                 name: value.name,
                 arguments: value.arguments.to_string(),
             }),
+            usage: value.usage.map(|value| AiProviderUsageGql {
+                input_tokens: value.input_tokens,
+                output_tokens: value.output_tokens,
+                total_tokens: value.total_tokens,
+            }),
             sequence: value.sequence,
             created_at: value.created_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod stream_usage_tests {
+    use super::AiRunStreamEventGql;
+    use crate::{AiRunStreamEvent, AiRunStreamEventKind, ProviderUsage};
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[test]
+    fn maps_usage_event_without_stringifying_token_fields() {
+        let event = AiRunStreamEventGql::from(AiRunStreamEvent {
+            session_id: Uuid::new_v4(),
+            run_id: Uuid::new_v4(),
+            event_kind: AiRunStreamEventKind::Usage,
+            content_delta: None,
+            accumulated_content: None,
+            error_message: None,
+            tool_call: None,
+            usage: Some(ProviderUsage { input_tokens: 2, output_tokens: 3, total_tokens: 5 }),
+            sequence: 1,
+            created_at: Utc::now(),
+        });
+        assert_eq!(event.usage.unwrap().total_tokens, 5);
     }
 }
 

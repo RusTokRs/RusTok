@@ -85,5 +85,9 @@ fn is_empty(value: Dynamic) -> bool {
 }
 
 fn coalesce(value: Dynamic, default: Dynamic) -> Dynamic {
-    if value.is_unit() { default } else { value }
+    if value.is_unit() {
+        default
+    } else {
+        value
+    }
 }

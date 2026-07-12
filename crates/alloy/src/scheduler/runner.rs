@@ -5,7 +5,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use cron::Schedule;
 use tokio::sync::RwLock;
-use tokio::time::{Duration, interval};
+use tokio::time::{interval, Duration};
 use tracing::{error, info, warn};
 
 use crate::context::{ExecutionContext, ExecutionPhase};

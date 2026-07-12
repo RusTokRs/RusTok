@@ -51,7 +51,7 @@ Target state:
 | WebSocket channels | Custom Axum WS path is used, not Loco channels | `apps/server` + channel/auth modules |
 | Module-owned API composition | GraphQL/REST are increasingly assembled through manifests and owner-owned roots | module crates + generated server composition |
 | Leptos server-function context | Migration to `rustok_api::HostRuntimeContext` started; `index/outbox/tenant/region/comments/workflow/media/customer/channel/ai/product/seo/mcp/inventory` admin and `region/product/cart` storefront already migrated; media and AI also use host-provided typed shared handles instead of Loco `shared_store` | `rustok-api` + server context provider |
-| Installer CLI | The server parser was removed; current operator CLI covers `install plan`, `install preflight`, `install status`, and `seed apply`, while typed `install apply` waits for shared executor ports | `rustok-installer` + `rustok-installer-cli` |
+| Installer CLI | The server parser was removed; operator CLI covers `install plan`, `install preflight`, `install apply`, `install status`, and `seed apply` through shared executor ports | `rustok-installer` + `rustok-installer-cli` |
 
 ## What Still Holds Loco
 

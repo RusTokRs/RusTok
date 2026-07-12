@@ -107,9 +107,9 @@ Password: admin12345
 
 The product installer is a hybrid layer on top of `rustok-installer`.
 The production server binary does not parse `install` commands. The typed
-platform CLI provides `install plan`, `install preflight`, `install status`,
-and `seed apply`. `install apply` waits for the shared executor-port
-extraction; use this HTTP adapter for execution until then.
+platform CLI provides `install plan`, `install preflight`, `install apply`,
+`install status`, and `seed apply`. `install apply` uses the shared executor-port
+extraction; use the HTTP adapter when an interactive wizard is required.
 
 The Leptos wizard should use a thin HTTP adapter rather than duplicating
 bootstrap logic in the UI:

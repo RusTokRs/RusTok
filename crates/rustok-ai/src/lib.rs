@@ -55,7 +55,7 @@ pub use model::{
     AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage,
     ChatMessageRole, DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval,
     ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
-    ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest,
+    ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest, ProviderUsage,
     ProviderTestResult, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall,
     ToolDefinition, ToolTrace,
 };

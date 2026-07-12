@@ -215,6 +215,7 @@ type RunStreamEvent = {
   accumulatedContent?: string | null;
   errorMessage?: string | null;
   toolCall?: { id: string; name: string; arguments: string } | null;
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number } | null;
   sequence: number;
   createdAt: string;
 };
@@ -223,6 +224,12 @@ function formatStreamToolCall(
   toolCall: RunStreamEvent['toolCall']
 ): string | null {
   return toolCall ? `${toolCall.name}(${toolCall.arguments})` : null;
+}
+
+function formatStreamUsage(usage: RunStreamEvent['usage']): string | null {
+  return usage
+    ? `tokens: input ${usage.inputTokens}, output ${usage.outputTokens}, total ${usage.totalTokens}`
+    : null;
 }
 
 type DirectSubmitKind =
@@ -314,6 +321,7 @@ const BOOTSTRAP_QUERY = `
       accumulatedContent
       errorMessage
       toolCall { id name arguments }
+      usage { inputTokens outputTokens totalTokens }
       sequence
       createdAt
     }
@@ -344,6 +352,7 @@ const SESSION_QUERY = `
       accumulatedContent
       errorMessage
       toolCall { id name arguments }
+      usage { inputTokens outputTokens totalTokens }
       sequence
       createdAt
     }
@@ -360,6 +369,7 @@ const AI_SESSION_EVENTS_SUBSCRIPTION = `
       accumulatedContent
       errorMessage
       toolCall { id name arguments }
+      usage { inputTokens outputTokens totalTokens }
       sequence
       createdAt
     }
@@ -3359,6 +3369,11 @@ export function AiAdminPage(props: AiAdminPageProps) {
                               {event.accumulatedContent ??
                                 event.contentDelta ??
                                 formatStreamToolCall(event.toolCall)}
+                            </div>
+                          ) : null}
+                          {event.usage ? (
+                            <div className='mt-1 text-muted-foreground'>
+                              {formatStreamUsage(event.usage)}
                             </div>
                           ) : null}
                           {event.errorMessage ? (

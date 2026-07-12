@@ -94,6 +94,13 @@ pub struct ToolCall {
     pub arguments: serde_json::Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: ChatMessageRole,
@@ -135,6 +142,7 @@ pub struct ProviderStructuredRequest {
 pub enum ProviderStreamEvent {
     TextDelta(String),
     ToolCall(ToolCall),
+    Usage(ProviderUsage),
 }
 
 #[derive(Clone)]

@@ -2,6 +2,11 @@
 
 > ⚠️ This directory stores a **local snapshot/copy of official Loco.rs documentation** and is the canonical source for framework behavior in this repository.
 
+Status: archived. RusToK does not depend on or use Loco in the active server
+runtime. This directory is retained only as migration audit material; use the
+[Loco RS Exit Plan](../../../../../docs/architecture/loco-exit-plan.md) and
+the [server documentation](../../../README.md) for current architecture.
+
 ## Snapshot metadata
 
 - Snapshot date: **2026-02-11 (UTC)**

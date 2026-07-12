@@ -9,8 +9,12 @@ description = "SeaORM persistence adapter for RusToK installer state"
 chrono.workspace = true
 async-trait.workspace = true
 rustok-core.workspace = true
+rustok-auth.workspace = true
 rustok-installer.workspace = true
 rustok-migrations = { path = "../rustok-migrations" }
+rustok-modules.workspace = true
+rustok-rbac.workspace = true
+rustok-tenant.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

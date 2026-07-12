@@ -688,18 +688,26 @@ pub fn AiAdmin() -> impl IntoView {
                                 AiRunStreamEventKindPayload::Started => "STARTED",
                                 AiRunStreamEventKindPayload::Delta => "STREAMING",
                                 AiRunStreamEventKindPayload::ToolCall => "TOOL_CALL",
+                                AiRunStreamEventKindPayload::Usage => "USAGE",
                                 AiRunStreamEventKindPayload::Completed => "COMPLETED",
                                 AiRunStreamEventKindPayload::Failed => "FAILED",
                                 AiRunStreamEventKindPayload::Cancelled => "CANCELLED",
                                 AiRunStreamEventKindPayload::WaitingApproval => "WAITING_APPROVAL",
                             }
                             .to_string();
+                            let usage = event.usage.map(|usage| {
+                                format!(
+                                    "tokens: input {}, output {}, total {}",
+                                    usage.input_tokens, usage.output_tokens, usage.total_tokens
+                                )
+                            });
                             let content = event
                                 .accumulated_content
                                 .or(event.content_delta)
                                 .or(event.tool_call.map(|tool_call| {
                                     format!("{}({})", tool_call.name, tool_call.arguments)
                                 }))
+                                .or(usage.clone())
                                 .unwrap_or_default();
                             let is_terminal = matches!(
                                 event.event_kind,
@@ -1866,6 +1874,7 @@ pub(crate) fn stream_event_kind_label(
         model::AiRunStreamEventKindPayload::ToolCall => {
             t(locale, "ai.status.toolCall", "TOOL CALL")
         }
+        model::AiRunStreamEventKindPayload::Usage => t(locale, "ai.status.usage", "USAGE"),
         model::AiRunStreamEventKindPayload::Completed => {
             t(locale, "ai.status.completed", "COMPLETED")
         }

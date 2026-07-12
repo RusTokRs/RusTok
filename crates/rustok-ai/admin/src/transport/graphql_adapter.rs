@@ -86,6 +86,7 @@ query AiBootstrap {
     accumulatedContent
     errorMessage
     toolCall { id name arguments }
+    usage { inputTokens outputTokens totalTokens }
     sequence
     createdAt
   }
@@ -116,6 +117,7 @@ query AiSession($id: UUID!) {
     accumulatedContent
     errorMessage
     toolCall { id name arguments }
+    usage { inputTokens outputTokens totalTokens }
     sequence
     createdAt
   }
@@ -132,6 +134,7 @@ subscription AiSessionEvents($sessionId: UUID!) {
     accumulatedContent
     errorMessage
     toolCall { id name arguments }
+    usage { inputTokens outputTokens totalTokens }
     sequence
     createdAt
   }

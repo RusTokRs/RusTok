@@ -2,7 +2,7 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{Instrument, debug, warn};
+use tracing::{debug, warn, Instrument};
 
 use crate::context::ExecutionContext;
 use crate::engine::ScriptEngine;

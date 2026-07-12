@@ -9,13 +9,14 @@ secret-reference, receipt, checksum, and seed-workflow contracts. Its
 not yet describe a deployable distributed topology.
 
 The canonical apply sequencing now runs in `rustok-installer`; `apps/server`
-provides the first SeaORM/domain stage adapter for the HTTP setup surface.
-Durable session and receipt state uses the shared
-`rustok-installer-persistence` adapter rather than server models. The
-platform CLI has `install plan`, `install preflight`, `install status`, and
-seed providers, but no typed `install apply` provider yet. Therefore neither
-the server adapter nor a frontend profile is evidence that distributed
-installation is implemented.
+provides only HTTP composition for the setup surface. The shared
+`rustok-installer-persistence` adapter owns SeaORM database, durable-state,
+and bootstrap writer composition rather than server models or duplicated CLI
+adapters. The
+platform CLI has `install plan`, `install preflight`, `install apply`,
+`install status`, and seed providers. The CLI uses the same state machine with
+a shared SeaORM adapter; this is monolith bootstrap plumbing, not evidence
+that distributed installation is implemented.
 
 ## FFA/FBA boundary
 
@@ -64,16 +65,17 @@ enablement is performed afterwards.
    The durable session/receipt adapter is already outside the HTTP host in
    `rustok-installer-persistence`. Typed database, schema, persistence, seed,
    admin and verification port contracts now live in `rustok-installer`; the
-   server SeaORM adapter invokes the shared state machine. **Done when:**
+   server HTTP adapter invokes the shared state machine. **Done when:**
    server HTTP and CLI adapters invoke one executor and no server-local install
    state machine remains.
    **Verification:** installer sequencing tests using fakes plus adapter
    contract tests.
 
 3. **Register the platform CLI install provider.**
-   Add `rustok-cli install plan|preflight|apply|status` through the generated
-   CLI registry. The provider must receive `RuntimeComposition`, render
-   structured output, and use the same executor as the HTTP adapter.
+   `rustok-cli install plan|preflight|apply|status` is registered through the
+   generated CLI registry. The provider renders structured output and uses the
+   same executor as the HTTP adapter; apply opens the target database itself so
+   it can create it when requested.
    **Done when:** no `rustok-server install ...` parser or command path exists.
    **Verification:** CLI registry generation check and focused provider tests.
 

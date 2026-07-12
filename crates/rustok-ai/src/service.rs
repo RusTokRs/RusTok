@@ -1327,6 +1327,9 @@ impl AiManagementService {
                             ProviderStreamEvent::ToolCall(tool_call) => {
                                 publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
                             }
+                            ProviderStreamEvent::Usage(usage) => {
+                                publish_ai_run_usage_stream_event(session_id, run_id, usage);
+                            }
                         }
                     }
                 });
@@ -1481,6 +1484,9 @@ impl AiManagementService {
                     }
                     ProviderStreamEvent::ToolCall(tool_call) => {
                         publish_ai_run_tool_call_stream_event(session_id, run_id, tool_call);
+                    }
+                    ProviderStreamEvent::Usage(usage) => {
+                        publish_ai_run_usage_stream_event(session_id, run_id, usage);
                     }
                 }
             }

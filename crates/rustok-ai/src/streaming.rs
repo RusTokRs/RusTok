@@ -15,6 +15,7 @@ pub enum AiRunStreamEventKind {
     Started,
     Delta,
     ToolCall,
+    Usage,
     Completed,
     Failed,
     Cancelled,
@@ -31,6 +32,7 @@ pub struct AiRunStreamEvent {
     pub error_message: Option<String>,
     /// Canonical assembled tool call, when the event kind is `ToolCall`.
     pub tool_call: Option<crate::model::ToolCall>,
+    pub usage: Option<crate::model::ProviderUsage>,
     /// Monotonic per-run sequence assigned by the stream hub.
     pub sequence: u64,
     pub created_at: DateTime<Utc>,
@@ -138,6 +140,7 @@ pub fn ai_run_stream_hub() -> Arc<AiRunStreamHub> {
 mod tests {
     use super::{AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};
     use crate::model::ToolCall;
+    use crate::model::ProviderUsage;
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -156,6 +159,7 @@ mod tests {
                 accumulated_content: None,
                 error_message: None,
                 tool_call: None,
+                usage: None,
                 sequence: 0,
                 created_at: Utc::now(),
             });
@@ -183,6 +187,7 @@ mod tests {
             accumulated_content: Some("a".to_string()),
             error_message: None,
             tool_call: None,
+            usage: None,
             sequence: 0,
             created_at: Utc::now(),
         });
@@ -194,6 +199,7 @@ mod tests {
             accumulated_content: Some("b".to_string()),
             error_message: None,
             tool_call: None,
+            usage: None,
             sequence: 0,
             created_at: Utc::now(),
         });
@@ -217,6 +223,7 @@ mod tests {
                 accumulated_content: None,
                 error_message: None,
                 tool_call: None,
+                usage: None,
                 sequence: 0,
                 created_at: Utc::now(),
             }));
@@ -229,6 +236,7 @@ mod tests {
             accumulated_content: None,
             error_message: None,
             tool_call: None,
+            usage: None,
             sequence: 0,
             created_at: Utc::now(),
         }));
@@ -254,11 +262,42 @@ mod tests {
                 name: "inventory_lookup".to_string(),
                 arguments: serde_json::json!({"sku": "A-1"}),
             }),
+            usage: None,
             sequence: 0,
             created_at: Utc::now(),
         }));
         let event = hub.recent_events(Some(session_id), 1).pop().unwrap();
         assert_eq!(event.sequence, 1);
         assert_eq!(event.tool_call.unwrap().name, "inventory_lookup");
+    }
+
+    #[test]
+    fn preserves_usage_payload() {
+        let hub = AiRunStreamHub::new(8);
+        let session_id = Uuid::new_v4();
+        assert!(hub.publish(AiRunStreamEvent {
+            session_id,
+            run_id: Uuid::new_v4(),
+            event_kind: AiRunStreamEventKind::Usage,
+            content_delta: None,
+            accumulated_content: None,
+            error_message: None,
+            tool_call: None,
+            usage: Some(ProviderUsage {
+                input_tokens: 3,
+                output_tokens: 5,
+                total_tokens: 8,
+            }),
+            sequence: 0,
+            created_at: Utc::now(),
+        }));
+        assert_eq!(
+            hub.recent_events(Some(session_id), 1)[0]
+                .usage
+                .as_ref()
+                .unwrap()
+                .total_tokens,
+            8
+        );
     }
 }

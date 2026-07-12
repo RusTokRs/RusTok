@@ -559,6 +559,7 @@ pub fn publish_ai_run_stream_event(
         accumulated_content,
         error_message,
         tool_call: None,
+        usage: None,
         sequence: 0,
         created_at: Utc::now(),
     });
@@ -577,6 +578,26 @@ pub fn publish_ai_run_tool_call_stream_event(
         accumulated_content: None,
         error_message: None,
         tool_call: Some(tool_call),
+        usage: None,
+        sequence: 0,
+        created_at: Utc::now(),
+    });
+}
+
+pub fn publish_ai_run_usage_stream_event(
+    session_id: Uuid,
+    run_id: Uuid,
+    usage: crate::model::ProviderUsage,
+) {
+    ai_run_stream_hub().publish(AiRunStreamEvent {
+        session_id,
+        run_id,
+        event_kind: AiRunStreamEventKind::Usage,
+        content_delta: None,
+        accumulated_content: None,
+        error_message: None,
+        tool_call: None,
+        usage: Some(usage),
         sequence: 0,
         created_at: Utc::now(),
     });

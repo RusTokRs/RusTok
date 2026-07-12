@@ -14,7 +14,7 @@ use crate::model::{
 use crate::model::{
     AiApprovalRequestPayload, AiChatMessagePayload, AiChatSessionSummaryPayload,
     AiMetricBucketPayload, AiRecentRunPayload, AiRunStreamEventKindPayload,
-    AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiStreamToolCallPayload, AiToolCallPayload, AiToolTracePayload,
+    AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiProviderUsagePayload, AiStreamToolCallPayload, AiToolCallPayload, AiToolTracePayload,
     AiProviderCatalogEntryPayload, AiProviderFieldPayload,
 };
 
@@ -1665,6 +1665,7 @@ fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPaylo
             rustok_ai::AiRunStreamEventKind::Started => AiRunStreamEventKindPayload::Started,
             rustok_ai::AiRunStreamEventKind::Delta => AiRunStreamEventKindPayload::Delta,
             rustok_ai::AiRunStreamEventKind::ToolCall => AiRunStreamEventKindPayload::ToolCall,
+            rustok_ai::AiRunStreamEventKind::Usage => AiRunStreamEventKindPayload::Usage,
             rustok_ai::AiRunStreamEventKind::Completed => AiRunStreamEventKindPayload::Completed,
             rustok_ai::AiRunStreamEventKind::Failed => AiRunStreamEventKindPayload::Failed,
             rustok_ai::AiRunStreamEventKind::Cancelled => AiRunStreamEventKindPayload::Cancelled,
@@ -1679,6 +1680,11 @@ fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPaylo
             id: value.id,
             name: value.name,
             arguments: value.arguments.to_string(),
+        }),
+        usage: value.usage.map(|value| AiProviderUsagePayload {
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            total_tokens: value.total_tokens,
         }),
         sequence: value.sequence,
         created_at: value.created_at.to_rfc3339(),

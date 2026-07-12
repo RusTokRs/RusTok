@@ -5,4 +5,6 @@ mod persistence;
 mod seaorm_ports;
 
 pub use persistence::InstallerPersistenceService;
-pub use seaorm_ports::SeaOrmInstallerPorts;
+pub use seaorm_ports::{
+    SeaOrmInstallerApplyPorts, SeaOrmInstallerBootstrapPorts, SeaOrmInstallerPorts,
+};

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use axum::{
-    Router,
     routing::{delete, get, post, put},
+    Router,
 };
 
 use crate::storage::ScriptRegistry;

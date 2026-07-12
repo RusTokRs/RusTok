@@ -288,6 +288,7 @@ pub enum AiRunStreamEventKindPayload {
     Started,
     Delta,
     ToolCall,
+    Usage,
     Completed,
     Failed,
     Cancelled,
@@ -302,6 +303,13 @@ pub struct AiStreamToolCallPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiProviderUsagePayload {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiRunStreamEventPayload {
     pub session_id: String,
@@ -311,6 +319,7 @@ pub struct AiRunStreamEventPayload {
     pub accumulated_content: Option<String>,
     pub error_message: Option<String>,
     pub tool_call: Option<AiStreamToolCallPayload>,
+    pub usage: Option<AiProviderUsagePayload>,
     pub sequence: u64,
     pub created_at: String,
 }

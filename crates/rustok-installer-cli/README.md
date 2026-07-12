@@ -8,10 +8,13 @@ preflight and seed semantics to `rustok-installer`.
 
 - `rustok-cli install plan` renders a validated, redacted plan without DB access.
 - `rustok-cli install preflight` evaluates installer policy without mutation.
+- `rustok-cli install apply` runs the typed plan through the same installer
+  state machine used by HTTP, including database readiness, schema, seed,
+  admin provisioning, verification, and durable receipts.
 - `rustok-cli install status` reads the latest durable session through
   `rustok-installer-persistence`.
 - `rustok-cli seed apply` applies the typed seed workflow through owner-owned
   database writers.
 
-`install apply` is intentionally not exposed until the shared executor-port
-layer replaces the current HTTP-host composition.
+`install apply --dry-run` validates and renders preflight evidence without
+mutating the target database.

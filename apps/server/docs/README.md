@@ -151,12 +151,13 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - GraphQL auth surface `me.permissions` returns a request-scoped RBAC snapshot for headless/mobile UI gating; this does not replace server-side permission enforcement on mutations/queries.
 - MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`) and Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`) with the same persisted token binding, policy enforcement, and audit trail. Scaffold tools in remote transport use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
 - The hybrid product installer is introduced through `rustok-installer` and
-  `rustok-installer-persistence`. `/api/install/*` delegates plan, receipt,
-  preflight and execution semantics to these shared crates; the web wizard
+  `rustok-installer-persistence`. The latter owns the shared SeaORM database,
+  durable-state, and bootstrap-writer adapter. `/api/install/*` delegates plan,
+  receipt, preflight and execution semantics to these shared crates; the web wizard
   must not become a separate bootstrap implementation. The server binary has
   no `install` parser. `rustok-installer-cli` owns `install plan`, `install
-  preflight`, `install status`, and `seed apply`; typed `install apply` follows
-  the shared executor-port extraction.
+  preflight`, `install apply`, `install status`, and `seed apply`; apply uses
+  the shared executor-port extraction rather than server code.
 - The HTTP adapter for the Leptos wizard is available as a thin surface on top of the same
   pipeline: `GET /api/install/status`, `POST /api/install/plan`,
   `POST /api/install/preflight`, `POST /api/install/apply`,

@@ -4,8 +4,8 @@ unmaintained = "workspace"
 unsound = "workspace"
 git-fetch-with-cli = true
 ignore = [
-    "RUSTSEC-2026-0194", # quick-xml via loco-rs -> opendal ^0.54; fixed quick-xml requires upstream update
-    "RUSTSEC-2026-0195", # quick-xml via loco-rs -> opendal ^0.54; fixed quick-xml requires upstream update
+    "RUSTSEC-2026-0194", # transitive quick-xml advisory; fixed upstream version is pending
+    "RUSTSEC-2026-0195", # transitive quick-xml advisory; fixed upstream version is pending
 ]
 
 [licenses]

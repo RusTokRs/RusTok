@@ -1,5 +1,11 @@
 ﻿# RusToK Core Periodic Verification Plan
 
+Status: archived historical checklist. Several commands below refer to the
+pre-Axum host layout and are retained for migration audit only. Use the
+[platform verification documentation](../../../docs/verification/README.md),
+the [Loco RS Exit Plan](../../../docs/architecture/loco-exit-plan.md), and the
+repository verification scripts as the current source of truth.
+
 **Creation date:** 2026-03-12
 **Verification frequency:** with each significant PR / on schedule
 
