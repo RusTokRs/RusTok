@@ -46,8 +46,8 @@ pub fn validate_module_toggle(
         let missing = module
             .dependencies
             .iter()
-            .filter(|dependency| !enabled_modules.contains(*dependency))
-            .cloned()
+            .filter(|dependency| !enabled_modules.contains(&dependency.slug))
+            .map(|dependency| dependency.slug.clone())
             .collect::<Vec<_>>();
         if !missing.is_empty() {
             return Err(ModuleToggleValidationError::MissingDependencies(missing));
@@ -60,7 +60,7 @@ pub fn validate_module_toggle(
                 candidate
                     .dependencies
                     .iter()
-                    .any(|dependency| dependency == module_slug)
+                    .any(|dependency| dependency.slug == module_slug)
             })
             .map(|candidate| candidate.slug.clone())
             .collect::<Vec<_>>();

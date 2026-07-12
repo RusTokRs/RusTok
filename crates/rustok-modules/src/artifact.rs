@@ -438,6 +438,28 @@ mod tests {
     }
 
     #[test]
+    fn dependencies_require_unique_non_self_semver_constraints() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.dependencies = vec![ModuleDependencyConstraint {
+            slug: "sample_module".to_string(),
+            version_requirement: "^1".to_string(),
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidDependency(_))
+        ));
+
+        descriptor.dependencies = vec![ModuleDependencyConstraint {
+            slug: "base_module".to_string(),
+            version_requirement: "not-a-version".to_string(),
+        }];
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidDependencyVersionRequirement { .. })
+        ));
+    }
+
+    #[test]
     fn fork_must_keep_slug_and_increment_version() {
         let original = ArtifactReleaseDraft {
             descriptor: descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a'),

@@ -6,7 +6,9 @@ use rustok_core::{ModuleKind, ModuleRegistry};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleRuntimeBinding};
+use crate::{
+    ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleDependencyConstraint, ModuleRuntimeBinding,
+};
 
 /// Whether a definition is permanently active platform infrastructure or can
 /// be enabled for an installation scope.
@@ -44,7 +46,7 @@ pub struct ModuleDefinition {
     pub kind: ModuleDefinitionKind,
     pub source: ModuleDefinitionSource,
     #[serde(default)]
-    pub dependencies: Vec<String>,
+    pub dependencies: Vec<ModuleDependencyConstraint>,
     #[serde(default)]
     pub permissions: Vec<String>,
     #[serde(default)]
@@ -71,7 +73,10 @@ impl ModuleDefinition {
             dependencies: module
                 .dependencies()
                 .iter()
-                .map(|dependency| (*dependency).to_string())
+                .map(|dependency| ModuleDependencyConstraint {
+                    slug: (*dependency).to_string(),
+                    version_requirement: "*".to_string(),
+                })
                 .collect(),
             permissions: module
                 .permissions()
@@ -94,7 +99,7 @@ impl ModuleDefinition {
             source: ModuleDefinitionSource::Artifact {
                 release: descriptor.release_ref(),
             },
-            dependencies: Vec::new(),
+            dependencies: descriptor.dependencies.clone(),
             permissions: Vec::new(),
             settings_schema: None,
             bindings: descriptor.bindings.clone(),

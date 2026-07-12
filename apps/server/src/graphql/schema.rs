@@ -112,7 +112,7 @@ pub fn build_schema(
     #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
     let ai_role_slug_provider = rustok_ai::AiGraphqlRoleSlugProviderHandle::new(Arc::new(
-        crate::services::ai_graphql_role_provider::ServerAiGraphqlRoleSlugProvider::new(db.clone()),
+        rustok_ai::SeaOrmAiGraphqlRoleSlugProvider::new(db.clone()),
     ));
     let flex_runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),

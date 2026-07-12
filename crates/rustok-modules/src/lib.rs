@@ -3,6 +3,7 @@
 mod artifact;
 mod contracts;
 mod definition;
+mod dependency;
 mod dispatcher;
 mod executor;
 mod installation;
@@ -32,6 +33,9 @@ pub use contracts::{
 pub use definition::{
     ModuleDefinition, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
     ModuleDefinitionSource,
+};
+pub use dependency::{
+    ModuleDependencyLockError, ModuleDependencyLockGraph, ModuleDependencyLockNode,
 };
 pub use dispatcher::{
     ArtifactLifecycleDispatch, ArtifactLifecycleExecutor, ModuleDispatchError,

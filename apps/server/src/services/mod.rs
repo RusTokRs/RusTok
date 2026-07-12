@@ -1,4 +1,3 @@
-pub mod ai_graphql_role_provider;
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
