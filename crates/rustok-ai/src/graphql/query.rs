@@ -2,16 +2,16 @@ use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use rustok_api::graphql::GraphQLError;
 use rustok_api::AuthContext;
+use rustok_api::graphql::GraphQLError;
 
 use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,
     ensure_ai_task_profile_read,
     types::{
         AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderCatalogEntryGql,
-        AiProviderProfileGql, AiProviderTargetGql, AiRecentRunGql, AiRunStreamEventGql, AiRuntimeMetricsGql,
-        AiTaskProfileGql, AiToolProfileGql, AiToolTraceGql,
+        AiProviderProfileGql, AiProviderTargetGql, AiRecentRunGql, AiRunStreamEventGql,
+        AiRuntimeMetricsGql, AiTaskProfileGql, AiToolProfileGql, AiToolTraceGql,
     },
 };
 
@@ -31,14 +31,18 @@ impl AiQuery {
     ) -> Result<Vec<AiProviderCatalogEntryGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_read(auth)?;
-        Ok(crate::provider_catalog().iter().map(Into::into).collect())
+        Ok(crate::provider_catalog().map(Into::into).collect())
     }
 
     async fn ai_provider_targets(&self, ctx: &Context<'_>) -> Result<Vec<AiProviderTargetGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_read(auth)?;
         let runtime = ctx.data::<crate::AiHostRuntime>()?;
-        Ok(runtime.provider_targets().entries().map(Into::into).collect())
+        Ok(runtime
+            .provider_targets()
+            .entries()
+            .map(Into::into)
+            .collect())
     }
 
     async fn ai_runtime_metrics(&self, ctx: &Context<'_>) -> Result<AiRuntimeMetricsGql> {

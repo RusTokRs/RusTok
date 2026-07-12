@@ -124,10 +124,6 @@ assertContains(nativeServerFunctions, "rustok_commerce::storefront_checkout_runt
 assertContains(nativeServerFunctions, "expect_context::<HostRuntimeContext>()", `${nativeServerFunctionsPath}: payment native server-functions adapter must use the host runtime context`);
 assertContains(nativeServerFunctions, "shared_get::<TransactionalEventBus>()", `${nativeServerFunctionsPath}: payment native server-functions adapter must receive the event bus through the host runtime context`);
 assertContains(nativeServerFunctions, "runtime_ctx.db_clone()", `${nativeServerFunctionsPath}: payment native server-functions adapter must receive DB through the host runtime context`);
-assertNotContains(nativeServerFunctions, "loco_rs", `${nativeServerFunctionsPath}: payment native server-functions adapter must not depend on Loco AppContext`);
-assertNotContains(nativeServerFunctions, "rustok_outbox::loco", `${nativeServerFunctionsPath}: payment native server-functions adapter must not use the outbox Loco adapter`);
-assertNotContains(cargo, "loco-rs", `${cargoPath}: payment storefront package must not depend on Loco`);
-assertNotContains(cargo, "loco-adapter", `${cargoPath}: payment storefront package must not enable the outbox Loco adapter`);
 
 for (const marker of [
   "PaymentView",

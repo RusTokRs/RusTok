@@ -49,7 +49,7 @@
 
 - `rustok-comments-admin` is mounted in Leptos Admin as a module-owned UI at `/modules/comments`.
 - The internal data-layer for the moderation surface is built through `admin/src/transport/mod.rs` facade and `admin/src/transport/native_server_adapter.rs` native `#[server]` calls over `CommentsService`.
-- The native admin transport consumes host-provided `rustok_api::HostRuntimeContext` for DB access and must not depend on Loco `AppContext`.
+- The native admin transport consumes host-provided `rustok_api::HostRuntimeContext` for DB access and must not depend on a host-wide `AppContext`.
 - Selected-thread and locale route/query policy belongs to `admin/src/core.rs` and uses shared `UiRouteQueryUpdate`; the Leptos adapter only applies the ready host writer update.
 - Fast boundary guardrail: `npm run verify:comments:admin-boundary` checks the FFA split and documented native-only transport exception.
 - A separate GraphQL/REST fallback for this UI is not added: `rustok-comments` did not have its own legacy transport surface, and this is a documented exception from the general dual-path rule.

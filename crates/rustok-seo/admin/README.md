@@ -42,5 +42,5 @@ Entity-specific SEO authoring now lives in owner-module admin packages.
 - depends on `rustok-seo` for the service and DTO contracts
 - runs inside `apps/admin` through manifest-driven module discovery
 - keeps the UI package split into `core/transport/ui/leptos/sections/i18n`, so the module-owned admin surface has an FFA boundary while staying route-driven and avoiding a monolithic file
-- builds native SSR services from `HostRuntimeContext` DB, typed `TransactionalEventBus`, and `ModuleRuntimeExtensions` host handles instead of package-local Loco context or outbox Loco adapter wiring
+- builds native SSR services from `HostRuntimeContext` DB, typed `TransactionalEventBus`, and `ModuleRuntimeExtensions` host handles instead of package-local context or framework-specific outbox adapter wiring
 - now owns the full infrastructure control-plane surface for bulk jobs, bulk remediation modes, redirects, sitemaps, robots preview, tenant defaults, SEO templates, and diagnostics

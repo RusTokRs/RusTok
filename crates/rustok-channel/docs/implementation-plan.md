@@ -12,7 +12,7 @@ The built-in host fast-path is retained: explicit selectors -> built-in host sli
 
 Server middleware supplies locale and OAuth-app request facts, and the cache key
 includes both. The admin package keeps a Leptos-free core, owner transport
-facade, native server adapter, and REST secondary adapter; it is Loco-free.
+facade, native server adapter, and REST secondary adapter; it is host-neutral.
 
 ## FFA/FBA boundary
 

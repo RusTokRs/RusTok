@@ -19,7 +19,7 @@ Module-owned storefront UI package for `rustok-payment`.
 
 - `src/core.rs` — Leptos-free payment collection card view-model, fallback policy, and action-label policy.
 - `src/transport.rs` — framework-free payment collection create/reuse request DTO, command metadata, and normalization facade used by host orchestration during the compatibility window.
-- `src/transport/native_server_adapter/server_functions.rs` — native payment collection/refund server-function adapter backed by `HostRuntimeContext` DB/event-bus handles; it has no Loco runtime or outbox Loco-adapter dependency.
+- `src/transport/native_server_adapter/server_functions.rs` — native payment collection/refund server-function adapter backed by `HostRuntimeContext` DB/event-bus handles; it has no host-framework runtime or framework-specific outbox adapter dependency.
 - `src/ui/leptos.rs` — Leptos render adapter for payment collection handoff; action components emit payment-owned request DTOs instead of raw cart ids.
 
 ## Interactions

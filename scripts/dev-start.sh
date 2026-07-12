@@ -4,7 +4,7 @@
 # ============================================================================
 # This script starts all development services:
 # - PostgreSQL database
-# - RusToK server (Loco backend)
+# - RusToK Axum server
 # - Next.js admin panel (port 3000)
 # - Leptos admin panel (port 3001)
 # - Next.js storefront (port 3100)

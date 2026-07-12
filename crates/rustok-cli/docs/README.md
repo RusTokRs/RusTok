@@ -22,12 +22,12 @@ registries, not through hardcoded server-owned task calls.
 - Provides `rustok-cli core version` as the first built-in typed execution command.
 - Owns an explicit `CommandRegistry` that aggregates providers and rejects duplicate
   `namespace/name` command registrations.
-- Does not depend on `apps/server` or `loco-rs`.
+- Does not depend on `apps/server` or a host framework.
 
 ## Target Direction
 
 - Populate the generated distribution registry with selected module-local
   command providers.
-- Move legacy Loco task, seed and migration flows into typed CLI commands.
+- Keep seed and migration flows in typed CLI commands.
 - Keep module command adapters next to the owning module, outside domain core.
 - Keep the production server binary focused on HTTP runtime startup.

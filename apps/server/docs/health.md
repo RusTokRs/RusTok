@@ -95,7 +95,7 @@ In `settings.rustok.runtime.host_mode = "registry_only"` readiness aligns with a
 
 ### Module health and context-bound dependencies
 
-`RusToKModule::health()` does not receive `AppContext`, so the module cannot itself check host-owned runtime dependencies: DB schema, SMTP/Loco mailer, outbox relay worker, backlog/DLQ, search connector or indexing lag. For such modules, module-level health should not return unconditional `Healthy`.
+`RusToKModule::health()` does not receive host-wide context, so the module cannot itself check host-owned runtime dependencies: DB schema, SMTP mailer, outbox relay worker, backlog/DLQ, search connector or indexing lag. For such modules, module-level health should not return unconditional `Healthy`.
 
 Specific checks are performed in `/health/ready`:
 

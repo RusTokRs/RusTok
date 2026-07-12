@@ -115,8 +115,6 @@ for (const endpoint of [
 }
 assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
 assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native adapter must build services from the neutral DB handle`);
-assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
-assertNotContains(cargoToml, "loco-rs", `${cargoPath}: customer admin must not depend on Loco`);
 
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must consume core helpers`);
 assertContains(ui, "use crate::i18n::t;", `${uiPath}: Leptos adapter must consume package i18n facade`);
@@ -124,7 +122,7 @@ assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must cons
 assertContains(ui, "transport::fetch_customers", `${uiPath}: Leptos adapter must call module-owned transport facade`);
 assertNotContains(ui, "native_server_adapter::", `${uiPath}: UI adapter must not call raw native adapter`);
 
-assertContains(readme, "HostRuntimeContext", `${readmePath}: README must record Loco-free native admin transport`);
+assertContains(readme, "HostRuntimeContext", `${readmePath}: README must record host-neutral native admin transport`);
 assertContains(localPlan, "verify-customer-admin-boundary.mjs", `${localPlanPath}: local plan must record fast boundary guardrail evidence`);
 assertContains(registry, "verify-customer-admin-boundary.mjs", `${registryPath}: central registry must record customer admin boundary guardrail`);
 

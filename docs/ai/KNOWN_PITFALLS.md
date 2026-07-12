@@ -17,8 +17,8 @@ Short list of typical mistakes before making code changes.
 - Design server-owned services around `ServerRuntimeContext` or narrow typed contexts.
 - Use `rustok_web::json_response` or another `rustok-web` helper for HTTP response formatting.
 - Do not move maintenance/CLI flows into the production server binary. The target layer is a separate `rustok-cli` over `rustok-cli-core` and module-local `cli/` adapters.
-- Do not reintroduce a Loco controller path or a second router/error contract;
-  the active host is Axum-only and route/error changes must use the established
+- Do not introduce a second controller, router or error contract; the active
+  host is Axum-only and route/error changes must use the established
   `rustok-web` boundary.
 
 ## Backend Foundation

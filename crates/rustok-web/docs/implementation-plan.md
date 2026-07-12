@@ -4,7 +4,7 @@
 
 `rustok-web` owns the small shared Axum HTTP boundary: `HttpError`,
 `HttpResult`, `ErrorBody`, and `json_response`. It keeps controller response
-envelopes and status mapping consistent as Loco controller APIs are removed.
+envelopes and status mapping consistent across Axum controller adapters.
 
 The crate is not a web framework and does not own domain errors, runtime
 composition, FBA metadata, CLI contracts, or UI transport. Domain errors remain
@@ -19,10 +19,10 @@ with their owner; stable neutral API contracts remain in `rustok-api`.
 
 ## Open results
 
-1. **Migrate repeated Loco controller helpers through the shared boundary.**
+1. **Consolidate repeated controller helpers through the shared boundary.**
    Replace duplicate JSON/response helpers in server and module HTTP adapters
-   during the next Loco-exit controller slices.
-   **Depends on:** the Loco exit plan and controller-owner migration work.
+   during the next controller-owner slices.
+   **Depends on:** controller-owner migration work.
    **Done when:** migrated controllers use `json_response`/`HttpError` without
    changing owner domain semantics or adding local response envelopes.
 
@@ -37,7 +37,7 @@ with their owner; stable neutral API contracts remain in `rustok-api`.
    and focused status/body tests for controller migrations that consume this
    crate.
    **Depends on:** migrated controller examples.
-   **Done when:** API surface verification prevents new Loco formatter imports
+   **Done when:** API surface verification confirms shared response formatting
    and regressions in shared error response semantics.
 
 ## Verification

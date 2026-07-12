@@ -187,7 +187,7 @@ for (const marker of ["AuthLifecycleRuntime", "AuthQuery", "AuthMutation", "OAut
 for (const marker of [".sign_in(", ".sign_up(", ".refresh_token(", ".forgot_password(", ".update_profile(", ".change_password(", ".reset_password(", ".logout(", ".revoke_session(", ".revoke_all_sessions(", ".accept_invite("]) {
   assertContains(authGraphql, marker, `${authGraphqlPath}: GraphQL auth mutations must consume shared lifecycle provider (${marker})`);
 }
-for (const marker of ["AuthLifecycleService::login", "AuthLifecycleService::register", "email_service_from_ctx", "crate::services", "crate::models", "loco_rs", "sea_orm"]) {
+for (const marker of ["AuthLifecycleService::login", "AuthLifecycleService::register", "email_service_from_ctx", "crate::services", "crate::models", "sea_orm"]) {
   assertNotContains(authGraphql, marker, `${authGraphqlPath}: owner GraphQL must not bypass shared lifecycle provider (${marker})`);
 }
 for (const marker of [".create_oauth_app(", ".update_oauth_app(", ".rotate_oauth_app_secret(", ".revoke_oauth_app("]) {
@@ -210,7 +210,7 @@ assertContains(nativeTransport, "UserAdminMutationRuntime", `${nativeTransportPa
 for (const marker of ["leptos_axum::extract::<rustok_api::RequestContext>()", "leptos_axum::extract::<rustok_api::TenantContext>()", "tenant_context.default_locale", "locale,"]) {
   assertContains(nativeTransport, marker, `${nativeTransportPath}: native user mutation context must consume host-resolved locale (${marker})`);
 }
-for (const marker of ["leptos::", "sea_orm::", "loco_rs::", "apps::server"] ) {
+for (const marker of ["leptos::", "sea_orm::", "apps::server"] ) {
   assertNotContains(mutationPort, marker, `${mutationPortPath}: mutation port must remain host and framework independent (${marker})`);
 }
 if (/derive\([^)]*Debug[^)]*\)\]\s*pub struct CreateUserCommand/.test(mutationPort)) {

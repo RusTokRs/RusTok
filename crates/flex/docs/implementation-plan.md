@@ -9,7 +9,7 @@ product, order, and topic. Donors retain their tables and write paths.
 
 Owner-owned contracts live in `flex::graphql`, `flex::registry`, `flex::rest`,
 and `flex::standalone`. The server composes `FlexGraphqlRuntime`, SeaORM,
-registry/cache adapters, and Loco/Axum REST handlers only. Localized attached
+registry/cache adapters, and Axum REST handlers only. Localized attached
 and standalone values use parallel storage; inline localized JSON is not a
 canonical runtime fallback.
 
@@ -26,7 +26,7 @@ canonical runtime fallback.
 ## Open results
 
 1. **Finish the owner transport extraction with targeted runtime evidence.**
-   Remove remaining server Flex artifacts beyond Loco/Axum handler extraction,
+   Remove remaining server Flex artifacts beyond Axum handler extraction,
    SeaORM/bootstrap adapters, and runtime composition; run targeted owner-root
    GraphQL/REST tests when compilation is available.
    **Depends on:** host-composed `FlexGraphqlRuntime` and targeted test fixtures.

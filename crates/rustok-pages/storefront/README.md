@@ -20,7 +20,7 @@
 
 - Used by `apps/storefront` through manifest-driven generated wiring.
 - Uses dual-path data access through `src/transport.rs`: native Leptos `#[server]` functions for monolith/hydrate builds and GraphQL for headless/CSR builds.
-- Native `#[server]` path goes from the storefront host into `PageService` through `HostRuntimeContext`; DB and `TransactionalEventBus` are host-provided typed handles, so the package does not depend on Loco.
+- Native `#[server]` path goes from the storefront host into `PageService` through `HostRuntimeContext`; DB and `TransactionalEventBus` are host-provided typed handles, so the package does not depend on a host framework.
 - Keeps the pages module GraphQL read contract active in parallel with the native path while rendering a slug-selected page and a small page directory.
 - Follows the generic storefront host contract: slots plus locale-aware module routes built from `UiRouteContext::module_route_base()`.
 

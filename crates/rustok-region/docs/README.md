@@ -28,7 +28,7 @@
 - storefront transport for region discovery is still published through `rustok-commerce`;
 - the storefront route `/modules/regions` is now published by the module itself via `[provides.storefront_ui]`, keeping GraphQL transport as a parallel fallback contract;
 - admin UI is connected by the host application `apps/admin` via manifest-driven `[provides.admin_ui]`;
-- Leptos admin/storefront packages use native `#[server]` functions as the default internal data layer and read the effective locale from `UiRouteContext.locale`; admin native transport consumes `rustok_api::HostRuntimeContext` for DB access and does not depend on Loco `AppContext`; storefront route/tax/country summary formatting, selected-region resolution and error status/view-model mapping are moved to framework-agnostic `storefront/src/core.rs`, and native/GraphQL transport paths are separated through `storefront/src/transport/` with a typed fallback error envelope; Leptos render code lives in explicit adapter files `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs`.
+- Leptos admin/storefront packages use native `#[server]` functions as the default internal data layer and read the effective locale from `UiRouteContext.locale`; admin native transport consumes `rustok_api::HostRuntimeContext` for DB access and does not depend on a host-wide `AppContext`; storefront route/tax/country summary formatting, selected-region resolution and error status/view-model mapping are moved to framework-agnostic `storefront/src/core.rs`, and native/GraphQL transport paths are separated through `storefront/src/transport/` with a typed fallback error envelope; Leptos render code lives in explicit adapter files `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs`.
 
 ## Verification
 

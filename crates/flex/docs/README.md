@@ -18,7 +18,7 @@
 
 - transport-agnostic field definition contracts, owner-owned row-to-core/view-source/command conversion mapping, persisted JSON shape helpers, lifecycle guardrails/events, cache invalidation event taxonomy and registry/orchestration helpers;
 - owner-owned attached field-definition and standalone GraphQL query/mutation roots, runtime handle and input/output DTO without server dependencies;
-- owner-owned standalone REST request/response DTO, request-to-command mapping and view mapping in `flex::rest`; server controller remains only a Loco/Axum adapter;
+- owner-owned standalone REST request/response DTO, request-to-command mapping and view mapping in `flex::rest`; server controller remains only an Axum adapter;
 - owner-owned standalone fields_config parsing/schema building/serialization, localized field-key derivation, row-to-view mapping, entry normalize/defaults/strip/validate helper, shared/localized split, read resolution and PATCH merge helpers; server persistence adapter only exposes source traits, delegates Flex contract helpers and performs storage operations;
 - multilingual storage/runtime contract for attached and standalone Flex payload;
 - capability-only module metadata for `modules.toml` / `rustok-module.toml` / `ModuleRegistry`;
@@ -544,7 +544,7 @@ At the current stage, for standalone mode already live:
 
 A live rollout/governance contract already applies for the standalone surface:
 
-- attached field-definition and standalone GraphQL transport belong to `crates/flex`, roots are connected via manifest codegen, REST contract DTO belong to `flex::rest`, and the server only registers runtime, concrete persistence/registry/cache adapters and Loco/Axum REST handler;
+- attached field-definition and standalone GraphQL transport belong to `crates/flex`, roots are connected via manifest codegen, REST contract DTO belong to `flex::rest`, and the server only registers runtime, concrete persistence/registry/cache adapters and Axum REST handler;
 - `flex` is registered in `modules.toml` as a `capability_only` ghost module with `rustok-module.toml` and runtime `FlexModule`;
 - capability wiring is verified via `cargo xtask validate-manifest` and `cargo xtask module validate flex`;
 - multilingual DB/runtime drift is verified via `node scripts/verify/verify-flex-multilingual-contract.mjs`;

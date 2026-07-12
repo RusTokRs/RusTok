@@ -241,8 +241,8 @@ What to check:
 2. `crates/rustok-inventory/admin/src/transport/mod.rs` - write facades go
    through `transport/native_server_adapter.rs` without GraphQL fallback inputs.
 3. `crates/rustok-inventory/admin/src/transport/native_server_adapter.rs` -
-   native server functions consume `HostRuntimeContext` and do not use Loco
-   runtime context or package-local token/tenant fallback chains.
+   native server functions consume `HostRuntimeContext` and do not use host
+   service locators or package-local token/tenant fallback chains.
 
 ## Stop-the-Line Conditions
 

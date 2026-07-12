@@ -37,12 +37,12 @@ a Leptos render/bind adapter. This split is enforced by a quick verifier
 `/workflows` redirects to the owner-owned overview and templates surface at
 `/modules/workflow`. The host still composes only the workflow detail editor, execution history,
 and version history through `src/features/workflow/`; its native server-function adapter uses
-`HostRuntimeContext`, not Loco. The outstanding ownership transfer must move that remaining detail
+`HostRuntimeContext`. The outstanding ownership transfer must move that remaining detail
 surface atomically into `crates/rustok-workflow/admin/` and delete the host feature; no second
 transport path is to be introduced.
 
 The host-owned `/modules` control plane also receives only a narrow database snapshot from
-`HostRuntimeContext`; `apps/admin` has no Loco dependency.
+`HostRuntimeContext`; `apps/admin` has no host-framework dependency.
 
 The host-owned OAuth apps feature follows the same boundary: DTOs live in
 `src/features/oauth_apps/model.rs`, list transport is selected through

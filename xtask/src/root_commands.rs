@@ -53,7 +53,7 @@ pub(crate) fn generate_registry() -> Result<()> {
     code.push_str("pub fn build_registry() -> ModuleRegistry {\n");
     code.push_str("    let mut registry = ModuleRegistry::new();\n\n");
 
-    for (slug, spec) in manifest
+    for (slug, _spec) in manifest
         .modules
         .iter()
         .filter(|(_, spec)| spec.runtime.trim() != "extension")

@@ -24,4 +24,4 @@ The real bridge is compiled only when the crate features `mod-content`, `mod-blo
 - Reads and writes owner-owned storage through `rustok-blog`, `rustok-forum`, `rustok-comments`, and `rustok-taxonomy` entities.
 - Uses `rustok-outbox::TransactionalEventBus` supplied by the host.
 - Is initialized by `apps/server`, but `apps/server` must not own the bridge implementation.
-- Does not import Loco runtime types; host wiring passes explicit DB, event bus and GraphQL data handles.
+- Uses no host-framework runtime types; host wiring passes explicit DB, event bus and GraphQL data handles.

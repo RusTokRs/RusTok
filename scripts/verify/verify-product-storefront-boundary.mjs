@@ -141,10 +141,6 @@ assertNotContains(nativeServerAdapter, "GraphqlRequest", `${nativeServerAdapterP
 assertContains(nativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${nativeServerAdapterPath}: native server adapter must use host runtime context`);
 assertContains(nativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${nativeServerAdapterPath}: native server adapter must receive event bus through host runtime context`);
 assertContains(nativeServerAdapter, "runtime_ctx.db_clone()", `${nativeServerAdapterPath}: native server adapter must receive DB through host runtime context`);
-assertNotContains(nativeServerAdapter, "loco_rs", `${nativeServerAdapterPath}: native server adapter must not depend on Loco AppContext`);
-assertNotContains(nativeServerAdapter, "rustok_outbox::loco", `${nativeServerAdapterPath}: native server adapter must not use the outbox Loco adapter`);
-assertNotContains(cargo, "loco-rs", `${cargoPath}: product storefront package must not depend on Loco`);
-assertNotContains(cargo, "loco-adapter", `${cargoPath}: product storefront package must not enable the outbox Loco adapter`);
 assertContains(implementationPlan, "verify-product-storefront-boundary.mjs", `${implementationPlanPath}: local plan must mention the product storefront fast boundary guardrail`);
 assertContains(registry, "verify-product-storefront-boundary.mjs", `${registryPath}: central readiness board must mention the product storefront fast boundary guardrail`);
 assertContains(packageJson, "verify:product:storefront-boundary", `${packagePath}: package scripts must expose product storefront boundary verification`);

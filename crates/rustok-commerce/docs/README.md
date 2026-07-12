@@ -12,7 +12,7 @@ This folder contains the documentation for the umbrella module `crates/rustok-co
 
 - orchestration between `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`;
 - REST/GraphQL transport and aggregate orchestration UI surfaces that remain commerce-owned after domain surfaces move to ownership boundaries;
-- shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping and admin payment HTTP handlers on a narrow `CommerceHttpRuntime`; remaining admin/storefront REST adapters are cut by separate Loco-exit slices;
+- shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping and admin payment HTTP handlers on a narrow `CommerceHttpRuntime`; remaining admin/storefront REST adapters are cut by separate owner-boundary slices;
 - channel-aware commerce contract over `rustok-channel`, checkout orchestration and cross-domain deliverability semantics;
 - maintaining the thin-host role of `apps/server` without returning commerce business logic to the host.
 

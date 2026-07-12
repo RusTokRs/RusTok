@@ -84,13 +84,12 @@ fn runtime() { let _runtime = HostRuntimeContext; }
 `;
 }
 
-function cargoSource({ includeLoco = false } = {}) {
+function cargoSource() {
   return `
 [features]
 ssr = ["leptos/ssr", "rustok-api/server"]
 
 [dependencies]
-${includeLoco ? 'loco-rs = { workspace = true, optional = true }' : ""}
 rustok-api = { workspace = true, default-features = false }
 `;
 }
@@ -100,7 +99,7 @@ function implementationPlanSource({ omitGuardrail = false } = {}) {
 # План реализации rustok-region
 - FFA slice #31 добавила admin submit command preparation.
 - FFA slice #36 добавила route/query writer operation.
-- Loco-free native admin transport now consumes HostRuntimeContext.
+- Host-neutral native admin transport now consumes HostRuntimeContext.
 ${omitGuardrail ? "" : "- Fast guardrail: scripts/verify/verify-region-admin-boundary.mjs."}
 `;
 }

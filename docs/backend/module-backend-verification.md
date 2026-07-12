@@ -34,7 +34,7 @@ For backend layout changes, also inspect the physical placement:
 
 ```bash
 rg -n "clap|std::process::exit|println!|eprintln!" crates/rustok-MODULE/src -g "*.rs"
-rg -n "apps::server|loco_rs::app::AppContext|loco_rs::controller::format" crates/rustok-MODULE -g "*.rs"
+rg -n "apps::server|ServerRuntimeContext|HostRuntimeContext" crates/rustok-MODULE -g "*.rs"
 ```
 
 Expected result:
@@ -93,8 +93,8 @@ metadata, error mapping, fallback policy and verification evidence.
 Before completing a backend documentation or contract change:
 
 ```bash
-rg -n "rustok-web|rustok-runtime|rustok-fba|rustok-cli-core|loco_rs|cargo loco" docs apps crates -g "*.md"
+rg -n "rustok-web|rustok-runtime|rustok-fba|rustok-cli-core|Axum" docs apps crates -g "*.md"
 ```
 
-Confirm that active docs point to the target architecture and old Loco notes are marked as
-deprecated or historical inventory.
+Confirm that active docs point to the target architecture and describe only
+current contracts.

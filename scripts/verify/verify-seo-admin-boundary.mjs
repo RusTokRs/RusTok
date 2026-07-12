@@ -90,10 +90,6 @@ assertContains(nativeAdapter, "expect_context::<HostRuntimeContext>()", `${nativ
 assertContains(nativeAdapter, "shared_get::<TransactionalEventBus>()", `${nativeAdapterPath}: native adapter must read the typed event bus from host runtime context`);
 assertContains(nativeAdapter, "shared_get::<std::sync::Arc<ModuleRuntimeExtensions>>()", `${nativeAdapterPath}: native adapter must read SEO runtime extensions from typed host handles`);
 assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native adapter must read DB from neutral host runtime context`);
-assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
-assertNotContains(nativeAdapter, "rustok_outbox::loco", `${nativeAdapterPath}: native adapter must not consume outbox Loco adapter`);
-assertNotContains(cargo, "loco-rs", `${cargoPath}: SEO admin crate must not depend on Loco`);
-assertNotContains(cargo, "loco-adapter", `${cargoPath}: SEO admin crate must not enable outbox Loco adapter feature`);
 
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_redirects", `${uiPath}: Leptos adapter must call module-owned transport facade`);

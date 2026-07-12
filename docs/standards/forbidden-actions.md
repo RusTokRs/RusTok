@@ -429,9 +429,9 @@ toggle_module("blog", true);   // Content is disabled!
 
 ---
 
-## 6. Loco / Framework
+## 6. Axum Runtime
 
-### 6.1 FORBIDDEN: Bypassing Loco hooks lifecycle
+### 6.1 FORBIDDEN: Bypassing the Axum lifecycle
 
 **SEVERITY: HIGH**
 
@@ -461,7 +461,7 @@ pub async fn handler() -> Result<Json<Data>, rustok_web::HttpError> { }
 
 **SEVERITY: HIGH**
 
-Any intentional deviation from the framework/runtime baseline (e.g., replacing the standard Loco mechanism with a custom implementation) is only permissible with explicit fulfillment of the minimum criteria:
+Any intentional deviation from the runtime baseline is only permissible with explicit fulfillment of the minimum criteria:
 
 1. **Reliability semantics** — delivery/consistency model is fixed (at-most-once / at-least-once / exactly-once where applicable), idempotency boundaries and assumptions defined.
 2. **Backpressure** — load control is described (queue limits, concurrency limits, fail-fast/timeout policy) to prevent unbounded growth of latency and memory.

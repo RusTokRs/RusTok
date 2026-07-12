@@ -31,7 +31,7 @@ By participating in this project, you are expected to uphold our Code of Conduct
 
 - **Rust Analyzer**: VS Code extension
 - **Trunk**: For Leptos WASM builds
-- **Loco CLI**: `cargo install loco-cli`
+- **RusToK Xtask**: `cargo xtask --help`
 
 ## Development Setup
 
@@ -72,14 +72,11 @@ cp .env.dev.example .env.dev
 # 2. Start database
 docker-compose up -d db
 
-# 3. Install dependencies
-cd apps/server && cargo loco db install
+# 3. Provision the local database, run migrations and seed development data
+cargo xtask install-dev --create-db
 
-# 4. Run migrations
-cd apps/server && cargo loco db migrate
-
-# 5. Start server
-cargo loco start
+# 4. Start the server according to the canonical local profile
+./scripts/dev-start.sh
 
 # 6. In separate terminals:
 cd apps/next-admin && bun install && bun run dev
@@ -146,7 +143,7 @@ Update documentation when:
 
 ### Apps
 
-- **apps/server**: Main backend API (Loco.rs)
+- **apps/server**: Main Axum backend API
 - **apps/admin**: Leptos admin host (standalone profile via Trunk, SSR-first contract in docs)
 - **apps/storefront**: Leptos storefront host (standalone profile via Trunk, SSR-first contract in docs)
 - **apps/next-admin**: Next.js admin host

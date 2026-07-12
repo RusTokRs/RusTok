@@ -8,8 +8,8 @@ status: verified
 ---
 # Scheduled Operations
 
-RusToK does not run a scheduler inside `apps/server` and no longer has Loco
-tasks. Schedule typed `rustok-cli` commands with the deployment platform's
+RusToK does not run a scheduler inside `apps/server`. Schedule typed
+`rustok-cli` commands with the deployment platform's
 cron or job runner. Each invocation must receive `RUSTOK_DATABASE_URL` (or
 `DATABASE_URL`) and any command-specific settings through
 `RUSTOK_SETTINGS_JSON`.

@@ -119,7 +119,7 @@ Canonical event contract layer on top of the platform event model.
 
 ### `crates/rustok-auth`
 
-`Core` authentication module: JWT (HS256 and RS256), Argon2 password hashing, refresh tokens, password reset, invite, email verification tokens. It replaces the historical Loco JWT helper and is composed through `apps/server/src/auth.rs` with RusToK-owned runtime/settings contracts.
+`Core` authentication module: JWT (HS256 and RS256), Argon2 password hashing, refresh tokens, password reset, invite, email verification tokens. It is composed through `apps/server/src/auth.rs` with RusToK-owned runtime/settings contracts.
 
 Algorithm is selected via `AuthConfig::algorithm: JwtAlgorithm`:
 - `JwtAlgorithm::HS256` (default) — symmetric, `AuthConfig::secret`
@@ -153,11 +153,11 @@ Two public traits:
 
 ### `crates/rustok-storage`
 
-Infrastructure storage crate: `StorageBackend` trait, `LocalStorage`, `StorageService`. **Replaces** Loco Storage abstraction. Initialized in `bootstrap_app_runtime` (feature `mod-media`), available via `ctx.shared_store.get::<StorageService>()`. S3 backend is declared in Cargo.toml features, but not implemented.
+Infrastructure storage crate: `StorageBackend` trait, `LocalStorage`, `StorageService`. Initialized in `bootstrap_app_runtime` (feature `mod-media`), available via `ctx.shared_store.get::<StorageService>()`. S3 backend is declared in Cargo.toml features, but not implemented.
 
 ### `crates/rustok-outbox`
 
-`Core` module transactional outbox: `TransactionalEventBus`, `OutboxTransport`, `OutboxRelay`, `SysEventsMigration`. **Replaces** Loco Queue / Workers. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
+`Core` module transactional outbox: `TransactionalEventBus`, `OutboxTransport`, `OutboxRelay`, `SysEventsMigration`. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
 
 ### Backend foundation crates
 
@@ -215,4 +215,4 @@ Check only errors in changed files; errors in `services/app_router.rs` / `AdminA
 - Do not substitute the architectural status of a module with the runtime wiring method.
 - Do not bypass outbox in production event-flow.
 - Do not delete GraphQL resolver/path just because a native `#[server]` path appeared nearby.
-- Do not add new backend code around `loco_rs::app::AppContext`, `loco_rs::controller::format`, `cargo loco task` or host-local helper copies when a `rustok-*` foundation crate owns the concern.
+- Do not add new backend code around host-wide service locators, duplicate controller formatters, server-binary maintenance commands or host-local helper copies when a `rustok-*` foundation crate owns the concern.

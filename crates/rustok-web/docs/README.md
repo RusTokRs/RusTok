@@ -2,7 +2,7 @@
 
 `rustok-web` is the shared Axum boundary crate for RusToK.
 
-It is not a web framework. It exists so that the Loco controller replacement does not
+It is not a web framework. It exists so that controller adapters do not
 turn into many local copies of response envelopes, status mapping, and extractor glue.
 
 Boundary rules:
@@ -17,7 +17,7 @@ Current entry points:
 - `json_response(value)` for JSON response mapping in Axum handlers.
 - `HttpError`, `HttpResult` and `ErrorBody` for HTTP boundary errors.
 
-Use `json_response` when replacing `loco_rs::controller::format::json` in server or
-module HTTP adapters. Do not add new Loco formatter imports.
+Use `json_response` in server or module HTTP adapters. Keep response formatting
+inside this shared boundary.
 
 Related guide: [Backend Module Implementation](../../../docs/backend/module-backend-implementation.md).

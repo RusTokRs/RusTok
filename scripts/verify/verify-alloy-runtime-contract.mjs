@@ -31,7 +31,6 @@ sameArray(contract.script_list_contract?.storage_parity, ['sea_orm', 'in_memory'
 if (contract.script_list_contract?.status_filter !== 'known_script_status_or_validation_error') fail('status filter policy drift');
 if (contract.script_list_contract?.page_min !== 1 || contract.script_list_contract?.per_page_min !== 1 || contract.script_list_contract?.per_page_max !== 100) fail('script pagination bounds drift');
 
-sameArray(contract.execution_history_contract?.routes?.loco, ['/executions', '/scripts/{id}/executions'], 'loco routes');
 sameArray(contract.execution_history_contract?.routes?.axum, ['/executions', '/scripts/{id}/executions'], 'axum routes');
 sameArray(contract.execution_history_contract?.routes?.graphql, ['scriptExecutionHistory', 'recentScriptExecutions', 'scriptExecutions'], 'graphql routes');
 sameArray(contract.execution_history_contract?.canonical_fields, ['id', 'script_id', 'script_name', 'phase', 'outcome', 'duration_ms', 'error', 'user_id', 'tenant_id', 'created_at'], 'execution canonical fields');
@@ -205,12 +204,12 @@ hasAll(axumRoutes, [
   'get(handlers::list_script_executions::<S>)'
 ], 'axum routes');
 
-const locoRoutes = read('crates/alloy/src/controllers/mod.rs');
-hasAll(locoRoutes, [
+const controllerRoutes = read('crates/alloy/src/controllers/mod.rs');
+hasAll(controllerRoutes, [
   'AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES',
   'list_recent_executions',
   'list_script_executions'
-], 'loco routes');
+], 'controller route bridge');
 
 const graphql = read('crates/alloy/src/graphql/query.rs');
 hasAll(graphql, [

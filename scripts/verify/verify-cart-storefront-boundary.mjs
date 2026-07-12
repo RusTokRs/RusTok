@@ -105,9 +105,6 @@ assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: n
 assertContains(nativeServerAdapter, "HostRuntimeContext", `${files.nativeServerAdapter}: native server adapter must use host runtime context`);
 assertContains(nativeServerAdapter, "db_clone()", `${files.nativeServerAdapter}: native server adapter must use host runtime DB clone`);
 assertContains(nativeServerAdapter, "shared_get::<rustok_outbox::TransactionalEventBus>", `${files.nativeServerAdapter}: native server adapter must resolve shared transactional event bus`);
-assertNotContains(nativeServerAdapter, "loco_rs::app::AppContext", `${files.nativeServerAdapter}: native server adapter must not depend on Loco AppContext`);
-assertNotContains(nativeServerAdapter, "expect_context::<AppContext>", `${files.nativeServerAdapter}: native server adapter must not read Loco AppContext from Leptos context`);
-assertNotContains(nativeServerAdapter, "rustok_outbox::loco", `${files.nativeServerAdapter}: native server adapter must not use the Loco outbox adapter`);
 assertNotContains(nativeServerAdapter, "sellerScope } adjustments", `${files.nativeServerAdapter}: cart line-item read query must not request legacy sellerScope`);
 assertNotContains(nativeServerAdapter, "sellerScope lineItemIds", `${files.nativeServerAdapter}: cart delivery-group read query must not request legacy sellerScope`);
 assertContains(nativeServerAdapter, "StorefrontCartShippingOption", `${files.nativeServerAdapter}: cart native adapter must map full shipping option DTOs`);

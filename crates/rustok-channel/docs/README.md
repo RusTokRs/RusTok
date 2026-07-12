@@ -17,7 +17,7 @@ channel context for delivery surfaces and channel-aware runtime resolution.
 - tenant-scoped typed resolution policies and explicit default channel semantics;
 - canonical resolution order `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`, where the built-in host fast-path remains a separate compatible layer before policy-only evaluation;
 - owner-owned REST/control-plane DTOs and policy payload mapping helpers in `crates/rustok-channel/src/dto/mod.rs`;
-  `apps/server` imports those contracts and only handles RBAC, tenant checks, OAuth-app lookup and Axum/Loco routing;
+  `apps/server` imports those contracts and only handles RBAC, tenant checks, OAuth-app lookup and Axum routing;
 - module-owned Leptos admin UI package `rustok-channel-admin` with operator flow for policy authoring/edit/reorder/enable-disable and build-profile-selected native `#[server]` + REST secondary path transport parity;
 - FBA provider boundary `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projections, where `npm run verify:channel:fba` without compilation locks registry, static matrix and no-compile executable runtime fallback smoke (`embedded_native`, `rest_compatibility`, `unresolved_context`);
 - source-locked proof points for `rustok-pages`, `rustok-blog`, `rustok-commerce` and `rustok-forum`, where `npm run verify:channel:proof-points` holds the usage of resolved host `ChannelContext`, `channel_module_bindings`, metadata `channelSlugs`/`forum_topic_channel_access` visibility, commerce channel snapshot without a second sales-channel domain and forum SEO/read-path channel filtering.

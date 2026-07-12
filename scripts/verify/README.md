@@ -447,11 +447,11 @@ What it looks for:
 
 What it looks for:
 - Module dependencies: `dependencies()` trait matches `modules.toml`
-- Loco Hooks: all routes via `Hooks::routes()`, not directly
+- Axum composition: all routes are assembled through the server router boundary
 - Module registry: all modules registered via `build_registry()`
 - Core modules not toggleable (`ModuleKind::Core`)
 - MCP tools use `McpToolResponse` (not raw JSON)
-- Controller return types: `loco_rs::Result` (not custom)
+- Controller return types: `rustok-web` HTTP errors (not custom transport contracts)
 - Dependency guard (`cargo metadata` + allow/deny):
   - backend apps (current config: `rustok-server`) → only `rustok-*` crate dependencies (except explicit infra exceptions)
   - deny new cross-domain `rustok-* -> rustok-*` edges outside allow-list

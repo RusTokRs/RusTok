@@ -101,7 +101,7 @@ RusToK сейчас представляет собой Rust-first modular monol
 
 ### Developer Experience
 
-- Loco.rs как foundation для общего server runtime
+- Axum как foundation для общего server runtime
 - Rust crates как явные границы модулей
 - Module-owned transport и UI slices вместо giant central app
 - Живая документация, индексируемая из `docs/index.md`
@@ -297,7 +297,7 @@ Shared libraries и capability crates не всегда являются platfor
 | `rustok-core` | Общие foundation contracts, primitives, validation и security helpers |
 | `rustok-api` | Общий host/API слой для transport adapters и boundary contracts |
 | `rustok-runtime` | Host runtime helpers для типизированных shared handles, нейтрального доступа к БД и module adapters |
-| `rustok-web` | Axum HTTP helpers для response/error mapping в Loco-exit controller boundary |
+| `rustok-web` | Axum HTTP helpers для response/error mapping в controller boundary |
 | `rustok-fba` | Общие FBA metadata для provider/consumer registries и transport-profile descriptors |
 | `rustok-cli-core` | Контракты platform CLI command/provider для будущих module-local CLI adapters |
 | `rustok-events` | Канонические event contracts и import surface |
@@ -483,7 +483,6 @@ cargo machete
 
 Платформа опирается на такие open-source основы, как:
 
-- Loco.rs
 - Leptos
 - SeaORM
 - async-graphql

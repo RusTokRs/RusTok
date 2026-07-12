@@ -3,7 +3,7 @@
 `rustok-runtime` is a backend foundation crate for host runtime composition helpers.
 
 The crate is intentionally small. Its first role is to stop new backend adapters from
-copying typed shared-handle lookup and DB access patterns while the Loco runtime context is
+copying typed shared-handle lookup and DB access patterns while the host runtime context is
 being removed.
 
 Boundary rules:

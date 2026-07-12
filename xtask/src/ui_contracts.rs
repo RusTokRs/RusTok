@@ -111,24 +111,36 @@ pub(crate) fn validate_module_docs_navigation_contract(
         .iter()
         .any(|surface| surface.trim() == "next-admin")
     {
-        let next_admin_path_fragment = format!("apps/next-admin/packages/{slug}/");
-        if !ui_index.contains(&next_admin_path_fragment) {
+        let next_admin_package_names = [slug.to_string(), format!("rustok-{slug}")];
+        let next_admin_path_fragments = next_admin_package_names
+            .iter()
+            .map(|package| format!("apps/next-admin/packages/{package}/"))
+            .collect::<Vec<_>>();
+        if !next_admin_path_fragments
+            .iter()
+            .any(|fragment| ui_index.contains(fragment))
+        {
             anyhow::bail!(
-                "Module '{slug}' declares showcase_admin_surfaces=['next-admin'], but {} is missing '{}'",
+                "Module '{slug}' declares showcase_admin_surfaces=['next-admin'], but {} is missing one of {:?}",
                 ui_index_path.display(),
-                next_admin_path_fragment
+                next_admin_path_fragments
             );
         }
 
-        let next_admin_package_dir = workspace_root
-            .join("apps")
-            .join("next-admin")
-            .join("packages")
-            .join(slug);
-        if !next_admin_package_dir.exists() {
+        let next_admin_package_dirs = next_admin_package_names
+            .iter()
+            .map(|package| {
+                workspace_root
+                    .join("apps")
+                    .join("next-admin")
+                    .join("packages")
+                    .join(package)
+            })
+            .collect::<Vec<_>>();
+        if !next_admin_package_dirs.iter().any(|path| path.exists()) {
             anyhow::bail!(
-                "Module '{slug}' declares showcase_admin_surfaces=['next-admin'], but {} does not exist",
-                next_admin_package_dir.display()
+                "Module '{slug}' declares showcase_admin_surfaces=['next-admin'], but none of {:?} exists",
+                next_admin_package_dirs
             );
         }
     }

@@ -44,7 +44,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 ## Config Lifecycle Surface
 
 The canonical `AuthConfig` assembly is performed via `build_auth_config` /
-`build_auth_config_with_env`: the host passes Loco/other framework config, and
+`build_auth_config_with_env`: the host passes framework configuration, and
 `rustok-auth` applies defaults, `AuthSettingsOverrides`, RS256 env key
 resolution and validation. `apps/server` must not duplicate these rules, but
 only map `AuthError` to a transport-specific error type.

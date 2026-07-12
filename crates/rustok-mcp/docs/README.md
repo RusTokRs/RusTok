@@ -23,7 +23,7 @@ spec or turning into a provider/model host.
   delegates management reads/writes to the canonical transactional `McpManagementService`;
 - owner-owned REST/control-plane request and response DTOs for MCP remote transport,
   clients, policy, tokens, audit and scaffold drafts; `apps/server` only maps persisted rows
-  and Axum/Loco request boundaries to those owner contracts;
+  and Axum request boundaries to those owner contracts;
 - owner-owned GraphQL query/mutation/types behind feature `graphql`; server only connects roots and implements the DB-provider;
 - no ownership over provider-specific AI orchestration and over the MCP spec itself.
 

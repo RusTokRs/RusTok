@@ -45,8 +45,8 @@ to the role of model host.
 - owner-owned GraphQL query/mutation/subscription surface in `crates/rustok-ai/src/graphql` for providers,
   tool profiles, sessions, traces and approvals;
 - server-side orchestration service `AiManagementService`;
-- `AiHostRuntime` is a host-neutral runtime contract; `rustok-ai` does not accept Loco
-  `AppContext` and does not depend on the Loco crate;
+- `AiHostRuntime` is a host-neutral runtime contract; `rustok-ai` accepts
+  explicit runtime values and has no host-framework dependency;
 - the target host integration is a generic manifest/runtime contribution contract. Removing
   existing direct AI construction from `apps/server` is a platform-owned prerequisite and is
   explicitly tracked as blocked in the implementation plan.

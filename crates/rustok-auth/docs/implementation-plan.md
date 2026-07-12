@@ -54,11 +54,11 @@ does not create a package-local locale fallback.
 4. **Keep OAuth bootstrap in the auth-owned CLI adapter.**
    `rustok-cli oauth create-app` creates the development application through
    `rustok-auth/cli`, an explicit database handle, and the tenant-owned default
-   tenant read. The server no longer registers a Loco task for this operation.
+   tenant read. The server does not register a task for this operation.
 
 5. **Keep session maintenance in the auth-owned CLI adapter.**
    `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
-   server Loco task bridge.
+   server task bridge.
 
 6. **Keep bootstrap identity provisioning in the auth owner.**
    `AuthUserBootstrapDbWriter` provides idempotent tenant-scoped user creation

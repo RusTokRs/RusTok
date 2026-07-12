@@ -56,7 +56,6 @@ column identifies the current canonical decision.
 | [2026-03-19](./2026-03-19-alloy-module-scaffold-via-mcp.md) | Alloy module scaffold as the first real MCP product slice | Accepted |
 | [2026-03-17](./2026-03-17-dual-ui-strategy-next-batteries-included.md) | Leptos and Next.js UI strategy | Accepted |
 | [2026-03-11](./2026-03-11-queue-runtime-source-of-truth-outbox.md) | Queue runtime source of truth: `rustok-outbox` and `event_transport_factory` | Accepted |
-| [2026-03-11](./2026-03-11-loco-mailer-storage-as-server-infra.md) | Loco Mailer and Storage as server infrastructure | Accepted |
 | [2026-03-07](./2026-03-07-deployment-profiles-and-ui-stack.md) | Deployment profiles and UI stack | Partially superseded by [Leptos server functions](./2026-03-29-leptos-server-functions-as-internal-data-layer.md) |
 | [2026-03-07](./2026-03-07-admin-module-ui-unification.md) | UI module unification between Next.js and Leptos Admin | Accepted & Implemented |
 | [2026-03-05](./2026-03-05-rbac-relation-only-final-cutover-gate.md) | Final cutover gate for `casbin_only` RBAC | Accepted |

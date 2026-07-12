@@ -96,10 +96,8 @@ assertContains(nativeAdapter, "media_library_native", `${nativeAdapterPath}: nat
 assertContains(nativeAdapter, "MediaService", `${nativeAdapterPath}: native adapter must call module-owned service layer`);
 assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
 assertContains(nativeAdapter, "shared_get::<rustok_storage::StorageService>()", `${nativeAdapterPath}: native adapter must receive storage through neutral host runtime context`);
-assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
 assertContains(graphqlAdapter, "query MediaLibrary", `${graphqlAdapterPath}: GraphQL adapter must retain media library headless contract`);
 assertContains(restAdapter, "/api/media", `${restAdapterPath}: REST adapter must retain upload endpoint`);
-assertNotContains(cargoToml, "loco-rs", `${cargoPath}: admin crate must not depend on Loco`);
 
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must consume core helpers`);
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
@@ -110,9 +108,9 @@ for (const marker of ["native_server_adapter::", "graphql_adapter::", "rest_adap
 }
 
 assertContains(localPlan, "verify-media-admin-boundary.mjs", `${localPlanPath}: local plan must record fast boundary guardrail evidence`);
-assertContains(localPlan, "HostRuntimeContext", `${localPlanPath}: local plan must record Loco-free native admin transport`);
+assertContains(localPlan, "HostRuntimeContext", `${localPlanPath}: local plan must record host-neutral native admin transport`);
 assertContains(registry, "verify-media-admin-boundary.mjs", `${registryPath}: central registry must record media admin boundary guardrail`);
-assertContains(registry, "HostRuntimeContext", `${registryPath}: central registry must record Loco-free media admin transport`);
+assertContains(registry, "HostRuntimeContext", `${registryPath}: central registry must record host-neutral media admin transport`);
 
 if (failures.length > 0) {
   console.error("Media admin boundary verification failed:");

@@ -26,7 +26,7 @@ adapters away from framework-specific runtime contexts.
 
 - Depends on `rustok-api` for the current `HostRuntimeContext` contract and keeps settings as a
   host-neutral JSON snapshot rather than depending on server configuration types.
-- Is consumed by server/module adapters as Loco runtime lookups are replaced.
+- Is consumed by server/module adapters for typed runtime lookups.
 - Does not own HTTP routing, CLI, FBA provider metadata, domain services, or UI transport.
 
 See [docs](docs/README.md).

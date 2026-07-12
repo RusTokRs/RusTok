@@ -14,7 +14,7 @@ Leptos admin UI package for the `rustok-product` module.
 - Keeps admin shell copy, profile-panel state, list/status/filter, list-card view-model, editor shell view-model, shipping-profile, selected-summary, pricing-preview and pricing deep-link presentation helpers in framework-agnostic `src/core.rs`, leaving Leptos as the render/effect adapter.
 - Isolates Leptos rendering in `src/ui/leptos.rs`, with crate root re-exporting `ProductAdmin`.
 - Routes admin data operations through `src/transport.rs`, with GraphQL operations in `src/transport/graphql_adapter.rs` and native server functions in `src/transport/native_server_adapter.rs`.
-- Builds native catalog schema services from `HostRuntimeContext` DB and typed `TransactionalEventBus` host handles without a package-local Loco runtime or outbox Loco adapter.
+- Builds native catalog schema services from `HostRuntimeContext` DB and typed `TransactionalEventBus` host handles without a package-local framework runtime or framework-specific outbox adapter.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses registry-backed shipping-profile selection so catalog operators work with typed product bindings instead of raw slug text.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.

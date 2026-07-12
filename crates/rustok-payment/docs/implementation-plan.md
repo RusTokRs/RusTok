@@ -27,7 +27,7 @@ before invoking an adapter, while `PaymentService` remains the lifecycle owner.
   `crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json`,
   and `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json`.
 - `scripts/verify/verify-payment-storefront-boundary.mjs` locks the owner
-  storefront core/transport/UI split and Loco-free native checkout runtime.
+  storefront core/transport/UI split and host-neutral native checkout runtime.
 - Owner transport uses `execute_selected_transport`: native `#[server]` is
   selected first and GraphQL is the parallel fallback for
   `create_payment_collection`, `fetch_payment_collection`, and

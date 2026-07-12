@@ -71,9 +71,9 @@ Use this table before adding a dependency:
 
 | Code Location | May Depend On | Must Not Depend On |
 |---|---|---|
-| `crates/rustok-<module>/src` | `rustok-core`, `rustok-api`, domain support crates, `rustok-fba` only when publishing descriptors | `apps/server`, `loco_rs`, `rustok-cli-core` for command execution, UI crates, `clap` |
-| `crates/rustok-<module>/src/graphql` | owner services, `rustok-api`, GraphQL crates already used by the module | `apps/server` resolver DTOs, Loco context, duplicated service logic |
-| `crates/rustok-<module>/src/rest` or `controllers` | owner services, `rustok-web`, narrow module runtime structs | `loco_rs::controller::format`, `AppContext`, host-only controllers |
+| `crates/rustok-<module>/src` | `rustok-core`, `rustok-api`, domain support crates, `rustok-fba` only when publishing descriptors | `apps/server`, `rustok-cli-core` for command execution, UI crates, `clap` |
+| `crates/rustok-<module>/src/graphql` | owner services, `rustok-api`, GraphQL crates already used by the module | `apps/server` resolver DTOs, host context, duplicated service logic |
+| `crates/rustok-<module>/src/rest` or `controllers` | owner services, `rustok-web`, narrow module runtime structs | host-only response helpers, service locators, host-only controllers |
 | `crates/rustok-<module>/src/runtime.rs` | explicit handles, `rustok-runtime` helpers when repeated lookup is needed | service locator patterns, global host context |
 | `crates/rustok-<module>/contracts` | schema/evidence artifacts and registry JSON | executable Rust code, command scripts, runtime wiring |
 | `crates/rustok-<module>/cli` | module domain crate, `rustok-cli-core` | production server runtime, UI crates, direct stdout/exit policy in domain services |
@@ -90,7 +90,7 @@ command descriptors and outcomes.
 
 ## Runtime Context
 
-New backend code must not accept `loco_rs::app::AppContext`.
+New backend code must not accept a host-wide service locator.
 
 Use these contracts instead:
 
@@ -121,8 +121,7 @@ services/ports and map results into the transport response. Business decisions r
 module service layer.
 
 The active server and module composition are Axum-only. New response formatting
-uses `rustok_web::json_response`; do not add `loco_rs::controller::format`
-usage or a second routing model.
+uses `rustok_web::json_response`; do not add a second routing model.
 
 ## FBA Contracts
 
@@ -154,13 +153,12 @@ Target shape:
   capture the runtime it needs while remaining outside the production server build;
 - `apps/server` does not depend on the CLI binary or module command adapters.
 
-Do not add new maintenance flows through `cargo loco task` or by expanding the HTTP server
-binary with command execution code.
+Do not add maintenance flows by expanding the HTTP server binary with command
+execution code.
 
 ## Forbidden Backend Patterns
 
-- New `loco_rs` imports in module backend code.
-- Module services that read `AppContext`, host globals or package-local context singletons.
+- Module services that read host-wide contexts, host globals or package-local context singletons.
 - New module business logic in `apps/server/src/controllers` or `apps/server/src/graphql`.
 - Ad-hoc JSON/string contracts where typed DTOs, ports or events are required.
 - Package-local auth, tenant, locale, channel or RBAC fallback chains.

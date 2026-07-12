@@ -59,12 +59,12 @@ The command:
 - optionally creates the `rustok` PostgreSQL role and `rustok_dev` database;
 - writes `.env.dev` and `apps/next-admin/.env.local` with local API/auth paths;
 - creates `modules.local.toml` with standalone frontend surfaces so the server does not require embedded UI features;
-- runs server migrations and the dev seed through the compiled `target/debug/rustok-server` Loco CLI.
+- runs server migrations and the dev seed through the compiled `target/debug/rustok-cli` command runner.
 
-Because `cargo xtask` itself is launched by Cargo, `install-dev` intentionally does not call nested `cargo run` during bootstrap. If `target/debug/rustok-server` is missing, build it once:
+Because `cargo xtask` itself is launched by Cargo, `install-dev` intentionally does not call nested `cargo run` during bootstrap. If `target/debug/rustok-cli` is missing, build it once:
 
 ```powershell
-cargo build -p rustok-server --bin rustok-server
+cargo build -p rustok-cli --bin rustok-cli
 cargo xtask install-dev
 ```
 

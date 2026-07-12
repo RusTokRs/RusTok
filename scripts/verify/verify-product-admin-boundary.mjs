@@ -214,12 +214,6 @@ for (const marker of [
 ]) {
   assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native server adapter must expose category-bound server function contract (${marker})`);
 }
-for (const marker of ["loco_rs", "rustok_outbox::loco"]) {
-  assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native server adapter must not depend on Loco (${marker})`);
-}
-for (const marker of ["loco-rs", "loco-adapter"]) {
-  assertNotContains(cargo, marker, `${cargoPath}: product admin package must not depend on Loco (${marker})`);
-}
 for (const marker of [/locale: Option<String>/, /unwrap_or_else\(\|\| "en"/, /PLATFORM_FALLBACK_LOCALE/]) {
   assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native category-bound adapter must not invent optional/fallback locale`);
 }

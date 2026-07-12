@@ -14,7 +14,7 @@ Read these documents before writing or refactoring module backend code:
 
 The short rule is: module domain logic belongs to the module, host wiring belongs to
 `apps/server`, stable cross-boundary contracts belong to foundation crates, and new backend
-work must not depend on Loco runtime APIs.
+work must use the explicit Axum runtime contracts.
 
 The physical shape is also fixed:
 

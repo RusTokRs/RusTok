@@ -22,8 +22,8 @@ API would pull in the entire core runtime, while the `server` feature maintained
    `SecurityContext::system()` is the trusted runtime authority, while anonymous
    storefront/GraphQL reads use `SecurityContext::public_read()`.
 5. Core modules/re-exports and compatibility aliases for relocated contracts are removed.
-6. The outbox-specific Loco adapter belongs to `rustok-outbox` and is enabled by its
-   `loco-adapter` feature; `rustok-api` does not depend on `rustok-outbox`.
+6. The outbox-specific adapter belongs to `rustok-outbox`; `rustok-api` does
+   not depend on `rustok-outbox`.
 7. All module ports use the canonical path `rustok_api::ports::*` or
    root re-exports `rustok_api::*`.
 
@@ -37,5 +37,5 @@ API would pull in the entire core runtime, while the `server` feature maintained
 - The absence of `AuthContext` on a public read endpoint is no longer elevated to system
   authority: such requests receive `SecurityActorKind::Public` and pass only
   through public/published/channel-visible read paths.
-- Consumers of Loco outbox wiring must explicitly enable
-  `rustok-outbox/loco-adapter` and use `rustok_outbox::loco`.
+- Consumers use the owner-provided outbox runtime contract rather than a
+  framework-specific adapter.

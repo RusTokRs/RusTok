@@ -46,7 +46,7 @@ Result:
 ## Pre-Answer Checklist
 
 - [ ] Only existing public types/methods are used.
-- [ ] For Loco/Iggy/MCP/Outbox/Telemetry changes, the reference package was checked first.
+- [ ] For Axum/Iggy/MCP/Outbox/Telemetry changes, the reference package was checked first.
 - [ ] For write + event flow, `publish_in_tx` is used (where required).
 - [ ] Event handlers are compatible with the current `EventEnvelope`.
 - [ ] Relevant docs (`docs/` and module-local docs) are updated.

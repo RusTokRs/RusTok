@@ -5,8 +5,8 @@
 
 ## Context
 
-RusToK is moving away from Loco RS as the application/runtime owner. At the same time, some Loco
-conventions are useful as operator/dev workflow: migrate, seed, install,
+RusToK uses Axum as the application/runtime owner. Operator and developer
+workflows cover migrate, seed, install,
 maintenance tasks, and future distribution-aware builds.
 
 If CLI and maintenance code remain inside the production server runtime, the server
@@ -39,7 +39,7 @@ codes, and operator UX, which breaks the hexagonal boundary.
 
 ## Consequences
 
-- Removing Loco CLI/tasks does not require moving maintenance code into
+- Keeping maintenance code outside the production server does not require moving it into
   `apps/server`.
 - Module ownership is preserved: commands, scripts, and maintenance adapters live
   next to the module, but not inside the domain core.
@@ -47,5 +47,5 @@ codes, and operator UX, which breaks the hexagonal boundary.
   catalog of all commands of all modules.
 - Distributions can build different sets of runtime modules and ops providers without
   manually editing the server crate.
-- Any future cutover from Loco tasks must translate the use case into a typed Rust
-  API and call it from a module-local `cli/` adapter via `rustok-cli`.
+- Maintenance use cases must use a typed Rust API and call it from a
+  module-local `cli/` adapter via `rustok-cli`.

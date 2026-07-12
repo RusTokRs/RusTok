@@ -18,7 +18,7 @@
 - own the typed `tax_provider_id` write/read contract for tax policy routing.
 - expose a module-owned admin route for region CRUD.
 - expose a module-owned storefront route for public region discovery.
-- keep region admin native transport on `rustok_api::HostRuntimeContext`, not Loco `AppContext`.
+- keep region admin native transport on `rustok_api::HostRuntimeContext`, not a host-wide `AppContext`.
 
 ## Interactions
 

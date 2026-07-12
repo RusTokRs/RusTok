@@ -1181,16 +1181,22 @@ mod tests {
     #[test]
     fn deployment_target_contract_rechecks_egress_before_runtime_materialization() {
         let target_id = ProviderTargetId::new("local_ollama").unwrap();
-        let targets = AiProviderTargetCatalog::new(vec![AiProviderTarget {
-            id: target_id.clone(),
-            provider_slug: ProviderSlug::new("ollama").unwrap(),
-            display_name: "Local Ollama".to_string(),
-            auth: ProviderTargetAuth::None,
-            settings: BTreeMap::from([(
-                "base_url".to_string(),
-                serde_json::json!("http://127.0.0.1:11434"),
-            )]),
-        }])
+        let targets = AiProviderTargetCatalog::new_with_egress_policy(
+            vec![AiProviderTarget {
+                id: target_id.clone(),
+                provider_slug: ProviderSlug::new("ollama").unwrap(),
+                display_name: "Local Ollama".to_string(),
+                auth: ProviderTargetAuth::None,
+                settings: BTreeMap::from([(
+                    "base_url".to_string(),
+                    serde_json::json!("http://127.0.0.1:11434"),
+                )]),
+            }],
+            &ProviderEgressPolicy {
+                allowed_origins: Vec::new(),
+                allow_local_origins: true,
+            },
+        )
         .unwrap();
 
         let error = validate_provider_target_profile_contract(
@@ -1209,10 +1215,13 @@ mod tests {
         let target_id = ProviderTargetId::new("workload_vertex").unwrap();
         let targets = AiProviderTargetCatalog::new(vec![AiProviderTarget {
             id: target_id.clone(),
-            provider_slug: ProviderSlug::new("fastembed").unwrap(),
-            display_name: "FastEmbed workload identity".to_string(),
+            provider_slug: ProviderSlug::new("vertex_ai").unwrap(),
+            display_name: "Vertex workload identity".to_string(),
             auth: ProviderTargetAuth::WorkloadIdentity,
-            settings: BTreeMap::new(),
+            settings: BTreeMap::from([(
+                "project".to_string(),
+                serde_json::json!("deployment-project"),
+            )]),
         }])
         .unwrap();
         let policy = ProviderEgressPolicy::default();

@@ -6,7 +6,7 @@
 domain module. `core version` is registered through the generated selected
 distribution registry and executes through the typed `CommandProvider` path.
 The crate remains independent of `apps/server`, the runner, and domain crates.
-`core rebuild` is the platform-owned replacement for the former Loco task: it
+`core rebuild` is the platform-owned maintenance command: it
 uses `rustok-build` directly and accepts `--build-id` plus the shared
 `--dry-run` option.
 

@@ -16,7 +16,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Keeps storefront shell copy, selected-post route/query state, fetch request state, and presentation view-model helpers in framework-agnostic `core` so Leptos remains a thin render/host-context adapter.
 - Keeps Leptos render/bind code in `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` only wires modules and re-exports `BlogView`.
 - Native Leptos `#[server]` calls are isolated in `transport/native_server_adapter.rs`, with GraphQL kept as the required parallel selected path in `transport/graphql_adapter.rs` behind the build-profile-selected facade.
-- Native SSR transport receives DB and `TransactionalEventBus` through `HostRuntimeContext`; this package does not depend on Loco runtime context.
+- Native SSR transport receives DB and `TransactionalEventBus` through `HostRuntimeContext`; this package does not depend on host-framework runtime context.
 
 ## Entry Points
 

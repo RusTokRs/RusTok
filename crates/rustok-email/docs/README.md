@@ -21,7 +21,7 @@ typed email rendering and delivery helpers for auth and operational notification
 
 - depends on `rustok-core` and shared libraries;
 - used by `apps/server` for auth lifecycle and operational notification path;
-- module-level `health()` returns `Degraded` because effective SMTP/Loco transport can only be verified with host runtime context; the specific check is in `apps/server` as an `email_backend` readiness check;
+- module-level `health()` returns `Degraded` because effective SMTP transport can only be verified with host runtime context; the specific check is in `apps/server` as an `email_backend` readiness check;
 - does not publish its own UI and remains `ui_classification = "capability_only"`;
 - any admin-facing actions that trigger email sending are authorized in the calling module, not in `rustok-email`.
 

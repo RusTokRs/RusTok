@@ -206,10 +206,6 @@ assertContains(storefrontNativeServerAdapter, "#[server", `${files.storefrontNat
 assertContains(storefrontNativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must use the host runtime context`);
 assertContains(storefrontNativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must receive the event bus through the host runtime context`);
 assertContains(storefrontNativeServerAdapter, "runtime_ctx.db_clone()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must receive DB through the host runtime context`);
-assertNotContains(storefrontNativeServerAdapter, "loco_rs", `${files.storefrontNativeServerAdapter}: storefront native server adapter must not depend on Loco AppContext`);
-assertNotContains(storefrontNativeServerAdapter, "rustok_outbox::loco", `${files.storefrontNativeServerAdapter}: storefront native server adapter must not use the outbox Loco adapter`);
-assertNotContains(storefrontCargo, "loco-rs", `${files.storefrontCargo}: pages storefront must not depend on Loco`);
-assertNotContains(storefrontCargo, "loco-adapter", `${files.storefrontCargo}: pages storefront must not enable the outbox Loco adapter feature`);
 
 assertContains(implementationPlan, "verify-pages-ui-boundary.mjs", `${files.implementationPlan}: local plan must mention the pages fast boundary guardrail`);
 assertContains(registry, "verify-pages-ui-boundary.mjs", `${files.registry}: central readiness board must mention the pages fast boundary guardrail`);

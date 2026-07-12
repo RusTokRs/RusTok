@@ -100,8 +100,8 @@ If `rustok-module.toml` declares:
 then the corresponding type/function symbols must actually exist inside `src/**/*.rs`
 of the module. The manifest must not reference decorative or already removed transport surfaces.
 
-`routes` is a historical Loco manifest field and must not be declared by a live
-module. `axum_router` is the active entrypoint: it names a function that accepts
+`routes` is not a live manifest field and must not be declared by a live module.
+`axum_router` is the active entrypoint: it names a function that accepts
 `&rustok_api::HostRuntimeContext` and returns the module-owned `axum::Router`
 (or a fallible result containing one). The host code generator mounts that
 entrypoint directly; there is no parallel routing model.

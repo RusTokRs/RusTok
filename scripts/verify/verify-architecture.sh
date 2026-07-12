@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # RusTok — Верификация архитектурных паттернов
-# Фаза 1, 5: module registry, Loco hooks, MCP, controller return types
+# Фаза 1, 5: module registry, Axum composition, MCP, controller return types
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,31 +78,31 @@ else
 fi
 
 # ═══════════════════════════════════════════
-# LOCO FRAMEWORK COMPLIANCE
+# AXUM RUNTIME COMPLIANCE
 # ═══════════════════════════════════════════
 
-# ─── 4. Loco Hooks implementation ───
-header "4. Loco Hooks: routes through Hooks trait"
+# ─── 4. Axum router composition ───
+header "4. Axum router composition"
 
 hooks_impl=$(grep -rn 'impl Hooks\|fn routes\|fn after_routes\|fn connect_workers\|fn boot' "$SERVER_SRC" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
 if [[ -n "$hooks_impl" ]]; then
-    pass "Loco Hooks trait implementation found"
+    pass "Server lifecycle composition found"
 
     # Check for routes outside Hooks
     direct_routes=$(grep -rn '\.route(\|Router::new\|axum::Router' "$SERVER_SRC" --include="*.rs" 2>/dev/null | grep -v "test\|// \|fn routes\|Hooks\|mod\.rs" || true)
     if [[ -n "$direct_routes" ]]; then
         count=$(echo "$direct_routes" | wc -l)
-        warn "$count direct router definition(s) outside Hooks (should be in Hooks::routes):"
+        warn "$count direct router definition(s) outside the composition boundary:"
         echo "$direct_routes" | head -5
     else
-        pass "All routes defined through Hooks"
+        pass "All routes use the composition boundary"
     fi
 else
-    warn "No Loco Hooks implementation found"
+    warn "No server lifecycle composition found"
 fi
 
-# ─── 5. Controller return types: loco_rs::Result ───
-header "5. Controllers: loco_rs::Result return type"
+# ─── 5. Controller return types ───
+header "5. Controllers: transport return type"
 
 CONTROLLERS_DIR="$SERVER_SRC/controllers"
 if [[ -d "$CONTROLLERS_DIR" ]]; then
@@ -116,19 +116,19 @@ if [[ -d "$CONTROLLERS_DIR" ]]; then
         lineno=$(echo "$line" | cut -d: -f2)
         # Get return type (next few lines)
         ret_type=$(sed -n "${lineno},$((lineno + 3))p" "$file" 2>/dev/null | tr '\n' ' ' || true)
-        if echo "$ret_type" | grep -qiE 'loco_rs::Result\|loco::Result\|Result<.*Response\|Result<Json'; then
+        if echo "$ret_type" | grep -qiE 'rustok_web::HttpError\|Result<.*Response\|Result<Json'; then
             loco_result=$((loco_result + 1))
         elif echo "$ret_type" | grep -qiE 'Result<'; then
             fn_name=$(echo "$line" | grep -oP 'fn\s+\K\w+' || echo "unknown")
-            warn "$(basename $file):$fn_name — non-loco Result type"
+            warn "$(basename $file):$fn_name — unexpected transport Result type"
             custom_result=$((custom_result + 1))
         fi
     done <<< "$controller_fns"
 
     if [[ $custom_result -eq 0 ]]; then
-        pass "All controllers use loco_rs::Result ($loco_result functions)"
+        pass "All controllers use expected transport results ($loco_result functions)"
     else
-        echo -e "    loco_rs::Result: $loco_result, custom Result: $custom_result"
+        echo -e "    expected transport result: $loco_result, custom Result: $custom_result"
     fi
 fi
 

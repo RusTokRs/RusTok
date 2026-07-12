@@ -10,7 +10,7 @@ recreate backorder, tenant/channel/locale, or stock lookup policy.
 Inventory admin stock operations are owned by native/transport mutations:
 set quantity, adjust quantity, reserve, release reservation, and check
 availability. The admin package uses `HostRuntimeContext` and a typed
-transactional event bus, is Loco-free, and intentionally has no GraphQL
+transactional event bus, is host-neutral, and intentionally has no GraphQL
 fallback for this current operator surface.
 
 `BootstrapService` owns default-location creation, initial item/level creation,

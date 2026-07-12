@@ -18,7 +18,7 @@ The purpose of the module is to give the platform a unified typed SEO runtime: o
 - runtime adapter seam for sitemap submission with per-endpoint statuses and bounded partial-failure summary;
 - diagnostics read model: readiness score, issue list, issue aggregates and source counts, including image descriptor quality issue codes `missing_image_alt` and `missing_image_size` for SEO-critical targets;
 - read-only cross-link suggestions (`seoCrossLinkSuggestions` / `/api/seo/cross-link-suggestions`) without automatic HTML mutation;
-- REST handlers on narrow `SeoHttpRuntime` with explicit DB/event bus/runtime extensions handles; the current Loco `AppContext` remains only in the route-state adapter until the full Axum cutover;
+- REST handlers use narrow `SeoHttpRuntime` with explicit DB/event bus/runtime extensions handles; the route-state adapter is the only host composition boundary;
 - REST control-plane parity endpoints for diagnostics/sitemaps/bulk jobs: `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`, `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}`;
 - REST error envelope on control-plane endpoints is unified with GraphQL codes (`errors[].extensions.code`: `BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, `INTERNAL_ERROR`) for deterministic client-side mapping;
 - shared capability registry via `rustok-seo-targets`;

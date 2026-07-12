@@ -53,7 +53,7 @@ tag dictionary while profile-tag bindings remain module-owned.
    `TenantReadPort`, and the customer-owned profile-enrichment projection.
    **Done when:** `rustok-cli profiles backfill` is provided by a
    `rustok-profiles/cli` adapter, preserves dry-run/event semantics, and the
-   Loco task is deleted. **Completed:** the provider uses owner-owned auth,
+   task is deleted. **Completed:** the provider uses owner-owned auth,
    tenant and customer reads plus `OutboxTransport` for optional event
    publishing; compiled CLI/runtime evidence remains the next verification
    step.

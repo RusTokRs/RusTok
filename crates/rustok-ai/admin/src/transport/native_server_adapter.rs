@@ -294,7 +294,6 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
         Ok(AiAdminBootstrap {
             metrics: map_runtime_metrics(rustok_ai::AiManagementService::metrics_snapshot()),
             provider_catalog: rustok_ai::provider_catalog()
-                .iter()
                 .map(map_provider_catalog_entry)
                 .collect(),
             provider_targets: runtime

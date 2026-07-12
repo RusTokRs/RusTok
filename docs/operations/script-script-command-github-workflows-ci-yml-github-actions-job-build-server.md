@@ -9,7 +9,7 @@ last_verified_snapshot: snap_jsonl_00000021
 status: verified
 ---
 
-# Script Command `GitHub Actions job Build Server (Loco)`
+# Script Command `GitHub Actions job Build Server`
 
 ## Purpose
 

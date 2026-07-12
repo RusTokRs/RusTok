@@ -94,10 +94,6 @@ assertNotContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAd
 assertContains(nativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${files.nativeServerAdapter}: native adapter must use the host runtime context`);
 assertContains(nativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${files.nativeServerAdapter}: native adapter must receive the event bus through the host runtime context`);
 assertContains(nativeServerAdapter, "runtime_ctx.db_clone()", `${files.nativeServerAdapter}: native adapter must receive DB through the host runtime context`);
-assertNotContains(nativeServerAdapter, "loco_rs", `${files.nativeServerAdapter}: native adapter must not depend on Loco AppContext`);
-assertNotContains(nativeServerAdapter, "rustok_outbox::loco", `${files.nativeServerAdapter}: native adapter must not use the outbox Loco adapter`);
-assertNotContains(cargo, "loco-rs", `${files.cargo}: pricing storefront package must not depend on Loco`);
-assertNotContains(cargo, "loco-adapter", `${files.cargo}: pricing storefront package must not enable the outbox Loco adapter`);
 
 assertContains(implementationPlan, "verify-pricing-storefront-boundary.mjs", `${files.implementationPlan}: local plan must mention pricing storefront guardrail`);
 assertContains(registry, "verify-pricing-storefront-boundary.mjs", `${files.registry}: central readiness board must mention pricing storefront guardrail`);

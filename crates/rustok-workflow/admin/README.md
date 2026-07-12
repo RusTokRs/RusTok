@@ -19,7 +19,7 @@ Leptos admin UI package for the `rustok-workflow` module.
 - `WorkflowAdmin` - root admin page component re-exported from `src/ui/leptos.rs`.
 - `src/core.rs` - framework-agnostic FFA slice for workflow row view-models, status presentation, template category styling, and template-name normalization.
 - `src/transport/mod.rs` - thin module-owned build-profile-selected transport facade for native `#[server]` and GraphQL paths.
-- `src/transport/native_server_adapter.rs` - native server-function adapter that consumes host-provided `rustok_api::HostRuntimeContext`, not Loco `AppContext`.
+- `src/transport/native_server_adapter.rs` - native server-function adapter that consumes host-provided `rustok_api::HostRuntimeContext`, not a host-wide `AppContext`.
 - `src/ui/leptos.rs` - Leptos-only render adapter; crate root only wires modules and re-exports `WorkflowAdmin`.
 - `rustok-module.toml [provides.admin_ui]` advertises `leptos_crate`, `route_segment`, `nav_label`, and manifest-driven nested subpages such as `templates`.
 

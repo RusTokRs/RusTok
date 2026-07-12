@@ -44,8 +44,8 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 | 1.4 | Business logic in domain crates (`crates/rustok-*`), controllers are thin | Business logic in controllers/resolvers | Duplication between REST and GraphQL, untestability | [architecture/overview.md](../architecture/overview.md) |
 | 1.5 | Modules interact via EventBus, not direct calls | Direct calls between domain modules | Coupling, violation of event-driven principle | [architecture/overview.md](../architecture/overview.md) |
 | 1.6 | Write path — normalized tables, Read path — denormalized index | One set of tables for write and read | Violates CQRS-lite, slow storefront | [architecture/overview.md §CQRS-lite](../architecture/overview.md) |
-| 1.7 | Loco hooks (`Hooks::routes`, `after_routes`, `connect_workers`) for lifecycle | Custom "pure Axum" lifecycle | Bypasses Loco initialization, dependency injection, middleware chain | [ai/KNOWN_PITFALLS.md §Loco](../ai/KNOWN_PITFALLS.md) |
-| 1.8 | Shared dependencies via `AppContext.shared_store` | Global singleton objects (static, lazy_static) | Untestable, no per-request scope, leaks between tests | [ai/KNOWN_PITFALLS.md §Loco](../ai/KNOWN_PITFALLS.md) |
+| 1.7 | Explicit Axum bootstrap, router assembly and lifecycle handles | A parallel host lifecycle | Bypasses the established initialization, middleware and shutdown chain | [ai/KNOWN_PITFALLS.md §Axum Runtime](../ai/KNOWN_PITFALLS.md) |
+| 1.8 | Typed runtime values passed through `ServerRuntimeContext` | Global singleton objects (static, lazy_static) | Untestable, no per-request scope, leaks between tests | [ai/KNOWN_PITFALLS.md §Axum Runtime](../ai/KNOWN_PITFALLS.md) |
 
 ---
 

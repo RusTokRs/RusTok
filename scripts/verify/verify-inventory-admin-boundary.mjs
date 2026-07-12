@@ -184,10 +184,6 @@ function assertInventoryAdminTransportBoundary() {
   assertContains(nativeAdapter, "expect_context::<rustok_api::HostRuntimeContext>()", `${nativeAdapterPath}: native functions must consume neutral host runtime context`);
   assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native functions must read DB from neutral host runtime context`);
   assertContains(nativeAdapter, "shared_get::<rustok_outbox::TransactionalEventBus>()", `${nativeAdapterPath}: native write functions must read the typed event bus from host runtime context`);
-  assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native functions must not depend on Loco runtime context`);
-  assertNotContains(nativeAdapter, "rustok_outbox::loco", `${nativeAdapterPath}: native functions must not consume the outbox Loco adapter`);
-  assertNotContains(cargo, "loco-rs", `${cargoPath}: inventory admin crate must not depend on Loco`);
-  assertNotContains(cargo, "loco-adapter", `${cargoPath}: inventory admin crate must not enable the outbox Loco adapter feature`);
 
   for (const functionName of [
     "set_variant_quantity",

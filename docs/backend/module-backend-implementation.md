@@ -132,14 +132,14 @@ async fn handler(...) -> crate::error::Result<axum::response::Response> {
 }
 ```
 
-Do not add `loco_rs::controller::format` imports. The active host is already
-Axum-only; module routes use the manifest-declared `axum::Router` entrypoint.
+The active host is Axum-only; module routes use the manifest-declared
+`axum::Router` entrypoint and `rustok-web` response helpers.
 
 Use `rustok-web::HttpError` / `HttpResult` only for HTTP boundary errors. Domain errors
 belong to the module and should be mapped at the adapter boundary.
 
-`rustok-web` is the replacement direction for Loco response/error helpers, not a new
-business policy layer. It may format JSON, status codes and HTTP envelopes. It must not
+`rustok-web` owns response/error helpers, not a new business policy layer. It
+may format JSON, status codes and HTTP envelopes. It must not
 decide inventory, checkout, RBAC, tenant lifecycle or other module behavior.
 
 ## GraphQL and Server Functions
@@ -223,5 +223,4 @@ When backend contracts change, update in the same change:
 - `docs/modules/registry.md` for FFA/FBA readiness changes;
 - verification scripts when a guardrail is needed to prevent drift.
 
-Documentation must describe the actual code state, including temporary Loco inventory that
-still exists.
+Documentation must describe the actual code state and the active architecture.

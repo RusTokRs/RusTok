@@ -10,7 +10,7 @@ owner-owned Axum surface; cron and event-listener execution remain distinct.
 The admin package has reached Phase B: a framework-agnostic core, selected
 native/GraphQL transport facade, and explicit Leptos UI adapter. Native server
 functions and HTTP/webhook handlers use `HostRuntimeContext` and narrow
-`WorkflowHttpRuntime`, without Loco dependencies.
+`WorkflowHttpRuntime`, without host-framework dependencies.
 
 The owner-owned overview and template gallery are mounted at `/modules/workflow`.
 The legacy `/workflows` root redirects there; only workflow detail editing,

@@ -6,8 +6,8 @@
 typed attribute values, and product admin/storefront packages. Product UI uses
 owner-owned core, transport, and Leptos adapter layers. Native server functions
 use `HostRuntimeContext` and a typed event bus; GraphQL remains the parallel
-selected path. The product packages contain no package-local Loco or outbox
-Loco-adapter dependency.
+selected path. The product packages contain no package-local framework or
+framework-specific outbox adapter dependency.
 
 `ProductCatalogReadPort` / `product.catalog_read.v1` is implemented by
 `CatalogService`. `boundary_ready` on no-compile runtime fallback evidence is

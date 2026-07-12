@@ -150,10 +150,6 @@ assertContains(nativeAdapter, "mcp_scaffold_drafts_native", `${nativeAdapterPath
 assertContains(nativeAdapter, "expect_context::<rustok_api::HostRuntimeContext>()", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
 assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native adapter must read DB from neutral host runtime context`);
 assertContains(nativeAdapter, "shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()", `${nativeAdapterPath}: native adapter must read module runtime extensions from typed host handles`);
-assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
-assertNotContains(nativeAdapter, "rustok_outbox::loco", `${nativeAdapterPath}: native adapter must not consume outbox Loco adapter`);
-assertNotContains(mcpAdminCargo, "loco-rs", `${mcpAdminCargoPath}: MCP admin crate must not depend on Loco`);
-assertNotContains(mcpAdminCargo, "loco-adapter", `${mcpAdminCargoPath}: MCP admin crate must not enable outbox Loco adapter feature`);
 for (const marker of [
   "mcp_native_context",
   "mcp_audit_events_native",

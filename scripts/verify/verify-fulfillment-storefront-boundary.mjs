@@ -156,10 +156,6 @@ assertContains(nativeServerFunctions, "rustok_commerce::storefront_checkout_runt
 assertContains(nativeServerFunctions, "expect_context::<HostRuntimeContext>()", `${nativeServerFunctionsPath}: fulfillment native server-functions adapter must use the host runtime context`);
 assertContains(nativeServerFunctions, "shared_get::<TransactionalEventBus>()", `${nativeServerFunctionsPath}: fulfillment native server-functions adapter must receive the event bus through the host runtime context`);
 assertContains(nativeServerFunctions, "runtime_ctx.db_clone()", `${nativeServerFunctionsPath}: fulfillment native server-functions adapter must receive DB through the host runtime context`);
-assertNotContains(nativeServerFunctions, "loco_rs", `${nativeServerFunctionsPath}: fulfillment native server-functions adapter must not depend on Loco AppContext`);
-assertNotContains(nativeServerFunctions, "rustok_outbox::loco", `${nativeServerFunctionsPath}: fulfillment native server-functions adapter must not use the outbox Loco adapter`);
-assertNotContains(cargo, "loco-rs", `${cargoPath}: fulfillment storefront package must not depend on Loco`);
-assertNotContains(cargo, "loco-adapter", `${cargoPath}: fulfillment storefront package must not enable the outbox Loco adapter`);
 assertContains(commerceTransport, "select_shipping_option(", `${commerceTransportPath}: commerce SSR adapter must delegate shipping selection fallback policy to fulfillment owner facade`);
 assertContains(commerceTransport, "rustok_fulfillment_storefront::transport::select_shipping_option", `${commerceTransportPath}: commerce compatibility adapter must delegate to owner transport facade`);
 

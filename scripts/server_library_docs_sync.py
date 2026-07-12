@@ -32,7 +32,6 @@ class Library:
 
 
 LIBRARIES: tuple[Library, ...] = (
-    Library("loco-rs", "loco-rs", "loco_rs"),
     Library("axum", "axum", "axum"),
     Library("sea-orm", "sea-orm", "sea_orm"),
     Library("async-graphql", "async-graphql", "async_graphql"),

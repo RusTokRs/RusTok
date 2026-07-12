@@ -81,7 +81,7 @@ allowlist, credential and audit policy to Alloy drafts and marketplace artifacts
    To read history, use the supported transport surfaces:
    GraphQL `scriptExecutionHistory(scriptId, pagination)` /
    `recentScriptExecutions(pagination)` and legacy compact list
-   `scriptExecutions(scriptId, limit)`, HTTP/Loco
+   `scriptExecutions(scriptId, limit)`, HTTP
    `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` or
    generic Axum router `GET /executions`, `GET /scripts/{id}/executions`.
    All responses are based on `SeaOrmExecutionLog`, normalize `page >= 1` and `per_page` into the range 1..100 before DB-level offset/limit

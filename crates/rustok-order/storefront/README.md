@@ -25,6 +25,6 @@ Module-owned storefront UI package for `rustok-order`.
 
 `rustok-commerce-storefront` may pass aggregate checkout completion snapshots into this package and execute the async native/GraphQL orchestration callback, but checkout result presentation, complete-checkout request construction, and completion command metadata stay here.
 
-The native callback still calls the explicit `rustok_commerce::storefront_checkout_runtime` orchestration API during the handoff window, but the storefront package receives host state through `HostRuntimeContext` DB/event-bus handles rather than Loco `AppContext`.
+The native callback still calls the explicit `rustok_commerce::storefront_checkout_runtime` orchestration API during the handoff window, but the storefront package receives host state through `HostRuntimeContext` DB/event-bus handles rather than a host-wide `AppContext`.
 
 See the platform documentation map in [`../../../docs/index.md`](../../../docs/index.md).

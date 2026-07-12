@@ -15,7 +15,7 @@ block and menu contracts.
 - `PageService`, `BlockService`, `MenuService` and page visibility semantics;
 - module-owned storage for `pages`, `page_translations`, `page_bodies`, `page_blocks`, `page_channel_visibility`, `menus`, `menu_translations`, `menu_items`, `menu_item_translations`;
 - GraphQL/REST adapters and Leptos admin/storefront packages;
-- REST page/block handlers consume narrow `PagesHttpRuntime` state with explicit DB/event bus handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a Loco adapter;
+- REST page/block handlers consume narrow `PagesHttpRuntime` state with explicit DB/event bus handles; `controllers::axum_router` builds it from `HostRuntimeContext` and generated host composition mounts it without a framework adapter;
 - canonical write-path for visual builder via `body.format = "grapesjs_v1"`;
 - typed relation `page_channel_visibility` for publication-level visibility.
 

@@ -20,9 +20,9 @@ runtime or domain behavior.
 ## Next results
 
 1. **Finish the neutral server-test migration.** Replace remaining
-   `loco_rs::tests_cfg` use with reusable `rustok-test-utils` server/runtime
-   fixtures, starting from the Loco-exit inventory. Done when the server test
-   suite no longer needs Loco test-context imports outside an explicitly
+   legacy framework test-context use with reusable `rustok-test-utils` server/runtime
+   fixtures. Done when the server test
+   suite no longer needs framework test-context imports outside an explicitly
    temporary, named migration bridge.
 2. **Lock the public mock and fixture contract.** Add focused regression tests
    for database transaction isolation, fixture defaults, tenant/RBAC context,
@@ -40,7 +40,7 @@ runtime or domain behavior.
 - `cargo test -p rustok-test-utils`
 - `scripts/verify/verify-code-quality.sh` (test-utils remains dev-only for
   consumers)
-- Targeted server test migration checks from the Loco-exit plan.
+- Targeted server test migration checks from the server test plan.
 
 ## References
 

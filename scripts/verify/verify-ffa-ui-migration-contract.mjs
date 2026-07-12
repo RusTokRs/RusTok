@@ -561,18 +561,10 @@ function collectCustomerAdminNativeAdapterSplitErrors() {
     "runtime_ctx.db_clone()",
   ].forEach((requiredSnippet) => {
     if (!nativeAdapter.includes(requiredSnippet)) {
-      errors.push(`Customer admin native adapter must contain Loco-free runtime snippet: ${requiredSnippet}`);
+      errors.push(`Customer admin native adapter must contain host-neutral runtime snippet: ${requiredSnippet}`);
     }
   });
 
-  if (nativeAdapter.includes("loco_rs")) {
-    errors.push("Customer admin native adapter must not depend on Loco runtime context");
-  }
-
-  const customerAdminCargo = readText("crates/rustok-customer/admin/Cargo.toml");
-  if (customerAdminCargo.includes("loco-rs")) {
-    errors.push("Customer admin Cargo.toml must not depend on Loco");
-  }
   [
     "mod native_server_adapter;",
     "pub use native_server_adapter::ApiError;",

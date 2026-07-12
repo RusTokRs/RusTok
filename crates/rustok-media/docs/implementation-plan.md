@@ -42,7 +42,7 @@ storage handle. `MediaImageDescriptor` is the cross-module SEO image boundary;
 
 2. **Finish cleanup ownership and storage-failure coverage.** Verify the
    `rustok-media-cli` cleanup path against persistence and storage failures, then
-   remove the legacy Loco cleanup task.
+   remove the legacy cleanup task.
    **Depends on:** CLI runtime composition and a DB-backed storage fixture.
    **Done when:** cleanup decisions, inspected/deleted/kept/retry reporting, and
    failure recovery are tested through the owner service.

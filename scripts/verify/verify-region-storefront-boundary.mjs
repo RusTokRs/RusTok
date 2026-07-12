@@ -63,8 +63,6 @@ for (const marker of ["mod graphql_adapter;", "mod native_server_adapter;", "UiT
 has("native", "fetch_storefront_regions_server", `${files.native}: missing native endpoint call`);
 has("native", "HostRuntimeContext", `${files.native}: native adapter must consume neutral host runtime context`);
 has("native", "runtime_ctx.db_clone()", `${files.native}: native adapter must build service from neutral DB handle`);
-lacks("native", "loco_rs", `${files.native}: native adapter must not depend on Loco runtime context`);
-lacks("cargo", "loco-rs", `${files.cargo}: storefront crate must not depend on Loco`);
 has("graphql", "fetch_storefront_regions_graphql", `${files.graphql}: missing GraphQL endpoint call`);
 has("plan", "verify-region-storefront-boundary.mjs", `${files.plan}: missing storefront guardrail evidence`);
 has("registry", "verify-region-storefront-boundary.mjs", `${files.registry}: missing storefront guardrail evidence`);

@@ -15,8 +15,8 @@ public pricing discovery.
 - Render the public pricing atlas for published catalog entries.
 - Read pricing summary and variant-level price data through native `#[server]`
   functions backed by `rustok-pricing::PricingService` through
-  `HostRuntimeContext` DB/event-bus handles, without a Loco runtime or outbox
-  Loco-adapter dependency.
+  `HostRuntimeContext` DB/event-bus handles, without a host-framework runtime
+  or framework-specific outbox adapter dependency.
 - Surface effective variant pricing from the typed resolver when the route carries
   optional pricing context query values such as `currency`, `region_id`,
   `price_list_id`, `channel_id` / `channel_slug`, and `quantity`.

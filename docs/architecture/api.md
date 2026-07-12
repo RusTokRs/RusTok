@@ -146,9 +146,8 @@ contract:
 - [Backend Module Verification Guide](../backend/module-backend-verification.md)
 
 New module services, ports, HTTP handlers, GraphQL roots, `#[server]` adapters and CLI
-adapters must not use Loco runtime APIs as their target contract. The active
-server and generated module composition are Axum-only; Loco references are
-archived inventory or verifier search terms only.
+adapters must use explicit owner and Axum runtime contracts as their target
+contract. The active server and generated module composition are Axum-only.
 
 ## Security and Context Contract
 

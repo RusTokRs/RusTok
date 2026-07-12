@@ -108,10 +108,6 @@ assertContains(nativeAdapter, "shared_get::<rustok_outbox::TransactionalEventBus
 assertContains(nativeAdapter, "shared_get::<rustok_ai::SharedAiModuleRegistry>", `${nativeAdapterPath}: native adapter must resolve shared AI module registry`);
 assertContains(nativeAdapter, "shared_get::<rustok_storage::StorageService>", `${nativeAdapterPath}: native adapter must resolve shared storage handle`);
 assertContains(nativeAdapter, "shared_get::<alloy::SharedAlloyRuntime>", `${nativeAdapterPath}: native adapter must resolve shared Alloy runtime handle`);
-assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
-assertNotContains(nativeAdapter, "rustok_outbox::loco", `${nativeAdapterPath}: native adapter must not use the outbox Loco adapter`);
-assertNotContains(cargo, "loco-rs", `${cargoPath}: AI admin crate must not depend on Loco`);
-assertNotContains(cargo, "loco-adapter", `${cargoPath}: AI admin crate must not enable the outbox Loco adapter feature`);
 assertContains(graphqlAdapter, "pub const AI_BOOTSTRAP_QUERY", `${graphqlAdapterPath}: GraphQL adapter must expose bootstrap query document`);
 assertContains(graphqlAdapter, "pub fn bootstrap_request", `${graphqlAdapterPath}: GraphQL adapter must expose a bootstrap request builder`);
 assertContains(graphqlAdapter, "pub fn session_request", `${graphqlAdapterPath}: GraphQL adapter must expose a session request builder`);

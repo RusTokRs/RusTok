@@ -101,7 +101,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   accepts explicit runtime dependencies. `services/graphql_schema.rs` also accepts only
   `ServerRuntimeContext`.
 - Server event runtime builds the regular and transactional event bus from `ServerRuntimeContext`; `rustok-outbox`
-  exposes no Loco adapter or framework-specific composition path.
+  exposes no framework-specific composition adapter.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass framework context into request/connection data.
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
@@ -121,7 +121,7 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   framework-global application context is a request/channel contract for server-owned runtime paths.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
-  or `ServerRuntimeContext`; Loco `AppContext` no longer participates in OAuth request state.
+  or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Swagger document filtering, installer persistence reads, admin DLQ, MCP management/remote tools

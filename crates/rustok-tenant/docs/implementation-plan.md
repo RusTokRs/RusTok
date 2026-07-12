@@ -26,7 +26,7 @@ lifecycle changes remains a server-owned integration responsibility.
   and `crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json`.
 - The admin overview is a documented native-only exception: no public
   GraphQL/REST tenant-bootstrap UI contract exists yet. Its native adapter uses
-  `HostRuntimeContext` and is Loco-free.
+  `HostRuntimeContext` and is host-neutral.
 
 ## Open results
 

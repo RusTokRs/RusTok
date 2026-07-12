@@ -10,7 +10,7 @@ relay lifecycle.
 The read-only admin surface uses a module-owned core, transport facade, and UI
 adapter. Native transport uses `HostRuntimeContext`. `OutboxRelayPort` uses the
 canonical `rustok_api::ports` write policy, including deadline and idempotency
-semantics; the Loco helper remains an owner-crate adapter feature.
+semantics; the owner crate exposes the required adapter feature.
 
 The read-only operator dashboard is an accepted single-adapter owner fragment:
 it has no public/headless outbox-admin contract, so its native `#[server]`

@@ -6,7 +6,7 @@
 and its admin/storefront UI packages. The resolver already covers the active
 price-list overlay, channel-aware context, typed percentage adjustments, and
 the deterministic base-row precedence rules. Admin and storefront use
-module-owned core/transport/Leptos layers; native server functions are Loco-free
+module-owned core/transport/Leptos layers; native server functions are host-neutral
 and retain GraphQL as the parallel selected path.
 
 `PricingReadPort` / `pricing.read_projection.v1` is implemented by

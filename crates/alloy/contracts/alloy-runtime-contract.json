@@ -26,10 +26,6 @@
   },
   "execution_history_contract": {
     "routes": {
-      "loco": [
-        "/executions",
-        "/scripts/{id}/executions"
-      ],
       "axum": [
         "/executions",
         "/scripts/{id}/executions"

@@ -8,7 +8,7 @@ adapters.
 ## Responsibilities
 
 - Provide shared HTTP error envelopes and response mapping.
-- Keep Axum controller replacements consistent during the Loco controller cutover.
+- Keep Axum controller adapters consistent.
 - Host reusable web-boundary helpers that are not domain logic.
 
 ## Entry Points
@@ -20,7 +20,7 @@ adapters.
 
 ## Interactions
 
-- Used by `apps/server` and module HTTP controllers as Loco controller APIs are removed.
+- Used by `apps/server` and module HTTP controllers for shared response mapping.
 - May map neutral backend errors into HTTP responses.
 - Does not own runtime composition, domain errors, FBA metadata, CLI contracts, or UI transport.
 

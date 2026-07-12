@@ -29,7 +29,7 @@ Leptos admin UI adapter package for the `rustok-auth` module.
 - Consumed by `apps/admin` via manifest-driven routing and module registration.
 - Mounted by the Leptos admin host under the auth module route segment.
 - Calls server auth, user, and OAuth app endpoints through module-owned transport adapters while keeping host routing outside the package.
-- Native user and OAuth server functions use `HostRuntimeContext` for DB access and the host-provided `ModuleRuntimeExtensions` handle for owner mutation runtimes; the package has no Loco runtime dependency.
+- Native user and OAuth server functions use `HostRuntimeContext` for DB access and the host-provided `ModuleRuntimeExtensions` handle for owner mutation runtimes; the package has no host-framework dependency.
 - The fast boundary contract is `npm run verify:auth:admin-boundary`.
 
 ## Documentation

@@ -10,7 +10,7 @@ API contracts.
 
 This crate does not own domain services, HTTP response mapping, CLI contracts,
 FBA metadata, or UI transport. It exists to prevent repeated framework-specific
-runtime lookup code while server composition is decoupled from Loco.
+runtime lookup code while server composition stays host-neutral.
 
 ## FFA/FBA boundary
 
@@ -37,7 +37,7 @@ runtime lookup code while server composition is decoupled from Loco.
 
 3. **Re-evaluate API/runtime ownership after bootstrap decoupling.** Keep stable
    contracts in `rustok-api` and executable helpers here; revisit the boundary
-   only once server bootstrap no longer relies on its remaining Loco bridge.
+   only once server bootstrap no longer relies on its remaining bridge.
    **Depends on:** server bootstrap/runtime composition progress.
    **Done when:** dependency direction and the ownership of each runtime helper
    are explicit, documented, and free of server-type coupling.

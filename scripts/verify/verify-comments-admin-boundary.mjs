@@ -126,13 +126,11 @@ assertNotContains(transportMod, "graphql", `${transportModPath}: comments admin 
 assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must contain server-function endpoints`);
 assertContains(nativeAdapter, "CommentsService::new", `${nativeAdapterPath}: native adapter must call CommentsService`);
 assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
-assertNotContains(nativeAdapter, "loco_rs", `${nativeAdapterPath}: native adapter must not depend on Loco runtime context`);
 assertContains(nativeAdapter, "comments_threads_native", `${nativeAdapterPath}: native adapter must own thread list server function`);
 assertContains(nativeAdapter, "comments_set_comment_status_native", `${nativeAdapterPath}: native adapter must own comment status server function`);
-assertNotContains(cargoToml, "loco-rs", `${cargoPath}: comments admin must not depend on Loco`);
 
 assertContains(localPlan, "native-only comments admin exception", `${localPlanPath}: local plan must document native-only exception`);
-assertContains(localPlan, "Loco-free native admin transport", `${localPlanPath}: local plan must record Loco-free native transport evidence`);
+assertContains(localPlan, "HostRuntimeContext", `${localPlanPath}: local plan must record host-neutral native transport evidence`);
 assertContains(localPlan, "UiRouteQueryIntent", `${localPlanPath}: local plan must document shared route-query contract`);
 assertContains(localPlan, "verify-comments-admin-boundary.mjs", `${localPlanPath}: local plan must record fast boundary guardrail evidence`);
 assertContains(registry, "verify-comments-admin-boundary.mjs", `${registryPath}: central registry must record comments admin boundary guardrail`);

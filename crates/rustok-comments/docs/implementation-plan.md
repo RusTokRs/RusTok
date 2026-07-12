@@ -9,10 +9,10 @@ read/write path; page-like surfaces require explicit opt-in.
 
 The admin moderation surface is an intentional native-only exception: it has a
 module-owned core, native transport facade, and Leptos adapter, with
-`HostRuntimeContext` rather than Loco. Thread and locale route/query policy is
+`HostRuntimeContext`. Thread and locale route/query policy is
 core-owned, and UI does not call raw transport.
 
-The native-only comments admin exception uses Loco-free native admin transport
+The native-only comments admin exception uses host-neutral native admin transport
 and the shared `UiRouteQueryIntent` contract for prepared host route-query
 writes.
 

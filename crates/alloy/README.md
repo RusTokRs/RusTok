@@ -10,7 +10,7 @@
 - Own Alloy-specific hook orchestration, execution log projection and transport surfaces.
 - Consume the neutral Rhai execution kernel from `rustok-sandbox`; do not own a parallel production sandbox.
 - Expose the canonical Alloy runtime API used by MCP, workflow integrations, and server wiring.
-- Expose host-neutral runtime construction so server bootstrap can register Alloy without depending on Loco host context.
+- Expose host-neutral runtime construction so server bootstrap can register Alloy without depending on host-wide context.
 - Keep GraphQL runtime access on `SharedAlloyRuntime` schema data instead of host framework context.
 - Keep REST script/execution handlers on narrow `AlloyHttpRuntime` state; the manifest-declared Axum router builds it from host-provided `SharedAlloyRuntime`.
 
@@ -83,7 +83,7 @@ transport wiring:
 - GraphQL: `scriptExecutionHistory(scriptId, pagination)` and
   `recentScriptExecutions(pagination)`, with legacy
   `scriptExecutions(scriptId, limit)` retained as a compact history list.
-- HTTP/Loco routes: `GET /api/alloy/executions` and
+- HTTP routes: `GET /api/alloy/executions` and
   `GET /api/alloy/scripts/{id}/executions`.
 - Generic Axum router: `GET /executions` and
   `GET /scripts/{id}/executions`.

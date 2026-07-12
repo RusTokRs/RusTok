@@ -106,6 +106,58 @@ impl ProviderIntegration {
     pub(crate) fn from_slug(slug: &ProviderSlug) -> Option<Self> {
         provider_catalog_entry(slug).map(|entry| entry.integration)
     }
+
+    /// The capabilities for which this integration has a concrete Rig factory
+    /// in `inference.rs` or `vectors.rs`. This deliberately does not consult
+    /// the public descriptor: it is the compiler-exhaustive counterpart to
+    /// the catalog declaration, so a descriptor cannot advertise a feature
+    /// merely because it listed it itself.
+    #[cfg(feature = "server")]
+    const fn factory_supports(self, feature: ProviderFeature) -> bool {
+        use ProviderFeature::{
+            Chat, Embeddings, Image, Rerank, Streaming, StructuredOutput, Tools,
+        };
+        match self {
+            Self::OpenAi | Self::OpenAiCompatible => matches!(
+                feature,
+                Chat | Streaming | Tools | StructuredOutput | Embeddings | Image
+            ),
+            Self::Anthropic
+            | Self::ChatGpt
+            | Self::DeepSeek
+            | Self::Galadriel
+            | Self::Groq
+            | Self::Hyperbolic
+            | Self::MiniMax
+            | Self::Mira
+            | Self::Moonshot
+            | Self::Perplexity
+            | Self::XiaomiMimo
+            | Self::Zai
+            | Self::VertexAi => matches!(feature, Chat | Streaming | Tools | StructuredOutput),
+            Self::AzureOpenAi
+            | Self::GithubCopilot
+            | Self::Cohere
+            | Self::Mistral
+            | Self::Ollama
+            | Self::OpenRouter
+            | Self::Together
+            | Self::GeminiGrpc
+            | Self::Llamafile => matches!(
+                feature,
+                Chat | Streaming | Tools | StructuredOutput | Embeddings
+            ),
+            Self::Gemini | Self::AwsBedrock => matches!(
+                feature,
+                Chat | Streaming | Tools | StructuredOutput | Embeddings | Image
+            ),
+            Self::HuggingFace | Self::Xai => {
+                matches!(feature, Chat | Streaming | Tools | StructuredOutput | Image)
+            }
+            Self::VoyageAi => matches!(feature, Embeddings | Rerank),
+            Self::Fastembed => matches!(feature, Embeddings) && cfg!(feature = "fastembed"),
+        }
+    }
 }
 
 /// Stable deployment-owned connection identifier.
@@ -170,14 +222,21 @@ pub struct AiProviderTargetCatalog {
 #[cfg(feature = "server")]
 impl AiProviderTargetCatalog {
     pub fn new(targets: Vec<AiProviderTarget>) -> Result<Self, String> {
+        Self::new_with_egress_policy(targets, &ProviderEgressPolicy::default())
+    }
+
+    /// Constructs the deployment-owned target catalog only after every target
+    /// has passed the same descriptor schema and egress checks used during
+    /// runtime materialization. Callers that expose local gateways must pass
+    /// their explicit deployment policy here; a later tenant profile cannot
+    /// make an invalid target usable.
+    pub fn new_with_egress_policy(
+        targets: Vec<AiProviderTarget>,
+        egress_policy: &ProviderEgressPolicy,
+    ) -> Result<Self, String> {
         let mut values = BTreeMap::new();
         for target in targets {
-            if provider_catalog_entry(&target.provider_slug).is_none() {
-                return Err(format!(
-                    "provider target `{}` references unknown integration `{}`",
-                    target.id, target.provider_slug
-                ));
-            }
+            validate_provider_target(&target, egress_policy)?;
             if values.insert(target.id.clone(), target).is_some() {
                 return Err("provider target ids must be unique".to_string());
             }
@@ -188,12 +247,20 @@ impl AiProviderTargetCatalog {
     /// Reads deployment configuration only. Values in this JSON must never be
     /// accepted through tenant-facing transports.
     pub fn from_environment() -> Result<Self, String> {
+        Self::from_environment_with_egress_policy(&ProviderEgressPolicy::default())
+    }
+
+    /// Reads and validates deployment configuration against its server-owned
+    /// egress policy. This must run before targets are exposed to profiles/UI.
+    pub fn from_environment_with_egress_policy(
+        egress_policy: &ProviderEgressPolicy,
+    ) -> Result<Self, String> {
         let Some(raw) = std::env::var_os("RUSTOK_AI_PROVIDER_TARGETS_JSON") else {
             return Ok(Self::default());
         };
         let targets = serde_json::from_str::<Vec<AiProviderTarget>>(&raw.to_string_lossy())
             .map_err(|error| format!("invalid RUSTOK_AI_PROVIDER_TARGETS_JSON: {error}"))?;
-        Self::new(targets)
+        Self::new_with_egress_policy(targets, egress_policy)
     }
 
     pub fn get(&self, id: &ProviderTargetId) -> Option<&AiProviderTarget> {
@@ -203,6 +270,32 @@ impl AiProviderTargetCatalog {
     pub fn entries(&self) -> impl Iterator<Item = &AiProviderTarget> {
         self.targets.values()
     }
+}
+
+#[cfg(feature = "server")]
+fn validate_provider_target(
+    target: &AiProviderTarget,
+    egress_policy: &ProviderEgressPolicy,
+) -> Result<(), String> {
+    let descriptor = provider_catalog_entry(&target.provider_slug).ok_or_else(|| {
+        format!(
+            "provider target `{}` references unknown integration `{}`",
+            target.id, target.provider_slug
+        )
+    })?;
+    if !descriptor.compiled_in {
+        return Err(format!(
+            "provider target `{}` references integration `{}` which is not compiled into this deployment",
+            target.id, target.provider_slug
+        ));
+    }
+    if target.display_name.trim().is_empty() {
+        return Err(format!(
+            "provider target `{}` requires a display name",
+            target.id
+        ));
+    }
+    egress_policy.validate_settings(descriptor, &target.settings)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -472,7 +565,14 @@ macro_rules! entry {
 }
 
 static CATALOG: &[ProviderCatalogEntry] = &[
-    entry!(ProviderIntegration::OpenAi, "openai", "OpenAI", CHAT_EMBED_IMAGE, BASE_URL, API_KEY),
+    entry!(
+        ProviderIntegration::OpenAi,
+        "openai",
+        "OpenAI",
+        CHAT_EMBED_IMAGE,
+        BASE_URL,
+        API_KEY
+    ),
     entry!(
         ProviderIntegration::OpenAiCompatible,
         "openai_compatible",
@@ -481,7 +581,14 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         BASE_URL,
         API_KEY
     ),
-    entry!(ProviderIntegration::Anthropic, "anthropic", "Anthropic", CHAT, BASE_URL, API_KEY),
+    entry!(
+        ProviderIntegration::Anthropic,
+        "anthropic",
+        "Anthropic",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
     entry!(
         ProviderIntegration::AzureOpenAi,
         "azure_openai",
@@ -490,7 +597,14 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         AZURE_OPENAI_SETTINGS,
         API_KEY
     ),
-    entry!(ProviderIntegration::ChatGpt, "chatgpt", "ChatGPT", CHAT, BASE_URL, TOKEN),
+    entry!(
+        ProviderIntegration::ChatGpt,
+        "chatgpt",
+        "ChatGPT",
+        CHAT,
+        BASE_URL,
+        TOKEN
+    ),
     entry!(
         ProviderIntegration::GithubCopilot,
         "github_copilot",
@@ -499,9 +613,30 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         BASE_URL,
         TOKEN
     ),
-    entry!(ProviderIntegration::Cohere, "cohere", "Cohere", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::DeepSeek, "deepseek", "DeepSeek", CHAT, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Galadriel, "galadriel", "Galadriel", CHAT, BASE_URL, API_KEY),
+    entry!(
+        ProviderIntegration::Cohere,
+        "cohere",
+        "Cohere",
+        CHAT_EMBED,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::DeepSeek,
+        "deepseek",
+        "DeepSeek",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Galadriel,
+        "galadriel",
+        "Galadriel",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
     entry!(
         ProviderIntegration::Gemini,
         "gemini",
@@ -510,7 +645,14 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         BASE_URL,
         API_KEY
     ),
-    entry!(ProviderIntegration::Groq, "groq", "Groq", CHAT, BASE_URL, API_KEY),
+    entry!(
+        ProviderIntegration::Groq,
+        "groq",
+        "Groq",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
     entry!(
         ProviderIntegration::HuggingFace,
         "hugging_face",
@@ -519,12 +661,54 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         BASE_URL,
         API_KEY
     ),
-    entry!(ProviderIntegration::Hyperbolic, "hyperbolic", "Hyperbolic", CHAT, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Llamafile, "llamafile", "Llamafile", CHAT_EMBED, LOCAL_URL, &[]),
-    entry!(ProviderIntegration::MiniMax, "minimax", "MiniMax", CHAT, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Mira, "mira", "Mira", CHAT, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Mistral, "mistral", "Mistral", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Moonshot, "moonshot", "Moonshot", CHAT, BASE_URL, API_KEY),
+    entry!(
+        ProviderIntegration::Hyperbolic,
+        "hyperbolic",
+        "Hyperbolic",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Llamafile,
+        "llamafile",
+        "Llamafile",
+        CHAT_EMBED,
+        LOCAL_URL,
+        &[]
+    ),
+    entry!(
+        ProviderIntegration::MiniMax,
+        "minimax",
+        "MiniMax",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Mira,
+        "mira",
+        "Mira",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Mistral,
+        "mistral",
+        "Mistral",
+        CHAT_EMBED,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Moonshot,
+        "moonshot",
+        "Moonshot",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
     ProviderCatalogEntry {
         integration: ProviderIntegration::Ollama,
         slug: "ollama",
@@ -535,13 +719,62 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         default_settings: OLLAMA_DEFAULTS,
         compiled_in: true,
     },
-    entry!(ProviderIntegration::OpenRouter, "openrouter", "OpenRouter", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Perplexity, "perplexity", "Perplexity", CHAT, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Together, "together", "Together AI", CHAT_EMBED, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::VoyageAi, "voyage_ai", "Voyage AI", EMBED_RERANK, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Xai, "xai", "xAI", CHAT_IMAGE, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::XiaomiMimo, "xiaomi_mimo", "Xiaomi MiMo", CHAT, BASE_URL, API_KEY),
-    entry!(ProviderIntegration::Zai, "zai", "Z.ai", CHAT, BASE_URL, API_KEY),
+    entry!(
+        ProviderIntegration::OpenRouter,
+        "openrouter",
+        "OpenRouter",
+        CHAT_EMBED,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Perplexity,
+        "perplexity",
+        "Perplexity",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Together,
+        "together",
+        "Together AI",
+        CHAT_EMBED,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::VoyageAi,
+        "voyage_ai",
+        "Voyage AI",
+        EMBED_RERANK,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Xai,
+        "xai",
+        "xAI",
+        CHAT_IMAGE,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::XiaomiMimo,
+        "xiaomi_mimo",
+        "Xiaomi MiMo",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
+    entry!(
+        ProviderIntegration::Zai,
+        "zai",
+        "Z.ai",
+        CHAT,
+        BASE_URL,
+        API_KEY
+    ),
     entry!(
         ProviderIntegration::AwsBedrock,
         "aws_bedrock",
@@ -550,7 +783,14 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         AWS_SETTINGS,
         &[]
     ),
-    entry!(ProviderIntegration::VertexAi, "vertex_ai", "Google Vertex AI", CHAT, VERTEX_SETTINGS, &[]),
+    entry!(
+        ProviderIntegration::VertexAi,
+        "vertex_ai",
+        "Google Vertex AI",
+        CHAT,
+        VERTEX_SETTINGS,
+        &[]
+    ),
     entry!(
         ProviderIntegration::GeminiGrpc,
         "gemini_grpc",
@@ -571,20 +811,23 @@ static CATALOG: &[ProviderCatalogEntry] = &[
     },
 ];
 
-pub fn provider_catalog() -> &'static [ProviderCatalogEntry] {
-    CATALOG
+/// Descriptors that are actually available in this binary.
+///
+/// The backing registry also contains optional integrations so its pinned Rig
+/// snapshot remains reviewable, but uncompiled integrations must never leak
+/// into tenant-facing catalog responses or be selectable as deployment
+/// targets.
+pub fn provider_catalog() -> impl Iterator<Item = &'static ProviderCatalogEntry> {
+    CATALOG.iter().filter(|entry| entry.compiled_in)
 }
 
 pub fn provider_catalog_entry(slug: &ProviderSlug) -> Option<&'static ProviderCatalogEntry> {
-    CATALOG.iter().find(|entry| entry.slug == slug.as_str())
+    provider_catalog().find(|entry| entry.slug == slug.as_str())
 }
 
 #[cfg(feature = "server")]
 pub fn provider_factory_supports(slug: &ProviderSlug, feature: ProviderFeature) -> bool {
-    provider_catalog_entry(slug).is_some_and(|entry| {
-        let _integration = entry.integration;
-        entry.features.contains(&feature)
-    })
+    provider_catalog_entry(slug).is_some_and(|entry| entry.integration.factory_supports(feature))
 }
 
 #[cfg(test)]
@@ -632,6 +875,53 @@ mod tests {
         assert!(AiProviderTargetCatalog::new(vec![unknown]).is_err());
     }
 
+    #[cfg(feature = "server")]
+    #[test]
+    fn provider_targets_validate_schema_egress_and_build_availability_at_load_time() {
+        let local = AiProviderTarget {
+            id: ProviderTargetId::new("local_ollama").unwrap(),
+            provider_slug: ProviderSlug::new("ollama").unwrap(),
+            display_name: "Local Ollama".to_string(),
+            auth: ProviderTargetAuth::None,
+            settings: BTreeMap::from([(
+                "base_url".to_string(),
+                serde_json::json!("http://127.0.0.1:11434"),
+            )]),
+        };
+        assert!(AiProviderTargetCatalog::new(vec![local.clone()]).is_err());
+        assert!(
+            AiProviderTargetCatalog::new_with_egress_policy(
+                vec![local],
+                &ProviderEgressPolicy {
+                    allowed_origins: Vec::new(),
+                    allow_local_origins: true,
+                },
+            )
+            .is_ok()
+        );
+
+        let malformed_vertex = AiProviderTarget {
+            id: ProviderTargetId::new("vertex").unwrap(),
+            provider_slug: ProviderSlug::new("vertex_ai").unwrap(),
+            display_name: "Vertex".to_string(),
+            auth: ProviderTargetAuth::WorkloadIdentity,
+            settings: BTreeMap::new(),
+        };
+        assert!(AiProviderTargetCatalog::new(vec![malformed_vertex]).is_err());
+
+        let fastembed = AiProviderTarget {
+            id: ProviderTargetId::new("fastembed").unwrap(),
+            provider_slug: ProviderSlug::new("fastembed").unwrap(),
+            display_name: "FastEmbed".to_string(),
+            auth: ProviderTargetAuth::None,
+            settings: BTreeMap::new(),
+        };
+        assert_eq!(
+            AiProviderTargetCatalog::new(vec![fastembed]).is_ok(),
+            cfg!(feature = "fastembed")
+        );
+    }
+
     #[test]
     fn catalog_matches_the_rig_0_39_registry_snapshot() {
         let snapshot: ProviderCatalogSnapshot = serde_json::from_str(include_str!(
@@ -639,7 +929,7 @@ mod tests {
         ))
         .expect("catalog snapshot is valid JSON");
         assert_eq!(snapshot.rig_version, "0.39.0");
-        let slugs = provider_catalog()
+        let slugs = CATALOG
             .iter()
             .map(|entry| entry.slug.to_string())
             .collect::<Vec<_>>();
@@ -658,18 +948,32 @@ mod tests {
 
     #[cfg(feature = "server")]
     #[test]
-    fn every_compiled_descriptor_has_a_linked_factory_for_each_declared_feature() {
-        for entry in provider_catalog().iter().filter(|entry| entry.compiled_in) {
+    fn compiled_catalog_and_rig_factories_have_exact_feature_parity() {
+        const ALL_FEATURES: &[ProviderFeature] = &[
+            ProviderFeature::Chat,
+            ProviderFeature::Streaming,
+            ProviderFeature::Tools,
+            ProviderFeature::StructuredOutput,
+            ProviderFeature::Embeddings,
+            ProviderFeature::Rerank,
+            ProviderFeature::Image,
+            ProviderFeature::Audio,
+            ProviderFeature::Transcription,
+            ProviderFeature::Multimodal,
+        ];
+
+        for entry in provider_catalog() {
             let slug = ProviderSlug::new(entry.slug).unwrap();
             assert!(
                 ProviderIntegration::from_slug(&slug) == Some(entry.integration),
                 "{} is catalogued without a typed integration dispatch key",
                 entry.slug
             );
-            for feature in entry.features {
-                assert!(
+            for feature in ALL_FEATURES {
+                assert_eq!(
+                    entry.features.contains(feature),
                     provider_factory_supports(&slug, *feature),
-                    "{}/{} is catalogued without a linked Rig factory",
+                    "{}/{} catalog descriptor and concrete Rig factory disagree",
                     entry.slug,
                     format!("{feature:?}")
                 );
@@ -679,21 +983,44 @@ mod tests {
 
     #[cfg(feature = "server")]
     #[test]
+    fn uncompiled_integrations_cannot_be_selected_as_deployment_targets() {
+        if cfg!(feature = "fastembed") {
+            return;
+        }
+        let target = AiProviderTarget {
+            id: ProviderTargetId::new("fastembed_local").unwrap(),
+            provider_slug: ProviderSlug::new("fastembed").unwrap(),
+            display_name: "FastEmbed local".to_string(),
+            auth: ProviderTargetAuth::None,
+            settings: BTreeMap::new(),
+        };
+        assert!(AiProviderTargetCatalog::new(vec![target]).is_err());
+        assert!(provider_catalog().all(|entry| entry.slug != "fastembed"));
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
     fn egress_policy_rejects_private_origins_without_explicit_local_setting() {
         let policy = ProviderEgressPolicy::default();
-        assert!(policy
-            .validate_egress_url("http://127.0.0.1:11434")
-            .is_err());
-        assert!(policy
-            .validate_egress_url("https://api.openai.com/v1")
-            .is_err());
+        assert!(
+            policy
+                .validate_egress_url("http://127.0.0.1:11434")
+                .is_err()
+        );
+        assert!(
+            policy
+                .validate_egress_url("https://api.openai.com/v1")
+                .is_err()
+        );
         let policy = ProviderEgressPolicy {
             allowed_origins: vec!["api.openai.com".to_string()],
             allow_local_origins: true,
         };
-        assert!(policy
-            .validate_egress_url("https://api.openai.com/v1")
-            .is_ok());
+        assert!(
+            policy
+                .validate_egress_url("https://api.openai.com/v1")
+                .is_ok()
+        );
         assert!(policy.validate_egress_url("http://127.0.0.1:11434").is_ok());
     }
 }

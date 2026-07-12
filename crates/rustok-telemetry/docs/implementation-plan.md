@@ -10,7 +10,7 @@ must not absorb domain metric policy, runbooks, or transport behavior.
 ## Boundary
 
 - Owner: platform observability.
-- Process-wide tracing initialization happens once. During the Loco-to-native
+- Process-wide tracing initialization happens once. During the native runtime
   runtime transition, the server initializes full telemetry only when it owns
   the subscriber and initializes metrics separately otherwise.
 - The crate owns one Prometheus registry and OTel/tracing wiring; modules own
@@ -19,7 +19,7 @@ must not absorb domain metric policy, runbooks, or transport behavior.
 ## Next results
 
 1. **Prove bootstrap and shutdown behavior in each host mode.** Test native
-   server, current Loco CLI compatibility, OTel enabled/disabled, metrics
+   server, current CLI compatibility, OTel enabled/disabled, metrics
    disabled, repeated initialization, and graceful exporter shutdown. Done when
    the supported modes have executable evidence and no mode silently loses
    tracing or registers a second subscriber.

@@ -28,7 +28,7 @@ call, while `FulfillmentService` remains the lifecycle owner.
   and `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-evidence.json`.
 - `scripts/verify/verify-fulfillment-admin-boundary.mjs` and
   `scripts/verify/verify-fulfillment-storefront-boundary.mjs` lock the
-  owner-admin/storefront split and Loco-free native shipping-selection path.
+  owner-admin/storefront split and host-neutral native shipping-selection path.
 - Storefront owner transport uses `execute_selected_transport` with native
   `#[server]` selected first and GraphQL retained as the parallel fallback.
 

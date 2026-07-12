@@ -135,8 +135,6 @@ assertNotContains(transport, "use crate::api", `${transportPath}: transport faca
 assertContains(nativeServerAdapter, "#[server", `${nativeServerAdapterPath}: native server-function adapter must keep native endpoints`);
 assertContains(nativeServerAdapter, "RegionService", `${nativeServerAdapterPath}: native adapter must own service calls, not the UI layer`);
 assertContains(nativeServerAdapter, "HostRuntimeContext", `${nativeServerAdapterPath}: native adapter must consume neutral host runtime context`);
-assertNotContains(nativeServerAdapter, "loco_rs", `${nativeServerAdapterPath}: native adapter must not depend on Loco runtime context`);
-assertNotContains(cargoToml, "loco-rs", `${cargoPath}: region admin must not depend on Loco`);
 
 assertContains(implementationPlan, "HostRuntimeContext", `${implementationPlanPath}: local plan must record the neutral native runtime boundary`);
 assertContains(implementationPlan, "verify-region-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the fast boundary guardrail`);

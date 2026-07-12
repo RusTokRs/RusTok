@@ -32,7 +32,7 @@ usage() {
     echo "  events             Check event publishing, DLQ, outbox, transport, serde"
     echo "  code-quality       Check PII, secrets, metrics, dependencies, observability"
     echo "  security           Check argon2, headers, CORS, SSRF, JWT, rate limiting"
-    echo "  architecture       Check module registry, Loco hooks, MCP, DI, telemetry"
+    echo "  architecture       Check module registry, Axum composition, MCP, DI, telemetry"
     echo "  deployment-profiles  Smoke-check monolith, server+admin, headless-api builds"
     echo "  anti-bypass       Audit domain bypass patterns and duplicated business logic"
     echo "  storefront-module-routes  Verify storefront module route contract"
