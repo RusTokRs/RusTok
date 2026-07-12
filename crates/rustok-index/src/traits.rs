@@ -7,7 +7,7 @@ use tokio::task::JoinSet;
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::error::IndexResult;
+use crate::error::{IndexError, IndexResult};
 
 #[derive(Clone, Debug)]
 pub struct IndexerRuntimeConfig {
@@ -24,6 +24,36 @@ pub struct ReindexRunStats {
     pub failed: u64,
     pub panicked: u64,
     pub truncated: u64,
+}
+
+impl ReindexRunStats {
+    pub fn strict_completed(
+        self,
+        indexer_name: &'static str,
+        operation: &'static str,
+    ) -> IndexResult<u64> {
+        if self.failed == 0 && self.panicked == 0 && self.truncated == 0 {
+            return Ok(self.completed);
+        }
+
+        Err(IndexError::Index(format!(
+            "{indexer_name} {operation} incomplete: discovered={}, scheduled={}, completed={}, failed={}, panicked={}, truncated={}",
+            self.discovered,
+            self.scheduled,
+            self.completed,
+            self.failed,
+            self.panicked,
+            self.truncated
+        )))
+    }
+
+    fn outcome(self) -> &'static str {
+        if self.failed == 0 && self.panicked == 0 && self.truncated == 0 {
+            "completed"
+        } else {
+            "incomplete"
+        }
+    }
 }
 
 impl Default for IndexerRuntimeConfig {
@@ -216,7 +246,7 @@ where
         operation,
         started_at.elapsed().as_secs_f64(),
     );
-    metrics::record_index_reindex_run(indexer_name, operation, "completed");
+    metrics::record_index_reindex_run(indexer_name, operation, stats.outcome());
 
     stats
 }
@@ -266,4 +296,48 @@ where
         .ok()
         .and_then(|value| value.parse::<T>().ok())
         .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReindexRunStats;
+
+    #[test]
+    fn strict_result_rejects_partial_reindex_runs() {
+        for stats in [
+            ReindexRunStats {
+                failed: 1,
+                ..ReindexRunStats::default()
+            },
+            ReindexRunStats {
+                panicked: 1,
+                ..ReindexRunStats::default()
+            },
+            ReindexRunStats {
+                truncated: 1,
+                ..ReindexRunStats::default()
+            },
+        ] {
+            assert!(stats
+                .strict_completed("test_indexer", "reindex_all")
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn strict_result_returns_completed_count() {
+        let stats = ReindexRunStats {
+            discovered: 3,
+            scheduled: 3,
+            completed: 3,
+            ..ReindexRunStats::default()
+        };
+
+        assert_eq!(
+            stats
+                .strict_completed("test_indexer", "reindex_all")
+                .expect("complete run"),
+            3
+        );
+    }
 }
