@@ -69,6 +69,35 @@ impl PricingReadPort for crate::PricingService {
             )
         })?;
 
+        // Resolve the tenant-owned product projection first and verify that the
+        // boundary keys describe the same aggregate. Previously the port resolved
+        // only variant_id and then echoed the caller-provided product_id, allowing a
+        // valid variant price to be mislabeled as belonging to another product.
+        let locale = context.locale.as_str();
+        let product = self
+            .get_admin_product_pricing_with_locale_fallback(
+                tenant_id,
+                request.product_id,
+                locale,
+                Some(locale),
+                None,
+            )
+            .await
+            .map_err(pricing_error_to_port_error)?;
+        if !product
+            .variants
+            .iter()
+            .any(|variant| variant.id == variant_id)
+        {
+            return Err(PortError::validation(
+                "pricing.variant_product_mismatch",
+                format!(
+                    "variant {variant_id} does not belong to product {}",
+                    request.product_id
+                ),
+            ));
+        }
+
         let resolved = self
             .resolve_variant_price(
                 tenant_id,
