@@ -1,6 +1,7 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -11,6 +12,7 @@ const GENERATION_KEY_PREFIX: &str = "rustok:cache-generation:v1";
 const DEFAULT_GENERATION_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_GENERATION_NAMESPACE_BYTES: usize = 512;
 pub const DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS: usize = 4_096;
+pub const DEFAULT_MAX_SHARED_GENERATION_STORES: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CacheNamespaceGeneration {
@@ -364,16 +366,54 @@ impl CacheNamespaceGenerationStore {
     }
 }
 
+struct RegisteredGenerationStore {
+    _identity: Arc<dyn Any + Send + Sync>,
+    store: CacheNamespaceGenerationStore,
+}
+
+type GenerationStoreRegistry = HashMap<usize, RegisteredGenerationStore>;
+
+fn generation_store_registry() -> &'static StdMutex<GenerationStoreRegistry> {
+    static REGISTRY: OnceLock<StdMutex<GenerationStoreRegistry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| StdMutex::new(HashMap::new()))
+}
+
+fn generation_store_identity_key(identity: &Arc<dyn Any + Send + Sync>) -> usize {
+    Arc::as_ptr(identity) as *const () as usize
+}
+
 impl CacheService {
     pub fn namespace_generations(&self) -> CacheNamespaceGenerationStore {
+        let identity = self.generation_store_identity();
+        let identity_key = generation_store_identity_key(&identity);
+        let mut registry = generation_store_registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(registered) = registry.get(&identity_key) {
+            return registered.store.clone();
+        }
+
         #[cfg(feature = "redis-cache")]
-        {
-            CacheNamespaceGenerationStore::new(self.redis_client().cloned())
-        }
+        let store = CacheNamespaceGenerationStore::new(self.redis_client().cloned());
         #[cfg(not(feature = "redis-cache"))]
-        {
-            CacheNamespaceGenerationStore::new()
+        let store = CacheNamespaceGenerationStore::new();
+
+        if registry.len() >= DEFAULT_MAX_SHARED_GENERATION_STORES {
+            tracing::error!(
+                maximum = DEFAULT_MAX_SHARED_GENERATION_STORES,
+                "Cache generation store registry is full; returning an unshared bounded store"
+            );
+            return store;
         }
+
+        registry.insert(
+            identity_key,
+            RegisteredGenerationStore {
+                _identity: identity,
+                store: store.clone(),
+            },
+        );
+        store
     }
 }
 
@@ -507,6 +547,35 @@ mod tests {
         assert_eq!(second.value(), 2);
         assert_eq!(second.key_component(), "g-2");
         assert_eq!(generations.read("tenant-cache").await.unwrap().value(), 2);
+    }
+
+    #[tokio::test]
+    async fn service_handles_share_generation_snapshots_without_cross_service_aliasing() {
+        let first_service = CacheService::from_url(Some("://invalid-first-redis-url"));
+        let first_handle = first_service.namespace_generations();
+        first_handle.seed_local("shared-handle", 9).unwrap();
+
+        assert_eq!(
+            first_service
+                .clone()
+                .namespace_generations()
+                .read("shared-handle")
+                .await
+                .unwrap()
+                .value(),
+            9
+        );
+
+        let second_service = CacheService::from_url(Some("://invalid-second-redis-url"));
+        assert_eq!(
+            second_service
+                .namespace_generations()
+                .read("shared-handle")
+                .await
+                .unwrap()
+                .value(),
+            0
+        );
     }
 
     #[test]
