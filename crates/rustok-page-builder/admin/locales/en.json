@@ -12,6 +12,7 @@
       "redo": "Redo",
       "save": "Save",
       "add": "Add",
+      "addPage": "Add page",
       "drag": "Drag",
       "copy": "Copy",
       "cut": "Cut",
@@ -36,6 +37,7 @@
       "dragging": "Choose a drop position in the canvas"
     },
     "panel": {
+      "pages": "Pages",
       "palette": "Blocks",
       "layers": "Layers",
       "properties": "Properties",
@@ -46,6 +48,8 @@
     },
     "field": {
       "page": "Page",
+      "pageName": "Page name",
+      "pageId": "Page id",
       "revision": "Revision",
       "selectedComponent": "Selected component",
       "none": "None",
@@ -61,6 +65,14 @@
       "styleValue": "Style value",
       "assetId": "Asset id",
       "assetUrl": "Asset URL",
+      "seoTitle": "SEO title",
+      "seoDescription": "SEO description",
+      "slug": "Slug",
+      "canonicalUrl": "Canonical URL",
+      "openGraphTitle": "Open Graph title",
+      "openGraphDescription": "Open Graph description",
+      "openGraphImage": "Open Graph image",
+      "noIndex": "Prevent search indexing",
       "projectHash": "Project hash"
     },
     "bridge": {
