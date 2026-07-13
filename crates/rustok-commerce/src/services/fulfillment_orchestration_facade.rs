@@ -8,22 +8,32 @@ use crate::dto::{
 };
 
 use super::fulfillment_orchestration::{
-    FulfillmentOrchestrationResult, FulfillmentOrchestrationService as LegacyFulfillmentOrchestrationService,
+    FulfillmentOrchestrationError, FulfillmentOrchestrationResult,
+    FulfillmentOrchestrationService as LegacyFulfillmentOrchestrationService,
 };
+use super::journaled_create_label_provider::wrap_create_label_providers;
 use super::journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 
 /// Compatibility facade that preserves the existing transport API while routing
-/// provider-first lifecycle transitions through the durable operation journal.
+/// provider side effects through the durable fulfillment operation journal.
 pub struct FulfillmentOrchestrationService {
+    db: DatabaseConnection,
     legacy: LegacyFulfillmentOrchestrationService,
     journaled: JournaledFulfillmentOrchestrationService,
+    create_label_registry_error: Option<String>,
 }
 
 impl FulfillmentOrchestrationService {
     pub fn new(db: DatabaseConnection) -> Self {
+        let registry = FulfillmentProviderRegistry::with_manual_provider();
+        let (legacy, create_label_registry_error) =
+            legacy_with_journaled_labels(db.clone(), registry.clone());
         Self {
-            legacy: LegacyFulfillmentOrchestrationService::new(db.clone()),
-            journaled: JournaledFulfillmentOrchestrationService::new(db),
+            db: db.clone(),
+            legacy,
+            journaled: JournaledFulfillmentOrchestrationService::new(db)
+                .with_provider_registry(registry),
+            create_label_registry_error,
         }
     }
 
@@ -31,22 +41,27 @@ impl FulfillmentOrchestrationService {
         mut self,
         fulfillment_provider_registry: FulfillmentProviderRegistry,
     ) -> Self {
-        self.legacy = self
-            .legacy
-            .with_provider_registry(fulfillment_provider_registry.clone());
-        self.journaled = self
-            .journaled
+        let (legacy, create_label_registry_error) = legacy_with_journaled_labels(
+            self.db.clone(),
+            fulfillment_provider_registry.clone(),
+        );
+        self.legacy = legacy;
+        self.journaled = JournaledFulfillmentOrchestrationService::new(self.db.clone())
             .with_provider_registry(fulfillment_provider_registry);
+        self.create_label_registry_error = create_label_registry_error;
         self
     }
 
-    /// Creation remains local-first because the fulfillment row and item ownership
-    /// validation must be persisted before a carrier label can reference it.
     pub async fn create_manual_fulfillment(
         &self,
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if let Some(error) = &self.create_label_registry_error {
+            return Err(FulfillmentOrchestrationError::Validation(format!(
+                "failed to compose journaled create-label providers: {error}"
+            )));
+        }
         self.legacy
             .create_manual_fulfillment(tenant_id, input)
             .await
@@ -83,5 +98,21 @@ impl FulfillmentOrchestrationService {
         self.journaled
             .cancel_fulfillment(tenant_id, fulfillment_id, input)
             .await
+    }
+}
+
+fn legacy_with_journaled_labels(
+    db: DatabaseConnection,
+    registry: FulfillmentProviderRegistry,
+) -> (LegacyFulfillmentOrchestrationService, Option<String>) {
+    match wrap_create_label_providers(db.clone(), registry.clone()) {
+        Ok(wrapped) => (
+            LegacyFulfillmentOrchestrationService::new(db).with_provider_registry(wrapped),
+            None,
+        ),
+        Err(error) => (
+            LegacyFulfillmentOrchestrationService::new(db).with_provider_registry(registry),
+            Some(error.to_string()),
+        ),
     }
 }
