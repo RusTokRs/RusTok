@@ -19,6 +19,7 @@ mod schema_codegen {
 
 use super::legacy_disable_user::LegacyDisableUserPolicy;
 use super::loaders::TenantNameLoader;
+use super::module_security::GraphqlModuleSecurityPolicy;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
 use super::principal_tenant_security::GraphqlPrincipalTenantPolicy;
@@ -132,6 +133,7 @@ pub fn build_schema(
     .extension(GraphqlPrincipalTenantPolicy)
     .extension(GraphqlTenantPolicy)
     .extension(GraphqlSecurityPolicy)
+    .extension(GraphqlModuleSecurityPolicy)
     .extension(LegacyDisableUserPolicy)
     .extension(StorefrontPrincipalPolicy)
     .extension(GraphqlObservability)
