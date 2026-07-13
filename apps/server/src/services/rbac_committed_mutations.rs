@@ -1,5 +1,6 @@
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait,
+    QueryFilter, QuerySelect, TransactionTrait,
 };
 
 use crate::error::{Error, Result};
@@ -13,7 +14,11 @@ use super::rbac_service::RbacService;
 
 impl RbacService {
     /// Replace a role outside an enclosing transaction and invalidate the
-    /// process-local authorization snapshot only after persistence succeeds.
+    /// process-local authorization snapshot only after commit.
+    ///
+    /// The tenant's built-in super-admin role row is locked before continuity
+    /// is checked. Concurrent demotions therefore serialize instead of both
+    /// observing the same pre-change administrator set.
     pub async fn replace_user_role_committed(
         db: &DatabaseConnection,
         user_id: &uuid::Uuid,
@@ -21,8 +26,10 @@ impl RbacService {
         role: rustok_core::UserRole,
     ) -> Result<()> {
         Self::record_committed_mutation_entrypoint();
-        ensure_active_super_admin_continuity(db, user_id, tenant_id, &role).await?;
-        replace_user_role_via_store(db, user_id, tenant_id, role).await?;
+        let tx = db.begin().await?;
+        ensure_active_super_admin_continuity(&tx, user_id, tenant_id, &role).await?;
+        replace_user_role_via_store(&tx, user_id, tenant_id, role).await?;
+        tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
         Ok(())
     }
@@ -36,12 +43,15 @@ impl RbacService {
     }
 }
 
-async fn ensure_active_super_admin_continuity(
-    db: &DatabaseConnection,
+async fn ensure_active_super_admin_continuity<C>(
+    db: &C,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
     resulting_role: &rustok_core::UserRole,
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     if resulting_role == &rustok_core::UserRole::SuperAdmin {
         return Ok(());
     }
@@ -55,12 +65,7 @@ async fn ensure_active_super_admin_continuity(
         return Ok(());
     }
 
-    let Some(super_admin_role) = roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(*tenant_id))
-        .filter(roles::Column::Slug.eq(rustok_core::UserRole::SuperAdmin.to_string()))
-        .one(db)
-        .await?
-    else {
+    let Some(super_admin_role) = find_super_admin_role_for_update(db, tenant_id).await? else {
         return Ok(());
     };
 
@@ -96,4 +101,25 @@ async fn ensure_active_super_admin_continuity(
     }
 
     Ok(())
+}
+
+async fn find_super_admin_role_for_update<C>(
+    db: &C,
+    tenant_id: &uuid::Uuid,
+) -> Result<Option<roles::Model>>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(*tenant_id))
+            .filter(roles::Column::Slug.eq(rustok_core::UserRole::SuperAdmin.to_string()))
+    };
+
+    match db.get_database_backend() {
+        DbBackend::Sqlite => query().one(db).await.map_err(Into::into),
+        DbBackend::Postgres | DbBackend::MySql => {
+            query().lock_exclusive().one(db).await.map_err(Into::into)
+        }
+    }
 }
