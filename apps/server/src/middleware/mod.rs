@@ -38,7 +38,7 @@ pub mod tenant {
         cache_service: &CacheService,
     ) {
         super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await;
-        ctx.shared_map::<tokio::task::JoinHandle<()>, _>(|task| task.abort());
+        let _ = ctx.shared_map::<tokio::task::JoinHandle<()>, _>(|task| task.abort());
     }
 
     pub async fn tenant_invalidation_listener_snapshot(
