@@ -7,6 +7,7 @@ mod m20260713_000018_enforce_inventory_state_invariants;
 mod m20260713_000019_reserve_checkout_order_inventory;
 mod m20260713_000020_remove_duplicate_checkout_reservation;
 mod m20260713_000021_bound_reservation_metadata_and_inactive_locations;
+mod m20260713_000022_repair_oversized_reservation_metadata;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -20,6 +21,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000019_reserve_checkout_order_inventory::Migration),
         Box::new(m20260713_000020_remove_duplicate_checkout_reservation::Migration),
         Box::new(m20260713_000021_bound_reservation_metadata_and_inactive_locations::Migration),
+        Box::new(m20260713_000022_repair_oversized_reservation_metadata::Migration),
     ]
 }
 
@@ -43,6 +45,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260713_000021_bound_reservation_metadata_and_inactive_locations",
             vec!["m20260713_000020_remove_duplicate_checkout_reservation"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000022_repair_oversized_reservation_metadata",
+            vec!["m20260713_000021_bound_reservation_metadata_and_inactive_locations"],
         ),
     ]
 }
