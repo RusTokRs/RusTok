@@ -13,6 +13,35 @@ fallback matrix are source-locked. They are not proof that a forum tenant has
 run the provider in production: the current Wave packet must be replaced by
 an observed control-plane run after the `pages` reference consumer is ready.
 
+## FORUM-00 through FORUM-08 audit checkpoint
+
+The runtime and schema work merged through FORUM-08 establishes PostgreSQL and
+SQLite regression profiles, tenant-composite relation constraints, typed topic
+and reply statuses, atomic category translation writes, category hierarchy
+cycle guards, serialized counter mutations, publication-aware moderation,
+unique reply positions, soft-delete tombstones, and revision history.
+
+The 2026-07-13 post-merge audit found three database invariants that required
+additional hardening:
+
+- PostgreSQL reply positions must be allocated from a monotonic per-topic
+  counter rather than recalculated with `MAX(position) + 1` for every insert.
+- Physical category deletion must be rejected while the category owns topics or
+  child categories, so category cascades cannot erase discussion and revision
+  history accidentally.
+- Revision locale columns must use the platform `VARCHAR(32)` locale width.
+
+Migration `m20260713_000010_harden_forum_wave_invariants` applies those fixes.
+`tests/wave_invariants_postgres.rs` proves the monotonic allocator and category
+delete guard, while `tests/runtime_regression_baseline.rs` verifies the schema,
+trigger, and locale-width contract.
+
+The audit does not declare the complete product plan finished. Follow-up work
+must still move trigger-backed lifecycle behaviour into explicit owner service
+commands, expose a real category tree read model, replace unbounded page sizes,
+and publish the complete owner event catalog. Those items belong to the next
+atomic forum tasks and must not be represented as completed by static evidence.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress` — module-owned admin and storefront FFA surfaces
@@ -48,9 +77,18 @@ an observed control-plane run after the `pages` reference consumer is ready.
    Dependency: host composition only. Verification:
    `npm run verify:forum:admin-boundary` and
    `npm run verify:forum:storefront-boundary`.
+4. Replace database-trigger lifecycle orchestration with explicit owner service
+   commands without weakening the database safety net. Done when category,
+   topic, reply, moderation, and tombstone commands express their state changes
+   and events in Rust transactions, and database triggers remain invariant
+   guards rather than the primary business workflow.
 
 ## Verification
 
+- `cargo test -p rustok-forum --test runtime_regression_baseline`
+- `cargo test -p rustok-forum --test wave_invariants_postgres`
+- `cargo test -p rustok-forum --test soft_delete_revision_postgres`
+- `cargo test -p rustok-forum --test soft_delete_revision_sqlite`
 - `npm run verify:forum:admin-boundary`
 - `npm run verify:forum:storefront-boundary`
 - `npm run verify:page-builder:consumer:forum`
