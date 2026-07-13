@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use reqwest::{Client, Response, StatusCode};
 use rustok_core::ModuleRegistry;
 use semver::Version;
 use sha2::{Digest, Sha256};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion, ModulesManifest};
 use crate::services::marketplace_catalog::{
@@ -23,6 +25,7 @@ const DEFAULT_REGISTRY_TIMEOUT_MS: u64 = 3_000;
 const DEFAULT_REGISTRY_CACHE_TTL_SECS: u64 = 60;
 const DEFAULT_REGISTRY_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 const DEFAULT_REGISTRY_RESPONSE_MAX_BYTES: usize = 4 * 1024 * 1024;
+const DEFAULT_REGISTRY_MAX_CONCURRENT_FETCHES: usize = 16;
 const MAX_REGISTRY_CACHE_KEY_COMPONENT_BYTES: usize = 4 * 1024;
 const REGISTRY_CACHE_KEY_PREFIX: &str = "registry-catalog:v1";
 
@@ -57,6 +60,8 @@ pub struct HardenedRegistryMarketplaceProvider {
     client: Client,
     catalog_cache: Cache<String, Arc<CachedRegistryCatalog>>,
     max_response_bytes: usize,
+    fetch_permits: Arc<Semaphore>,
+    saturated_fetches: Arc<AtomicU64>,
 }
 
 impl HardenedRegistryMarketplaceProvider {
@@ -81,6 +86,10 @@ impl HardenedRegistryMarketplaceProvider {
             "RUSTOK_MARKETPLACE_REGISTRY_RESPONSE_MAX_BYTES",
             DEFAULT_REGISTRY_RESPONSE_MAX_BYTES,
         );
+        let max_concurrent_fetches = positive_env_usize(
+            "RUSTOK_MARKETPLACE_REGISTRY_MAX_CONCURRENT_FETCHES",
+            DEFAULT_REGISTRY_MAX_CONCURRENT_FETCHES,
+        );
         let client = Client::builder()
             .timeout(Duration::from_millis(timeout_ms))
             .build()
@@ -95,6 +104,7 @@ impl HardenedRegistryMarketplaceProvider {
             Duration::from_secs(cache_ttl_secs),
             cache_max_weight_bytes,
             max_response_bytes,
+            max_concurrent_fetches,
         )
     }
 
@@ -104,6 +114,7 @@ impl HardenedRegistryMarketplaceProvider {
         cache_ttl: Duration,
         cache_max_weight_bytes: u64,
         max_response_bytes: usize,
+        max_concurrent_fetches: usize,
     ) -> Self {
         let catalog_cache = Cache::builder()
             .weigher(cached_registry_catalog_weight)
@@ -115,6 +126,8 @@ impl HardenedRegistryMarketplaceProvider {
             client,
             catalog_cache,
             max_response_bytes: max_response_bytes.max(1),
+            fetch_permits: Arc::new(Semaphore::new(max_concurrent_fetches.max(1))),
+            saturated_fetches: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -128,9 +141,12 @@ impl HardenedRegistryMarketplaceProvider {
         let registry_url = registry_url.to_string();
         let query = query.clone();
         let max_response_bytes = self.max_response_bytes;
+        let fetch_permits = Arc::clone(&self.fetch_permits);
+        let saturated_fetches = Arc::clone(&self.saturated_fetches);
 
         self.catalog_cache
             .try_get_with(cache_key, async move {
+                let _permit = try_acquire_fetch_permit(fetch_permits, &saturated_fetches)?;
                 fetch_catalog(&client, &registry_url, &query, max_response_bytes).await
             })
             .await
@@ -145,42 +161,57 @@ impl HardenedRegistryMarketplaceProvider {
         validate_cache_key_component("registry_url", registry_url)?;
         validate_cache_key_component("slug", slug)?;
 
-        match fetch_module_from_path(
-            &self.client,
-            registry_url,
-            registry_catalog_module_path(),
-            slug,
-            self.max_response_bytes,
-        )
-        .await
-        {
-            Ok(module) => Ok(Some(module)),
-            Err(error) if should_fallback_to_legacy_catalog_path(&error) => {
-                match fetch_module_from_path(
-                    &self.client,
-                    registry_url,
-                    legacy_registry_catalog_module_path(),
-                    slug,
-                    self.max_response_bytes,
-                )
-                .await
-                {
-                    Ok(module) => Ok(Some(module)),
-                    Err(error) if should_fallback_to_legacy_catalog_path(&error) => {
-                        let catalog = self
-                            .load_catalog(registry_url, &MarketplaceCatalogQuery::default())
-                            .await?;
-                        Ok(catalog
-                            .modules
-                            .iter()
-                            .find(|module| module.slug.eq_ignore_ascii_case(slug))
-                            .cloned())
+        let use_catalog_fallback = {
+            let _permit = try_acquire_fetch_permit(
+                Arc::clone(&self.fetch_permits),
+                &self.saturated_fetches,
+            )?;
+            match fetch_module_from_path(
+                &self.client,
+                registry_url,
+                registry_catalog_module_path(),
+                slug,
+                self.max_response_bytes,
+            )
+            .await
+            {
+                Ok(module) => return Ok(Some(module)),
+                Err(error) if should_fallback_to_legacy_catalog_path(&error) => {
+                    match fetch_module_from_path(
+                        &self.client,
+                        registry_url,
+                        legacy_registry_catalog_module_path(),
+                        slug,
+                        self.max_response_bytes,
+                    )
+                    .await
+                    {
+                        Ok(module) => return Ok(Some(module)),
+                        Err(error) if should_fallback_to_legacy_catalog_path(&error) => true,
+                        Err(error) => return Err(error),
                     }
-                    Err(error) => Err(error),
                 }
+                Err(error) => return Err(error),
             }
-            Err(error) => Err(error),
+        };
+
+        if use_catalog_fallback {
+            let catalog = self
+                .load_catalog(registry_url, &MarketplaceCatalogQuery::default())
+                .await?;
+            Ok(catalog
+                .modules
+                .iter()
+                .find(|module| module.slug.eq_ignore_ascii_case(slug))
+                .cloned())
+        } else {
+            Ok(None)
         }
+    }
+
+    #[cfg(test)]
+    fn saturated_fetches(&self) -> u64 {
+        self.saturated_fetches.load(AtomicOrdering::Relaxed)
     }
 }
 
@@ -342,6 +373,16 @@ async fn read_bounded_response(
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
+}
+
+fn try_acquire_fetch_permit(
+    permits: Arc<Semaphore>,
+    saturated_fetches: &AtomicU64,
+) -> anyhow::Result<OwnedSemaphorePermit> {
+    permits.try_acquire_owned().map_err(|_| {
+        saturated_fetches.fetch_add(1, AtomicOrdering::Relaxed);
+        anyhow::anyhow!("marketplace registry fetch capacity is saturated")
+    })
 }
 
 fn registry_catalog_cache_key(
@@ -544,6 +585,7 @@ mod tests {
     use axum::{Json, Router};
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
     use tokio::net::TcpListener;
+    use tokio::sync::{oneshot, Notify};
 
     fn query(search: &str, category: &str, tag: &str) -> MarketplaceCatalogQuery {
         MarketplaceCatalogQuery {
@@ -625,6 +667,7 @@ mod tests {
             Duration::from_secs(60),
             1024 * 1024,
             1024 * 1024,
+            8,
         ));
         let first = {
             let provider = Arc::clone(&provider);
@@ -658,6 +701,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn distinct_catalog_misses_respect_the_global_fetch_budget() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handler_calls = Arc::clone(&calls);
+        let started = Arc::new(Notify::new());
+        let handler_started = Arc::clone(&started);
+        let (release_tx, release_rx) = oneshot::channel::<()>();
+        let release = Arc::new(tokio::sync::Mutex::new(Some(release_rx)));
+        let handler_release = Arc::clone(&release);
+        let app = Router::new().route(
+            registry_catalog_path(),
+            get(move || {
+                let handler_calls = Arc::clone(&handler_calls);
+                let handler_started = Arc::clone(&handler_started);
+                let handler_release = Arc::clone(&handler_release);
+                async move {
+                    handler_calls.fetch_add(1, AtomicOrdering::SeqCst);
+                    handler_started.notify_one();
+                    if let Some(release_rx) = handler_release.lock().await.take() {
+                        let _ = release_rx.await;
+                    }
+                    Json(RegistryCatalogResponse {
+                        schema_version: REGISTRY_CATALOG_SCHEMA_VERSION,
+                        modules: Vec::new(),
+                    })
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let provider = Arc::new(HardenedRegistryMarketplaceProvider::new(
+            Some(format!("http://{address}")),
+            Client::new(),
+            Duration::from_secs(60),
+            1024 * 1024,
+            1024 * 1024,
+            1,
+        ));
+
+        let first = {
+            let provider = Arc::clone(&provider);
+            tokio::spawn(async move {
+                provider
+                    .load_catalog(
+                        provider.registry_url.as_deref().unwrap(),
+                        &query("first", "", ""),
+                    )
+                    .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(1), started.notified())
+            .await
+            .expect("first marketplace fetch did not start");
+
+        let error = provider
+            .load_catalog(
+                provider.registry_url.as_deref().unwrap(),
+                &query("second", "", ""),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("capacity is saturated"));
+        assert_eq!(provider.saturated_fetches(), 1);
+        assert_eq!(calls.load(AtomicOrdering::SeqCst), 1);
+
+        let _ = release_tx.send(());
+        first.await.unwrap().unwrap();
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn chunked_oversized_response_is_rejected_before_json_parse() {
         let app = Router::new().route(
             registry_catalog_path(),
@@ -672,6 +786,7 @@ mod tests {
             Duration::from_secs(60),
             1024 * 1024,
             128,
+            8,
         );
 
         let error = provider
