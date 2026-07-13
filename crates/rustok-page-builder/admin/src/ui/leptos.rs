@@ -1,7 +1,9 @@
 use crate::editor::{AdminCanvas, AdminShell};
+use crate::i18n::t;
 use crate::AdminCanvasController;
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
+use rustok_ui_core::UiRouteContext;
 
 /// Host-provided composition context for a concrete consumer document.
 ///
@@ -37,6 +39,9 @@ impl PageBuilderAdminHostContext {
 /// unpersisted page inside the generic Page Builder module.
 #[component]
 pub fn PageBuilderAdmin() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale;
+
     match use_context::<PageBuilderAdminHostContext>() {
         Some(context) => view! {
             <PageBuilderAdminWithController
@@ -45,23 +50,34 @@ pub fn PageBuilderAdmin() -> impl IntoView {
             />
         }
         .into_any(),
-        None => view! {
-            <AdminShell
-                title="Page Builder".to_string()
-                subtitle=Some(
-                    "Fly runtime, compatibility, and provider control surface.".to_string(),
-                )
-            >
-                <section class="rustok-page-builder-admin__unbound" role="status">
-                    <h2>"No consumer document selected"</h2>
-                    <p>
-                        "Open a Pages, Blog, Forum, or another consumer-owned document to start "
-                        "full visual authoring. Page Builder does not own document persistence."
-                    </p>
-                </section>
-            </AdminShell>
+        None => {
+            let title = t(locale.as_deref(), "page_builder.title", "Page Builder");
+            let subtitle = t(
+                locale.as_deref(),
+                "page_builder.subtitle",
+                "Fly runtime, compatibility, and provider control surface.",
+            );
+            let unbound_title = t(
+                locale.as_deref(),
+                "page_builder.unbound.title",
+                "No consumer document selected",
+            );
+            let unbound_body = t(
+                locale.as_deref(),
+                "page_builder.unbound.body",
+                "Open a consumer-owned document to start full visual authoring. Page Builder does not own document persistence.",
+            );
+
+            view! {
+                <AdminShell title subtitle=Some(subtitle)>
+                    <section class="rustok-page-builder-admin__unbound" role="status">
+                        <h2>{unbound_title}</h2>
+                        <p>{unbound_body}</p>
+                    </section>
+                </AdminShell>
+            }
+            .into_any()
         }
-        .into_any(),
     }
 }
 
@@ -70,11 +86,15 @@ pub fn PageBuilderAdminWithController(
     controller: AdminCanvasController,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
-    let title = format!("Edit {}", controller.page_id());
-    let subtitle = Some(
-        "Full Fly authoring surface. Persistence remains owned by the consumer module facade."
-            .to_string(),
-    );
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale;
+    let title_prefix = t(locale.as_deref(), "page_builder.title", "Page Builder");
+    let title = format!("{title_prefix}: {}", controller.page_id());
+    let subtitle = Some(t(
+        locale.as_deref(),
+        "page_builder.editorSubtitle",
+        "Full Fly authoring surface. Persistence remains owned by the consumer module facade.",
+    ));
 
     view! {
         <AdminShell title subtitle>
