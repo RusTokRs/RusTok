@@ -80,6 +80,15 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
                         ),
                     )
                 })?;
+            if !resolved_price
+                .currency_code
+                .eq_ignore_ascii_case(currency_code.as_str())
+            {
+                return Err(PortError::invariant_violation(
+                    "pricing.checkout_currency_mismatch",
+                    "checkout pricing returned an incompatible currency",
+                ));
+            }
 
             line_items.push(checkout_line_item_pricing_update(
                 line_item.id,
