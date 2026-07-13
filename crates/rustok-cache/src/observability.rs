@@ -8,6 +8,7 @@ pub fn format_cache_refresh_prometheus_metrics(stats: &CacheRefreshStats) -> Str
          rustok_cache_refresh_failed_total {failed}\n\
          rustok_cache_refresh_deduplicated_total {deduplicated}\n\
          rustok_cache_refresh_saturated_total {saturated}\n\
+         rustok_cache_refresh_rejected_total {rejected}\n\
          rustok_cache_refresh_runtime_unavailable_total {runtime_unavailable}\n\
          rustok_cache_refresh_in_flight {in_flight}\n",
         started = stats.started,
@@ -15,6 +16,7 @@ pub fn format_cache_refresh_prometheus_metrics(stats: &CacheRefreshStats) -> Str
         failed = stats.failed,
         deduplicated = stats.deduplicated,
         saturated = stats.saturated,
+        rejected = stats.rejected,
         runtime_unavailable = stats.runtime_unavailable,
         in_flight = stats.in_flight,
     )
@@ -51,6 +53,7 @@ mod tests {
             failed: 1,
             deduplicated: 4,
             saturated: 2,
+            rejected: 2,
             runtime_unavailable: 1,
             in_flight: 1,
         });
@@ -58,6 +61,7 @@ mod tests {
         assert!(metrics.contains("rustok_cache_refresh_started_total 5"));
         assert!(metrics.contains("rustok_cache_refresh_failed_total 1"));
         assert!(metrics.contains("rustok_cache_refresh_saturated_total 2"));
+        assert!(metrics.contains("rustok_cache_refresh_rejected_total 2"));
         assert!(metrics.contains("rustok_cache_refresh_in_flight 1"));
     }
 
