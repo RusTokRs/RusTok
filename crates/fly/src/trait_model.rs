@@ -1,6 +1,7 @@
 use crate::{ComponentObject, ComponentPatch, FlyError, FlyResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +47,68 @@ pub struct TraitSchema {
 pub struct TraitSnapshot {
     pub schema: TraitSchema,
     pub value: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct TraitSchemaRegistry {
+    schemas: BTreeMap<String, TraitSchema>,
+}
+
+impl TraitSchemaRegistry {
+    pub fn with_builtins() -> Self {
+        let mut registry = Self::default();
+        for schema in builtin_trait_schemas() {
+            registry
+                .register(schema)
+                .expect("built-in trait schemas are namespaced and unique");
+        }
+        registry
+    }
+
+    pub fn register(&mut self, schema: TraitSchema) -> FlyResult<()> {
+        validate_trait_schema(&schema)?;
+        if self.schemas.contains_key(&schema.id) {
+            return Err(FlyError::DuplicateRegistryItem(schema.id));
+        }
+        self.schemas.insert(schema.id.clone(), schema);
+        Ok(())
+    }
+
+    pub fn replace(&mut self, schema: TraitSchema) -> FlyResult<Option<TraitSchema>> {
+        validate_trait_schema(&schema)?;
+        Ok(self.schemas.insert(schema.id.clone(), schema))
+    }
+
+    pub fn remove(&mut self, id: &str) -> Option<TraitSchema> {
+        self.schemas.remove(id)
+    }
+
+    pub fn get(&self, id: &str) -> Option<&TraitSchema> {
+        self.schemas.get(id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &TraitSchema)> {
+        self.schemas
+            .iter()
+            .map(|(id, schema)| (id.as_str(), schema))
+    }
+
+    pub fn for_component<'a>(
+        &'a self,
+        component_type: &'a str,
+    ) -> impl Iterator<Item = &'a TraitSchema> {
+        self.schemas
+            .values()
+            .filter(move |schema| schema.applies_to_component(component_type))
+    }
+
+    pub fn len(&self) -> usize {
+        self.schemas.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.schemas.is_empty()
+    }
 }
 
 impl TraitSchema {
@@ -203,6 +266,34 @@ pub fn trait_snapshots<'a>(
         .collect()
 }
 
+fn validate_trait_schema(schema: &TraitSchema) -> FlyResult<()> {
+    if schema.id.trim().is_empty() || !schema.id.contains('.') {
+        return Err(FlyError::InvalidRegistryId(schema.id.clone()));
+    }
+    if schema.label.trim().is_empty() {
+        return Err(FlyError::InvalidTraitValue {
+            trait_id: schema.id.clone(),
+            message: "trait label must not be empty".to_string(),
+        });
+    }
+    if matches!(schema.value_type, TraitValueKind::Select) && schema.options.is_empty() {
+        return Err(FlyError::InvalidTraitValue {
+            trait_id: schema.id.clone(),
+            message: "select traits require at least one option".to_string(),
+        });
+    }
+    let target_name = match &schema.target {
+        TraitTarget::Attribute { name } | TraitTarget::Field { name } => name,
+    };
+    if target_name.trim().is_empty() {
+        return Err(FlyError::InvalidTraitValue {
+            trait_id: schema.id.clone(),
+            message: "trait target must not be empty".to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn attribute_trait(
     id: &str,
     label: &str,
@@ -345,5 +436,44 @@ mod tests {
                 .attributes["href"],
             json!("#contact")
         );
+    }
+
+    #[test]
+    fn registry_accepts_namespaced_provider_schemas() {
+        let mut registry = TraitSchemaRegistry::with_builtins();
+        registry
+            .register(TraitSchema {
+                id: "example.product.sku".to_string(),
+                label: "SKU".to_string(),
+                value_type: TraitValueKind::Text,
+                target: TraitTarget::Field {
+                    name: "sku".to_string(),
+                },
+                required: true,
+                applies_to: vec!["example.product".to_string()],
+                options: Vec::new(),
+                placeholder: Some("SKU-001".to_string()),
+            })
+            .expect("provider trait");
+        assert!(registry.get("example.product.sku").is_some());
+        assert_eq!(registry.for_component("example.product").count(), 5);
+    }
+
+    #[test]
+    fn registry_rejects_duplicate_or_un_namespaced_schemas() {
+        let mut registry = TraitSchemaRegistry::default();
+        let schema = TraitSchema {
+            id: "invalid".to_string(),
+            label: "Invalid".to_string(),
+            value_type: TraitValueKind::Text,
+            target: TraitTarget::Attribute {
+                name: "data-invalid".to_string(),
+            },
+            required: false,
+            applies_to: Vec::new(),
+            options: Vec::new(),
+            placeholder: None,
+        };
+        assert!(registry.register(schema).is_err());
     }
 }
