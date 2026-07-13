@@ -6,7 +6,9 @@ use crate::transport;
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
-use rustok_page_builder_admin::{PageBuilderAdminFacade, PageBuilderAdminWithController};
+use rustok_page_builder_admin::{
+    PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
+};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use std::sync::Arc;
 
@@ -109,10 +111,10 @@ fn PagesFlyBuilder(
                 },
                 |_page, _project_data| {},
             ));
-            view! {
-                <PageBuilderAdminWithController controller facade=Some(facade) />
-            }
-            .into_any()
+            provide_context(
+                PageBuilderAdminHostContext::new(controller).with_facade(facade),
+            );
+            view! { <PageBuilderAdmin /> }.into_any()
         }
         Err(error) => view! {
             <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
