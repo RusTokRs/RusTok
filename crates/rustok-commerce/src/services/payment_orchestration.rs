@@ -207,8 +207,31 @@ impl PaymentOrchestrationService {
             .payment_service
             .get_collection(tenant_id, collection_id)
             .await?;
+        let provider_id = provider_id_for_collection(&collection);
+        let idempotency_key = format!("payment_collection:{collection_id}:capture");
+
         match collection.status.as_str() {
-            "captured" => return Ok(collection),
+            "captured" => {
+                if let Some(operation) = self
+                    .provider_operation_journal
+                    .find_by_key(tenant_id, &provider_id, &idempotency_key)
+                    .await?
+                {
+                    if matches!(
+                        operation.status.as_str(),
+                        PROVIDER_OPERATION_SUCCEEDED
+                            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                    ) {
+                        mark_journal_committed(
+                            &self.provider_operation_journal,
+                            operation.id,
+                            "capture",
+                        )
+                        .await?;
+                    }
+                }
+                return Ok(collection);
+            }
             "authorized" => {}
             status => {
                 return Err(PaymentError::InvalidTransition {
@@ -220,35 +243,34 @@ impl PaymentOrchestrationService {
         }
 
         let CapturePaymentInput { amount, metadata } = input;
-        let provider_id = provider_id_for_collection(&collection);
         let requested_amount = amount.unwrap_or(collection.authorized_amount);
-        let provider_result = self
-            .payment_provider_registry
-            .execute_capture(
-                provider_id.as_str(),
-                PaymentProviderOperationRequest {
-                    tenant_id,
-                    collection_id,
-                    amount: requested_amount,
-                    currency_code: collection.currency_code.clone(),
-                    idempotency_key: Some(format!(
-                        "payment_collection:{}:capture",
-                        collection_id
-                    )),
-                    metadata: merge_provider_context(
-                        metadata.clone(),
-                        serde_json::json!({
-                            "commerce_orchestration": {
-                                "operation": "capture_payment_collection"
-                            }
-                        }),
-                    ),
-                },
-            )
-            .await
-            .map_err(PaymentOrchestrationError::Provider)?;
+        let provider_request = PaymentProviderOperationRequest {
+            tenant_id,
+            collection_id,
+            amount: requested_amount,
+            currency_code: collection.currency_code.clone(),
+            idempotency_key: Some(idempotency_key),
+            metadata: merge_provider_context(
+                metadata.clone(),
+                serde_json::json!({
+                    "commerce_orchestration": {
+                        "operation": "capture_payment_collection"
+                    }
+                }),
+            ),
+        };
+        let journaled = execute_journaled_provider_operation(
+            &self.provider_operation_journal,
+            &self.payment_provider_registry,
+            "capture",
+            None,
+            provider_id.as_str(),
+            provider_request,
+        )
+        .await?;
+        let provider_result = journaled.result;
 
-        Ok(self
+        match self
             .payment_service
             .capture_collection(
                 tenant_id,
@@ -258,22 +280,69 @@ impl PaymentOrchestrationService {
                     metadata: merge_provider_context(metadata, provider_result.metadata),
                 },
             )
-            .await?)
+            .await
+        {
+            Ok(collection) => {
+                mark_journal_committed(
+                    &self.provider_operation_journal,
+                    journaled.operation_id,
+                    "capture",
+                )
+                .await?;
+                Ok(collection)
+            }
+            Err(source) => {
+                mark_local_persistence_failed(
+                    &self.provider_operation_journal,
+                    journaled.operation_id,
+                    "capture",
+                    &source,
+                )
+                .await;
+                Err(local_persistence_after_provider_error(
+                    journaled.operation_id,
+                    "capture",
+                    source,
+                ))
+            }
+        }
     }
 
     pub async fn cancel_collection(
         &self,
         tenant_id: Uuid,
         collection_id: Uuid,
-        input: CancelPaymentInput,
+        mut input: CancelPaymentInput,
     ) -> PaymentOrchestrationResult<PaymentCollectionResponse> {
         let collection = self
             .payment_service
             .get_collection(tenant_id, collection_id)
             .await?;
+        let provider_id = provider_id_for_collection(&collection);
+        let idempotency_key = format!("payment_collection:{collection_id}:cancel");
 
         match collection.status.as_str() {
-            "cancelled" => return Ok(collection),
+            "cancelled" => {
+                if let Some(operation) = self
+                    .provider_operation_journal
+                    .find_by_key(tenant_id, &provider_id, &idempotency_key)
+                    .await?
+                {
+                    if matches!(
+                        operation.status.as_str(),
+                        PROVIDER_OPERATION_SUCCEEDED
+                            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                    ) {
+                        mark_journal_committed(
+                            &self.provider_operation_journal,
+                            operation.id,
+                            "cancel",
+                        )
+                        .await?;
+                    }
+                }
+                return Ok(collection);
+            }
             "captured" => {
                 return Err(PaymentError::InvalidTransition {
                     from: collection.status,
@@ -291,40 +360,74 @@ impl PaymentOrchestrationService {
             }
         }
 
-        if should_cancel_provider(&collection) {
-            let provider_id = provider_id_for_collection(&collection);
+        let provider_operation_id = if should_cancel_provider(&collection) {
             let amount = executable_payment_amount(&collection);
-            self.payment_provider_registry
-                .execute_cancel(
-                    provider_id.as_str(),
-                    PaymentProviderOperationRequest {
-                        tenant_id,
-                        collection_id,
-                        amount,
-                        currency_code: collection.currency_code.clone(),
-                        idempotency_key: Some(format!(
-                            "payment_collection:{}:cancel",
-                            collection_id
-                        )),
-                        metadata: merge_provider_context(
-                            input.metadata.clone(),
-                            serde_json::json!({
-                                "commerce_orchestration": {
-                                    "operation": "cancel_payment_collection",
-                                    "reason": input.reason.clone(),
-                                }
-                            }),
-                        ),
-                    },
-                )
-                .await
-                .map_err(PaymentOrchestrationError::Provider)?;
-        }
+            let provider_request = PaymentProviderOperationRequest {
+                tenant_id,
+                collection_id,
+                amount,
+                currency_code: collection.currency_code.clone(),
+                idempotency_key: Some(idempotency_key),
+                metadata: merge_provider_context(
+                    input.metadata.clone(),
+                    serde_json::json!({
+                        "commerce_orchestration": {
+                            "operation": "cancel_payment_collection",
+                            "reason": input.reason.clone(),
+                        }
+                    }),
+                ),
+            };
+            let journaled = execute_journaled_provider_operation(
+                &self.provider_operation_journal,
+                &self.payment_provider_registry,
+                "cancel",
+                None,
+                provider_id.as_str(),
+                provider_request,
+            )
+            .await?;
+            input.metadata = merge_provider_context(input.metadata, journaled.result.metadata);
+            Some(journaled.operation_id)
+        } else {
+            None
+        };
 
-        Ok(self
+        match self
             .payment_service
             .cancel_collection(tenant_id, collection_id, input)
-            .await?)
+            .await
+        {
+            Ok(collection) => {
+                if let Some(operation_id) = provider_operation_id {
+                    mark_journal_committed(
+                        &self.provider_operation_journal,
+                        operation_id,
+                        "cancel",
+                    )
+                    .await?;
+                }
+                Ok(collection)
+            }
+            Err(source) => {
+                if let Some(operation_id) = provider_operation_id {
+                    mark_local_persistence_failed(
+                        &self.provider_operation_journal,
+                        operation_id,
+                        "cancel",
+                        &source,
+                    )
+                    .await;
+                    Err(local_persistence_after_provider_error(
+                        operation_id,
+                        "cancel",
+                        source,
+                    ))
+                } else {
+                    Err(source.into())
+                }
+            }
+        }
     }
 
     pub async fn create_refund(
