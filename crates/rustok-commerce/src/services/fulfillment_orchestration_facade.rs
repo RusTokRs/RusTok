@@ -1,4 +1,5 @@
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
+use rustok_fulfillment::FulfillmentService;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -84,6 +85,19 @@ impl FulfillmentOrchestrationService {
         fulfillment_id: Uuid,
         input: ReshipFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        let current = FulfillmentService::new(self.db.clone())
+            .get_fulfillment(tenant_id, fulfillment_id)
+            .await?;
+        if current.status == "shipped"
+            && current
+                .metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("operation"))
+                .and_then(serde_json::Value::as_str)
+                == Some("reship")
+        {
+            return Ok(current);
+        }
         self.journaled
             .reship_fulfillment(tenant_id, fulfillment_id, input)
             .await
