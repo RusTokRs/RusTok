@@ -100,6 +100,7 @@ for (const hostMarker of [
 for (const marker of [
   'pub fn PageBuilderAdmin()',
   'PageBuilderAdminWithController',
+  'PageBuilderAdminHostContext',
   'PageBuilderAdminFacade',
   'Arc<dyn PageBuilderAdminFacade>',
   'UiRouteContext',
@@ -185,13 +186,16 @@ for (const marker of [
   'transport::update_page',
   'REVISION_CONFLICT',
   'canonicalize_builder_project',
-  'take_frame_component',
+  'copy_frame_component',
+  'synchronize_frame_component',
   'Arc<dyn Fn() -> PagesBuilderSaveSnapshot + Send + Sync>',
 ]) {
   requireMarker('pagesBuilder', marker, `Pages consumer facade is missing ${marker}`);
 }
 for (const marker of [
-  'PageBuilderAdminWithController',
+  'PageBuilderAdminHostContext',
+  'provide_context',
+  'PageBuilderAdmin',
   'PagesBuilderFacade',
   'Arc<dyn PageBuilderAdminFacade>',
   'use_route_query_value',
