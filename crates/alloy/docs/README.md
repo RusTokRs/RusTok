@@ -60,8 +60,9 @@ availability from side effects of registration.
 
 `HttpCapabilityBridge` is installed only on the request-scoped Rhai sandbox
 executor. It has no network client: its `http_*` helpers create
-`platform.http` calls for `SandboxHost`, so the host broker applies the same
-allowlist, credential and audit policy to Alloy drafts and marketplace artifacts.
+`platform.http` calls for `SandboxHost`. The host validates admitted HTTP
+host/method/path-prefix constraints before the broker applies its credential and
+audit policy, so Alloy drafts and marketplace artifacts share the same boundary.
 
 ## Runbook for Scheduler and Hook Debugging
 

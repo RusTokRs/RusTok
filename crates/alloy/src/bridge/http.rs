@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use rhai::{Dynamic, Engine, Map};
 use rustok_sandbox::rhai::RhaiHostExtension;
 use rustok_sandbox::{
-    CapabilityCall, CapabilityName, SandboxError, SandboxHost, SandboxRequest, SandboxSubject,
+    CapabilityCall, CapabilityCallContext, CapabilityName, SandboxError, SandboxHost,
+    SandboxRequest, SandboxSubject,
 };
 use serde_json::{json, Value};
 
@@ -30,6 +31,7 @@ impl RhaiHostExtension for HttpCapabilityBridge {
 struct CapabilityContext {
     execution_id: uuid::Uuid,
     subject: SandboxSubject,
+    context: CapabilityCallContext,
 }
 
 impl CapabilityContext {
@@ -37,6 +39,7 @@ impl CapabilityContext {
         Self {
             execution_id: request.context.execution_id,
             subject: request.subject.clone(),
+            context: CapabilityCallContext::from(&request.context),
         }
     }
 }
@@ -127,6 +130,7 @@ fn invoke_http(
     let call = CapabilityCall {
         execution_id: context.execution_id,
         subject: context.subject.clone(),
+        context: context.context.clone(),
         capability,
         operation: "request".to_string(),
         input: json!({
@@ -232,7 +236,11 @@ mod tests {
                 grants: granted
                     .then(|| CapabilityGrant {
                         name: CapabilityName::new(HTTP_CAPABILITY).expect("capability"),
-                        constraints: json!({ "hosts": ["service.example"] }),
+                        constraints: json!({
+                            "hosts": ["service.example"],
+                            "methods": ["GET"],
+                            "path_prefixes": ["/test"],
+                        }),
                     })
                     .into_iter()
                     .collect(),
@@ -265,6 +273,44 @@ mod tests {
             .await
             .expect("denied script response");
         assert_eq!(denied.output["error_code"], "CAPABILITY_DENIED");
+        assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
+
+        let mut denied_by_constraint = request(true);
+        denied_by_constraint.payload.bytes =
+            b"http_get(\"https://service.example/private\")".to_vec();
+        let denied_by_constraint = runtime
+            .execute(denied_by_constraint)
+            .await
+            .expect("constraint denial is returned to the script");
+        assert_eq!(
+            denied_by_constraint.output["error_code"],
+            "CAPABILITY_CONSTRAINT_DENIED"
+        );
+        assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
+
+        let mut denied_host = request(true);
+        denied_host.payload.bytes = b"http_get(\"https://other.example/test\")".to_vec();
+        let denied_host = runtime
+            .execute(denied_host)
+            .await
+            .expect("host denial is returned to the script");
+        assert_eq!(
+            denied_host.output["error_code"],
+            "CAPABILITY_CONSTRAINT_DENIED"
+        );
+        assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
+
+        let mut denied_method = request(true);
+        denied_method.payload.bytes =
+            b"http_post(\"https://service.example/test\", \"payload\")".to_vec();
+        let denied_method = runtime
+            .execute(denied_method)
+            .await
+            .expect("method denial is returned to the script");
+        assert_eq!(
+            denied_method.output["error_code"],
+            "CAPABILITY_CONSTRAINT_DENIED"
+        );
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
     }
 }

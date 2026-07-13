@@ -7,8 +7,8 @@
 //! just as the Rhai adapters do.
 
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use std::thread;
 use std::time::Duration;
@@ -18,9 +18,9 @@ use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 
 use crate::{
-    CapabilityCall, CapabilityName, ExecutionMetrics, SandboxError, SandboxExecutor,
-    SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest, SandboxResult,
-    SandboxSubject,
+    CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics, SandboxError,
+    SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest,
+    SandboxResult, SandboxSubject,
 };
 
 wasmtime::component::bindgen!({
@@ -48,6 +48,7 @@ struct WasmStoreState {
     host: SandboxHost,
     execution_id: uuid::Uuid,
     subject: SandboxSubject,
+    context: CapabilityCallContext,
 }
 
 impl rustok::module::host::Host for WasmStoreState {
@@ -62,6 +63,7 @@ impl rustok::module::host::Host for WasmStoreState {
         let call = CapabilityCall {
             execution_id: self.execution_id,
             subject: self.subject.clone(),
+            context: self.context.clone(),
             capability,
             operation,
             input,
@@ -106,6 +108,7 @@ impl WasmComponentExecutor {
                     .unwrap_or(usize::MAX),
             )
             .build();
+        let cancellation = host.cancellation();
         let mut store = Store::new(
             &engine,
             WasmStoreState {
@@ -113,6 +116,7 @@ impl WasmComponentExecutor {
                 host,
                 execution_id: request.context.execution_id,
                 subject: request.subject.clone(),
+                context: CapabilityCallContext::from(&request.context),
             },
         );
         store.limiter(|state| &mut state.limits);
@@ -124,16 +128,27 @@ impl WasmComponentExecutor {
         // The engine is private to this request, so incrementing its epoch
         // cannot interrupt another tenant's execution.
         let timed_out = Arc::new(AtomicBool::new(false));
+        let cancelled = Arc::new(AtomicBool::new(false));
         let completed = Arc::new(AtomicBool::new(false));
-        let timeout_engine = engine.clone();
-        let timeout_completed = Arc::clone(&completed);
-        let timeout_fired = Arc::clone(&timed_out);
+        let watchdog_engine = engine.clone();
+        let watchdog_completed = Arc::clone(&completed);
+        let watchdog_timed_out = Arc::clone(&timed_out);
+        let watchdog_cancelled = Arc::clone(&cancelled);
         let timeout = request.policy.limits.wall_clock_ms;
         let watchdog = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(timeout));
-            if !timeout_completed.load(Ordering::Acquire) {
-                timeout_fired.store(true, Ordering::Release);
-                timeout_engine.increment_epoch();
+            let started = std::time::Instant::now();
+            while !watchdog_completed.load(Ordering::Acquire) {
+                if cancellation.is_cancelled() {
+                    watchdog_cancelled.store(true, Ordering::Release);
+                    watchdog_engine.increment_epoch();
+                    break;
+                }
+                if started.elapsed() >= Duration::from_millis(timeout) {
+                    watchdog_timed_out.store(true, Ordering::Release);
+                    watchdog_engine.increment_epoch();
+                    break;
+                }
+                thread::sleep(Duration::from_millis(1));
             }
         });
 
@@ -181,6 +196,9 @@ impl WasmComponentExecutor {
 
         completed.store(true, Ordering::Release);
         let _ = watchdog.join();
+        if cancelled.load(Ordering::Acquire) {
+            return Err(SandboxError::Cancelled);
+        }
         if timed_out.load(Ordering::Acquire) {
             return Err(SandboxError::Timeout {
                 limit_ms: request.policy.limits.wall_clock_ms,
@@ -210,7 +228,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use chrono::Utc;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use uuid::Uuid;
 
     use super::WasmComponentExecutor;
@@ -296,6 +314,8 @@ mod tests {
             draft_id: Uuid::new_v4(),
             revision: 1,
         };
+        let mut context = SandboxContext::new(ExecutionPhase::Test);
+        context.execution_id = execution_id;
         let mut state = super::WasmStoreState {
             limits: wasmtime::StoreLimitsBuilder::new().build(),
             host: crate::SandboxHost::new(
@@ -307,9 +327,14 @@ mod tests {
                     ..Default::default()
                 }),
                 broker.clone(),
+                subject.clone(),
+                &context,
+                Arc::new(Vec::new()),
+                crate::SandboxCancellation::new(),
             ),
             execution_id,
             subject: subject.clone(),
+            context: crate::CapabilityCallContext::from(&context),
         };
 
         let output = <super::WasmStoreState as super::rustok::module::host::Host>::invoke(
@@ -328,11 +353,9 @@ mod tests {
             "read".to_string(),
             "{}".to_string(),
         );
-        assert!(
-            denied
-                .expect_err("denied capability")
-                .contains("CAPABILITY_DENIED")
-        );
+        assert!(denied
+            .expect_err("denied capability")
+            .contains("CAPABILITY_DENIED"));
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
     }
 }

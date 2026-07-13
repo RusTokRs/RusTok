@@ -23,6 +23,7 @@ use crate::{
 };
 
 const TIMEOUT_MARKER: &str = "__RUSTOK_SANDBOX_TIMEOUT__";
+const CANCELLATION_MARKER: &str = "__RUSTOK_SANDBOX_CANCELLED__";
 
 /// Executes pure Rhai payloads under the common sandbox limits.
 ///
@@ -78,7 +79,11 @@ impl RhaiExecutor {
         self
     }
 
-    fn build_engine(request: &SandboxRequest, operations: Arc<AtomicU64>) -> Engine {
+    fn build_engine(
+        request: &SandboxRequest,
+        operations: Arc<AtomicU64>,
+        host: SandboxHost,
+    ) -> Engine {
         let mut engine = Engine::new();
         let limits = request.policy.limits;
         let started = Instant::now();
@@ -93,8 +98,12 @@ impl RhaiExecutor {
         engine.set_max_map_size(10_000);
         engine.on_progress(move |count| {
             operations.store(count, Ordering::Relaxed);
-            (started.elapsed().as_millis() > u128::from(limits.wall_clock_ms))
-                .then(|| Dynamic::from(TIMEOUT_MARKER))
+            if host.cancellation().is_cancelled() {
+                Some(Dynamic::from(CANCELLATION_MARKER))
+            } else {
+                (started.elapsed().as_millis() > u128::from(limits.wall_clock_ms))
+                    .then(|| Dynamic::from(TIMEOUT_MARKER))
+            }
         });
         engine
     }
@@ -116,6 +125,11 @@ impl RhaiExecutor {
 
     fn map_error(error: Box<EvalAltResult>, request: &SandboxRequest) -> SandboxError {
         match *error {
+            EvalAltResult::ErrorTerminated(reason, _)
+                if reason.to_string() == CANCELLATION_MARKER =>
+            {
+                SandboxError::Cancelled
+            }
             EvalAltResult::ErrorTerminated(reason, _) if reason.to_string() == TIMEOUT_MARKER => {
                 SandboxError::Timeout {
                     limit_ms: request.policy.limits.wall_clock_ms,
@@ -166,7 +180,7 @@ impl SandboxExecutor for RhaiExecutor {
         let source = std::str::from_utf8(&request.payload.bytes)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let operations = Arc::new(AtomicU64::new(0));
-        let mut engine = Self::build_engine(request, Arc::clone(&operations));
+        let mut engine = Self::build_engine(request, Arc::clone(&operations), host.clone());
         for extension in &self.extensions {
             extension.register(&mut engine, request, host.clone());
         }

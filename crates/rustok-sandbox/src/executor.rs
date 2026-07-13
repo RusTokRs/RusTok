@@ -47,4 +47,3 @@ impl ExecutorRegistry {
             .ok_or(SandboxError::ExecutorNotRegistered(kind))
     }
 }
-

@@ -8,7 +8,19 @@ Alloy drafts and installed module artifacts.
 ## Responsibilities
 
 - Define the common execution envelope, policy, limits and outcome taxonomy.
-- Enforce default-deny host capability access through a scoped broker.
+- Enforce default-deny host capability access through a scoped broker, including
+  active execution, subject, tenant, actor, phase and trace-context matching.
+- Enforce typed HTTP host, method, and path-prefix grants before broker dispatch.
+- Bound capability-call count, serialized input size, and one-second rate per
+  sandbox execution.
+- Emit redacted capability-attempt evidence with identity, operation, outcome,
+  and stable error code only.
+- Exclude untrusted error text from neutral execution evidence; observers receive
+  the stable error code only.
+- Provide one cooperative cancellation handle per execution, checked before
+  executor work and every brokered capability dispatch.
+- Admit executions through shared global, executor, tenant, and artifact gates
+  with automatic permit release on every terminal path.
 - Register language/runtime executors without depending on their consumers.
 - Publish comparable audit evidence for draft and installed executions.
 

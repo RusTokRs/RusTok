@@ -357,17 +357,20 @@ and installed artifacts.
   `SandboxSubject::AlloyDraft` and a revision number.
 - [x] Replace Alloy's direct production execution path atomically with
   `SandboxRuntime`; do not retain a fallback executor.
-- [ ] Preserve Alloy-specific entity, parameter, validation, and HTTP behavior
+- [x] Preserve Alloy-specific entity, parameter, validation, and HTTP behavior
   as request-scoped extensions backed by the capability broker.
 - [ ] Define a versioned Rhai input/output binding shared by draft and published
   Rhai artifacts.
 - [ ] Freeze the WIT v1 package, world, entrypoint, JSON/error encoding, and ABI
   compatibility rules.
-- [ ] Add cancellation propagation and deadline cancellation.
-- [ ] Add per-tenant, per-artifact, and global concurrency admission.
+- [x] Add request-scoped cancellation propagation through runtime, Rhai,
+  Wasmtime, and brokered capability dispatch.
+- [ ] Add deadline cancellation for every enabled executor.
+- [x] Add runtime-scoped global, executor, tenant, and artifact concurrency
+  admission with automatic permit release.
 - [ ] Add durable execution audit persistence through an observer adapter.
-- [ ] Add audit redaction rules for inputs, outputs, headers, secrets, and error
-  messages.
+- [x] Exclude inputs, outputs, headers, credentials, and untrusted error text
+  from neutral audit records.
 - [ ] Add compiled-component/cache policy keyed by engine version, target,
   runtime ABI, and artifact digest.
 - [ ] Add deterministic metrics for fuel/instructions, memory, output size,
@@ -380,12 +383,15 @@ and installed artifacts.
 
 ### 1.3 Capability Broker Requirements
 
-- [ ] Move capability policy evaluation before all host adapter invocation.
-- [ ] Enforce tenant/actor/subject consistency on every capability call.
-- [ ] Define constraints per capability, including HTTP host/method/path,
-  storage namespace, event topics, secret references, and MCP server/tool names.
-- [ ] Add rate, payload-size, and call-count limits.
-- [ ] Ensure denied calls emit audit evidence without leaking protected input.
+- [x] Move capability policy evaluation before all host adapter invocation.
+- [x] Enforce tenant/actor/subject consistency on every capability call.
+- [x] Define and enforce HTTP host/method/path constraints before broker
+  invocation.
+- [ ] Define constraints for storage namespace, event topics, secret references,
+  and MCP server/tool names.
+- [x] Add per-execution payload-size, call-count, and rolling rate limits before
+  broker invocation.
+- [x] Ensure denied calls emit redacted audit evidence without protected input.
 - [ ] Ensure host adapters receive scoped handles, never platform-global clients
   or raw credentials.
 

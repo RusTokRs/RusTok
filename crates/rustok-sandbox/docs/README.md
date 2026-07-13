@@ -15,8 +15,39 @@ may implement Rhai, WebAssembly or sidecar isolation behind the same contract.
 
 Consumers construct a `SandboxRequest` with a typed subject and admitted policy.
 `SandboxRuntime` resolves the executor, creates a scoped `SandboxHost`, records
-started/terminal evidence and returns a typed outcome. The crate has no dependency
-on Alloy, `rustok-modules`, server hosts or domain modules.
+started/terminal evidence and returns a typed outcome. Before evaluating a grant
+or calling a broker, the host verifies that the call's execution ID, subject,
+phase, tenant, actor and trace context match its active request. The crate has no
+dependency on Alloy, `rustok-modules`, server hosts or domain modules.
+
+The `platform.http` grant requires typed `hosts`, `methods`, and
+`path_prefixes` constraints. All three lists must be non-empty; host and method
+matching is exact, while paths use an explicit allowed prefix. The host enforces
+them before it calls the capability broker.
+
+The request limits also bound the total number of capability calls, the
+serialized input size of each call, and calls in a rolling one-second window.
+These limits are shared by all cloned host handles for one execution and are
+enforced before broker invocation.
+
+`CapabilityObserver` receives one redacted record for each attempt, including
+successful, denied, and failed outcomes. A record carries active execution and
+subject identity, request context, capability, operation and stable error code;
+it deliberately excludes input, output, credentials and error text.
+
+Execution observer records similarly contain metrics and stable error codes only;
+the neutral contract has no error-text field, so the runtime cannot persist or
+forward untrusted error text.
+
+`SandboxRuntime::execute_with_cancellation` accepts the same request contract
+plus a request-scoped `SandboxCancellation` handle. The runtime rejects a
+pre-cancelled request, Rhai checks the handle during progress callbacks,
+Wasmtime interrupts its request-private epoch watchdog, and `SandboxHost` checks
+it before every capability dispatch.
+
+`SandboxAdmissionLimits` is deployment composition policy, not artifact policy.
+It gates concurrent executions globally and by executor, tenant, and admitted
+artifact digest; an internal permit releases automatically when execution exits.
 
 `RhaiHostExtension` may register request-scoped functions, populate the Rhai
 scope after the neutral envelope is present, and adapt a successful value into

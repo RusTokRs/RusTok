@@ -14,6 +14,10 @@ and retain GraphQL as the parallel selected path.
 policy, typed error mapping, and declared fallback profiles, but the FBA
 provider has not yet been executed against live persistence or a remote
 consumer path.
+The port accepts variant-first resolution when a cart snapshot has no product
+id and returns the full resolved-price projection required to persist pricing
+adjustments; cart storefront repricing therefore no longer calls
+`PricingService::resolve_variant_price` directly.
 
 ## FFA/FBA status
 

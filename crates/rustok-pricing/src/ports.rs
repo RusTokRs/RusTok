@@ -91,7 +91,11 @@ impl PricingReadPort for crate::PricingService {
                 )
                 .await
                 .map_err(pricing_error_to_port_error)?;
-            if !product.variants.iter().any(|variant| variant.id == variant_id) {
+            if !product
+                .variants
+                .iter()
+                .any(|variant| variant.id == variant_id)
+            {
                 return Err(PortError::validation(
                     "pricing.variant_product_mismatch",
                     format!("variant {variant_id} does not belong to product {product_id}"),

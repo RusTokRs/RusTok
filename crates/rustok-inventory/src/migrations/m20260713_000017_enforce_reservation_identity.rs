@@ -66,6 +66,5 @@ impl MigrationTrait for Migration {
 #[derive(DeriveIden)]
 enum ReservationItems {
     Table,
-    InventoryItemId,
     ExternalId,
 }

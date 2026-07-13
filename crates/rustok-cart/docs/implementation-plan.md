@@ -32,6 +32,9 @@ identity.
 - `scripts/verify/verify-cart-storefront-boundary.mjs` locks the storefront
   core/transport/UI split, native host runtime, GraphQL fallback, and removal
   of the legacy API layer.
+- Storefront repricing calls the pricing-owned `PricingReadPort` with a
+  variant-first request and full resolved-price projection; it no longer calls
+  `PricingService::resolve_variant_price` directly.
 - The compiled commerce checkout channel-inventory regression executes the
   in-process cart checkout provider before product and inventory preflight.
   It is bounded provider-consumer evidence; lifecycle recovery and fallback

@@ -74,6 +74,14 @@ impl From<rustok_sandbox::SandboxError> for ScriptError {
             rustok_sandbox::SandboxError::CapabilityDenied(capability) => {
                 Self::Runtime(format!("capability `{capability}` is denied"))
             }
+            rustok_sandbox::SandboxError::CapabilityConstraintDenied { capability, reason } => {
+                Self::Runtime(format!(
+                    "capability `{capability}` violates policy: {reason}"
+                ))
+            }
+            rustok_sandbox::SandboxError::CapabilityContextMismatch { field } => Self::Runtime(
+                format!("capability call {field} does not match its execution"),
+            ),
             rustok_sandbox::SandboxError::HostCapability {
                 capability,
                 message,

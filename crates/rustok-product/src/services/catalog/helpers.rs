@@ -738,24 +738,34 @@ pub fn product_channel_visibility_condition(
     backend: DbBackend,
     public_channel_slug: Option<&str>,
 ) -> Condition {
+    if backend == DbBackend::Sqlite {
+        return match normalize_public_channel_slug(public_channel_slug) {
+            None => Condition::all().add(Expr::cust(
+                "COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'",
+            )),
+            Some(slug) => Condition::all().add(Expr::cust_with_values(
+                "COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]') = '[]'
+                 OR EXISTS (
+                     SELECT 1
+                     FROM json_each(COALESCE(json_extract(metadata, '$.channel_visibility.allowed_channel_slugs'), '[]'))
+                     WHERE value = ?
+                 )",
+                vec![SqlValue::from(slug)],
+            )),
+        };
+    }
+
     match normalize_public_channel_slug(public_channel_slug) {
         None => Condition::all().add(Expr::cust(
             "COALESCE(metadata #> '{channel_visibility,allowed_channel_slugs}', '[]'::jsonb) = '[]'::jsonb",
         )),
         Some(slug) => {
-            let placeholder = if backend == DbBackend::Sqlite {
-                "?"
-            } else {
-                "$1"
-            };
             Condition::all().add(Expr::cust_with_values(
-                format!(
-                    "COALESCE(metadata #> '{{channel_visibility,allowed_channel_slugs}}', '[]'::jsonb) = '[]'::jsonb
-                     OR metadata @> jsonb_build_object(
-                         'channel_visibility',
-                         jsonb_build_object('allowed_channel_slugs', jsonb_build_array({placeholder}::text))
-                     )"
-                ),
+                "COALESCE(metadata #> '{channel_visibility,allowed_channel_slugs}', '[]'::jsonb) = '[]'::jsonb
+                 OR metadata @> jsonb_build_object(
+                     'channel_visibility',
+                     jsonb_build_object('allowed_channel_slugs', jsonb_build_array($1::text))
+                 )",
                 vec![SqlValue::from(slug)],
             ))
         }
