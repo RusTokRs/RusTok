@@ -10,17 +10,40 @@ use serde_json::{Map, Value};
 pub struct ComponentPatch {
     #[serde(default)]
     pub attributes: Map<String, Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remove_attributes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub style: Option<Value>,
     #[serde(default)]
+    pub clear_style: bool,
+    #[serde(default)]
     pub fields: Map<String, Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remove_fields: Vec<String>,
 }
 
 impl ComponentPatch {
     fn apply(self, component: &mut ComponentObject) {
+        for attribute in self.remove_attributes {
+            component.attributes.remove(&attribute);
+        }
         component.attributes.extend(self.attributes);
-        if let Some(style) = self.style {
+
+        if self.clear_style {
+            component.style = None;
+        } else if let Some(style) = self.style {
             component.style = Some(style);
+        }
+
+        for field in self.remove_fields {
+            match field.as_str() {
+                "tagName" => component.tag_name = None,
+                "provider" => component.provider = None,
+                "schemaVersion" => component.schema_version = None,
+                _ => {
+                    component.extensions.remove(&field);
+                }
+            }
         }
         for (key, value) in self.fields {
             match key.as_str() {
@@ -357,7 +380,8 @@ impl FlyEditor {
                 index,
             } => {
                 if let Some(parent_id) = new_parent_id.as_deref() {
-                    if parent_id == component_id || is_descendant(document, component_id, parent_id)
+                    if parent_id == component_id
+                        || document.is_component_descendant_of(parent_id, component_id)
                     {
                         return Err(FlyError::RecursiveMove {
                             component: component_id.clone(),
@@ -365,10 +389,20 @@ impl FlyEditor {
                         });
                     }
                 }
+
+                let previous_location = document.component_location(component_id);
+                let mut insertion_index = *index;
+                if previous_location.as_ref().is_some_and(|location| {
+                    location.parent_component_id.as_deref() == new_parent_id.as_deref()
+                        && location.index < insertion_index
+                }) {
+                    insertion_index = insertion_index.saturating_sub(1);
+                }
+
                 let component = document.project.remove_component(component_id)?;
                 document.project.insert_component(
                     new_parent_id.as_deref(),
-                    *index,
+                    insertion_index,
                     component,
                 )
             }
@@ -384,13 +418,4 @@ impl FlyEditor {
             }
         }
     }
-}
-
-fn is_descendant(document: &ProjectDocument, ancestor_id: &str, candidate_id: &str) -> bool {
-    document.component(ancestor_id).is_some_and(|ancestor| {
-        ancestor
-            .children()
-            .iter()
-            .any(|child| child.find(candidate_id).is_some())
-    })
 }
