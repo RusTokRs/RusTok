@@ -16,6 +16,7 @@ server = [
 ]
 
 [dependencies]
+fly = { path = "../fly" }
 rustok-api = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
