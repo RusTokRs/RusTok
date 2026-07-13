@@ -27,6 +27,7 @@ impl AwsSecretsManagerResolver {
 #[async_trait]
 impl SecretResolver for AwsSecretsManagerResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
+        validate_aws_secret_id(key)?;
         let response = self
             .client
             .get_secret_value()
@@ -64,6 +65,8 @@ pub struct GcpSecretManagerResolver {
 
 impl GcpSecretManagerResolver {
     pub async fn from_adc(project: impl Into<String>) -> Result<Self, SecretError> {
+        let project = project.into();
+        validate_gcp_project(&project)?;
         let client = google_cloud_secretmanager_v1::client::SecretManagerService::builder()
             .build()
             .await
@@ -71,10 +74,7 @@ impl GcpSecretManagerResolver {
                 resolver: "gcp_secret_manager".to_string(),
                 message: error.to_string(),
             })?;
-        Ok(Self {
-            client,
-            project: project.into(),
-        })
+        Ok(Self { client, project })
     }
 
     pub fn from_client(
@@ -91,11 +91,12 @@ impl GcpSecretManagerResolver {
 #[async_trait]
 impl SecretResolver for GcpSecretManagerResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
-        let name = if key.starts_with("projects/") {
-            key.to_string()
-        } else {
-            format!("projects/{}/secrets/{key}/versions/latest", self.project)
-        };
+        validate_gcp_project(&self.project)?;
+        validate_gcp_secret_id(key)?;
+        let name = format!(
+            "projects/{}/secrets/{key}/versions/latest",
+            self.project
+        );
         let response = self
             .client
             .access_secret_version()
@@ -149,8 +150,24 @@ impl AzureKeyVaultResolver {
         endpoint: &str,
         credential: Arc<dyn TokenCredential>,
     ) -> Result<Self, SecretError> {
-        let client = azure_security_keyvault_secrets::SecretClient::new(endpoint, credential, None)
-            .map_err(azure_error)?;
+        let endpoint = reqwest::Url::parse(endpoint).map_err(azure_error)?;
+        if endpoint.scheme() != "https"
+            || !endpoint.username().is_empty()
+            || endpoint.password().is_some()
+            || endpoint.query().is_some()
+            || endpoint.fragment().is_some()
+        {
+            return Err(provider_policy_error(
+                "azure_key_vault",
+                "Azure Key Vault endpoint must be a plain HTTPS URL",
+            ));
+        }
+        let client = azure_security_keyvault_secrets::SecretClient::new(
+            endpoint.as_str(),
+            credential,
+            None,
+        )
+        .map_err(azure_error)?;
         Ok(Self { client })
     }
 }
@@ -158,6 +175,7 @@ impl AzureKeyVaultResolver {
 #[async_trait]
 impl SecretResolver for AzureKeyVaultResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
+        validate_azure_secret_name(key)?;
         let response = self
             .client
             .get_secret(key, None)
@@ -174,9 +192,101 @@ impl SecretResolver for AzureKeyVaultResolver {
     }
 }
 
+fn validate_aws_secret_id(value: &str) -> Result<(), SecretError> {
+    let valid = !value.trim().is_empty()
+        && value.len() <= 2048
+        && !value.chars().any(char::is_control);
+    if valid {
+        Ok(())
+    } else {
+        Err(provider_policy_error(
+            "aws_secrets_manager",
+            "AWS secret id is invalid",
+        ))
+    }
+}
+
+fn validate_gcp_project(value: &str) -> Result<(), SecretError> {
+    let bytes = value.as_bytes();
+    let valid = (6..=30).contains(&bytes.len())
+        && bytes.first().is_some_and(u8::is_ascii_lowercase)
+        && bytes.last().is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && bytes.iter().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-'
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(provider_policy_error(
+            "gcp_secret_manager",
+            "configured GCP project id is invalid",
+        ))
+    }
+}
+
+fn validate_gcp_secret_id(value: &str) -> Result<(), SecretError> {
+    let valid = !value.is_empty()
+        && value.len() <= 255
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'));
+    if valid {
+        Ok(())
+    } else {
+        Err(provider_policy_error(
+            "gcp_secret_manager",
+            "GCP secret key must be a secret id, not a fully-qualified resource name",
+        ))
+    }
+}
+
+fn validate_azure_secret_name(value: &str) -> Result<(), SecretError> {
+    let valid = !value.is_empty()
+        && value.len() <= 127
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-');
+    if valid {
+        Ok(())
+    } else {
+        Err(provider_policy_error(
+            "azure_key_vault",
+            "Azure secret name contains unsupported characters",
+        ))
+    }
+}
+
+fn provider_policy_error(resolver: &str, message: &str) -> SecretError {
+    SecretError::Resolver {
+        resolver: resolver.to_string(),
+        message: message.to_string(),
+    }
+}
+
 fn azure_error(error: impl std::fmt::Display) -> SecretError {
     SecretError::Resolver {
         resolver: "azure_key_vault".to_string(),
         message: error.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_azure_secret_name, validate_gcp_project, validate_gcp_secret_id};
+
+    #[test]
+    fn gcp_resolver_rejects_cross_project_resource_names() {
+        assert!(validate_gcp_project("rustok-prod1").is_ok());
+        assert!(validate_gcp_secret_id("openai-api-key").is_ok());
+        assert!(validate_gcp_secret_id(
+            "projects/other-project/secrets/key/versions/latest"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn azure_resolver_accepts_only_vault_secret_names() {
+        assert!(validate_azure_secret_name("openai-api-key").is_ok());
+        assert!(validate_azure_secret_name("../certificates/admin").is_err());
     }
 }
