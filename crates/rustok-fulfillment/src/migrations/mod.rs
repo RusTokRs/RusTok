@@ -9,6 +9,7 @@ mod m20260713_000112_commit_provider_operations_with_fulfillment;
 mod m20260713_000113_allow_provider_execution_reconciliation;
 mod m20260713_000114_defer_checkout_create_label_until_paid;
 mod m20260713_000115_cleanup_cancelled_checkout_labels;
+mod m20260713_000116_block_premature_label_operation_inserts;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -26,6 +27,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000113_allow_provider_execution_reconciliation::Migration),
         Box::new(m20260713_000114_defer_checkout_create_label_until_paid::Migration),
         Box::new(m20260713_000115_cleanup_cancelled_checkout_labels::Migration),
+        Box::new(m20260713_000116_block_premature_label_operation_inserts::Migration),
     ]
 }
 
@@ -45,6 +47,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260713_000115_cleanup_cancelled_checkout_labels",
             vec!["m20260713_000114_defer_checkout_create_label_until_paid"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000116_block_premature_label_operation_inserts",
+            vec!["m20260713_000115_cleanup_cancelled_checkout_labels"],
         ),
     ]
 }
