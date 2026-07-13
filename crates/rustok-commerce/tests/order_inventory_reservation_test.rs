@@ -1,8 +1,8 @@
 use rust_decimal::Decimal;
 use rustok_commerce::migrations as commerce_migrations;
 use rustok_fulfillment::dto::{
-    CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentItemQuantityInput,
-    ShipFulfillmentInput,
+    CreateFulfillmentInput, CreateFulfillmentItemInput, DeliverFulfillmentInput,
+    FulfillmentItemQuantityInput, ShipFulfillmentInput,
 };
 use rustok_fulfillment::{migrations as fulfillment_migrations, FulfillmentService};
 use rustok_inventory::entities::{inventory_item, inventory_level, reservation_item};
@@ -33,15 +33,18 @@ async fn setup() -> (
 
     let manager = SchemaManager::new(&db);
     let mut registered = commerce_migrations::migrations();
+    let delivery_guard = registered
+        .pop()
+        .expect("fulfillment delivery guard should be registered last");
     let fulfillment_shipping = registered
         .pop()
-        .expect("fulfillment shipping consumption migration should be registered last");
+        .expect("fulfillment shipping consumption should precede delivery guard");
     let order_delivery = registered
         .pop()
-        .expect("order delivery consumption migration should precede fulfillment shipping");
+        .expect("order delivery consumption should precede fulfillment shipping");
     let reservation = registered
         .pop()
-        .expect("order confirmation reservation migration should precede consumption");
+        .expect("order confirmation reservation should precede consumption");
     reservation
         .up(&manager)
         .await
@@ -62,6 +65,10 @@ async fn setup() -> (
         .up(&manager)
         .await
         .expect("fulfillment shipping consumption should install on SQLite");
+    delivery_guard
+        .up(&manager)
+        .await
+        .expect("fulfillment delivery guard should install on SQLite");
 
     let event_bus = mock_transactional_event_bus();
     (
@@ -287,7 +294,7 @@ async fn order_inventory_is_reserved_released_and_consumed_across_lifecycle() {
     orders
         .deliver_order(tenant_id, actor_id, second.id, None)
         .await
-        .expect("shipped order should deliver and consume inventory");
+        .expect("legacy order without fulfillments should deliver and consume inventory");
 
     assert_eq!(inventory_quantities(&db, variant_id).await, (3, 0));
     let consumed = reservation_item::Entity::find_by_id(second.line_items[0].id)
@@ -300,7 +307,7 @@ async fn order_inventory_is_reserved_released_and_consumed_across_lifecycle() {
 }
 
 #[tokio::test]
-async fn fulfillment_shipping_consumes_partial_reservation_without_double_delivery_charge() {
+async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
     let (db, catalog, inventory, orders) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -422,10 +429,36 @@ async fn fulfillment_shipping_consumes_partial_reservation_without_double_delive
         )
         .await
         .expect("paid order should be markable as shipped");
+
+    let premature_delivery = orders.deliver_order(tenant_id, actor_id, order.id, None).await;
+    assert!(
+        premature_delivery.is_err(),
+        "order delivery must wait for its active fulfillment to be delivered"
+    );
+    assert_eq!(inventory_quantities(&db, variant_id).await, (2, 0));
+
+    let delivered_fulfillment = fulfillment_service
+        .deliver_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            DeliverFulfillmentInput {
+                delivered_note: Some("received".to_string()),
+                items: Some(vec![FulfillmentItemQuantityInput {
+                    fulfillment_item_id,
+                    quantity: 3,
+                }]),
+                metadata: serde_json::json!({"step":"delivered"}),
+            },
+        )
+        .await
+        .expect("fully shipped fulfillment should be deliverable");
+    assert_eq!(delivered_fulfillment.status, "delivered");
+    assert_eq!(delivered_fulfillment.items[0].delivered_quantity, 3);
+
     orders
         .deliver_order(tenant_id, actor_id, order.id, None)
         .await
-        .expect("order delivery fallback should tolerate already consumed reservations");
+        .expect("order should deliver after fulfillment completion");
     assert_eq!(
         inventory_quantities(&db, variant_id).await,
         (2, 0),
