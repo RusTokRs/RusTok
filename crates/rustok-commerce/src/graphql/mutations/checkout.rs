@@ -3,7 +3,7 @@ use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
 use rustok_cart::{
     CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
-    bind_in_process_atomic_cart_checkout, in_process_cart_storefront_port,
+    bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use uuid::Uuid;
@@ -179,7 +179,13 @@ impl CommerceCheckoutMutation {
             create_fulfillment: input.create_fulfillment.unwrap_or(true),
             metadata: parse_optional_metadata(input.metadata.as_deref())?,
         };
-        let atomic_cart = bind_in_process_atomic_cart_checkout(
+        let pricing_resolver = std::sync::Arc::new(crate::StorefrontCheckoutPricingResolver::new(
+            db.clone(),
+            event_bus.clone(),
+            request_context.channel_id,
+            request_context.channel_slug.clone(),
+        ));
+        let atomic_cart = bind_in_process_atomic_cart_checkout_with_pricing(
             db.clone(),
             PrepareCartCheckoutSnapshotRequest {
                 cart_id: checkout_input.cart_id,
@@ -189,6 +195,7 @@ impl CommerceCheckoutMutation {
                 selected_shipping_option_id: checkout_input.shipping_option_id,
                 shipping_selections: checkout_input.shipping_selections.clone(),
             },
+            pricing_resolver,
         );
         let checkout = CheckoutService::new(
             db.clone(),

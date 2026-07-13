@@ -27,6 +27,7 @@ pub mod services;
 pub mod state_machine;
 mod storefront_channel;
 pub mod storefront_checkout_runtime;
+mod storefront_checkout_pricing;
 mod storefront_shipping;
 
 #[cfg(test)]
@@ -53,6 +54,7 @@ pub(crate) use services::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
     JournaledFulfillmentOrchestrationService,
 };
+pub(crate) use storefront_checkout_pricing::StorefrontCheckoutPricingResolver;
 
 pub struct CommerceModule;
 

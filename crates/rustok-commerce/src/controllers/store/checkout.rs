@@ -6,7 +6,7 @@ use axum::{
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
     CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
-    bind_in_process_atomic_cart_checkout, in_process_cart_storefront_port,
+    bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
@@ -120,7 +120,7 @@ pub async fn create_payment_collection(
         (status = 400, description = "Checkout request is invalid"),
         (status = 401, description = "Authentication required for customer-owned carts"),
         (status = 404, description = "Cart not found"),
-        (status = 409, description = "Checkout key or active-operation conflict")
+        (status = 409, description = "Checkout key, pricing or active-operation conflict")
     )
 )]
 pub async fn complete_cart_checkout(
@@ -185,7 +185,14 @@ pub async fn complete_cart_checkout(
         create_fulfillment: input.create_fulfillment,
         metadata: input.metadata,
     };
-    let atomic_cart = bind_in_process_atomic_cart_checkout(
+    let event_bus = runtime.event_bus();
+    let pricing_resolver = std::sync::Arc::new(crate::StorefrontCheckoutPricingResolver::new(
+        runtime.db_clone(),
+        event_bus.clone(),
+        request_context.channel_id,
+        request_context.channel_slug.clone(),
+    ));
+    let atomic_cart = bind_in_process_atomic_cart_checkout_with_pricing(
         runtime.db_clone(),
         PrepareCartCheckoutSnapshotRequest {
             cart_id,
@@ -195,9 +202,9 @@ pub async fn complete_cart_checkout(
             selected_shipping_option_id: checkout_input.shipping_option_id,
             shipping_selections: checkout_input.shipping_selections.clone(),
         },
+        pricing_resolver,
     );
 
-    let event_bus = runtime.event_bus();
     let checkout = crate::CheckoutService::new(
         runtime.db_clone(),
         event_bus.clone(),
@@ -301,6 +308,15 @@ fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpEr
         crate::JournaledCheckoutError::Operation(
             crate::CheckoutOperationError::Database(_),
         ) => HttpError::internal("Checkout operation storage is unavailable"),
+        crate::JournaledCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
+            kind: rustok_api::PortErrorKind::Conflict,
+            code,
+            ..
+        }) => HttpError::new(
+            StatusCode::CONFLICT,
+            code,
+            "Checkout pricing or cart state changed; retry with the same Idempotency-Key",
+        ),
         crate::JournaledCheckoutError::Checkout(checkout) => {
             HttpError::bad_request("commerce_operation_failed", checkout.to_string())
         }

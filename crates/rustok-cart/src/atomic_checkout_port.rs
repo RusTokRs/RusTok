@@ -1,6 +1,7 @@
 use async_trait::async_trait;
+use rust_decimal::Decimal;
 use rustok_api::{
-    normalize_locale_tag, PortActor, PortCallPolicy, PortContext, PortError,
+    normalize_locale_tag, PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind,
     PLATFORM_FALLBACK_LOCALE,
 };
 use sea_orm::DatabaseConnection;
@@ -13,11 +14,43 @@ use uuid::Uuid;
 use crate::{
     in_process_cart_checkout_snapshot_port, CartCheckoutContextUpdateRequest,
     CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotPort,
-    CartCheckoutSnapshotRequest, CartError, CartResponse, CartService, CartStatus,
-    PrepareCartCheckoutSnapshotRequest, PreparedCartCheckoutSnapshot,
+    CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate, CartResponse, CartService,
+    CartStatus, PrepareCartCheckoutSnapshotRequest, PreparedCartCheckoutSnapshot,
 };
 
+const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";
+
 type PreparedState = Arc<Mutex<Option<PreparedCartCheckoutSnapshot>>>;
+
+#[derive(Clone, Debug)]
+pub struct CartCheckoutLineItemPricingUpdate {
+    pub line_item_id: Uuid,
+    pub variant_id: Uuid,
+    pub quantity: i32,
+    pub unit_price: Decimal,
+    pub pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CartCheckoutPricingPlan {
+    pub currency_code: String,
+    pub effective_region_id: Option<Uuid>,
+    pub cart_channel_id: Option<Uuid>,
+    pub cart_channel_slug: Option<String>,
+    pub line_items: Vec<CartCheckoutLineItemPricingUpdate>,
+}
+
+/// Consumer-owned read boundary used by the cart checkout owner after the
+/// durable operation lease exists but before the cart compare-and-set lock.
+#[async_trait]
+pub trait AtomicCartCheckoutPricingResolver: Send + Sync {
+    async fn resolve_checkout_pricing(
+        &self,
+        tenant_id: Uuid,
+        cart: &CartResponse,
+        request: &PrepareCartCheckoutSnapshotRequest,
+    ) -> Result<CartCheckoutPricingPlan, PortError>;
+}
 
 /// Request-scoped adapter that preserves the existing `CartCheckoutPort`
 /// protocol while deferring persistence until the durable orchestration claim.
@@ -25,6 +58,7 @@ pub struct AtomicCartCheckoutPort {
     service: Arc<CartService>,
     snapshot_port: Arc<dyn CartCheckoutSnapshotPort>,
     prepare_request: PrepareCartCheckoutSnapshotRequest,
+    pricing_resolver: Option<Arc<dyn AtomicCartCheckoutPricingResolver>>,
     prepared_state: PreparedState,
 }
 
@@ -36,6 +70,7 @@ pub struct AtomicCartCheckoutHandle {
     service: Arc<CartService>,
     snapshot_port: Arc<dyn CartCheckoutSnapshotPort>,
     prepare_request: PrepareCartCheckoutSnapshotRequest,
+    pricing_resolver: Option<Arc<dyn AtomicCartCheckoutPricingResolver>>,
     prepared_state: PreparedState,
 }
 
@@ -51,6 +86,7 @@ impl AtomicCartCheckoutPort {
             service,
             snapshot_port: in_process_cart_checkout_snapshot_port(db),
             prepare_request,
+            pricing_resolver: None,
             prepared_state: Arc::new(Mutex::new(None)),
         }
     }
@@ -75,9 +111,9 @@ impl AtomicCartCheckoutHandle {
         self.prepare_request.cart_id
     }
 
-    /// Prepares the cart once for this request. A retry may adopt an existing
-    /// `checking_out` or `completed` state only when the durable operation has
-    /// already executed at least once.
+    /// Prepares the cart once for this request. Pricing is resolved only while
+    /// the cart is still active. A retry adopts an existing locked/completed
+    /// cart without consulting current price lists.
     pub async fn prepare(
         &self,
         tenant_id: Uuid,
@@ -87,27 +123,14 @@ impl AtomicCartCheckoutHandle {
             return Ok(snapshot);
         }
 
-        let cart = match self
-            .service
-            .prepare_checkout(tenant_id, self.prepare_request.clone())
-            .await
-        {
-            Ok(cart) => cart,
-            Err(CartError::InvalidTransition { from, .. })
-                if allow_existing_lock
-                    && matches!(
-                        from.as_str(),
-                        status if status == CartStatus::CheckingOut.as_str()
-                            || status == CartStatus::Completed.as_str()
-                    ) =>
-            {
-                self.service
-                    .get_cart(tenant_id, self.prepare_request.cart_id)
-                    .await
-                    .map_err(cart_error_to_port_error)?
-            }
-            Err(error) => return Err(cart_error_to_port_error(error)),
-        };
+        let cart = prepare_bound_cart(
+            self.service.as_ref(),
+            self.pricing_resolver.as_ref(),
+            &self.prepare_request,
+            tenant_id,
+            allow_existing_lock,
+        )
+        .await?;
 
         if !matches!(
             cart.status.as_str(),
@@ -141,6 +164,22 @@ pub fn bind_in_process_atomic_cart_checkout(
     db: DatabaseConnection,
     prepare_request: PrepareCartCheckoutSnapshotRequest,
 ) -> AtomicCartCheckoutBinding {
+    bind_atomic_cart_checkout(db, prepare_request, None)
+}
+
+pub fn bind_in_process_atomic_cart_checkout_with_pricing(
+    db: DatabaseConnection,
+    prepare_request: PrepareCartCheckoutSnapshotRequest,
+    pricing_resolver: Arc<dyn AtomicCartCheckoutPricingResolver>,
+) -> AtomicCartCheckoutBinding {
+    bind_atomic_cart_checkout(db, prepare_request, Some(pricing_resolver))
+}
+
+fn bind_atomic_cart_checkout(
+    db: DatabaseConnection,
+    prepare_request: PrepareCartCheckoutSnapshotRequest,
+    pricing_resolver: Option<Arc<dyn AtomicCartCheckoutPricingResolver>>,
+) -> AtomicCartCheckoutBinding {
     let service = Arc::new(CartService::new(db.clone()));
     let snapshot_port = in_process_cart_checkout_snapshot_port(db);
     let prepared_state = Arc::new(Mutex::new(None));
@@ -148,12 +187,14 @@ pub fn bind_in_process_atomic_cart_checkout(
         service: service.clone(),
         snapshot_port: snapshot_port.clone(),
         prepare_request: prepare_request.clone(),
+        pricing_resolver: pricing_resolver.clone(),
         prepared_state: prepared_state.clone(),
     });
     let handle = AtomicCartCheckoutHandle {
         service,
         snapshot_port,
         prepare_request,
+        pricing_resolver,
         prepared_state,
     };
 
@@ -211,13 +252,14 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
         if let Some(snapshot) = stored_snapshot(&self.prepared_state)? {
             return Ok(snapshot.cart);
         }
-        self.service
-            .prepare_checkout(
-                parse_port_tenant_id(&context)?,
-                self.prepare_request.clone(),
-            )
-            .await
-            .map_err(cart_error_to_port_error)
+        prepare_bound_cart(
+            self.service.as_ref(),
+            self.pricing_resolver.as_ref(),
+            &self.prepare_request,
+            parse_port_tenant_id(&context)?,
+            false,
+        )
+        .await
     }
 
     async fn release_cart_checkout(
@@ -244,6 +286,63 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
             .complete_cart(parse_port_tenant_id(&context)?, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
+    }
+}
+
+async fn prepare_bound_cart(
+    service: &CartService,
+    pricing_resolver: Option<&Arc<dyn AtomicCartCheckoutPricingResolver>>,
+    prepare_request: &PrepareCartCheckoutSnapshotRequest,
+    tenant_id: Uuid,
+    allow_existing_lock: bool,
+) -> Result<CartResponse, PortError> {
+    let current = service
+        .get_cart(tenant_id, prepare_request.cart_id)
+        .await
+        .map_err(cart_error_to_port_error)?;
+
+    if allow_existing_lock
+        && matches!(
+            current.status.as_str(),
+            status if status == CartStatus::CheckingOut.as_str()
+                || status == CartStatus::Completed.as_str()
+        )
+    {
+        return Ok(current);
+    }
+
+    let pricing_plan = if current.status == CartStatus::Active.as_str() {
+        match pricing_resolver {
+            Some(resolver) => Some(
+                resolver
+                    .resolve_checkout_pricing(tenant_id, &current, prepare_request)
+                    .await?,
+            ),
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    match service
+        .prepare_checkout_with_pricing(tenant_id, prepare_request.clone(), pricing_plan)
+        .await
+    {
+        Ok(cart) => Ok(cart),
+        Err(CartError::InvalidTransition { from, .. })
+            if allow_existing_lock
+                && matches!(
+                    from.as_str(),
+                    status if status == CartStatus::CheckingOut.as_str()
+                        || status == CartStatus::Completed.as_str()
+                ) =>
+        {
+            service
+                .get_cart(tenant_id, prepare_request.cart_id)
+                .await
+                .map_err(cart_error_to_port_error)
+        }
+        Err(error) => Err(cart_error_to_port_error(error)),
     }
 }
 
@@ -313,6 +412,14 @@ fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
 
 fn cart_error_to_port_error(error: CartError) -> PortError {
     match error {
+        CartError::Validation(message) if message.starts_with(CHECKOUT_PRICING_CHANGED_PREFIX) => {
+            PortError::new(
+                PortErrorKind::Conflict,
+                "cart.checkout_pricing_changed",
+                message,
+                true,
+            )
+        }
         CartError::Validation(message) => {
             PortError::validation("cart.checkout_validation", message)
         }
