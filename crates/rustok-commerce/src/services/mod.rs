@@ -6,6 +6,7 @@ mod checkout_operation;
 mod checkout_order_confirmation;
 mod checkout_order_creation;
 mod checkout_order_plan;
+mod checkout_order_stages;
 pub mod context;
 mod fulfillment_create_label_recovery;
 mod fulfillment_orchestration;
@@ -51,6 +52,10 @@ pub use checkout_order_creation::{
 pub use checkout_order_plan::{
     CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
     CheckoutOrderPlanRecord, CheckoutOrderPlanResult,
+};
+pub use checkout_order_stages::{
+    CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutOrderStageResult,
+    CheckoutPaymentReadyState,
 };
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService;
