@@ -92,7 +92,8 @@ impl ProjectFragment {
         parent_id: Option<String>,
         index: usize,
     ) -> FlyResult<Vec<String>> {
-        self.remap_ids(&mut editor.id_generator);
+        let mut staged = editor.clone();
+        self.remap_ids(&mut staged.id_generator);
         let mut inserted_ids = Vec::new();
         let commands = self
             .components
@@ -112,7 +113,8 @@ impl ProjectFragment {
         if commands.is_empty() {
             return Ok(inserted_ids);
         }
-        editor.apply(EditorCommand::batch(commands))?;
+        staged.apply(EditorCommand::batch(commands))?;
+        *editor = staged;
         Ok(inserted_ids)
     }
 }
