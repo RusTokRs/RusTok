@@ -14,7 +14,10 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
-use rustok_api::{context::scope_matches, Permission};
+use rustok_api::{
+    context::{restrict_permissions_to_scopes, scope_matches},
+    Permission,
+};
 use rustok_core::{SecurityActorKind, UserRole};
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tracing::warn;
@@ -153,13 +156,13 @@ async fn resolve_service_token_permissions(
         ));
     }
 
-    let permissions = app.parsed_granted_permissions().map_err(|_| {
+    let granted_permissions = app.parsed_granted_permissions().map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "OAuth app permissions are invalid",
         )
     })?;
-    let inferred_role = infer_user_role_from_permissions(&permissions);
+    let inferred_role = infer_user_role_from_permissions(&granted_permissions);
     if claimed_role != inferred_role {
         RbacService::record_claim_role_mismatch();
         warn!(
@@ -171,7 +174,9 @@ async fn resolve_service_token_permissions(
         );
     }
 
-    Ok((permissions, inferred_role))
+    let effective_permissions =
+        restrict_permissions_to_scopes(&granted_permissions, token_scopes);
+    Ok((effective_permissions, inferred_role))
 }
 
 pub(crate) async fn resolve_current_user<S>(
@@ -262,11 +267,11 @@ pub async fn resolve_current_user_from_access_token(
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
 
-            let permissions = RbacService::get_user_permissions(db, &tenant_id, &user.id)
+            let granted_permissions = RbacService::get_user_permissions(db, &tenant_id, &user.id)
                 .await
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-            let inferred_role = infer_user_role_from_permissions(&permissions);
+            let inferred_role = infer_user_role_from_permissions(&granted_permissions);
             if claims.role != inferred_role {
                 RbacService::record_claim_role_mismatch();
                 warn!(
@@ -278,9 +283,15 @@ pub async fn resolve_current_user_from_access_token(
                 );
             }
 
+            let effective_permissions = if claims.client_id.is_some() {
+                restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)
+            } else {
+                granted_permissions
+            };
+
             (
                 user,
-                permissions,
+                effective_permissions,
                 inferred_role,
                 claims.session_id,
                 SecurityActorKind::User,
