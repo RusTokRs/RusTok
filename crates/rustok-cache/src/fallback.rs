@@ -40,16 +40,21 @@ impl DegradedWriteTracker {
         state.insertion_order.retain(|candidate| candidate != key);
     }
 
-    async fn insert(&self, key: &str, fallback: &InMemoryCacheBackend) -> rustok_core::Result<()> {
+    async fn insert(
+        &self,
+        key: &str,
+        expected: &[u8],
+        fallback: &InMemoryCacheBackend,
+    ) -> rustok_core::Result<()> {
         if key.len() > MAX_DEGRADED_WRITE_KEY_BYTES {
             return Err(rustok_core::Error::Cache(format!(
                 "degraded cache write key is {} bytes; maximum is {MAX_DEGRADED_WRITE_KEY_BYTES}",
                 key.len()
             )));
         }
-        if fallback.get(key).await?.is_none() {
+        if fallback.get(key).await?.as_deref() != Some(expected) {
             return Err(rustok_core::Error::Cache(
-                "degraded cache write was not retained by the local fallback".to_string(),
+                "degraded cache write bytes were not retained by the local fallback".to_string(),
             ));
         }
 
@@ -114,8 +119,10 @@ impl DegradationAwareFallbackBackend {
         }
     }
 
-    async fn mark_degraded_write(&self, key: &str) -> rustok_core::Result<()> {
-        self.degraded_writes.insert(key, &self.fallback).await
+    async fn mark_degraded_write(&self, key: &str, expected: &[u8]) -> rustok_core::Result<()> {
+        self.degraded_writes
+            .insert(key, expected, &self.fallback)
+            .await
     }
 
     async fn clear_degraded_write(&self, key: &str) {
@@ -155,9 +162,10 @@ impl DegradationAwareFallbackBackend {
     async fn retain_degraded_write_or_fail(
         &self,
         key: &str,
+        expected: &[u8],
         primary_error: rustok_core::Error,
     ) -> rustok_core::Result<()> {
-        if let Err(tracker_error) = self.mark_degraded_write(key).await {
+        if let Err(tracker_error) = self.mark_degraded_write(key, expected).await {
             let _ = self.fallback.invalidate(key).await;
             tracing::warn!(
                 error = %primary_error,
@@ -211,12 +219,15 @@ impl CacheBackend for DegradationAwareFallbackBackend {
             tracing::warn!(%error, key, "Failed to update local cache fallback");
         }
 
-        match self.primary.set(key.clone(), value).await {
+        match self.primary.set(key.clone(), value.clone()).await {
             Ok(()) => {
                 self.clear_degraded_write(&key).await;
                 Ok(())
             }
-            Err(error) => self.retain_degraded_write_or_fail(&key, error).await,
+            Err(error) => {
+                self.retain_degraded_write_or_fail(&key, &value, error)
+                    .await
+            }
         }
     }
 
@@ -240,12 +251,19 @@ impl CacheBackend for DegradationAwareFallbackBackend {
             tracing::warn!(%error, key, "Failed to update local cache fallback");
         }
 
-        match self.primary.set_with_ttl(key.clone(), value, ttl).await {
+        match self
+            .primary
+            .set_with_ttl(key.clone(), value.clone(), ttl)
+            .await
+        {
             Ok(()) => {
                 self.clear_degraded_write(&key).await;
                 Ok(())
             }
-            Err(error) => self.retain_degraded_write_or_fail(&key, error).await,
+            Err(error) => {
+                self.retain_degraded_write_or_fail(&key, &value, error)
+                    .await
+            }
         }
     }
 
@@ -482,12 +500,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn degraded_tracker_rejects_missing_local_payload() {
+    async fn degraded_tracker_rejects_missing_or_stale_local_payload() {
         let tracker = DegradedWriteTracker::new(1);
         let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 4);
 
-        assert!(tracker.insert("missing", &fallback).await.is_err());
+        assert!(tracker
+            .insert("missing", b"new", &fallback)
+            .await
+            .is_err());
+        fallback
+            .set("stale".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+        assert!(tracker.insert("stale", b"new", &fallback).await.is_err());
         assert!(!tracker.contains("missing").await);
+        assert!(!tracker.contains("stale").await);
     }
 
     #[tokio::test]
@@ -503,12 +530,12 @@ mod tests {
             .await
             .unwrap();
 
-        tracker.insert("first", &fallback).await.unwrap();
-        assert!(tracker.insert("second", &fallback).await.is_err());
+        tracker.insert("first", b"one", &fallback).await.unwrap();
+        assert!(tracker.insert("second", b"two", &fallback).await.is_err());
         assert!(tracker.contains("first").await);
 
         tracker.remove("first").await;
-        tracker.insert("second", &fallback).await.unwrap();
+        tracker.insert("second", b"two", &fallback).await.unwrap();
         assert!(!tracker.contains("first").await);
         assert!(tracker.contains("second").await);
         assert_eq!(tracker.state.lock().await.insertion_order.len(), 1);
