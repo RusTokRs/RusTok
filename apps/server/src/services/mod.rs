@@ -14,6 +14,7 @@ pub mod email;
 pub mod event_bus;
 pub mod graphql_schema;
 pub mod marketplace_catalog;
+pub mod marketplace_catalog_cache;
 pub mod mcp_management;
 pub mod mcp_management_mutation_provider;
 pub mod mcp_runtime;

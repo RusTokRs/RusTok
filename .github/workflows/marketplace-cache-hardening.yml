@@ -1,0 +1,55 @@
+name: Marketplace cache hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/services/app_runtime.rs"
+      - "apps/server/src/services/marketplace_catalog.rs"
+      - "apps/server/src/services/marketplace_catalog_cache.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/tests/marketplace_cache_architecture_guard.rs"
+      - ".github/workflows/marketplace-cache-hardening.yml"
+  pull_request:
+    paths:
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/services/app_runtime.rs"
+      - "apps/server/src/services/marketplace_catalog.rs"
+      - "apps/server/src/services/marketplace_catalog_cache.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/tests/marketplace_cache_architecture_guard.rs"
+      - ".github/workflows/marketplace-cache-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-cache-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  marketplace-cache:
+    name: Marketplace cache contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: marketplace-cache-hardening
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Compile server
+        run: cargo check -p rustok-server --lib
+      - name: Marketplace cache tests
+        run: |
+          cargo test -p rustok-server marketplace_catalog_cache --lib
+          cargo test -p rustok-server --test marketplace_cache_architecture_guard
+      - name: Clippy
+        run: cargo clippy -p rustok-server --lib -- -D warnings
