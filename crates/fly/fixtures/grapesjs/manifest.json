@@ -1,0 +1,25 @@
+{
+  "format": "grapesjs_v1",
+  "fixtures": [
+    {
+      "file": "baseline.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "purpose": "Known GrapesJS project shape, hierarchy, frames, assets, styles and opaque fields"
+    },
+    {
+      "file": "unknown-provider.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "purpose": "Unknown provider, widget schema and future-field preservation"
+    }
+  ],
+  "required_real_capture_metadata": [
+    "grapesjs_version",
+    "grapesjs_preset_webpage_version",
+    "browser",
+    "capture_commit",
+    "plugins",
+    "captured_at"
+  ]
+}
