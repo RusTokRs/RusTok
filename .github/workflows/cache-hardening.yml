@@ -10,6 +10,7 @@ on:
       - "crates/rustok-core/src/context.rs"
       - "crates/rustok-core/src/lib.rs"
       - "crates/rustok-core/src/events/memory.rs"
+      - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
       - "crates/rustok-telemetry/src/lib.rs"
       - "apps/server/src/middleware/mod.rs"
@@ -51,6 +52,7 @@ on:
       - "crates/rustok-core/src/context.rs"
       - "crates/rustok-core/src/lib.rs"
       - "crates/rustok-core/src/events/memory.rs"
+      - "crates/rustok-core/src/resilience/circuit_breaker.rs"
       - "crates/rustok-core/tests/**"
       - "crates/rustok-telemetry/src/lib.rs"
       - "apps/server/src/middleware/mod.rs"
@@ -117,6 +119,7 @@ jobs:
       - name: Cache unit and architecture tests
         run: |
           cargo test -p rustok-core cache --lib --features redis-cache
+          cargo test -p rustok-core circuit_breaker --lib
           cargo test -p rustok-cache --lib
           cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
           cargo test -p rustok-cache --test redis_health_regression
