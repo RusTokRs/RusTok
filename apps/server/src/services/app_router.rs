@@ -136,11 +136,17 @@ pub fn compose_application_router(
     runtime: AppRuntimeBootstrap,
     rustok_settings: &RustokSettings,
 ) -> Result<AxumRouter> {
-    // Metrics are not tenant-scoped and must be protected consistently in every
-    // deployment profile before the profile-specific middleware chain diverges.
-    let router = router.layer(axum_middleware::from_fn(
-        middleware::metrics_auth::require_bearer,
-    ));
+    // Observability and global registry publish boundaries are not tied to a
+    // particular deployment profile. Install them before profile-specific
+    // middleware diverges so registry-only cannot bypass the same guards.
+    let router = router
+        .layer(axum_middleware::from_fn(
+            middleware::metrics_auth::require_bearer,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            middleware_runtime_ctx.clone(),
+            middleware::registry_artifact_access::enforce,
+        ));
 
     if rustok_settings.runtime.is_registry_only() || rustok_settings.runtime.is_worker_only() {
         return Ok(router
@@ -238,14 +244,10 @@ pub fn compose_application_router(
     .layer(Extension(runtime.graphql_schema))
     // Axum executes layers from the bottom of this chain outward. Runtime order:
     // security -> tenant -> locale -> auth -> invite acceptance -> OAuth token
-    // service -> channel -> rate limit -> MCP scaffold workspace -> registry
-    // artifact access -> guest cart capability -> metrics bearer -> handler.
+    // service -> channel -> rate limit -> MCP scaffold workspace -> guest cart
+    // capability -> registry publish guard -> observability bearer -> handler.
     .layer(axum_middleware::from_fn(
         middleware::guest_cart_access::resolve,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        middleware_runtime_ctx.clone(),
-        middleware::registry_artifact_access::enforce,
     ))
     .layer(axum_middleware::from_fn_with_state(
         middleware_runtime_ctx.clone(),
