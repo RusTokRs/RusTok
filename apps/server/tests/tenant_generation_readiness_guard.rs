@@ -1,0 +1,44 @@
+use std::path::{Path, PathBuf};
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("apps/server should live under workspace root")
+        .to_path_buf()
+}
+
+fn source(relative: &str) -> String {
+    let path = repo_root().join(relative);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
+#[test]
+fn tenant_readiness_uses_canonical_generation_listener_without_rewriting_resolver() {
+    let middleware = source("apps/server/src/middleware/mod.rs");
+    let health = source("apps/server/src/controllers/health.rs");
+
+    for required in [
+        "#[path = \"tenant.rs\"]",
+        "mod tenant_legacy;",
+        "pub use super::tenant_legacy::*;",
+        "TenantCacheGenerationListenerSnapshot as TenantInvalidationListenerSnapshot",
+        "TenantCacheGenerationListenerStatus as TenantInvalidationListenerStatus",
+        "tenant_cache_generation_listener_snapshot(ctx)",
+    ] {
+        assert!(
+            middleware.contains(required),
+            "tenant readiness wrapper must retain {required}"
+        );
+    }
+
+    assert!(health.contains(
+        "tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus"
+    ));
+    assert!(health.contains("check_tenant_invalidation_listener"));
+    assert!(
+        !middleware.contains("pub mod tenant;"),
+        "the legacy file must not bypass the canonical readiness wrapper"
+    );
+}
