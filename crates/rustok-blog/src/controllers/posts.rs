@@ -13,6 +13,14 @@ use uuid::Uuid;
 use super::BlogHttpRuntime;
 use crate::{CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput};
 
+fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
+}
+
 /// List blog posts
 #[utoipa::path(
     get,
@@ -46,10 +54,7 @@ pub async fn list_posts(
     let result = service
         .list_posts_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            security_context(&auth),
             query,
             Some(tenant.default_locale.as_str()),
         )
@@ -112,10 +117,7 @@ pub async fn get_post(
     let post = service
         .get_post_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            security_context(&auth),
             id,
             locale,
             Some(tenant.default_locale.as_str()),
@@ -152,14 +154,7 @@ pub async fn create_post(
 
     let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     let post_id = service
-        .create_post(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+        .create_post(tenant.id, security_context(&auth), input)
         .await
         .map_err(|err| HttpError::bad_request("blog_create_post_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(post_id)))
@@ -196,15 +191,7 @@ pub async fn update_post(
 
     let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .update_post(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+        .update_post(tenant.id, id, security_context(&auth), input)
         .await
         .map_err(|err| HttpError::bad_request("blog_update_post_failed", err.to_string()))?;
     Ok(())
@@ -239,14 +226,7 @@ pub async fn delete_post(
 
     let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .delete_post(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .delete_post(tenant.id, id, security_context(&auth))
         .await
         .map_err(|err| HttpError::bad_request("blog_delete_post_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -281,14 +261,7 @@ pub async fn publish_post(
 
     let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .publish_post(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .publish_post(tenant.id, id, security_context(&auth))
         .await
         .map_err(|err| HttpError::bad_request("blog_publish_post_failed", err.to_string()))?;
     Ok(())
@@ -323,14 +296,7 @@ pub async fn unpublish_post(
 
     let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .unpublish_post(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .unpublish_post(tenant.id, id, security_context(&auth))
         .await
         .map_err(|err| HttpError::bad_request("blog_unpublish_post_failed", err.to_string()))?;
     Ok(())
@@ -342,7 +308,7 @@ pub(super) fn ensure_blog_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized("blog_permission_denied", message));
+        return Err(HttpError::forbidden("blog_permission_denied", message));
     }
 
     Ok(())
