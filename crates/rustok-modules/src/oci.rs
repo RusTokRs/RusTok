@@ -126,7 +126,7 @@ impl OciDistributionArtifactRegistry {
                 .open(&path)
                 .await
                 .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?;
-            let mut stream = self
+            let stream = self
                 .client
                 .pull_blob_stream(image, layer)
                 .await

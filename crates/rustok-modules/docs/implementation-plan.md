@@ -170,6 +170,15 @@ absence of a tenant identifier.
   rollback pointers, status, and optimistic revision.
 - Enforce signature, signer, SBOM, provenance, compatibility, dependency, and
   capability admission before activation.
+- Use Cosign/Sigstore for digest-bound OCI signature and transparency-bundle
+  verification; require SLSA in-toto provenance and CycloneDX JSON SBOM for
+  compiled artifact classes. The owner policy records exact trusted authority,
+  issuer/root, builder/source, SBOM, trust-policy, and capability-policy
+  decisions rather than exposing verifier-library types.
+- Keep tool execution outside the server and module runtime: `rustok-modules`
+  owns a typed fail-closed `TrustVerifier` port, while an isolated verification
+  worker owns Cosign, trust-root access, SLSA parsing, and CycloneDX validation.
+  The worker returns a redacted typed decision/evidence reference only.
 - Resolve and persist exact dependency graphs with a maintained solver adapter.
 - Copy admitted payloads into platform content-addressed storage and execute
   from CAS rather than the external registry.

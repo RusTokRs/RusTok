@@ -198,7 +198,7 @@ impl RhaiHostExtension for AlloyDraftScopeExtension {
             return Ok(());
         }
         let input = alloy_input(request)?;
-        scope.push_constant("params", json_to_dynamic(&input.params));
+        scope.push_constant("params", json_to_dynamic(input.params.clone()));
         if let Some(snapshot) = input.entity {
             let entity = entity_proxy(snapshot)?;
             if request.context.phase == SandboxExecutionPhase::BeforeHook {
@@ -358,7 +358,7 @@ fn empty_object() -> serde_json::Value {
 }
 
 fn alloy_input(request: &SandboxRequest) -> SandboxResult<AlloyDraftInput> {
-    let input = serde_json::from_value(request.input.clone()).map_err(|error| {
+    let input: AlloyDraftInput = serde_json::from_value(request.input.clone()).map_err(|error| {
         SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}"))
     })?;
     input
@@ -376,7 +376,7 @@ fn entity_proxy(snapshot: AlloyDraftEntitySnapshot) -> SandboxResult<EntityProxy
         .as_object()
         .expect("validated Alloy draft entity fields are an object")
         .iter()
-        .map(|(key, value)| (key.clone(), json_to_dynamic(value)))
+        .map(|(key, value)| (key.clone(), json_to_dynamic(value.clone())))
         .collect::<HashMap<_, _>>();
     Ok(EntityProxy::new(snapshot.id, snapshot.entity_type, fields))
 }

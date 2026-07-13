@@ -4,6 +4,31 @@ pub const ALLOY_CODE_TASK_SLUG: &str = "alloy_code";
 pub const ALLOY_CODE_TOOL_NAME: &str = "direct.alloy.run_script";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlloyCodeAgentDescriptor {
+    pub slug: &'static str,
+    pub display_name: &'static str,
+    pub responsibility: &'static str,
+    pub required_permissions: &'static [&'static str],
+    pub allowed_operations: &'static [&'static str],
+    pub requires_approval: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlloySwarmStageDescriptor {
+    pub id: &'static str,
+    pub agent_slug: &'static str,
+    pub depends_on: &'static [&'static str],
+    pub requires_approval: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlloySwarmWorkflowDescriptor {
+    pub slug: &'static str,
+    pub display_name: &'static str,
+    pub stages: &'static [AlloySwarmStageDescriptor],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AlloyAiVerticalDescriptor {
     pub task_slug: &'static str,
     pub tool_name: &'static str,
@@ -40,6 +65,81 @@ pub const ALLOY_SCRIPT_ALLOWED_OPERATIONS: &[&str] = &[
     "run_script",
 ];
 
+const CODE_READ_PERMISSIONS: &[&str] = &["alloy.script.read"];
+const CODE_WRITE_PERMISSIONS: &[&str] = &["alloy.script.read", "alloy.script.write"];
+const CODE_RUN_PERMISSIONS: &[&str] = &["alloy.script.read", "alloy.script.execute"];
+
+/// Code-agent roles are owned by Alloy. Their model assignment and invocation
+/// lifecycle are intentionally left to the generic AI runtime.
+pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
+    AlloyCodeAgentDescriptor {
+        slug: "alloy_code_planner",
+        display_name: "Alloy code planner",
+        responsibility: "Inspect Alloy scripts and produce a bounded implementation plan.",
+        required_permissions: CODE_READ_PERMISSIONS,
+        allowed_operations: &["list_scripts", "get_script", "validate_script"],
+        requires_approval: false,
+    },
+    AlloyCodeAgentDescriptor {
+        slug: "alloy_code_implementer",
+        display_name: "Alloy code implementer",
+        responsibility: "Draft and validate Alloy script changes; applying a change stays approval-gated.",
+        required_permissions: CODE_WRITE_PERMISSIONS,
+        allowed_operations: &["list_scripts", "get_script", "validate_script"],
+        requires_approval: true,
+    },
+    AlloyCodeAgentDescriptor {
+        slug: "alloy_code_reviewer",
+        display_name: "Alloy code reviewer",
+        responsibility: "Review a proposed Alloy script change without applying it.",
+        required_permissions: CODE_READ_PERMISSIONS,
+        allowed_operations: &["list_scripts", "get_script", "validate_script"],
+        requires_approval: false,
+    },
+    AlloyCodeAgentDescriptor {
+        slug: "alloy_code_verifier",
+        display_name: "Alloy code verifier",
+        responsibility: "Validate and execute permitted verification scripts.",
+        required_permissions: CODE_RUN_PERMISSIONS,
+        allowed_operations: &["list_scripts", "get_script", "validate_script", "run_script"],
+        requires_approval: true,
+    },
+];
+
+const ALLOY_CHANGE_REVIEW_STAGES: &[AlloySwarmStageDescriptor] = &[
+    AlloySwarmStageDescriptor {
+        id: "plan",
+        agent_slug: "alloy_code_planner",
+        depends_on: &[],
+        requires_approval: false,
+    },
+    AlloySwarmStageDescriptor {
+        id: "implement",
+        agent_slug: "alloy_code_implementer",
+        depends_on: &["plan"],
+        requires_approval: true,
+    },
+    AlloySwarmStageDescriptor {
+        id: "review",
+        agent_slug: "alloy_code_reviewer",
+        depends_on: &["implement"],
+        requires_approval: false,
+    },
+    AlloySwarmStageDescriptor {
+        id: "verify",
+        agent_slug: "alloy_code_verifier",
+        depends_on: &["review"],
+        requires_approval: true,
+    },
+];
+
+pub const ALLOY_SWARM_WORKFLOWS: &[AlloySwarmWorkflowDescriptor] =
+    &[AlloySwarmWorkflowDescriptor {
+        slug: "alloy_change_review",
+        display_name: "Alloy change review",
+        stages: ALLOY_CHANGE_REVIEW_STAGES,
+    }];
+
 pub const ALLOY_SCRIPT_EXECUTION_POLICY: AlloyScriptExecutionPolicy = AlloyScriptExecutionPolicy {
     script_runtime: "alloy",
     runtime_payload_json_shape: "absent_blank_or_json_object",
@@ -68,6 +168,14 @@ pub fn register_alloy_ai_vertical_handlers(
 
 pub fn alloy_script_execution_policy() -> &'static AlloyScriptExecutionPolicy {
     &ALLOY_SCRIPT_EXECUTION_POLICY
+}
+
+pub fn alloy_code_agents() -> &'static [AlloyCodeAgentDescriptor] {
+    ALLOY_CODE_AGENTS
+}
+
+pub fn alloy_swarm_workflows() -> &'static [AlloySwarmWorkflowDescriptor] {
+    ALLOY_SWARM_WORKFLOWS
 }
 
 pub fn validate_runtime_payload(payload: Option<&str>) -> Result<(), String> {
@@ -123,5 +231,18 @@ mod tests {
                 "run_script"
             ]
         );
+    }
+
+    #[test]
+    fn code_agents_and_swarm_are_owner_owned_and_bounded() {
+        assert_eq!(alloy_code_agents().len(), 4);
+        let workflow = alloy_swarm_workflows()
+            .iter()
+            .find(|workflow| workflow.slug == "alloy_change_review")
+            .expect("Alloy change workflow must be registered");
+        assert_eq!(workflow.stages[0].id, "plan");
+        assert_eq!(workflow.stages[3].depends_on, ["review"]);
+        assert!(workflow.stages[1].requires_approval);
+        assert!(workflow.stages[3].requires_approval);
     }
 }

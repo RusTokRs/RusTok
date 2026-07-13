@@ -1,5 +1,6 @@
 #[cfg(feature = "server")]
 pub mod direct;
+pub mod agent;
 pub mod engine;
 #[cfg(feature = "server")]
 pub mod entities;
@@ -43,6 +44,12 @@ pub use engine::{
     provider_factory_supports, AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy,
 };
 pub use error::{AiError, AiResult};
+pub use agent::{
+    AgentCatalog, AgentDescriptor, AgentKind, AgentPrincipal, AgentWorkflowDescriptor,
+    AgentWorkflowStage,
+};
+#[cfg(feature = "server")]
+pub use agent::alloy_agent_catalog;
 #[cfg(all(feature = "graphql", feature = "server"))]
 pub use graphql_runtime::{
     attach_schema_data, AiGraphqlRuntimeData, SeaOrmAiGraphqlRoleSlugProvider,

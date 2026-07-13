@@ -15,6 +15,8 @@ to the role of model host.
 - call MCP tools through a separate `McpClientAdapter`, rather than mixing provider logic with MCP server;
 - store the chat/runtime model: sessions, messages, runs, tool traces, approval requests;
 - provide a capability-owned canonical service layer for the persisted control plane.
+- own generic AI agent principals and owner-contributed workflow contracts without
+  taking ownership of domain operations or role-specific policy.
 
 ## What is already implemented
 
@@ -25,6 +27,8 @@ to the role of model host.
 - `RigAgentDriver` with persisted canonical history, tool policy, and approval boundaries;
 - `ToolExecutionPolicy` with sensitive tool calls and approval boundary.
 - `AiRouter` and direct-dispatch layer for first-party verticals without mandatory MCP hop.
+- `AgentPrincipal` and `AgentCatalog` enforce the initiating-subject/agent
+  permission intersection; owner modules contribute their agent descriptors.
 
 ### MCP integration
 

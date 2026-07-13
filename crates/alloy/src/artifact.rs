@@ -2,9 +2,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use rustok_modules::{
-    ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseDraft,
-    ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError, ModuleArtifactPackage,
-    OciArtifactReference,
+    ArtifactAdmissionLimits, ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease,
+    ArtifactReleaseDraft, ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError,
+    ModuleArtifactPackage, OciArtifactReference,
 };
 use rustok_sandbox::CapabilityName;
 
@@ -121,7 +121,7 @@ pub fn package_rhai_module_release(
         payload: script.code.as_bytes().to_vec(),
     };
     package
-        .verify()
+        .verify(ArtifactAdmissionLimits::default())
         .map_err(|error| AlloyArtifactError::InvalidPackage(error.to_string()))?;
     Ok(package)
 }

@@ -3,10 +3,12 @@
 ## Current state
 
 `rustok-ai-alloy` owns the `alloy_code` descriptor, runtime-payload validation,
-and Alloy script execution policy. `rustok-ai` consumes its registration API
-and remains the runtime and transport composition owner. The supported
-operations and payload rules are documented in the crate README and policy
-registry.
+Alloy script execution policy, and the code-agent catalog. The initial catalog
+contains planner, implementer, reviewer, and verifier descriptors plus the
+`alloy_change_review` swarm workflow. `rustok-ai` consumes these declarations
+through an explicit mapping and remains the runtime and transport composition
+owner. The supported operations and payload rules are documented in the crate
+README and policy registry.
 
 ## FFA/FBA readiness
 
@@ -32,6 +34,10 @@ registry.
    before changing `remote_transport` from `not_started`. Done when the
    transport contract has a named owner and no alternate transport path is
    implied.
+3. **Persist and execute the owner-owned code workflow.** Add tenant-scoped
+   agent principals, model assignments, workflow-run state, and an Alloy
+   operation executor that checks the initiator/agent RBAC intersection before
+   each stage. Applying a generated change remains approval-gated.
 
 ## Verification
 

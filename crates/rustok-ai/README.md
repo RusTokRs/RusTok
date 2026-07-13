@@ -14,6 +14,9 @@ Current implementation includes:
 - persisted `ProviderSlug`, deployment-owned `ProviderTargetId`, external `SecretRef` credential
   references, and server-owned resolver/egress policies
 - AI-task RBAC permissions consumed from `rustok-core` / `rustok-rbac`
+- generic agent-principal, owner-contributed agent catalog, and workflow-stage
+  contracts; effective permissions are the intersection of the initiating
+  subject and agent principal
 - multilingual locale-aware session/run contracts with arbitrary BCP-47-style locale tags
 - direct task-job execution for first-party verticals `alloy_code`, `image_asset`, `product_copy`,
   and `blog_draft`
@@ -43,6 +46,8 @@ implementation plan.
 ## Responsibilities
 
 - Expose a provider-agnostic Rig engine centered on `InferenceEngine` and `RigAgentDriver`.
+- Own generic agent principals and workflow orchestration contracts; domain
+  modules retain their own agent descriptors and allowed operations.
 - Keep provider descriptions, target-bound connection settings, credentials, and feature declarations
   in owner-controlled registries.
 - Delegate streaming protocol handling, tool-call assembly, and structured output constraints to Rig.
@@ -99,6 +104,7 @@ implementation plan.
 - `ProviderProfile`, `TaskProfile`, `ExecutionMode`, `ExecutionOverride`
 - `ChatSession`, `ChatMessage`, `ChatRun`
 - `ToolTrace`
+- `AgentPrincipal`, `AgentCatalog`, `AgentWorkflowDescriptor`
 - `ApprovalRequest`, `ApprovalDecision`
 - `AiManagementService` (`server` feature)
 - `AiHostRuntime` (`server` feature)

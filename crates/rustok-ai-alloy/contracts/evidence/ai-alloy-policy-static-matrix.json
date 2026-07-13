@@ -30,6 +30,15 @@
         "runtime_operation_recorded",
         "transport_owner_stays_rustok_ai"
       ]
+    },
+    {
+      "operation": "alloy_code_agent_catalog",
+      "assertions": [
+        "roles_are_owner_owned",
+        "workflow_stage_order_recorded",
+        "implement_and_verify_require_approval",
+        "no_unreviewed_apply_operation"
+      ]
     }
   ]
 }

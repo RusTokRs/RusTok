@@ -14,6 +14,7 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-07-13](./2026-07-13-agent-principals-and-owner-owned-workflows.md) | Agent principals and owner-owned workflows | Accepted |
 | [2026-07-11](./2026-07-11-product-storage-integrity-and-request-trust.md) | Product storage integrity and request trust | Accepted |
 | [2026-07-11](./2026-07-11-neutral-sandbox-foundation.md) | Neutral sandbox foundation for Alloy and module artifacts | Accepted |
 | [2026-07-10](./2026-07-10-mcp-management-owner-boundary.md) | MCP management owner boundary | Accepted |

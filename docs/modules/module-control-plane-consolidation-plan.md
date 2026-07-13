@@ -674,6 +674,40 @@ the external registry.
 
 ### 3.5 Admission Sequence
 
+#### Approved Trust-Admission Baseline
+
+- Use Sigstore Cosign verification for OCI signatures. Marketplace artifacts
+  require an allowed signer identity plus issuer/trust-root validation and a
+  digest-bound transparency bundle; first-party private publication may use an
+  explicitly configured KMS/key trust root instead.
+- Require an in-toto SLSA provenance attestation for compiled WASM, sidecar,
+  and reviewed build outputs. Its subject digest, builder identity, source
+  repository/ref, and build type must match the owner policy.
+- Require a CycloneDX JSON SBOM attestation for compiled artifacts. Validate
+  the attestation subject, schema/media type, and module license/vulnerability
+  policy before admission.
+- Apply policy as typed owner code: every required check passes (`AND`); a set
+  of approved authorities for one check is alternative (`OR`). Persist the
+  trust-policy and capability-policy revisions with the decision.
+- `rustok-modules` owns the typed `TrustVerifier` policy port and the
+  fail-closed admission decision. An isolated verification worker/service owns
+  Cosign execution, trust-root material access, SLSA provenance parsing, and
+  CycloneDX validation; neither `apps/server` nor the module runtime executes
+  those tools or receives their credentials.
+- The worker returns only a typed decision and redacted evidence references.
+  It must run with scoped registry/trust access, resource limits, and no module
+  runtime capabilities. The owner commits its decision with admission metadata
+  and outbox only after every required check passes.
+- Worker implementation lives in `crates/rustok-verification-worker/`. Its
+  first slice owns policy-revision and signer-decision enforcement; the next
+  slices are: (1) a typed tonic gRPC listener/client between the control plane
+  and worker; (2) fail-closed `ModuleInstaller` wiring that obtains the worker
+  decision before CAS stage/publish; and (3) injected Cosign/SLSA/CycloneDX
+  adapters. No missing worker decision may fall back to admission.
+- Alloy/Rhai drafts are not marketplace-installable and do not require this
+  publication trust policy. Static promotion uses its separate reviewed
+  distribution-build policy.
+
 1. Resolve catalog release to immutable manifest digest.
 2. Fetch descriptor/config without executing payload.
 3. Verify manifest digest and descriptor schema.

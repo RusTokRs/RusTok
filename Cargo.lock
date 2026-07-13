@@ -12573,6 +12573,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-verification-worker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-modules",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "rustok-web"
 version = "0.1.0"
 dependencies = [

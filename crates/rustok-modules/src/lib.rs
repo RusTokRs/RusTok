@@ -18,6 +18,7 @@ mod policy;
 mod recovery;
 mod resolution;
 mod runtime;
+mod trust;
 
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
@@ -87,6 +88,7 @@ pub use runtime::{
     ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,
     ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver,
 };
+pub use trust::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.
 pub struct ModulesModule;

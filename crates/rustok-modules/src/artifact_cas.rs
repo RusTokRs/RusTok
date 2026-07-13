@@ -3,8 +3,8 @@ use rustok_storage::StorageService;
 use uuid::Uuid;
 
 use crate::{
-    sha256_digest, valid_digest, ArtifactBlobStore, DurableArtifactBlobStore,
-    ModuleInstallationError, StagedArtifactBlob,
+    installation::{sha256_digest, valid_digest},
+    ArtifactBlobStore, DurableArtifactBlobStore, ModuleInstallationError, StagedArtifactBlob,
 };
 
 /// Durable artifact CAS backed by platform-controlled object storage. Final

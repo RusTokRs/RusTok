@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, TryGetable,
-    Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
 };
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
@@ -20,8 +19,8 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor,
-    ModuleArtifactError, ModuleDependencyLockGraph,
+    ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
+    ModuleDependencyLockGraph,
 };
 
 const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
@@ -988,6 +987,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::ArtifactModuleKind;
 
     struct FixtureRegistry(ModuleArtifactPackage);
 

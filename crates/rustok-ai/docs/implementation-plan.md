@@ -49,6 +49,7 @@ still requires targeted platform verification evidence.
 | Deployment-owned provider targets | `completed` | `ProviderTargetId`, deployment catalog, GraphQL/native/Next selection, migration, egress guards, and safe DTOs are covered by server and GraphQL test gates. |
 | Secret boundary | `completed` | Resolver policy, rotation invalidation, non-resolving validation, tenant-prefix tests, and secret-safe DTOs are covered by the dedicated secrets gate and server tests. |
 | Agent approvals and restart | `completed` | Durable batches, CAS claims, staged outcomes, transactional finalization, recovery, and canonical-history restart are covered by the server test gate. |
+| Agent principals and owner workflows | `in_progress` | Generic principal/catalog/workflow contracts and Alloy-owned code-agent descriptors are implemented. Persistence, per-stage model assignments, execution scheduling, and public catalog surfaces remain. |
 | Streaming/cancellation | `completed` | Cancellation, sequence, terminal suppression, tool-call assembly, usage mapping, and cassettes are covered by server and GraphQL test gates. |
 | Generic host contribution | `completed` | The platform-owned manifest/runtime extension removes direct AI imports and construction from `apps/server`; generic `ModuleRuntimeExtensions` and manifest-generated GraphQL surfaces carry host composition. Source boundary audit is clean and `cargo check -p rustok-core` passes. |
 | Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
