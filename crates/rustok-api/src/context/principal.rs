@@ -1,5 +1,6 @@
 use super::auth::AuthContext;
 use crate::PortActor;
+use uuid::Uuid;
 
 const CLIENT_CREDENTIALS_GRANT: &str = "client_credentials";
 
@@ -13,6 +14,12 @@ impl AuthContext {
 
     pub fn is_human_user_principal(&self) -> bool {
         !self.is_service_principal()
+    }
+
+    /// Return a user id only for human-user grants. Use this for legacy
+    /// `created_by: Option<Uuid>` columns that cannot represent actor kind.
+    pub fn human_user_id(&self) -> Option<Uuid> {
+        self.is_human_user_principal().then_some(self.user_id)
     }
 
     /// Preserve principal kind when crossing a transport-agnostic service port.
@@ -29,7 +36,6 @@ impl AuthContext {
 mod tests {
     use super::*;
     use crate::{Permission, PortActorKind};
-    use uuid::Uuid;
 
     fn auth(grant_type: &str, client_id: Option<Uuid>) -> AuthContext {
         AuthContext {
@@ -48,10 +54,11 @@ mod tests {
     }
 
     #[test]
-    fn client_credentials_map_to_service_port_actor() {
+    fn client_credentials_map_to_service_port_actor_without_user_id() {
         let client_id = Uuid::new_v4();
         let auth = auth(CLIENT_CREDENTIALS_GRANT, Some(client_id));
         assert!(auth.is_service_principal());
+        assert_eq!(auth.human_user_id(), None);
         assert_eq!(auth.port_actor().kind, PortActorKind::Service);
         assert_eq!(auth.port_actor().id, client_id.to_string());
     }
@@ -61,6 +68,7 @@ mod tests {
         for grant in ["direct", "authorization_code"] {
             let auth = auth(grant, None);
             assert!(auth.is_human_user_principal());
+            assert_eq!(auth.human_user_id(), Some(auth.user_id));
             assert_eq!(auth.port_actor().kind, PortActorKind::User);
             assert_eq!(auth.port_actor().id, auth.user_id.to_string());
         }
