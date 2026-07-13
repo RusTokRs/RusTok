@@ -6,8 +6,8 @@ use axum::{
     response::Response,
 };
 use rustok_cache::{
-    CacheInvalidationMessage, CacheKeyBuilder as CanonicalCacheKeyBuilder, CacheLoadPolicy,
-    CacheLoadSource, CacheService, CacheTtlPolicy,
+    CacheEnvelope, CacheInvalidationMessage, CacheKeyBuilder as CanonicalCacheKeyBuilder,
+    CacheLoadPolicy, CacheLoadSource, CacheService, CacheTtlPolicy, NegativeCachePolicy,
 };
 use rustok_core::tenant_validation::TenantIdentifierValidator;
 #[cfg(feature = "redis-cache")]
@@ -19,7 +19,7 @@ use rustok_tenant::{
 };
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -32,11 +32,15 @@ use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_CACHE_VERSION: &str = "v2";
+const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 1;
+const TENANT_NEGATIVE_SCHEMA_VERSION: u32 = 1;
 const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
 const TENANT_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 const TENANT_NEGATIVE_CACHE_MAX_WEIGHT_BYTES: u64 = 1024 * 1024;
+const TENANT_CACHE_MAX_ENCODED_BYTES: usize = 1024 * 1024;
+const TENANT_NEGATIVE_MAX_ENCODED_BYTES: usize = 64 * 1024;
 const TENANT_CACHE_LOADER_TIMEOUT: Duration = Duration::from_secs(10);
 const TENANT_CACHE_JITTER_PERCENT: u8 = 10;
 #[cfg(feature = "redis-cache")]
@@ -143,6 +147,8 @@ pub struct TenantCacheInfrastructure {
     tenant_negative_cache: Arc<dyn CacheBackend>,
     metrics: Arc<TenantCacheMetricsStore>,
     key_builder: TenantCacheKeyBuilder,
+    load_policy: CacheLoadPolicy,
+    negative_policy: NegativeCachePolicy,
     invalidation_publisher: Arc<TenantInvalidationPublisher>,
     invalidation_listener_state: Arc<TenantInvalidationListenerState>,
     cache_service: CacheService,
@@ -456,6 +462,25 @@ where
 
 impl TenantCacheInfrastructure {
     async fn new(cache_service: &CacheService) -> Self {
+        let ttl = CacheTtlPolicy::deterministic_jitter(
+            TENANT_CACHE_TTL,
+            TENANT_CACHE_JITTER_PERCENT,
+            "tenant-resolution-v2",
+        )
+        .expect("tenant cache jitter policy is valid");
+        let load_policy = CacheLoadPolicy::new(ttl)
+            .with_loader_timeout(TENANT_CACHE_LOADER_TIMEOUT)
+            .expect("tenant loader timeout is positive");
+        let negative_policy = NegativeCachePolicy::deterministic_jittered(
+            TENANT_NEGATIVE_SCHEMA_VERSION,
+            TENANT_NEGATIVE_CACHE_TTL,
+            TENANT_CACHE_JITTER_PERCENT,
+            "tenant-negative-v2",
+        )
+        .expect("tenant negative cache policy is valid")
+        .with_max_encoded_bytes(TENANT_NEGATIVE_MAX_ENCODED_BYTES)
+        .expect("tenant negative cache size limit is positive");
+
         Self {
             tenant_cache: cache_service
                 .backend_weighted(
@@ -473,40 +498,11 @@ impl TenantCacheInfrastructure {
                 .await,
             metrics: Arc::new(TenantCacheMetricsStore::new(cache_service)),
             key_builder: TenantCacheKeyBuilder::new(TENANT_CACHE_VERSION),
+            load_policy,
+            negative_policy,
             invalidation_publisher: Arc::new(TenantInvalidationPublisher::new(cache_service)),
             invalidation_listener_state: Arc::new(TenantInvalidationListenerState::new()),
             cache_service: cache_service.clone(),
-        }
-    }
-
-    async fn get_cached_tenant(
-        &self,
-        cache_key: &str,
-    ) -> Result<Option<TenantContext>, StatusCode> {
-        let cached = self
-            .tenant_cache
-            .get(cache_key)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        let Some(bytes) = cached else {
-            self.metrics
-                .incr("misses", &self.metrics.local_misses)
-                .await;
-            return Ok(None);
-        };
-
-        self.metrics.incr("hits", &self.metrics.local_hits).await;
-        match serde_json::from_slice::<TenantContext>(&bytes) {
-            Ok(context) => Ok(Some(context)),
-            Err(error) => {
-                tracing::warn!(%error, "Tenant cache deserialization error");
-                self.tenant_cache
-                    .invalidate(cache_key)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-                Ok(None)
-            }
         }
     }
 
@@ -515,25 +511,20 @@ impl TenantCacheInfrastructure {
         cache_key: &str,
     ) -> Result<Option<CachedTenantMiss>, StatusCode> {
         let cached = self
-            .tenant_negative_cache
-            .get(cache_key)
+            .cache_service
+            .get_negative::<CachedTenantMiss>(
+                Arc::clone(&self.tenant_negative_cache),
+                cache_key,
+                &self.negative_policy,
+            )
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        if let Some(bytes) = cached {
+
+        if let Some(hit) = cached {
             self.metrics
                 .incr("negative_hits", &self.metrics.local_negative_hits)
                 .await;
-            match serde_json::from_slice::<CachedTenantMiss>(&bytes) {
-                Ok(miss) => return Ok(Some(miss)),
-                Err(error) => {
-                    tracing::warn!(%error, "Tenant negative cache deserialization error");
-                    self.tenant_negative_cache
-                        .invalidate(cache_key)
-                        .await
-                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-                    return Ok(None);
-                }
-            }
+            return Ok(Some(hit.reason));
         }
 
         self.metrics
@@ -547,12 +538,15 @@ impl TenantCacheInfrastructure {
         cache_key: String,
         reason: CachedTenantMiss,
     ) -> Result<(), StatusCode> {
-        let payload = serde_json::to_vec(&reason).map_err(|error| {
-            tracing::error!(%error, "Tenant negative cache serialization error");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        self.tenant_negative_cache
-            .set(cache_key, payload)
+        self.cache_service
+            .store_negative(
+                Arc::clone(&self.tenant_negative_cache),
+                cache_key,
+                reason,
+                current_unix_ms(),
+                None,
+                &self.negative_policy,
+            )
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         self.metrics
@@ -579,39 +573,54 @@ impl TenantCacheInfrastructure {
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = rustok_core::Result<TenantContext>>,
     {
-        let ttl = CacheTtlPolicy::deterministic_jitter(
-            TENANT_CACHE_TTL,
-            TENANT_CACHE_JITTER_PERCENT,
-            "tenant-resolution-v2",
-        )
-        .expect("tenant cache jitter policy is valid");
-        let policy = CacheLoadPolicy::new(ttl)
-            .with_loader_timeout(TENANT_CACHE_LOADER_TIMEOUT)
-            .expect("tenant loader timeout is positive");
+        let cache_ttl = self
+            .load_policy
+            .ttl
+            .ttl_for(cache_key)
+            .unwrap_or(TENANT_CACHE_TTL);
         let result = self
             .cache_service
-            .load_or_fill_with_policy(
+            .load_enveloped_or_fill(
                 Arc::clone(&self.tenant_cache),
                 cache_key,
-                policy,
+                TENANT_CONTEXT_SCHEMA_VERSION,
+                self.load_policy.clone(),
                 || async move {
                     let context = loader().await?;
-                    serde_json::to_vec(&context).map_err(CoreError::Serialization)
+                    let generated_at = current_unix_ms();
+                    CacheEnvelope::new(TENANT_CONTEXT_SCHEMA_VERSION, generated_at, context)
+                        .and_then(|envelope| {
+                            envelope.with_expirations(
+                                None,
+                                Some(
+                                    generated_at
+                                        .saturating_add(duration_millis_ceil(cache_ttl)),
+                                ),
+                            )
+                        })
+                        .map_err(cache_envelope_error_to_core)
                 },
             )
             .await
             .map_err(cache_load_error_to_status)?;
 
+        match result.source {
+            CacheLoadSource::Hit => {
+                self.metrics.incr("hits", &self.metrics.local_hits).await;
+            }
+            CacheLoadSource::Filled | CacheLoadSource::Coalesced => {
+                self.metrics
+                    .incr("misses", &self.metrics.local_misses)
+                    .await;
+            }
+        }
         if result.source == CacheLoadSource::Coalesced {
             self.metrics
                 .incr("coalesced_requests", &self.metrics.coalesced_requests)
                 .await;
         }
 
-        serde_json::from_slice::<TenantContext>(&result.value).map_err(|error| {
-            tracing::warn!(%error, "Tenant cache load_or_fill deserialization error");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+        Ok(result.value)
     }
 }
 
@@ -768,12 +777,6 @@ pub async fn resolve(
 
     if let Some(reason) = infra.check_negative(&negative_key).await? {
         return Err(reason.status_code());
-    }
-
-    if let Some(cached_context) = infra.get_cached_tenant(&cache_key).await? {
-        req.extensions_mut()
-            .insert(TenantContextExtension(cached_context));
-        return Ok(next.run(req).await);
     }
 
     let tenant_service = TenantService::new(ctx.db_clone());
@@ -1110,6 +1113,30 @@ fn cache_load_error_to_status(error: CoreError) -> StatusCode {
         CoreError::Validation(_) => StatusCode::BAD_REQUEST,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
+}
+
+fn cache_envelope_error_to_core(error: rustok_cache::CacheEnvelopeError) -> CoreError {
+    CoreError::Cache(format!("tenant cache envelope error: {error}"))
+}
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
+}
+
+fn duration_millis_ceil(duration: Duration) -> u64 {
+    if duration.is_zero() {
+        return 0;
+    }
+    duration
+        .as_nanos()
+        .saturating_add(999_999)
+        .checked_div(1_000_000)
+        .unwrap_or(u128::MAX)
+        .min(u128::from(u64::MAX)) as u64
 }
 
 #[cfg(test)]
