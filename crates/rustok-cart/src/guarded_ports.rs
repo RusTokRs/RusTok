@@ -6,7 +6,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::guest_access::{
     attach_transient_guest_token, guest_cart_token_from_context, prepare_guest_cart_metadata,
-    sanitize_guest_cart_metadata, verify_guest_cart_token,
+    record_issued_guest_cart_token, sanitize_guest_cart_metadata, verify_guest_cart_token,
 };
 use crate::ports::{
     CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
@@ -68,10 +68,8 @@ fn authorize_guest_cart(context: &PortContext, cart: &CartResponse) -> Result<()
         return Ok(());
     }
 
-    if verify_guest_cart_token(
-        &cart.metadata,
-        guest_cart_token_from_context(context),
-    ) {
+    let presented_token = guest_cart_token_from_context(context);
+    if verify_guest_cart_token(&cart.metadata, presented_token.as_deref()) {
         Ok(())
     } else {
         Err(PortError::forbidden(
@@ -117,6 +115,10 @@ impl CartStorefrontPort for GuardedCartPort {
                 .await?,
         );
         if let Some(token) = token {
+            record_issued_guest_cart_token(&token);
+            // Preserve compatibility for non-HTTP callers that receive the
+            // newly created cart directly. The token is transient and was
+            // never persisted; later reads sanitize all reserved fields.
             attach_transient_guest_token(&mut cart, token);
         }
         Ok(cart)
