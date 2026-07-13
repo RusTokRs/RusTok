@@ -13,9 +13,10 @@ mod tenant_legacy;
 /// Public tenant middleware surface.
 ///
 /// The resolver implementation remains in the historical `tenant.rs` module while cache
-/// invalidation readiness is intentionally overridden with the canonical generation listener.
-/// Explicit items win over names imported through the glob re-export, so existing call sites keep
-/// `crate::middleware::tenant::*` without observing the dead per-key Pub/Sub status.
+/// invalidation readiness and listener metrics are intentionally overridden with the canonical
+/// generation listener. Explicit items win over names imported through the glob re-export, so
+/// existing call sites keep `crate::middleware::tenant::*` without observing the dead per-key
+/// Pub/Sub status.
 pub mod tenant {
     pub use super::tenant_legacy::*;
     pub use crate::services::tenant_cache_generation_status::{
@@ -30,5 +31,12 @@ pub mod tenant {
     ) -> TenantInvalidationListenerSnapshot {
         crate::services::tenant_cache_generation::tenant_cache_generation_listener_snapshot(ctx)
             .await
+    }
+
+    pub async fn tenant_cache_stats(ctx: &ServerRuntimeContext) -> TenantCacheStats {
+        let mut stats = super::tenant_legacy::tenant_cache_stats(ctx).await;
+        let listener = tenant_invalidation_listener_snapshot(ctx).await;
+        stats.invalidation_listener_status = listener.status.metric_value();
+        stats
     }
 }
