@@ -18,6 +18,7 @@ pub enum PageSelection {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RenderPolicy {
     pub instrument_components: bool,
+    pub emit_style_hooks: bool,
     pub allow_http: bool,
     pub allow_https: bool,
     pub allow_relative_urls: bool,
@@ -32,6 +33,7 @@ impl Default for RenderPolicy {
     fn default() -> Self {
         Self {
             instrument_components: false,
+            emit_style_hooks: true,
             allow_http: true,
             allow_https: true,
             allow_relative_urls: true,
@@ -143,7 +145,11 @@ pub fn render_page(
     render_node(root, None, 0, policy, &mut html);
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
-    let css = render_project_styles(document, page, policy);
+    let css = if policy.emit_style_hooks {
+        render_project_styles(document, page)
+    } else {
+        String::new()
+    };
     Ok(RenderedPage {
         page_index,
         page_id: page.id.clone(),
@@ -213,6 +219,11 @@ fn render_component(
 
     output.push('<');
     output.push_str(tag);
+    if policy.emit_style_hooks {
+        if let Some(component_id) = component_id {
+            write_attribute(output, "data-fly-style-id", component_id);
+        }
+    }
     if policy.instrument_components {
         if let Some(component_id) = component_id {
             write_attribute(output, "data-fly-component-id", component_id);
@@ -272,11 +283,7 @@ fn render_component(
     output.push('>');
 }
 
-fn render_project_styles(
-    document: &ProjectDocument,
-    page: &ProjectPage,
-    _policy: &RenderPolicy,
-) -> String {
+fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> String {
     let mut component_ids = Vec::new();
     if let Some(root) = page.component.as_ref() {
         root.collect_ids(&mut component_ids);
@@ -301,7 +308,7 @@ fn render_project_styles(
             continue;
         }
         let selector = format!(
-            "[data-fly-component-id=\"{}\"]",
+            "[data-fly-style-id=\"{}\"]",
             escape_css_attribute(&component_id)
         );
         match rule.scope {
@@ -610,12 +617,13 @@ mod tests {
         assert!(!rendered.html.contains("onclick="));
         assert!(!rendered.html.contains("<script>alert(1)</script>"));
         assert!(rendered.css.contains("@media (max-width: 767px)"));
+        assert!(rendered.html.contains("data-fly-style-id=\"hero\""));
         assert_eq!(rendered.head.title.as_deref(), Some("Home title"));
         assert!(rendered.document_html().contains("property=\"og:image\""));
     }
 
     #[test]
-    fn storefront_renderer_does_not_instrument_by_default() {
+    fn storefront_renderer_uses_style_hooks_without_editor_instrumentation() {
         let rendered = render_page(
             &document(),
             &PageSelection::First,
@@ -623,5 +631,22 @@ mod tests {
         )
         .expect("render page");
         assert!(!rendered.html.contains("data-fly-component-id"));
+        assert!(rendered.html.contains("data-fly-style-id=\"hero\""));
+        assert!(rendered.css.contains("data-fly-style-id"));
+    }
+
+    #[test]
+    fn style_hooks_can_be_disabled_with_project_css() {
+        let rendered = render_page(
+            &document(),
+            &PageSelection::First,
+            &RenderPolicy {
+                emit_style_hooks: false,
+                ..RenderPolicy::default()
+            },
+        )
+        .expect("render page");
+        assert!(!rendered.html.contains("data-fly-style-id"));
+        assert!(rendered.css.is_empty());
     }
 }
