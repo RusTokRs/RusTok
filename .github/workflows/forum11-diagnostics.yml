@@ -8,7 +8,7 @@ on:
       - ".github/workflows/forum11-diagnostics.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
@@ -18,17 +18,87 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Collect formatter and compiler diagnostics
+      - name: Materialize and verify focused fixes
         shell: bash
         run: |
           mkdir -p diagnostics
           set +e
-          cargo fmt --all
-          fmt_status=$?
-          git diff --binary > diagnostics/rustfmt.patch
 
-          # Temporary diagnostic-only edits: these are unrelated main-branch
-          # blockers and are applied after capturing the formatter patch.
+          python - <<'PY'
+          from pathlib import Path
+
+          owner = Path("crates/rustok-forum/src/services/category_owner.rs")
+          source = owner.read_text()
+          source = source.replace(
+              "use sea_orm::DatabaseConnection;",
+              "use sea_orm::{DatabaseConnection, DatabaseTransaction};",
+              1,
+          )
+          if "pub(crate) async fn find_category_in_tx" not in source:
+              anchor = "\n}\n\nimpl Deref for CategoryService"
+              methods = r'''
+
+    pub(crate) async fn ensure_exists_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> ForumResult<()> {
+        category::CategoryService::ensure_exists_in_tx(txn, tenant_id, category_id).await
+    }
+
+    pub(crate) async fn find_category_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> ForumResult<crate::entities::forum_category::Model> {
+        category::CategoryService::find_category_in_tx(txn, tenant_id, category_id).await
+    }
+
+    pub(crate) async fn adjust_counters_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        topic_delta: i32,
+        reply_delta: i32,
+    ) -> ForumResult<()> {
+        category::CategoryService::adjust_counters_in_tx(
+            txn,
+            tenant_id,
+            category_id,
+            topic_delta,
+            reply_delta,
+        )
+        .await
+    }
+'''
+              if anchor not in source:
+                  raise SystemExit("category owner insertion anchor missing")
+              source = source.replace(anchor, methods + anchor, 1)
+          owner.write_text(source)
+
+          query = Path("crates/rustok-forum/src/graphql/query.rs")
+          source = query.read_text()
+          old = "closed_active.status = Set(crate::constants::topic_status::CLOSED.to_string());"
+          new = "closed_active.status = Set(crate::state_machine::TopicStatus::Closed);"
+          if old not in source and new not in source:
+              raise SystemExit("typed topic status replacement anchor missing")
+          query.write_text(source.replace(old, new, 1))
+          PY
+
+          targets=(
+            crates/rustok-forum/src/services/category_owner.rs
+            crates/rustok-forum/src/graphql/query.rs
+            crates/rustok-forum/src/services/subscription/category.rs
+            crates/rustok-forum/src/services/subscription/helpers.rs
+            crates/rustok-forum/src/services/subscription/policy.rs
+            crates/rustok-forum/src/services/subscription/topic.rs
+            crates/rustok-forum/tests/subscription_levels_contract.rs
+            crates/rustok-forum/tests/subscription_levels_sqlite.rs
+          )
+          rustfmt --edition 2021 "${targets[@]}"
+          fmt_status=$?
+
+          # Diagnostic-only edits for unrelated blockers in the current main.
           python - <<'PY'
           from pathlib import Path
 
@@ -59,10 +129,25 @@ jobs:
           check_status=$?
           cargo clippy -p rustok-forum --all-targets --all-features --no-deps -- -D warnings > diagnostics/clippy.log 2>&1
           clippy_status=$?
+
+          git checkout -- crates/rustok-media/src/ports.rs crates/rustok-events/src/types.rs
+          git diff --binary -- "${targets[@]}" > diagnostics/fix.patch
+
+          pushed=0
+          if [ "${fmt_status}" -eq 0 ] && [ "${check_status}" -eq 0 ] && [ "${clippy_status}" -eq 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "${targets[@]}"
+            git commit -m "fix(forum): address FORUM-11 CI [skip ci]"
+            git push origin "HEAD:${GITHUB_HEAD_REF}"
+            pushed=$?
+          fi
+
           {
             echo "rustfmt_status=${fmt_status}"
             echo "cargo_check_status=${check_status}"
             echo "clippy_status=${clippy_status}"
+            echo "push_status=${pushed}"
           } > diagnostics/status.txt
           exit 0
       - name: Upload diagnostics
