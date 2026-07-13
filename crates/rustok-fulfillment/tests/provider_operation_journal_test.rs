@@ -14,17 +14,18 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
     let tenant_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
     let operation = journal
         .begin(BeginProviderOperation {
             tenant_id,
-            fulfillment_id: Uuid::new_v4(),
+            fulfillment_id,
             operation: "ship".to_string(),
             provider_id: "carrier".to_string(),
             idempotency_key: "ship-once".to_string(),
             request_payload: serde_json::json!({
                 "tenant_id": tenant_id,
-                "fulfillment_id": Uuid::new_v4(),
+                "fulfillment_id": fulfillment_id,
                 "idempotency_key": "ship-once",
                 "metadata": {}
             }),
@@ -98,17 +99,18 @@ async fn manual_success_reconciliation_validates_provider_identity() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
     let tenant_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
     let operation = journal
         .begin(BeginProviderOperation {
             tenant_id,
-            fulfillment_id: Uuid::new_v4(),
+            fulfillment_id,
             operation: "create_label".to_string(),
             provider_id: "carrier".to_string(),
             idempotency_key: "label-once".to_string(),
             request_payload: serde_json::json!({
                 "tenant_id": tenant_id,
-                "fulfillment_id": Uuid::new_v4(),
+                "fulfillment_id": fulfillment_id,
                 "idempotency_key": "label-once",
                 "metadata": {}
             }),
