@@ -20,6 +20,9 @@ pub enum UiIntent {
     ActivateDropCandidate(Option<usize>),
     Drop,
     CancelDrag,
+    CopySelection,
+    CutSelection,
+    PasteClipboard,
     Execute(EditorCommand),
     Undo,
     Redo,
@@ -39,6 +42,9 @@ pub enum UiEffect {
     Command(EditorCommand),
     Undo,
     Redo,
+    CopySelection,
+    CutSelection,
+    PasteClipboard,
     Persist {
         expected_hash: Option<ProjectHash>,
         command_sequence: u64,
@@ -171,6 +177,30 @@ impl FlyUiStateMachine {
                 self.state.drag = None;
                 self.state.overlays.insertion = None;
                 vec![UiEffect::Announce("Drag cancelled".to_string())]
+            }
+            UiIntent::CopySelection => {
+                self.require_edit_capability("clipboard", self.state.capabilities.clipboard)?;
+                if self.state.selection.component_id.is_none() {
+                    return Err(UiError::CapabilityUnavailable(
+                        "copy requires a selected component".to_string(),
+                    ));
+                }
+                vec![UiEffect::CopySelection]
+            }
+            UiIntent::CutSelection => {
+                self.require_edit_capability("clipboard", self.state.capabilities.clipboard)?;
+                if self.state.selection.component_id.is_none() {
+                    return Err(UiError::CapabilityUnavailable(
+                        "cut requires a selected component".to_string(),
+                    ));
+                }
+                self.mark_dirty();
+                vec![UiEffect::CutSelection]
+            }
+            UiIntent::PasteClipboard => {
+                self.require_edit_capability("clipboard", self.state.capabilities.clipboard)?;
+                self.mark_dirty();
+                vec![UiEffect::PasteClipboard]
             }
             UiIntent::Execute(command) => {
                 if !matches!(&command, EditorCommand::Select { .. }) {
