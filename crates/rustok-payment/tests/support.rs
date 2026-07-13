@@ -31,6 +31,17 @@ pub async fn ensure_payment_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(refund::Entity),
     )
     .await;
+
+    db.execute_unprepared(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_collections_active_cart
+        ON payment_collections (tenant_id, cart_id)
+        WHERE cart_id IS NOT NULL
+          AND status IN ('pending', 'authorized', 'captured')
+        "#,
+    )
+    .await
+    .expect("active cart payment collection index should be created");
 }
 
 pub async fn ensure_order_schema(db: &DatabaseConnection) {
