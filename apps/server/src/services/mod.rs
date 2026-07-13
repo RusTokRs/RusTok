@@ -6,6 +6,7 @@ pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
 pub mod build_event_hub;
 pub mod build_executor;
+pub mod commerce_provider_runtime;
 pub mod dashboard_user_activity;
 pub mod effective_module_policy;
 pub mod email;

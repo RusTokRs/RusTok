@@ -41,14 +41,33 @@ pub use rustok_product::CatalogService;
 
 const MODULE_SLUG: &str = "seo";
 const REDIRECT_CACHE_TTL_SECS: u64 = 30;
+const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 const SITEMAP_CHUNK_SIZE: usize = 500;
 
 static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<Vec<seo_redirect::Model>>>> = Lazy::new(|| {
     Cache::builder()
         .time_to_live(Duration::from_secs(REDIRECT_CACHE_TTL_SECS))
-        .max_capacity(512)
+        .weigher(redirect_cache_entry_weight)
+        .max_capacity(REDIRECT_CACHE_MAX_WEIGHT_BYTES)
         .build()
 });
+
+fn redirect_cache_entry_weight(
+    _tenant_id: &Uuid,
+    redirects: &Arc<Vec<seo_redirect::Model>>,
+) -> u32 {
+    let mut weight = std::mem::size_of::<Uuid>()
+        .saturating_add(std::mem::size_of::<Arc<Vec<seo_redirect::Model>>>())
+        .saturating_add(std::mem::size_of::<Vec<seo_redirect::Model>>());
+    for redirect in redirects.iter() {
+        weight = weight
+            .saturating_add(std::mem::size_of::<seo_redirect::Model>())
+            .saturating_add(redirect.match_type.len())
+            .saturating_add(redirect.source_pattern.len())
+            .saturating_add(redirect.target_url.len());
+    }
+    weight.clamp(1, u32::MAX as usize) as u32
+}
 
 #[derive(Clone)]
 pub struct SeoService {
@@ -214,4 +233,38 @@ pub(super) fn normalize_route(route: &str) -> SeoResult<String> {
         return Err(SeoError::validation("route must not contain whitespace"));
     }
     Ok(route.to_string())
+}
+
+#[cfg(test)]
+mod cache_weight_tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn redirect(source_pattern: String) -> seo_redirect::Model {
+        let now = Utc::now().fixed_offset();
+        seo_redirect::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            match_type: "exact".to_string(),
+            source_pattern,
+            target_url: "/target".to_string(),
+            status_code: 301,
+            expires_at: None,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn redirect_cache_weight_accounts_for_dynamic_routes() {
+        let tenant_id = Uuid::new_v4();
+        let short = Arc::new(vec![redirect("/a".to_string())]);
+        let long = Arc::new(vec![redirect(format!("/{}", "x".repeat(2_048)))]);
+
+        assert!(
+            redirect_cache_entry_weight(&tenant_id, &long)
+                > redirect_cache_entry_weight(&tenant_id, &short)
+        );
+    }
 }

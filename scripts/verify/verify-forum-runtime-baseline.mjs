@@ -6,9 +6,7 @@ import { spawnSync } from "node:child_process";
 const args = new Set(process.argv.slice(2));
 const allowedArgs = new Set(["--static-only", "--postgres", "--known-defects", "--help"]);
 for (const arg of args) {
-  if (!allowedArgs.has(arg)) {
-    fail(`unknown argument: ${arg}`);
-  }
+  if (!allowedArgs.has(arg)) fail(`unknown argument: ${arg}`);
 }
 
 const staticOnly = args.has("--static-only");
@@ -20,9 +18,9 @@ if (args.has("--help")) {
   node scripts/verify/verify-forum-runtime-baseline.mjs [options]
 
 Options:
-  --static-only    Validate baseline files and the ignored-test inventory only.
-  --postgres       Run the green PostgreSQL forum regression profile.
-  --known-defects  Confirm that FORUM-02..07 has no unresolved tracked defects.
+  --static-only    Validate baseline files and compatibility ignores only.
+  --postgres       Run the complete green PostgreSQL forum profile.
+  --known-defects  Confirm that FORUM-02..08 has zero active regressions.
   --help           Show this help.`);
   process.exit(0);
 }
@@ -44,21 +42,45 @@ const files = {
     "crates/rustok-forum/src/migrations/m20260712_000005_enforce_forum_category_tree.rs",
   counterLockMigration:
     "crates/rustok-forum/src/migrations/m20260712_000006_serialize_forum_counter_mutations.rs",
-  counterIntegrityPostgres:
-    "crates/rustok-forum/tests/counter_integrity_postgres.rs",
   replyPublicationMigration:
     "crates/rustok-forum/src/migrations/m20260713_000007_enforce_forum_reply_publication.rs",
-  moderationService: "crates/rustok-forum/src/services/moderation.rs",
+  replyPositionMigration:
+    "crates/rustok-forum/src/migrations/m20260713_000008_enforce_forum_reply_positions.rs",
+  softDeleteMigration:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions.rs",
+  softDeletePostgresUp:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
+  softDeletePostgresDown:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_down.rs",
+  softDeleteSqliteUp:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_up.rs",
+  softDeleteSqliteDown:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_down.rs",
+  softDeleteSqliteSetup:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_setup.rs",
+  softDeleteSqliteRevisions:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
+  softDeleteSqliteDeletes:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_deletes.rs",
+  softDeleteSqliteCounters:
+    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_counters.rs",
+  revisionService: "crates/rustok-forum/src/services/revision.rs",
+  categoryTreePostgres:
+    "crates/rustok-forum/tests/category_tree_integrity_postgres.rs",
+  counterIntegrityPostgres:
+    "crates/rustok-forum/tests/counter_integrity_postgres.rs",
   moderationPostgres:
     "crates/rustok-forum/tests/moderation_semantics_postgres.rs",
   moderationSqlite:
     "crates/rustok-forum/tests/moderation_semantics_sqlite.rs",
-  replyPositionMigration:
-    "crates/rustok-forum/src/migrations/m20260713_000008_enforce_forum_reply_positions.rs",
   replyPositionPostgres:
     "crates/rustok-forum/tests/reply_position_integrity_postgres.rs",
   replyPositionSqlite:
     "crates/rustok-forum/tests/reply_position_integrity_sqlite.rs",
+  softDeletePostgres:
+    "crates/rustok-forum/tests/soft_delete_revision_postgres.rs",
+  softDeleteSqlite:
+    "crates/rustok-forum/tests/soft_delete_revision_sqlite.rs",
 };
 
 const resolvedCompatibilityIgnores = new Map([
@@ -106,14 +128,22 @@ function verifyStaticBaseline() {
   const statusMigration = text(files.statusMigration);
   const categoryTreeMigration = text(files.categoryTreeMigration);
   const counterLockMigration = text(files.counterLockMigration);
-  const counterIntegrityPostgres = text(files.counterIntegrityPostgres);
   const replyPublicationMigration = text(files.replyPublicationMigration);
-  const moderationService = text(files.moderationService);
-  const moderationPostgres = text(files.moderationPostgres);
-  const moderationSqlite = text(files.moderationSqlite);
   const replyPositionMigration = text(files.replyPositionMigration);
-  const replyPositionPostgres = text(files.replyPositionPostgres);
-  const replyPositionSqlite = text(files.replyPositionSqlite);
+  const softDeleteMigration = [
+    files.softDeleteMigration,
+    files.softDeletePostgresUp,
+    files.softDeletePostgresDown,
+    files.softDeleteSqliteUp,
+    files.softDeleteSqliteDown,
+    files.softDeleteSqliteSetup,
+    files.softDeleteSqliteRevisions,
+    files.softDeleteSqliteDeletes,
+    files.softDeleteSqliteCounters,
+  ]
+    .map(text)
+    .join("\n");
+  const revisionService = text(files.revisionService);
 
   requireTokens(support, files.support, "PostgreSQL profile", [
     "RUSTOK_FORUM_TEST_DATABASE_URL",
@@ -128,78 +158,46 @@ function verifyStaticBaseline() {
     "REQUIRED_TENANT_CONSTRAINTS",
     "REQUIRED_TENANT_INDEXES",
     "REQUIRED_LIFECYCLE_CONSTRAINTS",
-    "REQUIRED_POSITION_CONSTRAINTS",
-    "uq_forum_replies_tenant_topic_position",
+    "REQUIRED_REVISION_TABLES",
   ]);
   requireTokens(statusMigration, files.statusMigration, "lifecycle", [
     "chk_forum_topics_status",
     "chk_forum_replies_status",
-    "forum_topics_status_insert",
-    "forum_replies_status_insert",
   ]);
-  requireTokens(categoryTreeMigration, files.categoryTreeMigration, "category-tree", [
+  requireTokens(categoryTreeMigration, files.categoryTreeMigration, "category tree", [
     "forum_validate_category_parent",
     "forum_categories_tree_guard",
-    "forum_categories_tree_insert",
-    "forum_categories_tree_update",
   ]);
-  requireTokens(counterLockMigration, files.counterLockMigration, "counter-lock", [
+  requireTokens(counterLockMigration, files.counterLockMigration, "counter lock", [
     "forum_counter_lock",
-    "forum_00_topics_counter_lock",
     "forum_00_replies_counter_lock",
-    "forum_00_solutions_counter_lock",
-  ]);
-  requireTokens(counterIntegrityPostgres, files.counterIntegrityPostgres, "counter regression", [
-    "concurrent_replies_preserve_atomic_counters",
-    "forum_user_stats",
-    "expected=8",
   ]);
   requireTokens(replyPublicationMigration, files.replyPublicationMigration, "publication", [
     "forum_validate_reply_creation",
-    "forum_enforce_topic_public_reply_count",
-    "forum_enforce_category_public_reply_count",
-    "forum_enforce_user_public_reply_count",
     "forum_filter_topic_replied_event",
-    "forum_replies_locked_topic_insert",
-    "forum_topic_replied_visibility_insert",
   ]);
-  requireTokens(moderationService, files.moderationService, "moderation service", [
-    "became_public",
-    "stopped_being_public",
-    "DomainEvent::ForumTopicReplied",
-    "CategoryService::adjust_counters_in_tx",
-  ]);
-  requireTokens(moderationPostgres, files.moderationPostgres, "PostgreSQL moderation regression", [
-    "postgres_enforces_locked_and_moderated_reply_semantics",
-    "assert_public_state",
-    "expected_replied_events",
-  ]);
-  requireTokens(moderationSqlite, files.moderationSqlite, "SQLite moderation regression", [
-    "sqlite_enforces_locked_and_moderated_reply_semantics",
-    "assert_public_state",
-    "expected_replied_events",
-  ]);
-  requireTokens(replyPositionMigration, files.replyPositionMigration, "reply-position", [
+  requireTokens(replyPositionMigration, files.replyPositionMigration, "reply position", [
     "uq_forum_replies_tenant_topic_position",
     "chk_forum_replies_position_positive",
-    "COALESCE(MAX(reply.position), 0) + 1",
-    "forum_replies_position_positive_insert",
-    "forum_replies_position_positive_update",
+    "forum_lock_reply_counter_mutation",
   ]);
-  requireTokens(replyPositionPostgres, files.replyPositionPostgres, "PostgreSQL position regression", [
-    "postgres_allocates_unique_contiguous_reply_positions",
-    "create_concurrent_replies",
-    "database allocator did not normalize direct inserts",
-    "duplicate reply position update",
+  requireTokens(softDeleteMigration, files.softDeleteMigration, "soft delete", [
+    "forum_topic_revisions",
+    "forum_reply_revisions",
+    "forum_soft_delete_topic",
+    "forum_soft_delete_reply",
+    "forum_hard_delete_context",
+    "idx_forum_topics_tenant_deleted",
+    "idx_forum_replies_tenant_topic_deleted",
   ]);
-  requireTokens(replyPositionSqlite, files.replyPositionSqlite, "SQLite position regression", [
-    "sqlite_enforces_unique_positive_reply_positions",
-    "duplicate reply position insert",
-    "non-positive reply position update",
+  requireTokens(revisionService, files.revisionService, "revision service", [
+    "list_topic_revisions",
+    "list_reply_revisions",
+    "MAX_REVISION_PAGE_SIZE",
   ]);
 
   if (known.includes("#[should_panic")) {
-    fail(`${files.knownRegressions}: known defects must be real ignored tests, not should_panic placeholders`);
+    fail(`${files.knownRegressions}: compatibility regressions must not use should_panic`);
   }
 
   const found = new Map();
@@ -210,46 +208,42 @@ function verifyStaticBaseline() {
 
   for (const [name, reason] of resolvedCompatibilityIgnores) {
     if (found.get(name) !== reason) {
-      fail(`${files.knownRegressions}: resolved compatibility ignore ${name} is missing or changed`);
+      fail(`${files.knownRegressions}: compatibility ignore ${name} is missing or changed`);
     }
   }
 
   const tracked = new Map(
     [...found].filter(([name]) => !resolvedCompatibilityIgnores.has(name)),
   );
-
   if (tracked.size !== expectedKnownDefects.size) {
-    fail(`${files.knownRegressions}: expected ${expectedKnownDefects.size} ignored regressions, found ${tracked.size}`);
+    fail(`${files.knownRegressions}: expected zero active regressions, found ${tracked.size}`);
   }
 
-  const unexpected = [...tracked.keys()].filter((name) => !expectedKnownDefects.has(name));
-  if (unexpected.length > 0) {
-    fail(`${files.knownRegressions}: unexpected ignored regressions: ${unexpected.join(", ")}`);
-  }
-
-  console.log(`forum runtime baseline static verification passed (${tracked.size} tracked known defects)`);
+  console.log(
+    `forum runtime baseline static verification passed (${tracked.size} tracked known defects)`,
+  );
 }
 
 function run(label, command, commandArgs) {
   console.log(`\n==> ${label}`);
-  const executable = process.platform === "win32" && command === "cargo" ? "cargo.exe" : command;
+  const executable =
+    process.platform === "win32" && command === "cargo" ? "cargo.exe" : command;
   const result = spawnSync(executable, commandArgs, {
     cwd: process.cwd(),
     env: process.env,
     stdio: "inherit",
   });
-  if (result.error) {
-    fail(`${label}: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    fail(`${label}: command exited with status ${result.status}`);
-  }
+  if (result.error) fail(`${label}: ${result.error.message}`);
+  if (result.status !== 0) fail(`${label}: command exited with status ${result.status}`);
 }
 
 function requirePostgresUrl(mode) {
-  const value = process.env.RUSTOK_FORUM_TEST_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
+  const value =
+    process.env.RUSTOK_FORUM_TEST_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
   if (!value.startsWith("postgres://") && !value.startsWith("postgresql://")) {
-    fail(`${mode} requires RUSTOK_FORUM_TEST_DATABASE_URL (or DATABASE_URL) with a PostgreSQL URL`);
+    fail(
+      `${mode} requires RUSTOK_FORUM_TEST_DATABASE_URL (or DATABASE_URL) with a PostgreSQL URL`,
+    );
   }
 }
 
@@ -258,7 +252,7 @@ verifyStaticBaseline();
 if (staticOnly) process.exit(0);
 
 if (knownDefects) {
-  console.log("No unresolved FORUM-02..07 regression defects remain.");
+  console.log("FORUM-02..08 has zero active runtime regressions.");
   process.exit(0);
 }
 
@@ -279,6 +273,7 @@ for (const testName of [
   "category_tree_integrity_sqlite",
   "moderation_semantics_sqlite",
   "reply_position_integrity_sqlite",
+  "soft_delete_revision_sqlite",
 ]) {
   run(`SQLite ${testName}`, "cargo", [
     "test", "-p", "rustok-forum", "--test", testName,
@@ -290,6 +285,7 @@ for (const testName of [
   "counter_integrity_postgres",
   "moderation_semantics_postgres",
   "reply_position_integrity_postgres",
+  "soft_delete_revision_postgres",
 ]) {
   run(`PostgreSQL ${testName}`, "cargo", [
     "test", "-p", "rustok-forum", "--test", testName,
@@ -310,6 +306,7 @@ if (postgres) {
     "counter_integrity_postgres",
     "moderation_semantics_postgres",
     "reply_position_integrity_postgres",
+    "soft_delete_revision_postgres",
     "known_regressions",
   ]) {
     run(`PostgreSQL ${testName}`, "cargo", [

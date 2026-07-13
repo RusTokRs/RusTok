@@ -566,11 +566,17 @@ impl PaymentService {
             });
         }
 
-        let now = Utc::now();
-        if let Ok(payment) = self
+        let payment = match self
             .latest_payment_any_status_in_tx(&txn, collection_id)
             .await
         {
+            Ok(payment) => Some(payment),
+            Err(PaymentError::PaymentNotFound(_)) if collection.status == STATUS_PENDING => None,
+            Err(error) => return Err(error),
+        };
+
+        let now = Utc::now();
+        if let Some(payment) = payment {
             let mut payment_active: entities::payment::ActiveModel = payment.into();
             let reason = input
                 .reason

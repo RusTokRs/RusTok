@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
@@ -7,6 +7,7 @@ use crate::CacheService;
 const DEFAULT_LEASE_TTL: Duration = Duration::from_secs(5);
 const DEFAULT_LEASE_OPERATION_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_LEASE_TTL: Duration = Duration::from_secs(300);
+const MAX_LEASE_CACHE_KEY_BYTES: usize = 16 * 1024;
 
 #[cfg(feature = "redis-cache")]
 const RELEASE_SCRIPT: &str = r#"
@@ -51,10 +52,7 @@ impl CacheLeaseOptions {
 
     fn validate(&self) -> Result<(), CacheLeaseError> {
         validate_ttl(self.ttl)?;
-        if self.operation_timeout.is_zero() {
-            return Err(CacheLeaseError::ZeroOperationTimeout);
-        }
-        Ok(())
+        validate_operation_timeout(self.operation_timeout, self.ttl)
     }
 }
 
@@ -84,6 +82,7 @@ pub struct DistributedCacheLease {
     token: String,
     ttl: Duration,
     operation_timeout: Duration,
+    expires_at: Instant,
 }
 
 impl std::fmt::Debug for DistributedCacheLease {
@@ -92,6 +91,7 @@ impl std::fmt::Debug for DistributedCacheLease {
             .debug_struct("DistributedCacheLease")
             .field("key", &self.key)
             .field("ttl", &self.ttl)
+            .field("remaining_ttl", &self.remaining_ttl())
             .field("operation_timeout", &self.operation_timeout)
             .finish_non_exhaustive()
     }
@@ -106,9 +106,20 @@ impl DistributedCacheLease {
         self.ttl
     }
 
+    /// Conservative process-local estimate. The deadline starts before the Redis SET/PEXPIRE
+    /// response is received, so it never overstates the usable server lease duration.
+    pub fn remaining_ttl(&self) -> Duration {
+        self.expires_at.saturating_duration_since(Instant::now())
+    }
+
+    pub fn is_expired(&self) -> bool {
+        self.remaining_ttl().is_zero()
+    }
+
     /// Extend the lease only while this instance still owns the token.
     pub async fn extend(&mut self, ttl: Duration) -> Result<bool, CacheLeaseError> {
         validate_ttl(ttl)?;
+        validate_operation_timeout(self.operation_timeout, ttl)?;
 
         #[cfg(feature = "redis-cache")]
         {
@@ -119,6 +130,7 @@ impl DistributedCacheLease {
             )
             .await?;
             let ttl_millis = duration_millis_ceil(ttl);
+            let started_at = Instant::now();
             let extended = redis_operation(
                 self.operation_timeout,
                 "lease extend",
@@ -131,7 +143,14 @@ impl DistributedCacheLease {
             .await?
                 == 1;
             if extended {
+                let expires_at = started_at
+                    .checked_add(ttl)
+                    .ok_or(CacheLeaseError::DeadlineOverflow)?;
+                if Instant::now() >= expires_at {
+                    return Err(CacheLeaseError::ExpiredBeforeConfirmation);
+                }
                 self.ttl = ttl;
+                self.expires_at = expires_at;
             }
             return Ok(extended);
         }
@@ -200,6 +219,7 @@ impl CacheService {
                 client.get_multiplexed_async_connection(),
             )
             .await?;
+            let started_at = Instant::now();
             let response = redis_operation(
                 options.operation_timeout,
                 "lease acquire",
@@ -214,12 +234,19 @@ impl CacheService {
             .await?;
 
             return if response.is_some() {
+                let expires_at = started_at
+                    .checked_add(options.ttl)
+                    .ok_or(CacheLeaseError::DeadlineOverflow)?;
+                if Instant::now() >= expires_at {
+                    return Err(CacheLeaseError::ExpiredBeforeConfirmation);
+                }
                 Ok(CacheLeaseOutcome::Acquired(DistributedCacheLease {
                     client,
                     key,
                     token,
                     ttl: options.ttl,
                     operation_timeout: options.operation_timeout,
+                    expires_at,
                 }))
             } else {
                 Ok(CacheLeaseOutcome::Contended)
@@ -240,9 +267,13 @@ pub enum CacheLeaseError {
     EmptyScope,
     InvalidScope(String),
     EmptyCacheKey,
+    CacheKeyTooLarge { length: usize, maximum: usize },
     ZeroTtl,
     TtlTooLarge { maximum_seconds: u64 },
     ZeroOperationTimeout,
+    OperationTimeoutNotLessThanTtl { timeout_ms: u128, ttl_ms: u128 },
+    DeadlineOverflow,
+    ExpiredBeforeConfirmation,
     Timeout { operation: &'static str, millis: u128 },
     Redis { operation: &'static str, message: String },
 }
@@ -257,6 +288,10 @@ impl std::fmt::Display for CacheLeaseError {
                 "cache lease scope contains unsupported characters: {scope:?}"
             ),
             Self::EmptyCacheKey => write!(formatter, "cache lease key must not be empty"),
+            Self::CacheKeyTooLarge { length, maximum } => write!(
+                formatter,
+                "cache lease source key is {length} bytes; maximum is {maximum}"
+            ),
             Self::ZeroTtl => write!(formatter, "cache lease TTL must be greater than zero"),
             Self::TtlTooLarge { maximum_seconds } => write!(
                 formatter,
@@ -265,6 +300,15 @@ impl std::fmt::Display for CacheLeaseError {
             Self::ZeroOperationTimeout => {
                 write!(formatter, "cache lease operation timeout must be greater than zero")
             }
+            Self::OperationTimeoutNotLessThanTtl { timeout_ms, ttl_ms } => write!(
+                formatter,
+                "cache lease operation timeout {timeout_ms} ms must be less than TTL {ttl_ms} ms"
+            ),
+            Self::DeadlineOverflow => write!(formatter, "cache lease deadline overflowed"),
+            Self::ExpiredBeforeConfirmation => write!(
+                formatter,
+                "cache lease expired before Redis ownership confirmation was received"
+            ),
             Self::Timeout { operation, millis } => {
                 write!(formatter, "cache {operation} timed out after {millis} ms")
             }
@@ -289,8 +333,14 @@ fn lease_key(scope: &str, cache_key: &str) -> Result<String, CacheLeaseError> {
     {
         return Err(CacheLeaseError::InvalidScope(scope.to_string()));
     }
-    if cache_key.is_empty() {
+    if cache_key.trim().is_empty() {
         return Err(CacheLeaseError::EmptyCacheKey);
+    }
+    if cache_key.len() > MAX_LEASE_CACHE_KEY_BYTES {
+        return Err(CacheLeaseError::CacheKeyTooLarge {
+            length: cache_key.len(),
+            maximum: MAX_LEASE_CACHE_KEY_BYTES,
+        });
     }
 
     Ok(format!(
@@ -306,6 +356,22 @@ fn validate_ttl(ttl: Duration) -> Result<(), CacheLeaseError> {
     if ttl > MAX_LEASE_TTL {
         return Err(CacheLeaseError::TtlTooLarge {
             maximum_seconds: MAX_LEASE_TTL.as_secs(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_operation_timeout(
+    operation_timeout: Duration,
+    ttl: Duration,
+) -> Result<(), CacheLeaseError> {
+    if operation_timeout.is_zero() {
+        return Err(CacheLeaseError::ZeroOperationTimeout);
+    }
+    if operation_timeout >= ttl {
+        return Err(CacheLeaseError::OperationTimeoutNotLessThanTtl {
+            timeout_ms: duration_millis_ceil(operation_timeout) as u128,
+            ttl_ms: duration_millis_ceil(ttl) as u128,
         });
     }
     Ok(())
@@ -360,7 +426,7 @@ mod tests {
     #[test]
     fn validates_lease_options() {
         assert_eq!(
-            CacheLeaseOptions::new(Duration::ZERO, Duration::from_secs(1)).unwrap_err(),
+            CacheLeaseOptions::new(Duration::ZERO, Duration::from_millis(1)).unwrap_err(),
             CacheLeaseError::ZeroTtl
         );
         assert_eq!(
@@ -374,6 +440,23 @@ mod tests {
                 maximum_seconds: 300,
             }
         );
+        assert_eq!(
+            CacheLeaseOptions::new(Duration::from_millis(100), Duration::from_millis(100))
+                .unwrap_err(),
+            CacheLeaseError::OperationTimeoutNotLessThanTtl {
+                timeout_ms: 100,
+                ttl_ms: 100,
+            }
+        );
+    }
+
+    #[test]
+    fn validates_source_cache_key_before_hashing() {
+        assert_eq!(lease_key("catalog", "   ").unwrap_err(), CacheLeaseError::EmptyCacheKey);
+        assert!(matches!(
+            lease_key("catalog", &"k".repeat(MAX_LEASE_CACHE_KEY_BYTES + 1)).unwrap_err(),
+            CacheLeaseError::CacheKeyTooLarge { .. }
+        ));
     }
 
     #[test]

@@ -1,5 +1,7 @@
+use async_graphql::Context;
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_payment::providers::PaymentProviderRegistry;
+use sea_orm::DatabaseConnection;
 
 /// Provider registries available to every commerce GraphQL resolver.
 ///
@@ -34,4 +36,26 @@ pub fn attach_schema_data(
             .shared_get::<FulfillmentProviderRegistry>()
             .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
     })
+}
+
+pub(crate) fn payment_orchestration_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+) -> crate::PaymentOrchestrationService {
+    let service = crate::PaymentOrchestrationService::new(db);
+    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => service.with_provider_registry(runtime.payment_provider_registry()),
+        None => service,
+    }
+}
+
+pub(crate) fn fulfillment_orchestration_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+) -> crate::FulfillmentOrchestrationService {
+    let service = crate::FulfillmentOrchestrationService::new(db);
+    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => service.with_provider_registry(runtime.fulfillment_provider_registry()),
+        None => service,
+    }
 }

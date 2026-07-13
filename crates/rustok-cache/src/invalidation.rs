@@ -4,7 +4,9 @@ use std::sync::{Arc, Mutex};
 use crate::CacheInvalidationMessage;
 
 const INVALIDATION_PAYLOAD_VERSION: &str = "v1";
+const MAX_INVALIDATION_CHANNEL_BYTES: usize = 256;
 const MAX_INVALIDATION_KEY_BYTES: usize = 4 * 1024;
+const MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES: usize = 16 * 1024;
 
 /// Invalidation payload carrying a monotonic generation from a durable domain sequence.
 ///
@@ -37,20 +39,25 @@ impl VersionedCacheInvalidation {
 
     pub fn to_message(&self) -> Result<CacheInvalidationMessage, CacheInvalidationPayloadError> {
         self.validate()?;
+        let payload = format!(
+            "{INVALIDATION_PAYLOAD_VERSION}:{}:{}:{}",
+            self.generation,
+            self.emitted_at_unix_ms,
+            hex::encode(self.key.as_bytes())
+        );
+        validate_payload_length(payload.len())?;
         Ok(CacheInvalidationMessage::new(
             self.channel.clone(),
-            format!(
-                "{INVALIDATION_PAYLOAD_VERSION}:{}:{}:{}",
-                self.generation,
-                self.emitted_at_unix_ms,
-                hex::encode(self.key.as_bytes())
-            ),
+            payload,
         ))
     }
 
     pub fn from_message(
         message: &CacheInvalidationMessage,
     ) -> Result<Self, CacheInvalidationPayloadError> {
+        validate_channel(&message.channel)?;
+        validate_payload_length(message.key.len())?;
+
         let mut parts = message.key.splitn(4, ':');
         let version = parts
             .next()
@@ -73,6 +80,12 @@ impl VersionedCacheInvalidation {
         let key_hex = parts
             .next()
             .ok_or(CacheInvalidationPayloadError::MalformedPayload)?;
+        if key_hex.len() > MAX_INVALIDATION_KEY_BYTES.saturating_mul(2) {
+            return Err(CacheInvalidationPayloadError::KeyTooLarge {
+                length: key_hex.len().saturating_add(1) / 2,
+                maximum: MAX_INVALIDATION_KEY_BYTES,
+            });
+        }
         let key_bytes = hex::decode(key_hex)
             .map_err(|_| CacheInvalidationPayloadError::InvalidKeyEncoding)?;
         let key = String::from_utf8(key_bytes)
@@ -87,9 +100,7 @@ impl VersionedCacheInvalidation {
     }
 
     fn validate(&self) -> Result<(), CacheInvalidationPayloadError> {
-        if self.channel.trim().is_empty() {
-            return Err(CacheInvalidationPayloadError::EmptyChannel);
-        }
+        validate_channel(&self.channel)?;
         if self.key.trim().is_empty() {
             return Err(CacheInvalidationPayloadError::EmptyKey);
         }
@@ -109,9 +120,12 @@ impl VersionedCacheInvalidation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheInvalidationPayloadError {
     EmptyChannel,
+    ChannelTooLarge { length: usize, maximum: usize },
     EmptyKey,
     KeyTooLarge { length: usize, maximum: usize },
+    PayloadTooLarge { length: usize, maximum: usize },
     ZeroGeneration,
+    OffsetRegressed { current: u64, proposed: u64 },
     MalformedPayload,
     UnsupportedVersion(String),
     InvalidGeneration,
@@ -123,12 +137,24 @@ impl std::fmt::Display for CacheInvalidationPayloadError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyChannel => write!(formatter, "invalidation channel must not be empty"),
+            Self::ChannelTooLarge { length, maximum } => write!(
+                formatter,
+                "invalidation channel is {length} bytes; maximum is {maximum}"
+            ),
             Self::EmptyKey => write!(formatter, "invalidation key must not be empty"),
             Self::KeyTooLarge { length, maximum } => write!(
                 formatter,
                 "invalidation key is {length} bytes; maximum is {maximum}"
             ),
+            Self::PayloadTooLarge { length, maximum } => write!(
+                formatter,
+                "encoded invalidation payload is {length} bytes; maximum is {maximum}"
+            ),
             Self::ZeroGeneration => write!(formatter, "invalidation generation must be non-zero"),
+            Self::OffsetRegressed { current, proposed } => write!(
+                formatter,
+                "invalidation offset cannot regress from {current} to {proposed}"
+            ),
             Self::MalformedPayload => write!(formatter, "malformed versioned invalidation payload"),
             Self::UnsupportedVersion(version) => {
                 write!(formatter, "unsupported invalidation payload version {version:?}")
@@ -144,9 +170,10 @@ impl std::error::Error for CacheInvalidationPayloadError {}
 
 /// Process-local observer for a durable monotonic invalidation generation.
 ///
-/// Consumers should seed the tracker from their persisted durable offset before observing
-/// live events. An unseeded first event cannot prove continuity and therefore returns
-/// `UnverifiedFirst`, which requires the same fail-safe namespace recovery as `Gap`.
+/// Consumers seed the tracker from their persisted durable offset before observing live events.
+/// `UnverifiedFirst` and `Gap` never advance the offset automatically: the caller must complete
+/// its namespace clear/rebuild/generation rotation and then call `acknowledge_recovery`. This
+/// prevents a failed recovery from being hidden by the next pub/sub event.
 #[derive(Clone, Default)]
 pub struct CacheInvalidationGapTracker {
     last_by_channel: Arc<Mutex<HashMap<String, u64>>>,
@@ -155,21 +182,27 @@ pub struct CacheInvalidationGapTracker {
 impl CacheInvalidationGapTracker {
     /// Restore the last durably acknowledged generation for a channel.
     ///
-    /// Seeding with zero is valid when the durable sequence is known to begin at one.
+    /// Seeding with zero is valid when the durable sequence is known to begin at one. A seed may
+    /// advance or repeat the current offset, but never lower it.
     pub fn seed(
         &self,
         channel: impl Into<String>,
         last_generation: u64,
     ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
         let channel = channel.into();
-        if channel.trim().is_empty() {
-            return Err(CacheInvalidationPayloadError::EmptyChannel);
-        }
-        Ok(self
-            .last_by_channel
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(channel, last_generation))
+        validate_channel(&channel)?;
+        self.advance_monotonically(channel, last_generation)
+    }
+
+    /// Confirm that fail-safe recovery for an unverified/gapped event completed successfully.
+    pub fn acknowledge_recovery(
+        &self,
+        channel: impl Into<String>,
+        recovered_through_generation: u64,
+    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
+        let channel = channel.into();
+        validate_channel(&channel)?;
+        self.advance_monotonically(channel, recovered_through_generation)
     }
 
     pub fn observe(
@@ -182,7 +215,6 @@ impl CacheInvalidationGapTracker {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let Some(previous) = generations.get(&event.channel).copied() else {
-            generations.insert(event.channel.clone(), event.generation);
             return CacheInvalidationObservation::UnverifiedFirst {
                 generation: event.generation,
             };
@@ -207,14 +239,11 @@ impl CacheInvalidationGapTracker {
                     generation: event.generation,
                 }
             }
-            Some(expected) => {
-                generations.insert(event.channel.clone(), event.generation);
-                CacheInvalidationObservation::Gap {
-                    previous,
-                    expected,
-                    received: event.generation,
-                }
-            }
+            Some(expected) => CacheInvalidationObservation::Gap {
+                previous,
+                expected,
+                received: event.generation,
+            },
             None => CacheInvalidationObservation::Stale {
                 last: previous,
                 received: event.generation,
@@ -235,6 +264,26 @@ impl CacheInvalidationGapTracker {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(channel)
+    }
+
+    fn advance_monotonically(
+        &self,
+        channel: String,
+        proposed: u64,
+    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
+        let mut generations = self
+            .last_by_channel
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(current) = generations.get(&channel).copied() {
+            if proposed < current {
+                return Err(CacheInvalidationPayloadError::OffsetRegressed {
+                    current,
+                    proposed,
+                });
+            }
+        }
+        Ok(generations.insert(channel, proposed))
     }
 }
 
@@ -265,12 +314,41 @@ impl CacheInvalidationObservation {
         matches!(self, Self::UnverifiedFirst { .. } | Self::Gap { .. })
     }
 
+    /// Only a proven contiguous event is safe to apply directly.
     pub fn should_apply(self) -> bool {
-        matches!(
-            self,
-            Self::UnverifiedFirst { .. } | Self::InOrder { .. } | Self::Gap { .. }
-        )
+        matches!(self, Self::InOrder { .. })
     }
+
+    pub fn recovery_generation(self) -> Option<u64> {
+        match self {
+            Self::UnverifiedFirst { generation } => Some(generation),
+            Self::Gap { received, .. } => Some(received),
+            _ => None,
+        }
+    }
+}
+
+fn validate_channel(channel: &str) -> Result<(), CacheInvalidationPayloadError> {
+    if channel.trim().is_empty() {
+        return Err(CacheInvalidationPayloadError::EmptyChannel);
+    }
+    if channel.len() > MAX_INVALIDATION_CHANNEL_BYTES {
+        return Err(CacheInvalidationPayloadError::ChannelTooLarge {
+            length: channel.len(),
+            maximum: MAX_INVALIDATION_CHANNEL_BYTES,
+        });
+    }
+    Ok(())
+}
+
+fn validate_payload_length(length: usize) -> Result<(), CacheInvalidationPayloadError> {
+    if length > MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES {
+        return Err(CacheInvalidationPayloadError::PayloadTooLarge {
+            length,
+            maximum: MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES,
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -298,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn unseeded_first_event_requires_recovery() {
+    fn unseeded_first_event_requires_acknowledged_recovery() {
         let tracker = CacheInvalidationGapTracker::default();
         let observation = tracker.observe(&event(10));
 
@@ -307,22 +385,54 @@ mod tests {
             CacheInvalidationObservation::UnverifiedFirst { generation: 10 }
         );
         assert!(observation.requires_recovery());
-        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(10));
-    }
+        assert!(!observation.should_apply());
+        assert_eq!(observation.recovery_generation(), Some(10));
+        assert_eq!(tracker.last_generation("tenant.invalidate"), None);
 
-    #[test]
-    fn seeded_tracker_detects_gap_duplicate_and_stale_events() {
-        let tracker = CacheInvalidationGapTracker::default();
-        tracker.seed("tenant.invalidate", 9).unwrap();
-
-        assert_eq!(
-            tracker.observe(&event(10)),
-            CacheInvalidationObservation::InOrder { generation: 10 }
-        );
+        tracker
+            .acknowledge_recovery("tenant.invalidate", 10)
+            .unwrap();
         assert_eq!(
             tracker.observe(&event(11)),
             CacheInvalidationObservation::InOrder { generation: 11 }
         );
+    }
+
+    #[test]
+    fn gap_does_not_advance_until_recovery_is_acknowledged() {
+        let tracker = CacheInvalidationGapTracker::default();
+        tracker.seed("tenant.invalidate", 9).unwrap();
+        assert_eq!(
+            tracker.observe(&event(10)),
+            CacheInvalidationObservation::InOrder { generation: 10 }
+        );
+
+        let gap = tracker.observe(&event(14));
+        assert_eq!(
+            gap,
+            CacheInvalidationObservation::Gap {
+                previous: 10,
+                expected: 11,
+                received: 14,
+            }
+        );
+        assert!(gap.requires_recovery());
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(10));
+        assert_eq!(tracker.observe(&event(14)), gap);
+
+        tracker
+            .acknowledge_recovery("tenant.invalidate", 14)
+            .unwrap();
+        assert_eq!(
+            tracker.observe(&event(15)),
+            CacheInvalidationObservation::InOrder { generation: 15 }
+        );
+    }
+
+    #[test]
+    fn duplicate_stale_and_offset_regression_are_rejected_safely() {
+        let tracker = CacheInvalidationGapTracker::default();
+        tracker.seed("tenant.invalidate", 11).unwrap();
         assert_eq!(
             tracker.observe(&event(11)),
             CacheInvalidationObservation::Duplicate { generation: 11 }
@@ -334,17 +444,42 @@ mod tests {
                 received: 9,
             }
         );
-        let gap = tracker.observe(&event(14));
         assert_eq!(
-            gap,
-            CacheInvalidationObservation::Gap {
-                previous: 11,
-                expected: 12,
-                received: 14,
+            tracker.seed("tenant.invalidate", 10).unwrap_err(),
+            CacheInvalidationPayloadError::OffsetRegressed {
+                current: 11,
+                proposed: 10,
             }
         );
-        assert!(gap.requires_recovery());
-        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(14));
+    }
+
+    #[test]
+    fn rejects_oversized_channel_payload_and_key_before_allocation() {
+        let oversized_channel = "c".repeat(MAX_INVALIDATION_CHANNEL_BYTES + 1);
+        assert!(matches!(
+            VersionedCacheInvalidation::new(oversized_channel, "key", 1, 1).unwrap_err(),
+            CacheInvalidationPayloadError::ChannelTooLarge { .. }
+        ));
+
+        let oversized_payload = CacheInvalidationMessage::new(
+            "tenant.invalidate",
+            "x".repeat(MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES + 1),
+        );
+        assert!(matches!(
+            VersionedCacheInvalidation::from_message(&oversized_payload).unwrap_err(),
+            CacheInvalidationPayloadError::PayloadTooLarge { .. }
+        ));
+
+        assert!(matches!(
+            VersionedCacheInvalidation::new(
+                "tenant.invalidate",
+                "k".repeat(MAX_INVALIDATION_KEY_BYTES + 1),
+                1,
+                1,
+            )
+            .unwrap_err(),
+            CacheInvalidationPayloadError::KeyTooLarge { .. }
+        ));
     }
 
     #[test]

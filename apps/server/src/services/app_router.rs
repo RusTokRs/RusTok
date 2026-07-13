@@ -20,6 +20,7 @@ use crate::error::{Error, Result};
 use crate::middleware;
 use crate::middleware::rate_limit::rate_limit_for_paths;
 use crate::services::app_runtime::AppRuntimeBootstrap;
+use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
@@ -180,6 +181,8 @@ pub fn compose_application_router(
             runtime_ctx
         }
     };
+    let server_fn_runtime_ctx =
+        attach_commerce_provider_registries(server_fn_runtime_ctx, &middleware_runtime_ctx);
     #[cfg(feature = "mod-alloy")]
     let server_fn_runtime_ctx = if let Some(alloy_runtime) =
         middleware_runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()

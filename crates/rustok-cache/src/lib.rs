@@ -1,15 +1,25 @@
 mod envelope;
+mod generation;
 mod invalidation;
 mod key;
+mod key_generation;
 mod lease;
+mod negative;
+mod observability;
 mod policy;
+mod refresh;
 mod service;
+mod shared_backend;
 mod typed;
 mod weighted;
 
 pub use envelope::{
     CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+};
+pub use generation::{
+    CacheGenerationError, CacheGenerationSource, CacheGenerationStats, CacheNamespaceGeneration,
+    CacheNamespaceGenerationStore,
 };
 pub use invalidation::{
     CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
@@ -19,7 +29,18 @@ pub use key::{CacheKeyBuilder, CacheKeyError};
 pub use lease::{
     CacheLeaseError, CacheLeaseOptions, CacheLeaseOutcome, DistributedCacheLease,
 };
+pub use negative::{
+    NegativeCacheEntry, NegativeCacheHit, NegativeCachePolicy, NegativeCachePolicyError,
+    DEFAULT_MAX_NEGATIVE_CACHE_BYTES,
+};
+pub use observability::{
+    format_cache_generation_prometheus_metrics, format_cache_refresh_prometheus_metrics,
+};
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
+pub use refresh::{
+    CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
+    CacheRefreshStats, StaleWhileRevalidateResult,
+};
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
     CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,
