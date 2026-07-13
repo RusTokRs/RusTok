@@ -45,7 +45,10 @@ pub use services::{
     ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
     StoreContextService,
 };
-pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
+pub(crate) use services::{
+    FulfillmentOrchestrationError, FulfillmentOrchestrationService,
+    JournaledFulfillmentOrchestrationService,
+};
 
 pub struct CommerceModule;
 
