@@ -18,24 +18,36 @@ status: active
 Fly is the planned Rust page-builder ecosystem. GrapesJS remains the behavioural and
 project-format reference until Fly passes bidirectional compatibility gates.
 
-The architecture is split into distinct ownership zones:
+The architecture has one explicit UI owner:
 
 - `fly` is a standalone, framework-neutral Rust editor engine and GrapesJS-compatible
   project runtime;
-- `fly-leptos` is a generic Leptos adapter that can be embedded in any Leptos frontend;
-- `fly-ui` is the RusTok UI bridge over Fly and `fly-leptos`;
+- `fly-leptos` is a generic Leptos rendering and interaction adapter that can be used by
+  any Leptos application;
+- **Fly UI is the module-owned UI of `rustok-page-builder`**, implemented in
+  `crates/rustok-page-builder/admin`;
+- there is no separate top-level `crates/fly-ui` bridge;
+- `rustok-page-builder/admin` owns the visual editor shell, canvas composition,
+  drag-and-drop experience, generic builder chrome, contribution registry integration
+  and the Page Builder control surface;
 - module-owned UI packages contribute their own blocks, widgets, traits, settings,
   translations, editor renderers and published renderers;
-- every module-owned UI keeps its own FFA `core/transport/ui` boundary and selects the
-  native monolith or GraphQL/headless transport through its own frontend adapter;
+- consumer module UIs such as Pages, Blog and Forum own document loading, saving,
+  lifecycle and their own FFA transports, but they do not own or reimplement the visual
+  editor;
 - `rustok-page-builder` remains the backend FBA provider for validation, sanitization,
   preview, publish, rollout, permissions, persistence and rendering seams;
-- the visual editor lives in frontend UI packages, not in the backend module;
 - no FFI crate is planned until a real non-Rust consumer requires one.
 
-All crates may remain in the RusTok monorepo during development. `fly` and
-`fly-leptos` must nevertheless be designed as independently publishable projects with
-no RusTok dependencies.
+The visual editor starts with the Page Builder module, not with a host application. Hosts
+only mount module-owned surfaces and compose generated contribution factories. If the
+Page Builder module is absent from a build, the editor shell, palette, drag-and-drop and
+builder management UI are absent as well; domain modules keep their non-builder CRUD and
+fallback paths.
+
+`fly` and `fly-leptos` may remain top-level workspace crates while they are developed,
+because they must remain independently reusable and publishable. Their only RusTok-owned
+product UI is `crates/rustok-page-builder/admin`.
 
 ## Current verified baseline
 
@@ -54,65 +66,145 @@ no RusTok dependencies.
 - [x] The current Leptos Pages admin can edit `grapesjs_v1` project data as JSON and
   therefore provides a safe fallback while the visual editor is built.
 - [x] `modules.toml` is the build-time source of truth for enabled platform modules.
+- [x] The programme plan records that Fly UI belongs to `rustok-page-builder/admin`.
 - [ ] Real GrapesJS fixtures and a compatibility matrix are committed.
-- [ ] The Fly crates exist.
-- [ ] A module contribution registry exists.
-- [ ] A frontend control UI for the Page Builder module exists.
+- [ ] The `fly` and `fly-leptos` crates exist.
+- [ ] `rustok-page-builder/admin` exists.
+- [ ] A generated module contribution registry exists.
 
 ## Target architecture
 
 ```text
                                   FRONTEND
 
-  module-owned UI package
-  core + transport facade + framework UI
-        |                     |
-        |                     +-- native/server adapter -> backend module
-        +------------------------ GraphQL adapter       -> backend module
-        |
-        v
-  fly-ui                         RusTok UI bridge and contribution composition
-        |
-        v
-  fly-leptos                     generic Leptos editor adapter
-        |
-        v
-  fly                            project engine, registries, commands and codec
+  consumer module UI
+  Pages / Blog / Forum / Product / Commerce
+       |
+       | owns document load/save/lifecycle and its own FFA transport
+       |
+       +---- mounts -----------------------------------------------+
+                                                                 |
+                                                                 v
+                                            rustok-page-builder/admin
+                                            Fly UI owner
+                                            +-- PageBuilderEditor
+                                            +-- PageBuilderControl
+                                            +-- RusTok theme/i18n/policy
+                                            +-- contribution composition
+                                                      |
+                                                      v
+                                                 fly-leptos
+                                          generic Leptos adapter
+                                                      |
+                                                      v
+                                                     fly
+                                      engine, registries, commands, codec
+
+  enabled module UI packages
+       +-- pages builder contribution --------------------+
+       +-- blog builder contribution ---------------------+--> generated registry
+       +-- forum builder contribution --------------------+         |
+       +-- media asset contribution ----------------------+         v
+                                                     PageBuilderEditor
 
                                   BACKEND
 
   rustok-page-builder
-        |
-        +-- validation / sanitization / preview / publish
-        +-- RBAC / tenant scope / rollout / health
-        +-- persistence and rendering ports
-        +-- may depend on `fly`
-        +-- must not depend on `fly-leptos` or `fly-ui`
+       +-- validation / sanitization / preview / publish
+       +-- RBAC / tenant scope / rollout / health
+       +-- persistence and rendering ports
+       +-- may depend on `fly`
+       +-- must not depend on `fly-leptos` or its admin UI
 ```
+
+The host application remains a technical composition root only. It may receive generated
+wiring that imports enabled module factories and passes them to the Page Builder UI, but it
+must not own editor behaviour, domain widgets, translations or persistence semantics.
+
+## Physical package layout
+
+```text
+crates/
+  fly/                              # standalone framework-neutral engine
+  fly-leptos/                       # standalone generic Leptos adapter
+
+  rustok-page-builder/
+    src/                            # backend FBA provider
+    admin/                          # Fly UI: module-owned Page Builder frontend
+      locales/
+        en.json
+        ru.json
+      src/
+        core/
+        model.rs
+        contribution.rs
+        transport/
+          mod.rs
+          graphql_adapter.rs
+          native_server_adapter.rs
+        editor/
+          mod.rs
+          page_builder_editor.rs
+          registry.rs
+          policies.rs
+        control/
+          mod.rs
+          page_builder_control.rs
+        ui/
+          leptos/
+
+  rustok-pages/
+    admin/
+      src/
+        builder/                    # Pages widget contribution
+        transport/                  # Pages FFA transport
+        ui/                         # mounts PageBuilderEditor
+    storefront/
+      src/builder/                  # Pages published renderers
+
+  rustok-forum/
+    admin/src/builder/              # Forum widgets, traits, translations, preview UI
+    storefront/src/builder/         # Forum published renderers
+```
+
+A separate module `builder-ui` sub-crate is not required initially. Contributions should
+remain inside the existing module-owned admin/storefront UI packages unless a real compile
+cycle or independently reusable contract justifies extraction.
 
 ## Dependency rules
 
 ```text
 fly-leptos -> fly
-fly-ui -> fly-leptos -> fly
-module admin/storefront UI -> fly-ui and/or fly-leptos -> fly
-rustok-page-builder -> fly
+rustok-page-builder-admin -> fly-leptos -> fly
+consumer module admin UI -> rustok-page-builder-admin
+module builder contribution -> fly and framework contribution contracts
+rustok-page-builder backend -> fly
 ```
+
+The generated contribution registry may depend on the enabled module UI packages and pass
+factories into `rustok-page-builder-admin`. `rustok-page-builder-admin` itself must not
+hard-code or directly depend on every optional domain UI package.
 
 Forbidden dependencies:
 
 ```text
 fly -X-> rustok-*
 fly-leptos -X-> rustok-*
-fly-ui -X-> rustok-pages / rustok-blog / rustok-forum / other domain modules
-rustok-page-builder -X-> fly-leptos
-rustok-page-builder -X-> fly-ui
+rustok-page-builder backend -X-> fly-leptos
+rustok-page-builder backend -X-> rustok-page-builder-admin
+rustok-page-builder-admin -X-> rustok-pages-admin / rustok-blog-admin /
+                              rustok-forum-admin / other optional module UIs
+module contribution -X-> host application code
 ```
 
-`fly-ui` is intentionally a RusTok-specific bridge even though its short workspace
-name does not include `rustok`. It must not be presented as the generic Fly UI crate.
-If it is ever published independently, renaming it to `rustok-fly-ui` should be
-considered before release.
+This avoids the cycle:
+
+```text
+consumer UI -> Page Builder UI -> consumer UI
+```
+
+Instead, consumer UI and Page Builder UI meet through Fly contribution contracts and
+generated composition wiring.
 
 ## Reference implementation and compatibility contract
 
@@ -130,18 +222,18 @@ GrapesJS is the behavioural reference for the first stable Fly release:
 | StyleManager | style registry |
 | SelectorManager | selector registry |
 | AssetManager | asset registry and asset-provider ports |
-| StorageManager | project codec plus host-owned persistence |
+| StorageManager | project codec plus consumer-owned persistence |
 | Plugins | `FlyPlugin` |
 | component views | framework renderers in `fly-leptos` and later `fly-dioxus` |
 
-Fly should preserve the same capabilities, but its public API must be idiomatic Rust
-rather than a literal translation of the JavaScript API.
+Fly should preserve the same capabilities, but its public API must be idiomatic Rust rather
+than a literal translation of the JavaScript API.
 
 ### Format reference
 
-The first canonical project format remains `grapesjs_v1`. Test fixtures must be
-captured from the real Next GrapesJS editor by calling `getProjectData()`.
-Hand-written fixture JSON is not sufficient as the only compatibility evidence.
+The first canonical project format remains `grapesjs_v1`. Test fixtures must be captured
+from the real Next GrapesJS editor by calling `getProjectData()`. Hand-written fixture JSON
+is not sufficient as the only compatibility evidence.
 
 Required round trip:
 
@@ -166,7 +258,7 @@ The round trip must preserve:
 
 Unknown data must be preserved even when Fly cannot interpret it.
 
-## Fly ecosystem crates
+## Fly ecosystem layers
 
 ### `fly`
 
@@ -195,59 +287,116 @@ Initial generic blocks should cover at least:
 - basic form, label and input primitives;
 - restricted raw HTML where the backend sanitizer permits it.
 
-`fly` must not contain RusTok domain widgets such as forum topics, blog posts,
-product cards or cart summaries.
+`fly` must not contain RusTok domain widgets such as forum topics, blog posts, product cards
+or cart summaries.
 
 ### `fly-leptos`
 
-`fly-leptos` is a generic Leptos adapter. It owns:
+`fly-leptos` is a generic Leptos adapter. It owns reusable framework mechanics:
 
-- the generic `FlyEditor` component;
 - canvas rendering;
-- block palette;
+- generic block palette primitives;
 - layers tree;
-- trait and property panels;
+- trait and property panel primitives;
 - style controls;
-- toolbar and device viewport controls;
 - drag and drop;
 - selection overlays and resize handles;
+- keyboard interaction;
 - framework renderer registration;
 - editor, preview and published render modes;
 - missing-plugin placeholders.
 
-A clean Leptos application must be able to use only `fly` and `fly-leptos` without
-any RusTok dependency.
+A clean Leptos application must be able to use `fly` and `fly-leptos` without any RusTok
+dependency. This does not make `fly-leptos` the RusTok Page Builder UI; it is the generic
+framework toolkit used by that UI.
 
-### `fly-ui`
+### Fly UI: `rustok-page-builder/admin`
 
-`fly-ui` is the RusTok frontend bridge. It owns:
+Fly UI is the actual UI of the Page Builder module. It owns:
 
+- the public reusable `PageBuilderEditor` component;
+- the public `PageBuilderControl` management surface;
+- complete RusTok editor shell and layout;
+- block palette composition;
+- canvas, layers, trait, style and asset panel composition;
+- toolbar, viewport controls and drag-and-drop product behaviour;
 - RusTok design-system bindings;
 - host locale and i18n resolver bridging;
 - host theme integration;
 - permission, read-only and degraded-state mapping;
 - standard RusTok errors, banners, dialogs and notifications;
-- composition of contributions from enabled module UI packages;
-- conversion between generic Fly events and module-owned UI intents.
+- consumption of the generated contribution registry;
+- build-time and tenant-time contribution filtering;
+- conversion between generic Fly events and consumer-owned frontend intents;
+- generic Page Builder chrome translations;
+- registry, compatibility, preset, health and rollout management UI.
 
-`fly-ui` must not:
+Fly UI must not:
 
-- call GraphQL directly;
-- call Leptos server functions directly;
-- own page, blog, forum or commerce persistence;
-- store domain widget translations;
-- contain domain widgets from optional modules;
-- become the source of truth for tenant or RBAC policy.
+- own Pages, Blog, Forum or Commerce document persistence;
+- own domain widget translations;
+- contain widgets from optional modules directly;
+- call consumer module GraphQL or server functions;
+- become the source of truth for tenant or RBAC policy;
+- save or publish a consumer document without the consumer module lifecycle;
+- expose contributions from modules absent from the build.
 
 ### Later `fly-dioxus`
 
-`fly-dioxus` is deferred until the Fly engine, plugin API and Leptos adapter are
-stable. It must reuse the same `fly` model and plugin metadata without duplicating
-domain logic.
+`fly-dioxus` is deferred until the Fly engine and plugin API are stable. It must reuse the
+same `fly` model and plugin metadata without duplicating domain logic.
+
+## Public Fly UI surfaces
+
+### `PageBuilderEditor`
+
+The editor is mounted by a consumer module UI and receives:
+
+- project data or a `FlyEditor` handle;
+- the effective contribution registry;
+- locale, theme and host context;
+- permission and capability state;
+- document-specific editor policy;
+- callbacks or typed intents for project changes, preview, save requests and publish
+  requests.
+
+The editor emits intents; it does not decide the persistence lifecycle.
+
+Illustrative flow:
+
+```text
+rustok-pages/admin
+  -> loads Page through Pages transport facade
+  -> creates editor input
+  -> mounts PageBuilderEditor
+  -> receives project-change intent
+  -> saves through Pages transport facade
+```
+
+### `PageBuilderControl`
+
+The control surface is a module-owned administrative UI. Through the Page Builder module's
+own FFA adapters it manages:
+
+- installed Fly core and module contribution inventory;
+- build-time availability versus tenant runtime enablement;
+- plugin compatibility and missing-provider diagnostics;
+- global and tenant-level core-block allowlists;
+- module-widget visibility policy within the enabled set;
+- default presets and starter templates;
+- project compatibility and migration diagnostics;
+- provider health, degraded mode and rollout state;
+- effective capability and permission information;
+- links to module-owned widget settings where ownership belongs elsewhere.
+
+It must not edit Pages, Blog, Forum, Product or Commerce documents directly.
+
+When implemented, `rustok-page-builder/rustok-module.toml` must change from
+`capability_only` to the correct UI classification and declare the admin UI package.
 
 ## Extension and plugin model
 
-Fly owns the extension mechanism, not the full catalogue of business widgets.
+Fly owns the extension mechanism, not the complete catalogue of business widgets.
 
 A plugin must be able to register:
 
@@ -270,7 +419,7 @@ pub trait FlyPlugin {
 }
 ```
 
-Every custom component identifier must be namespaced and stable, for example:
+Every custom component identifier must be namespaced and stable:
 
 ```text
 rustok.forum.latest_topics
@@ -278,8 +427,7 @@ rustok.blog.featured_post
 rustok.product.product_grid
 ```
 
-Each stored custom component must carry enough information to diagnose and migrate
-it safely:
+Each stored custom component must carry enough information to diagnose and migrate it:
 
 ```json
 {
@@ -294,8 +442,8 @@ it safely:
 }
 ```
 
-Provider-owned migrations must be explicit and versioned. Fly may orchestrate a
-migration but must not invent domain migrations for a module.
+Provider-owned migrations must be explicit and versioned. Fly may orchestrate a migration
+but must not invent domain migrations for a module.
 
 If the provider plugin is unavailable, Fly must:
 
@@ -307,18 +455,22 @@ If the provider plugin is unavailable, Fly must:
 
 ## Module-owned widget contract
 
-Module UI packages own their builder widgets. The builder does not store all RusTok
-features centrally.
+Module UI packages own their builder widgets. The Page Builder UI owns the editor but does
+not centrally store all RusTok features.
 
 A module contribution may include these roles:
 
-- `editor_host` — mounts a complete Fly editor for a module-owned document or template;
+- `document_consumer` — owns a document/template lifecycle and mounts
+  `PageBuilderEditor` when the Page Builder module is available;
 - `block_provider` — contributes palette blocks and component types;
 - `trait_provider` — contributes selectors and custom property editors;
 - `asset_provider` — contributes asset browsing or selection;
 - `editor_renderer` — renders a widget inside the editing canvas;
 - `storefront_renderer` — renders the published widget;
 - `control_contribution` — contributes diagnostics or policy UI without a visual block.
+
+Only `rustok-page-builder/admin` is the `editor_owner`. Consumer modules are not editor
+hosts in the ownership sense; they mount the editor for documents they own.
 
 A typical module UI layout is:
 
@@ -358,14 +510,14 @@ All widget translations belong to the contributing module UI package:
 - editor preview text;
 - published rendering labels where applicable.
 
-Fly owns translations only for generic editor chrome. `fly-ui` owns translations only
-for RusTok-wide integration states. A forum widget must never require a forum string
-inside Fly or `fly-ui`.
+`rustok-page-builder/admin` owns translations only for generic editor chrome and Page
+Builder integration/control states. A Forum widget must never require a Forum string in
+Fly, `fly-leptos` or the Page Builder UI package.
 
 ## FFA boundary for every module UI
 
-Each module-owned UI is responsible for its own FFA boundary. The visual widget is
-shared while transport is selected by the module frontend adapter.
+Each module-owned UI is responsible for its own FFA boundary. The visual widget is shared
+while transport is selected by the module frontend adapter.
 
 ```text
 module widget UI
@@ -378,58 +530,16 @@ module widget UI
 Rules:
 
 - UI components do not branch directly on GraphQL versus server functions;
-- `fly`, `fly-leptos` and `fly-ui` never select domain transports;
+- `fly`, `fly-leptos` and Page Builder UI never select consumer domain transports;
 - both transports return transport-neutral module-owned types;
-- native and GraphQL paths must apply identical domain and authorization semantics;
+- native and GraphQL paths apply identical domain and authorization semantics;
 - locale, tenant and auth context come from the host contract;
-- widget preview may fetch live module data only through the module transport facade;
-- dynamic widgets store query/configuration traits, not a snapshot of resolved domain data;
-- a module can use the same widget UI in embedded and headless Leptos profiles.
+- widget preview may fetch live data only through its module transport facade;
+- dynamic widgets store query/configuration traits, not resolved domain snapshots;
+- the same widget UI works in embedded and headless-compatible profiles.
 
-## Frontend management of the builder
-
-The backend `rustok-page-builder` module currently has `ui_classification =
-"capability_only"`. A later phase adds a module-owned admin frontend at:
-
-```text
-crates/rustok-page-builder/admin/
-  src/
-    core/
-    model.rs
-    transport/
-      graphql_adapter.rs
-      native_server_adapter.rs
-    ui/
-      leptos/
-```
-
-This is a builder control surface, not the page editor itself.
-
-It will manage through its own FFA adapters:
-
-- installed Fly core and module contribution inventory;
-- build-time availability versus tenant runtime enablement;
-- plugin compatibility and missing-provider diagnostics;
-- global and tenant-level core-block allowlists;
-- module-widget visibility policy within the set of enabled modules;
-- default presets and starter templates;
-- project compatibility and migration diagnostics;
-- provider health, degraded mode and rollout state;
-- effective capability and permission information;
-- links to module-owned widget settings where those settings belong to another module.
-
-It must not:
-
-- edit pages, posts, forum layouts or product layouts directly;
-- own domain widgets;
-- own module widget translations;
-- replace the consumer module UI;
-- bypass backend RBAC, rollout or settings services;
-- expose widgets from modules that are absent from the build.
-
-When this control UI is implemented, `rustok-page-builder/rustok-module.toml` must be
-updated from `capability_only` to the correct UI classification and declare the admin
-UI package. The change must be accompanied by manifest and UI package verification.
+The Page Builder control surface has its own separate FFA facade because it talks to the
+`rustok-page-builder` backend. That facade is not reused for Pages, Blog or Forum data.
 
 ## Composition and enablement
 
@@ -440,40 +550,79 @@ There are two distinct enablement boundaries.
 `modules.toml` determines which module code and UI contributions are available in the
 build. Contributions from absent modules must not enter the binary or frontend bundle.
 
+If `page_builder` is absent:
+
+- `rustok-page-builder/admin` is not mounted;
+- `fly-leptos` is not pulled into RusTok through the Page Builder feature path;
+- no Page Builder palette, canvas or drag-and-drop UI is available;
+- consumer modules retain normal CRUD, read and fallback surfaces;
+- existing builder project data is not deleted or rewritten merely because the editor is
+  unavailable.
+
 ### Runtime tenant composition
 
 Within the build-time set, tenant module enablement and builder policy determine which
-contributions are visible and usable for a tenant.
+contributions are visible and usable.
 
-The generated contribution registry should therefore compose only build-available
-plugins, while the frontend control state filters them by tenant and permissions.
+The generated registry composes only build-available factories. Fly UI then filters the
+available set by tenant module state, permissions, block allowlists and builder capability
+state.
 
-A project containing a component from a currently disabled or unavailable module must
-remain lossless and display a diagnostic placeholder. Runtime disablement must not
-delete project nodes.
+A project containing a component from a disabled or unavailable module remains lossless
+and displays a diagnostic placeholder. Runtime disablement must not delete project nodes.
+
+## Contribution registry and host wiring
+
+Each contributing module UI exports a stable factory, for example:
+
+```rust
+pub fn builder_contribution() -> ModuleBuilderContribution;
+```
+
+Manifest metadata identifies the factory and supported roles. Build/code generation creates
+a registry from only enabled modules. The registry is supplied to Page Builder UI through
+host/module composition context.
+
+The host is allowed to perform only mechanical wiring:
+
+```text
+enabled module factories
+  -> generated registry
+  -> PageBuilderUiContext
+  -> PageBuilderEditor
+```
+
+The host must not:
+
+- define widget schemas;
+- translate module widgets;
+- select widget transports;
+- implement editor commands;
+- own builder policy;
+- save consumer documents.
 
 ## Module UI support matrix
 
-The matrix defines the planned initial ownership. It is not permission to place all
-listed widgets in Fly core.
+The matrix defines planned initial ownership. It is not permission to move the listed
+widgets into Fly core or Page Builder UI.
 
 | Module UI | Planned role | Initial contribution scope | Delivery wave |
 |---|---|---|---|
-| `rustok-page-builder/admin` | `control_surface` | registry, policies, presets, compatibility, health and rollout management | Control UI phase |
-| `rustok-pages/admin` | `editor_host`, `block_provider`, `trait_provider` | page links, menus, reusable sections and full page editing | Pilot |
+| `rustok-page-builder/admin` | `editor_owner`, `control_surface`, core `block_provider` | full Fly UI, generic blocks, registry, policies, presets, compatibility, health and rollout management | Fly UI phase |
+| `rustok-pages/admin` | `document_consumer`, `block_provider`, `trait_provider` | full page editing, page links, menus and reusable sections | Pilot |
 | `rustok-pages/storefront` | `storefront_renderer` | published page layouts and Pages-owned widgets | Pilot publish |
 | `rustok-media/admin` | `asset_provider`, `block_provider` | media picker, image, gallery and video asset integration | Wave A |
-| `rustok-blog/admin` | `editor_host`, `block_provider`, `trait_provider` | latest posts, featured post, category feed, author card and blog templates | Wave B |
+| `rustok-blog/admin` | `document_consumer`, `block_provider`, `trait_provider` | blog templates, latest posts, featured post, category feed and author card | Wave B |
 | `rustok-blog/storefront` | `storefront_renderer` | published blog widgets and templates | Wave B |
-| `rustok-forum/admin` | `editor_host`, `block_provider`, `trait_provider` | latest topics, popular discussions, category list, topic feed and forum templates | Wave B |
+| `rustok-forum/admin` | `document_consumer`, `block_provider`, `trait_provider` | forum templates, latest topics, popular discussions, category list and topic feed | Wave B |
 | `rustok-forum/storefront` | `storefront_renderer` | published forum widgets and templates | Wave B |
-| `rustok-product/admin` | `block_provider`, `trait_provider`, optional `editor_host` | product card, product grid, recommendations, category carousel and product templates | Wave B |
+| `rustok-product/admin` | `block_provider`, `trait_provider`, optional `document_consumer` | product card, product grid, recommendations, category carousel and product templates | Wave B |
 | `rustok-product/storefront` | `storefront_renderer` | published product widgets and templates | Wave B |
 | `rustok-pricing/admin` | `trait_provider`, `block_provider` | price display configuration and pricing-table widgets | Wave B |
 | `rustok-pricing/storefront` | `storefront_renderer` | published price and pricing-table rendering | Wave B |
-| `rustok-taxonomy` UI contribution | `trait_provider`, optional `block_provider` | taxonomy selectors, category navigation and taxonomy query configuration | Wave B when a manifest-backed UI contribution exists |
-| `rustok-seo/admin` and owner SEO panels | `control_contribution` | SEO inspector and metadata settings; no generic visual block ownership by default | Wave B |
-| `rustok-commerce/admin` | `editor_host`, `block_provider` | merchandising layouts, cart summary, checkout CTA and commerce composition | Wave C |
+| `rustok-taxonomy` UI contribution | `trait_provider`, optional `block_provider` | taxonomy selectors, category navigation and query configuration | Wave B after a manifest-backed UI owner exists |
+| owner SEO panels and `rustok-seo/admin` support | `control_contribution` | SEO inspector and metadata settings; no generic visual block ownership by default | Wave B |
+| `rustok-commerce/admin` | `document_consumer`, `block_provider` | merchandising layouts, cart summary, checkout CTA and commerce composition | Wave C |
 | `rustok-commerce/storefront` | `storefront_renderer` | published commerce widgets | Wave C |
 | `rustok-search/admin` | `block_provider`, `trait_provider` | search box, result list and facet configuration | Wave C |
 | `rustok-search/storefront` | `storefront_renderer` | published search widgets | Wave C |
@@ -481,11 +630,11 @@ listed widgets in Fly core.
 | `rustok-profiles` UI contribution | future `block_provider` | member, author and profile widgets after a manifest-backed UI package exists | Wave C |
 | `rustok-region` UI packages | `trait_provider` where required | region and availability selectors, not a default block catalogue | As needed |
 | `rustok-channel/admin` | `trait_provider` where required | channel targeting and visibility controls | As needed |
-| `rustok-workflow/admin` | `control_contribution` | publish workflow/status controls, not domain visual blocks by default | As needed |
+| `rustok-workflow/admin` | `control_contribution` | publish workflow and status controls, not domain visual blocks by default | As needed |
 
-Modules not listed as initial providers, including order, payment, fulfillment,
-inventory and customer, must not expose privileged operational actions as visual page
-blocks by default. Any later contribution requires its own security review, UI ownership,
+Modules not listed as initial providers, including Order, Payment, Fulfillment, Inventory
+and Customer, must not expose privileged operational actions as visual page blocks by
+default. Any later contribution requires its own security review, UI ownership,
 published-renderer contract and FFA parity tests.
 
 ## Runtime flows
@@ -493,16 +642,16 @@ published-renderer contract and FFA parity tests.
 ### Editing a document
 
 ```text
-consumer module UI loads project through its transport facade
-  -> constructs Fly editor state
-  -> fly-ui applies RusTok context and policies
-  -> fly-leptos renders the editor
-  -> module plugins contribute widgets and editors
+consumer module UI loads project through its own transport facade
+  -> creates document editor input
+  -> mounts rustok-page-builder/admin::PageBuilderEditor
+  -> Fly UI applies RusTok context, policies and generated contributions
+  -> fly-leptos renders generic interaction primitives
   -> Fly emits project-change and UI-intent events
   -> consumer module UI decides when and how to save
 ```
 
-Fly does not save a page by itself.
+Fly UI does not save a Page, Post, Forum template or Product template by itself.
 
 ### Previewing a dynamic module widget
 
@@ -517,59 +666,66 @@ fly-leptos invokes the registered module editor renderer
 
 ```text
 consumer module UI
-  -> module transport facade
-  -> rustok-page-builder capability endpoint where builder validation/publish is required
+  -> consumer module transport facade
+  -> rustok-page-builder capability endpoint where validation/publish is required
   -> owner module persistence and lifecycle service
-  -> storefront renderer resolves module-owned widgets
+  -> module-owned storefront renderer resolves published widgets
 ```
 
 The backend remains authoritative for permissions, sanitization, tenant scope,
 idempotency and publish state.
 
-### Missing module
+### Missing or disabled Page Builder module
+
+```text
+consumer module UI starts without page_builder
+  -> no PageBuilderEditor mount is available
+  -> visual palette/canvas/drag-and-drop are absent
+  -> consumer uses its documented fallback or read-only path
+  -> canonical project data remains untouched
+```
+
+### Missing widget provider
 
 ```text
 project contains rustok.forum.latest_topics
-  -> forum contribution unavailable
+  -> Forum contribution unavailable
   -> Fly retains the raw node
-  -> editor shows a missing-provider placeholder
+  -> editor shows a missing-provider placeholder when the editor is available
   -> save remains lossless
-  -> explicit deletion is allowed only by user action
+  -> deletion is allowed only by explicit user action
 ```
 
 ## Project and widget versioning
 
 - `grapesjs_v1` remains the outer project contract during the compatibility period.
 - Fly crate versions and project-contract versions are separate concerns.
-- Core Fly block identifiers are stable after the first compatibility release.
+- Core Fly block identifiers become stable after the first compatibility release.
 - Each module widget has a stable namespaced type and independent schema version.
 - Provider modules own widget migrations.
-- Migration must be explicit, observable and reversible where possible.
-- A project must record diagnostics when a widget schema is newer than the installed
-  provider understands.
+- Migration is explicit, observable and reversible where possible.
+- A project records diagnostics when a widget schema is newer than the installed provider
+  understands.
 - Generated HTML/CSS may be cached as a derived publish artifact but must not replace
   canonical project data.
 
 ## Security and operational requirements
 
-The following requirements are part of the plan and must not be deferred as implicit
-implementation details:
-
 - arbitrary component scripts are disabled by default;
 - raw HTML, URLs, attributes and CSS pass backend sanitization policy;
-- editor preview is not treated as trusted published output;
+- editor preview is not trusted published output;
 - dynamic widgets cannot bypass module RBAC through frontend preview calls;
 - asset selection integrates with module-owned media permissions;
-- tenant context is mandatory for module widget data access;
-- publish writes require existing deadline and idempotency semantics;
+- tenant context is mandatory for widget data access;
+- publish writes require deadline and idempotency semantics;
 - missing or disabled plugins never cause silent data deletion;
+- disabling Page Builder never causes silent project conversion or deletion;
 - widget dependency cycles are rejected by registry validation;
-- plugin and renderer panics/errors become typed diagnostics, not editor-wide corruption;
+- plugin and renderer panics/errors become typed diagnostics;
 - published dynamic widgets define cache keys and invalidation ownership;
-- editor and storefront renderers must have parity tests for significant states;
-- accessibility and keyboard interaction are part of the generic editor acceptance gate;
-- project size limits and history limits must be configurable to prevent browser memory
-  exhaustion.
+- editor and storefront renderers have parity tests for significant states;
+- accessibility and keyboard interaction are part of the editor acceptance gate;
+- project-size and history limits are configurable to prevent browser memory exhaustion.
 
 ## Implementation phases
 
@@ -580,29 +736,28 @@ implementation details:
 - [x] Keep `grapesjs_v1` as the current backend and consumer contract.
 - [x] Preserve the existing `rustok-page-builder` FBA provider boundary.
 - [x] Preserve the Pages JSON editor as a fallback.
-- [ ] Add an ADR recording the Fly ownership and dependency decisions.
+- [x] Record in this programme that Fly UI is owned by `rustok-page-builder/admin`.
+- [ ] Add an ADR recording the final ownership and dependency decisions.
 - [ ] Capture real GrapesJS fixtures for basic page, multi-page, styles/selectors,
   assets, traits, custom components and plugin metadata.
-- [ ] Record the GrapesJS version and enabled plugins used to generate each fixture.
-- [ ] Add a Node-based compatibility harness that reloads Fly-produced fixtures through
+- [ ] Record the GrapesJS version and enabled plugins for every fixture.
+- [ ] Add a Node compatibility harness that reloads Fly-produced fixtures through
   `loadProjectData()`.
-- [ ] Record the module UI support matrix in module-local plans before implementation
-  begins in each module.
-- [ ] Add a source-level guard that rejects RusTok dependencies from `fly` and
-  `fly-leptos`.
+- [ ] Record the support matrix in module-local plans before each module implementation.
+- [ ] Add source guards rejecting RusTok dependencies from `fly` and `fly-leptos`.
 
-**Phase gate:** fixtures and compatibility expectations are reproducible in CI, and the
-reference Next editor remains unchanged in behaviour.
+**Phase gate:** fixtures and compatibility expectations are reproducible in CI, ownership
+is captured by ADR, and the reference Next editor remains unchanged in behaviour.
 
 ### Phase 1 — `fly` lossless project model and codec
 
 - [ ] **Phase status:** not started.
-- [ ] Create `crates/fly` with its own README, docs and implementation plan.
+- [ ] Create `crates/fly` with README, docs and implementation plan.
 - [ ] Implement a raw lossless project representation.
-- [ ] Implement typed accessors for pages, frames, components, styles, selectors,
-  assets and traits.
+- [ ] Implement typed accessors for pages, frames, components, styles, selectors, assets
+  and traits.
 - [ ] Preserve unknown fields at every extensible level.
-- [ ] Implement deterministic serialization without requiring semantic normalization.
+- [ ] Implement deterministic serialization without semantic normalization.
 - [ ] Implement traversal and validation reports.
 - [ ] Add property-based and fixture round-trip tests.
 - [ ] Confirm no dependency on any `rustok-*`, Leptos or backend crate.
@@ -619,22 +774,21 @@ GrapesJS -> Fly -> GrapesJS round trip.
 - [ ] Implement `FlyPlugin` and plugin manifest contracts.
 - [ ] Implement stable namespaced component IDs and schema versions.
 - [ ] Implement unknown-component and missing-provider handling.
-- [ ] Implement initial generic block set.
+- [ ] Implement the initial generic block set.
 - [ ] Implement plugin dependency and duplicate-ID validation.
-- [ ] Add tests proving that projects can be built and mutated only through the Fly API.
+- [ ] Add tests constructing and mutating projects only through the Fly API.
 
 **Phase gate:** a non-visual Rust test can construct, edit, undo, redo, serialize and
-reload a project containing both core and custom plugin components.
+reload a project containing core and custom plugin components.
 
 ### Phase 3 — Backend Fly integration
 
 - [ ] **Phase status:** not started.
-- [ ] Add a dependency from `rustok-page-builder` to `fly` only.
+- [ ] Add a dependency from the `rustok-page-builder` backend to `fly` only.
 - [ ] Replace synthetic tree inspection with Fly traversal.
-- [ ] Route project validation through Fly while preserving the current typed error
-  catalogue.
+- [ ] Route project validation through Fly while preserving the typed error catalogue.
 - [ ] Connect Fly-backed preview/rendering behind the existing rendering adapter seam.
-- [ ] Preserve the public FBA request/response envelopes and capability names.
+- [ ] Preserve public FBA request/response envelopes and capability names.
 - [ ] Keep sanitization and authorization authoritative in the backend module.
 - [ ] Add runtime tests using projects saved by the Next GrapesJS editor.
 
@@ -645,69 +799,77 @@ inspects, previews and publishes through Fly without a public contract break.
 
 - [ ] **Phase status:** not started.
 - [ ] Create `crates/fly-leptos` with no RusTok dependencies.
-- [ ] Implement the generic editor shell, canvas, layers and block palette.
+- [ ] Implement canvas, layers and block palette primitives.
 - [ ] Implement selection, drag/drop, resize and keyboard interaction.
-- [ ] Implement generic trait, style and asset panels.
+- [ ] Implement generic trait, style and asset panel primitives.
 - [ ] Implement framework renderer registration for plugin components.
 - [ ] Implement editor, preview and published render modes.
 - [ ] Implement the missing-plugin placeholder.
 - [ ] Add an independent example application outside RusTok module UI packages.
 - [ ] Add accessibility and browser interaction tests.
 
-**Phase gate:** a clean Leptos application can embed a working Fly editor using only
-`fly` and `fly-leptos`.
+**Phase gate:** a clean Leptos application can build an editor using only `fly` and
+`fly-leptos`, without importing RusTok.
 
-### Phase 5 — RusTok `fly-ui` bridge and generated contribution registry
+### Phase 5 — Fly UI in `rustok-page-builder/admin`
 
 - [ ] **Phase status:** not started.
-- [ ] Create `crates/fly-ui` as a RusTok-specific bridge.
-- [ ] Integrate RusTok UI primitives, theme and host context.
-- [ ] Integrate the framework-neutral i18n core through the Leptos i18n adapter.
-- [ ] Map permissions, read-only mode and degraded capabilities into Fly UI state.
-- [ ] Define the module UI contribution contract.
+- [ ] Create `crates/rustok-page-builder/admin` with module-standard
+  `core/model/transport/ui` FFA structure.
+- [ ] Implement the public `PageBuilderEditor` component.
+- [ ] Compose generic Fly/Leptos primitives into the complete RusTok editor shell.
+- [ ] Integrate RusTok UI primitives, theme, host context and i18n.
+- [ ] Map permissions, read-only mode and degraded capabilities into editor state.
+- [ ] Implement generic editor chrome translations in the Page Builder UI package.
+- [ ] Export typed project-change, preview, save-request and publish-request intents.
+- [ ] Verify the editor performs no consumer module persistence or transport calls.
+- [ ] Update `rustok-page-builder/rustok-module.toml` to declare the admin UI package and
+  correct UI classification.
+- [ ] Add manifest and module UI package verification.
+
+**Phase gate:** the Page Builder module owns and exports a working Fly UI editor. Removing
+the module from composition removes its editor, palette and drag-and-drop surfaces without
+breaking consumer CRUD.
+
+### Phase 6 — Contribution registry and Page Builder control UI
+
+- [ ] **Phase status:** not started.
+- [ ] Define the module UI contribution contract and stable factory signature.
 - [ ] Extend module manifest metadata for builder contributions.
-- [ ] Generate the build-time contribution registry from enabled modules.
-- [ ] Filter build-available contributions by tenant runtime state.
-- [ ] Verify that `fly-ui` has no direct dependency on optional domain modules.
-- [ ] Verify that `fly-ui` performs no GraphQL or server-function calls.
-
-**Phase gate:** a generated RusTok registry composes only enabled module contributions,
-and the bridge can mount them without owning their widgets or transports.
-
-### Phase 6 — Frontend Page Builder control UI
-
-- [ ] **Phase status:** not started.
-- [ ] Create `crates/rustok-page-builder/admin` with `core/model/transport/ui` FFA
-  structure.
-- [ ] Add native/server and GraphQL adapters with semantic parity.
+- [ ] Generate the build-time registry from enabled modules.
+- [ ] Pass the registry into Fly UI without direct optional-module dependencies.
+- [ ] Filter build-available contributions by tenant runtime state and permissions.
+- [ ] Implement the public `PageBuilderControl` surface.
+- [ ] Add Page Builder native/server and GraphQL adapters with semantic parity.
 - [ ] Expose registry inventory, compatibility diagnostics and provider health.
 - [ ] Expose core-block allowlists and module-widget visibility policy.
 - [ ] Expose presets and starter-template management.
 - [ ] Expose migration diagnostics and explicit migration actions.
 - [ ] Show effective rollout, degraded-state and permission information.
-- [ ] Update `rustok-page-builder/rustok-module.toml` UI classification and admin UI
-  wiring.
-- [ ] Add manifest, FFA and headless parity verification.
+- [ ] Add FFA and headless parity verification for the control surface.
 
-**Phase gate:** the same module-owned control UI works in embedded Leptos and
-headless-compatible profiles, and all mutations still pass through backend policy and
+**Phase gate:** Fly UI composes only enabled contributions, and the same Page Builder
+control UI works in embedded and headless-compatible profiles through backend policy and
 RBAC.
 
 ### Phase 7 — Pages visual-editor pilot
 
 - [ ] **Phase status:** not started.
-- [ ] Add a Pages-owned builder contribution package inside `rustok-pages/admin`.
+- [ ] Add a Pages-owned builder contribution inside `rustok-pages/admin`.
 - [ ] Add Pages blocks, traits, editor renderers and translations.
-- [ ] Mount `fly-ui`/`fly-leptos` in the existing Pages admin UI.
+- [ ] Mount `rustok-page-builder-admin::PageBuilderEditor` in Pages admin.
 - [ ] Keep the JSON textarea as an explicit debug/fallback surface during rollout.
 - [ ] Keep page metadata and lifecycle ownership in `rustok-pages`.
 - [ ] Keep native/server and GraphQL paths behind the Pages transport facade.
+- [ ] Ensure Pages admin works without the Page Builder feature using its documented
+  fallback path.
 - [ ] Add Next GrapesJS <-> Leptos Fly cross-editor round-trip tests.
 - [ ] Add tenant fallback tests for `all_on`, `publish_off`, `preview_off` and
   `builder_off`.
 
-**Phase gate:** the same page can be opened, edited and saved alternately by the Next
-GrapesJS editor and Leptos Fly without loss or lifecycle regression.
+**Phase gate:** the same Page can be opened, edited and saved alternately by Next
+GrapesJS and Leptos Fly without loss, while a build without Page Builder retains Pages
+CRUD without visual editing.
 
 ### Phase 8 — Module contribution rollout
 
@@ -721,49 +883,49 @@ GrapesJS editor and Leptos Fly without loss or lifecycle regression.
 
 #### Wave B — primary content and commerce entities
 
-- [ ] `rustok-blog` admin/storefront contributions.
-- [ ] `rustok-forum` admin/storefront contributions.
+- [ ] `rustok-blog` admin/storefront contributions and optional document editing.
+- [ ] `rustok-forum` admin/storefront contributions and optional layout editing.
 - [ ] `rustok-product` admin/storefront contributions.
 - [ ] `rustok-pricing` admin/storefront contributions.
-- [ ] taxonomy selector contribution after a manifest-backed UI owner is established.
-- [ ] owner-module SEO inspector contributions.
+- [ ] Taxonomy selector contribution after a manifest-backed UI owner is established.
+- [ ] Owner-module SEO inspector contributions.
 
 #### Wave C — composite and discovery widgets
 
 - [ ] `rustok-commerce` admin/storefront contributions.
 - [ ] `rustok-search` admin/storefront contributions.
-- [ ] comments contribution after a published-renderer contract exists.
-- [ ] profiles contribution after a manifest-backed UI package exists.
+- [ ] Comments contribution after a published-renderer contract exists.
+- [ ] Profiles contribution after a manifest-backed UI package exists.
 
 For every contributing module:
 
 - [ ] plugin IDs and schema versions are documented;
 - [ ] translations live in the module UI package;
-- [ ] editor renderer and published renderer are owned by the module;
+- [ ] editor renderer and published renderer are module-owned;
 - [ ] native and GraphQL FFA adapters have parity tests;
 - [ ] missing-provider preservation is tested;
+- [ ] behaviour without the Page Builder module is documented and tested;
 - [ ] local module docs and implementation plans are updated;
 - [ ] security and cache ownership are recorded.
 
-**Phase gate:** disabling a module removes its contributions from the active palette
-without deleting existing project nodes, and each enabled module passes editor/published
-renderer parity.
+**Phase gate:** disabling a domain module removes its contributions without deleting
+project nodes, and disabling Page Builder removes visual editing while preserving consumer
+fallbacks and canonical project data.
 
 ### Phase 9 — Published rendering and rollout completion
 
 - [ ] **Phase status:** not started.
-- [ ] Define a shared versioned widget configuration contract between admin and
-  storefront packages.
-- [ ] Compile and cache safe derived HTML/CSS where useful without replacing project
-  data.
+- [ ] Define a shared versioned widget configuration contract between admin and storefront
+  packages.
+- [ ] Compile and cache safe derived HTML/CSS where useful without replacing project data.
 - [ ] Complete module-owned storefront renderers.
 - [ ] Define cache keys and invalidation events for dynamic widgets.
 - [ ] Correlate editor save -> builder publish -> owner lifecycle -> storefront read.
 - [ ] Replace synthetic Wave evidence with observed tenant packets.
 - [ ] Complete rollback and legacy-block bridge exit criteria.
 
-**Phase gate:** preview and storefront output have verified parity for pilot modules,
-and a tenant rollout can be promoted or rolled back without redeploying.
+**Phase gate:** preview and storefront output have verified parity for pilot modules, and a
+tenant rollout can be promoted or rolled back without redeploying.
 
 ### Phase 10 — Dioxus adapter
 
@@ -771,10 +933,12 @@ and a tenant rollout can be promoted or rolled back without redeploying.
 - [ ] Create `fly-dioxus` only after Fly and plugin contracts are stable.
 - [ ] Reuse module core models and contribution metadata.
 - [ ] Add Dioxus-specific renderers without duplicating domain or transport semantics.
+- [ ] Implement a Dioxus Page Builder UI adapter owned by the Page Builder module when a
+  Dioxus admin host exists.
 - [ ] Verify behaviour against the Leptos adapter.
 
-**Phase gate:** at least one complex module contribution works through both Leptos and
-Dioxus adapters with the same project data and domain behaviour.
+**Phase gate:** at least one complex module contribution works through Leptos and Dioxus
+with the same project data and domain behaviour.
 
 ### Phase 11 — Optional repository extraction
 
@@ -782,11 +946,12 @@ Dioxus adapters with the same project data and domain behaviour.
 - [ ] Confirm `fly` and `fly-leptos` have no RusTok dependency leakage.
 - [ ] Stabilize public API and semantic versioning.
 - [ ] Decide license and publication policy.
-- [ ] Extract to a separate repository only when independent release cadence provides
-  more value than monorepo development.
+- [ ] Extract only `fly` and framework-generic adapters when an independent release cadence
+  provides more value than monorepo development.
+- [ ] Keep RusTok Fly UI in `rustok-page-builder/admin`.
 
-**Phase gate:** extraction requires no RusTok code refactor, only workspace and release
-wiring changes.
+**Phase gate:** extraction requires no Page Builder UI ownership change and no consumer
+module refactor, only dependency and release wiring changes.
 
 ## Verification programme
 
@@ -795,7 +960,6 @@ Expected commands as crates and scripts are introduced:
 ```text
 cargo test -p fly
 cargo test -p fly-leptos
-cargo test -p fly-ui
 cargo test -p rustok-page-builder
 cargo test -p rustok-page-builder-admin
 cargo test -p rustok-pages-admin
@@ -816,6 +980,8 @@ New verification suites must cover:
 - component schema migration;
 - undo/redo correctness;
 - build-time module composition;
+- absence of Fly UI and drag-and-drop when Page Builder is not composed;
+- consumer CRUD/fallback behaviour without Page Builder;
 - runtime tenant filtering;
 - native/server and GraphQL FFA parity;
 - editor and storefront renderer parity;
@@ -829,10 +995,15 @@ New verification suites must cover:
 
 ## Previously omitted concerns now captured
 
-The implementation must explicitly account for:
+The implementation explicitly accounts for:
 
-- the distinction between a full editor host and a widget-only provider;
-- a frontend control UI for the Page Builder backend module;
+- Fly UI as the module-owned UI of Page Builder rather than a generic top-level bridge;
+- the Page Builder module as the only visual editor owner;
+- consumer modules as document lifecycle owners and widget providers;
+- removal of visual editing and drag-and-drop when Page Builder is absent;
+- preservation of consumer CRUD and canonical project data without Page Builder;
+- generated composition without direct optional-module dependencies;
+- a frontend Page Builder control surface;
 - build-time composition versus tenant runtime enablement;
 - module-owned translations;
 - module-owned editor and storefront renderers;
@@ -854,5 +1025,5 @@ The implementation must explicitly account for:
   rollout task is marked complete here.
 - Contract changes require matching verification-script changes in the same iteration.
 - Phase checkboxes are updated only from merged code and reproducible evidence.
-- After each phase, search for and remove outdated wording that presents the builder as
-  either GrapesJS-only or backend-owned UI.
+- After each phase, search for and remove outdated wording that presents the editor as
+  host-owned, consumer-owned, GrapesJS-only or separate from the Page Builder UI module.
