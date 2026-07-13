@@ -30,6 +30,8 @@ pub fn AiAgentPanel(
                             <div class="text-xs text-muted-foreground">{format!("{} / {} / {}", agent.owner, agent.kind, agent.slug)}</div>
                             <div class="mt-1 text-muted-foreground">{agent.responsibility}</div>
                             <div class="mt-1 text-xs text-muted-foreground">{format!("Operations: {}", agent.allowed_operations.join(", "))}</div>
+                            <div class="mt-1 text-xs text-muted-foreground">{format!("Capabilities: {}", agent.required_capabilities.join(", "))}</div>
+                            <div class="mt-1 text-xs text-muted-foreground">{format!("Required permissions: {}", agent.required_permissions.join(", "))}</div>
                         </div>
                     </For>
                 </div>

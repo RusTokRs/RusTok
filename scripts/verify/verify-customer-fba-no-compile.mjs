@@ -34,7 +34,7 @@ export function verifyCustomerFbaNoCompile() {
   if (registry.schema_version !== 1) fail('customer registry schema_version must be 1');
   if (registry.module !== 'customer') fail('customer registry module drift');
   if (registry.role !== 'provider') fail('customer registry role must be provider');
-  if (registry.status !== 'in_progress') fail('customer registry status must remain in_progress');
+  if (!['in_progress', 'boundary_ready'].includes(registry.status)) fail('customer registry status must remain boundary_ready');
   if (registry.contract_version !== 'customer.read_projection.v1') fail('customer contract version drift');
   if (!cargo.includes('rustok-api.workspace = true')) fail('customer Cargo.toml must depend on rustok-api');
   if (!manifest.includes('registry = "contracts/customer-fba-registry.json"')) fail('customer manifest registry drift');
@@ -65,7 +65,7 @@ export function verifyCustomerFbaNoCompile() {
   for (const doc of [plan, readme, localDocs]) {
     if (!doc.includes('node scripts/verify/verify-customer-fba-no-compile.mjs')) fail('customer docs must reference the no-compile customer gate');
   }
-  if (!plan.includes('- FBA status: `in_progress`')) fail('plan FBA status drift');
+  if (!plan.includes('- FBA status: `boundary_ready`')) fail('plan FBA status drift');
   if (!plan.includes('Local documentation is synchronized')) fail('plan must record synchronized local documentation');
   if (!plan.includes('no-compile')) fail('plan must record the active no-compile verification gate');
 }

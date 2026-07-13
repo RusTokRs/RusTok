@@ -114,7 +114,7 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
 
   write('docs/modules/registry.md', '| `pricing` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-pricing/docs/implementation-plan.md` (`crates/rustok-pricing/contracts/pricing-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
   write('crates/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
-  write('crates/rustok-pricing/docs/implementation-plan.md', '# Plan\n- FBA status: `in_progress`\n`pricing-fba-registry.json`\n');
+  write('crates/rustok-pricing/docs/implementation-plan.md', '# Plan\n- FBA status: `boundary_ready`\n`pricing-fba-registry.json`\n');
   write('crates/rustok-pricing/rustok-module.toml', '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
   write('crates/rustok-pricing/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
   write('crates/rustok-pricing/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
@@ -475,7 +475,7 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
 
   write('docs/modules/registry.md', '| `order` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-order/docs/implementation-plan.md` (`crates/rustok-order/contracts/order-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
   write('crates/rustok-order/contracts/order-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
-  write('crates/rustok-order/docs/implementation-plan.md', '# Plan\n- FBA status: `in_progress`\n`order-fba-registry.json`\n');
+  write('crates/rustok-order/docs/implementation-plan.md', '# Plan\n- FBA status: `boundary_ready`\n`order-fba-registry.json`\n');
   write('crates/rustok-order/rustok-module.toml', '[fba.provider]\nregistry = "contracts/order-fba-registry.json"\ncontract_version = "order.checkout_completion.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
   write('crates/rustok-order/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
   write('crates/rustok-order/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');

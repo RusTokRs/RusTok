@@ -311,7 +311,7 @@ export function verifyEcommerceFbaRegistries({
   if (commerceRegistry.schema_version !== 1) fail(`${commerceRegistryPath} schema_version must be 1`);
   if (commerceRegistry.module !== 'commerce') fail('commerce FBA registry module must be commerce');
   if (commerceRegistry.role !== 'orchestrator_consumer') fail('commerce FBA registry role must be orchestrator_consumer');
-  if (commerceRegistry.status !== 'in_progress') fail('commerce FBA registry status must be in_progress');
+  if (!['in_progress', 'boundary_ready'].includes(commerceRegistry.status)) fail('commerce FBA registry status must be boundary_ready');
   if (!Array.isArray(commerceRegistry.providers) || commerceRegistry.providers.length !== modules.length) {
     fail('commerce FBA registry must list every ecommerce provider');
   }

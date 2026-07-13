@@ -22,13 +22,13 @@ const providerFallbackSmoke = json(providerFallbackSmokePath);
 const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
-if (registry.module !== 'seo' || registry.role !== 'consumer' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'seo' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.consumer_profile !== 'seo_image_descriptor') fail('consumer profile drift');
 const dependency = registry.provider_dependencies?.[0];
 if (!dependency) fail('missing media provider dependency');
 if (dependency.module !== 'media' || dependency.registry !== providerPath) fail('provider dependency identity drift');
 if (dependency.contract_version !== provider.contract_version || dependency.port !== 'MediaAssetReadPort') fail('provider contract/port drift');
-if (provider.module !== 'media' || provider.role !== 'provider' || provider.status !== 'in_progress') fail('media provider status drift');
+if (provider.module !== 'media' || provider.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(provider.status)) fail('media provider status drift');
 const providerOperations = provider.ports?.[0]?.operations ?? [];
 for (const operation of dependency.operations) if (!providerOperations.includes(operation)) fail(`consumer operation ${operation} is absent from media provider`);
 const mediaConsumer = provider.consumers?.find(c => c.module === 'seo');
@@ -93,7 +93,7 @@ for (const row of evidence.consumer_runtime_drill_matrix) {
 }
 
 const plan = read('crates/rustok-seo/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'seo-media-consumer-static-matrix.json', consumerRuntimeOrderSmokePath, 'source_locked_pending_consumer_runtime'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'seo-media-consumer-static-matrix.json', consumerRuntimeOrderSmokePath, 'source_locked_pending_consumer_runtime'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `seo` |', 'crates/rustok-seo/contracts/seo-fba-registry.json', consumerRuntimeOrderSmokePath, '`in_progress` | `in_progress`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');

@@ -22,13 +22,13 @@ const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 const provider = json(providerPath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
-if (registry.module !== 'blog' || registry.role !== 'consumer' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'blog' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.consumer_profile !== 'blog_post_comments') fail('consumer profile drift');
 const dependency = registry.provider_dependencies?.[0];
 if (!dependency) fail('missing comments provider dependency');
 if (dependency.module !== 'comments' || dependency.registry !== providerPath) fail('provider dependency identity drift');
 if (dependency.contract_version !== provider.contract_version || dependency.port !== 'CommentsThreadPort') fail('provider contract/port drift');
-if (provider.module !== 'comments' || provider.role !== 'provider' || provider.status !== 'in_progress') fail('comments provider status drift');
+if (provider.module !== 'comments' || provider.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(provider.status)) fail('comments provider status drift');
 sameSet(dependency.operations, provider.ports?.[0]?.operations ?? [], 'consumer/provider operations');
 sameSet(dependency.fallback_profiles, provider.consumers?.find(c => c.module === 'blog')?.fallback_profiles ?? [], 'consumer/provider fallback profiles');
 sameSet(dependency.degraded_modes, provider.consumers?.find(c => c.module === 'blog')?.degraded_modes ?? [], 'consumer/provider degraded modes');
@@ -83,7 +83,7 @@ for (const smokeCase of runtimeSmoke.fallback_smoke.cases ?? []) {
 }
 
 const plan = read('crates/rustok-blog/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'blog-fba-registry.json', 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `in_progress`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');

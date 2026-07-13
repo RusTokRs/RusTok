@@ -16,7 +16,7 @@ const pkg = json('package.json');
 const lib = read('crates/rustok-outbox/src/lib.rs');
 const ports = read('crates/rustok-outbox/src/ports.rs');
 if (pkg.scripts?.['verify:outbox:fba'] !== 'node scripts/verify/verify-outbox-fba.mjs && npm run verify:owner:fba-runtime-order') fail('package script verify:outbox:fba drift');
-if (registry.schema_version !== 1 || registry.module !== 'outbox' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.schema_version !== 1 || registry.module !== 'outbox' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'outbox.relay_control.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'OutboxRelayPort' || !port.operations.includes('process_pending_once')) fail('OutboxRelayPort operation missing');
@@ -29,7 +29,7 @@ for (const marker of ['trait OutboxRelayPort', 'impl OutboxRelayPort for crate::
 }
 if (!JSON.stringify(registry).includes('relay_metrics_projection_preserved')) fail('registry missing relay metrics assertion');
 if (!ports.includes('Serialize, Deserialize')) fail('FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('OutboxRelayPort') || !plan.includes('outbox-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
+if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('OutboxRelayPort') || !plan.includes('outbox-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
 if (!central.includes('| `outbox` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('`in_progress` | `in_progress`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'outbox' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-outbox-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');

@@ -26,7 +26,7 @@ const transportFacade = read('crates/rustok-workflow/admin/src/transport/mod.rs'
 const packageJson = json('package.json');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'workflow' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'workflow' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'workflow.read_projection.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'WorkflowReadPort') fail('WorkflowReadPort missing');
@@ -38,7 +38,7 @@ if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail(
 for (const marker of ['trait WorkflowReadPort', 'impl WorkflowReadPort for WorkflowService', 'context.require_policy(PortCallPolicy::read())?', 'workflow_tenant_id(&context)?', 'workflow.tenant_id_invalid', 'PortErrorKind::NotFound']) if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 if (ports.includes('require_write_semantics()?')) fail('workflow read port must not require write idempotency');
 if (!dto.includes('Serialize, Deserialize')) fail('workflow DTOs must remain serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('WorkflowReadPort') || !plan.includes('workflow-contract-test-static-matrix.json') || !plan.includes('workflow-read-projection-runtime-smoke.json')) fail('local plan FBA evidence drift');
+if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('WorkflowReadPort') || !plan.includes('workflow-contract-test-static-matrix.json') || !plan.includes('workflow-read-projection-runtime-smoke.json')) fail('local plan FBA evidence drift');
 if (!central.includes('| `workflow` |') || !central.includes(registryPath) || !central.includes('`phase_b_ready` | `in_progress`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'workflow' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-workflow-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');

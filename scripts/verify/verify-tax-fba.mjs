@@ -38,7 +38,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   if (registry.schema_version !== 1) fail('tax registry schema_version must be 1');
   if (registry.module !== 'tax') fail('tax registry module drift');
   if (registry.role !== 'provider') fail('tax registry role must be provider');
-  if (registry.status !== 'in_progress') fail('tax registry status must be in_progress');
+  if (!['in_progress', 'boundary_ready'].includes(registry.status)) fail('tax registry status must be boundary_ready');
   if (registry.contract_version !== 'tax.calculation.v1') fail('tax contract version drift');
   if (!Array.isArray(registry.ports) || registry.ports.length !== 1) fail('tax registry must expose one port');
 
@@ -62,7 +62,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   if (!portSource.includes('PortError::validation("tax.validation"')) fail('tax errors must map to typed PortError validation');
   if (!servicesSource.includes('Serialize, Deserialize')) fail('tax service DTOs must be serializable for transport-neutral ports');
 
-  if (!plan.includes('- FBA status: `in_progress`')) fail('tax local plan FBA status drift');
+  if (!plan.includes('- FBA status: `boundary_ready`')) fail('tax local plan FBA status drift');
   if (!plan.includes(registryPath)) fail('tax local plan lacks registry evidence');
   if (!plan.includes(registry.evidence.runtime_contract_smoke)) fail('tax local plan lacks runtime smoke evidence');
   if (!central.includes('| `tax` |') || !central.includes(registryPath)) fail('central readiness board lacks tax FBA evidence');

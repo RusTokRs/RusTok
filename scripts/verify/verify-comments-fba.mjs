@@ -12,7 +12,7 @@ const evidence = json(evidencePath);
 const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
-if (registry.module !== 'comments' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'comments' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'comments.thread.v1') fail('contract_version drift');
 const port = registry.ports?.[0];
 if (!port || port.name !== 'CommentsThreadPort') fail('port name drift');
@@ -52,7 +52,7 @@ const evidenceCases = evidence.cases.map(c => c.operation).sort().join('|');
 if (registryCases !== evidenceCases) fail('evidence case matrix drift');
 
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'comments-fba-registry.json', 'CommentsThreadPort', 'comments-contract-test-static-matrix.json', registry.evidence.runtime_order_smoke], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'comments-fba-registry.json', 'CommentsThreadPort', 'comments-contract-test-static-matrix.json', registry.evidence.runtime_order_smoke], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `in_progress`'], 'central registry');
 

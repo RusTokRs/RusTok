@@ -45,7 +45,7 @@ function verifyAi({ read, json }) {
   const smokePath = 'crates/rustok-ai/contracts/evidence/ai-orchestrator-runtime-order-smoke.json';
   const registry = json(registryPath);
   const smoke = json(smokePath);
-  if (registry.status !== 'in_progress' || registry.role !== 'capability_orchestrator') fail('ai registry identity/status drift');
+  if (!['in_progress', 'boundary_ready'].includes(registry.status) || registry.role !== 'capability_orchestrator') fail('ai registry identity/status drift');
   if (registry.evidence.runtime_order_smoke !== smokePath || registry.evidence.runtime_order_smoke_runner !== smoke.runner) fail('ai registry runtime-order evidence drift');
   if (smoke.generated_from !== registryPath || smoke.status !== 'executable_no_compile') fail('ai smoke identity drift');
   if (!sameSet(smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) fail('ai degraded mode drift');
@@ -73,7 +73,7 @@ function verifyPageBuilder({ read, json }) {
   const smokePath = 'crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json';
   const registry = json(registryPath);
   const smoke = json(smokePath);
-  if (registry.status !== 'in_progress' || registry.provider.module_slug !== 'page_builder') fail('page-builder registry identity/status drift');
+  if (!['in_progress', 'boundary_ready'].includes(registry.status) || registry.provider.module_slug !== 'page_builder') fail('page-builder registry identity/status drift');
   if (registry.evidence.runtime_order_smoke !== smokePath || registry.evidence.runtime_order_smoke_runner !== smoke.runner) fail('page-builder registry runtime-order evidence drift');
   if (smoke.generated_from !== registryPath || smoke.status !== 'executable_no_compile') fail('page-builder smoke identity drift');
   if (!sameSet(smoke.fallback_profiles, registry.fallback_profiles)) fail('page-builder fallback profile drift');

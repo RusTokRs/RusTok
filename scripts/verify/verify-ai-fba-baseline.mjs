@@ -92,7 +92,7 @@ hasAll(central, ['| `auth` |', authRegistryPath, authRegistry.evidence.runtime_f
 
 const aiRegistryPath = 'crates/rustok-ai/contracts/ai-fba-registry.json';
 const aiRegistry = json(aiRegistryPath);
-if (aiRegistry.schema_version !== 1 || aiRegistry.module !== 'ai' || aiRegistry.role !== 'capability_orchestrator' || aiRegistry.status !== 'in_progress') fail('ai registry identity/status drift');
+if (aiRegistry.schema_version !== 1 || aiRegistry.module !== 'ai' || aiRegistry.role !== 'capability_orchestrator' || !['in_progress', 'boundary_ready'].includes(aiRegistry.status)) fail('ai registry identity/status drift');
 if (aiRegistry.contract_tests?.source !== aiRegistryPath || aiRegistry.contract_tests?.runner !== 'scripts/verify/verify-ai-fba-baseline.mjs') fail('ai contract test source/runner drift');
 verifyEvidence(aiRegistry, aiRegistryPath);
 for (const adapter of aiRegistry.support_adapters) {
@@ -106,7 +106,7 @@ hasAll(router, ['ResolvedExecutionPlan', 'candidate', 'fallback'], 'ai router po
 const direct = read(aiRegistry.runtime_contracts.direct_registry_source);
 hasAll(direct, ['DirectExecutionRegistry', 'DirectTaskHandler'], 'ai direct registry source');
 const aiPlan = read(aiRegistry.evidence.local_plan);
-hasAll(aiPlan, ['- FBA status: `in_progress`', aiRegistryPath, aiRegistry.evidence.static_matrix, aiRegistry.evidence.runtime_fallback_smoke, 'verify-ai-fba-baseline.mjs'], 'ai local plan');
+hasAll(aiPlan, ['- FBA status: `boundary_ready`', aiRegistryPath, aiRegistry.evidence.static_matrix, aiRegistry.evidence.runtime_fallback_smoke, 'verify-ai-fba-baseline.mjs'], 'ai local plan');
 hasAll(central, ['| `ai` |', aiRegistryPath, aiRegistry.evidence.runtime_fallback_smoke], 'ai central registry');
 const packageJson = read('package.json');
 hasAll(packageJson, ['verify:ai:fba-baseline', 'verify:ai-content:fba', 'verify:ai-order:fba', 'verify:auth:fba', 'verify:ai:fba'], 'package scripts');

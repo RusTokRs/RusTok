@@ -58,7 +58,7 @@ export function verifyOwnerFbaRuntimeOrder({ root = defaultRoot, modules = owner
     const source = read(`crates/rustok-${module}/src/ports.rs`);
     const fallback = registryFallback(registry);
 
-    if (registry.status !== 'in_progress') fail(`${module} must remain in_progress before live execution`);
+    if (!['in_progress', 'boundary_ready'].includes(registry.status)) fail(`${module} must remain boundary_ready before live execution`);
     if (smoke.status !== 'executable_no_compile') fail(`${module} smoke status drift`);
     if (smoke.generated_from !== registryPath || smoke.contract_version !== registry.contract_version) fail(`${module} smoke identity drift`);
     if (smoke.runner !== 'scripts/verify/verify-owner-fba-runtime-order.mjs') fail(`${module} smoke runner drift`);

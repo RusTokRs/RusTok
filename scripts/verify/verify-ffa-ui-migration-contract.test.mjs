@@ -118,7 +118,7 @@ function withFixture({
       "## FFA/FBA status",
       "",
       "- FFA status: `in_progress`",
-      "- FBA status: `in_progress`",
+      "- FBA status: `boundary_ready`",
       "- Structural shape: `" + localShape + "`",
     ].join("\n"),
   );

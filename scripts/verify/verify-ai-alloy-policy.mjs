@@ -16,7 +16,7 @@ const registry = json(registryPath);
 const evidence = json(evidencePath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
-if (registry.module !== 'ai-alloy' || registry.crate !== 'rustok-ai-alloy' || registry.role !== 'domain_support_adapter' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'ai-alloy' || registry.crate !== 'rustok-ai-alloy' || registry.role !== 'domain_support_adapter' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.consumer_profile !== 'alloy_script_descriptor') fail('consumer profile drift');
 if (registry.execution_policy?.composition_owner !== 'rustok-ai' || registry.execution_policy?.domain_owner !== 'rustok-ai-alloy') fail('execution ownership drift');
 if (registry.execution_policy?.runtime_payload_json !== 'absent_blank_or_json_object') fail('runtime payload shape drift');

@@ -18,7 +18,7 @@ const lib = read('crates/rustok-region/src/lib.rs');
 const ports = read('crates/rustok-region/src/ports.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'region' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'region' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'region.read_projection.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'RegionReadPort') fail('RegionReadPort missing');
@@ -35,7 +35,7 @@ for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::Re
 if (!ports.includes('use rustok_api::{PortCallPolicy, PortContext, PortError};')) fail('region port must import shared rustok-api primitives');
 if (ports.includes('require_write_semantics()?')) fail('region read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('region FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
+if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
 if (!central.includes('| `region` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('| `region` | admin + storefront | `in_progress` | `in_progress`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'region' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-region-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');

@@ -65,7 +65,7 @@ function verifyBlog({ read, json }) {
   const smoke = json(smokePath);
   const dependency = registry.provider_dependencies?.[0];
 
-  if (registry.module !== 'blog' || registry.role !== 'consumer' || registry.status !== 'in_progress') fail('blog registry identity/status drift');
+  if (registry.module !== 'blog' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('blog registry identity/status drift');
   if (smoke.generated_from !== registryPath || smoke.status !== 'executable_no_compile') fail('blog smoke identity drift');
   if (registry.evidence.consumer_runtime_order_smoke !== smokePath || registry.evidence.consumer_runtime_order_smoke_runner !== smoke.runner) {
     fail('blog runtime-order evidence registry drift');
@@ -100,7 +100,7 @@ function verifySeo({ read, json }) {
   const smoke = json(smokePath);
   const dependency = registry.provider_dependencies?.[0];
 
-  if (registry.module !== 'seo' || registry.role !== 'consumer' || registry.status !== 'in_progress') fail('seo registry identity/status drift');
+  if (registry.module !== 'seo' || registry.role !== 'consumer' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('seo registry identity/status drift');
   if (smoke.generated_from !== registryPath || smoke.status !== 'executable_no_compile') fail('seo smoke identity drift');
   if (registry.evidence.consumer_runtime_order_smoke !== smokePath || registry.evidence.consumer_runtime_order_smoke_runner !== smoke.runner) {
     fail('seo runtime-order evidence registry drift');
