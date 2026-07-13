@@ -20,7 +20,7 @@ pub use envelope::{
 };
 pub use generation::{
     CacheGenerationError, CacheGenerationSource, CacheGenerationStats, CacheNamespaceGeneration,
-    CacheNamespaceGenerationStore,
+    CacheNamespaceGenerationStore, DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS,
 };
 pub use invalidation::{
     CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
