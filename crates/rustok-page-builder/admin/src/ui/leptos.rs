@@ -4,7 +4,7 @@ use crate::{AdminCanvasController, PageBuilderAdminFacade};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// Host-provided composition context for a concrete consumer document.
 ///
@@ -13,8 +13,7 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
-    pub facade: Option<Rc<dyn PageBuilderAdminFacade>>,
-    pub on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    pub facade: Option<Arc<dyn PageBuilderAdminFacade>>,
 }
 
 impl PageBuilderAdminHostContext {
@@ -22,22 +21,11 @@ impl PageBuilderAdminHostContext {
         Self {
             controller,
             facade: None,
-            on_request: None,
         }
     }
 
-    pub fn with_facade(mut self, facade: Rc<dyn PageBuilderAdminFacade>) -> Self {
+    pub fn with_facade(mut self, facade: Arc<dyn PageBuilderAdminFacade>) -> Self {
         self.facade = Some(facade);
-        self
-    }
-
-    /// Low-level escape hatch for hosts that intentionally own request lifecycle handling.
-    /// Prefer [`Self::with_facade`] so save start/failure/acknowledgement remains inside the editor.
-    pub fn with_request_callback(
-        mut self,
-        callback: Callback<PageBuilderCapabilityRequest>,
-    ) -> Self {
-        self.on_request = Some(callback);
         self
     }
 }
@@ -57,7 +45,6 @@ pub fn PageBuilderAdmin() -> impl IntoView {
             <PageBuilderAdminWithController
                 controller=context.controller
                 facade=context.facade
-                on_request=context.on_request
             />
         }
         .into_any(),
@@ -95,7 +82,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
 #[component]
 pub fn PageBuilderAdminWithController(
     controller: AdminCanvasController,
-    #[prop(optional)] facade: Option<Rc<dyn PageBuilderAdminFacade>>,
+    #[prop(optional)] facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
