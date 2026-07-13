@@ -13,6 +13,7 @@ use axum::{
     Extension, Json,
 };
 use futures_util::{SinkExt, StreamExt};
+use rustok_api::{Action, Permission};
 use rustok_core::i18n::Locale;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -27,6 +28,34 @@ use rustok_core::ModuleRegistry;
 
 const WS_CLOSE_UNAUTHORIZED: u16 = 4401;
 const WS_AUTHORITY_CHANGED_REASON: &str = "authorization changed; reconnect required";
+
+/// Normalize canonical RBAC implications for GraphQL policies that inspect an
+/// immutable permission vector directly.
+///
+/// The task-local RBAC lease keeps the original snapshot for drift detection.
+/// Only GraphQL request data receives the concrete read/list permissions that
+/// are already implied by `manage`, preventing false denials without widening
+/// OAuth authority beyond the token's effective snapshot.
+fn graphql_permissions(mut permissions: Vec<Permission>) -> Vec<Permission> {
+    let managed_resources = permissions
+        .iter()
+        .filter(|permission| permission.action == Action::Manage)
+        .map(|permission| permission.resource)
+        .collect::<Vec<_>>();
+
+    for resource in managed_resources {
+        for action in [Action::Read, Action::List] {
+            let implied = Permission::new(resource, action);
+            if !permissions.contains(&implied) {
+                permissions.push(implied);
+            }
+        }
+    }
+
+    permissions.sort_by_cached_key(ToString::to_string);
+    permissions.dedup();
+    permissions
+}
 
 #[derive(Clone)]
 struct GraphqlWsAuthLease {
@@ -79,7 +108,7 @@ async fn graphql_handler(
             user_id: current_user.user.id,
             session_id: current_user.session_id,
             tenant_id: current_user.user.tenant_id,
-            permissions: current_user.permissions,
+            permissions: graphql_permissions(current_user.permissions),
             client_id: current_user.client_id,
             scopes: current_user.scopes,
             grant_type: current_user.grant_type,
@@ -356,7 +385,7 @@ async fn build_ws_connection_data(
         user_id: current_user.user.id,
         session_id: current_user.session_id,
         tenant_id: current_user.user.tenant_id,
-        permissions: current_user.permissions,
+        permissions: graphql_permissions(current_user.permissions),
         client_id: current_user.client_id,
         scopes: current_user.scopes,
         grant_type: current_user.grant_type,
@@ -381,4 +410,47 @@ pub fn router() -> crate::routes::ServerRouter {
         )
         .route("/api/graphql/schema.graphql", get(graphql_schema_sdl))
         .route("/api/graphql/ws", get(graphql_ws_handler))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::graphql_permissions;
+    use rustok_api::{Permission, Resource};
+
+    #[test]
+    fn manage_implies_graphql_read_and_list_without_widening_other_resources() {
+        let permissions = graphql_permissions(vec![Permission::USERS_MANAGE]);
+
+        assert!(permissions.contains(&Permission::USERS_MANAGE));
+        assert!(permissions.contains(&Permission::USERS_READ));
+        assert!(permissions.contains(&Permission::USERS_LIST));
+        assert!(!permissions.contains(&Permission::new(
+            Resource::Settings,
+            rustok_api::Action::Read,
+        )));
+    }
+
+    #[test]
+    fn concrete_permissions_remain_stable_and_deduplicated() {
+        let permissions = graphql_permissions(vec![
+            Permission::USERS_READ,
+            Permission::USERS_READ,
+            Permission::USERS_LIST,
+        ]);
+
+        assert_eq!(
+            permissions
+                .iter()
+                .filter(|permission| **permission == Permission::USERS_READ)
+                .count(),
+            1
+        );
+        assert_eq!(
+            permissions
+                .iter()
+                .filter(|permission| **permission == Permission::USERS_LIST)
+                .count(),
+            1
+        );
+    }
 }
