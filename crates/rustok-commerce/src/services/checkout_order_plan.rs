@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rustok_fulfillment::CreateFulfillmentInput;
 use rustok_order::CreateOrderInput;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,8 @@ pub struct CheckoutOrderPlanPayload {
     pub channel_slug: Option<String>,
     pub context: StoreContextResponse,
     pub create_fulfillment: bool,
+    #[serde(default)]
+    pub fulfillment_inputs: Vec<CreateFulfillmentInput>,
     pub checkout_metadata: Value,
 }
 
