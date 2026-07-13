@@ -1,11 +1,18 @@
+use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "redis-cache")]
 use std::time::Duration;
+
+use prometheus::core::{Collector, Desc};
+use prometheus::proto::MetricFamily;
+use prometheus::IntGauge;
 
 use crate::CacheService;
 
 #[cfg(feature = "redis-cache")]
 const REDIS_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_REDIS_STATUS_ERROR_BYTES: usize = 512;
+
+static REDIS_STATUS_COLLECTOR: OnceLock<Mutex<Option<RedisStatusCollector>>> = OnceLock::new();
 
 /// Precise Redis lifecycle status. Configuration, client construction and live connectivity are
 /// deliberately separate so an invalid URL or failed client initialization cannot appear as
@@ -52,6 +59,12 @@ impl CacheService {
     }
 
     pub async fn redis_status(&self) -> RedisCacheStatus {
+        let status = self.compute_redis_status().await;
+        record_redis_status(&status);
+        status
+    }
+
+    async fn compute_redis_status(&self) -> RedisCacheStatus {
         let url_present = self.redis_configuration_present();
         let client_initialized = self.redis_client_initialized();
         if !url_present {
@@ -145,6 +158,84 @@ impl CacheService {
     }
 }
 
+#[derive(Clone)]
+struct RedisStatusCollector {
+    url_present: IntGauge,
+    client_initialized: IntGauge,
+    connectivity_healthy: IntGauge,
+    degraded: IntGauge,
+}
+
+impl RedisStatusCollector {
+    fn new() -> Result<Self, prometheus::Error> {
+        Ok(Self {
+            url_present: IntGauge::new(
+                "rustok_cache_redis_url_present",
+                "Whether a Redis URL is configured for the cache runtime",
+            )?,
+            client_initialized: IntGauge::new(
+                "rustok_cache_redis_client_initialized",
+                "Whether the configured Redis cache client initialized successfully",
+            )?,
+            connectivity_healthy: IntGauge::new(
+                "rustok_cache_redis_connectivity_healthy",
+                "Whether the Redis cache client currently passes connectivity checks",
+            )?,
+            degraded: IntGauge::new(
+                "rustok_cache_redis_degraded",
+                "Whether Redis is configured but unavailable or unhealthy",
+            )?,
+        })
+    }
+
+    fn update(&self, status: &RedisCacheStatus) {
+        self.url_present.set(i64::from(status.url_present));
+        self.client_initialized
+            .set(i64::from(status.client_initialized));
+        self.connectivity_healthy
+            .set(i64::from(status.connectivity_healthy));
+        self.degraded.set(i64::from(status.is_degraded()));
+    }
+}
+
+impl Collector for RedisStatusCollector {
+    fn desc(&self) -> Vec<&Desc> {
+        let mut descriptions = Vec::new();
+        descriptions.extend(self.url_present.desc());
+        descriptions.extend(self.client_initialized.desc());
+        descriptions.extend(self.connectivity_healthy.desc());
+        descriptions.extend(self.degraded.desc());
+        descriptions
+    }
+
+    fn collect(&self) -> Vec<MetricFamily> {
+        let mut metrics = Vec::new();
+        metrics.extend(self.url_present.collect());
+        metrics.extend(self.client_initialized.collect());
+        metrics.extend(self.connectivity_healthy.collect());
+        metrics.extend(self.degraded.collect());
+        metrics
+    }
+}
+
+fn record_redis_status(status: &RedisCacheStatus) {
+    let collector = REDIS_STATUS_COLLECTOR.get_or_init(|| Mutex::new(None));
+    let mut collector = collector
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if collector.is_none() {
+        let Ok(candidate) = RedisStatusCollector::new() else {
+            return;
+        };
+        if rustok_telemetry::register_runtime_collector(Box::new(candidate.clone())).is_ok() {
+            *collector = Some(candidate);
+        }
+    }
+    if let Some(collector) = collector.as_ref() {
+        collector.update(status);
+    }
+}
+
 #[cfg(feature = "redis-cache")]
 fn degraded_status(error: String) -> RedisCacheStatus {
     RedisCacheStatus {
@@ -210,6 +301,22 @@ mod tests {
         assert!(metrics.contains("rustok_cache_redis_degraded 1"));
         assert!(!metrics.contains("redacted"));
         assert!(!metrics.contains('{'));
+    }
+
+    #[test]
+    fn runtime_collector_reaches_the_shared_telemetry_registry() {
+        rustok_telemetry::init_metrics(true).unwrap();
+        record_redis_status(&RedisCacheStatus {
+            url_present: true,
+            client_initialized: false,
+            connectivity_healthy: false,
+            last_error: Some("must not be exported".to_string()),
+        });
+        let metrics = rustok_telemetry::render_metrics().unwrap();
+        assert!(metrics.contains("rustok_cache_redis_url_present 1"));
+        assert!(metrics.contains("rustok_cache_redis_client_initialized 0"));
+        assert!(metrics.contains("rustok_cache_redis_degraded 1"));
+        assert!(!metrics.contains("must not be exported"));
     }
 
     #[test]
