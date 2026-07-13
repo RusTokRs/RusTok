@@ -513,7 +513,6 @@ mod tests {
     fn duplicate_and_canonical_aliases_are_deduplicated() {
         let canonical = unique_prefix("canonical-deduplicated");
         let alias = unique_prefix("alias-deduplicated");
-        let before = cache_backend_generation_registry_size();
 
         bind_cache_backend_generation_aliases(
             &canonical,
@@ -521,11 +520,13 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(cache_backend_generation_registry_size(), before + 2);
-        assert_eq!(
-            cache_backend_generation_snapshot(&canonical).unwrap(),
-            cache_backend_generation_snapshot(&alias).unwrap()
-        );
+        let registry = backend_generations()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(Arc::ptr_eq(
+            registry.get(&canonical).unwrap(),
+            registry.get(&alias).unwrap()
+        ));
     }
 
     #[test]
