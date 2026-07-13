@@ -6,6 +6,7 @@ mod m20260713_000109_enforce_fulfillment_integrity;
 mod m20260713_000110_serialize_fulfillment_progress;
 mod m20260713_000111_create_provider_operation_journal;
 mod m20260713_000112_commit_provider_operations_with_fulfillment;
+mod m20260713_000113_allow_provider_execution_reconciliation;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -20,6 +21,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000110_serialize_fulfillment_progress::Migration),
         Box::new(m20260713_000111_create_provider_operation_journal::Migration),
         Box::new(m20260713_000112_commit_provider_operations_with_fulfillment::Migration),
+        Box::new(m20260713_000113_allow_provider_execution_reconciliation::Migration),
     ]
 }
 
