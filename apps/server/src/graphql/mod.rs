@@ -2,6 +2,7 @@ pub mod loaders;
 pub mod mutations;
 pub mod observability;
 pub mod persisted;
+pub mod principal_tenant_security;
 pub mod queries;
 pub mod rbac_runtime;
 pub mod schema;
