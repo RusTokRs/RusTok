@@ -132,11 +132,11 @@ pub fn controller_from_project(
 }
 
 pub fn page_revision(page: &PageDetail) -> String {
-    page.body
-        .as_ref()
-        .map(|body| body.updated_at.clone())
-        .filter(|revision| !revision.trim().is_empty())
-        .unwrap_or_else(|| format!("page:{}:initial", page.id))
+    if page.updated_at.trim().is_empty() {
+        format!("page:{}:initial", page.id)
+    } else {
+        page.updated_at.clone()
+    }
 }
 
 pub fn canonicalize_builder_project(
@@ -291,24 +291,19 @@ mod tests {
     }
 
     #[test]
-    fn page_revision_uses_body_timestamp_or_stable_initial_marker() {
+    fn page_revision_uses_page_timestamp_or_stable_initial_marker() {
         let mut page = PageDetail {
             id: "home".to_string(),
             status: "draft".to_string(),
             template: "default".to_string(),
+            updated_at: String::new(),
             channel_slugs: Vec::new(),
             translation: None,
             body: None,
             blocks: Vec::new(),
         };
         assert_eq!(page_revision(&page), "page:home:initial");
-        page.body = Some(crate::model::PageBody {
-            locale: "en".to_string(),
-            content: String::new(),
-            format: GRAPESJS_FORMAT.to_string(),
-            content_json: None,
-            updated_at: "rev-2".to_string(),
-        });
+        page.updated_at = "rev-2".to_string();
         assert_eq!(page_revision(&page), "rev-2");
     }
 }
