@@ -120,12 +120,16 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         USING ERRCODE = '40001';
                 END IF;
 
-                old_audit_count := jsonb_array_length(
-                    COALESCE(OLD.metadata #> '{audit,events}', '[]'::jsonb)
-                );
-                new_audit_count := jsonb_array_length(
-                    COALESCE(NEW.metadata #> '{audit,events}', '[]'::jsonb)
-                );
+                old_audit_count := CASE
+                    WHEN jsonb_typeof(OLD.metadata #> '{audit,events}') = 'array'
+                    THEN jsonb_array_length(OLD.metadata #> '{audit,events}')
+                    ELSE 0
+                END;
+                new_audit_count := CASE
+                    WHEN jsonb_typeof(NEW.metadata #> '{audit,events}') = 'array'
+                    THEN jsonb_array_length(NEW.metadata #> '{audit,events}')
+                    ELSE 0
+                END;
                 IF new_audit_count <> old_audit_count + 1 THEN
                     RAISE EXCEPTION 'fulfillment lifecycle update must append exactly one audit event'
                         USING ERRCODE = '40001';
