@@ -49,17 +49,17 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     let settings = ctx.settings();
     let channel_capacity = settings.events.channel_capacity;
 
-    match settings.events.transport {
+    let runtime = match settings.events.transport {
         EventTransportKind::Memory => {
             let transport = MemoryTransport::with_capacity(channel_capacity);
             let listener_bus = transport.event_bus();
-            Ok(EventRuntime {
+            EventRuntime {
                 transport: Arc::new(transport),
                 listener_bus,
                 relay_config: None,
                 channel_capacity,
                 relay_fallback_active: false,
-            })
+            }
         }
         EventTransportKind::Outbox => {
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
@@ -84,13 +84,13 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                 }),
             };
 
-            Ok(EventRuntime {
+            EventRuntime {
                 transport: outbox_transport,
                 listener_bus,
                 relay_config: Some(relay_config),
                 channel_capacity,
                 relay_fallback_active,
-            })
+            }
         }
         EventTransportKind::Iggy => {
             let primary: Arc<dyn EventTransport> = Arc::new(
@@ -102,15 +102,21 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             );
             let (transport, listener_bus) =
                 transport_with_local_delivery(primary, channel_capacity);
-            Ok(EventRuntime {
+            EventRuntime {
                 transport,
                 listener_bus,
                 relay_config: None,
                 channel_capacity,
                 relay_fallback_active: false,
-            })
+            }
         }
-    }
+    };
+
+    // Module listeners are started immediately after this function returns, while the historical
+    // bootstrap stored EventRuntime only afterwards. Seed the shared runtime here so listener
+    // startup always resolves the exact delivery bus paired with the configured transport.
+    ctx.shared_insert(Arc::new(runtime.clone()));
+    Ok(runtime)
 }
 
 pub fn spawn_outbox_relay_worker(
