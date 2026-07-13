@@ -303,7 +303,12 @@ async fn apply_checkout_pricing_plan(
                 line_item.id
             )));
         };
-        validate_checkout_line_pricing(line_item, variant_id, &update)?;
+        validate_checkout_line_pricing(
+            line_item,
+            variant_id,
+            expected_currency.as_str(),
+            &update,
+        )?;
 
         let mut active: entities::cart_line_item::ActiveModel = line_item.clone().into();
         active.unit_price = Set(update.unit_price);
@@ -331,6 +336,7 @@ async fn apply_checkout_pricing_plan(
 fn validate_checkout_line_pricing(
     line_item: &entities::cart_line_item::Model,
     variant_id: Uuid,
+    expected_currency: &str,
     update: &CartCheckoutLineItemPricingUpdate,
 ) -> CartResult<()> {
     if update.variant_id != variant_id || update.quantity != line_item.quantity {
@@ -341,7 +347,7 @@ fn validate_checkout_line_pricing(
     }
     if !line_item
         .currency_code
-        .eq_ignore_ascii_case(line_item.currency_code.as_str())
+        .eq_ignore_ascii_case(expected_currency)
     {
         return Err(checkout_pricing_changed(format!(
             "line item {} currency changed while resolving checkout prices",
