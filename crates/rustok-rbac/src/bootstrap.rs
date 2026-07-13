@@ -33,6 +33,45 @@ impl RbacRoleAssignmentDbWriter {
         user_id: Uuid,
         role: UserRole,
     ) -> Result<(), RbacRoleAssignmentError> {
+        Self::assign_role_permissions_on(&self.db, tenant_id, user_id, role).await
+    }
+
+    /// Execute role assignment on an existing SeaORM connection or transaction.
+    ///
+    /// This keeps the persistence operation inside the caller's transaction;
+    /// process-local cache invalidation remains a post-commit host concern.
+    pub async fn assign_role_permissions_on<C>(
+        db: &C,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        role: UserRole,
+    ) -> Result<(), RbacRoleAssignmentError>
+    where
+        C: ConnectionTrait,
+    {
+        ConnectionRoleAssignmentWriter { db }
+            .assign_role_permissions(tenant_id, user_id, role)
+            .await
+    }
+}
+
+struct ConnectionRoleAssignmentWriter<'a, C>
+where
+    C: ConnectionTrait,
+{
+    db: &'a C,
+}
+
+impl<C> ConnectionRoleAssignmentWriter<'_, C>
+where
+    C: ConnectionTrait,
+{
+    async fn assign_role_permissions(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        role: UserRole,
+    ) -> Result<(), RbacRoleAssignmentError> {
         let role_id = self.ensure_role(tenant_id, &role).await?;
         self.ensure_user_role(user_id, role_id).await?;
 
