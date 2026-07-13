@@ -1,6 +1,6 @@
 use crate::editor::{
-    AdminEditorRuntime, AuthoringToolbar, IsolatedAuthoringCanvas, PaletteLayersPanel,
-    PropertiesAssetsPanel, ResponsiveStylePanel,
+    AdminEditorRuntime, AuthoringToolbar, IsolatedAuthoringCanvas, PageManagerPanel,
+    PaletteLayersPanel, PropertiesAssetsPanel, ResponsiveStylePanel,
 };
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
@@ -35,6 +35,7 @@ pub fn AdminCanvas(
         save_succeeded,
     );
     let toolbar_runtime = runtime.clone();
+    let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
     let properties_runtime = runtime.clone();
@@ -47,9 +48,12 @@ pub fn AdminCanvas(
             <AuthoringToolbar runtime=toolbar_runtime />
             <div
                 class="grid min-h-[680px] gap-3"
-                style="grid-template-columns:minmax(220px,280px) minmax(420px,1fr) minmax(280px,360px)"
+                style="grid-template-columns:minmax(240px,300px) minmax(420px,1fr) minmax(280px,360px)"
             >
-                <PaletteLayersPanel runtime=palette_runtime />
+                <div class="space-y-3 overflow-auto">
+                    <PageManagerPanel runtime=page_runtime />
+                    <PaletteLayersPanel runtime=palette_runtime />
+                </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
                     <PropertiesAssetsPanel runtime=properties_runtime />
