@@ -13,8 +13,15 @@
       "save": "Сохранить",
       "add": "Добавить",
       "drag": "Перетащить",
+      "copy": "Копировать",
+      "cut": "Вырезать",
+      "paste": "Вставить",
+      "duplicate": "Дублировать",
+      "select": "Использовать",
       "move": "Переместить выбранное",
-      "remove": "Удалить выбранное",
+      "moveUp": "Поднять",
+      "moveDown": "Опустить",
+      "remove": "Удалить",
       "cancelDrag": "Отменить перенос",
       "apply": "Применить",
       "clear": "Очистить"
@@ -32,6 +39,7 @@
       "layers": "Слои",
       "properties": "Свойства",
       "styles": "Стили",
+      "assets": "Ресурсы",
       "diagnostics": "Диагностика"
     },
     "field": {
@@ -40,11 +48,16 @@
       "selectedComponent": "Выбранный компонент",
       "none": "Нет",
       "type": "Тип",
+      "device": "Устройство",
       "tagName": "HTML-тег",
       "content": "Содержимое",
       "attributeName": "Имя атрибута",
       "attributeValue": "Значение атрибута или JSON",
       "styleJson": "JSON стилей",
+      "styleProperty": "Свойство стиля",
+      "styleValue": "Значение стиля",
+      "assetId": "ID ресурса",
+      "assetUrl": "URL ресурса",
       "projectHash": "Хеш проекта"
     },
     "bridge": {
