@@ -24,14 +24,6 @@ pub enum PaymentOrchestrationError {
         #[source]
         source: PaymentError,
     },
-    #[error(
-        "payment collection {collection_id} was cancelled at the provider, but local persistence failed: {source}"
-    )]
-    PersistenceAfterProviderCancellation {
-        collection_id: Uuid,
-        #[source]
-        source: PaymentError,
-    },
     #[error("payment error: {0}")]
     Payment(#[from] PaymentError),
 }
@@ -95,8 +87,7 @@ impl PaymentOrchestrationService {
             }
         }
 
-        let provider_cancelled = should_cancel_provider(&collection);
-        if provider_cancelled {
+        if should_cancel_provider(&collection) {
             let provider_id = provider_id_for_collection(&collection);
             let amount = executable_payment_amount(&collection);
             self.payment_provider_registry
@@ -126,19 +117,10 @@ impl PaymentOrchestrationService {
                 .map_err(PaymentOrchestrationError::Provider)?;
         }
 
-        self.payment_service
+        Ok(self
+            .payment_service
             .cancel_collection(tenant_id, collection_id, input)
-            .await
-            .map_err(|source| {
-                if provider_cancelled {
-                    PaymentOrchestrationError::PersistenceAfterProviderCancellation {
-                        collection_id,
-                        source,
-                    }
-                } else {
-                    PaymentOrchestrationError::Payment(source)
-                }
-            })
+            .await?)
     }
 
     pub async fn create_refund(
