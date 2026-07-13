@@ -34,7 +34,9 @@ impl PlacementDecision {
 impl ProjectDocument {
     pub fn component_location(&self, component_id: &str) -> Option<ComponentLocation> {
         for (page_index, page) in self.project.pages.iter().enumerate() {
-            let root = page.component.as_ref()?;
+            let Some(root) = page.component.as_ref() else {
+                continue;
+            };
             if root.id() == Some(component_id) {
                 return Some(ComponentLocation {
                     page_index,
@@ -222,45 +224,33 @@ mod tests {
     }
 
     #[test]
-    fn placement_rejects_recursive_move_and_leaf_parent() {
+    fn placement_rejects_recursive_move() {
         let document = document();
         let registries = RegistrySet::with_builtins();
-        assert!(!registries
-            .evaluate_placement(
-                &document,
-                Some("section-a"),
-                "section",
-                Some("text-a"),
-                0,
-            )
-            .legal);
-        assert!(!registries
-            .evaluate_placement(
-                &document,
-                Some("section-a"),
-                "section",
-                Some("text-a"),
-                0,
-            )
-            .legal);
-        assert!(!registries
-            .evaluate_placement(
-                &document,
-                Some("section-a"),
-                "section",
-                Some("text-a"),
-                0,
-            )
-            .legal);
-        assert!(!registries
-            .evaluate_placement(
-                &document,
-                Some("section-a"),
-                "section",
-                Some("text-a"),
-                0,
-            )
-            .legal);
+        let decision = registries.evaluate_placement(
+            &document,
+            Some("section-a"),
+            "section",
+            Some("text-a"),
+            0,
+        );
+        assert!(!decision.legal);
+        assert!(decision.reason.unwrap_or_default().contains("descendants"));
+    }
+
+    #[test]
+    fn placement_rejects_leaf_parent() {
+        let document = document();
+        let registries = RegistrySet::with_builtins();
+        let decision = registries.evaluate_placement(
+            &document,
+            None,
+            "text",
+            Some("text-a"),
+            0,
+        );
+        assert!(!decision.legal);
+        assert!(decision.reason.unwrap_or_default().contains("does not accept"));
     }
 
     #[test]
