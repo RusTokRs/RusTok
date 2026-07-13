@@ -4,6 +4,7 @@ use crate::editor::{
 };
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
+use fly::TraitSchemaRegistry;
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
@@ -13,6 +14,7 @@ use std::sync::Arc;
 pub fn AdminCanvas(
     controller: AdminCanvasController,
     #[prop(optional)] facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -34,6 +36,10 @@ pub fn AdminCanvas(
         facade_missing,
         save_succeeded,
     );
+    let runtime = match trait_schemas {
+        Some(trait_schemas) => runtime.with_trait_schemas(trait_schemas),
+        None => runtime,
+    };
     let toolbar_runtime = runtime.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
