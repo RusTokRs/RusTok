@@ -1,4 +1,6 @@
 mod builder;
+#[cfg(test)]
+mod builder_contract;
 mod composition;
 mod core;
 mod i18n;
