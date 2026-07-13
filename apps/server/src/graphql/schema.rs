@@ -25,6 +25,7 @@ use super::security::GraphqlSecurityPolicy;
 use super::settings::{SettingsMutation, SettingsQuery};
 use super::subscriptions::BuildSubscription;
 use super::system::SystemQuery;
+use super::tenant_security::GraphqlTenantPolicy;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
@@ -125,6 +126,7 @@ pub fn build_schema(
     .limit_depth(12)
     .limit_complexity(600)
     .extension(Analyzer)
+    .extension(GraphqlTenantPolicy)
     .extension(GraphqlSecurityPolicy)
     .extension(GraphqlObservability)
     // DataLoaders for efficient batched queries
