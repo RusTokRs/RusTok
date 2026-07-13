@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use rustok_cache::{
     record_tenant_generation_listener_metrics, TenantGenerationListenerMetrics,
@@ -25,6 +25,15 @@ impl TenantCacheGenerationListenerStatus {
             Self::Degraded => 3,
         }
     }
+
+    fn from_metric_value(value: i64) -> Self {
+        match value {
+            1 => Self::Starting,
+            2 => Self::Healthy,
+            3 => Self::Degraded,
+            _ => Self::Disabled,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,10 +46,22 @@ pub struct TenantCacheGenerationListenerSnapshot {
     pub reconciliation_healthy: bool,
 }
 
+impl TenantCacheGenerationListenerSnapshot {
+    pub fn disabled(reason: impl Into<String>) -> Self {
+        Self {
+            status: TenantCacheGenerationListenerStatus::Disabled,
+            last_error: Some(bounded_listener_error(reason.into())),
+            redis_required: false,
+            local_ready: false,
+            subscriber_ready: false,
+            reconciliation_healthy: false,
+        }
+    }
+}
+
 #[derive(Debug)]
-struct TenantCacheGenerationListenerState {
-    initialized: AtomicBool,
-    redis_required: AtomicBool,
+pub struct TenantCacheGenerationListenerState {
+    redis_required: bool,
     local_ready: AtomicBool,
     subscriber_ready: AtomicBool,
     reconciliation_healthy: AtomicBool,
@@ -49,48 +70,34 @@ struct TenantCacheGenerationListenerState {
 }
 
 impl TenantCacheGenerationListenerState {
-    fn new() -> Self {
-        Self {
-            initialized: AtomicBool::new(false),
-            redis_required: AtomicBool::new(false),
+    pub fn new(redis_required: bool) -> Arc<Self> {
+        let state = Arc::new(Self {
+            redis_required,
             local_ready: AtomicBool::new(false),
             subscriber_ready: AtomicBool::new(false),
-            reconciliation_healthy: AtomicBool::new(false),
+            reconciliation_healthy: AtomicBool::new(!redis_required),
             degraded: AtomicBool::new(false),
-            last_error: RwLock::new(Some(
-                "tenant cache generation listener is not initialized".to_string(),
-            )),
-        }
+            last_error: RwLock::new(None),
+        });
+        state.publish_metrics();
+        state
     }
 
-    async fn initialize(&self, redis_required: bool) {
-        self.redis_required
-            .store(redis_required, Ordering::Release);
-        self.local_ready.store(false, Ordering::Release);
-        self.subscriber_ready.store(false, Ordering::Release);
-        self.reconciliation_healthy
-            .store(!redis_required, Ordering::Release);
-        self.degraded.store(false, Ordering::Release);
-        self.initialized.store(true, Ordering::Release);
-        *self.last_error.write().await = None;
-        self.publish_metrics();
-    }
-
-    async fn mark_local_healthy(&self) {
+    pub async fn mark_local_healthy(&self) {
         self.local_ready.store(true, Ordering::Release);
-        if !self.redis_required.load(Ordering::Acquire) {
+        if !self.redis_required {
             self.degraded.store(false, Ordering::Release);
             *self.last_error.write().await = None;
         }
         self.publish_metrics();
     }
 
-    async fn mark_subscriber_starting(&self) {
+    pub fn mark_subscriber_starting(&self) {
         self.subscriber_ready.store(false, Ordering::Release);
         self.publish_metrics();
     }
 
-    async fn mark_subscriber_healthy(&self) {
+    pub async fn mark_subscriber_healthy(&self) {
         self.subscriber_ready.store(true, Ordering::Release);
         self.reconciliation_healthy.store(true, Ordering::Release);
         self.degraded.store(false, Ordering::Release);
@@ -98,7 +105,7 @@ impl TenantCacheGenerationListenerState {
         self.publish_metrics();
     }
 
-    async fn mark_reconciliation_healthy(&self) {
+    pub async fn mark_reconciliation_healthy(&self) {
         self.reconciliation_healthy.store(true, Ordering::Release);
         if self.subscriber_ready.load(Ordering::Acquire) {
             self.degraded.store(false, Ordering::Release);
@@ -107,37 +114,33 @@ impl TenantCacheGenerationListenerState {
         self.publish_metrics();
     }
 
-    async fn mark_degraded(&self, error: impl Into<String>) {
+    pub async fn mark_degraded(&self, error: impl Into<String>) {
         self.degraded.store(true, Ordering::Release);
         *self.last_error.write().await = Some(bounded_listener_error(error.into()));
         self.publish_metrics();
     }
 
-    async fn mark_subscriber_degraded(&self, error: impl Into<String>) {
+    pub async fn mark_subscriber_degraded(&self, error: impl Into<String>) {
         self.subscriber_ready.store(false, Ordering::Release);
         self.mark_degraded(error).await;
     }
 
-    async fn mark_reconciliation_degraded(&self, error: impl Into<String>) {
+    pub async fn mark_reconciliation_degraded(&self, error: impl Into<String>) {
         self.reconciliation_healthy.store(false, Ordering::Release);
         self.mark_degraded(error).await;
     }
 
     fn components(&self) -> TenantGenerationListenerMetrics {
-        let initialized = self.initialized.load(Ordering::Acquire);
-        let redis_required = self.redis_required.load(Ordering::Acquire);
         let local_ready = self.local_ready.load(Ordering::Acquire);
         let subscriber_ready = self.subscriber_ready.load(Ordering::Acquire);
         let reconciliation_healthy = self.reconciliation_healthy.load(Ordering::Acquire);
         let degraded = self.degraded.load(Ordering::Acquire);
-        let ready = if redis_required {
+        let ready = if self.redis_required {
             subscriber_ready && reconciliation_healthy
         } else {
             local_ready
         };
-        let status = if !initialized {
-            TenantCacheGenerationListenerStatus::Disabled
-        } else if degraded {
+        let status = if degraded {
             TenantCacheGenerationListenerStatus::Degraded
         } else if ready {
             TenantCacheGenerationListenerStatus::Healthy
@@ -157,63 +160,17 @@ impl TenantCacheGenerationListenerState {
         record_tenant_generation_listener_metrics(self.components());
     }
 
-    async fn snapshot(&self) -> TenantCacheGenerationListenerSnapshot {
+    pub async fn snapshot(&self) -> TenantCacheGenerationListenerSnapshot {
         let metrics = self.components();
         TenantCacheGenerationListenerSnapshot {
-            status: match metrics.status {
-                1 => TenantCacheGenerationListenerStatus::Starting,
-                2 => TenantCacheGenerationListenerStatus::Healthy,
-                3 => TenantCacheGenerationListenerStatus::Degraded,
-                _ => TenantCacheGenerationListenerStatus::Disabled,
-            },
+            status: TenantCacheGenerationListenerStatus::from_metric_value(metrics.status),
             last_error: self.last_error.read().await.clone(),
-            redis_required: self.redis_required.load(Ordering::Acquire),
+            redis_required: self.redis_required,
             local_ready: metrics.local_ready,
             subscriber_ready: metrics.subscriber_ready,
             reconciliation_healthy: metrics.reconciliation_healthy,
         }
     }
-}
-
-fn state() -> &'static Arc<TenantCacheGenerationListenerState> {
-    static STATE: OnceLock<Arc<TenantCacheGenerationListenerState>> = OnceLock::new();
-    STATE.get_or_init(|| Arc::new(TenantCacheGenerationListenerState::new()))
-}
-
-pub async fn initialize_tenant_cache_generation_listener(redis_required: bool) {
-    state().initialize(redis_required).await;
-}
-
-pub async fn mark_tenant_cache_generation_local_healthy() {
-    state().mark_local_healthy().await;
-}
-
-pub async fn mark_tenant_cache_generation_subscriber_starting() {
-    state().mark_subscriber_starting().await;
-}
-
-pub async fn mark_tenant_cache_generation_subscriber_healthy() {
-    state().mark_subscriber_healthy().await;
-}
-
-pub async fn mark_tenant_cache_generation_subscriber_degraded(error: impl Into<String>) {
-    state().mark_subscriber_degraded(error).await;
-}
-
-pub async fn mark_tenant_cache_generation_reconciliation_healthy() {
-    state().mark_reconciliation_healthy().await;
-}
-
-pub async fn mark_tenant_cache_generation_reconciliation_degraded(error: impl Into<String>) {
-    state().mark_reconciliation_degraded(error).await;
-}
-
-pub async fn mark_tenant_cache_generation_listener_degraded(error: impl Into<String>) {
-    state().mark_degraded(error).await;
-}
-
-pub async fn tenant_cache_generation_listener_snapshot() -> TenantCacheGenerationListenerSnapshot {
-    state().snapshot().await
 }
 
 fn bounded_listener_error(error: String) -> String {
@@ -234,8 +191,7 @@ mod tests {
 
     #[tokio::test]
     async fn redis_health_requires_subscriber_and_reconciliation() {
-        let state = TenantCacheGenerationListenerState::new();
-        state.initialize(true).await;
+        let state = TenantCacheGenerationListenerState::new(true);
         assert_eq!(
             state.snapshot().await.status,
             TenantCacheGenerationListenerStatus::Starting
@@ -263,8 +219,7 @@ mod tests {
 
     #[tokio::test]
     async fn local_only_listener_becomes_healthy_after_recovery() {
-        let state = TenantCacheGenerationListenerState::new();
-        state.initialize(false).await;
+        let state = TenantCacheGenerationListenerState::new(false);
         assert_eq!(
             state.snapshot().await.status,
             TenantCacheGenerationListenerStatus::Starting
@@ -278,8 +233,7 @@ mod tests {
 
     #[tokio::test]
     async fn degraded_snapshot_error_is_bounded() {
-        let state = TenantCacheGenerationListenerState::new();
-        state.initialize(true).await;
+        let state = TenantCacheGenerationListenerState::new(true);
         state.mark_degraded("é".repeat(1_024)).await;
         let degraded = state.snapshot().await;
         assert_eq!(degraded.status, TenantCacheGenerationListenerStatus::Degraded);
@@ -287,6 +241,24 @@ mod tests {
             .last_error
             .as_deref()
             .is_some_and(|error| error.len() <= MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES + 3));
+    }
+
+    #[tokio::test]
+    async fn independent_runtime_states_do_not_overwrite_each_other() {
+        let local = TenantCacheGenerationListenerState::new(false);
+        let redis = TenantCacheGenerationListenerState::new(true);
+
+        local.mark_local_healthy().await;
+        redis.mark_subscriber_degraded("redis unavailable").await;
+
+        assert_eq!(
+            local.snapshot().await.status,
+            TenantCacheGenerationListenerStatus::Healthy
+        );
+        assert_eq!(
+            redis.snapshot().await.status,
+            TenantCacheGenerationListenerStatus::Degraded
+        );
     }
 
     #[test]
