@@ -70,7 +70,7 @@ pub async fn claim_remote_validation_stage_atomic(
             continue;
         };
         if !matches!(
-            request.status,
+            &request.status,
             registry_publish_request::RegistryPublishRequestStatus::Approved
                 | registry_publish_request::RegistryPublishRequestStatus::Published
         ) {
@@ -105,7 +105,7 @@ pub async fn claim_remote_validation_stage_atomic(
             )
             .col_expr(
                 registry_validation_stage::Column::StartedAt,
-                Expr::value(candidate.started_at.or(Some(now))),
+                Expr::value(candidate.started_at.clone().or(Some(now))),
             )
             .col_expr(
                 registry_validation_stage::Column::FinishedAt,
