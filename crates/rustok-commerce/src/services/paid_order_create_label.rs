@@ -129,3 +129,38 @@ impl EventHandler for PaidOrderCreateLabelHandler {
         self.dispatch_order(envelope.tenant_id, *order_id).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::Database;
+
+    #[tokio::test]
+    async fn handles_only_paid_order_status_transitions() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+        let handler = PaidOrderCreateLabelHandler::new(
+            db,
+            FulfillmentProviderRegistry::with_manual_provider(),
+        );
+        let order_id = Uuid::new_v4();
+
+        assert!(handler.handles(&DomainEvent::OrderStatusChanged {
+            order_id,
+            old_status: "confirmed".to_string(),
+            new_status: "paid".to_string(),
+        }));
+        assert!(!handler.handles(&DomainEvent::OrderStatusChanged {
+            order_id,
+            old_status: "paid".to_string(),
+            new_status: "shipped".to_string(),
+        }));
+        assert!(!handler.handles(&DomainEvent::OrderPlaced {
+            order_id,
+            customer_id: None,
+            total: 0,
+            currency: "USD".to_string(),
+        }));
+    }
+}
