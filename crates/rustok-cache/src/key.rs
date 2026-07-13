@@ -9,17 +9,21 @@ pub const MAX_CACHE_KEY_DYNAMIC_COMPONENTS: usize = 128;
 /// Canonical builder for versioned, tenant-aware cache keys.
 ///
 /// Fixed namespace components are validated strictly. Dynamic identity components are
-/// kept readable when they are short and safe; otherwise they are replaced by a SHA-256
-/// digest so user-controlled input cannot create ambiguous or unbounded Redis keys.
-/// Dynamic identities are rejected before hashing when they exceed
-/// [`MAX_CACHE_IDENTITY_BYTES`]. The builder also limits the aggregate canonical input and
-/// component count, preventing an unbounded number of individually valid identities from
-/// creating excessive intermediate allocations in [`CacheKeyBuilder::build`].
+/// type-tagged so positional, named and explicitly hashed identities cannot collapse to the same
+/// component sequence. Values remain readable when they are short and safe; otherwise they are
+/// replaced by a SHA-256 digest so user-controlled input cannot create ambiguous or unbounded
+/// Redis keys.
+///
+/// Dynamic identities are rejected before hashing when they exceed [`MAX_CACHE_IDENTITY_BYTES`].
+/// The builder also limits the aggregate canonical input and logical identity count, preventing an
+/// unbounded number of individually valid identities from creating excessive intermediate
+/// allocations in [`CacheKeyBuilder::build`].
 #[derive(Debug, Clone)]
 pub struct CacheKeyBuilder {
     fixed_prefix: Vec<String>,
     components: Vec<String>,
     input_bytes: usize,
+    identity_count: usize,
 }
 
 impl CacheKeyBuilder {
@@ -48,18 +52,22 @@ impl CacheKeyBuilder {
             fixed_prefix,
             components: Vec::new(),
             input_bytes,
+            identity_count: 0,
         })
     }
 
-    /// Add a dynamic identity component.
+    /// Add a positional dynamic identity component.
     ///
-    /// Empty and oversized identities are rejected. Safe ASCII components remain readable;
-    /// all other values are represented as `h-<sha256>`.
+    /// Empty and oversized identities are rejected. Safe ASCII components remain readable; all
+    /// other values are represented as `h-<sha256>`. The `i` tag distinguishes this operation from
+    /// named and explicitly hashed identities.
     pub fn identity(self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
-        self.push_components([canonical_identity(value.as_ref())?])
+        self.push_identity(["i".to_string(), canonical_identity(value.as_ref())?])
     }
 
     /// Add a named identity component while retaining the field name in the key.
+    ///
+    /// The leading `n` tag prevents a named pair from colliding with two positional identities.
     pub fn named_identity(
         self,
         name: impl Into<String>,
@@ -67,37 +75,45 @@ impl CacheKeyBuilder {
     ) -> Result<Self, CacheKeyError> {
         let name = validate_fixed_component("identity_name", name.into())?;
         let value = canonical_identity(value.as_ref())?;
-        self.push_components([name, value])
+        self.push_identity(["n".to_string(), name, value])
     }
 
     /// Always hash a dynamic component, including binary input or canonical query bytes.
+    ///
+    /// The leading `h` tag keeps explicit hashing distinct from a readable positional identity that
+    /// happens to look like a digest.
     pub fn hashed(self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
         let value = value.as_ref();
         validate_identity_size(value)?;
-        self.push_components([format!("h-{}", sha256_hex(value))])
+        self.push_identity(["h".to_string(), sha256_hex(value)])
     }
 
     pub fn build(self) -> String {
-        let mut all = self.fixed_prefix.clone();
+        let fixed_prefix = self.fixed_prefix.join(":");
+        let mut all = self.fixed_prefix;
         all.extend(self.components);
         let key = all.join(":");
         if key.len() <= MAX_CACHE_KEY_BYTES {
             return key;
         }
 
-        // Preserve the human-readable namespace and hash only the overlong identity tail.
-        format!(
-            "{}:key-h-{}",
-            self.fixed_prefix.join(":"),
-            sha256_hex(key.as_bytes())
-        )
+        let hashed = format!("key-h-{}", sha256_hex(key.as_bytes()));
+        let namespaced = format!("{fixed_prefix}:{hashed}");
+        if namespaced.len() <= MAX_CACHE_KEY_BYTES {
+            namespaced
+        } else {
+            // All fixed components are individually bounded, but their combined length can still
+            // exceed the total key budget. Hash the complete canonical input rather than returning
+            // an oversized key or truncating namespace bytes ambiguously.
+            hashed
+        }
     }
 
-    fn push_components<const N: usize>(
+    fn push_identity<const N: usize>(
         mut self,
         additional: [String; N],
     ) -> Result<Self, CacheKeyError> {
-        let next_count = self.components.len().checked_add(N).unwrap_or(usize::MAX);
+        let next_count = self.identity_count.checked_add(1).unwrap_or(usize::MAX);
         if next_count > MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
             return Err(CacheKeyError::TooManyDynamicComponents {
                 count: next_count,
@@ -105,7 +121,8 @@ impl CacheKeyBuilder {
             });
         }
 
-        // Every appended component also adds one separator because the fixed prefix is non-empty.
+        // Every appended physical component also adds one separator because the fixed prefix is
+        // non-empty.
         let added_bytes = additional
             .iter()
             .try_fold(N, |total, component| total.checked_add(component.len()));
@@ -121,6 +138,7 @@ impl CacheKeyBuilder {
 
         self.components.extend(additional);
         self.input_bytes = next_input_bytes;
+        self.identity_count = next_count;
         Ok(self)
     }
 }
@@ -264,7 +282,33 @@ mod tests {
     fn builds_readable_versioned_tenant_key() {
         let key = base().named_identity("id", "product-42").unwrap().build();
 
-        assert_eq!(key, "rustok:prod:tenant-a:catalog:v2:product:id:product-42");
+        assert_eq!(
+            key,
+            "rustok:prod:tenant-a:catalog:v2:product:n:id:product-42"
+        );
+    }
+
+    #[test]
+    fn positional_named_and_hashed_identities_are_unambiguous() {
+        let named = base().named_identity("id", "42").unwrap().build();
+        let positional = base()
+            .identity("id")
+            .unwrap()
+            .identity("42")
+            .unwrap()
+            .build();
+        let raw = b"query with spaces";
+        let explicit_hash = base().hashed(raw).unwrap().build();
+        let digest_shaped = base()
+            .identity(format!("h-{}", sha256_hex(raw)))
+            .unwrap()
+            .build();
+
+        assert_ne!(named, positional);
+        assert_ne!(explicit_hash, digest_shaped);
+        assert!(named.contains(":n:id:42"));
+        assert!(positional.contains(":i:id:i:42"));
+        assert!(explicit_hash.contains(":h:"));
     }
 
     #[test]
@@ -274,7 +318,7 @@ mod tests {
         let second = base().identity(raw).unwrap().build();
 
         assert_eq!(first, second);
-        assert!(first.contains(":h-"));
+        assert!(first.contains(":i:h-"));
         assert!(!first.contains(raw));
     }
 
@@ -295,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_component_count_is_bounded() {
+    fn dynamic_component_count_is_bounded_by_logical_identities() {
         let mut builder = base();
         for _ in 0..MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
             builder = builder.identity("x").unwrap();
@@ -348,8 +392,7 @@ mod tests {
 
     #[test]
     fn overlong_complete_key_preserves_prefix_and_hashes_tail() {
-        let builder = base();
-        let mut builder = builder;
+        let mut builder = base();
         for index in 0..20 {
             builder = builder
                 .named_identity("filter", format!("value-{index}-{}", "x".repeat(80)))
@@ -358,6 +401,24 @@ mod tests {
 
         let key = builder.build();
         assert!(key.starts_with("rustok:prod:tenant-a:catalog:v2:product:key-h-"));
+        assert!(key.len() <= MAX_CACHE_KEY_BYTES);
+    }
+
+    #[test]
+    fn maximum_fixed_components_still_obey_total_key_limit() {
+        let component = "x".repeat(MAX_SAFE_COMPONENT_BYTES);
+        let key = CacheKeyBuilder::new(
+            component.clone(),
+            component.clone(),
+            component.clone(),
+            component.clone(),
+            component.clone(),
+            component,
+        )
+        .unwrap()
+        .build();
+
+        assert!(key.starts_with("key-h-"));
         assert!(key.len() <= MAX_CACHE_KEY_BYTES);
     }
 
