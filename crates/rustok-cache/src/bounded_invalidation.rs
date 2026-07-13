@@ -11,7 +11,9 @@ pub const DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS: usize = 4_096;
 /// Fail-closed bounded tracker for durable invalidation offsets.
 ///
 /// Existing channels are never evicted because dropping an acknowledged offset would turn the next
-/// event into an unverified sequence. New channels are rejected after capacity is reached.
+/// event into an unverified sequence. New channels are rejected after capacity is reached. Merely
+/// observing an in-order event does not advance the durable offset; callers acknowledge it only
+/// after the invalidation handler succeeds.
 #[derive(Clone)]
 pub struct BoundedCacheInvalidationGapTracker {
     last_by_channel: Arc<Mutex<HashMap<String, u64>>>,
@@ -57,6 +59,15 @@ impl BoundedCacheInvalidationGapTracker {
         self.advance_monotonically(channel.into(), last_generation)
     }
 
+    /// Confirm that an in-order invalidation was applied successfully.
+    pub fn acknowledge_applied(
+        &self,
+        channel: impl Into<String>,
+        applied_generation: u64,
+    ) -> Result<Option<u64>, BoundedInvalidationTrackerError> {
+        self.advance_monotonically(channel.into(), applied_generation)
+    }
+
     pub fn acknowledge_recovery(
         &self,
         channel: impl Into<String>,
@@ -69,7 +80,7 @@ impl BoundedCacheInvalidationGapTracker {
         &self,
         event: &VersionedCacheInvalidation,
     ) -> CacheInvalidationObservation {
-        let mut generations = self
+        let generations = self
             .last_by_channel
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -94,7 +105,6 @@ impl BoundedCacheInvalidationGapTracker {
 
         match previous.checked_add(1) {
             Some(expected) if event.generation == expected => {
-                generations.insert(event.channel.clone(), event.generation);
                 CacheInvalidationObservation::InOrder {
                     generation: event.generation,
                 }
@@ -240,6 +250,29 @@ mod tests {
                 CacheInvalidationPayloadError::OffsetRegressed { .. }
             ))
         ));
+    }
+
+    #[test]
+    fn in_order_event_does_not_advance_until_apply_is_acknowledged() {
+        let tracker = BoundedCacheInvalidationGapTracker::new(1).unwrap();
+        tracker.seed("tenant.invalidate", 3).unwrap();
+        assert_eq!(
+            tracker.observe(&event("tenant.invalidate", 4)),
+            CacheInvalidationObservation::InOrder { generation: 4 }
+        );
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(3));
+        assert_eq!(
+            tracker.observe(&event("tenant.invalidate", 4)),
+            CacheInvalidationObservation::InOrder { generation: 4 }
+        );
+        tracker
+            .acknowledge_applied("tenant.invalidate", 4)
+            .unwrap();
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(4));
+        assert_eq!(
+            tracker.observe(&event("tenant.invalidate", 4)),
+            CacheInvalidationObservation::Duplicate { generation: 4 }
+        );
     }
 
     #[test]
