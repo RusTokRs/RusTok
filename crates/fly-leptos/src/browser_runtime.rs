@@ -12,6 +12,10 @@ use web_sys::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BrowserRuntimeError {
     InvalidTargetOrigin,
+    MissingWindow,
+    MissingDocument,
+    MissingElement(String),
+    InvalidElementType(String),
     MissingContentWindow,
     Serialization(String),
     Browser(String),
@@ -22,6 +26,12 @@ impl std::fmt::Display for BrowserRuntimeError {
         match self {
             Self::InvalidTargetOrigin => {
                 formatter.write_str("iframe target origin must be explicit and must not be `*`")
+            }
+            Self::MissingWindow => formatter.write_str("browser window is unavailable"),
+            Self::MissingDocument => formatter.write_str("browser document is unavailable"),
+            Self::MissingElement(id) => write!(formatter, "browser element `{id}` was not found"),
+            Self::InvalidElementType(id) => {
+                write!(formatter, "browser element `{id}` is not an iframe")
             }
             Self::MissingContentWindow => formatter.write_str("iframe content window is unavailable"),
             Self::Serialization(message) => write!(formatter, "iframe message serialization failed: {message}"),
@@ -38,6 +48,15 @@ fn browser_error(value: JsValue) -> BrowserRuntimeError {
             .as_string()
             .unwrap_or_else(|| format!("{value:?}")),
     )
+}
+
+fn validate_origin(origin: impl Into<String>) -> Result<String, BrowserRuntimeError> {
+    let origin = origin.into();
+    if origin.trim().is_empty() || origin == "*" {
+        Err(BrowserRuntimeError::InvalidTargetOrigin)
+    } else {
+        Ok(origin)
+    }
 }
 
 /// RAII event listener. Dropping the handle unregisters the exact callback from the target.
@@ -141,10 +160,7 @@ impl WindowMessageSubscription {
         expected_instance_id: impl Into<String>,
         mut handler: impl FnMut(IframeBridgeEnvelope) + 'static,
     ) -> Result<Self, BrowserRuntimeError> {
-        let expected_origin = expected_origin.into();
-        if expected_origin.trim().is_empty() || expected_origin == "*" {
-            return Err(BrowserRuntimeError::InvalidTargetOrigin);
-        }
+        let expected_origin = validate_origin(expected_origin)?;
         let expected_source = expected_source.map(|window| JsValue::from(window.clone()));
         let expected_instance_id = expected_instance_id.into();
         let last_sequence = Rc::new(Cell::new(None));
@@ -185,6 +201,75 @@ impl WindowMessageSubscription {
     }
 }
 
+/// Source- and origin-validated subscription for an iframe-specific JSON protocol.
+///
+/// The caller owns protocol decoding and returns `(sequence, message)` only for accepted envelopes.
+/// This keeps browser identity checks in `fly-leptos` while allowing feature packages to extend the
+/// protocol without moving their domain messages into this adapter crate.
+pub struct IframeJsonSubscription {
+    _listener: EventListenerHandle,
+    last_sequence: Rc<Cell<Option<u64>>>,
+}
+
+impl IframeJsonSubscription {
+    pub fn subscribe_by_element_id<T>(
+        element_id: impl Into<String>,
+        expected_origin: impl Into<String>,
+        mut decode: impl FnMut(&str, Option<u64>) -> Option<(u64, T)> + 'static,
+        mut handler: impl FnMut(T) + 'static,
+    ) -> Result<Self, BrowserRuntimeError>
+    where
+        T: 'static,
+    {
+        let element_id = element_id.into();
+        let expected_origin = validate_origin(expected_origin)?;
+        let window = web_sys::window().ok_or(BrowserRuntimeError::MissingWindow)?;
+        let document = window
+            .document()
+            .ok_or(BrowserRuntimeError::MissingDocument)?;
+        let element = document
+            .get_element_by_id(&element_id)
+            .ok_or_else(|| BrowserRuntimeError::MissingElement(element_id.clone()))?;
+        let iframe = element
+            .dyn_into::<HtmlIFrameElement>()
+            .map_err(|_| BrowserRuntimeError::InvalidElementType(element_id.clone()))?;
+        let expected_source = iframe
+            .content_window()
+            .ok_or(BrowserRuntimeError::MissingContentWindow)?;
+        let expected_source = JsValue::from(expected_source);
+        let last_sequence = Rc::new(Cell::new(None));
+        let callback_sequence = Rc::clone(&last_sequence);
+        let target: EventTarget = window.unchecked_into();
+        let listener = EventListenerHandle::new::<MessageEvent>(&target, "message", move |event| {
+            if event.origin() != expected_origin {
+                return;
+            }
+            let Some(actual_source) = event.source() else {
+                return;
+            };
+            if !Object::is(actual_source.as_ref(), &expected_source) {
+                return;
+            }
+            let Some(payload) = event.data().as_string() else {
+                return;
+            };
+            let Some((sequence, message)) = decode(&payload, callback_sequence.get()) else {
+                return;
+            };
+            callback_sequence.set(Some(sequence));
+            handler(message);
+        })?;
+        Ok(Self {
+            _listener: listener,
+            last_sequence,
+        })
+    }
+
+    pub fn last_sequence(&self) -> Option<u64> {
+        self.last_sequence.get()
+    }
+}
+
 /// Outbound iframe port. Messages are JSON strings with an explicit origin and monotonic sequence.
 pub struct IframeMessagePort {
     instance_id: String,
@@ -197,10 +282,7 @@ impl IframeMessagePort {
         instance_id: impl Into<String>,
         target_origin: impl Into<String>,
     ) -> Result<Self, BrowserRuntimeError> {
-        let target_origin = target_origin.into();
-        if target_origin.trim().is_empty() || target_origin == "*" {
-            return Err(BrowserRuntimeError::InvalidTargetOrigin);
-        }
+        let target_origin = validate_origin(target_origin)?;
         Ok(Self {
             instance_id: instance_id.into(),
             target_origin,
