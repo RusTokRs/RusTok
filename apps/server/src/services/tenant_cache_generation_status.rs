@@ -1,6 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use rustok_cache::{
+    record_tenant_generation_listener_metrics, TenantGenerationListenerMetrics,
+};
 use tokio::sync::RwLock;
 
 const MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES: usize = 512;
@@ -70,6 +73,7 @@ impl TenantCacheGenerationListenerState {
         self.degraded.store(false, Ordering::Release);
         self.initialized.store(true, Ordering::Release);
         *self.last_error.write().await = None;
+        self.publish_metrics();
     }
 
     async fn mark_local_healthy(&self) {
@@ -78,10 +82,12 @@ impl TenantCacheGenerationListenerState {
             self.degraded.store(false, Ordering::Release);
             *self.last_error.write().await = None;
         }
+        self.publish_metrics();
     }
 
     async fn mark_subscriber_starting(&self) {
         self.subscriber_ready.store(false, Ordering::Release);
+        self.publish_metrics();
     }
 
     async fn mark_subscriber_healthy(&self) {
@@ -89,6 +95,7 @@ impl TenantCacheGenerationListenerState {
         self.reconciliation_healthy.store(true, Ordering::Release);
         self.degraded.store(false, Ordering::Release);
         *self.last_error.write().await = None;
+        self.publish_metrics();
     }
 
     async fn mark_reconciliation_healthy(&self) {
@@ -97,11 +104,13 @@ impl TenantCacheGenerationListenerState {
             self.degraded.store(false, Ordering::Release);
             *self.last_error.write().await = None;
         }
+        self.publish_metrics();
     }
 
     async fn mark_degraded(&self, error: impl Into<String>) {
         self.degraded.store(true, Ordering::Release);
         *self.last_error.write().await = Some(bounded_listener_error(error.into()));
+        self.publish_metrics();
     }
 
     async fn mark_subscriber_degraded(&self, error: impl Into<String>) {
@@ -114,7 +123,7 @@ impl TenantCacheGenerationListenerState {
         self.mark_degraded(error).await;
     }
 
-    async fn snapshot(&self) -> TenantCacheGenerationListenerSnapshot {
+    fn components(&self) -> TenantGenerationListenerMetrics {
         let initialized = self.initialized.load(Ordering::Acquire);
         let redis_required = self.redis_required.load(Ordering::Acquire);
         let local_ready = self.local_ready.load(Ordering::Acquire);
@@ -136,13 +145,32 @@ impl TenantCacheGenerationListenerState {
             TenantCacheGenerationListenerStatus::Starting
         };
 
-        TenantCacheGenerationListenerSnapshot {
-            status,
-            last_error: self.last_error.read().await.clone(),
-            redis_required,
+        TenantGenerationListenerMetrics {
+            status: status.metric_value(),
             local_ready,
             subscriber_ready,
             reconciliation_healthy,
+        }
+    }
+
+    fn publish_metrics(&self) {
+        record_tenant_generation_listener_metrics(self.components());
+    }
+
+    async fn snapshot(&self) -> TenantCacheGenerationListenerSnapshot {
+        let metrics = self.components();
+        TenantCacheGenerationListenerSnapshot {
+            status: match metrics.status {
+                1 => TenantCacheGenerationListenerStatus::Starting,
+                2 => TenantCacheGenerationListenerStatus::Healthy,
+                3 => TenantCacheGenerationListenerStatus::Degraded,
+                _ => TenantCacheGenerationListenerStatus::Disabled,
+            },
+            last_error: self.last_error.read().await.clone(),
+            redis_required: self.redis_required.load(Ordering::Acquire),
+            local_ready: metrics.local_ready,
+            subscriber_ready: metrics.subscriber_ready,
+            reconciliation_healthy: metrics.reconciliation_healthy,
         }
     }
 }
