@@ -223,7 +223,26 @@ pub async fn complete_cart_checkout(
             tenant.id,
             actor_id,
             idempotency_key,
-            checkout_input,
+            CompleteCheckoutInput {
+                cart_id,
+                shipping_option_id: input.shipping_option_id,
+                shipping_selections: input.shipping_selections.map(|items| {
+                    items
+                        .into_iter()
+                        .map(|item| crate::dto::CartShippingSelectionInput {
+                            shipping_profile_slug: item.shipping_profile_slug,
+                            seller_id: item.seller_id,
+                            seller_scope: None,
+                            selected_shipping_option_id: item.selected_shipping_option_id,
+                        })
+                        .collect()
+                }),
+                region_id: input.region_id,
+                country_code: input.country_code,
+                locale: input.locale,
+                create_fulfillment: input.create_fulfillment,
+                metadata: input.metadata,
+            },
         )
         .await
         .map_err(journaled_checkout_http_error)?;
