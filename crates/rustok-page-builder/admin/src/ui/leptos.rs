@@ -4,7 +4,6 @@ use crate::{AdminCanvasController, PageBuilderAdminFacade};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
-use std::rc::Rc;
 use std::sync::Arc;
 
 /// Host-provided composition context for a concrete consumer document.
@@ -95,13 +94,10 @@ pub fn PageBuilderAdminWithController(
         "page_builder.editorSubtitle",
         "Full Fly authoring surface. Persistence remains owned by the consumer module facade.",
     ));
-    let local_facade = facade.map(|facade| {
-        Rc::new(facade) as Rc<dyn PageBuilderAdminFacade>
-    });
 
     view! {
         <AdminShell title subtitle>
-            <AdminCanvas controller facade=local_facade on_request />
+            <AdminCanvas controller facade on_request />
         </AdminShell>
     }
 }
