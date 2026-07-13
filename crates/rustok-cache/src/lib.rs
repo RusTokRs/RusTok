@@ -49,7 +49,9 @@ pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
     CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,
     CacheInvalidationService, CacheInvalidationStats, CacheLoadResult, CacheLoadSource,
-    CacheService, LocalCacheInvalidationSubscription,
+    CacheService, LocalCacheInvalidationSubscription, DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS,
+    MAX_CACHE_INVALIDATION_CHANNEL_BYTES, MAX_CACHE_INVALIDATION_KEY_BYTES,
+    MAX_CACHE_LOAD_KEY_BYTES,
 };
 pub use typed::TypedCacheLoadResult;
 

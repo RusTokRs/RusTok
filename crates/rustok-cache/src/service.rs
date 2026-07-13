@@ -9,6 +9,11 @@ use rustok_core::{CacheBackend, CacheStats, InMemoryCacheBackend};
 #[cfg(feature = "redis-cache")]
 use rustok_core::CircuitBreakerConfig;
 
+pub const MAX_CACHE_INVALIDATION_CHANNEL_BYTES: usize = 256;
+pub const MAX_CACHE_INVALIDATION_KEY_BYTES: usize = 4 * 1024;
+pub const MAX_CACHE_LOAD_KEY_BYTES: usize = 512;
+pub const DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS: usize = 1_024;
+
 #[cfg(feature = "redis-cache")]
 const CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -190,6 +195,7 @@ impl CacheService {
     /// The first caller for a missing key runs `loader`; concurrent callers for the same key
     /// and backend wait for that fill and then read the populated backend. Different backend
     /// instances are deliberately isolated even when their user-facing keys are identical.
+    /// Empty/oversized keys and excess unique in-flight keys fail before running the loader.
     pub async fn load_or_fill<F, Fut>(
         &self,
         backend: Arc<dyn CacheBackend>,
@@ -201,9 +207,9 @@ impl CacheService {
         F: FnOnce() -> Fut,
         Fut: Future<Output = rustok_core::Result<Vec<u8>>>,
     {
-        self.loaders
-            .load_or_fill(backend, key.into(), ttl, loader)
-            .await
+        let key = key.into();
+        validate_cache_load_key(&key)?;
+        self.loaders.load_or_fill(backend, key, ttl, loader).await
     }
 
     /// Returns the generic cache invalidation coordination service.
@@ -313,11 +319,6 @@ impl CacheInvalidationMessage {
     }
 
     /// Build a validated invalidation message.
-    ///
-    /// Invalidation channels are shared across Redis pub/sub and local fan-out,
-    /// so empty/whitespace-only channels or keys are rejected before a message
-    /// can be published. The non-validating `new` constructor remains available
-    /// for existing callers and tests that already own validation.
     pub fn try_new(
         channel: impl Into<String>,
         key: impl Into<String>,
@@ -331,8 +332,20 @@ impl CacheInvalidationMessage {
         if self.channel.trim().is_empty() {
             return Err(CacheInvalidationMessageError::EmptyChannel);
         }
+        if self.channel.len() > MAX_CACHE_INVALIDATION_CHANNEL_BYTES {
+            return Err(CacheInvalidationMessageError::ChannelTooLong {
+                length: self.channel.len(),
+                maximum: MAX_CACHE_INVALIDATION_CHANNEL_BYTES,
+            });
+        }
         if self.key.trim().is_empty() {
             return Err(CacheInvalidationMessageError::EmptyKey);
+        }
+        if self.key.len() > MAX_CACHE_INVALIDATION_KEY_BYTES {
+            return Err(CacheInvalidationMessageError::KeyTooLong {
+                length: self.key.len(),
+                maximum: MAX_CACHE_INVALIDATION_KEY_BYTES,
+            });
         }
         Ok(())
     }
@@ -341,7 +354,9 @@ impl CacheInvalidationMessage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheInvalidationMessageError {
     EmptyChannel,
+    ChannelTooLong { length: usize, maximum: usize },
     EmptyKey,
+    KeyTooLong { length: usize, maximum: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -398,11 +413,6 @@ impl CacheInvalidationService {
         self.local.subscribe()
     }
 
-    /// Subscribe to local invalidations for a single namespace.
-    ///
-    /// This mirrors Redis channel subscription semantics for in-process listeners:
-    /// unrelated local invalidations are skipped, while lag/closed receiver errors
-    /// are still surfaced to the caller.
     pub fn subscribe_local_channel(
         &self,
         channel: impl Into<String>,
@@ -428,13 +438,6 @@ impl CacheInvalidationService {
         }
     }
 
-    /// Consume Redis pub/sub messages for a cache invalidation channel until the
-    /// underlying stream closes or returns an error.
-    ///
-    /// The payload contract matches `publish`: Redis messages carry the invalidated
-    /// key as payload, while the channel name remains the invalidation namespace.
-    /// Callers keep ownership of retry/backoff and domain-specific side effects,
-    /// but no longer need to open Redis pub/sub connections directly.
     #[cfg(feature = "redis-cache")]
     pub async fn consume_subscription<F, Fut>(
         &self,
@@ -449,9 +452,6 @@ impl CacheInvalidationService {
             .await
     }
 
-    /// Same as `consume_subscription`, but calls `ready` after Redis successfully
-    /// subscribes and before the message stream is consumed. Host listeners use
-    /// this hook to update health state only after subscription is established.
     #[cfg(feature = "redis-cache")]
     pub async fn consume_subscription_with_ready<F, Fut, R, ReadyFut>(
         &self,
@@ -584,7 +584,6 @@ impl CacheInvalidationService {
     }
 }
 
-/// Local channel-scoped invalidation receiver.
 pub struct LocalCacheInvalidationSubscription {
     channel: String,
     receiver: broadcast::Receiver<CacheInvalidationMessage>,
@@ -607,11 +606,8 @@ impl LocalCacheInvalidationSubscription {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheLoadSource {
-    /// Value was already present before this call.
     Hit,
-    /// This call executed the loader and stored the result.
     Filled,
-    /// Another concurrent caller filled the key while this call waited.
     Coalesced,
 }
 
@@ -638,32 +634,26 @@ impl CacheLoadKey {
 
 type CacheLoadGateMap = HashMap<CacheLoadKey, Arc<AsyncMutex<()>>>;
 
-#[derive(Default)]
 struct CacheLoadCoordinator {
     locks: Arc<StdMutex<CacheLoadGateMap>>,
+    max_in_flight: usize,
 }
 
-struct CacheLoadGateLease {
-    key: CacheLoadKey,
-    gate: Arc<AsyncMutex<()>>,
-    locks: Arc<StdMutex<CacheLoadGateMap>>,
-}
-
-impl Drop for CacheLoadGateLease {
-    fn drop(&mut self) {
-        let mut locks = self
-            .locks
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if locks.get(&self.key).is_some_and(|current| {
-            Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2
-        }) {
-            locks.remove(&self.key);
-        }
+impl Default for CacheLoadCoordinator {
+    fn default() -> Self {
+        Self::new(DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS)
     }
 }
 
 impl CacheLoadCoordinator {
+    fn new(max_in_flight: usize) -> Self {
+        assert!(max_in_flight > 0, "cache load capacity must be positive");
+        Self {
+            locks: Arc::new(StdMutex::new(HashMap::new())),
+            max_in_flight,
+        }
+    }
+
     async fn load_or_fill<F, Fut>(
         &self,
         backend: Arc<dyn CacheBackend>,
@@ -682,7 +672,7 @@ impl CacheLoadCoordinator {
             });
         }
 
-        let lease = self.gate_for(CacheLoadKey::new(&backend, &key));
+        let lease = self.gate_for(CacheLoadKey::new(&backend, &key))?;
         let _guard = lease.gate.lock().await;
 
         if let Some(value) = backend.get(&key).await? {
@@ -708,21 +698,29 @@ impl CacheLoadCoordinator {
         })
     }
 
-    fn gate_for(&self, key: CacheLoadKey) -> CacheLoadGateLease {
+    fn gate_for(&self, key: CacheLoadKey) -> rustok_core::Result<CacheLoadGateLease> {
         let mut locks = self
             .locks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let gate = Arc::clone(
-            locks
-                .entry(key.clone())
-                .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
-        );
-        CacheLoadGateLease {
+        let gate = if let Some(current) = locks.get(&key) {
+            Arc::clone(current)
+        } else {
+            if locks.len() >= self.max_in_flight {
+                return Err(rustok_core::Error::Cache(format!(
+                    "cache load coordinator saturated at {} unique in-flight keys",
+                    self.max_in_flight
+                )));
+            }
+            let gate = Arc::new(AsyncMutex::new(()));
+            locks.insert(key.clone(), Arc::clone(&gate));
+            gate
+        };
+        Ok(CacheLoadGateLease {
             key,
             gate,
             locks: Arc::clone(&self.locks),
-        }
+        })
     }
 
     fn in_flight(&self) -> usize {
@@ -731,6 +729,42 @@ impl CacheLoadCoordinator {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len()
     }
+}
+
+struct CacheLoadGateLease {
+    key: CacheLoadKey,
+    gate: Arc<AsyncMutex<()>>,
+    locks: Arc<StdMutex<CacheLoadGateMap>>,
+}
+
+impl Drop for CacheLoadGateLease {
+    fn drop(&mut self) {
+        let mut locks = self
+            .locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if locks.get(&self.key).is_some_and(|current| {
+            Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2
+        }) {
+            locks.remove(&self.key);
+        }
+    }
+}
+
+fn validate_cache_load_key(key: &str) -> rustok_core::Result<()> {
+    if key.trim().is_empty() {
+        return Err(rustok_core::Error::Cache(
+            "cache load key must not be empty".to_string(),
+        ));
+    }
+    if key.len() > MAX_CACHE_LOAD_KEY_BYTES {
+        return Err(rustok_core::Error::Cache(format!(
+            "cache load key is {} bytes; maximum is {}",
+            key.len(),
+            MAX_CACHE_LOAD_KEY_BYTES
+        )));
+    }
+    Ok(())
 }
 
 pub fn format_cache_service_prometheus_metrics(
@@ -938,6 +972,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn load_or_fill_rejects_empty_and_oversized_keys_before_loader() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for key in ["".to_string(), "x".repeat(MAX_CACHE_LOAD_KEY_BYTES + 1)] {
+            let calls = Arc::clone(&calls);
+            let error = service
+                .load_or_fill(Arc::clone(&backend), key, None, move || async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(b"unexpected".to_vec())
+                })
+                .await
+                .unwrap_err();
+            assert!(matches!(error, rustok_core::Error::Cache(_)));
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn unique_in_flight_loads_are_bounded_without_breaking_same_key_coalescing() {
+        let coordinator = Arc::new(CacheLoadCoordinator::new(1));
+        let backend = CacheService::from_url(None).memory_backend(Duration::from_secs(60), 16);
+        let (started_tx, started_rx) = oneshot::channel();
+
+        let first = {
+            let coordinator = Arc::clone(&coordinator);
+            let backend = Arc::clone(&backend);
+            tokio::spawn(async move {
+                coordinator
+                    .load_or_fill(backend, "first".to_string(), None, move || async move {
+                        let _ = started_tx.send(());
+                        std::future::pending::<rustok_core::Result<Vec<u8>>>().await
+                    })
+                    .await
+            })
+        };
+
+        started_rx.await.unwrap();
+        let error = coordinator
+            .load_or_fill(backend, "second".to_string(), None, || async {
+                Ok(b"unexpected".to_vec())
+            })
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("saturated"));
+
+        first.abort();
+        let _ = first.await;
+        tokio::task::yield_now().await;
+        assert_eq!(coordinator.in_flight(), 0);
+    }
+
+    #[tokio::test]
     async fn identical_keys_on_different_backends_do_not_block_each_other() {
         let service = CacheService::from_url(None);
         let first_backend = service.memory_backend(Duration::from_secs(60), 16);
@@ -1046,7 +1135,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalidation_message_validation_rejects_empty_parts() {
+    async fn invalidation_message_validation_rejects_empty_and_oversized_parts() {
         assert_eq!(
             CacheInvalidationMessage::try_new("", "key").unwrap_err(),
             CacheInvalidationMessageError::EmptyChannel
@@ -1054,6 +1143,28 @@ mod tests {
         assert_eq!(
             CacheInvalidationMessage::try_new("cache.test", "   ").unwrap_err(),
             CacheInvalidationMessageError::EmptyKey
+        );
+        assert_eq!(
+            CacheInvalidationMessage::try_new(
+                "x".repeat(MAX_CACHE_INVALIDATION_CHANNEL_BYTES + 1),
+                "key"
+            )
+            .unwrap_err(),
+            CacheInvalidationMessageError::ChannelTooLong {
+                length: MAX_CACHE_INVALIDATION_CHANNEL_BYTES + 1,
+                maximum: MAX_CACHE_INVALIDATION_CHANNEL_BYTES,
+            }
+        );
+        assert_eq!(
+            CacheInvalidationMessage::try_new(
+                "cache.test",
+                "x".repeat(MAX_CACHE_INVALIDATION_KEY_BYTES + 1)
+            )
+            .unwrap_err(),
+            CacheInvalidationMessageError::KeyTooLong {
+                length: MAX_CACHE_INVALIDATION_KEY_BYTES + 1,
+                maximum: MAX_CACHE_INVALIDATION_KEY_BYTES,
+            }
         );
 
         let valid = CacheInvalidationMessage::try_new("cache.test", "key").unwrap();

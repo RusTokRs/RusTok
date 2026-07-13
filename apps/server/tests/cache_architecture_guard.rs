@@ -120,7 +120,9 @@ fn default_backend_factory_uses_the_service_owned_redis_client() {
         "the default backend factory must delegate to the service-owned client path"
     );
     assert!(
-        service.contains("self.backend_shared_client_with_options(prefix, ttl, max_capacity, options)"),
+        service.contains(
+            "self.backend_shared_client_with_options(prefix, ttl, max_capacity, options)"
+        ),
         "the per-call backend factory must delegate to the service-owned client path"
     );
     assert!(
@@ -130,6 +132,34 @@ fn default_backend_factory_uses_the_service_owned_redis_client() {
     assert!(
         !service.contains("RedisCacheBackend::with_circuit_breaker"),
         "the default factory must not reopen Redis from the stored URL"
+    );
+}
+
+#[test]
+fn generic_invalidation_and_loader_inputs_are_bounded() {
+    let service = source("crates/rustok-cache/src/service.rs");
+
+    for required in [
+        "MAX_CACHE_INVALIDATION_CHANNEL_BYTES",
+        "MAX_CACHE_INVALIDATION_KEY_BYTES",
+        "MAX_CACHE_LOAD_KEY_BYTES",
+        "DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS",
+        "ChannelTooLong",
+        "KeyTooLong",
+        "cache load coordinator saturated",
+    ] {
+        assert!(
+            service.contains(required),
+            "generic cache resource contract must retain {required}"
+        );
+    }
+    assert!(
+        service.contains("load_or_fill_rejects_empty_and_oversized_keys_before_loader"),
+        "load-key bounds must retain regression coverage"
+    );
+    assert!(
+        service.contains("unique_in_flight_loads_are_bounded_without_breaking_same_key_coalescing"),
+        "unique-flight capacity must retain regression coverage"
     );
 }
 
@@ -188,7 +218,7 @@ fn invalidation_recovery_is_two_phase_and_monotonic() {
 }
 
 #[test]
-fn generation_fallback_is_trusted_and_monotonic() {
+fn generation_fallback_is_trusted_monotonic_and_bounded() {
     let generation = source("crates/rustok-cache/src/generation.rs");
     assert!(
         generation.contains("NoLocalSnapshot"),
@@ -197,6 +227,20 @@ fn generation_fallback_is_trusted_and_monotonic() {
     assert!(
         generation.contains("GenerationRegressed"),
         "shared generation loss must not lower a locally observed generation"
+    );
+    assert!(
+        generation.contains("DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS"),
+        "trusted generation snapshots must have a default process memory bound"
+    );
+    assert!(
+        generation.contains("LocalSnapshotCapacityExceeded"),
+        "new generation namespaces must fail closed after snapshot capacity is reached"
+    );
+    assert!(
+        generation.contains(
+            "trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces"
+        ),
+        "generation capacity must retain regression coverage without evicting trusted state"
     );
 }
 
