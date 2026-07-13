@@ -39,7 +39,10 @@ function assertNotContains(text, pattern, description) {
 }
 
 const files = {
+  adminCargo: "crates/rustok-pages/admin/Cargo.toml",
   adminLib: "crates/rustok-pages/admin/src/lib.rs",
+  adminBuilder: "crates/rustok-pages/admin/src/builder.rs",
+  adminComposition: "crates/rustok-pages/admin/src/composition.rs",
   adminCore: "crates/rustok-pages/admin/src/core.rs",
   adminUi: "crates/rustok-pages/admin/src/ui/leptos.rs",
   adminTransport: "crates/rustok-pages/admin/src/transport/mod.rs",
@@ -68,7 +71,10 @@ if (existsSync(repoPath(files.storefrontLegacyApi))) {
   fail(`${files.storefrontLegacyApi}: storefront legacy api.rs must stay removed; transport/{graphql_adapter,native_server_adapter}.rs own raw transport operations`);
 }
 
+const adminCargo = readRepo(files.adminCargo);
 const adminLib = readRepo(files.adminLib);
+const adminBuilder = readRepo(files.adminBuilder);
+const adminComposition = readRepo(files.adminComposition);
 const adminCore = readRepo(files.adminCore);
 const adminUi = readRepo(files.adminUi);
 const adminTransport = readRepo(files.adminTransport);
@@ -83,23 +89,61 @@ const storefrontCargo = readRepo(files.storefrontCargo);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 
-for (const [source, label, exportMarker] of [
-  [storefrontLib, files.storefrontLib, "pub use ui::leptos::PagesView;"],
-]) {
-  assertNotContains(source, "mod api;", `${label}: crate root must not wire legacy api adapter`);
-  assertContains(source, "mod core;", `${label}: crate root must wire core`);
-  assertContains(source, "mod transport;", `${label}: crate root must wire transport facade`);
-  assertContains(source, exportMarker, `${label}: crate root must re-export only the public UI entrypoint`);
-  for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn delete_/]) {
-    assertNotContains(source, marker, `${label}: crate root must not expose public transport passthroughs (${marker})`);
-  }
-}
 assertNotContains(adminLib, "mod api;", `${files.adminLib}: admin crate root must not wire legacy api adapter`);
-assertContains(adminLib, "mod core;", `${files.adminLib}: admin crate root must wire core`);
-assertContains(adminLib, "mod transport;", `${files.adminLib}: admin crate root must wire transport facade`);
-assertContains(adminLib, "pub use ui::leptos::PagesAdmin;", `${files.adminLib}: admin crate root must re-export only the public UI entrypoint`);
+for (const marker of ["mod builder;", "mod composition;", "mod core;", "mod transport;"]) {
+  assertContains(adminLib, marker, `${files.adminLib}: missing ${marker}`);
+}
+assertContains(
+  adminLib,
+  "pub use composition::PagesAdmin;",
+  `${files.adminLib}: public entrypoint must be the Pages/Fly composition wrapper`,
+);
 for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn delete_/]) {
   assertNotContains(adminLib, marker, `${files.adminLib}: crate root must not expose public transport passthroughs (${marker})`);
+}
+
+for (const dependency of [
+  'rustok-page-builder = { path = "../../rustok-page-builder"',
+  'rustok-page-builder-admin = { path = "../../rustok-page-builder/admin"',
+]) {
+  assertContains(adminCargo, dependency, `${files.adminCargo}: missing ${dependency}`);
+}
+
+for (const marker of [
+  "PagesBuilderFacade",
+  "impl PageBuilderAdminFacade for PagesBuilderFacade",
+  "PageBuilderCapabilityRequest::Publish",
+  "transport::fetch_page",
+  "transport::update_page",
+  "REVISION_CONFLICT",
+  "canonicalize_builder_project",
+  "take_frame_component",
+  "controller_from_project",
+]) {
+  assertContains(adminBuilder, marker, `${files.adminBuilder}: expected Page Builder consumer marker ${marker}`);
+}
+for (const forbidden of ["rustok_graphql", "GraphqlRequest", "#[server", "reqwest::"]) {
+  assertNotContains(adminBuilder, forbidden, `${files.adminBuilder}: consumer facade must use the Pages transport facade, not ${forbidden}`);
+}
+
+for (const marker of [
+  "pub fn PagesAdmin()",
+  "use_route_query_value",
+  "transport::fetch_page",
+  "PagesBuilderFacade",
+  "PageBuilderAdminWithController",
+  "crate::ui::leptos::PagesAdmin",
+]) {
+  assertContains(adminComposition, marker, `${files.adminComposition}: expected Fly composition marker ${marker}`);
+}
+assertNotContains(adminComposition, "graphql_adapter", `${files.adminComposition}: composition must not select a transport adapter`);
+
+assertNotContains(storefrontLib, "mod api;", `${files.storefrontLib}: crate root must not wire legacy api adapter`);
+assertContains(storefrontLib, "mod core;", `${files.storefrontLib}: crate root must wire core`);
+assertContains(storefrontLib, "mod transport;", `${files.storefrontLib}: crate root must wire transport facade`);
+assertContains(storefrontLib, "pub use ui::leptos::PagesView;", `${files.storefrontLib}: crate root must re-export only the public UI entrypoint`);
+for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn delete_/]) {
+  assertNotContains(storefrontLib, marker, `${files.storefrontLib}: crate root must not expose public transport passthroughs (${marker})`);
 }
 
 for (const [source, label] of [
@@ -150,34 +194,45 @@ for (const marker of [
 
 assertContains(adminUi, "use crate::core;", `${files.adminUi}: admin UI must consume core layer`);
 assertContains(adminUi, "use crate::transport;", `${files.adminUi}: admin UI must consume transport layer`);
-assertContains(adminUi, "core::build_create_page_draft", `${files.adminUi}: admin UI must use core-owned draft preparation`);
-assertContains(adminUi, "core::publish_state_view", `${files.adminUi}: admin UI must use core-owned publish state mapping`);
-assertContains(adminUi, "core::legacy_block_snapshot_label", `${files.adminUi}: admin UI must use core-owned legacy block labels`);
-assertContains(adminUi, "core::is_save_action_busy", `${files.adminUi}: admin UI must use core-owned save busy state mapping`);
-assertContains(adminUi, "core::is_publish_action_disabled", `${files.adminUi}: admin UI must use core-owned publish disabled mapping`);
-assertContains(adminUi, "core::admin_page_list_item_view", `${files.adminUi}: admin UI must use core-owned table item view mapping`);
-assertContains(adminUi, "core::admin_page_row_action_state", `${files.adminUi}: admin UI must use core-owned table action busy mapping`);
-assertContains(adminUi, "core::admin_page_row_action_labels", `${files.adminUi}: admin UI must use core-owned table action label mapping`);
-assertContains(adminUi, "core::issue_banner_view", `${files.adminUi}: admin UI must use core-owned issue banner view mapping`);
-assertContains(adminUi, "core::compatibility_warning_view", `${files.adminUi}: admin UI must use core-owned compatibility warning view mapping`);
-assertContains(adminUi, "core::page_properties_view", `${files.adminUi}: admin UI must use core-owned properties panel view mapping`);
-assertContains(adminUi, "banner.class_name", `${files.adminUi}: admin UI must render core-owned issue banner class from the view model`);
+for (const marker of [
+  "core::build_create_page_draft",
+  "core::publish_state_view",
+  "core::legacy_block_snapshot_label",
+  "core::is_save_action_busy",
+  "core::is_publish_action_disabled",
+  "core::admin_page_list_item_view",
+  "core::admin_page_row_action_state",
+  "core::admin_page_row_action_labels",
+  "core::issue_banner_view",
+  "core::compatibility_warning_view",
+  "core::page_properties_view",
+  "banner.class_name",
+  "transport::fetch_pages",
+]) {
+  assertContains(adminUi, marker, `${files.adminUi}: expected legacy metadata UI marker ${marker}`);
+}
 assertNotContains(adminUi, "core::issue_banner_class", `${files.adminUi}: admin UI must not bypass issue_banner_view for banner class policy`);
-assertContains(adminUi, "transport::fetch_pages", `${files.adminUi}: admin UI must call transport facade`);
+
 assertContains(storefrontUi, "use crate::core;", `${files.storefrontUi}: storefront UI must consume core layer`);
 assertContains(storefrontUi, "use crate::transport;", `${files.storefrontUi}: storefront UI must consume transport layer`);
-assertContains(storefrontUi, "core::selected_page_title", `${files.storefrontUi}: storefront UI must use core-owned selected page view helpers`);
-assertContains(storefrontUi, "core::selected_page_empty_state", `${files.storefrontUi}: storefront UI must use core-owned selected-page empty state`);
-assertContains(storefrontUi, "core::load_error_message", `${files.storefrontUi}: storefront UI must use core-owned load error composition`);
-assertContains(storefrontUi, "core::storefront_page_list_item_view", `${files.storefrontUi}: storefront UI must use core-owned list item view mapping`);
-assertContains(storefrontUi, "core::published_pages_empty_state", `${files.storefrontUi}: storefront UI must use core-owned published-pages empty state`);
-assertContains(storefrontUi, "core::published_pages_header_view", `${files.storefrontUi}: storefront UI must use core-owned published-pages header mapping`);
-assertContains(storefrontUi, "transport::fetch_pages", `${files.storefrontUi}: storefront UI must call transport facade`);
+for (const marker of [
+  "core::selected_page_title",
+  "core::selected_page_empty_state",
+  "core::load_error_message",
+  "core::storefront_page_list_item_view",
+  "core::published_pages_empty_state",
+  "core::published_pages_header_view",
+  "transport::fetch_pages",
+]) {
+  assertContains(storefrontUi, marker, `${files.storefrontUi}: expected storefront marker ${marker}`);
+}
+
 for (const [source, label] of [
   [adminUi, files.adminUi],
+  [adminComposition, files.adminComposition],
   [storefrontUi, files.storefrontUi],
 ]) {
-  for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PageService", "MenuService"] ) {
+  for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PageService", "MenuService"]) {
     assertNotContains(source, marker, `${label}: UI adapter must not call raw transport or services (${marker})`);
   }
 }
