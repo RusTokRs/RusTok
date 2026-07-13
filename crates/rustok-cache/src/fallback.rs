@@ -145,6 +145,23 @@ impl DegradationAwareFallbackBackend {
         }
     }
 
+    async fn discard_local_write_if_unchanged(&self, key: &str, expected: &[u8]) {
+        match self
+            .fallback
+            .compare_and_set(key, expected, Vec::new(), Some(Duration::ZERO))
+            .await
+        {
+            Ok(CacheCompareAndSetOutcome::Applied | CacheCompareAndSetOutcome::Mismatch) => {}
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    key,
+                    "Failed to conditionally discard an untracked degraded cache write"
+                );
+            }
+        }
+    }
+
     async fn mirror_primary_cas(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) {
         let result = match ttl {
             Some(ttl) => {
@@ -166,7 +183,7 @@ impl DegradationAwareFallbackBackend {
         primary_error: rustok_core::Error,
     ) -> rustok_core::Result<()> {
         if let Err(tracker_error) = self.mark_degraded_write(key, expected).await {
-            let _ = self.fallback.invalidate(key).await;
+            self.discard_local_write_if_unchanged(key, expected).await;
             tracing::warn!(
                 error = %primary_error,
                 %tracker_error,
@@ -197,15 +214,25 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         }
 
         match self.primary.get(key).await {
-            Ok(Some(value)) => Ok(Some(value)),
-            Ok(None) => {
-                // A successful primary miss is authoritative. Remove any older local mirror so a
-                // later Redis outage cannot resurrect stale bytes.
-                self.clear_degraded_write(key).await;
-                if let Err(error) = self.fallback.invalidate(key).await {
-                    tracing::warn!(%error, key, "Failed to discard stale local cache mirror");
+            Ok(primary_value) => {
+                // A degraded write may complete while the primary read is in flight. Re-check the
+                // marker before trusting Redis or deleting the local mirror.
+                if let Some(value) = self.read_degraded_write(key).await? {
+                    return Ok(Some(value));
                 }
-                Ok(None)
+
+                match primary_value {
+                    Some(value) => Ok(Some(value)),
+                    None => {
+                        // A successful primary miss is authoritative. Remove any older local mirror
+                        // so a later Redis outage cannot resurrect stale bytes.
+                        self.clear_degraded_write(key).await;
+                        if let Err(error) = self.fallback.invalidate(key).await {
+                            tracing::warn!(%error, key, "Failed to discard stale local cache mirror");
+                        }
+                        Ok(None)
+                    }
+                }
             }
             Err(error) => {
                 tracing::debug!(%error, key, "Primary cache GET failed, using local fallback");
@@ -330,6 +357,7 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
+    use tokio::sync::Notify;
 
     struct HealthControlledBackend {
         healthy: AtomicBool,
@@ -433,6 +461,45 @@ mod tests {
         }
     }
 
+    struct BlockingMissBackend {
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    #[async_trait]
+    impl CacheBackend for BlockingMissBackend {
+        async fn health(&self) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, _key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(None)
+        }
+
+        async fn set(&self, _key: String, _value: Vec<u8>) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            _key: String,
+            _value: Vec<u8>,
+            _ttl: Duration,
+        ) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn invalidate(&self, _key: &str) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats::default()
+        }
+    }
+
     struct RecoveringStaleBackend {
         fail_writes: AtomicBool,
         value: Mutex<Option<Vec<u8>>>,
@@ -500,11 +567,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_write_cleanup_does_not_delete_newer_local_bytes() {
+        let primary = Arc::new(HealthControlledBackend {
+            healthy: AtomicBool::new(false),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let backend = backend(primary, Arc::clone(&fallback));
+        fallback
+            .set("key".to_string(), b"newer".to_vec())
+            .await
+            .unwrap();
+
+        backend
+            .discard_local_write_if_unchanged("key", b"older")
+            .await;
+        assert_eq!(fallback.get("key").await.unwrap(), Some(b"newer".to_vec()));
+
+        backend
+            .discard_local_write_if_unchanged("key", b"newer")
+            .await;
+        assert_eq!(fallback.get("key").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn primary_miss_rechecks_degraded_write_completed_during_read() {
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let primary = Arc::new(BlockingMissBackend {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let backend = Arc::new(backend(primary, Arc::clone(&fallback)));
+        let started_wait = started.notified();
+        let get_backend = Arc::clone(&backend);
+        let read = tokio::spawn(async move { get_backend.get("key").await.unwrap() });
+
+        started_wait.await;
+        fallback
+            .set("key".to_string(), b"local".to_vec())
+            .await
+            .unwrap();
+        backend
+            .degraded_writes
+            .insert("key", b"local", &fallback)
+            .await
+            .unwrap();
+        release.notify_one();
+
+        assert_eq!(read.await.unwrap(), Some(b"local".to_vec()));
+        assert_eq!(fallback.get("key").await.unwrap(), Some(b"local".to_vec()));
+    }
+
+    #[tokio::test]
     async fn degraded_tracker_rejects_missing_or_stale_local_payload() {
         let tracker = DegradedWriteTracker::new(1);
         let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 4);
 
-        assert!(tracker.insert("missing", b"new", &fallback).await.is_err());
+        assert!(tracker
+            .insert("missing", b"new", &fallback)
+            .await
+            .is_err());
         fallback
             .set("stale".to_string(), b"old".to_vec())
             .await
