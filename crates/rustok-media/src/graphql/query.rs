@@ -1,5 +1,6 @@
-use async_graphql::{Context, Object, Result};
-use rustok_api::graphql::{require_module_enabled, PaginationInput};
+use async_graphql::{Context, FieldError, Object, Result};
+use rustok_api::graphql::{require_module_enabled, GraphQLError, PaginationInput};
+use rustok_api::{has_effective_permission, Action, AuthContext, Permission, Resource, TenantContext};
 use rustok_storage::StorageService;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -13,8 +14,10 @@ pub struct MediaQuery;
 
 #[Object]
 impl MediaQuery {
-    /// Media usage statistics for a tenant.
+    /// Media usage statistics for the current tenant.
     async fn media_usage(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<MediaUsageStats> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_media_permission(ctx, tenant_id, Action::List)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let usage = load_media_usage_snapshot(db, tenant_id)
             .await
@@ -27,7 +30,7 @@ impl MediaQuery {
         })
     }
 
-    /// List media assets for a tenant.
+    /// List media assets for the current tenant.
     async fn media(
         &self,
         ctx: &Context<'_>,
@@ -35,6 +38,7 @@ impl MediaQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<GqlMediaList> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_media_permission(ctx, tenant_id, Action::List)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let storage = ctx.data::<StorageService>()?;
 
@@ -59,6 +63,7 @@ impl MediaQuery {
         id: Uuid,
     ) -> Result<Option<GqlMediaItem>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_media_permission(ctx, tenant_id, Action::Read)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let storage = ctx.data::<StorageService>()?;
 
@@ -78,6 +83,7 @@ impl MediaQuery {
         media_id: Uuid,
     ) -> Result<Vec<GqlMediaTranslation>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_media_permission(ctx, tenant_id, Action::Read)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let storage = ctx.data::<StorageService>()?;
 
@@ -88,5 +94,39 @@ impl MediaQuery {
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         Ok(translations.into_iter().map(Into::into).collect())
+    }
+}
+
+fn require_media_permission(ctx: &Context<'_>, requested_tenant: Uuid, action: Action) -> Result<()> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let tenant = ctx.data::<TenantContext>()?;
+    if requested_tenant != tenant.id || auth.tenant_id != tenant.id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Media queries must use the current authenticated tenant",
+        ));
+    }
+
+    let permission = Permission::new(Resource::Media, action);
+    if !has_effective_permission(&auth.permissions, &permission) {
+        return Err(<FieldError as GraphQLError>::permission_denied(&format!(
+            "Permission required: {permission}"
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{Action, Permission, Resource};
+
+    #[test]
+    fn media_query_permissions_distinguish_list_and_read() {
+        assert_ne!(
+            Permission::new(Resource::Media, Action::List),
+            Permission::new(Resource::Media, Action::Read)
+        );
     }
 }
