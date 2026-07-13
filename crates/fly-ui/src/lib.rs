@@ -3,6 +3,7 @@
 mod contribution;
 mod dnd;
 mod error;
+mod keyboard;
 mod machine;
 mod resize;
 mod state;
@@ -11,6 +12,7 @@ mod viewport;
 pub use contribution::*;
 pub use dnd::*;
 pub use error::*;
+pub use keyboard::*;
 pub use machine::*;
 pub use resize::*;
 pub use state::*;
