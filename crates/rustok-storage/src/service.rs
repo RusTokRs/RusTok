@@ -77,7 +77,8 @@ impl StorageService {
 
     pub async fn list(&self, prefix: &str) -> Result<Vec<StoredObject>> {
         validate_storage_path(prefix, true, true)?;
-        self.0.list(prefix).await
+        let normalized = prefix.strip_suffix('/').unwrap_or(prefix);
+        self.0.list(normalized).await
     }
 
     pub async fn private_download_url(
