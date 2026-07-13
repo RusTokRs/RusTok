@@ -60,13 +60,14 @@ async fn repair_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             UPDATE reservation_items
             SET metadata = json_object(
                     'metadata_truncated', json('true'),
-                    'source', json_extract(metadata, '$.source'),
-                    'variant_id', json_extract(metadata, '$.variant_id'),
-                    'order_id', json_extract(metadata, '$.order_id'),
-                    'order_line_item_id', json_extract(metadata, '$.order_line_item_id'),
-                    'cart_line_item_id', json_extract(metadata, '$.cart_line_item_id'),
-                    'inventory_disposition', json_extract(metadata, '$.inventory_disposition'),
-                    'superseded_by', json_extract(metadata, '$.superseded_by'),
+                    'legacy_metadata_valid', json(CASE WHEN json_valid(metadata) THEN 'true' ELSE 'false' END),
+                    'source', CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.source') END,
+                    'variant_id', CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.variant_id') END,
+                    'order_id', CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.order_id') END,
+                    'order_line_item_id', CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.order_line_item_id') END,
+                    'cart_line_item_id', CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.cart_line_item_id') END,
+                    'inventory_disposition', CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.inventory_disposition') END,
+                    'superseded_by', CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.superseded_by') END,
                     'reservation_id', id,
                     'external_id', external_id
                 ),
