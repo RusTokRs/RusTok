@@ -40,6 +40,7 @@ pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;
 pub mod topic_field_service;
+pub mod user_admin_guard;
 pub mod user_field_service;
 
 pub mod field_definition_cache;
