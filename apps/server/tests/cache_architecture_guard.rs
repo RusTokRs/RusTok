@@ -184,9 +184,15 @@ fn shared_fallback_health_does_not_mask_primary_degradation() {
 }
 
 #[test]
-fn stale_refresh_is_bounded_deduplicated_and_skips_superseded_writes() {
+fn stale_refresh_is_bounded_deduplicated_and_atomic() {
+    let core_context = source("crates/rustok-core/src/context.rs");
+    let core_cache = source("crates/rustok-core/src/cache.rs");
     let refresh = source("crates/rustok-cache/src/refresh.rs");
     let observability = source("crates/rustok-cache/src/observability.rs");
+    let shared = source("crates/rustok-cache/src/shared_backend.rs");
+    let fallback = source("crates/rustok-cache/src/fallback.rs");
+    let weighted = source("crates/rustok-cache/src/weighted.rs");
+    let service = source("crates/rustok-cache/src/service.rs");
 
     for required in [
         "MAX_CACHE_REFRESH_KEY_BYTES",
@@ -205,22 +211,61 @@ fn stale_refresh_is_bounded_deduplicated_and_skips_superseded_writes() {
         "rejected stale refresh work must remain observable without key labels"
     );
     assert!(
-        refresh.contains("observed_bytes"),
-        "background refresh must retain the exact stale envelope observed by the request"
+        core_context.contains("pub enum CacheCompareAndSetOutcome"),
+        "the backend contract must expose explicit CAS applied/mismatch outcomes"
     );
     assert!(
-        refresh.contains(
+        core_context.contains("atomic cache compare-and-set is not supported by this backend"),
+        "unsupported CAS backends must fail closed instead of emulating GET plus SET"
+    );
+    assert!(
+        core_cache.contains("IN_MEMORY_WRITE_LOCK_STRIPES"),
+        "in-memory CAS and ordinary writes must share bounded striped locks"
+    );
+    assert!(
+        core_cache.contains("REDIS_COMPARE_AND_SET_SCRIPT")
+            && core_cache.contains("current ~= ARGV[1]")
+            && core_cache.contains("PSETEX"),
+        "legacy Redis CAS must use one binary-safe conditional Lua operation"
+    );
+    assert!(
+        shared.contains("SHARED_REDIS_COMPARE_AND_SET_SCRIPT")
+            && shared.contains("current ~= ARGV[1]")
+            && shared.contains("PSETEX"),
+        "service-owned Redis CAS must use one binary-safe conditional Lua operation"
+    );
+    for (name, source) in [
+        ("fallback", fallback.as_str()),
+        ("weighted", weighted.as_str()),
+        ("service instrumentation", service.as_str()),
+        ("shared instrumentation", shared.as_str()),
+    ] {
+        assert!(
+            source.contains("compare_and_set"),
+            "{name} must delegate the atomic CAS contract"
+        );
+    }
+    assert!(
+        fallback.contains("compare_and_set_fails_closed_when_shared_primary_is_unavailable"),
+        "distributed fallback CAS must retain fail-closed outage coverage"
+    );
+    assert!(
+        refresh.contains(".compare_and_set(&key, &observed_bytes, bytes, ttl)"),
+        "background refresh must publish through backend-level atomic CAS"
+    );
+    assert!(
+        !refresh.contains(
             "backend.get(&key).await?.as_deref() != Some(observed_bytes.as_slice())"
         ),
-        "background refresh must skip writes after replacement or invalidation"
+        "background refresh must not use a racy prewrite GET check"
     );
     assert!(
         refresh.contains("concurrent_replacement_wins_over_slow_stale_refresh"),
         "SWR must retain regression coverage for superseded refresh writes"
     );
     assert!(
-        refresh.contains("foreground_stale_fill_does_not_run_loader_twice"),
-        "SWR must retain regression coverage for duplicate foreground/background loads"
+        core_cache.contains("real_redis_compare_and_set_is_atomic_and_preserves_mismatch"),
+        "atomic Redis CAS must retain live integration coverage"
     );
 }
 

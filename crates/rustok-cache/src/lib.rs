@@ -1,7 +1,14 @@
+mod bounded_invalidation;
+mod cas_observability;
+mod durable_invalidation;
+mod durable_invalidation_service;
+mod durable_invalidation_transport;
 mod envelope;
 mod fallback;
 mod generation;
 mod invalidation;
+mod invalidation_consumer;
+mod invalidation_processor;
 mod key;
 mod key_generation;
 mod lease;
@@ -14,6 +21,22 @@ mod shared_backend;
 mod typed;
 mod weighted;
 
+pub use bounded_invalidation::{
+    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
+    DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS,
+};
+pub use cas_observability::{
+    format_cache_compare_and_set_prometheus_metrics, observe_cache_compare_and_set,
+    CacheCompareAndSetMetrics, CacheCompareAndSetStats,
+};
+pub use durable_invalidation::{
+    DurableCacheInvalidationError, DurableCacheInvalidationRecord,
+    DEFAULT_MAX_DURABLE_INVALIDATION_BYTES, DURABLE_CACHE_INVALIDATION_FORMAT_VERSION,
+    MAX_DURABLE_INVALIDATION_CAUSE_BYTES, MAX_DURABLE_INVALIDATION_TRACE_ID_BYTES,
+};
+pub use durable_invalidation_transport::{
+    durable_invalidation_from_message, durable_invalidation_to_message,
+};
 pub use envelope::{
     CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
@@ -25,6 +48,12 @@ pub use generation::{
 pub use invalidation::{
     CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
     VersionedCacheInvalidation,
+};
+pub use invalidation_consumer::{
+    DurableCacheInvalidationConsumer, DurableInvalidationDecision,
+};
+pub use invalidation_processor::{
+    DurableInvalidationProcessError, DurableInvalidationProcessOutcome,
 };
 pub use key::{
     CacheKeyBuilder, CacheKeyError, MAX_CACHE_IDENTITY_BYTES, MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
@@ -45,6 +74,7 @@ pub use refresh::{
     CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
     CacheRefreshStats, StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
 };
+pub use rustok_core::CacheCompareAndSetOutcome;
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
     CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,

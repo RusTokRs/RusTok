@@ -1,8 +1,9 @@
-use crate::{Action, Permission};
+use crate::{Action, Permission, Resource};
 use axum::{
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
 };
+use std::collections::HashSet;
 use uuid::Uuid;
 
 /// Check if a requested scope is allowed by the granted scope list.
@@ -29,6 +30,193 @@ pub fn scope_matches(allowed: &[String], requested: &str) -> bool {
     }
 
     false
+}
+
+/// Apply the OAuth maximum-authority boundary to an RBAC permission snapshot.
+///
+/// Direct grants should not call this function. OAuth principals receive only
+/// permissions admitted by both their RBAC/app permission snapshot and the
+/// scopes embedded in the access token. `manage` permissions are expanded into
+/// scoped concrete actions when a scope grants only read or write authority, so
+/// a broad RBAC role cannot bypass a narrow OAuth scope.
+pub fn restrict_permissions_to_scopes(
+    permissions: &[Permission],
+    scopes: &[String],
+) -> Vec<Permission> {
+    if scopes.iter().any(|scope| scope == "*:*") {
+        return permissions.to_vec();
+    }
+
+    let mut seen = HashSet::new();
+    let mut restricted = Vec::new();
+
+    for permission in permissions {
+        if permission.action == Action::Manage {
+            if scopes_allow_permission(scopes, permission) && seen.insert(*permission) {
+                restricted.push(*permission);
+            }
+
+            for action in SCOPABLE_ACTIONS {
+                let concrete = Permission::new(permission.resource, action);
+                if scopes_allow_permission(scopes, &concrete) && seen.insert(concrete) {
+                    restricted.push(concrete);
+                }
+            }
+        } else if scopes_allow_permission(scopes, permission) && seen.insert(*permission) {
+            restricted.push(*permission);
+        }
+    }
+
+    restricted
+}
+
+const SCOPABLE_ACTIONS: [Action; 14] = [
+    Action::Create,
+    Action::Read,
+    Action::Update,
+    Action::Delete,
+    Action::List,
+    Action::Export,
+    Action::Import,
+    Action::Publish,
+    Action::Moderate,
+    Action::Execute,
+    Action::Run,
+    Action::Cancel,
+    Action::Resolve,
+    Action::Override,
+];
+
+fn scopes_allow_permission(scopes: &[String], permission: &Permission) -> bool {
+    scopes
+        .iter()
+        .any(|scope| scope_allows_permission(scope, permission))
+}
+
+fn scope_allows_permission(scope: &str, permission: &Permission) -> bool {
+    if scope == "*:*" || scope == "admin:*" {
+        return true;
+    }
+
+    match scope {
+        "admin:users" => {
+            return matches!(
+                permission.resource,
+                Resource::Users | Resource::Customers | Resource::Profiles
+            )
+        }
+        "admin:tenants" => return permission.resource == Resource::Tenants,
+        "admin:modules" => return permission.resource == Resource::Modules,
+        "admin:settings" => return permission.resource == Resource::Settings,
+        "admin:builds" => {
+            return matches!(
+                permission.resource,
+                Resource::Workflows | Resource::WorkflowExecutions
+            )
+        }
+        "storefront:*" => return is_storefront_resource(permission.resource),
+        _ => {}
+    }
+
+    let Some((resource_selector, action_selector)) = scope.rsplit_once(':') else {
+        return false;
+    };
+
+    resource_selector_matches(resource_selector, permission.resource)
+        && action_selector_matches(action_selector, permission.action)
+}
+
+fn resource_selector_matches(selector: &str, resource: Resource) -> bool {
+    let resource_name = resource.to_string();
+    if selector == resource_name {
+        return true;
+    }
+
+    match selector {
+        "catalog" => matches!(
+            resource,
+            Resource::Products
+                | Resource::Categories
+                | Resource::Inventory
+                | Resource::Discounts
+                | Resource::Regions
+        ),
+        "content" => matches!(
+            resource,
+            Resource::FlexSchemas
+                | Resource::FlexEntries
+                | Resource::Posts
+                | Resource::BlogPosts
+                | Resource::Pages
+                | Resource::Nodes
+                | Resource::Media
+                | Resource::Seo
+                | Resource::Comments
+                | Resource::Tags
+                | Resource::Taxonomy
+        ),
+        "orders" => matches!(
+            resource,
+            Resource::Orders | Resource::Payments | Resource::Fulfillments
+        ),
+        "users" => matches!(
+            resource,
+            Resource::Users | Resource::Customers | Resource::Profiles
+        ),
+        "forum" => resource_name.starts_with("forum_"),
+        "ai" => resource_name.starts_with("ai:"),
+        _ => false,
+    }
+}
+
+fn action_selector_matches(selector: &str, action: Action) -> bool {
+    match selector {
+        "*" => true,
+        "read" => matches!(action, Action::Read | Action::List | Action::Export),
+        "write" => matches!(
+            action,
+            Action::Create
+                | Action::Update
+                | Action::Delete
+                | Action::Import
+                | Action::Publish
+                | Action::Moderate
+                | Action::Execute
+                | Action::Run
+                | Action::Cancel
+                | Action::Resolve
+                | Action::Override
+        ),
+        value => value == action.to_string(),
+    }
+}
+
+fn is_storefront_resource(resource: Resource) -> bool {
+    matches!(
+        resource,
+        Resource::Products
+            | Resource::Categories
+            | Resource::Orders
+            | Resource::Customers
+            | Resource::Profiles
+            | Resource::Regions
+            | Resource::Payments
+            | Resource::Fulfillments
+            | Resource::Inventory
+            | Resource::Discounts
+            | Resource::Posts
+            | Resource::BlogPosts
+            | Resource::Pages
+            | Resource::Nodes
+            | Resource::Media
+            | Resource::Seo
+            | Resource::Comments
+            | Resource::Tags
+            | Resource::Taxonomy
+            | Resource::ForumCategories
+            | Resource::ForumTopics
+            | Resource::ForumReplies
+    )
 }
 
 pub fn has_effective_permission(permissions: &[Permission], required: &Permission) -> bool {
@@ -201,5 +389,41 @@ mod tests {
             &permissions,
             &[Permission::PAGES_CREATE, Permission::PAGES_DELETE],
         ));
+    }
+
+    #[test]
+    fn catalog_read_scope_does_not_leak_manage_write_authority() {
+        let restricted = restrict_permissions_to_scopes(
+            &[Permission::PRODUCTS_MANAGE],
+            &["catalog:read".to_string()],
+        );
+
+        assert!(restricted.contains(&Permission::PRODUCTS_READ));
+        assert!(restricted.contains(&Permission::PRODUCTS_LIST));
+        assert!(!restricted.contains(&Permission::PRODUCTS_UPDATE));
+        assert!(!restricted.contains(&Permission::PRODUCTS_MANAGE));
+    }
+
+    #[test]
+    fn forum_namespace_scope_preserves_forum_manage_permission() {
+        let permission = Permission::new(Resource::ForumTopics, Action::Manage);
+        let restricted =
+            restrict_permissions_to_scopes(&[permission], &["forum:*".to_string()]);
+        assert_eq!(restricted, vec![permission]);
+    }
+
+    #[test]
+    fn admin_users_scope_does_not_admit_settings_management() {
+        let restricted = restrict_permissions_to_scopes(
+            &[Permission::USERS_MANAGE, Permission::SETTINGS_MANAGE],
+            &["admin:users".to_string()],
+        );
+        assert!(restricted.contains(&Permission::USERS_MANAGE));
+        assert!(!restricted.contains(&Permission::SETTINGS_MANAGE));
+    }
+
+    #[test]
+    fn empty_oauth_scopes_resolve_no_permissions() {
+        assert!(restrict_permissions_to_scopes(&[Permission::USERS_READ], &[]).is_empty());
     }
 }

@@ -5,8 +5,8 @@ use axum::{
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
-    CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_checkout_port,
-    in_process_cart_storefront_port,
+    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
+    bind_in_process_atomic_cart_checkout, in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
@@ -165,12 +165,44 @@ pub async fn complete_cart_checkout(
     )
     .await?;
 
+    let checkout_input = CompleteCheckoutInput {
+        cart_id,
+        shipping_option_id: input.shipping_option_id,
+        shipping_selections: input.shipping_selections.map(|items| {
+            items
+                .into_iter()
+                .map(|item| crate::dto::CartShippingSelectionInput {
+                    shipping_profile_slug: item.shipping_profile_slug,
+                    seller_id: item.seller_id,
+                    seller_scope: None,
+                    selected_shipping_option_id: item.selected_shipping_option_id,
+                })
+                .collect()
+        }),
+        region_id: input.region_id,
+        country_code: input.country_code,
+        locale: input.locale,
+        create_fulfillment: input.create_fulfillment,
+        metadata: input.metadata,
+    };
+    let atomic_cart = bind_in_process_atomic_cart_checkout(
+        runtime.db_clone(),
+        PrepareCartCheckoutSnapshotRequest {
+            cart_id,
+            region_id: checkout_input.region_id,
+            country_code: checkout_input.country_code.clone(),
+            locale_code: checkout_input.locale.clone(),
+            selected_shipping_option_id: checkout_input.shipping_option_id,
+            shipping_selections: checkout_input.shipping_selections.clone(),
+        },
+    );
+
     let event_bus = runtime.event_bus();
     let checkout = crate::CheckoutService::new(
         runtime.db_clone(),
         event_bus.clone(),
         std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
-        in_process_cart_checkout_port(runtime.db_clone()),
+        atomic_cart.port,
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
             runtime.db_clone(),
             event_bus.clone(),
@@ -184,7 +216,8 @@ pub async fn complete_cart_checkout(
         runtime.payment_provider_registry(),
         runtime.fulfillment_provider_registry(),
     );
-    let service = crate::JournaledCheckoutService::new(checkout, runtime.db_clone());
+    let service = crate::JournaledCheckoutService::new(checkout, runtime.db_clone())
+        .with_atomic_cart_checkout_handle(atomic_cart.handle);
     let response = service
         .complete_checkout(
             tenant.id,

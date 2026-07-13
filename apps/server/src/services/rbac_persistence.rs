@@ -1,48 +1,54 @@
 use crate::error::Error;
 use crate::error::Result;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 
 use rustok_core::UserRole;
 use rustok_telemetry::metrics;
 
 use crate::models::_entities::{roles, user_roles};
 
-use super::rbac_runtime::invalidate_user_rbac_caches;
-
-pub(crate) async fn assign_role_permissions_via_store(
-    db: &DatabaseConnection,
+pub(crate) async fn assign_role_permissions_via_store<C>(
+    db: &C,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
     role: UserRole,
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     record_authz_entrypoint_call("assign_role_permissions_via_store", "core_runtime");
-    rustok_rbac::RbacRoleAssignmentDbWriter::new(db.clone())
-        .assign_role_permissions(*tenant_id, *user_id, role)
-        .await
-        .map_err(|error| Error::Message(error.to_string()))?;
-
-    invalidate_user_rbac_caches(tenant_id, user_id).await;
-
-    Ok(())
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_permissions_on(
+        db,
+        *tenant_id,
+        *user_id,
+        role,
+    )
+    .await
+    .map_err(|error| Error::Message(error.to_string()))
 }
 
-pub(crate) async fn replace_user_role_via_store(
-    db: &DatabaseConnection,
+pub(crate) async fn replace_user_role_via_store<C>(
+    db: &C,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
     role: UserRole,
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     record_authz_entrypoint_call("replace_user_role_via_store", "core_runtime");
     remove_tenant_role_assignments_via_store(db, user_id, tenant_id).await?;
-
     assign_role_permissions_via_store(db, user_id, tenant_id, role).await
 }
 
-pub(crate) async fn remove_tenant_role_assignments_via_store(
-    db: &DatabaseConnection,
+pub(crate) async fn remove_tenant_role_assignments_via_store<C>(
+    db: &C,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     record_authz_entrypoint_call("remove_tenant_role_assignments_via_store", "core_runtime");
     let tenant_role_models = roles::Entity::find()
         .filter(roles::Column::TenantId.eq(*tenant_id))
@@ -62,17 +68,18 @@ pub(crate) async fn remove_tenant_role_assignments_via_store(
             .await?;
     }
 
-    invalidate_user_rbac_caches(tenant_id, user_id).await;
-
     Ok(())
 }
 
-pub(crate) async fn remove_user_role_assignment_via_store(
-    db: &DatabaseConnection,
+pub(crate) async fn remove_user_role_assignment_via_store<C>(
+    db: &C,
     user_id: &uuid::Uuid,
     tenant_id: &uuid::Uuid,
     role: UserRole,
-) -> Result<()> {
+) -> Result<()>
+where
+    C: ConnectionTrait,
+{
     let role_slug = role.to_string();
     let tenant_role = roles::Entity::find()
         .filter(roles::Column::TenantId.eq(*tenant_id))
@@ -87,8 +94,6 @@ pub(crate) async fn remove_user_role_assignment_via_store(
             .exec(db)
             .await?;
     }
-
-    invalidate_user_rbac_caches(tenant_id, user_id).await;
 
     Ok(())
 }

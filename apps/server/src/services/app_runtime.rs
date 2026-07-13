@@ -17,8 +17,9 @@ use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::build_event_runtime;
 use crate::services::graphql_schema::init_graphql_schema;
 use crate::services::marketplace_catalog::{
-    MarketplaceCatalogService, SharedMarketplaceCatalogService,
+    LocalManifestMarketplaceProvider, MarketplaceCatalogService, SharedMarketplaceCatalogService,
 };
+use crate::services::marketplace_catalog_cache::HardenedRegistryMarketplaceProvider;
 use crate::services::module_event_dispatcher::{
     build_shared_runtime_extensions_with_host_providers, spawn_module_event_dispatcher,
 };
@@ -202,10 +203,13 @@ async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
 }
 
 fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
-    let marketplace_catalog = Arc::new(MarketplaceCatalogService::evolutionary_defaults());
+    let marketplace_catalog = Arc::new(MarketplaceCatalogService::new(vec![
+        Arc::new(LocalManifestMarketplaceProvider),
+        Arc::new(HardenedRegistryMarketplaceProvider::from_env()),
+    ]));
     tracing::info!(
         providers = ?marketplace_catalog.provider_keys(),
-        "Initialized evolutionary marketplace catalog provider chain"
+        "Initialized bounded marketplace catalog provider chain"
     );
     ctx.shared_insert(SharedMarketplaceCatalogService(marketplace_catalog));
 }
