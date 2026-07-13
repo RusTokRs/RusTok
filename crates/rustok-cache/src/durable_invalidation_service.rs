@@ -24,7 +24,7 @@ mod tests {
 
     #[tokio::test]
     async fn durable_publish_reaches_local_subscribers_with_generation_payload() {
-        let service = CacheInvalidationService::default();
+        let service = crate::CacheService::from_url(None).invalidations();
         let mut subscriber = service.subscribe_local_channel("tenant.invalidate");
         let record = DurableCacheInvalidationRecord::new(
             Uuid::from_u128(11),
