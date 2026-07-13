@@ -10,6 +10,7 @@ pub mod schema;
 pub mod search_rate_limit;
 pub mod security;
 pub mod settings;
+pub mod storefront_principal_security;
 pub mod subscriptions;
 pub mod system;
 pub mod tenant_security;
