@@ -47,6 +47,9 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const commerceRegistry = json('crates/rustok-commerce/contracts/commerce-fba-registry.json');
   const commerceFbaSource = read('crates/rustok-commerce/src/fba.rs');
   const checkoutSource = read('crates/rustok-commerce/src/services/checkout.rs');
+  const cartServiceSource = read('crates/rustok-cart/src/services/cart.rs');
+  const cartHelpersSource = read('crates/rustok-cart/src/services/cart/helpers.rs');
+  const cartErrorSource = read('crates/rustok-cart/src/error.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
   if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
@@ -137,6 +140,33 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   if (checkoutSource.includes('CartService::new(')) {
     fail('checkout must not construct CartService outside the CartCheckoutPort boundary');
+  }
+
+  for (const marker of [
+    'tax_calculation_port: Arc<dyn TaxCalculationPort>',
+    'in_process_tax_calculation_port()',
+    'with_tax_calculation_port',
+  ]) {
+    if (!cartServiceSource.includes(marker)) {
+      fail(`cart tax provider-consumer boundary missing: ${marker}`);
+    }
+  }
+  for (const marker of [
+    '.calculate_tax(',
+    'cart_tax_port_context(cart)',
+    'PortActor::service("rustok-cart.tax")',
+    '.with_deadline(Duration::from_secs(2))',
+    'CartError::TaxBoundary',
+  ]) {
+    if (!cartHelpersSource.includes(marker)) {
+      fail(`cart tax provider-consumer invocation missing: ${marker}`);
+    }
+  }
+  if (!cartErrorSource.includes('TaxBoundary')) {
+    fail('cart tax provider-consumer boundary must preserve typed port errors');
+  }
+  if (cartServiceSource.includes('TaxService') || cartHelpersSource.includes('TaxService')) {
+    fail('cart must not access TaxService outside the TaxCalculationPort boundary');
   }
 
   for (const module of modules) {

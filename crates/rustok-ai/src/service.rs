@@ -2092,7 +2092,7 @@ impl AiManagementService {
 
         transaction.commit().await.map_err(db_err)?;
 
-        Self::continue_run(
+        let result = Self::continue_run(
             runtime,
             operator,
             session.id,
@@ -2105,7 +2105,47 @@ impl AiManagementService {
             session.resolved_locale.clone(),
             None,
         )
-        .await
+        .await?;
+        Self::sync_workflow_stage_after_run(db, operator.tenant_id, &result.run).await?;
+        Ok(result)
+    }
+
+    async fn sync_workflow_stage_after_run(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        run: &AiChatRunRecord,
+    ) -> AiResult<()> {
+        let stages = ai_agent_workflow_stages::Entity::find()
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+            .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
+            .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+            .all(db)
+            .await
+            .map_err(db_err)?;
+        for stage in stages {
+            let mut active: ai_agent_workflow_stages::ActiveModel = stage.clone().into();
+            match run.status.as_str() {
+                "completed" => {
+                    active.status = Set("completed".to_string());
+                    active.output_payload = Set(Some(json!({"ai_run_id": run.id})));
+                    active.completed_at = Set(Some(Utc::now().into()));
+                }
+                "failed" | "cancelled" => {
+                    active.status = Set("failed".to_string());
+                    active.error_message = Set(run.error_message.clone().or_else(|| {
+                        Some(format!("workflow AI run finished with status `{}`", run.status))
+                    }));
+                    active.completed_at = Set(Some(Utc::now().into()));
+                }
+                _ => continue,
+            }
+            active.updated_at = Set(Utc::now().into());
+            active.update(db).await.map_err(db_err)?;
+            if run.status == "completed" {
+                Self::promote_agent_workflow_stages(db, tenant_id, stage.workflow_run_id).await?;
+            }
+        }
+        Ok(())
     }
 
     pub async fn cancel_run(

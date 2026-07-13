@@ -168,8 +168,10 @@ absence of a tenant identifier.
   references.
 - Persist verification evidence, policy revision, capability grant revision,
   rollback pointers, status, and optimistic revision. The installation schema
-  now has a nullable self-referencing predecessor pointer; the later rollback
-  command will advance it atomically with the lifecycle transition.
+  records both a nullable self-referencing predecessor pointer and an explicit
+  capability-grant revision selected by the owner, independently of the
+  artifact declaration and capability policy. The later rollback command will
+  advance the predecessor atomically with its lifecycle transition.
 - Enforce signature, signer, SBOM, provenance, compatibility, dependency, and
   capability admission before activation.
 - Use Cosign/Sigstore for digest-bound OCI signature and transparency-bundle

@@ -4,7 +4,7 @@
 
 `rustok-tax` owns tax calculation policy and the neutral `TaxCalculationPort`.
 Cart and order receive typed `provider_id` tax snapshots; cart calls
-`TaxService` rather than implementing region tax logic locally. The default
+`TaxCalculationPort` rather than implementing region tax logic locally. The default
 `region_default` provider preserves current region-based behavior.
 
 This module has no module-owned UI. `calculate_tax` is a read-like port with a

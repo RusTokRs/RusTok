@@ -21,7 +21,7 @@
 
 ## Integration
 
-- `rustok-cart` calls `TaxService` for recalculating cart tax lines;
+- `rustok-cart` calls `TaxCalculationPort` for recalculating cart tax lines;
 - checkout transfers the provider-aware tax snapshot to `rustok-order`;
 - transport surface is still published through `rustok-commerce`.
 

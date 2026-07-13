@@ -42,7 +42,10 @@ the role name.
 3. **Persist and execute the owner-owned code workflow.** Add tenant-scoped
    agent principals, model assignments, workflow-run state, and an Alloy
    operation executor that checks the initiator/agent RBAC intersection before
-   each stage. Applying a generated change remains approval-gated.
+   each stage. The control-plane schema and canonical AI task-run executor are
+   now available in `rustok-ai`; complete workflow-stage approval resolution,
+   scheduler hosting, and operator forms next. Applying a generated change
+   remains approval-gated.
 
 ## Verification
 

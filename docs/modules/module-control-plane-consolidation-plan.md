@@ -759,6 +759,8 @@ migrations or arbitrary SQL.
 
 ### 3.7 Rollback, Uninstall, and Purge
 
+The owner boundary is fixed by the [module artifact rollback ADR](../../DECISIONS/2026-07-13-module-artifact-rollback-boundary.md): an explicit CAS-revision command selects the durable predecessor, re-evaluates grants, audits actor/reason, and writes an outbox event in one transaction. Runtime activation and tenant enablement remain downstream operations.
+
 - [ ] Rollback selects a previously admitted immutable release; it never edits
   the failed release.
 - [ ] Capability grants are re-evaluated for the target release.

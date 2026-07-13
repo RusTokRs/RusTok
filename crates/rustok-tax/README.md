@@ -16,6 +16,8 @@
   silently falling back.
 - Keep tax-line snapshots provider-aware through a typed `provider_id`
   contract.
+- Publish the owner-managed in-process `TaxCalculationPort` factory so cart
+  consumers never construct or invoke `TaxService` directly.
 
 ## Interactions
 

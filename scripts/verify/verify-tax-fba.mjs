@@ -96,7 +96,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   }
   const runtimeCase = runtimeSmoke.cases.find((entry) => entry.operation === 'calculate_tax');
   if (!runtimeCase) fail('tax runtime smoke calculate_tax case missing');
-  for (const marker of ['context.require_policy(PortCallPolicy::read())?', 'self.calculate(request)', '.map_err(tax_error_to_port_error)']) {
+  for (const marker of ['context.require_policy(PortCallPolicy::read())?', '.calculate(request)', '.map_err(tax_error_to_port_error)']) {
     if (!runtimeCase.source_order.includes(marker)) fail(`tax runtime smoke source order missing ${marker}`);
     if (!portSource.includes(marker) && !servicesSource.includes(marker)) fail(`tax runtime source missing ${marker}`);
   }

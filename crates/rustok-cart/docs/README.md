@@ -40,7 +40,7 @@
   shipping discounts live as `cart_adjustments` with `scope=shipping`, not as a hidden mutation of
   `shipping_total` or a separate non-snapshotting side effect.
 - tax calculation is no longer hardcoded directly in `CartService`: the cart runtime now calls
-  `rustok-tax::TaxService`, and `cart_tax_lines` carry typed `provider_id`, so that future
+  `rustok-tax::TaxCalculationPort` with a typed tenant/actor/locale/channel/deadline context, and `cart_tax_lines` carry typed `provider_id`, so that future
   external tax engines do not break the cart/order transport contract in a second migration slice.
 - storefront transport parity for this layer is already confirmed: `/store/carts/{id}` and storefront
   GraphQL checkout preserve `shipping_total`, `adjustment_total` and shipping-scoped promotion

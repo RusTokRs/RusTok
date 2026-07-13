@@ -11,7 +11,7 @@
 - Persist typed cart adjustments as language-neutral promotion/discount snapshots.
 - Persist first-class `shipping_total` so selected shipping options contribute to
   cart totals instead of remaining an implicit checkout-only side input.
-- Delegate tax calculation to `rustok-tax` and snapshot typed tax-line
+- Delegate tax calculation through `rustok-tax::TaxCalculationPort` and snapshot typed tax-line
   `provider_id` instead of hardcoding region tax math directly inside the cart
   module.
 - Keep cart snapshots independent from catalog ownership.
