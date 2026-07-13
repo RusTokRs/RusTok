@@ -135,7 +135,7 @@ pub mod tenant {
                 tracing::warn!(
                     cause,
                     status = ?listener.status,
-                    error = listener.last_error.as_deref(),
+                    error = ?listener.last_error,
                     "Tenant generation advanced without the canonical local listener"
                 );
             }
