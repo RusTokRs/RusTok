@@ -15,7 +15,7 @@ fn source(relative: &str) -> String {
 }
 
 #[test]
-fn generation_store_is_clone_shared_bounded_and_identity_safe() {
+fn generation_store_is_clone_shared_bounded_identity_safe_and_fail_closed() {
     let service = source("crates/rustok-cache/src/service.rs");
     let generation = source("crates/rustok-cache/src/generation.rs");
     let regression = source("crates/rustok-cache/tests/generation_store_regression.rs");
@@ -27,6 +27,9 @@ fn generation_store_is_clone_shared_bounded_and_identity_safe() {
         "_identity: Arc<dyn Any + Send + Sync>",
         "fn generation_store_registry()",
         "return registered.store.clone()",
+        "GenerationStoreRegistryCapacityExceeded",
+        "return store.reject_registry_capacity()",
+        "generation_store_registry_saturation_fails_closed",
         "service_handles_share_generation_snapshots_without_cross_service_aliasing",
     ] {
         assert!(
@@ -37,6 +40,7 @@ fn generation_store_is_clone_shared_bounded_and_identity_safe() {
 
     assert!(generation.contains("registry.len() >= DEFAULT_MAX_SHARED_GENERATION_STORES"));
     assert!(generation.contains("store: store.clone()"));
+    assert!(!generation.contains("returning an unshared bounded store"));
     assert!(regression.contains("cache_service_generation_handles_share_trusted_local_snapshots"));
     assert!(
         !generation.contains(
