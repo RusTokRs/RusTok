@@ -14,14 +14,16 @@ loading, invalidation transport and cache operability signals.
 - Bound Redis connection and command latency so cache failures cannot indefinitely occupy
   request tasks.
 - Keep Redis circuit-breaker configuration centralized at the cache factory boundary.
-- Provide `CacheService::load_or_fill` as the generic cancellation-safe, backend-scoped
-  per-key loader/coalescing contract for anti-stampede protection.
+- Provide cancellation-safe, backend-scoped request coalescing and optional deterministic
+  TTL jitter/loader deadlines.
+- Provide canonical tenant-aware/versioned cache keys and bounded typed value envelopes.
+- Provide token-safe distributed leases for cross-instance hot-key loaders.
 - Provide bounded in-memory fallback during Redis degradation without treating an ordinary
   Redis miss as permission to return an unrelated stale local value.
 - Surface failed shared invalidation instead of silently acknowledging a potentially stale
   Redis entry.
-- Provide validated namespaced invalidation publishing with Redis pub/sub, local fan-out,
-  channel-scoped local subscriptions and a reusable Redis subscription adapter.
+- Provide validated namespaced invalidation publishing, versioned invalidation payloads and
+  generation-gap detection.
 - Expose cache health, Prometheus gauges, invalidation publish/rejection counters and
   lightweight hit/miss/invalidation statistics.
 
@@ -40,6 +42,31 @@ values from bypassing an entry-count limit.
 All factories preserve the same `CacheBackend` and instrumentation contract. With Redis
 configured, `backend*` returns Redis primary plus the corresponding bounded in-memory
 fallback; otherwise it returns the in-memory backend directly.
+
+## Canonical keys and typed envelopes
+
+`CacheKeyBuilder` creates keys in the shape
+`service:environment:tenant-or-global:domain:schema-version:resource:identity`. Fixed
+namespace components are validated. Dynamic identities remain readable only when short and
+safe; otherwise they become a SHA-256 digest. Complete keys are capped at 512 bytes.
+
+`CacheEnvelope<T>` uses a versioned Postcard wire format and records:
+
+- cache envelope format version;
+- domain schema version;
+- generation timestamp;
+- optional source revision;
+- optional soft and hard expiration boundaries;
+- typed payload.
+
+Encoding and decoding enforce a size limit before returning/allocating unbounded cache data.
+Schema mismatch, unsupported format, invalid expiration ordering and oversized payloads are
+explicit errors.
+
+`CacheService::load_enveloped_or_fill` combines the envelope with coalesced loading. It
+invalidates corrupted, schema-incompatible and hard-expired values before reload. A value
+between soft and hard expiry is returned as `Stale`, allowing the caller to schedule a
+refresh without silently treating it as fresh.
 
 ## Fallback and consistency semantics
 
@@ -66,12 +93,25 @@ Redis TTL uses millisecond precision. Positive sub-millisecond durations are rou
 one millisecond; a zero TTL performs immediate invalidation instead of issuing an invalid
 `PX 0`/`EX 0` command.
 
-## Anti-stampede contract
+## Anti-stampede and avalanche protection
 
 `CacheService::load_or_fill` coalesces only callers sharing both the same backend instance
 and cache key. Identical keys belonging to different namespaces/backends do not block one
 another. Gate leases are released on success, loader/storage error and future cancellation,
 so cancelled tasks cannot leak in-flight keys indefinitely.
+
+`CacheService::load_or_fill_with_policy` adds:
+
+- deterministic TTL jitter for `(namespace, key)`, bounded to ±50%;
+- an optional deadline around the leader's source-of-truth loader.
+
+The jitter is stable rather than random, so retries and tests produce the same expiry while
+large namespaces avoid synchronized expiration.
+
+For loaders whose cross-instance amplification justifies a distributed lock,
+`try_acquire_distributed_lease` uses Redis `SET NX PX` with a UUID ownership token. Lease
+extension and release use compare-and-PEXPIRE/delete Lua scripts, preventing one process
+from modifying a lock that expired and was acquired by another owner.
 
 ## Invalidation listener contract
 
@@ -86,6 +126,11 @@ Redis pub/sub remains an at-most-once, best-effort transport: messages published
 subscriber is disconnected are not replayed. Domain listeners must retain retry/health
 telemetry and use fail-safe recovery when they detect a gap. For example, the field-definition
 cache clears all entries when its event receiver reports lag.
+
+For domains with a durable outbox/event sequence, `VersionedCacheInvalidation` carries that
+monotonic generation and `CacheInvalidationGapTracker` classifies first/in-order, duplicate,
+stale and gap observations. A gap advances the observation point but explicitly requires
+namespace recovery before later entries are trusted.
 
 `CacheInvalidationService::stats()` and `CacheService::prometheus_metrics()` expose local
 publish, Redis publish success/failure and validation rejection counters. Without Redis,
@@ -106,10 +151,17 @@ publish, Redis publish success/failure and validation rejection counters. Withou
 - `CacheService`
 - `CacheService::backend` / `backend_weighted`
 - `CacheService::memory_backend` / `memory_backend_weighted`
+- `CacheService::load_or_fill` / `load_or_fill_with_policy`
+- `CacheService::load_enveloped_or_fill`
+- `CacheKeyBuilder`
+- `CacheEnvelope<T>` / `TypedCacheLoadResult<T>`
+- `CacheLoadPolicy` / `CacheTtlPolicy`
+- `CacheLeaseOptions` / `CacheLeaseOutcome` / `DistributedCacheLease`
 - `CacheHealthReport`
 - `CacheBackendOptions`
 - `CacheLoadResult` / `CacheLoadSource`
-- `CacheInvalidationMessage` / `CacheInvalidationMessageError`
+- `CacheInvalidationMessage` / `VersionedCacheInvalidation`
+- `CacheInvalidationGapTracker` / `CacheInvalidationObservation`
 - `CacheInvalidationOutcome` / `CacheInvalidationStats`
 - `CacheInvalidationService` / `LocalCacheInvalidationSubscription`
 
@@ -131,6 +183,8 @@ RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379 \
   real_redis_publish_and_subscription_share_validated_channel_contract \
   -- --ignored --nocapture
 ```
+
+Add a live Redis lease test before treating the distributed lease as operationally proven.
 
 ## Docs
 
