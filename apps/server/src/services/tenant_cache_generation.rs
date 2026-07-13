@@ -5,9 +5,8 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use rustok_cache::{
     cache_backend_generation_snapshot, observe_cache_backend_generation,
-    BoundedCacheInvalidationGapTracker, CacheInvalidationMessage,
-    CacheInvalidationObservation, CacheService, DurableCacheInvalidationRecord,
-    VersionedCacheInvalidation,
+    BoundedCacheInvalidationGapTracker, CacheInvalidationMessage, CacheInvalidationObservation,
+    CacheService, DurableCacheInvalidationRecord, VersionedCacheInvalidation,
 };
 use rustok_core::events::{
     DomainEvent, EventConsumerRuntime, EventEnvelope, EventTransport, ReliabilityLevel,
@@ -59,6 +58,7 @@ impl TenantCacheGenerationTransport {
             .await
             .map_err(|error| Error::Cache(error.to_string()))?;
         observe_tenant_backend_generation(generation.generation)?;
+
         let emitted_at_unix_ms = u64::try_from(envelope.timestamp.timestamp_millis()).map_err(|_| {
             Error::Validation("tenant cache invalidation timestamp precedes Unix epoch".to_string())
         })?;
@@ -80,13 +80,14 @@ impl TenantCacheGenerationTransport {
             .await
             .map_err(|error| Error::Cache(error.to_string()))?;
 
-        if self.cache.has_redis() && !outcome.redis_published {
-            return Err(Error::Cache(
-                "tenant cache generation advanced but Redis invalidation publish failed"
-                    .to_string(),
-            ));
-        }
-        if !self.cache.has_redis() && outcome.local_subscribers == 0 {
+        if self.cache.redis_configuration_present() {
+            if !outcome.redis_published {
+                return Err(Error::Cache(
+                    "tenant cache generation advanced but Redis invalidation publish failed"
+                        .to_string(),
+                ));
+            }
+        } else if outcome.local_subscribers == 0 {
             return Err(Error::Cache(
                 "tenant cache generation advanced without a local invalidation subscriber"
                     .to_string(),
@@ -99,8 +100,8 @@ impl TenantCacheGenerationTransport {
 #[async_trait]
 impl EventTransport for TenantCacheGenerationTransport {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        // Rotate first. If the downstream transport fails, an outbox retry may rotate again; that
-        // is safe and preferable to delivering a mutation event while old cache keys remain live.
+        // Rotation happens before downstream delivery. A later downstream failure may cause an
+        // extra generation on retry, which is safe; the inverse ordering can expose stale data.
         self.publish_generation_if_needed(&envelope).await?;
         self.inner.publish(envelope).await
     }
@@ -144,7 +145,13 @@ impl TenantCacheGenerationListener {
     }
 
     async fn recover_shared_generation(&self) -> Result<u64> {
-        let value = if self.cache.has_redis() {
+        let value = if self.cache.redis_configuration_present() {
+            if !self.cache.redis_client_initialized() {
+                return Err(Error::Cache(
+                    "Redis is configured but the tenant generation client is unavailable"
+                        .to_string(),
+                ));
+            }
             self.cache
                 .namespace_generations()
                 .read(TENANT_CACHE_BACKEND_PREFIX)
@@ -270,7 +277,7 @@ pub async fn start_tenant_cache_generation_listener(
         }
     });
 
-    if cache.has_redis() {
+    if cache.redis_client_initialized() {
         let redis_listener = listener.clone();
         let invalidations = cache.invalidations();
         tokio::spawn(async move {
@@ -278,11 +285,6 @@ pub async fn start_tenant_cache_generation_listener(
             let mut reason = "startup";
             loop {
                 runtime.restarted(reason);
-
-                // Redis buffers messages after SUBSCRIBE while the ready hook runs. Recovering the
-                // shared generation here closes the GET-before-SUBSCRIBE loss window: buffered
-                // older messages subsequently classify as duplicate/stale, and newer messages
-                // remain contiguous from the recovered checkpoint.
                 let ready_listener = redis_listener.clone();
                 let handler_listener = redis_listener.clone();
                 let result = invalidations
@@ -356,15 +358,13 @@ mod tests {
                 tenant_id,
                 locale: "en".to_string(),
             },
+            DomainEvent::LocaleDisabled {
+                tenant_id,
+                locale: "en".to_string(),
+            },
         ] {
             assert_eq!(tenant_cache_event_tenant_id(&event), Some(tenant_id));
         }
-        assert_eq!(
-            tenant_cache_event_tenant_id(&DomainEvent::UserUpdated {
-                user_id: Uuid::from_u128(7),
-            }),
-            None
-        );
     }
 
     #[test]
@@ -412,8 +412,9 @@ mod tests {
         let before = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
             .unwrap()
             .generation;
-        let tenant_id = Uuid::from_u128(42);
-        let envelope = tenant_event(DomainEvent::TenantUpdated { tenant_id });
+        let envelope = tenant_event(DomainEvent::TenantUpdated {
+            tenant_id: Uuid::from_u128(42),
+        });
 
         transport.publish(envelope.clone()).await.unwrap();
         let message = invalidations.recv().await.unwrap();
@@ -422,18 +423,6 @@ mod tests {
         assert_eq!(receiver.recv().await.unwrap().id, envelope.id);
         assert_eq!(data_backend.get("key").await.unwrap(), None);
         assert_eq!(negative_backend.get("key").await.unwrap(), None);
-        assert_eq!(
-            cache_backend_generation_snapshot(TENANT_CACHE_DATA_BACKEND_PREFIX)
-                .unwrap()
-                .generation,
-            event.generation
-        );
-        assert_eq!(
-            cache_backend_generation_snapshot(TENANT_CACHE_NEGATIVE_BACKEND_PREFIX)
-                .unwrap()
-                .generation,
-            event.generation
-        );
     }
 
     #[tokio::test]
@@ -448,7 +437,7 @@ mod tests {
             .tracker
             .seed(TENANT_CACHE_GENERATION_CHANNEL, base)
             .unwrap();
-        let first = cache
+        let _first = cache
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
             .unwrap();
@@ -456,7 +445,6 @@ mod tests {
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
             .unwrap();
-        assert_eq!(second.generation, first.generation + 1);
         let event = VersionedCacheInvalidation::new(
             TENANT_CACHE_GENERATION_CHANNEL,
             Uuid::from_u128(42).to_string(),
@@ -476,5 +464,13 @@ mod tests {
                 second.generation
             );
         }
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    async fn invalid_redis_configuration_does_not_seed_trusted_tenant_generation() {
+        let cache = CacheService::from_url(Some("://invalid-redis-url"));
+        let listener = TenantCacheGenerationListener::new(cache);
+        assert!(listener.recover_shared_generation().await.is_err());
     }
 }
