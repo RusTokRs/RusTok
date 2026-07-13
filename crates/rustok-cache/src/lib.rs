@@ -8,6 +8,7 @@ mod fallback;
 mod generation;
 mod invalidation;
 mod invalidation_consumer;
+mod invalidation_processor;
 mod key;
 mod key_generation;
 mod lease;
@@ -50,6 +51,9 @@ pub use invalidation::{
 };
 pub use invalidation_consumer::{
     DurableCacheInvalidationConsumer, DurableInvalidationDecision,
+};
+pub use invalidation_processor::{
+    DurableInvalidationProcessError, DurableInvalidationProcessOutcome,
 };
 pub use key::{
     CacheKeyBuilder, CacheKeyError, MAX_CACHE_IDENTITY_BYTES, MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
