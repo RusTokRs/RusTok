@@ -222,6 +222,14 @@ impl CacheService {
         self.invalidations.clone()
     }
 
+    /// Stable clone-shared identity for process-local generation store ownership.
+    ///
+    /// The opaque token keeps the coordinator allocation alive while it is registered, preventing
+    /// address reuse from attaching a new `CacheService` to stale generation snapshots.
+    pub(crate) fn generation_store_identity(&self) -> Arc<dyn std::any::Any + Send + Sync> {
+        self.loaders.clone()
+    }
+
     /// Publish a cache invalidation message on a namespaced channel.
     ///
     /// With Redis enabled this publishes to Redis pub/sub; in all builds it also notifies
