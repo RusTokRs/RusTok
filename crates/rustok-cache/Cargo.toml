@@ -17,6 +17,8 @@ moka = { workspace = true, features = ["future"] }
 tokio.workspace = true
 sha2.workspace = true
 hex.workspace = true
+serde.workspace = true
+postcard.workspace = true
 futures-util = { version = "0.3", optional = true }
 
 # Optional Redis
