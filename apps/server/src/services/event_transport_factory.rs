@@ -18,6 +18,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::{
     start_tenant_cache_generation_listener, TenantCacheGenerationTransport,
 };
+use crate::services::tenant_generation_delivery_gate::TenantGenerationDeliveryGate;
 
 static OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL: AtomicU64 = AtomicU64::new(0);
 static EVENT_LOCAL_DELIVERY_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -76,10 +77,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         EventTransportKind::Memory => {
             let transport = MemoryTransport::with_capacity(channel_capacity);
             let listener_bus = transport.event_bus();
-            let transport: Arc<dyn EventTransport> = Arc::new(TenantCacheGenerationTransport::new(
-                Arc::new(transport),
-                cache.clone(),
-            ));
+            let transport = tenant_generation_transport(ctx, &cache, Arc::new(transport));
             EventRuntime {
                 transport,
                 listener_bus,
@@ -95,10 +93,9 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             let (relay_target, listener_bus, relay_fallback_active) =
                 resolve_relay_target(&settings, channel_capacity).await?;
             // The relay target performs generation rotation synchronously. OutboxRelay therefore
-            // cannot mark a tenant mutation dispatched until cache invalidation has been published.
-            let relay_target: Arc<dyn EventTransport> = Arc::new(
-                TenantCacheGenerationTransport::new(relay_target, cache.clone()),
-            );
+            // cannot mark a tenant mutation dispatched until cache invalidation has been published
+            // and the exact canonical local listener is ready when Redis is not configured.
+            let relay_target = tenant_generation_transport(ctx, &cache, relay_target);
             let relay_policy = &settings.events.relay_retry_policy;
             let max_attempts = if settings.events.dlq.enabled {
                 settings.events.dlq.max_attempts
@@ -134,8 +131,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                         Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
                     })?,
             );
-            let primary: Arc<dyn EventTransport> =
-                Arc::new(TenantCacheGenerationTransport::new(primary, cache.clone()));
+            let primary = tenant_generation_transport(ctx, &cache, primary);
             let (transport, listener_bus) =
                 transport_with_local_delivery(primary, channel_capacity);
             EventRuntime {
@@ -153,6 +149,19 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     // startup always resolves the exact delivery bus paired with the configured transport.
     ctx.shared_insert(Arc::new(runtime.clone()));
     Ok(runtime)
+}
+
+fn tenant_generation_transport(
+    ctx: &ServerRuntimeContext,
+    cache: &CacheService,
+    downstream: Arc<dyn EventTransport>,
+) -> Arc<dyn EventTransport> {
+    let gated: Arc<dyn EventTransport> = Arc::new(TenantGenerationDeliveryGate::new(
+        downstream,
+        ctx.clone(),
+        cache.clone(),
+    ));
+    Arc::new(TenantCacheGenerationTransport::new(gated, cache.clone()))
 }
 
 pub fn spawn_outbox_relay_worker(
@@ -177,7 +186,7 @@ pub fn spawn_outbox_relay_worker(
             let mut inner_handle = tokio::spawn(async move {
                 loop {
                     if let Err(error) = relay.process_pending_once(None).await {
-                        tracing::error!("Outbox relay iteration failed: {error}");
+                        tracing::error!("Relay processing error: {error}");
                     }
                     tokio::time::sleep(interval).await;
                 }
