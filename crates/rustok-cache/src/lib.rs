@@ -1,3 +1,4 @@
+mod bounded_invalidation;
 mod cas_observability;
 mod durable_invalidation;
 mod envelope;
@@ -16,6 +17,10 @@ mod shared_backend;
 mod typed;
 mod weighted;
 
+pub use bounded_invalidation::{
+    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
+    DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS,
+};
 pub use cas_observability::{
     format_cache_compare_and_set_prometheus_metrics, observe_cache_compare_and_set,
     CacheCompareAndSetMetrics, CacheCompareAndSetStats,
