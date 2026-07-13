@@ -6,7 +6,9 @@ use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustV
 use serde_json::Value;
 use tokio::process::Command;
 
-use crate::{policy::vulnerability_severity_rank, VerificationPolicy};
+use crate::{
+    policy::vulnerability_severity_rank, VerificationPolicy, VerificationTrustRoot,
+};
 
 /// Concrete worker-only Cosign adapter. Command arguments derive exclusively
 /// from typed owner input and mounted policy; artifact-controlled values never
@@ -40,20 +42,13 @@ impl CosignTrustVerifier {
         Ok(output.stdout)
     }
 
-    async fn verify_for_identity(
+    async fn verify_with_flags(
         &self,
         request: &TrustVerificationRequest,
-        identity: &str,
-        issuer: &str,
+        mut flags: Vec<String>,
     ) -> Result<(), String> {
         let reference = request.reference.canonical();
-        let mut flags = vec![
-            "--certificate-identity".to_string(),
-            identity.to_string(),
-            "--certificate-oidc-issuer".to_string(),
-            issuer.to_string(),
-        ];
-        if self.policy.require_transparency_bundle {
+        if requires_transparency_bundle(&self.policy.trust_root) {
             flags.push("--offline".to_string());
         }
 
@@ -79,8 +74,9 @@ impl CosignTrustVerifier {
             command.push(reference.clone());
             attestations.push(self.run(command).await?);
         }
-        validate_slsa(&attestations[0], request, &self.policy)?;
-        validate_cyclonedx(&attestations[1], request, &self.policy)
+        let expected_digest = expected_sha256(request)?;
+        validate_slsa(&attestations[0], expected_digest, &self.policy)?;
+        validate_cyclonedx(&attestations[1], expected_digest, &self.policy)
     }
 }
 
@@ -135,10 +131,9 @@ fn allowed(values: &[String], actual: &str) -> bool {
 
 fn validate_slsa(
     output: &[u8],
-    request: &TrustVerificationRequest,
+    expected_digest: &str,
     policy: &VerificationPolicy,
 ) -> Result<(), String> {
-    let expected_digest = expected_sha256(request)?;
     let accepted = attestation_statements(output)?
         .into_iter()
         .any(|statement| {
@@ -219,10 +214,9 @@ fn vulnerabilities_are_within_policy(bom: &Value, maximum: &str) -> bool {
 
 fn validate_cyclonedx(
     output: &[u8],
-    request: &TrustVerificationRequest,
+    expected_digest: &str,
     policy: &VerificationPolicy,
 ) -> Result<(), String> {
-    let expected_digest = expected_sha256(request)?;
     let accepted = attestation_statements(output)?
         .into_iter()
         .any(|statement| {
@@ -257,29 +251,128 @@ impl TrustVerifier for CosignTrustVerifier {
         request: TrustVerificationRequest,
     ) -> Result<TrustVerificationDecision, String> {
         self.policy.validate()?;
-        for identity in &self.policy.allowed_signer_identities {
-            for issuer in &self.policy.allowed_oidc_issuers {
-                if self
-                    .verify_for_identity(&request, identity, issuer)
-                    .await
-                    .is_ok()
-                {
-                    return Ok(TrustVerificationDecision {
-                        signer_identity: identity.clone(),
-                        trust_policy_revision: request.trust_policy_revision,
-                        capability_policy_revision: request.capability_policy_revision,
-                        signature_verified: true,
-                        provenance_verified: true,
-                        sbom_verified: true,
-                        evidence_references: vec![
-                            format!("{}#cosign-signature", request.reference.canonical()),
-                            format!("{}#slsa-provenance", request.reference.canonical()),
-                            format!("{}#cyclonedx-sbom", request.reference.canonical()),
-                        ],
-                    });
+        let signer_identity = match &self.policy.trust_root {
+            VerificationTrustRoot::KeylessSigstore {
+                allowed_signer_identities,
+                allowed_oidc_issuers,
+                ..
+            } => {
+                let mut verified = None;
+                for identity in allowed_signer_identities {
+                    for issuer in allowed_oidc_issuers {
+                        let flags = vec![
+                            "--certificate-identity".to_string(),
+                            identity.clone(),
+                            "--certificate-oidc-issuer".to_string(),
+                            issuer.clone(),
+                        ];
+                        if self.verify_with_flags(&request, flags).await.is_ok() {
+                            verified = Some(identity.clone());
+                            break;
+                        }
+                    }
+                    if verified.is_some() {
+                        break;
+                    }
                 }
+                verified.ok_or_else(|| {
+                    "no configured Cosign signer identity and OIDC issuer verified the artifact"
+                        .to_string()
+                })?
             }
+            VerificationTrustRoot::KmsKey {
+                key_reference,
+                signer_identity,
+                ..
+            } => {
+                self.verify_with_flags(
+                    &request,
+                    vec!["--key".to_string(), key_reference.clone()],
+                )
+                .await?;
+                signer_identity.clone()
+            }
+        };
+        Ok(TrustVerificationDecision {
+            signer_identity,
+            trust_policy_revision: request.trust_policy_revision,
+            capability_policy_revision: request.capability_policy_revision,
+            signature_verified: true,
+            provenance_verified: true,
+            sbom_verified: true,
+            evidence_references: vec![
+                format!("{}#cosign-signature", request.reference.canonical()),
+                format!("{}#slsa-provenance", request.reference.canonical()),
+                format!("{}#cyclonedx-sbom", request.reference.canonical()),
+            ],
+        })
+    }
+}
+
+fn requires_transparency_bundle(trust_root: &VerificationTrustRoot) -> bool {
+    match trust_root {
+        VerificationTrustRoot::KeylessSigstore {
+            require_transparency_bundle,
+            ..
         }
-        Err("no configured Cosign signer identity and OIDC issuer verified the artifact".into())
+        | VerificationTrustRoot::KmsKey {
+            require_transparency_bundle,
+            ..
+        } => *require_transparency_bundle,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde_json::json;
+
+    use super::{validate_cyclonedx, validate_slsa};
+    use crate::{VerificationPolicy, VerificationTrustRoot};
+
+    const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn policy() -> VerificationPolicy {
+        VerificationPolicy {
+            trust_policy_revision: 1,
+            capability_policy_revision: 1,
+            trust_root: VerificationTrustRoot::KeylessSigstore {
+                allowed_signer_identities: vec!["builder@rustok.dev".into()],
+                allowed_oidc_issuers: vec!["https://issuer.rustok.dev".into()],
+                require_transparency_bundle: true,
+            },
+            allowed_builders: vec!["https://build.rustok.dev/worker".into()],
+            allowed_source_repositories: vec!["https://github.com/rustok/".into()],
+            allowed_build_types: vec!["https://rustok.dev/build/wasm/v1".into()],
+            allowed_licenses: vec!["MIT".into(), "Apache-2.0".into()],
+            allowed_cyclonedx_spec_versions: vec!["1.6".into()],
+            maximum_vulnerability_severity: "medium".into(),
+        }
+    }
+
+    fn cosign_output(statement: &str) -> Vec<u8> {
+        serde_json::to_vec(&json!([{ "payload": STANDARD.encode(statement) }]))
+            .expect("fixture output")
+    }
+
+    #[test]
+    fn slsa_fixture_requires_exact_subject_digest() {
+        let output = cosign_output(include_str!("../fixtures/slsa-statement.json"));
+        assert!(validate_slsa(&output, DIGEST, &policy()).is_ok());
+        assert!(validate_slsa(&output, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", &policy()).is_err());
+    }
+
+    #[test]
+    fn cyclonedx_fixture_enforces_license_and_vulnerability_policy() {
+        let output = cosign_output(include_str!("../fixtures/cyclonedx-statement.json"));
+        assert!(validate_cyclonedx(&output, DIGEST, &policy()).is_ok());
+
+        let mut denied_license = policy();
+        denied_license.allowed_licenses = vec!["MIT".into()];
+        assert!(validate_cyclonedx(&output, DIGEST, &denied_license).is_err());
+
+        let mut denied_severity = policy();
+        denied_severity.maximum_vulnerability_severity = "low".into();
+        assert!(validate_cyclonedx(&output, DIGEST, &denied_severity).is_err());
     }
 }

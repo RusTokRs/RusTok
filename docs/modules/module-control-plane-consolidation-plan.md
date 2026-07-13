@@ -725,9 +725,13 @@ of an admitted blob.
   now executes fixed Cosign verification commands and fails closed unless its
   complete typed allow-list accepts the signed in-toto subject digest, SLSA
   builder/build type/source, and CycloneDX JSON version, component-license, and
-  vulnerability evidence.
-  The remaining rollout work is deployment mTLS/authentication, request limits,
-  private KMS trust-root mode, and fixture-backed adapter verification.
+  vulnerability evidence. The worker listener requires deployment-provided
+  mTLS identity/client-CA material and bounds concurrency, duration, and
+  message size. The transport supports mTLS client configuration. The mounted
+  typed policy selects either keyless Sigstore identities/issuers or a
+  first-party KMS key reference; neither mode falls back to the other.
+  Fixture-backed tests cover accepted statements and denied digest, license,
+  vulnerability, keyless-policy, and KMS-policy cases.
 - Alloy/Rhai drafts are not marketplace-installable and do not require this
   publication trust policy. Static promotion uses its separate reviewed
   distribution-build policy.

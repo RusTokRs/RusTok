@@ -37,6 +37,18 @@
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
       "deadline_required": true
+    },
+    {
+      "name": "CartPromotionPort",
+      "owner": "cart",
+      "operations": [
+        "preview_cart_promotion",
+        "apply_cart_promotion"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
     }
   ],
   "consumers": [
@@ -56,6 +68,18 @@
     {
       "module": "commerce",
       "profile": "storefront_cart_rest",
+      "degraded_modes": [
+        "preserve_cart_state",
+        "show_cart_refresh_required"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_storefront_compat"
+      ]
+    },
+    {
+      "module": "commerce",
+      "profile": "admin_cart_promotions",
       "degraded_modes": [
         "preserve_cart_state",
         "show_cart_refresh_required"
@@ -174,6 +198,16 @@
       },
       {
         "operation": "reprice_storefront_line_items",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      },
+      {
+        "operation": "preview_cart_promotion",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+      },
+      {
+        "operation": "apply_cart_promotion",
         "profiles": ["in_process", "remote_adapter_placeholder"],
         "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
       }

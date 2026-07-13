@@ -1,13 +1,81 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{graphql::require_module_enabled, TenantContext};
+use rustok_api::{PortActor, PortContext, TenantContext, graphql::require_module_enabled};
 use uuid::Uuid;
 
-use rustok_cart::CartService;
+use rustok_cart::{
+    CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest, CartPromotionScopeRequest,
+    in_process_cart_promotion_port,
+};
 use rustok_pricing::PricingService;
 
-use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
 use super::helpers::*;
+
+fn cart_promotion_port_context(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    operation: &str,
+    is_write: bool,
+) -> PortContext {
+    let correlation_id = format!("admin-cart-promotion:{operation}:{cart_id}");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.graphql-admin"),
+        "en",
+        correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    if is_write {
+        context.with_idempotency_key(correlation_id)
+    } else {
+        context
+    }
+}
+
+fn admin_cart_promotion_request(
+    cart_id: Uuid,
+    input: &AdminCartPromotionInput,
+    line_item_id: Option<Uuid>,
+    metadata: serde_json::Value,
+) -> Result<CartPromotionRequest> {
+    let (kind, amount) = match &input.kind {
+        GqlAdminCartPromotionKind::PercentageDiscount => {
+            ensure_no_unused_promotion_amount(input.amount.as_deref(), "amount")?;
+            (
+                CartPromotionKindRequest::PercentageDiscount,
+                parse_required_promotion_decimal(
+                    input.discount_percent.as_deref(),
+                    "discount_percent",
+                )?,
+            )
+        }
+        GqlAdminCartPromotionKind::FixedDiscount => {
+            ensure_no_unused_promotion_amount(
+                input.discount_percent.as_deref(),
+                "discount_percent",
+            )?;
+            (
+                CartPromotionKindRequest::FixedDiscount,
+                parse_required_promotion_decimal(input.amount.as_deref(), "amount")?,
+            )
+        }
+    };
+    let scope = match &input.scope {
+        GqlAdminCartPromotionScope::Cart => CartPromotionScopeRequest::Cart,
+        GqlAdminCartPromotionScope::LineItem => CartPromotionScopeRequest::LineItem,
+        GqlAdminCartPromotionScope::Shipping => CartPromotionScopeRequest::Shipping,
+    };
+    Ok(CartPromotionRequest {
+        cart_id,
+        line_item_id,
+        scope,
+        kind,
+        source_id: input.source_id.clone(),
+        amount,
+        metadata,
+    })
+}
 
 #[derive(Default)]
 pub struct CommercePricingMutation;
@@ -29,71 +97,16 @@ impl CommercePricingMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let service = CartService::new(db.clone());
         let line_item_id = validate_admin_cart_promotion_target(input.scope, input.line_item_id)?;
-        let preview = match input.kind {
-            GqlAdminCartPromotionKind::PercentageDiscount => {
-                let discount_percent = parse_required_promotion_decimal(
-                    input.discount_percent.as_deref(),
-                    "discount_percent",
-                )?;
-                ensure_no_unused_promotion_amount(input.amount.as_deref(), "amount")?;
-                match input.scope {
-                    GqlAdminCartPromotionScope::Shipping => {
-                        service
-                            .preview_percentage_shipping_promotion(
-                                tenant_id,
-                                cart_id,
-                                input.source_id.as_str(),
-                                discount_percent,
-                            )
-                            .await
-                    }
-                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
-                        service
-                            .preview_percentage_promotion(
-                                tenant_id,
-                                cart_id,
-                                line_item_id,
-                                input.source_id.as_str(),
-                                discount_percent,
-                            )
-                            .await
-                    }
-                }
-            }
-            GqlAdminCartPromotionKind::FixedDiscount => {
-                let amount = parse_required_promotion_decimal(input.amount.as_deref(), "amount")?;
-                ensure_no_unused_promotion_amount(
-                    input.discount_percent.as_deref(),
-                    "discount_percent",
-                )?;
-                match input.scope {
-                    GqlAdminCartPromotionScope::Shipping => {
-                        service
-                            .preview_fixed_shipping_promotion(
-                                tenant_id,
-                                cart_id,
-                                input.source_id.as_str(),
-                                amount,
-                            )
-                            .await
-                    }
-                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
-                        service
-                            .preview_fixed_promotion(
-                                tenant_id,
-                                cart_id,
-                                line_item_id,
-                                input.source_id.as_str(),
-                                amount,
-                            )
-                            .await
-                    }
-                }
-            }
-        }
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let request =
+            admin_cart_promotion_request(cart_id, &input, line_item_id, serde_json::Value::Null)?;
+        let preview = in_process_cart_promotion_port(db.clone())
+            .preview_cart_promotion(
+                cart_promotion_port_context(tenant_id, cart_id, "preview", false),
+                request,
+            )
+            .await
+            .map_err(cart_port_error)?;
 
         Ok(map_cart_promotion_preview(input.scope, preview))
     }
@@ -113,76 +126,16 @@ impl CommercePricingMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let service = CartService::new(db.clone());
         let line_item_id = validate_admin_cart_promotion_target(input.scope, input.line_item_id)?;
         let metadata = parse_optional_metadata(input.metadata.as_deref())?;
-        let cart = match input.kind {
-            GqlAdminCartPromotionKind::PercentageDiscount => {
-                let discount_percent = parse_required_promotion_decimal(
-                    input.discount_percent.as_deref(),
-                    "discount_percent",
-                )?;
-                ensure_no_unused_promotion_amount(input.amount.as_deref(), "amount")?;
-                match input.scope {
-                    GqlAdminCartPromotionScope::Shipping => {
-                        service
-                            .apply_percentage_shipping_promotion(
-                                tenant_id,
-                                cart_id,
-                                input.source_id.as_str(),
-                                discount_percent,
-                                metadata,
-                            )
-                            .await
-                    }
-                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
-                        service
-                            .apply_percentage_promotion(
-                                tenant_id,
-                                cart_id,
-                                line_item_id,
-                                input.source_id.as_str(),
-                                discount_percent,
-                                metadata,
-                            )
-                            .await
-                    }
-                }
-            }
-            GqlAdminCartPromotionKind::FixedDiscount => {
-                let amount = parse_required_promotion_decimal(input.amount.as_deref(), "amount")?;
-                ensure_no_unused_promotion_amount(
-                    input.discount_percent.as_deref(),
-                    "discount_percent",
-                )?;
-                match input.scope {
-                    GqlAdminCartPromotionScope::Shipping => {
-                        service
-                            .apply_fixed_shipping_promotion(
-                                tenant_id,
-                                cart_id,
-                                input.source_id.as_str(),
-                                amount,
-                                metadata,
-                            )
-                            .await
-                    }
-                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
-                        service
-                            .apply_fixed_promotion(
-                                tenant_id,
-                                cart_id,
-                                line_item_id,
-                                input.source_id.as_str(),
-                                amount,
-                                metadata,
-                            )
-                            .await
-                    }
-                }
-            }
-        }
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let request = admin_cart_promotion_request(cart_id, &input, line_item_id, metadata)?;
+        let cart = in_process_cart_promotion_port(db.clone())
+            .apply_cart_promotion(
+                cart_promotion_port_context(tenant_id, cart_id, "apply", true),
+                request,
+            )
+            .await
+            .map_err(cart_port_error)?;
 
         Ok(cart.into())
     }

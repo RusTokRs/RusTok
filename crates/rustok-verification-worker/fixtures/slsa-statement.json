@@ -1,0 +1,27 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "module.wasm",
+      "digest": {
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ],
+  "predicateType": "https://slsa.dev/provenance/v1",
+  "predicate": {
+    "buildDefinition": {
+      "buildType": "https://rustok.dev/build/wasm/v1",
+      "externalParameters": {
+        "source": {
+          "uri": "https://github.com/rustok/module"
+        }
+      }
+    },
+    "runDetails": {
+      "builder": {
+        "id": "https://build.rustok.dev/worker"
+      }
+    }
+  }
+}

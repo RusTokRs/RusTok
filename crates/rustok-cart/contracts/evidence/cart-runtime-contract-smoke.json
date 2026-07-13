@@ -20,5 +20,7 @@
     ,{ "operation": "update_storefront_line_item_pricing", "source_order": ["context.require_write_semantics()?", "self.update_line_item_pricing(", ".map_err(cart_error_to_port_error)"] }
     ,{ "operation": "remove_storefront_line_item", "source_order": ["context.require_write_semantics()?", "self.remove_line_item(", ".map_err(cart_error_to_port_error)"] }
     ,{ "operation": "reprice_storefront_line_items", "source_order": ["context.require_write_semantics()?", "self.reprice_line_items(", ".map_err(cart_error_to_port_error)"] }
+    ,{ "operation": "preview_cart_promotion", "source_order": ["context.require_policy(PortCallPolicy::read())?", "validate_cart_promotion_request(&request)?", ".map_err(cart_error_to_port_error)"] }
+    ,{ "operation": "apply_cart_promotion", "source_order": ["context.require_write_semantics()?", "validate_cart_promotion_request(&request)?", ".map_err(cart_error_to_port_error)"] }
   ]
 }

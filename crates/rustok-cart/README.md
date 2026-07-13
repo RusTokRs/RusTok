@@ -24,6 +24,8 @@
   checkout and cart-read consumers.
 - Publish an owner-managed `CartStorefrontPort` for storefront cart reads,
   mutations, and repricing without exposing `CartService` to consumers.
+- Publish an owner-managed `CartPromotionPort` for cart and shipping promotion
+  previews and writes without exposing promotion service methods to consumers.
 - Publish a module-owned storefront cart workspace for cart inspection.
 
 ## Interactions

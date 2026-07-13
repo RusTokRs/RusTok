@@ -9,3 +9,4 @@ pub mod proto {
 
 pub use client::GrpcTrustVerifier;
 pub use server::VerificationGrpcService;
+pub use tonic::transport::ClientTlsConfig;

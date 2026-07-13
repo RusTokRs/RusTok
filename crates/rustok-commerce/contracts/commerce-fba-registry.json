@@ -155,11 +155,13 @@
       "registry": "crates/rustok-cart/contracts/cart-fba-registry.json",
       "ports": [
         "CartCheckoutPort",
-        "CartStorefrontPort"
+        "CartStorefrontPort",
+        "CartPromotionPort"
       ],
       "profiles": [
         "checkout_cart_snapshot",
-        "storefront_cart_rest"
+        "storefront_cart_rest",
+        "admin_cart_promotions"
       ],
       "fallback_profiles": [
         "embedded_native",

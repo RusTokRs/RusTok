@@ -68,6 +68,33 @@ fn ensure_agent_provider_capabilities(
     Ok(())
 }
 
+/// Canonical aggregate state for a workflow derived from its persisted stage
+/// states. Keep this pure so terminal semantics are regression-testable
+/// without a database runtime.
+fn aggregate_agent_workflow_status<'a>(
+    stage_statuses: impl Iterator<Item = &'a str>,
+) -> &'static str {
+    let stage_statuses = stage_statuses.collect::<Vec<_>>();
+    if stage_statuses.iter().any(|status| *status == "failed") {
+        "failed"
+    } else if stage_statuses.iter().any(|status| *status == "cancelled") {
+        "cancelled"
+    } else if !stage_statuses.is_empty()
+        && stage_statuses.iter().all(|status| *status == "completed")
+    {
+        "completed"
+    } else if stage_statuses
+        .iter()
+        .any(|status| *status == "waiting_approval")
+    {
+        "waiting_approval"
+    } else if stage_statuses.iter().any(|status| *status == "running") {
+        "running"
+    } else {
+        "queued"
+    }
+}
+
 /// Reconstructs the authority of the workflow initiator, then constrains it
 /// to the owner descriptor. Scheduler credentials must never become the
 /// authority of a tenant agent.
@@ -453,22 +480,8 @@ impl AiManagementService {
         if matches!(run.status.as_str(), "failed" | "cancelled" | "completed") {
             return Ok(());
         }
-        let status = if stages.iter().any(|stage| stage.status == "failed") {
-            "failed"
-        } else if stages.iter().any(|stage| stage.status == "cancelled") {
-            "cancelled"
-        } else if !stages.is_empty() && stages.iter().all(|stage| stage.status == "completed") {
-            "completed"
-        } else if stages
-            .iter()
-            .any(|stage| stage.status == "waiting_approval")
-        {
-            "waiting_approval"
-        } else if stages.iter().any(|stage| stage.status == "running") {
-            "running"
-        } else {
-            "queued"
-        };
+        let status =
+            aggregate_agent_workflow_status(stages.iter().map(|stage| stage.status.as_str()));
         if run.status == status {
             return Ok(());
         }
@@ -1721,6 +1734,23 @@ mod approval_outcome_tests {
     }
 }
 
+#[cfg(test)]
+mod agent_workflow_status_tests {
+    use super::aggregate_agent_workflow_status;
+
+    #[test]
+    fn cancellation_is_preserved_unless_a_stage_failed() {
+        assert_eq!(
+            aggregate_agent_workflow_status(["completed", "cancelled"].into_iter()),
+            "cancelled"
+        );
+        assert_eq!(
+            aggregate_agent_workflow_status(["failed", "cancelled"].into_iter()),
+            "failed"
+        );
+    }
+}
+
 impl AiManagementService {
     pub fn metrics_snapshot() -> AiRuntimeMetricsSnapshot {
         ai_metrics::metrics_snapshot()
@@ -2886,9 +2916,11 @@ impl AiManagementService {
                     )
                     .col_expr(
                         ai_agent_workflow_stages::Column::ErrorMessage,
-                        Expr::value(run.error_message.clone().unwrap_or_else(|| {
-                            "workflow AI run was cancelled".to_string()
-                        })),
+                        Expr::value(
+                            run.error_message
+                                .clone()
+                                .unwrap_or_else(|| "workflow AI run was cancelled".to_string()),
+                        ),
                     )
                     .col_expr(
                         ai_agent_workflow_stages::Column::CompletedAt,

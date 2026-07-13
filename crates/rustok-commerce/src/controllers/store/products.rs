@@ -3,9 +3,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
-use rustok_cart::{
-    CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_storefront_port,
-};
+use rustok_cart::{CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_fulfillment::FulfillmentService;
 use rustok_product::{
     CatalogService,
@@ -293,56 +291,57 @@ pub async fn list_shipping_options(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let (context, public_channel_slug, required_shipping_profiles) =
-        if let Some(cart_id) = query.cart_id {
-            let cart = in_process_cart_storefront_port(runtime.db_clone())
-                .read_storefront_cart(
-                    super::storefront_cart_port_context(
-                        tenant.id,
-                        &request_context,
-                        auth.0.as_ref(),
-                        cart_id,
-                        "read",
-                        false,
-                    ),
-                    CartStorefrontReadRequest { cart_id },
-                )
+    let (context, public_channel_slug, required_shipping_profiles) = if let Some(cart_id) =
+        query.cart_id
+    {
+        let cart = in_process_cart_storefront_port(runtime.db_clone())
+            .read_storefront_cart(
+                super::storefront_cart_port_context(
+                    tenant.id,
+                    &request_context,
+                    auth.0.as_ref(),
+                    cart_id,
+                    "read",
+                    false,
+                ),
+                CartStorefrontReadRequest { cart_id },
+            )
+            .await
+            .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
+        super::ensure_store_cart_access(&cart, customer_id)?;
+        let required_shipping_profiles =
+            load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
                 .await
-                .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
-            super::ensure_store_cart_access(&cart, customer_id)?;
-            let required_shipping_profiles =
-                load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
-                    .await
-                    .map_err(|err| {
-                        HttpError::bad_request("commerce_operation_failed", err.to_string())
-                    })?;
-            (
-                super::resolve_context_from_cart_for_db(
-                    runtime.db(),
-                    tenant.id,
-                    &request_context,
-                    &cart,
-                )
-                .await?,
-                super::storefront_public_channel_slug_for_cart(&cart, &request_context),
-                required_shipping_profiles,
+                .map_err(|err| {
+                    HttpError::bad_request("commerce_operation_failed", err.to_string())
+                })?;
+        (
+            super::resolve_context_from_cart_for_db(
+                runtime.db(),
+                tenant.id,
+                &request_context,
+                &cart,
             )
-        } else {
-            (
-                super::resolve_context_for_db(
-                    runtime.db(),
-                    tenant.id,
-                    &request_context,
-                    query.region_id,
-                    query.country_code.clone(),
-                    query.locale.clone(),
-                    query.currency_code.clone(),
-                )
-                .await?,
-                public_channel_slug_from_request(&request_context),
-                Default::default(),
+            .await?,
+            super::storefront_public_channel_slug_for_cart(&cart, &request_context),
+            required_shipping_profiles,
+        )
+    } else {
+        (
+            super::resolve_context_for_db(
+                runtime.db(),
+                tenant.id,
+                &request_context,
+                query.region_id,
+                query.country_code.clone(),
+                query.locale.clone(),
+                query.currency_code.clone(),
             )
-        };
+            .await?,
+            public_channel_slug_from_request(&request_context),
+            Default::default(),
+        )
+    };
 
     let service = FulfillmentService::new(runtime.db_clone());
     let mut options = service

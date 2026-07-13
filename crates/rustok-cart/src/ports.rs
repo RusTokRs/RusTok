@@ -101,9 +101,56 @@ pub trait CartStorefrontPort: Send + Sync {
     ) -> Result<CartResponse, PortError>;
 }
 
+/// Transport-neutral owner boundary for cart promotion preview and application.
+#[async_trait]
+pub trait CartPromotionPort: Send + Sync {
+    async fn preview_cart_promotion(
+        &self,
+        context: PortContext,
+        request: CartPromotionRequest,
+    ) -> Result<crate::CartPromotionPreview, PortError>;
+
+    async fn apply_cart_promotion(
+        &self,
+        context: PortContext,
+        request: CartPromotionRequest,
+    ) -> Result<CartResponse, PortError>;
+}
+
 /// Builds the owner-managed in-process storefront provider for explicit consumers.
 pub fn in_process_cart_storefront_port(db: DatabaseConnection) -> Arc<dyn CartStorefrontPort> {
     Arc::new(crate::CartService::new(db))
+}
+
+/// Builds the owner-managed in-process promotion provider for explicit consumers.
+pub fn in_process_cart_promotion_port(db: DatabaseConnection) -> Arc<dyn CartPromotionPort> {
+    Arc::new(crate::CartService::new(db))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CartPromotionScopeRequest {
+    Cart,
+    LineItem,
+    Shipping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CartPromotionKindRequest {
+    PercentageDiscount,
+    FixedDiscount,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CartPromotionRequest {
+    pub cart_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub scope: CartPromotionScopeRequest,
+    pub kind: CartPromotionKindRequest,
+    pub source_id: String,
+    pub amount: rust_decimal::Decimal,
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -184,6 +231,7 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutSnapshotRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.get_cart(tenant_id, request.cart_id)
             .await
@@ -196,6 +244,7 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.update_context(tenant_id, request.cart_id, request.input)
             .await
@@ -236,6 +285,24 @@ impl CartCheckoutPort for crate::CartService {
         self.complete_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
+    }
+}
+
+fn validate_cart_promotion_request(request: &CartPromotionRequest) -> Result<(), PortError> {
+    match request.scope {
+        CartPromotionScopeRequest::LineItem if request.line_item_id.is_none() => {
+            Err(PortError::validation(
+                "cart.promotion_line_item_required",
+                "line_item_id is required for line-item cart promotions",
+            ))
+        }
+        CartPromotionScopeRequest::Shipping if request.line_item_id.is_some() => {
+            Err(PortError::validation(
+                "cart.promotion_shipping_line_item_forbidden",
+                "line_item_id is not allowed for shipping cart promotions",
+            ))
+        }
+        _ => Ok(()),
     }
 }
 
@@ -360,6 +427,113 @@ impl CartStorefrontPort for crate::CartService {
             request.updates,
         )
         .await
+        .map_err(cart_error_to_port_error)
+    }
+}
+
+#[async_trait]
+impl CartPromotionPort for crate::CartService {
+    async fn preview_cart_promotion(
+        &self,
+        context: PortContext,
+        request: CartPromotionRequest,
+    ) -> Result<crate::CartPromotionPreview, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        match (request.scope, request.kind) {
+            (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
+                self.preview_percentage_shipping_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    &request.source_id,
+                    request.amount,
+                )
+                .await
+            }
+            (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::FixedDiscount) => {
+                self.preview_fixed_shipping_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    &request.source_id,
+                    request.amount,
+                )
+                .await
+            }
+            (_, CartPromotionKindRequest::PercentageDiscount) => {
+                self.preview_percentage_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    request.line_item_id,
+                    &request.source_id,
+                    request.amount,
+                )
+                .await
+            }
+            (_, CartPromotionKindRequest::FixedDiscount) => {
+                self.preview_fixed_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    request.line_item_id,
+                    &request.source_id,
+                    request.amount,
+                )
+                .await
+            }
+        }
+        .map_err(cart_error_to_port_error)
+    }
+
+    async fn apply_cart_promotion(
+        &self,
+        context: PortContext,
+        request: CartPromotionRequest,
+    ) -> Result<CartResponse, PortError> {
+        context.require_write_semantics()?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        match (request.scope, request.kind) {
+            (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
+                self.apply_percentage_shipping_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    &request.source_id,
+                    request.amount,
+                    request.metadata,
+                )
+                .await
+            }
+            (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::FixedDiscount) => {
+                self.apply_fixed_shipping_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    &request.source_id,
+                    request.amount,
+                    request.metadata,
+                )
+                .await
+            }
+            (_, CartPromotionKindRequest::PercentageDiscount) => {
+                self.apply_percentage_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    request.line_item_id,
+                    &request.source_id,
+                    request.amount,
+                    request.metadata,
+                )
+                .await
+            }
+            (_, CartPromotionKindRequest::FixedDiscount) => {
+                self.apply_fixed_promotion(
+                    tenant_id,
+                    request.cart_id,
+                    request.line_item_id,
+                    &request.source_id,
+                    request.amount,
+                    request.metadata,
+                )
+                .await
+            }
+        }
         .map_err(cart_error_to_port_error)
     }
 }

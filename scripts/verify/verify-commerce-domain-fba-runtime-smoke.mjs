@@ -53,6 +53,11 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const cartStorefrontRestSource = read('crates/rustok-commerce/src/controllers/store/carts.rs');
   const cartStorefrontGraphqlSource = read('crates/rustok-commerce/src/graphql/query.rs');
   const cartStorefrontMutationSource = read('crates/rustok-commerce/src/graphql/mutations/cart.rs');
+  const cartCheckoutRestSource = read('crates/rustok-commerce/src/controllers/store/checkout.rs');
+  const cartCheckoutGraphqlSource = read('crates/rustok-commerce/src/graphql/mutations/checkout.rs');
+  const cartCheckoutRuntimeSource = read('crates/rustok-commerce/src/storefront_checkout_runtime.rs');
+  const cartShippingOptionsSource = read('crates/rustok-commerce/src/controllers/store/products.rs');
+  const cartPromotionMutationSource = read('crates/rustok-commerce/src/graphql/mutations/pricing.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
   if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
@@ -175,6 +180,10 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     ['REST storefront cart adapter', cartStorefrontRestSource],
     ['GraphQL storefront cart query adapter', cartStorefrontGraphqlSource],
     ['GraphQL storefront cart mutation adapter', cartStorefrontMutationSource],
+    ['REST storefront checkout adapter', cartCheckoutRestSource],
+    ['GraphQL storefront checkout adapter', cartCheckoutGraphqlSource],
+    ['Storefront checkout runtime adapter', cartCheckoutRuntimeSource],
+    ['REST storefront shipping-options adapter', cartShippingOptionsSource],
   ]) {
     for (const marker of [
       'in_process_cart_storefront_port(',
@@ -200,6 +209,19 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     if (!cartStorefrontMutationSource.includes(marker)) {
       fail(`GraphQL storefront cart mutation adapter missing CartStorefrontPort operation: ${marker}`);
     }
+  }
+  for (const marker of [
+    'in_process_cart_promotion_port(',
+    '.preview_cart_promotion(',
+    '.apply_cart_promotion(',
+    'CartPromotionRequest',
+  ]) {
+    if (!cartPromotionMutationSource.includes(marker)) {
+      fail(`GraphQL cart promotion adapter missing CartPromotionPort operation: ${marker}`);
+    }
+  }
+  if (cartPromotionMutationSource.includes('CartService::new(')) {
+    fail('GraphQL cart promotion adapter must not construct CartService outside CartPromotionPort');
   }
 
   for (const module of modules) {

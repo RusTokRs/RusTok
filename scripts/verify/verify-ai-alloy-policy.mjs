@@ -92,6 +92,10 @@ hasAll(runtimeSource, [
   'async fn sync_workflow_stage_after_run(',
   'Self::sync_workflow_stage_after_run(db, operator.tenant_id, &record).await?',
   'Column::RunId.eq(run.id)',
+  'Expr::value("cancelled")',
+  'workflow AI run was cancelled',
+  'fn aggregate_agent_workflow_status',
+  'fn cancellation_is_preserved_unless_a_stage_failed',
   'Column::LeaseExpiresAt.gte(Utc::now())',
   'ai_agent_workflow_stages::Column::StartedAt'
 ], 'AI workflow runtime source');

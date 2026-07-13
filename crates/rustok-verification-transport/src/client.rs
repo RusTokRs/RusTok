@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
 use tokio::sync::Mutex;
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tonic::Request;
 
 use crate::proto::verification_service_client::VerificationServiceClient;
@@ -22,6 +22,21 @@ impl GrpcTrustVerifier {
 
     pub async fn connect(endpoint: Endpoint) -> Result<Self, String> {
         let channel = endpoint
+            .connect()
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(Self::from_channel(channel))
+    }
+
+    /// Connect to a worker that requires mutual TLS. The deployment host owns
+    /// the client identity, trust root, and expected server domain.
+    pub async fn connect_with_tls(
+        endpoint: Endpoint,
+        tls_config: ClientTlsConfig,
+    ) -> Result<Self, String> {
+        let channel = endpoint
+            .tls_config(tls_config)
+            .map_err(|error| error.to_string())?
             .connect()
             .await
             .map_err(|error| error.to_string())?;

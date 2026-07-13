@@ -7,3 +7,7 @@ gRPC supplies method identity, deadlines, cancellation, and status codes.
 The crate must not contain admission policy, CAS access, database access, or
 verification credentials. Those belong respectively to `rustok-modules` and
 `rustok-verification-worker`.
+
+Production callers use `GrpcTrustVerifier::connect_with_tls` with a mounted
+client identity, trust root, and expected worker domain. A TLS connection or
+certificate failure reaches the owner as a verifier error and rejects admission.

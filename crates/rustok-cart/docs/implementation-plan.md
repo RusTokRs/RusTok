@@ -50,6 +50,8 @@ identity.
 - Storefront REST and GraphQL cart reads and mutations consume
   `CartStorefrontPort`; the port preserves tenant, actor, channel, locale,
   deadline, and write-idempotency context at the owner boundary.
+- Admin cart-promotion preview and application consume `CartPromotionPort`,
+  with scope validation and owner-side typed error mapping.
 
 ## Open results
 

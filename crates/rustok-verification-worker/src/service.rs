@@ -32,11 +32,7 @@ where
             return Err(VerificationWorkerError::PolicyRevisionMismatch.to_string());
         }
         let decision = self.verifier.verify(request).await?;
-        if !self
-            .policy
-            .allowed_signer_identities
-            .contains(&decision.signer_identity)
-        {
+        if !self.policy.signer_is_allowed(&decision.signer_identity) {
             return Err(VerificationWorkerError::SignerDenied.to_string());
         }
         if !decision.admitted() {

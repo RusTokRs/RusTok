@@ -1,0 +1,40 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "module.wasm",
+      "digest": {
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ],
+  "predicateType": "https://cyclonedx.org/bom",
+  "predicate": {
+    "bomFormat": "CycloneDX",
+    "specVersion": "1.6",
+    "metadata": {
+      "component": {
+        "name": "module",
+        "licenses": [
+          { "license": { "id": "MIT" } }
+        ]
+      }
+    },
+    "components": [
+      {
+        "name": "dependency",
+        "licenses": [
+          { "license": { "id": "Apache-2.0" } }
+        ]
+      }
+    ],
+    "vulnerabilities": [
+      {
+        "id": "CVE-2026-0000",
+        "ratings": [
+          { "severity": "medium" }
+        ]
+      }
+    ]
+  }
+}
