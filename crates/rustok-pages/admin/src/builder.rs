@@ -16,11 +16,7 @@ pub struct PagesBuilderSaveSnapshot {
     pub token: Option<String>,
     pub tenant_slug: Option<String>,
     pub page_id: String,
-    pub locale: String,
-    pub title: String,
-    pub slug: String,
-    pub channel_slugs: String,
-    pub publish: bool,
+    pub default_locale: String,
 }
 
 type SnapshotProvider = Rc<dyn Fn() -> PagesBuilderSaveSnapshot>;
@@ -67,14 +63,23 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
                 )));
             }
 
+            let current_page = transport::fetch_page(
+                snapshot.token.clone(),
+                snapshot.tenant_slug.clone(),
+                snapshot.page_id.clone(),
+            )
+            .await
+            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
+            .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
+            let seed = core::edit_form_seed_from_page(&current_page, &snapshot.default_locale);
             let project_data = canonicalize_builder_project(input.project_data)?;
             let draft = core::build_create_page_draft(
                 PageDraftFormInput {
-                    locale: &snapshot.locale,
-                    title: &snapshot.title,
-                    slug: &snapshot.slug,
-                    channel_slugs: &snapshot.channel_slugs,
-                    publish: snapshot.publish,
+                    locale: &seed.locale,
+                    title: &seed.title,
+                    slug: &seed.slug,
+                    channel_slugs: &seed.channel_slugs_text,
+                    publish: seed.publish_now,
                 },
                 project_data.clone(),
             );
