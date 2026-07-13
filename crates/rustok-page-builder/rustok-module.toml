@@ -15,6 +15,13 @@ entry_type = "PageBuilderModule"
 leptos_crate = "rustok-page-builder-admin"
 route_segment = "page-builder"
 nav_label = "Page Builder"
+nav_group = "Content"
+nav_order = 5
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
 
 [fba.provider]
 contract = "grapesjs_v1"
