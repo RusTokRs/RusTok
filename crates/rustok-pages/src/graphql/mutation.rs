@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, AuthContext,
+    has_any_effective_permission, AuthContext, TenantContext,
 };
 use rustok_api::{Action, Permission, Resource};
 use rustok_outbox::TransactionalEventBus;
@@ -35,8 +35,8 @@ impl PagesMutation {
         if input.publish.unwrap_or(false) {
             require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
         }
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
@@ -96,8 +96,8 @@ impl PagesMutation {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth =
             require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
@@ -149,8 +149,8 @@ impl PagesMutation {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth =
             require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
@@ -178,8 +178,8 @@ impl PagesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
@@ -207,8 +207,8 @@ impl PagesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_DELETE)?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
         service
@@ -237,8 +237,8 @@ impl PagesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = BlockService::new(db.clone(), event_bus.clone());
         let block = service
@@ -268,8 +268,8 @@ impl PagesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = BlockService::new(db.clone(), event_bus.clone());
         let block = service
@@ -302,8 +302,8 @@ impl PagesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_DELETE)?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = BlockService::new(db.clone(), event_bus.clone());
         service
@@ -332,8 +332,8 @@ impl PagesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = BlockService::new(db.clone(), event_bus.clone());
         service
@@ -351,6 +351,24 @@ impl PagesMutation {
 
         Ok(true)
     }
+}
+
+fn mutation_tenant_id(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    requested: Option<Uuid>,
+) -> Result<Uuid> {
+    if auth.tenant_id != tenant.id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Authenticated actor is not bound to the current tenant",
+        ));
+    }
+    if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Page mutations must use the current tenant",
+        ));
+    }
+    Ok(tenant.id)
 }
 
 fn require_pages_permission(ctx: &Context<'_>, permission: Permission) -> Result<AuthContext> {
@@ -392,4 +410,51 @@ fn map_block_translations(
 fn parse_block_type(value: &str) -> Result<BlockType> {
     serde_json::from_value::<BlockType>(serde_json::Value::String(value.to_string()))
         .map_err(|_| async_graphql::Error::new(format!("Invalid block_type: {value}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mutation_tenant_id;
+    use rustok_api::{AuthContext, TenantContext};
+    use uuid::Uuid;
+
+    fn tenant(id: Uuid) -> TenantContext {
+        TenantContext {
+            id,
+            name: "Tenant".to_string(),
+            slug: "tenant".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn auth(tenant_id: Uuid) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: Vec::new(),
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    #[test]
+    fn page_mutation_tenant_override_fails_closed() {
+        let current = Uuid::new_v4();
+        assert_eq!(
+            mutation_tenant_id(&tenant(current), &auth(current), None).unwrap(),
+            current
+        );
+        assert!(mutation_tenant_id(
+            &tenant(current),
+            &auth(current),
+            Some(Uuid::new_v4())
+        )
+        .is_err());
+        assert!(mutation_tenant_id(&tenant(current), &auth(Uuid::new_v4()), None).is_err());
+    }
 }
