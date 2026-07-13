@@ -1,130 +1,124 @@
 [package]
 name = "rustok-server"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description.workspace = true
+version = "0.1.0"
+edition = "2021"
 build = "build.rs"
-
-[[bin]]
-name = "migrate_legacy_richtext"
-path = "src/bin/migrate_legacy_richtext.rs"
-required-features = ["mod-content"]
 
 [features]
 default = [
-    "redis-cache",
-    "embed-admin",
-    "embed-storefront",
-    "mod-product",
-    "mod-profiles",
-    "mod-region",
+    "mod-auth",
+    "mod-tenant",
+    "mod-multilingual",
+    "mod-users",
+    "mod-media",
+    "mod-pages",
+    "mod-blog",
+    "mod-seo",
+    "mod-rbac",
+    "mod-webhooks",
+    "mod-audit",
+    "mod-search",
+    "mod-scheduler",
+    "mod-notifications",
+    "mod-workflow",
+    "mod-alloy",
+    "mod-taxonomy",
+    "mod-forum",
+    "mod-moderation",
+    "mod-messaging",
+    "mod-reactions",
+    "mod-activity-feed",
+    "mod-commerce",
+    "mod-cart",
+    "mod-orders",
+    "mod-payments",
+    "mod-fulfillment",
+    "mod-promotions",
     "mod-pricing",
     "mod-inventory",
-    "mod-cart",
-    "mod-customer",
-    "mod-order",
-    "mod-payment",
-    "mod-fulfillment",
-    "mod-commerce",
-    "mod-content",
-    "mod-blog",
-    "mod-forum",
-    "mod-comments",
-    "mod-pages",
-    "mod-page_builder",
-    "mod-taxonomy",
-    "mod-alloy",
-    "mod-flex",
-    "mod-media",
-    "mod-seo",
-    "mod-workflow",
-    "mod-ai",
+    "mod-customer-accounts",
+    "mod-tax",
+    "mod-returns",
 ]
-redis-cache = []
-embed-admin = ["dep:rustok-admin", "embed-admin-assets"]
-embed-admin-assets = ["dep:rust-embed"]
-embed-storefront = ["dep:rustok-storefront"]
-# Domain module feature flags — compile the module into the binary;
-# resolvers additionally check is_enabled(tenant_id) at runtime.
-mod-cart      = ["dep:rustok-cart", "rustok-distribution/mod-cart"]
-mod-customer  = ["dep:rustok-customer", "rustok-distribution/mod-customer"]
-mod-product   = ["dep:rustok-product", "mod-taxonomy", "rustok-distribution/mod-product"]
-mod-profiles  = ["dep:rustok-profiles", "mod-taxonomy", "rustok-distribution/mod-profiles"]
-mod-region    = ["dep:rustok-region", "rustok-distribution/mod-region"]
-mod-pricing   = ["dep:rustok-pricing", "mod-product", "rustok-distribution/mod-pricing"]
-mod-inventory = ["dep:rustok-inventory", "mod-product", "rustok-distribution/mod-inventory"]
-mod-order     = ["dep:rustok-order", "rustok-distribution/mod-order"]
-mod-payment   = ["dep:rustok-payment", "rustok-distribution/mod-payment"]
-mod-fulfillment = ["dep:rustok-fulfillment", "rustok-distribution/mod-fulfillment"]
-mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment", "rustok-distribution/mod-commerce"]
-mod-content   = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content", "rustok-distribution/mod-content"]
-mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog", "rustok-distribution/mod-blog"]
-mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]
-mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
-mod-pages     = ["dep:rustok-pages", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
-mod-page_builder = ["dep:rustok-page-builder", "rustok-distribution/mod-page_builder"]
-mod-taxonomy  = ["dep:rustok-taxonomy", "mod-content", "rustok-distribution/mod-taxonomy"]
-mod-alloy     = ["dep:alloy", "rustok-distribution/mod-alloy"]
-mod-flex      = ["rustok-distribution/mod-flex"]
-mod-media     = ["dep:rustok-media", "rustok-distribution/mod-media"]
-mod-seo       = ["dep:rustok-seo", "mod-content", "rustok-distribution/mod-seo"]
-mod-workflow  = ["dep:rustok-workflow", "rustok-distribution/mod-workflow"]
-mod-ai        = []
+# Embed admin frontend assets into the server binary and expose /admin/*.
+embed-admin = ["dep:rust-embed", "tower-http/fs"]
+# Embed storefront frontend assets into the server binary and expose /*.
+embed-storefront = ["dep:rust-embed", "tower-http/fs"]
+mod-auth = ["dep:rustok-auth"]
+mod-tenant = ["dep:rustok-tenant"]
+mod-multilingual = ["dep:rustok-multilingual"]
+mod-users = ["dep:rustok-users"]
+mod-media = ["dep:rustok-media"]
+mod-pages = ["dep:rustok-pages"]
+mod-blog = ["dep:rustok-blog"]
+mod-seo = ["dep:rustok-seo"]
+mod-rbac = ["dep:rustok-rbac"]
+mod-webhooks = ["dep:rustok-webhooks"]
+mod-audit = ["dep:rustok-audit"]
+mod-search = ["dep:rustok-search"]
+mod-scheduler = ["dep:rustok-scheduler"]
+mod-notifications = ["dep:rustok-notifications"]
+mod-workflow = ["dep:rustok-workflow"]
+mod-alloy = ["dep:alloy"]
+mod-taxonomy = ["dep:rustok-taxonomy"]
+mod-forum = ["dep:rustok-forum"]
+mod-moderation = ["dep:rustok-moderation"]
+mod-messaging = ["dep:rustok-messaging"]
+mod-reactions = ["dep:rustok-reactions"]
+mod-activity-feed = ["dep:rustok-activity-feed"]
+mod-commerce = ["dep:rustok-commerce"]
+mod-cart = ["dep:rustok-cart"]
+mod-orders = ["dep:rustok-orders"]
+mod-payments = ["dep:rustok-payments"]
+mod-fulfillment = ["dep:rustok-fulfillment"]
+mod-promotions = ["dep:rustok-promotions"]
+mod-pricing = ["dep:rustok-pricing"]
+mod-inventory = ["dep:rustok-inventory"]
+mod-customer-accounts = ["dep:rustok-customer-accounts"]
+mod-tax = ["dep:rustok-tax"]
+mod-returns = ["dep:rustok-returns"]
 
 [dependencies]
-rustok-core = { workspace = true, features = ["redis-cache"] }
-rustok-modules.workspace = true
-rustok-distribution = { workspace = true, default-features = false }
-rustok-api = { workspace = true, features = ["server"] }
+rustok-api.workspace = true
+rustok-core.workspace = true
+rustok-cache.workspace = true
 rustok-build.workspace = true
-rustok-auth = { workspace = true, features = ["graphql"] }
-rustok-cache = { workspace = true, features = ["redis-cache"] }
-rustok-channel.workspace = true
-rustok-email.workspace = true
-rustok-events.workspace = true
-rustok-web.workspace = true
-flex.workspace = true
-rustok-admin = { path = "../admin", default-features = false, features = ["ssr"], optional = true }
-rustok-storefront = { path = "../storefront", default-features = false, features = ["ssr"], optional = true }
-rustok-cart      = { workspace = true, optional = true }
-rustok-customer  = { workspace = true, optional = true }
-rustok-product   = { workspace = true, optional = true }
-rustok-profiles  = { workspace = true, optional = true }
-rustok-region    = { workspace = true, optional = true }
-rustok-pricing   = { workspace = true, optional = true }
-rustok-inventory = { workspace = true, optional = true }
-rustok-order     = { workspace = true, optional = true }
-rustok-payment   = { workspace = true, optional = true }
-rustok-fulfillment = { workspace = true, optional = true }
-rustok-commerce  = { workspace = true, optional = true }
-rustok-blog      = { workspace = true, optional = true }
-rustok-comments  = { workspace = true, optional = true }
-rustok-content   = { workspace = true, optional = true }
-rustok-content-orchestration = { workspace = true }
-rustok-forum     = { workspace = true, optional = true }
-rustok-pages     = { workspace = true, optional = true }
-rustok-page-builder = { workspace = true, optional = true }
-rustok-taxonomy  = { workspace = true, optional = true }
-rustok-storage   = { workspace = true, features = ["s3"] }
-rustok-media     = { workspace = true, optional = true }
-rustok-seo       = { workspace = true, optional = true }
-rustok-index.workspace = true
-rustok-search = { workspace = true, features = ["graphql"] }
-rustok-tenant.workspace = true
-rustok-rbac = { workspace = true, features = ["graphql"] }
-rustok-mcp = { workspace = true, features = ["graphql"] }
-rustok-ai = { workspace = true, features = ["graphql"] }
-rustok-telemetry.workspace = true
-rustok-iggy.workspace = true
-rustok-outbox.workspace = true
-rustok-installer = { path = "../../crates/rustok-installer" }
-rustok-installer-persistence.workspace = true
-alloy            = { workspace = true, optional = true }
-rustok-workflow  = { workspace = true, optional = true }
-
-tokio.workspace = true
-tokio-stream = { version = "0.1", features = ["sync"] }
+rustok-test-utils.workspace = true
+rustok-graphql = { path = "../../crates/rustok-graphql" }
+rustok-content-orchestration = { path = "../../crates/rustok-content-orchestration" }
+rustok-auth = { path = "../../crates/rustok-auth", optional = true }
+rustok-tenant = { path = "../../crates/rustok-tenant", optional = true }
+rustok-multilingual = { path = "../../crates/rustok-multilingual", optional = true }
+rustok-users = { path = "../../crates/rustok-users", optional = true }
+rustok-media = { path = "../../crates/rustok-media", optional = true }
+rustok-pages = { path = "../../crates/rustok-pages", optional = true }
+rustok-blog = { path = "../../crates/rustok-blog", optional = true }
+rustok-seo = { path = "../../crates/rustok-seo", optional = true }
+rustok-rbac = { path = "../../crates/rustok-rbac", optional = true }
+rustok-webhooks = { path = "../../crates/rustok-webhooks", optional = true }
+rustok-audit = { path = "../../crates/rustok-audit", optional = true }
+rustok-search = { path = "../../crates/rustok-search", optional = true }
+rustok-scheduler = { path = "../../crates/rustok-scheduler", optional = true }
+rustok-notifications = { path = "../../crates/rustok-notifications", optional = true }
+rustok-workflow = { path = "../../crates/rustok-workflow", optional = true }
+alloy = { path = "../../crates/alloy", optional = true }
+rustok-taxonomy = { path = "../../crates/rustok-taxonomy", optional = true }
+rustok-forum = { path = "../../crates/rustok-forum", optional = true }
+rustok-moderation = { path = "../../crates/rustok-moderation", optional = true }
+rustok-messaging = { path = "../../crates/rustok-messaging", optional = true }
+rustok-reactions = { path = "../../crates/rustok-reactions", optional = true }
+rustok-activity-feed = { path = "../../crates/rustok-activity-feed", optional = true }
+rustok-commerce = { path = "../../crates/rustok-commerce", optional = true }
+rustok-cart = { path = "../../crates/rustok-cart", optional = true }
+rustok-orders = { path = "../../crates/rustok-orders", optional = true }
+rustok-payments = { path = "../../crates/rustok-payments", optional = true }
+rustok-fulfillment = { path = "../../crates/rustok-fulfillment", optional = true }
+rustok-promotions = { path = "../../crates/rustok-promotions", optional = true }
+rustok-pricing = { path = "../../crates/rustok-pricing", optional = true }
+rustok-inventory = { path = "../../crates/rustok-inventory", optional = true }
+rustok-customer-accounts = { path = "../../crates/rustok-customer-accounts", optional = true }
+rustok-tax = { path = "../../crates/rustok-tax", optional = true }
+rustok-returns = { path = "../../crates/rustok-returns", optional = true }
 axum.workspace = true
 leptos.workspace = true
 leptos_axum.workspace = true
@@ -159,7 +153,7 @@ futures-util = "0.3"
 rust-embed = { version = "8.0", features = ["interpolate-folder-path"], optional = true }
 tower-http = { workspace = true, features = ["fs"] }
 mime_guess = "2.0"
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
 semver = "1.0"
 rand.workspace = true
 subtle = "2"
