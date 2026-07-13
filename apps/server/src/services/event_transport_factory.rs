@@ -72,7 +72,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
 
     // Subscribe before any transport can publish a tenant generation. This also restores the
     // shared generation before tenant middleware constructs its backend later in bootstrap.
-    start_tenant_cache_generation_listener(ctx, cache.clone()).await;
+    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
 
     let runtime = match settings.events.transport {
         EventTransportKind::Memory => {
@@ -163,7 +163,6 @@ pub fn spawn_outbox_relay_worker(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            // Check for shutdown before spawning the inner worker.
             if *stop_rx.borrow() {
                 tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
                 return;
@@ -177,8 +176,6 @@ pub fn spawn_outbox_relay_worker(
                 "Outbox relay worker loop starting"
             );
 
-            // The inner worker is aborted explicitly when the supervisor receives
-            // the stop signal, so it does not need its own stop_rx.
             let mut inner_handle = tokio::spawn(async move {
                 loop {
                     if let Err(error) = relay.process_pending_once(None).await {
@@ -212,7 +209,6 @@ pub fn spawn_outbox_relay_worker(
                     } else {
                         tracing::warn!("Outbox relay worker exited unexpectedly. Restarting.");
                     }
-                    // Inner task completed normally (shouldn't happen); loop back.
                 }
                 _ = stop_rx.changed() => {
                     tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
