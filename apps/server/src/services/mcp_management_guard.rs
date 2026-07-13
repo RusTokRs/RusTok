@@ -1,22 +1,21 @@
-use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::Permission;
 use rustok_mcp::{
-    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpActorType, McpAuditEventRecord,
+    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpAuditEventRecord,
     McpClientDetailsRecord, McpClientRecord, McpManagementContext, McpManagementMutationError,
     McpManagementPort, McpPolicyRecord, McpScaffoldDraftRecord, McpTokenSecretResult,
     RotateMcpTokenCommand, StageMcpScaffoldDraftCommand, UpdateMcpPolicyCommand,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::models::{mcp_clients, mcp_policies, users};
-
+use super::mcp_management_authority::{
+    McpManagementAuthorityError, McpManagementAuthorityService,
+};
 use super::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
 use super::rbac_request_scope::permissions_for;
-use super::rbac_service::RbacService;
 
 pub struct GuardedMcpManagementProvider {
     db: DatabaseConnection,
@@ -26,38 +25,6 @@ pub struct GuardedMcpManagementProvider {
 impl GuardedMcpManagementProvider {
     pub fn new(db: DatabaseConnection, inner: Arc<dyn McpManagementPort>) -> Self {
         Self { db, inner }
-    }
-
-    async fn authoritative_permissions(
-        &self,
-        context: &McpManagementContext,
-        user_id: Uuid,
-        principal: &'static str,
-    ) -> Result<Vec<Permission>, McpManagementMutationError> {
-        let user = users::Entity::find_by_id(user_id)
-            .filter(users::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(|error| McpManagementMutationError::Internal(error.to_string()))?
-            .ok_or_else(|| {
-                McpManagementMutationError::Validation(format!(
-                    "{principal} does not exist in the current tenant"
-                ))
-            })?;
-
-        if !user.is_active() {
-            return Err(McpManagementMutationError::Validation(format!(
-                "{principal} must be active"
-            )));
-        }
-
-        RbacService::get_user_permissions_authoritative(
-            &self.db,
-            &context.tenant_id,
-            &user_id,
-        )
-        .await
-        .map_err(|error| McpManagementMutationError::Internal(error.to_string()))
     }
 
     fn manager_permissions(
@@ -71,106 +38,20 @@ impl GuardedMcpManagementProvider {
             )
         })
     }
+}
 
-    async fn delegated_permissions(
-        &self,
-        context: &McpManagementContext,
-        actor_type: McpActorType,
-        delegated_user_id: Option<Uuid>,
-    ) -> Result<Option<Vec<Permission>>, McpManagementMutationError> {
-        if actor_type == McpActorType::HumanUser && delegated_user_id.is_none() {
-            return Err(McpManagementMutationError::Validation(
-                "human_user MCP clients require delegated_user_id".to_string(),
-            ));
+fn map_authority_error(error: McpManagementAuthorityError) -> McpManagementMutationError {
+    match error {
+        McpManagementAuthorityError::Invalid(message)
+        | McpManagementAuthorityError::Forbidden(message) => {
+            McpManagementMutationError::Validation(message)
         }
-
-        let Some(delegated_user_id) = delegated_user_id else {
-            return Ok(None);
-        };
-
-        self.authoritative_permissions(context, delegated_user_id, "delegated MCP user")
-            .await
-            .map(Some)
-    }
-
-    async fn require_client(
-        &self,
-        context: &McpManagementContext,
-        client_id: Uuid,
-    ) -> Result<mcp_clients::Model, McpManagementMutationError> {
-        mcp_clients::Entity::find_by_id(client_id)
-            .filter(mcp_clients::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(|error| McpManagementMutationError::Internal(error.to_string()))?
-            .ok_or_else(|| McpManagementMutationError::NotFound("mcp client".to_string()))
-    }
-
-    fn validate_policy_grants(
-        &self,
-        requested: &[String],
-        authority: &[Permission],
-        principal: &str,
-    ) -> Result<(), McpManagementMutationError> {
-        for raw in requested {
-            let permission = Permission::from_str(raw.trim()).map_err(|error| {
-                McpManagementMutationError::Validation(format!(
-                    "invalid MCP granted permission `{raw}`: {error}"
-                ))
-            })?;
-            if !has_effective_permission(authority, &permission) {
-                return Err(McpManagementMutationError::Validation(format!(
-                    "MCP permission `{permission}` exceeds {principal} authority"
-                )));
-            }
+        McpManagementAuthorityError::NotFound(message) => {
+            McpManagementMutationError::NotFound(message)
         }
-
-        Ok(())
-    }
-
-    fn validate_all_authorities(
-        &self,
-        requested: &[String],
-        manager_permissions: &[Permission],
-        delegated_permissions: Option<&[Permission]>,
-    ) -> Result<(), McpManagementMutationError> {
-        self.validate_policy_grants(requested, manager_permissions, "MCP manager")?;
-        if let Some(delegated_permissions) = delegated_permissions {
-            self.validate_policy_grants(
-                requested,
-                delegated_permissions,
-                "delegated MCP user",
-            )?;
+        McpManagementAuthorityError::Internal(message) => {
+            McpManagementMutationError::Internal(message)
         }
-        Ok(())
-    }
-
-    async fn validate_existing_client_policy(
-        &self,
-        context: &McpManagementContext,
-        client: &mcp_clients::Model,
-    ) -> Result<(), McpManagementMutationError> {
-        let manager_permissions = self.manager_permissions(context)?;
-        let delegated_permissions = self
-            .delegated_permissions(context, client.actor_type(), client.delegated_user_id)
-            .await?;
-        let policy = mcp_policies::Entity::find_by_client(&self.db, client.id)
-            .await
-            .map_err(|error| McpManagementMutationError::Internal(error.to_string()))?;
-
-        if let Some(policy) = policy {
-            if policy.tenant_id != context.tenant_id {
-                return Err(McpManagementMutationError::Validation(
-                    "MCP policy belongs to another tenant".to_string(),
-                ));
-            }
-            self.validate_all_authorities(
-                &policy.granted_permissions_list(),
-                &manager_permissions,
-                delegated_permissions.as_deref(),
-            )?;
-        }
-        Ok(())
     }
 }
 
@@ -226,14 +107,16 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         command: CreateMcpClientCommand,
     ) -> Result<McpTokenSecretResult, McpManagementMutationError> {
         let manager_permissions = self.manager_permissions(context)?;
-        let delegated_permissions = self
-            .delegated_permissions(context, command.actor_type, command.delegated_user_id)
-            .await?;
-        self.validate_all_authorities(
-            &command.granted_permissions,
+        McpManagementAuthorityService::validate_create_client(
+            &self.db,
+            context.tenant_id,
             &manager_permissions,
-            delegated_permissions.as_deref(),
-        )?;
+            command.actor_type,
+            command.delegated_user_id,
+            &command.granted_permissions,
+        )
+        .await
+        .map_err(map_authority_error)?;
         self.inner.create_client(context, command).await
     }
 
@@ -242,8 +125,15 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         context: &McpManagementContext,
         command: RotateMcpTokenCommand,
     ) -> Result<McpTokenSecretResult, McpManagementMutationError> {
-        let client = self.require_client(context, command.client_id).await?;
-        self.validate_existing_client_policy(context, &client).await?;
+        let manager_permissions = self.manager_permissions(context)?;
+        McpManagementAuthorityService::validate_token_rotation(
+            &self.db,
+            context.tenant_id,
+            &manager_permissions,
+            command.client_id,
+        )
+        .await
+        .map_err(map_authority_error)?;
         self.inner.rotate_token(context, command).await
     }
 
@@ -252,16 +142,16 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         context: &McpManagementContext,
         command: UpdateMcpPolicyCommand,
     ) -> Result<McpPolicyRecord, McpManagementMutationError> {
-        let client = self.require_client(context, command.client_id).await?;
         let manager_permissions = self.manager_permissions(context)?;
-        let delegated_permissions = self
-            .delegated_permissions(context, client.actor_type(), client.delegated_user_id)
-            .await?;
-        self.validate_all_authorities(
-            &command.granted_permissions,
+        McpManagementAuthorityService::validate_policy_update(
+            &self.db,
+            context.tenant_id,
             &manager_permissions,
-            delegated_permissions.as_deref(),
-        )?;
+            command.client_id,
+            &command.granted_permissions,
+        )
+        .await
+        .map_err(map_authority_error)?;
         self.inner.update_policy(context, command).await
     }
 
