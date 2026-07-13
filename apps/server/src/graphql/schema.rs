@@ -20,6 +20,7 @@ mod schema_codegen {
 use super::loaders::TenantNameLoader;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
+use super::principal_tenant_security::GraphqlPrincipalTenantPolicy;
 use super::queries::RootQuery;
 use super::security::GraphqlSecurityPolicy;
 use super::settings::{SettingsMutation, SettingsQuery};
@@ -126,6 +127,7 @@ pub fn build_schema(
     .limit_depth(12)
     .limit_complexity(600)
     .extension(Analyzer)
+    .extension(GraphqlPrincipalTenantPolicy)
     .extension(GraphqlTenantPolicy)
     .extension(GraphqlSecurityPolicy)
     .extension(GraphqlObservability)
