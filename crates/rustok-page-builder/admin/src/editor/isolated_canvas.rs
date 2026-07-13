@@ -1,6 +1,6 @@
 use crate::editor::{
     decode_canvas_message, dispatch_shortcut, render_canvas_srcdoc, AdminEditorRuntime,
-    CanvasBridgeMessage, CanvasComponentGeometry,
+    CanvasBridgeMessage, CanvasComponentGeometry, ResizeHandles,
 };
 use fly_leptos::BrowserPoint;
 use fly_ui::{resolve_editor_shortcut, CanvasRect, UiIntent, ViewportState};
@@ -27,7 +27,17 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let instance_id = instance_id.clone();
         move |_| {
             runtime.controller.with(|controller| {
-                render_canvas_srcdoc(controller.editor().document(), &instance_id)
+                let mut active_document = controller.editor().document().clone();
+                active_document.project.pages = controller
+                    .editor()
+                    .document()
+                    .project
+                    .pages
+                    .get(controller.active_page_index())
+                    .cloned()
+                    .into_iter()
+                    .collect();
+                render_canvas_srcdoc(&active_document, &instance_id)
             })
         }
     });
@@ -78,7 +88,8 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
     let iframe_runtime = runtime.clone();
     let hovered_runtime = runtime.clone();
     let selected_runtime = runtime.clone();
-    let insertion_runtime = runtime;
+    let insertion_runtime = runtime.clone();
+    let resize_runtime = runtime;
 
     view! {
         <main class="relative min-w-0 overflow-auto rounded-xl border border-border bg-muted/40 p-4" aria-label="Isolated page canvas">
@@ -117,6 +128,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                 <OverlayLayer runtime=hovered_runtime kind=OverlayKind::Hovered />
                 <OverlayLayer runtime=selected_runtime kind=OverlayKind::Selected />
                 <OverlayLayer runtime=insertion_runtime kind=OverlayKind::Insertion />
+                <ResizeHandles runtime=resize_runtime />
             </div>
         </main>
     }
