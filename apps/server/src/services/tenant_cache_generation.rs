@@ -4,9 +4,10 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use rustok_cache::{
-    observe_cache_backend_generation, BoundedCacheInvalidationGapTracker,
-    CacheInvalidationMessage, CacheInvalidationObservation, CacheService,
-    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+    cache_backend_generation_snapshot, observe_cache_backend_generation,
+    BoundedCacheInvalidationGapTracker, CacheInvalidationMessage,
+    CacheInvalidationObservation, CacheService, DurableCacheInvalidationRecord,
+    VersionedCacheInvalidation,
 };
 use rustok_core::events::{
     DomainEvent, EventConsumerRuntime, EventEnvelope, EventTransport, ReliabilityLevel,
@@ -126,18 +127,31 @@ impl TenantCacheGenerationListener {
     }
 
     async fn recover_shared_generation(&self) -> Result<u64> {
-        let generation = self
-            .cache
-            .namespace_generations()
-            .read(TENANT_CACHE_BACKEND_PREFIX)
-            .await
-            .map_err(|error| Error::Cache(error.to_string()))?;
-        observe_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX, generation.value())
+        let value = if self.cache.has_redis() {
+            self.cache
+                .namespace_generations()
+                .read(TENANT_CACHE_BACKEND_PREFIX)
+                .await
+                .map_err(|error| Error::Cache(error.to_string()))?
+                .value()
+        } else {
+            let snapshot = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+                .map_err(|error| Error::Cache(error.to_string()))?;
+            if snapshot.trusted {
+                snapshot.generation
+            } else {
+                observe_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX, 0)
+                    .map_err(|error| Error::Cache(error.to_string()))?
+                    .generation
+            }
+        };
+
+        observe_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX, value)
             .map_err(|error| Error::Cache(error.to_string()))?;
         self.tracker
-            .acknowledge_recovery(TENANT_CACHE_GENERATION_CHANNEL, generation.value())
+            .acknowledge_recovery(TENANT_CACHE_GENERATION_CHANNEL, value)
             .map_err(|error| Error::Cache(error.to_string()))?;
-        Ok(generation.value())
+        Ok(value)
     }
 
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
@@ -286,7 +300,13 @@ pub async fn start_tenant_cache_generation_listener(
 mod tests {
     use super::*;
     use rustok_events::EventEnvelope;
+    use std::sync::OnceLock;
     use uuid::Uuid;
+
+    fn generation_test_lock() -> &'static tokio::sync::Mutex<()> {
+        static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+    }
 
     fn tenant_event(event: DomainEvent) -> EventEnvelope {
         let tenant_id = tenant_cache_event_tenant_id(&event).unwrap();
@@ -321,6 +341,7 @@ mod tests {
 
     #[tokio::test]
     async fn transport_rotates_generation_before_local_delivery() {
+        let _guard = generation_test_lock().lock().await;
         let cache = CacheService::from_url(None);
         let primary = rustok_core::events::MemoryTransport::with_capacity(8);
         let mut receiver = primary.subscribe();
@@ -328,43 +349,54 @@ mod tests {
         let mut invalidations = cache
             .invalidations()
             .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
+        let before = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+            .unwrap()
+            .generation;
         let tenant_id = Uuid::from_u128(42);
         let envelope = tenant_event(DomainEvent::TenantUpdated { tenant_id });
 
         transport.publish(envelope.clone()).await.unwrap();
         let message = invalidations.recv().await.unwrap();
         let event = VersionedCacheInvalidation::from_message(&message).unwrap();
-        assert_eq!(event.generation, 1);
+        assert_eq!(event.generation, before + 1);
         assert_eq!(receiver.recv().await.unwrap().id, envelope.id);
     }
 
     #[tokio::test]
-    async fn listener_recovers_gaps_from_shared_generation() {
+    async fn listener_recovers_gaps_from_local_generation() {
+        let _guard = generation_test_lock().lock().await;
         let cache = CacheService::from_url(None);
         let listener = TenantCacheGenerationListener::new(cache.clone());
-        listener.tracker.seed(TENANT_CACHE_GENERATION_CHANNEL, 0).unwrap();
-        cache
+        let base = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+            .unwrap()
+            .generation;
+        listener
+            .tracker
+            .seed(TENANT_CACHE_GENERATION_CHANNEL, base)
+            .unwrap();
+        let first = cache
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
             .unwrap();
-        cache
+        let second = cache
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
             .unwrap();
+        assert_eq!(second.generation, first.generation + 1);
         let event = VersionedCacheInvalidation::new(
             TENANT_CACHE_GENERATION_CHANNEL,
             Uuid::from_u128(42).to_string(),
-            2,
+            second.generation,
             1_000,
         )
         .unwrap();
 
         listener.handle_message(event.to_message().unwrap()).await.unwrap();
         assert_eq!(
-            rustok_cache::cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+            cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
                 .unwrap()
                 .generation,
-            2
+            second.generation
         );
     }
 }
