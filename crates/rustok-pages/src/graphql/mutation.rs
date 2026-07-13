@@ -42,10 +42,7 @@ impl PagesMutation {
         let page = service
             .create(
                 tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
+                page_security(&auth),
                 CreatePageInput {
                     translations: input
                         .translations
@@ -103,10 +100,7 @@ impl PagesMutation {
         let page = service
             .update(
                 tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
+                page_security(&auth),
                 id,
                 UpdatePageInput {
                     translations: input.translations.map(|translations| {
@@ -154,14 +148,7 @@ impl PagesMutation {
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
-            .publish(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                id,
-            )
+            .publish(tenant_id, page_security(&auth), id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
@@ -183,14 +170,7 @@ impl PagesMutation {
 
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
-            .unpublish(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                id,
-            )
+            .unpublish(tenant_id, page_security(&auth), id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
@@ -212,14 +192,7 @@ impl PagesMutation {
 
         let service = PageService::new(db.clone(), event_bus.clone());
         service
-            .delete(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                id,
-            )
+            .delete(tenant_id, page_security(&auth), id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
@@ -244,10 +217,7 @@ impl PagesMutation {
         let block = service
             .create(
                 tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
+                page_security(&auth),
                 page_id,
                 map_create_block_input(input)?,
             )
@@ -275,10 +245,7 @@ impl PagesMutation {
         let block = service
             .update(
                 tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
+                page_security(&auth),
                 block_id,
                 UpdateBlockInput {
                     position: input.position,
@@ -307,14 +274,7 @@ impl PagesMutation {
 
         let service = BlockService::new(db.clone(), event_bus.clone());
         service
-            .delete(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                block_id,
-            )
+            .delete(tenant_id, page_security(&auth), block_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
@@ -339,10 +299,7 @@ impl PagesMutation {
         service
             .reorder(
                 tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
+                page_security(&auth),
                 page_id,
                 input.block_ids,
             )
@@ -351,6 +308,14 @@ impl PagesMutation {
 
         Ok(true)
     }
+}
+
+fn page_security(auth: &AuthContext) -> rustok_core::SecurityContext {
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
 }
 
 fn mutation_tenant_id(
