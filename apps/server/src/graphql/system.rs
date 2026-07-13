@@ -1,9 +1,11 @@
-use async_graphql::{Context, Object, Result, SimpleObject};
+use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
+use rustok_api::{graphql::GraphQLError, has_effective_permission, Permission};
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
 
+use crate::context::{AuthContext, TenantContext};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 use crate::models::_entities::sessions::{Column as SessionCol, Entity as SessionEntity};
@@ -13,7 +15,7 @@ use crate::models::_entities::sessions::{Column as SessionCol, Entity as Session
 #[derive(SimpleObject, Clone, Debug)]
 pub struct ComponentHealth {
     pub name: String,
-    pub status: String, // "ok" | "degraded" | "unhealthy"
+    pub status: String,
     pub message: Option<String>,
 }
 
@@ -40,22 +42,36 @@ pub struct CacheHealthPayload {
 
 #[derive(SimpleObject, Clone, Debug)]
 pub struct EventsStatusPayload {
-    /// Transport kind active in current process (from YAML/env config).
     pub configured_transport: String,
-    /// Iggy mode when transport or relay involves Iggy.
     pub iggy_mode: String,
-    /// Relay interval in milliseconds.
     pub relay_interval_ms: u64,
-    /// DLQ enabled flag.
     pub dlq_enabled: bool,
-    /// Max relay attempts before DLQ.
     pub max_attempts: i32,
-    /// Events waiting to be dispatched.
     pub pending_events: i64,
-    /// Events that exhausted retries (in DLQ / failed).
     pub dlq_events: i64,
-    /// Available transport options given current build.
     pub available_transports: Vec<String>,
+}
+
+fn require_permission<'a>(
+    ctx: &'a Context<'_>,
+    permission: &Permission,
+    message: &str,
+) -> Result<&'a AuthContext> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    if !has_effective_permission(&auth.permissions, permission) {
+        return Err(<FieldError as GraphQLError>::permission_denied(message));
+    }
+    Ok(auth)
+}
+
+fn require_logs_read(ctx: &Context<'_>) -> Result<&AuthContext> {
+    require_permission(
+        ctx,
+        &Permission::LOGS_READ,
+        "logs:read required to inspect system diagnostics",
+    )
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
@@ -65,13 +81,14 @@ pub struct SystemQuery;
 
 #[Object]
 impl SystemQuery {
-    /// Live system health summary: DB connectivity + storage backend.
+    /// Detailed system health is an administrative diagnostic surface. Public
+    /// liveness/readiness checks must use the dedicated HTTP health endpoints.
     async fn system_health(&self, ctx: &Context<'_>) -> Result<SystemHealthSummary> {
+        require_logs_read(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let mut components = Vec::new();
         let mut overall = "ok";
 
-        // DB probe
         let db_ok = sea_orm::ConnectionTrait::execute_unprepared(db, "SELECT 1")
             .await
             .is_ok();
@@ -88,7 +105,6 @@ impl SystemQuery {
             overall = "unhealthy";
         }
 
-        // Storage probe (if wired)
         #[cfg(feature = "mod-media")]
         {
             use rustok_storage::StorageService;
@@ -102,12 +118,13 @@ impl SystemQuery {
                     components.push(ComponentHealth {
                         name: "storage".into(),
                         status: if health.is_ok() { "ok" } else { "degraded" }.into(),
-                        message: health.err().map(|e| e.to_string()),
+                        message: health.err().map(|error| error.to_string()),
                     });
-                    if let "ok" = overall {
-                        if components.last().map(|c| c.status.as_str()) == Some("degraded") {
-                            overall = "degraded";
-                        }
+                    if overall == "ok"
+                        && components.last().map(|component| component.status.as_str())
+                            == Some("degraded")
+                    {
+                        overall = "degraded";
                     }
                 }
                 None => {
@@ -127,10 +144,11 @@ impl SystemQuery {
         })
     }
 
-    /// Cache backend health status. No auth required (platform infrastructure info).
+    /// Cache topology and backend failures are administrative diagnostics.
     async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
         use rustok_cache::CacheService;
 
+        require_logs_read(ctx)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let Some(cache) = runtime_ctx.shared_get::<CacheService>() else {
@@ -158,17 +176,16 @@ impl SystemQuery {
         })
     }
 
-    /// Events transport runtime status: active config + outbox stats.
+    /// Event transport topology and queue counts require operational log access.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
         use crate::common::settings::EventTransportKind;
         use rustok_iggy::config::IggyMode;
 
+        require_logs_read(ctx)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let db = runtime_ctx.db();
-
         let ev = &runtime_ctx.settings().events;
 
-        // Derive human-readable transport key (matches UI dropdown values).
         let configured_transport = match ev.transport {
             EventTransportKind::Memory => "memory".to_string(),
             EventTransportKind::Outbox => "outbox".to_string(),
@@ -177,29 +194,18 @@ impl SystemQuery {
                 IggyMode::Remote => "iggy_external".to_string(),
             },
         };
-
         let iggy_mode = ev.iggy.mode.to_string();
 
-        // Outbox stats — graceful fallback if table not yet migrated.
         let pending_events = EventEntity::find()
             .filter(EventCol::Status.eq("pending"))
             .count(db)
             .await
             .unwrap_or(0) as i64;
-
         let dlq_events = EventEntity::find()
             .filter(EventCol::Status.eq("failed"))
             .count(db)
             .await
             .unwrap_or(0) as i64;
-
-        // Available transports: always offer all four; UI filters by module registry.
-        let available_transports = vec![
-            "memory".to_string(),
-            "outbox".to_string(),
-            "iggy_embedded".to_string(),
-            "iggy_external".to_string(),
-        ];
 
         Ok(EventsStatusPayload {
             configured_transport,
@@ -209,32 +215,46 @@ impl SystemQuery {
             max_attempts: ev.relay_retry_policy.max_attempts,
             pending_events,
             dlq_events,
-            available_transports,
+            available_transports: vec![
+                "memory".to_string(),
+                "outbox".to_string(),
+                "iggy_embedded".to_string(),
+                "iggy_external".to_string(),
+            ],
         })
     }
 
-    /// Active (non-expired, non-revoked) session count for a tenant.
+    /// Active session count is tenant-bound and requires user read authority.
     async fn session_stats(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<SessionStats> {
+        let auth = require_permission(
+            ctx,
+            &Permission::USERS_READ,
+            "users:read required to inspect session statistics",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        if auth.tenant_id != tenant.id || tenant_id != tenant.id {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "session statistics are restricted to the current tenant",
+            ));
+        }
+
         let db = ctx.data::<DatabaseConnection>()?;
         let now = Utc::now().fixed_offset();
-
         let active_sessions = SessionEntity::find()
-            .filter(SessionCol::TenantId.eq(tenant_id))
+            .filter(SessionCol::TenantId.eq(tenant.id))
             .filter(SessionCol::RevokedAt.is_null())
             .filter(SessionCol::ExpiresAt.gt(now))
             .count(db)
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?
+            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?
             as i64;
 
         Ok(SessionStats {
-            tenant_id,
+            tenant_id: tenant.id,
             active_sessions,
         })
     }
 }
-
-// ── Storage probe ─────────────────────────────────────────────────────────────
 
 #[cfg(feature = "mod-media")]
 async fn probe_storage(
@@ -245,4 +265,21 @@ async fn probe_storage(
     storage.store(probe_path, data, "text/plain").await?;
     storage.delete(probe_path).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{has_effective_permission, Permission};
+
+    #[test]
+    fn manage_permissions_satisfy_diagnostic_read_requirements() {
+        assert!(has_effective_permission(
+            &[Permission::LOGS_MANAGE],
+            &Permission::LOGS_READ,
+        ));
+        assert!(has_effective_permission(
+            &[Permission::USERS_MANAGE],
+            &Permission::USERS_READ,
+        ));
+    }
 }
