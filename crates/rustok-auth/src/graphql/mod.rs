@@ -71,11 +71,12 @@ fn auth_lifecycle_context(
 ) -> Result<AuthLifecycleContext> {
     let tenant = ctx.data::<TenantContext>()?;
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
+    let user_auth = auth.filter(|auth| auth.grant_type != "client_credentials");
     Ok(AuthLifecycleContext {
         tenant_id: tenant.id,
-        user_id: auth.map(|auth| auth.user_id),
-        session_id: auth.map(|auth| auth.session_id),
-        permissions: auth
+        user_id: user_auth.map(|auth| auth.user_id),
+        session_id: user_auth.map(|auth| auth.session_id),
+        permissions: user_auth
             .map(|auth| auth.permissions.clone())
             .unwrap_or_else(Vec::new),
         locale,
