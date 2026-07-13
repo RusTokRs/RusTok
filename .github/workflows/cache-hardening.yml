@@ -23,6 +23,7 @@ on:
       - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/src/services/server_runtime_context.rs"
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
       - "apps/server/src/services/mod.rs"
@@ -34,6 +35,7 @@ on:
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
       - "apps/server/tests/tenant_generation_concurrency_guard.rs"
       - "apps/server/tests/tenant_generation_readiness_guard.rs"
+      - "apps/server/tests/tenant_listener_handle_guard.rs"
       - "crates/rustok-seo/src/services/mod.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
       - ".github/workflows/cache-hardening.yml"
@@ -58,6 +60,7 @@ on:
       - "apps/server/src/services/app_runtime.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/src/services/server_runtime_context.rs"
       - "apps/server/src/services/tenant_cache_generation.rs"
       - "apps/server/src/services/tenant_cache_generation_status.rs"
       - "apps/server/src/services/mod.rs"
@@ -69,6 +72,7 @@ on:
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
       - "apps/server/tests/tenant_generation_concurrency_guard.rs"
       - "apps/server/tests/tenant_generation_readiness_guard.rs"
+      - "apps/server/tests/tenant_listener_handle_guard.rs"
       - "crates/rustok-seo/src/services/mod.rs"
       - "crates/rustok-seo/src/services/redirects.rs"
       - ".github/workflows/cache-hardening.yml"
@@ -109,7 +113,7 @@ jobs:
           cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
           cargo test -p rustok-cache --test redis_health_regression
           cargo test -p rustok-cache --test generation_store_regression
-          cargo test -p rustok-server --test cache_architecture_guard --test cache_redis_status_architecture_guard --test generation_store_architecture_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_readiness_guard
+          cargo test -p rustok-server --test cache_architecture_guard --test cache_redis_status_architecture_guard --test generation_store_architecture_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server channel_cache --lib
