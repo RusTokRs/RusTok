@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::s3::{S3Storage, S3StorageConfig};
 use crate::{
     backend::{StorageBackend, StoredObject, UploadedObject},
-    error::Result,
+    error::{Result, StorageError},
     local::LocalStorageConfig,
 };
 
@@ -51,6 +51,7 @@ impl StorageService {
         data: bytes::Bytes,
         content_type: &str,
     ) -> Result<UploadedObject> {
+        validate_storage_path(path, false, false)?;
         self.0.store(path, data, content_type).await
     }
 
@@ -60,18 +61,22 @@ impl StorageService {
         data: bytes::Bytes,
         content_type: &str,
     ) -> Result<bool> {
+        validate_storage_path(path, false, false)?;
         self.0.store_if_absent(path, data, content_type).await
     }
 
     pub async fn delete(&self, path: &str) -> Result<()> {
+        validate_storage_path(path, false, false)?;
         self.0.delete(path).await
     }
 
     pub async fn read(&self, path: &str) -> Result<bytes::Bytes> {
+        validate_storage_path(path, false, false)?;
         self.0.read(path).await
     }
 
     pub async fn list(&self, prefix: &str) -> Result<Vec<StoredObject>> {
+        validate_storage_path(prefix, true, true)?;
         self.0.list(prefix).await
     }
 
@@ -80,6 +85,7 @@ impl StorageService {
         path: &str,
         expires_in: std::time::Duration,
     ) -> Result<Option<String>> {
+        validate_storage_path(path, false, false)?;
         self.0.private_download_url(path, expires_in).await
     }
 
@@ -90,6 +96,47 @@ impl StorageService {
     pub fn backend_name(&self) -> &'static str {
         self.0.backend_name()
     }
+}
+
+fn validate_storage_path(
+    path: &str,
+    allow_empty: bool,
+    allow_trailing_slash: bool,
+) -> Result<()> {
+    if path.starts_with('/')
+        || path.starts_with('\\')
+        || path.contains('\\')
+        || path.contains('\0')
+        || path.chars().any(char::is_control)
+    {
+        return Err(StorageError::InvalidPath(path.to_string()));
+    }
+
+    let normalized = if allow_trailing_slash {
+        path.strip_suffix('/').unwrap_or(path)
+    } else {
+        if path.ends_with('/') {
+            return Err(StorageError::InvalidPath(path.to_string()));
+        }
+        path
+    };
+
+    if normalized.is_empty() {
+        return if allow_empty {
+            Ok(())
+        } else {
+            Err(StorageError::InvalidPath(path.to_string()))
+        };
+    }
+
+    if normalized
+        .split('/')
+        .any(|segment| segment.is_empty() || matches!(segment, "." | ".."))
+    {
+        return Err(StorageError::InvalidPath(path.to_string()));
+    }
+
+    Ok(())
 }
 
 fn sanitized_extension(original_name: &str) -> String {
@@ -143,7 +190,7 @@ impl Default for StorageConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitized_extension;
+    use super::{sanitized_extension, validate_storage_path};
 
     #[test]
     fn object_extension_is_bounded_and_path_safe() {
@@ -154,5 +201,16 @@ mod tests {
             sanitized_extension("asset.abcdefghijklmnopqrstuvwxyz"),
             "abcdefghijklmnop"
         );
+    }
+
+    #[test]
+    fn service_boundary_rejects_absolute_and_traversal_paths() {
+        assert!(validate_storage_path("tenant/file.png", false, false).is_ok());
+        assert!(validate_storage_path("tenant/", true, true).is_ok());
+        assert!(validate_storage_path("", true, true).is_ok());
+        assert!(validate_storage_path("/absolute", false, false).is_err());
+        assert!(validate_storage_path("../secret", false, false).is_err());
+        assert!(validate_storage_path("tenant//file", false, false).is_err());
+        assert!(validate_storage_path("tenant\\file", false, false).is_err());
     }
 }
