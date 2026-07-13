@@ -1,7 +1,6 @@
 // Re-export types from rustok-auth (these don't need error conversion).
 pub use rustok_auth::{
-    AuthConfig, AuthError, AuthSettingsOverrides, Claims, EmailVerificationClaims, InviteClaims,
-    JwtAlgorithm,
+    AuthConfig, AuthError, AuthSettingsOverrides, Claims, InviteClaims, JwtAlgorithm,
 };
 
 use crate::error::Result;
@@ -9,7 +8,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
-const PASSWORD_RESET_SUBJECT_SEPARATOR: char = '\u{001f}';
+const TOKEN_SUBJECT_SEPARATOR: char = '\u{001f}';
 const PASSWORD_RESET_FINGERPRINT_DOMAIN: &[u8] = b"rustok-password-reset-credential-v1";
 
 /// Server-owned password reset claims.
@@ -23,6 +22,17 @@ pub struct PasswordResetClaims {
     pub sub: String,
     pub tenant_id: uuid::Uuid,
     pub credential_fingerprint: String,
+}
+
+/// Server-owned email verification claims bound to a concrete account id.
+///
+/// Binding the token to `user_id` prevents a token issued for a deleted account
+/// from verifying a newly created account that reuses the same email address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmailVerificationClaims {
+    pub sub: String,
+    pub tenant_id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
 }
 
 // ─── Server adapter ───────────────────────────────────────────────────
@@ -100,9 +110,7 @@ pub fn encode_password_reset_token(
 ) -> Result<String> {
     let normalized_email = email.trim().to_lowercase();
     let fingerprint = password_reset_credential_fingerprint(config, password_hash);
-    let subject = format!(
-        "{normalized_email}{PASSWORD_RESET_SUBJECT_SEPARATOR}{fingerprint}"
-    );
+    let subject = format!("{normalized_email}{TOKEN_SUBJECT_SEPARATOR}{fingerprint}");
     rustok_auth::encode_password_reset_token(config, tenant_id, &subject, ttl_seconds)
         .map_err(auth_err)
 }
@@ -114,7 +122,7 @@ pub fn decode_password_reset_token(
     let claims = rustok_auth::decode_password_reset_token(config, token).map_err(auth_err)?;
     let (email, credential_fingerprint) = claims
         .sub
-        .rsplit_once(PASSWORD_RESET_SUBJECT_SEPARATOR)
+        .rsplit_once(TOKEN_SUBJECT_SEPARATOR)
         .filter(|(email, fingerprint)| !email.is_empty() && !fingerprint.is_empty())
         .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
 
@@ -150,10 +158,13 @@ fn password_reset_credential_fingerprint(config: &AuthConfig, password_hash: &st
 pub fn encode_email_verification_token(
     config: &AuthConfig,
     tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
     email: &str,
     ttl_seconds: u64,
 ) -> Result<String> {
-    rustok_auth::encode_email_verification_token(config, tenant_id, email, ttl_seconds)
+    let normalized_email = email.trim().to_lowercase();
+    let subject = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}{normalized_email}");
+    rustok_auth::encode_email_verification_token(config, tenant_id, &subject, ttl_seconds)
         .map_err(auth_err)
 }
 
@@ -161,7 +172,20 @@ pub fn decode_email_verification_token(
     config: &AuthConfig,
     token: &str,
 ) -> Result<EmailVerificationClaims> {
-    rustok_auth::decode_email_verification_token(config, token).map_err(auth_err)
+    let claims = rustok_auth::decode_email_verification_token(config, token).map_err(auth_err)?;
+    let (user_id, email) = claims
+        .sub
+        .split_once(TOKEN_SUBJECT_SEPARATOR)
+        .filter(|(user_id, email)| !user_id.is_empty() && !email.is_empty())
+        .ok_or_else(|| auth_err(AuthError::InvalidVerificationToken))?;
+    let user_id = uuid::Uuid::parse_str(user_id)
+        .map_err(|_| auth_err(AuthError::InvalidVerificationToken))?;
+
+    Ok(EmailVerificationClaims {
+        sub: email.to_string(),
+        tenant_id: claims.tenant_id,
+        user_id,
+    })
 }
 
 pub fn encode_invite_token(
@@ -300,6 +324,27 @@ mod tests {
             "new-password-hash",
             &claims.credential_fingerprint,
         ));
+    }
+
+    #[test]
+    fn email_verification_token_is_bound_to_user_id() {
+        let config = AuthConfig::new(secret());
+        let tenant_id = uuid::Uuid::new_v4();
+        let user_id = uuid::Uuid::new_v4();
+        let token = encode_email_verification_token(
+            &config,
+            tenant_id,
+            user_id,
+            " User@Example.com ",
+            900,
+        )
+        .expect("encode verification token");
+        let claims =
+            decode_email_verification_token(&config, &token).expect("decode verification token");
+
+        assert_eq!(claims.tenant_id, tenant_id);
+        assert_eq!(claims.user_id, user_id);
+        assert_eq!(claims.sub, "user@example.com");
     }
 
     #[test]
