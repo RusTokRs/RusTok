@@ -354,9 +354,13 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontRepriceRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
-        self.reprice_line_items(parse_port_tenant_id(&context)?, request.cart_id, request.updates)
-            .await
-            .map_err(cart_error_to_port_error)
+        self.reprice_line_items(
+            parse_port_tenant_id(&context)?,
+            request.cart_id,
+            request.updates,
+        )
+        .await
+        .map_err(cart_error_to_port_error)
     }
 }
 

@@ -5,9 +5,11 @@ pub mod types;
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::{Expr, ExprTrait}, ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition,
-    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    TransactionTrait,
+    sea_query::{Expr, ExprTrait},
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -104,7 +106,11 @@ fn agent_workflow_execution_context(
     let effective_permissions = catalog.effective_permissions(&persisted_permissions, principal)?;
     let permissions = effective_permissions
         .into_iter()
-        .map(|permission| permission.parse::<Permission>().map_err(AiError::Validation))
+        .map(|permission| {
+            permission
+                .parse::<Permission>()
+                .map_err(AiError::Validation)
+        })
         .collect::<AiResult<Vec<_>>>()?;
     let preferred_locale = context
         .get("preferred_locale")
@@ -145,7 +151,9 @@ async fn agent_execution_context_for_run(
         .one(db)
         .await
         .map_err(db_err)?
-        .ok_or_else(|| AiError::Validation("agent run parent workflow is unavailable".to_string()))?;
+        .ok_or_else(|| {
+            AiError::Validation("agent run parent workflow is unavailable".to_string())
+        })?;
     let principal = ai_agent_principals::Entity::find_by_id(stage.agent_principal_id)
         .filter(ai_agent_principals::Column::TenantId.eq(scheduler_operator.tenant_id))
         .filter(ai_agent_principals::Column::IsActive.eq(true))
@@ -159,7 +167,9 @@ async fn agent_execution_context_for_run(
         tenant_id: principal.tenant_id,
         agent_slug: principal.descriptor_slug,
         role_slugs: string_list(&principal.role_slugs).into_iter().collect(),
-        permission_slugs: string_list(&principal.permission_slugs).into_iter().collect(),
+        permission_slugs: string_list(&principal.permission_slugs)
+            .into_iter()
+            .collect(),
     };
     Ok(Some(agent_workflow_execution_context(
         scheduler_operator,
@@ -568,10 +578,7 @@ impl AiManagementService {
                     ai_agent_workflow_runs::Column::CompletedAt,
                     Expr::value(now.clone()),
                 )
-                .col_expr(
-                    ai_agent_workflow_runs::Column::UpdatedAt,
-                    Expr::value(now),
-                )
+                .col_expr(ai_agent_workflow_runs::Column::UpdatedAt, Expr::value(now))
                 .exec(db)
                 .await
                 .map_err(db_err)?;
@@ -596,27 +603,35 @@ impl AiManagementService {
             .one(db)
             .await
             .map_err(db_err)?
-            .ok_or_else(|| AiError::Validation("workflow stage is not owned by this lease".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("workflow stage is not owned by this lease".to_string())
+            })?;
         let workflow_run = ai_agent_workflow_runs::Entity::find_by_id(stage.workflow_run_id)
             .filter(ai_agent_workflow_runs::Column::TenantId.eq(operator.tenant_id))
             .one(db)
             .await
             .map_err(db_err)?
-            .ok_or_else(|| AiError::Validation("workflow stage parent run is unavailable".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("workflow stage parent run is unavailable".to_string())
+            })?;
         let principal = ai_agent_principals::Entity::find_by_id(stage.agent_principal_id)
             .filter(ai_agent_principals::Column::TenantId.eq(operator.tenant_id))
             .filter(ai_agent_principals::Column::IsActive.eq(true))
             .one(db)
             .await
             .map_err(db_err)?
-            .ok_or_else(|| AiError::Validation("workflow stage agent principal is unavailable".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("workflow stage agent principal is unavailable".to_string())
+            })?;
         let catalog = crate::agent_catalog()?;
         let principal_contract = crate::AgentPrincipal {
             id: principal.id,
             tenant_id: principal.tenant_id,
             agent_slug: principal.descriptor_slug.clone(),
             role_slugs: string_list(&principal.role_slugs).into_iter().collect(),
-            permission_slugs: string_list(&principal.permission_slugs).into_iter().collect(),
+            permission_slugs: string_list(&principal.permission_slugs)
+                .into_iter()
+                .collect(),
         };
         let agent_operator = agent_workflow_execution_context(
             operator,
@@ -628,11 +643,11 @@ impl AiManagementService {
             .descriptor(&principal.descriptor_slug)
             .filter(|descriptor| descriptor.owner == principal.descriptor_owner)
             .cloned()
-            .ok_or_else(|| AiError::Validation("agent descriptor is no longer available".to_string()))?;
-        let execution = catalog.validate_stage_execution(
-            &principal.descriptor_slug,
-            &stage.input_payload,
-        )?;
+            .ok_or_else(|| {
+                AiError::Validation("agent descriptor is no longer available".to_string())
+            })?;
+        let execution =
+            catalog.validate_stage_execution(&principal.descriptor_slug, &stage.input_payload)?;
         let assignment_id = stage.model_assignment_id.ok_or_else(|| {
             AiError::Validation("workflow stage has no model assignment".to_string())
         })?;
@@ -643,9 +658,12 @@ impl AiManagementService {
             .one(db)
             .await
             .map_err(db_err)?
-            .ok_or_else(|| AiError::Validation("workflow stage model assignment is unavailable".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("workflow stage model assignment is unavailable".to_string())
+            })?;
         let provider =
-            require_provider_profile(db, operator.tenant_id, assignment.provider_profile_id).await?;
+            require_provider_profile(db, operator.tenant_id, assignment.provider_profile_id)
+                .await?;
         if !provider.is_active {
             return Err(AiError::Validation(
                 "workflow stage provider profile is inactive".to_string(),
@@ -693,13 +711,10 @@ impl AiManagementService {
                 let recorded = ai_agent_workflow_stages::Entity::update_many()
                     .filter(ai_agent_workflow_stages::Column::TenantId.eq(operator.tenant_id))
                     .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
-            .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
-            .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
-            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
-                    .col_expr(
-                        ai_agent_workflow_stages::Column::RunId,
-                        Expr::value(run.id),
-                    )
+                    .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
+                    .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+                    .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
+                    .col_expr(ai_agent_workflow_stages::Column::RunId, Expr::value(run.id))
                     .col_expr(
                         ai_agent_workflow_stages::Column::UpdatedAt,
                         Expr::value(Utc::now()),
@@ -709,7 +724,8 @@ impl AiManagementService {
                     .map_err(db_err)?;
                 if recorded.rows_affected != 1 {
                     return Err(AiError::Validation(
-                        "workflow stage lease expired before its AI run could be recorded".to_string(),
+                        "workflow stage lease expired before its AI run could be recorded"
+                            .to_string(),
                     ));
                 }
                 if run.status == "completed" {
@@ -794,12 +810,8 @@ impl AiManagementService {
                     .await
                     .map_err(db_err)?;
                 if failed.rows_affected == 1 {
-                    Self::sync_agent_workflow_run_status(
-                        db,
-                        operator.tenant_id,
-                        workflow_run_id,
-                    )
-                    .await?;
+                    Self::sync_agent_workflow_run_status(db, operator.tenant_id, workflow_run_id)
+                        .await?;
                 }
                 Err(error)
             }
@@ -828,7 +840,9 @@ impl AiManagementService {
         let descriptor = crate::agent_catalog()?
             .descriptor(&input.descriptor_slug)
             .filter(|descriptor| descriptor.owner == input.descriptor_owner)
-            .ok_or_else(|| AiError::Validation("unknown owner-owned agent descriptor".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("unknown owner-owned agent descriptor".to_string())
+            })?;
         let saved = ai_agent_principals::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(operator.tenant_id),
@@ -868,7 +882,9 @@ impl AiManagementService {
         let descriptor = crate::agent_catalog()?
             .descriptor(&existing.descriptor_slug)
             .filter(|descriptor| descriptor.owner == existing.descriptor_owner)
-            .ok_or_else(|| AiError::Validation("agent descriptor is no longer available".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("agent descriptor is no longer available".to_string())
+            })?;
         let mut active: ai_agent_principals::ActiveModel = existing.into();
         active.role_slugs = Set(json!([]));
         active.permission_slugs = Set(json!(descriptor.required_permissions));
@@ -892,10 +908,7 @@ impl AiManagementService {
             .all(db)
             .await
             .map_err(db_err)?;
-        items
-            .into_iter()
-            .map(map_agent_model_assignment)
-            .collect()
+        items.into_iter().map(map_agent_model_assignment).collect()
     }
 
     pub async fn create_agent_model_assignment(
@@ -910,23 +923,32 @@ impl AiManagementService {
             .map_err(db_err)?
             .ok_or_else(|| AiError::NotFound("AI agent principal not found".to_string()))?;
         if !principal.is_active {
-            return Err(AiError::Validation("AI agent principal is inactive".to_string()));
+            return Err(AiError::Validation(
+                "AI agent principal is inactive".to_string(),
+            ));
         }
-        let provider = require_provider_profile(db, operator.tenant_id, input.provider_profile_id).await?;
+        let provider =
+            require_provider_profile(db, operator.tenant_id, input.provider_profile_id).await?;
         if !provider.is_active {
-            return Err(AiError::Validation("AI provider profile is inactive".to_string()));
+            return Err(AiError::Validation(
+                "AI provider profile is inactive".to_string(),
+            ));
         }
         let descriptor = crate::agent_catalog()?
             .descriptor(&principal.descriptor_slug)
             .filter(|descriptor| descriptor.owner == principal.descriptor_owner)
-            .ok_or_else(|| AiError::Validation("agent descriptor is no longer available".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("agent descriptor is no longer available".to_string())
+            })?;
         ensure_agent_provider_capabilities(&provider, descriptor)?;
         let saved = ai_agent_model_assignments::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(operator.tenant_id),
             agent_principal_id: Set(input.agent_principal_id),
             provider_profile_id: Set(input.provider_profile_id),
-            model_override: Set(input.model_override.filter(|model| !model.trim().is_empty())),
+            model_override: Set(input
+                .model_override
+                .filter(|model| !model.trim().is_empty())),
             execution_mode: Set(input.execution_mode.slug().to_string()),
             is_active: Set(true),
             metadata: Set(normalize_metadata(input.metadata)),
@@ -954,7 +976,9 @@ impl AiManagementService {
             .map_err(db_err)?
             .ok_or_else(|| AiError::NotFound("AI agent model assignment not found".to_string()))?;
         let mut active: ai_agent_model_assignments::ActiveModel = existing.into();
-        active.model_override = Set(input.model_override.filter(|model| !model.trim().is_empty()));
+        active.model_override = Set(input
+            .model_override
+            .filter(|model| !model.trim().is_empty()));
         active.execution_mode = Set(input.execution_mode.slug().to_string());
         active.metadata = Set(normalize_metadata(input.metadata));
         active.is_active = Set(input.is_active);
@@ -1054,16 +1078,28 @@ impl AiManagementService {
         .map_err(db_err)?;
 
         for stage in &workflow.stages {
-            let principal_id = input.stage_principal_ids.get(&stage.id).copied().ok_or_else(|| {
-                AiError::Validation(format!("agent workflow stage `{}` has no principal", stage.id))
-            })?;
+            let principal_id = input
+                .stage_principal_ids
+                .get(&stage.id)
+                .copied()
+                .ok_or_else(|| {
+                    AiError::Validation(format!(
+                        "agent workflow stage `{}` has no principal",
+                        stage.id
+                    ))
+                })?;
             let principal = ai_agent_principals::Entity::find_by_id(principal_id)
                 .filter(ai_agent_principals::Column::TenantId.eq(operator.tenant_id))
                 .filter(ai_agent_principals::Column::IsActive.eq(true))
                 .one(&transaction)
                 .await
                 .map_err(db_err)?
-                .ok_or_else(|| AiError::Validation(format!("agent principal for stage `{}` is unavailable", stage.id)))?;
+                .ok_or_else(|| {
+                    AiError::Validation(format!(
+                        "agent principal for stage `{}` is unavailable",
+                        stage.id
+                    ))
+                })?;
             if principal.descriptor_slug != stage.agent_slug {
                 return Err(AiError::Validation(format!(
                     "agent principal for stage `{}` does not match owner descriptor `{}`",
@@ -1075,7 +1111,9 @@ impl AiManagementService {
                 tenant_id: principal.tenant_id,
                 agent_slug: principal.descriptor_slug.clone(),
                 role_slugs: string_list(&principal.role_slugs).into_iter().collect(),
-                permission_slugs: string_list(&principal.permission_slugs).into_iter().collect(),
+                permission_slugs: string_list(&principal.permission_slugs)
+                    .into_iter()
+                    .collect(),
             };
             catalog.effective_permissions(&initiator_permissions, &principal_contract)?;
             let assignment_id = input
@@ -1083,7 +1121,10 @@ impl AiManagementService {
                 .get(&stage.id)
                 .copied()
                 .ok_or_else(|| {
-                    AiError::Validation(format!("agent workflow stage `{}` has no model assignment", stage.id))
+                    AiError::Validation(format!(
+                        "agent workflow stage `{}` has no model assignment",
+                        stage.id
+                    ))
                 })?;
             let assignment = ai_agent_model_assignments::Entity::find_by_id(assignment_id)
                 .filter(ai_agent_model_assignments::Column::TenantId.eq(operator.tenant_id))
@@ -1092,7 +1133,12 @@ impl AiManagementService {
                 .one(&transaction)
                 .await
                 .map_err(db_err)?
-                .ok_or_else(|| AiError::Validation(format!("model assignment for stage `{}` is unavailable", stage.id)))?;
+                .ok_or_else(|| {
+                    AiError::Validation(format!(
+                        "model assignment for stage `{}` is unavailable",
+                        stage.id
+                    ))
+                })?;
             let descriptor = catalog
                 .descriptor(&stage.agent_slug)
                 .filter(|descriptor| descriptor.owner == principal.descriptor_owner)
@@ -1125,7 +1171,10 @@ impl AiManagementService {
                 .get(&stage.id)
                 .cloned()
                 .ok_or_else(|| {
-                    AiError::Validation(format!("agent workflow stage `{}` has no task input", stage.id))
+                    AiError::Validation(format!(
+                        "agent workflow stage `{}` has no task input",
+                        stage.id
+                    ))
                 })?;
             catalog.validate_stage_execution(&stage.agent_slug, &stage_input_payload)?;
             let status = if stage.depends_on.is_empty() {
@@ -2206,8 +2255,8 @@ impl AiManagementService {
         enforce_task_permissions(operator, Some(&task_profile))?;
         if authority == TaskJobExecutionAuthority::OperatorOverride
             && (input.provider_profile_id.is_some()
-            || input.model_override.is_some()
-            || input.execution_mode.is_some())
+                || input.model_override.is_some()
+                || input.execution_mode.is_some())
         {
             ensure_permission(operator, Permission::AI_ROUTER_OVERRIDE)?;
         }
@@ -2724,60 +2773,56 @@ impl AiManagementService {
         for stage in stages {
             let workflow_run_id = stage.workflow_run_id;
             let result = match run.status.as_str() {
-                "completed" => {
-                    ai_agent_workflow_stages::Entity::update_many()
-                        .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
-                        .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
-                        .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
-                        .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::Status,
-                            Expr::value("completed"),
-                        )
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::OutputPayload,
-                            Expr::value(json!({"ai_run_id": run.id})),
-                        )
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::CompletedAt,
-                            Expr::value(Utc::now()),
-                        )
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::UpdatedAt,
-                            Expr::value(Utc::now()),
-                        )
-                        .exec(db)
-                        .await
-                        .map_err(db_err)?
-                }
-                "failed" | "cancelled" => {
-                    ai_agent_workflow_stages::Entity::update_many()
-                        .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
-                        .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
-                        .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
-                        .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::Status,
-                            Expr::value("failed"),
-                        )
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::ErrorMessage,
-                            Expr::value(run.error_message.clone().unwrap_or_else(|| {
-                                format!("workflow AI run finished with status `{}`", run.status)
-                            })),
-                        )
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::CompletedAt,
-                            Expr::value(Utc::now()),
-                        )
-                        .col_expr(
-                            ai_agent_workflow_stages::Column::UpdatedAt,
-                            Expr::value(Utc::now()),
-                        )
-                        .exec(db)
-                        .await
-                        .map_err(db_err)?
-                }
+                "completed" => ai_agent_workflow_stages::Entity::update_many()
+                    .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+                    .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
+                    .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
+                    .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::Status,
+                        Expr::value("completed"),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::OutputPayload,
+                        Expr::value(json!({"ai_run_id": run.id})),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::CompletedAt,
+                        Expr::value(Utc::now()),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::UpdatedAt,
+                        Expr::value(Utc::now()),
+                    )
+                    .exec(db)
+                    .await
+                    .map_err(db_err)?,
+                "failed" | "cancelled" => ai_agent_workflow_stages::Entity::update_many()
+                    .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+                    .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
+                    .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
+                    .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::Status,
+                        Expr::value("failed"),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::ErrorMessage,
+                        Expr::value(run.error_message.clone().unwrap_or_else(|| {
+                            format!("workflow AI run finished with status `{}`", run.status)
+                        })),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::CompletedAt,
+                        Expr::value(Utc::now()),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::UpdatedAt,
+                        Expr::value(Utc::now()),
+                    )
+                    .exec(db)
+                    .await
+                    .map_err(db_err)?,
                 _ => continue,
             };
             if result.rows_affected == 1 {

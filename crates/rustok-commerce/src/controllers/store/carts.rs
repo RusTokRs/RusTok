@@ -80,15 +80,15 @@ pub async fn create_cart(
             ),
             CartStorefrontCreateRequest {
                 input: crate::dto::CreateCartInput {
-                customer_id,
-                email: input.email,
-                region_id: context.region.as_ref().map(|region| region.id),
-                country_code: input.country_code,
-                locale_code: Some(context.locale.clone()),
-                selected_shipping_option_id: None,
-                currency_code,
-                metadata: input.metadata,
-            },
+                    customer_id,
+                    email: input.email,
+                    region_id: context.region.as_ref().map(|region| region.id),
+                    country_code: input.country_code,
+                    locale_code: Some(context.locale.clone()),
+                    selected_shipping_option_id: None,
+                    currency_code,
+                    metadata: input.metadata,
+                },
                 channel_id: request_context.channel_id,
                 channel_slug: request_context.channel_slug.clone(),
             },
@@ -255,7 +255,14 @@ pub async fn add_cart_line_item(
     let storefront_port = in_process_cart_storefront_port(runtime.db_clone());
     let existing = storefront_port
         .read_storefront_cart(
-            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "read", false),
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "read",
+                false,
+            ),
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
@@ -286,8 +293,19 @@ pub async fn add_cart_line_item(
 
     let cart = storefront_port
         .add_storefront_line_item(
-            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "add-line-item", true),
-            CartStorefrontAddLineItemRequest { cart_id: id, input: resolved_input.add_line_item, pricing_adjustment: resolved_input.pricing_adjustment },
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "add-line-item",
+                true,
+            ),
+            CartStorefrontAddLineItemRequest {
+                cart_id: id,
+                input: resolved_input.add_line_item,
+                pricing_adjustment: resolved_input.pricing_adjustment,
+            },
         )
         .await
         .map_err(map_cart_port_error)?;
@@ -334,7 +352,14 @@ pub async fn update_cart_line_item(
     let storefront_port = in_process_cart_storefront_port(runtime.db_clone());
     let existing = storefront_port
         .read_storefront_cart(
-            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "read", false),
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "read",
+                false,
+            ),
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
@@ -382,16 +407,40 @@ pub async fn update_cart_line_item(
             super::storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);
         storefront_port
             .update_storefront_line_item_pricing(
-                super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "update-line-item", true),
-                CartStorefrontLineItemPricingRequest { cart_id: id, line_item_id: line_id, quantity: input.quantity, unit_price: pricing_update.unit_price, pricing_adjustment: pricing_update.pricing_adjustment },
+                super::storefront_cart_port_context(
+                    tenant.id,
+                    &request_context,
+                    auth.0.as_ref(),
+                    id,
+                    "update-line-item",
+                    true,
+                ),
+                CartStorefrontLineItemPricingRequest {
+                    cart_id: id,
+                    line_item_id: line_id,
+                    quantity: input.quantity,
+                    unit_price: pricing_update.unit_price,
+                    pricing_adjustment: pricing_update.pricing_adjustment,
+                },
             )
             .await
             .map_err(map_cart_port_error)?
     } else {
         storefront_port
             .update_storefront_line_item_quantity(
-                super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "update-line-item", true),
-                CartStorefrontLineItemQuantityRequest { cart_id: id, line_item_id: line_id, quantity: input.quantity },
+                super::storefront_cart_port_context(
+                    tenant.id,
+                    &request_context,
+                    auth.0.as_ref(),
+                    id,
+                    "update-line-item",
+                    true,
+                ),
+                CartStorefrontLineItemQuantityRequest {
+                    cart_id: id,
+                    line_item_id: line_id,
+                    quantity: input.quantity,
+                },
             )
             .await
             .map_err(map_cart_port_error)?
@@ -437,7 +486,14 @@ pub async fn remove_cart_line_item(
     let storefront_port = in_process_cart_storefront_port(runtime.db_clone());
     let existing = storefront_port
         .read_storefront_cart(
-            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "read", false),
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "read",
+                false,
+            ),
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
@@ -446,8 +502,18 @@ pub async fn remove_cart_line_item(
 
     let cart = storefront_port
         .remove_storefront_line_item(
-            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "remove-line-item", true),
-            CartStorefrontRemoveLineItemRequest { cart_id: id, line_item_id: line_id },
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "remove-line-item",
+                true,
+            ),
+            CartStorefrontRemoveLineItemRequest {
+                cart_id: id,
+                line_item_id: line_id,
+            },
         )
         .await
         .map_err(map_cart_port_error)?;

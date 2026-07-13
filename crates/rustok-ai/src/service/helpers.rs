@@ -367,7 +367,10 @@ pub fn enforce_task_permissions(
         ensure_permission(operator, Permission::AI_TASKS_ALLOY_RUN)?;
     }
 
-    if matches!(task_profile.slug.as_str(), "product_copy" | "product_attributes") {
+    if matches!(
+        task_profile.slug.as_str(),
+        "product_copy" | "product_attributes"
+    ) {
         ensure_permission(operator, Permission::AI_TASKS_TEXT_RUN)?;
         ensure_permission(operator, Permission::PRODUCTS_UPDATE)?;
     }
