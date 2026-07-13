@@ -2,22 +2,60 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_mcp::{
-    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpAuditEventRecord,
+    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpActorType, McpAuditEventRecord,
     McpClientDetailsRecord, McpClientRecord, McpManagementContext, McpManagementMutationError,
     McpManagementPort, McpPolicyRecord, McpScaffoldDraftRecord, McpTokenSecretResult,
     RotateMcpTokenCommand, StageMcpScaffoldDraftCommand, UpdateMcpPolicyCommand,
 };
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
+
+use crate::models::users;
 
 use super::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
 
 pub struct GuardedMcpManagementProvider {
+    db: DatabaseConnection,
     inner: Arc<dyn McpManagementPort>,
 }
 
 impl GuardedMcpManagementProvider {
-    pub fn new(inner: Arc<dyn McpManagementPort>) -> Self {
-        Self { inner }
+    pub fn new(db: DatabaseConnection, inner: Arc<dyn McpManagementPort>) -> Self {
+        Self { db, inner }
+    }
+
+    async fn validate_delegated_identity(
+        &self,
+        context: &McpManagementContext,
+        command: &CreateMcpClientCommand,
+    ) -> Result<(), McpManagementMutationError> {
+        if command.actor_type == McpActorType::HumanUser && command.delegated_user_id.is_none() {
+            return Err(McpManagementMutationError::Validation(
+                "human_user MCP clients require delegated_user_id".to_string(),
+            ));
+        }
+
+        let Some(delegated_user_id) = command.delegated_user_id else {
+            return Ok(());
+        };
+        let user = users::Entity::find_by_id(delegated_user_id)
+            .filter(users::Column::TenantId.eq(context.tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(|error| McpManagementMutationError::Internal(error.to_string()))?
+            .ok_or_else(|| {
+                McpManagementMutationError::Validation(
+                    "delegated MCP user does not exist in the current tenant".to_string(),
+                )
+            })?;
+
+        if !user.is_active() {
+            return Err(McpManagementMutationError::Validation(
+                "delegated MCP user must be active".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -72,6 +110,7 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         context: &McpManagementContext,
         command: CreateMcpClientCommand,
     ) -> Result<McpTokenSecretResult, McpManagementMutationError> {
+        self.validate_delegated_identity(context, &command).await?;
         self.inner.create_client(context, command).await
     }
 
