@@ -5,6 +5,7 @@ mod fulfillment_create_label_recovery;
 mod fulfillment_orchestration;
 mod fulfillment_orchestration_facade;
 mod fulfillment_reconciliation;
+mod journaled_checkout;
 mod journaled_create_label_provider;
 mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
@@ -24,6 +25,9 @@ pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService
 pub(crate) use fulfillment_orchestration::FulfillmentOrchestrationError;
 pub(crate) use fulfillment_orchestration_facade::FulfillmentOrchestrationService;
 pub use fulfillment_reconciliation::FulfillmentReconciliationService;
+pub use journaled_checkout::{
+    JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
+};
 pub(crate) use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 pub use payment_orchestration::{
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
