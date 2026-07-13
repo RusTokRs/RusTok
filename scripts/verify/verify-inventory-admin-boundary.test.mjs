@@ -169,6 +169,16 @@ async fn validate_storefront_variant_inventory() {
     if inventory_policy_allows_backorder("continue") { return; }
     load_available_inventory_for_variant_in_public_channel().await;
 }
+`;
+  }
+
+  return `
+use rustok_inventory::check_variant_availability_for_public_channel;
+async fn validate_storefront_variant_inventory() {
+    check_variant_availability_for_public_channel().await;
+}
+`;
+}
 
 function checkoutAvailabilityCallerSource({ includeDirectLookup = false } = {}) {
   if (includeDirectLookup) {
@@ -182,16 +192,6 @@ impl Checkout {
 async fn validate_storefront_variant_inventory(&self) {
     self.inventory_reservation_port.check_availability(context, InventoryAvailabilityRequest { variant_id, requested_quantity: 1, channel_slug: None }).await;
 }
-}
-`;
-}
-`;
-  }
-
-  return `
-use rustok_inventory::check_variant_availability_for_public_channel;
-async fn validate_storefront_variant_inventory() {
-    check_variant_availability_for_public_channel().await;
 }
 `;
 }
