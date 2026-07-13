@@ -28,6 +28,7 @@ pub mod registry;
 pub mod resilience;
 pub mod rt_json;
 pub mod security;
+pub mod security_principal;
 pub mod state_machine;
 pub mod tenant_validation;
 pub mod tracing;
@@ -102,6 +103,7 @@ pub use security::{
     SecurityAuditResult, SecurityCategory, SecurityConfig, SecurityFinding, SecurityHeaders,
     SecurityHeadersConfig, Severity, SsrfProtection, ValidationResult,
 };
+pub use security_principal::security_context_from_access_token;
 pub use typed_error::{
     DomainError, ErrorCategory, ErrorCode, ErrorResponseBody, IntoTypedResult, TypedResult,
 };
@@ -136,6 +138,7 @@ pub mod prelude {
     pub use crate::metrics::{Counter, Gauge, Histogram, MetricsRegistry, Timer};
     pub use crate::rbac::{PermissionScope, Rbac, SecurityActorKind, SecurityContext};
     pub use crate::resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
+    pub use crate::security_principal::security_context_from_access_token;
     pub use crate::typed_error::{DomainError, ErrorCode, TypedResult};
     pub use crate::types::{UserRole, UserStatus};
     #[cfg(feature = "redis-cache")]
