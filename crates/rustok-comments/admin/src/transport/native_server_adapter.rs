@@ -47,6 +47,15 @@ pub(crate) async fn set_comment_status(
     comments_set_comment_status_native(command.comment_id, command.status, command.locale).await
 }
 
+#[cfg(feature = "ssr")]
+fn security_context(auth: &rustok_api::AuthContext) -> rustok_core::SecurityContext {
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
+}
+
 #[server(prefix = "/api/fn", endpoint = "comments/threads")]
 async fn comments_threads_native(
     page: u64,
@@ -68,14 +77,10 @@ async fn comments_threads_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
-        let security = rustok_core::SecurityContext::from_permission_snapshot(
-            Some(auth.user_id),
-            &auth.permissions,
-        );
         let (items, total) = service
             .list_threads(
                 tenant.id,
-                security,
+                security_context(&auth),
                 page.max(1),
                 per_page.max(1),
                 Some(target_type.as_str()).filter(|value| !value.trim().is_empty()),
@@ -115,15 +120,11 @@ async fn comments_thread_detail_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
-        let security = rustok_core::SecurityContext::from_permission_snapshot(
-            Some(auth.user_id),
-            &auth.permissions,
-        );
         let thread_id = uuid::Uuid::parse_str(&thread_id).map_err(ServerFnError::new)?;
         service
             .get_thread_detail(
                 tenant.id,
-                security,
+                security_context(&auth),
                 thread_id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -160,13 +161,9 @@ async fn comments_set_thread_status_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
-        let security = rustok_core::SecurityContext::from_permission_snapshot(
-            Some(auth.user_id),
-            &auth.permissions,
-        );
         let thread_id = uuid::Uuid::parse_str(&thread_id).map_err(ServerFnError::new)?;
         service
-            .set_thread_status(tenant.id, security, thread_id, status)
+            .set_thread_status(tenant.id, security_context(&auth), thread_id, status)
             .await
             .map_err(ServerFnError::new)
     }
@@ -198,15 +195,11 @@ async fn comments_set_comment_status_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
-        let security = rustok_core::SecurityContext::from_permission_snapshot(
-            Some(auth.user_id),
-            &auth.permissions,
-        );
         let comment_id = uuid::Uuid::parse_str(&comment_id).map_err(ServerFnError::new)?;
         service
             .set_comment_status(
                 tenant.id,
-                security,
+                security_context(&auth),
                 comment_id,
                 status,
                 &locale,
