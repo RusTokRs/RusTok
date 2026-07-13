@@ -4,6 +4,7 @@ mod key;
 mod lease;
 mod negative;
 mod policy;
+mod refresh;
 mod service;
 mod typed;
 mod weighted;
@@ -25,6 +26,10 @@ pub use negative::{
     DEFAULT_MAX_NEGATIVE_CACHE_BYTES,
 };
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
+pub use refresh::{
+    CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
+    CacheRefreshStats, StaleWhileRevalidateResult,
+};
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
     CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,
