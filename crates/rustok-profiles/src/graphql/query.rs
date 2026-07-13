@@ -25,7 +25,7 @@ impl ProfilesQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_id(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = ProfileService::new(db.clone());
@@ -55,6 +55,12 @@ impl ProfilesQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
+        if auth.tenant_id != tenant.id {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Authenticated profile reads must use the current tenant",
+            ));
+        }
+
         let service = ProfileService::new(db.clone());
         match service
             .get_profile(
@@ -81,7 +87,7 @@ impl ProfilesQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_id(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
@@ -113,6 +119,15 @@ impl ProfilesQuery {
     }
 }
 
+fn current_tenant_id(tenant: &TenantContext, requested: Option<Uuid>) -> Result<Uuid> {
+    if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Profile reads must use the current tenant",
+        ));
+    }
+    Ok(tenant.id)
+}
+
 fn require_auth(ctx: &Context<'_>) -> Result<AuthContext> {
     ctx.data::<AuthContext>()
         .cloned()
@@ -137,5 +152,35 @@ fn map_profile_error(err: ProfileError) -> async_graphql::Error {
             <FieldError as GraphQLError>::not_found(&err.to_string())
         }
         ProfileError::Database(_) => <FieldError as GraphQLError>::internal_error(&err.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::current_tenant_id;
+    use rustok_api::TenantContext;
+    use uuid::Uuid;
+
+    fn tenant(id: Uuid) -> TenantContext {
+        TenantContext {
+            id,
+            name: "Tenant".to_string(),
+            slug: "tenant".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    #[test]
+    fn profile_tenant_override_fails_closed() {
+        let current = Uuid::new_v4();
+        assert_eq!(current_tenant_id(&tenant(current), None).unwrap(), current);
+        assert_eq!(
+            current_tenant_id(&tenant(current), Some(current)).unwrap(),
+            current
+        );
+        assert!(current_tenant_id(&tenant(current), Some(Uuid::new_v4())).is_err());
     }
 }
