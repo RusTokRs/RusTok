@@ -12,6 +12,7 @@ mod m20260713_000007_consume_inventory_on_fulfillment_shipping;
 mod m20260713_000008_require_fulfillment_before_order_delivery;
 mod m20260713_000009_create_checkout_operations;
 mod m20260713_000010_create_checkout_inventory_reservations;
+mod m20260713_000011_enforce_checkout_inventory_reservation_quantity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -30,6 +31,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000008_require_fulfillment_before_order_delivery::Migration),
         Box::new(m20260713_000009_create_checkout_operations::Migration),
         Box::new(m20260713_000010_create_checkout_inventory_reservations::Migration),
+        Box::new(m20260713_000011_enforce_checkout_inventory_reservation_quantity::Migration),
     ]
 }
 
@@ -83,6 +85,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20260713_000009_create_checkout_operations",
                 "m20260713_000018_enforce_inventory_state_invariants",
             ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000011_enforce_checkout_inventory_reservation_quantity",
+            vec!["m20260713_000010_create_checkout_inventory_reservations"],
         ),
     ]
 }
