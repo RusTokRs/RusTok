@@ -10,7 +10,6 @@ use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
 };
 use rustok_ui_core::UiRouteContext;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -92,8 +91,7 @@ fn execute_facade_request(
     }
 
     spawn_local(async move {
-        let result = facade.execute(request).await;
-        match result {
+        match facade.execute(request).await {
             Ok(PageBuilderCapabilityResponse::Publish(response)) => {
                 let mut acknowledgement_error = None;
                 controller.update(|controller| {
@@ -384,26 +382,19 @@ pub fn AdminCanvas(
     });
 
     #[cfg(target_arch = "wasm32")]
-    let bridge_subscription = Rc::new(RefCell::new(None::<fly_leptos::IframeJsonSubscription>));
-    #[cfg(target_arch = "wasm32")]
-    on_cleanup({
-        let bridge_subscription = Rc::clone(&bridge_subscription);
-        move || {
-            bridge_subscription.borrow_mut().take();
-        }
-    });
+    let bridge_subscription = StoredValue::new_local(
+        None::<fly_leptos::IframeJsonSubscription>,
+    );
 
     let on_iframe_load = {
         let iframe_id = iframe_id.clone();
         let expected_instance_id = instance_id.clone();
-        #[cfg(target_arch = "wasm32")]
-        let bridge_subscription = Rc::clone(&bridge_subscription);
         move |_| {
             ready.set(false);
             geometry.set(BTreeMap::new());
             #[cfg(target_arch = "wasm32")]
             {
-                bridge_subscription.borrow_mut().take();
+                bridge_subscription.set_value(None);
                 let decoder_instance = expected_instance_id.clone();
                 match fly_leptos::IframeJsonSubscription::subscribe_by_element_id(
                     iframe_id.clone(),
@@ -422,9 +413,7 @@ pub fn AdminCanvas(
                         )
                     },
                 ) {
-                    Ok(subscription) => {
-                        *bridge_subscription.borrow_mut() = Some(subscription);
-                    }
+                    Ok(subscription) => bridge_subscription.set_value(Some(subscription)),
                     Err(error) => last_error.set(Some(error.to_string())),
                 }
             }
