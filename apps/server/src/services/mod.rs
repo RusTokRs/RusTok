@@ -22,6 +22,7 @@ pub mod mcp_runtime;
 pub mod module_event_dispatcher;
 pub mod module_lifecycle;
 pub mod oauth_app;
+pub mod oauth_consent_service;
 pub mod oauth_token_service;
 #[cfg(feature = "mod-commerce")]
 pub mod paid_order_label_worker;
