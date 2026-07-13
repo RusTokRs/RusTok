@@ -5,6 +5,7 @@ mod key;
 mod key_generation;
 mod lease;
 mod negative;
+mod observability;
 mod policy;
 mod refresh;
 mod service;
@@ -30,6 +31,9 @@ pub use lease::{
 pub use negative::{
     NegativeCacheEntry, NegativeCacheHit, NegativeCachePolicy, NegativeCachePolicyError,
     DEFAULT_MAX_NEGATIVE_CACHE_BYTES,
+};
+pub use observability::{
+    format_cache_generation_prometheus_metrics, format_cache_refresh_prometheus_metrics,
 };
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use refresh::{
