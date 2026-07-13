@@ -57,10 +57,8 @@ impl TopicService {
         )?;
 
         let txn = self.db.begin().await?;
+        claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
-        if topic_is_deleted_in_tx(&txn, tenant_id, topic_id).await? {
-            return Err(ForumError::TopicDeleted);
-        }
 
         let replies = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -199,24 +197,22 @@ impl Deref for TopicService {
     }
 }
 
-async fn topic_is_deleted_in_tx(
+async fn claim_topic_delete_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     topic_id: Uuid,
-) -> ForumResult<bool> {
-    let row = txn
-        .query_one(Statement::from_string(
-            txn.get_database_backend(),
-            format!(
-                "SELECT COUNT(*) AS deleted_count \
-                 FROM forum_topics \
-                 WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}' AND deleted_at IS NOT NULL"
-            ),
+) -> ForumResult<()> {
+    let result = txn
+        .execute_unprepared(&format!(
+            "UPDATE forum_topics \
+             SET updated_at = updated_at \
+             WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}' AND deleted_at IS NULL"
         ))
-        .await?
-        .ok_or(ForumError::TopicNotFound(topic_id))?;
-    let deleted_count: i64 = row.try_get("", "deleted_count")?;
-    Ok(deleted_count != 0)
+        .await?;
+    if result.rows_affected() != 1 {
+        return Err(ForumError::TopicDeleted);
+    }
+    Ok(())
 }
 
 async fn redact_topic_content_in_tx(
