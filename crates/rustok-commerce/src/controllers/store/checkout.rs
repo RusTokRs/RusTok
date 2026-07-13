@@ -1,22 +1,24 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
-    CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_checkout_port,
-    in_process_cart_storefront_port,
+    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
+    bind_in_process_atomic_cart_checkout, in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
-    super::CommerceHttpRuntime, StoreCartContextPatch, StoreCompleteCartInput,
-    StoreCreatePaymentCollectionInput,
+    super::CommerceHttpRuntime, StoreCompleteCartInput, StoreCreatePaymentCollectionInput,
 };
 use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollectionResponse};
+
+const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
+const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 
 /// Create payment collection from storefront cart
 #[utoipa::path(
@@ -108,12 +110,17 @@ pub async fn create_payment_collection(
     post,
     path = "/store/carts/{id}/complete",
     tag = "store",
-    params(("id" = Uuid, Path, description = "Cart ID")),
+    params(
+        ("id" = Uuid, Path, description = "Cart ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable key for replay-safe checkout")
+    ),
     request_body = StoreCompleteCartInput,
     responses(
         (status = 200, description = "Checkout completed", body = CompleteCheckoutResponse),
+        (status = 400, description = "Checkout request is invalid"),
         (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 404, description = "Cart not found")
+        (status = 404, description = "Cart not found"),
+        (status = 409, description = "Checkout key or active-operation conflict")
     )
 )]
 pub async fn complete_cart_checkout(
@@ -121,13 +128,15 @@ pub async fn complete_cart_checkout(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(cart_id): Path<Uuid>,
     Json(input): Json<StoreCompleteCartInput>,
 ) -> HttpResult<Json<CompleteCheckoutResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = required_idempotency_key(&headers)?;
 
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
-    let mut cart = cart_storefront_port
+    let cart = cart_storefront_port
         .read_storefront_cart(
             super::storefront_cart_port_context(
                 tenant.id,
@@ -146,36 +155,6 @@ pub async fn complete_cart_checkout(
     super::ensure_store_cart_access(&cart, customer_id)?;
     let actor_id = super::checkout_actor_id(auth.0.as_ref());
 
-    if input.shipping_option_id.is_some()
-        || input.shipping_selections.is_some()
-        || input.region_id.is_some()
-        || input.country_code.is_some()
-        || input.locale.is_some()
-    {
-        cart = super::apply_cart_context_patch_for_db(
-            runtime.db(),
-            runtime.event_bus(),
-            tenant.id,
-            &request_context,
-            tenant.default_locale.as_str(),
-            &cart,
-            StoreCartContextPatch {
-                email: None,
-                region_id: input.region_id.map(Some),
-                country_code: input.country_code.clone().map(Some),
-                locale: input.locale.clone().map(Some),
-                selected_shipping_option_id: input.shipping_option_id.map(Some),
-                shipping_selections: input.shipping_selections.clone().map(|items| {
-                    items
-                        .into_iter()
-                        .map(Into::into)
-                        .collect::<Vec<crate::dto::CartShippingSelectionInput>>()
-                }),
-            },
-        )
-        .await?
-        .cart;
-    }
     let _ = super::reprice_storefront_cart_line_items_for_db(
         runtime.db(),
         runtime.event_bus(),
@@ -186,12 +165,44 @@ pub async fn complete_cart_checkout(
     )
     .await?;
 
+    let checkout_input = CompleteCheckoutInput {
+        cart_id,
+        shipping_option_id: input.shipping_option_id,
+        shipping_selections: input.shipping_selections.map(|items| {
+            items
+                .into_iter()
+                .map(|item| crate::dto::CartShippingSelectionInput {
+                    shipping_profile_slug: item.shipping_profile_slug,
+                    seller_id: item.seller_id,
+                    seller_scope: None,
+                    selected_shipping_option_id: item.selected_shipping_option_id,
+                })
+                .collect()
+        }),
+        region_id: input.region_id,
+        country_code: input.country_code,
+        locale: input.locale,
+        create_fulfillment: input.create_fulfillment,
+        metadata: input.metadata,
+    };
+    let atomic_cart = bind_in_process_atomic_cart_checkout(
+        runtime.db_clone(),
+        PrepareCartCheckoutSnapshotRequest {
+            cart_id,
+            region_id: checkout_input.region_id,
+            country_code: checkout_input.country_code.clone(),
+            locale_code: checkout_input.locale.clone(),
+            selected_shipping_option_id: checkout_input.shipping_option_id,
+            shipping_selections: checkout_input.shipping_selections.clone(),
+        },
+    );
+
     let event_bus = runtime.event_bus();
-    let service = crate::CheckoutService::new(
+    let checkout = crate::CheckoutService::new(
         runtime.db_clone(),
         event_bus.clone(),
         std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
-        in_process_cart_checkout_port(runtime.db_clone()),
+        atomic_cart.port,
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
             runtime.db_clone(),
             event_bus.clone(),
@@ -205,23 +216,77 @@ pub async fn complete_cart_checkout(
         runtime.payment_provider_registry(),
         runtime.fulfillment_provider_registry(),
     );
+    let service = crate::JournaledCheckoutService::new(checkout, runtime.db_clone())
+        .with_atomic_cart_checkout_handle(atomic_cart.handle);
     let response = service
         .complete_checkout(
             tenant.id,
             actor_id,
-            CompleteCheckoutInput {
-                cart_id,
-                shipping_option_id: None,
-                shipping_selections: None,
-                region_id: None,
-                country_code: None,
-                locale: None,
-                create_fulfillment: input.create_fulfillment,
-                metadata: input.metadata,
-            },
+            idempotency_key,
+            checkout_input,
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(journaled_checkout_http_error)?;
 
     Ok(Json(response))
+}
+
+fn required_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
+    let value = headers
+        .get(IDEMPOTENCY_KEY_HEADER)
+        .ok_or_else(|| {
+            HttpError::bad_request(
+                "idempotency_key_required",
+                "Idempotency-Key header is required for checkout",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::bad_request(
+                "idempotency_key_invalid",
+                "Idempotency-Key header must be valid ASCII",
+            )
+        })?
+        .trim();
+
+    if value.is_empty() || value.chars().count() > MAX_IDEMPOTENCY_KEY_LENGTH {
+        return Err(HttpError::bad_request(
+            "idempotency_key_invalid",
+            format!(
+                "Idempotency-Key must contain 1 to {MAX_IDEMPOTENCY_KEY_LENGTH} characters"
+            ),
+        ));
+    }
+
+    Ok(value.to_string())
+}
+
+fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpError {
+    match error {
+        crate::JournaledCheckoutError::Operation(
+            crate::CheckoutOperationError::Conflict(message),
+        ) => HttpError::new(
+            StatusCode::CONFLICT,
+            "checkout_operation_conflict",
+            message,
+        ),
+        crate::JournaledCheckoutError::Operation(
+            crate::CheckoutOperationError::NotFound(id),
+        ) => HttpError::not_found(
+            "checkout_operation_not_found",
+            format!("Checkout operation {id} was not found"),
+        ),
+        crate::JournaledCheckoutError::Operation(
+            crate::CheckoutOperationError::Validation(message),
+        ) => HttpError::bad_request("checkout_operation_invalid", message),
+        crate::JournaledCheckoutError::Operation(
+            crate::CheckoutOperationError::Database(_),
+        ) => HttpError::internal("Checkout operation storage is unavailable"),
+        crate::JournaledCheckoutError::Checkout(checkout) => {
+            HttpError::bad_request("commerce_operation_failed", checkout.to_string())
+        }
+        crate::JournaledCheckoutError::CheckoutAndJournal { .. } => HttpError::internal(
+            "Checkout requires reconciliation after a journal update failure",
+        ),
+    }
 }
