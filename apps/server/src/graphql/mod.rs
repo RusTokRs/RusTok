@@ -10,6 +10,7 @@ pub mod security;
 pub mod settings;
 pub mod subscriptions;
 pub mod system;
+pub mod tenant_security;
 pub mod types;
 
 pub use schema::{build_schema, AppSchema, SharedGraphqlSchema};
