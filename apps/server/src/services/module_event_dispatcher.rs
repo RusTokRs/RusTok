@@ -84,7 +84,12 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         ),
     );
     extensions.insert(OAuthAdminRuntime::new(auth_admin_provider.clone()));
-    extensions.insert(UserAdminMutationRuntime::new(auth_admin_provider));
+    let user_admin_provider = Arc::new(
+        crate::services::user_admin_guard::GuardedUserAdminMutationProvider::new(
+            auth_admin_provider,
+        ),
+    );
+    extensions.insert(UserAdminMutationRuntime::new(user_admin_provider));
     let auth_lifecycle_provider = Arc::new(
         crate::services::auth_lifecycle_provider::ServerAuthLifecycleProvider::new(
             runtime_ctx,
@@ -178,6 +183,7 @@ mod tests {
         );
 
         assert!(extensions.contains::<rustok_auth::AuthLifecycleRuntime>());
+        assert!(extensions.contains::<rustok_auth::AuthUserBackfillRuntime>());
         assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
