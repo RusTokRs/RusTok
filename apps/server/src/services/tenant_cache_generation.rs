@@ -263,28 +263,41 @@ pub async fn start_tenant_cache_generation_listener(
             let mut reason = "startup";
             loop {
                 runtime.restarted(reason);
-                if let Err(error) = redis_listener.recover_shared_generation().await {
-                    tracing::warn!(%error, "Tenant cache generation recovery before Redis subscribe failed");
-                    rustok_telemetry::metrics::record_event_error(
-                        "tenant.cache.generation",
-                        "redis_recovery",
-                    );
-                }
 
+                // Redis buffers messages after SUBSCRIBE while the ready hook runs. Recovering the
+                // shared generation here closes the GET-before-SUBSCRIBE loss window: buffered
+                // older messages subsequently classify as duplicate/stale, and newer messages
+                // remain contiguous from the recovered checkpoint.
+                let ready_listener = redis_listener.clone();
                 let handler_listener = redis_listener.clone();
                 let result = invalidations
-                    .consume_subscription(TENANT_CACHE_GENERATION_CHANNEL, move |message| {
-                        let handler_listener = handler_listener.clone();
-                        async move {
-                            if let Err(error) = handler_listener.handle_message(message).await {
-                                tracing::error!(%error, "Redis tenant cache generation apply failed");
-                                rustok_telemetry::metrics::record_event_error(
-                                    "tenant.cache.generation",
-                                    "redis_apply",
-                                );
+                    .consume_subscription_with_ready(
+                        TENANT_CACHE_GENERATION_CHANNEL,
+                        move || {
+                            let ready_listener = ready_listener.clone();
+                            async move {
+                                if let Err(error) = ready_listener.recover_shared_generation().await {
+                                    tracing::warn!(%error, "Tenant cache generation post-subscribe recovery failed");
+                                    rustok_telemetry::metrics::record_event_error(
+                                        "tenant.cache.generation",
+                                        "redis_ready_recovery",
+                                    );
+                                }
                             }
-                        }
-                    })
+                        },
+                        move |message| {
+                            let handler_listener = handler_listener.clone();
+                            async move {
+                                if let Err(error) = handler_listener.handle_message(message).await {
+                                    tracing::error!(%error, "Redis tenant cache generation apply failed");
+                                    rustok_telemetry::metrics::record_event_error(
+                                        "tenant.cache.generation",
+                                        "redis_apply",
+                                    );
+                                }
+                            }
+                        },
+                    )
                     .await;
                 tracing::warn!(?result, "Tenant cache generation Redis subscriber stopped");
                 reason = "reconnect";
