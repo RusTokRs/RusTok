@@ -175,7 +175,11 @@ impl DegradationAwareFallbackBackend {
             return Err(primary_error);
         }
 
-        tracing::debug!(error = %primary_error, key, "Primary cache write failed; retained bounded local value");
+        tracing::debug!(
+            error = %primary_error,
+            key,
+            "Primary cache write failed; retained bounded local value"
+        );
         Ok(())
     }
 }
@@ -271,7 +275,11 @@ impl CacheBackend for DegradationAwareFallbackBackend {
             CacheCompareAndSetOutcome::Mismatch => {
                 self.clear_degraded_write(key).await;
                 if let Err(error) = self.fallback.invalidate(key).await {
-                    tracing::warn!(%error, key, "Failed to discard local mirror after CAS mismatch");
+                    tracing::warn!(
+                        %error,
+                        key,
+                        "Failed to discard local mirror after CAS mismatch"
+                    );
                 }
             }
         }
@@ -285,7 +293,11 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         self.clear_degraded_write(key).await;
 
         self.primary.invalidate(key).await.map_err(|error| {
-            tracing::warn!(%error, key, "Primary cache invalidation failed; stale shared data may remain");
+            tracing::warn!(
+                %error,
+                key,
+                "Primary cache invalidation failed; stale shared data may remain"
+            );
             error
         })
     }
