@@ -105,6 +105,7 @@ pub enum CacheBackendGenerationError {
     RegistryCapacityExceeded { count: usize, maximum: usize },
     GenerationRegressed { current: u64, proposed: u64 },
     GenerationExhausted,
+    RedisClientUnavailable,
     SharedGeneration(String),
 }
 
@@ -125,6 +126,10 @@ impl std::fmt::Display for CacheBackendGenerationError {
                 "cache backend generation cannot regress from {current} to {proposed}"
             ),
             Self::GenerationExhausted => write!(formatter, "cache backend generation is exhausted"),
+            Self::RedisClientUnavailable => write!(
+                formatter,
+                "Redis is configured but its client is unavailable for shared generation updates"
+            ),
             Self::SharedGeneration(message) => {
                 write!(formatter, "shared cache backend generation failed: {message}")
             }
@@ -207,7 +212,10 @@ impl CacheService {
         prefix: &str,
     ) -> Result<CacheBackendGenerationSnapshot, CacheBackendGenerationError> {
         validate_prefix(prefix)?;
-        if self.has_redis() {
+        if self.redis_configuration_present() {
+            if !self.redis_client_initialized() {
+                return Err(CacheBackendGenerationError::RedisClientUnavailable);
+            }
             let generation = self.namespace_generations().bump(prefix).await?;
             return observe_cache_backend_generation(prefix, generation.value());
         }
@@ -231,18 +239,28 @@ impl CacheService {
         };
 
         if !state.trusted.load(Ordering::Acquire) {
-            match self.namespace_generations().read(prefix).await {
-                Ok(generation) => {
-                    if let Err(error) = state.observe(generation.value()) {
-                        tracing::error!(%error, prefix, "Cache backend generation initialization regressed");
-                        return Arc::new(GenerationAwareCacheBackend::rejected(inner, error));
+            if self.redis_configuration_present() && !self.redis_client_initialized() {
+                // An invalid configured Redis endpoint is not equivalent to an intentional
+                // memory-only deployment. Keep this process in its unique boot namespace so it
+                // cannot read or publish a falsely shared generation.
+                tracing::error!(
+                    prefix,
+                    "Redis generation client unavailable; using isolated boot namespace"
+                );
+            } else {
+                match self.namespace_generations().read(prefix).await {
+                    Ok(generation) => {
+                        if let Err(error) = state.observe(generation.value()) {
+                            tracing::error!(%error, prefix, "Cache backend generation initialization regressed");
+                            return Arc::new(GenerationAwareCacheBackend::rejected(inner, error));
+                        }
                     }
-                }
-                Err(error) => {
-                    // Keep the unique boot namespace. This is intentionally not `g-0`: if Redis
-                    // later recovers, values from an older process/shared generation remain
-                    // unreachable until a trusted shared generation is observed.
-                    tracing::warn!(%error, prefix, "Shared cache generation unavailable; using isolated boot namespace");
+                    Err(error) => {
+                        // Keep the unique boot namespace. This is intentionally not `g-0`: if Redis
+                        // later recovers, values from an older process/shared generation remain
+                        // unreachable until a trusted shared generation is observed.
+                        tracing::warn!(%error, prefix, "Shared cache generation unavailable; using isolated boot namespace");
+                    }
                 }
             }
         }
@@ -360,6 +378,21 @@ mod tests {
         let second = service.bump_cache_backend_generation(&prefix).await.unwrap();
         assert_eq!(second.generation, first.generation + 1);
         assert!(second.trusted);
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    async fn invalid_config_does_not_fall_back_to_process_local_generation() {
+        let service = CacheService::from_url(Some("://invalid-redis-url"));
+        let prefix = unique_prefix("invalid-config");
+        assert!(matches!(
+            service.bump_cache_backend_generation(&prefix).await,
+            Err(CacheBackendGenerationError::RedisClientUnavailable)
+        ));
+
+        let raw = service.memory_backend(Duration::from_secs(60), 16);
+        let _backend = service.wrap_generation_aware_backend(&prefix, raw).await;
+        assert!(!cache_backend_generation_snapshot(&prefix).unwrap().trusted);
     }
 
     #[tokio::test]
