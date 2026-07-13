@@ -1,6 +1,7 @@
 use crate::{
-    materialize_runtime, render_page, FlyResult, PageSelection, ProjectDocument, RenderPolicy,
-    RenderedPage, RuntimeMaterialization, ValidationDiagnostic,
+    materialize_bindings, materialize_runtime, render_page, BindingMaterialization, FlyResult,
+    PageSelection, ProjectDocument, RenderPolicy, RenderedPage, RuntimeMaterialization,
+    ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,6 +10,9 @@ use serde_json::Value;
 pub struct RuntimeRenderResult {
     pub page: RenderedPage,
     pub diagnostics: Vec<ValidationDiagnostic>,
+    pub applied_bindings: usize,
+    pub fallback_bindings: usize,
+    pub unresolved_bindings: usize,
     pub evaluated_conditions: usize,
     pub hidden_components: usize,
     pub repeated_nodes: usize,
@@ -26,17 +30,28 @@ pub fn render_page_with_runtime_context(
     policy: &RenderPolicy,
     context: &Value,
 ) -> FlyResult<RuntimeRenderResult> {
+    let BindingMaterialization {
+        document,
+        mut diagnostics,
+        applied_bindings,
+        fallback_bindings,
+        unresolved_bindings,
+    } = materialize_bindings(document, context);
     let RuntimeMaterialization {
         document,
-        diagnostics,
+        diagnostics: dynamic_diagnostics,
         evaluated_conditions,
         hidden_components,
         repeated_nodes,
-    } = materialize_runtime(document, context);
+    } = materialize_runtime(&document, context);
+    diagnostics.extend(dynamic_diagnostics);
     let page = render_page(&document, selection, policy)?;
     Ok(RuntimeRenderResult {
         page,
         diagnostics,
+        applied_bindings,
+        fallback_bindings,
+        unresolved_bindings,
         evaluated_conditions,
         hidden_components,
         repeated_nodes,
@@ -50,7 +65,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn runtime_renderer_expands_repeaters_before_sanitized_rendering() {
+    fn runtime_renderer_applies_bindings_and_expands_repeaters() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "pages": [{
                 "id": "home",
@@ -58,11 +73,23 @@ mod tests {
                     "id": "root",
                     "type": "wrapper",
                     "components": [{
+                        "id": "heading",
+                        "type": "heading",
+                        "content": "Static"
+                    }, {
                         "id": "row",
                         "type": "text",
                         "content": "{{item.name}}"
                     }]
                 }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "heading-content",
+                "component_id": "heading",
+                "path": "page.title",
+                "target": "field",
+                "name": "content",
+                "transform": "uppercase"
             }],
             "flyRuntimeRepeaters": [{
                 "id": "rows",
@@ -75,10 +102,15 @@ mod tests {
             &document,
             &PageSelection::Id("home".to_string()),
             &RenderPolicy::default(),
-            &json!({ "items": [{ "name": "One" }, { "name": "Two" }] }),
+            &json!({
+                "page": { "title": "Runtime title" },
+                "items": [{ "name": "One" }, { "name": "Two" }]
+            }),
         )
         .expect("runtime render");
+        assert_eq!(result.applied_bindings, 1);
         assert_eq!(result.repeated_nodes, 2);
+        assert!(result.page.html.contains("RUNTIME TITLE"));
         assert!(result.page.html.contains("One"));
         assert!(result.page.html.contains("Two"));
         assert!(!result.page.html.contains("{{item.name}}"));
