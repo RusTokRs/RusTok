@@ -385,12 +385,11 @@ mod tests {
     #[test]
     fn rejects_zero_operation_timeout() {
         let service = CacheService::from_url(None);
-        assert_eq!(
-            service
-                .namespace_generations()
-                .with_operation_timeout(Duration::ZERO)
-                .unwrap_err(),
-            CacheGenerationError::ZeroOperationTimeout
-        );
+        let error = service
+            .namespace_generations()
+            .with_operation_timeout(Duration::ZERO)
+            .err()
+            .expect("zero timeout must be rejected");
+        assert_eq!(error, CacheGenerationError::ZeroOperationTimeout);
     }
 }
