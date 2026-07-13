@@ -7,22 +7,21 @@ use rustok_auth::{
 };
 use rustok_core::{UserRole, UserStatus};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait,
-    QueryFilter, QuerySelect, Set, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
+    TransactionTrait,
 };
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::auth::hash_password;
-use crate::models::{
-    _entities::{roles, user_roles},
-    sessions, users,
-};
+use crate::models::{sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_service::RbacService;
 
-use super::ServerAuthAdminMutationProvider;
+use super::{
+    super_admin_guard::ensure_active_super_admin_continuity, ServerAuthAdminMutationProvider,
+};
 
 fn parse_user_status(value: &str) -> Result<UserStatus, AuthAdminMutationError> {
     let normalized = value.trim().to_ascii_lowercase();
@@ -119,68 +118,6 @@ impl ServerAuthAdminMutationProvider {
     }
 }
 
-async fn ensure_active_super_admin_continuity<C>(
-    db: &C,
-    tenant_id: Uuid,
-    target_user_id: Uuid,
-    current_role: &UserRole,
-    resulting_role: Option<&UserRole>,
-    resulting_status: Option<&UserStatus>,
-    deleting: bool,
-) -> Result<(), AuthAdminMutationError>
-where
-    C: ConnectionTrait,
-{
-    if current_role != &UserRole::SuperAdmin {
-        return Ok(());
-    }
-
-    let remains_active_super_admin = !deleting
-        && resulting_role.is_none_or(|role| role == &UserRole::SuperAdmin)
-        && resulting_status.is_none_or(|status| status == &UserStatus::Active);
-    if remains_active_super_admin {
-        return Ok(());
-    }
-
-    let Some(super_admin_role) = roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(tenant_id))
-        .filter(roles::Column::Slug.eq(UserRole::SuperAdmin.to_string()))
-        .one(db)
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
-    else {
-        return Err(AuthAdminMutationError::Conflict(
-            "active super administrator role assignment is inconsistent".to_string(),
-        ));
-    };
-
-    let super_admin_user_ids = user_roles::Entity::find()
-        .select_only()
-        .column(user_roles::Column::UserId)
-        .filter(user_roles::Column::RoleId.eq(super_admin_role.id))
-        .into_tuple::<Uuid>()
-        .all(db)
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-
-    let remaining_active = users::Entity::find()
-        .filter(users::Column::TenantId.eq(tenant_id))
-        .filter(users::Column::Id.is_in(super_admin_user_ids))
-        .filter(users::Column::Id.ne(target_user_id))
-        .filter(users::Column::Status.eq(UserStatus::Active))
-        .count(db)
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-
-    if remaining_active == 0 {
-        return Err(AuthAdminMutationError::Conflict(
-            "cannot remove, demote, or deactivate the last active super administrator".to_string(),
-        ));
-    }
-
-    Ok(())
-}
-
 async fn revoke_active_sessions<C>(
     db: &C,
     tenant_id: Uuid,
@@ -221,7 +158,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .map(parse_user_status)
             .transpose()?;
 
-        if role != UserRole::Customer || status.as_ref().is_some_and(|value| value != &UserStatus::Active)
+        if role != UserRole::Customer
+            || status
+                .as_ref()
+                .is_some_and(|value| value != &UserStatus::Active)
         {
             self.authorize_user(
                 context,
