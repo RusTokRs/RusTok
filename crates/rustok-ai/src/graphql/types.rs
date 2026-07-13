@@ -584,7 +584,6 @@ impl From<ProviderUsagePolicy> for AiProviderUsagePolicyGql {
 pub struct AiProviderUsagePolicyInputGql {
     pub allowed_task_profiles: Vec<String>,
     pub denied_task_profiles: Vec<String>,
-    pub restricted_role_slugs: Vec<String>,
 }
 
 impl From<AiProviderUsagePolicyInputGql> for ProviderUsagePolicy {
@@ -592,7 +591,10 @@ impl From<AiProviderUsagePolicyInputGql> for ProviderUsagePolicy {
         Self {
             allowed_task_profiles: value.allowed_task_profiles,
             denied_task_profiles: value.denied_task_profiles,
-            restricted_role_slugs: value.restricted_role_slugs,
+            // Tenant-owned provider profiles cannot define a package-local role
+            // vocabulary. Existing restrictions remain read-only migration state
+            // until the platform RBAC catalog contribution is available.
+            restricted_role_slugs: Vec::new(),
         }
     }
 }

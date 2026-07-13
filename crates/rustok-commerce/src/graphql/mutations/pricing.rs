@@ -101,7 +101,7 @@ impl CommercePricingMutation {
         let request =
             admin_cart_promotion_request(cart_id, &input, line_item_id, serde_json::Value::Null)?;
         let preview = in_process_cart_promotion_port(db.clone())
-            .preview_cart_promotion(
+            .read_cart_promotion_preview(
                 cart_promotion_port_context(tenant_id, cart_id, "preview", false),
                 request,
             )

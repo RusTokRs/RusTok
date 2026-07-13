@@ -24,7 +24,6 @@ pub fn AiProviderPanel(
     provider_capabilities: RwSignal<String>,
     provider_allowed_tasks: RwSignal<String>,
     provider_denied_tasks: RwSignal<String>,
-    provider_restricted_roles: RwSignal<String>,
     provider_active: RwSignal<bool>,
     on_create_provider: Callback<SubmitEvent>,
     on_update_provider: Callback<MouseEvent>,
@@ -108,7 +107,6 @@ pub fn AiProviderPanel(
                 <TextField label=t(ui_locale.as_deref(), "ai.field.capabilitiesCsv", "Capabilities (csv)") value=provider_capabilities />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.allowedTasksCsv", "Allowed tasks (csv)") value=provider_allowed_tasks />
                 <TextField label=t(ui_locale.as_deref(), "ai.field.deniedTasksCsv", "Denied tasks (csv)") value=provider_denied_tasks />
-                <TextField label=t(ui_locale.as_deref(), "ai.field.restrictedRolesCsv", "Restricted roles (csv)") value=provider_restricted_roles />
                 <label class="flex items-center gap-2 text-sm text-muted-foreground">
                     <input
                         type="checkbox"

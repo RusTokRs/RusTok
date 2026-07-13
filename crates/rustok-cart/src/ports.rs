@@ -104,7 +104,7 @@ pub trait CartStorefrontPort: Send + Sync {
 /// Transport-neutral owner boundary for cart promotion preview and application.
 #[async_trait]
 pub trait CartPromotionPort: Send + Sync {
-    async fn preview_cart_promotion(
+    async fn read_cart_promotion_preview(
         &self,
         context: PortContext,
         request: CartPromotionRequest,
@@ -231,7 +231,6 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutSnapshotRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.get_cart(tenant_id, request.cart_id)
             .await
@@ -244,7 +243,6 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
-        validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.update_context(tenant_id, request.cart_id, request.input)
             .await
@@ -433,12 +431,13 @@ impl CartStorefrontPort for crate::CartService {
 
 #[async_trait]
 impl CartPromotionPort for crate::CartService {
-    async fn preview_cart_promotion(
+    async fn read_cart_promotion_preview(
         &self,
         context: PortContext,
         request: CartPromotionRequest,
     ) -> Result<crate::CartPromotionPreview, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
@@ -489,6 +488,7 @@ impl CartPromotionPort for crate::CartService {
         request: CartPromotionRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {

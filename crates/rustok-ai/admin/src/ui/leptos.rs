@@ -88,7 +88,6 @@ pub fn AiAdmin() -> impl IntoView {
     );
     let provider_allowed_tasks = RwSignal::new(String::new());
     let provider_denied_tasks = RwSignal::new(String::new());
-    let provider_restricted_roles = RwSignal::new(String::new());
     let provider_active = RwSignal::new(true);
 
     let tool_slug = RwSignal::new(String::new());
@@ -415,7 +414,6 @@ pub fn AiAdmin() -> impl IntoView {
                                 provider_capabilities,
                                 provider_allowed_tasks,
                                 provider_denied_tasks,
-                                provider_restricted_roles,
                                 provider_active,
                                 profile,
                             );
@@ -432,7 +430,6 @@ pub fn AiAdmin() -> impl IntoView {
                                 provider_capabilities,
                                 provider_allowed_tasks,
                                 provider_denied_tasks,
-                                provider_restricted_roles,
                                 provider_active,
                             );
                             provider_query_writer.clear_key(AdminQueryKey::ProviderSlug.as_str());
@@ -450,7 +447,6 @@ pub fn AiAdmin() -> impl IntoView {
                         provider_capabilities,
                         provider_allowed_tasks,
                         provider_denied_tasks,
-                        provider_restricted_roles,
                         provider_active,
                     ),
                 }
@@ -842,7 +838,6 @@ pub fn AiAdmin() -> impl IntoView {
                 parse_csv(provider_capabilities.get_untracked()),
                 parse_csv(provider_allowed_tasks.get_untracked()),
                 parse_csv(provider_denied_tasks.get_untracked()),
-                parse_csv(provider_restricted_roles.get_untracked()),
             )
             .await;
             match result {
@@ -874,7 +869,6 @@ pub fn AiAdmin() -> impl IntoView {
             provider_capabilities,
             provider_allowed_tasks,
             provider_denied_tasks,
-            provider_restricted_roles,
             provider_active,
         );
     });
@@ -909,7 +903,6 @@ pub fn AiAdmin() -> impl IntoView {
                 parse_csv(provider_capabilities.get_untracked()),
                 parse_csv(provider_allowed_tasks.get_untracked()),
                 parse_csv(provider_denied_tasks.get_untracked()),
-                parse_csv(provider_restricted_roles.get_untracked()),
                 provider_active.get_untracked(),
             )
             .await;
@@ -1624,7 +1617,6 @@ pub fn AiAdmin() -> impl IntoView {
                                             provider_capabilities=provider_capabilities
                                             provider_allowed_tasks=provider_allowed_tasks
                                             provider_denied_tasks=provider_denied_tasks
-                                            provider_restricted_roles=provider_restricted_roles
                                             provider_active=provider_active
                                             on_create_provider=Callback::new(on_create_provider.clone())
                                             on_update_provider=Callback::new(on_update_provider.clone())
@@ -2091,7 +2083,6 @@ fn apply_provider_profile(
     provider_capabilities: RwSignal<String>,
     provider_allowed_tasks: RwSignal<String>,
     provider_denied_tasks: RwSignal<String>,
-    provider_restricted_roles: RwSignal<String>,
     provider_active: RwSignal<bool>,
     profile: &AiProviderProfilePayload,
 ) {
@@ -2116,7 +2107,6 @@ fn apply_provider_profile(
     provider_capabilities.set(profile.capabilities.join(","));
     provider_allowed_tasks.set(profile.allowed_task_profiles.join(","));
     provider_denied_tasks.set(profile.denied_task_profiles.join(","));
-    provider_restricted_roles.set(profile.restricted_role_slugs.join(","));
     provider_active.set(profile.is_active);
 }
 
@@ -2132,7 +2122,6 @@ fn clear_provider_profile(
     provider_capabilities: RwSignal<String>,
     provider_allowed_tasks: RwSignal<String>,
     provider_denied_tasks: RwSignal<String>,
-    provider_restricted_roles: RwSignal<String>,
     provider_active: RwSignal<bool>,
 ) {
     selected_provider.set(String::new());
@@ -2147,7 +2136,6 @@ fn clear_provider_profile(
         .set("text_generation,structured_generation,image_generation,code_generation".to_string());
     provider_allowed_tasks.set(String::new());
     provider_denied_tasks.set(String::new());
-    provider_restricted_roles.set(String::new());
     provider_active.set(true);
 }
 

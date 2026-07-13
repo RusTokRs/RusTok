@@ -32,7 +32,6 @@
       "capabilitiesCsv": "Capabilities (csv)",
       "allowedTasksCsv": "Разрешённые задачи (csv)",
       "deniedTasksCsv": "Запрещённые задачи (csv)",
-      "restrictedRolesCsv": "Ограниченные роли (csv)",
       "description": "Описание",
       "allowedToolsCsv": "Разрешённые инструменты (csv)",
       "deniedToolsCsv": "Запрещённые инструменты (csv)",

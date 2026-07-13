@@ -212,7 +212,7 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   for (const marker of [
     'in_process_cart_promotion_port(',
-    '.preview_cart_promotion(',
+    '.read_cart_promotion_preview(',
     '.apply_cart_promotion(',
     'CartPromotionRequest',
   ]) {

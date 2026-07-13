@@ -1883,7 +1883,9 @@ impl AiManagementService {
             capabilities: Set(capability_json_array(input.capabilities)),
             allowed_task_profiles: Set(to_json_array(input.usage_policy.allowed_task_profiles)?),
             denied_task_profiles: Set(to_json_array(input.usage_policy.denied_task_profiles)?),
-            restricted_role_slugs: Set(to_json_array(input.usage_policy.restricted_role_slugs)?),
+            // Role restrictions are platform-owned. Do not accept a package-local
+            // role vocabulary through the AI service input.
+            restricted_role_slugs: Set(serde_json::json!([])),
             metadata: Set(normalize_metadata(input.metadata)),
             created_by: Set(Some(operator.user_id)),
             updated_by: Set(Some(operator.user_id)),
@@ -1932,8 +1934,8 @@ impl AiManagementService {
         active.allowed_task_profiles =
             Set(to_json_array(input.usage_policy.allowed_task_profiles)?);
         active.denied_task_profiles = Set(to_json_array(input.usage_policy.denied_task_profiles)?);
-        active.restricted_role_slugs =
-            Set(to_json_array(input.usage_policy.restricted_role_slugs)?);
+        // Updating a profile cannot introduce package-local role restrictions.
+        active.restricted_role_slugs = Set(serde_json::json!([]));
         active.metadata = Set(normalize_metadata(input.metadata));
         active.updated_by = Set(Some(operator.user_id));
         active.updated_at = Set(Utc::now().into());
