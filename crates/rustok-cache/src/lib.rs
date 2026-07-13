@@ -1,4 +1,5 @@
 mod envelope;
+mod fallback;
 mod generation;
 mod invalidation;
 mod key;
