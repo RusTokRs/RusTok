@@ -22,7 +22,7 @@ if (args.has("--help")) {
 Options:
   --static-only    Validate baseline files and the ignored-test inventory only.
   --postgres       Run the green PostgreSQL tenant regression profile.
-  --known-defects  Run ignored FORUM-04..07 reproductions explicitly.
+  --known-defects  Run ignored FORUM-05..07 reproductions explicitly.
                    This diagnostic mode is expected to fail until defects are fixed.
   --help           Show this help.`);
   process.exit(0);
@@ -41,10 +41,17 @@ const files = {
   knownRegressions: "crates/rustok-forum/tests/known_regressions.rs",
   statusMigration:
     "crates/rustok-forum/src/migrations/m20260712_000004_enforce_forum_status_lifecycle.rs",
+  categoryTreeMigration:
+    "crates/rustok-forum/src/migrations/m20260712_000005_enforce_forum_category_tree.rs",
+  categoryTreePostgres:
+    "crates/rustok-forum/tests/category_tree_integrity_postgres.rs",
 };
 
-const expectedKnownDefects = new Map([
+const resolvedCompatibilityIgnores = new Map([
   ["forum_04_category_cycle_is_rejected", "FORUM-04: category hierarchy must reject cycles"],
+]);
+
+const expectedKnownDefects = new Map([
   ["forum_05_concurrent_replies_preserve_public_counters", "FORUM-05: concurrent approved replies must preserve topic and category counters"],
   ["forum_06_locked_topic_rejects_reply_creation", "FORUM-06: a locked topic must reject ordinary reply creation"],
   ["forum_06_pending_reply_does_not_change_public_counters", "FORUM-06: pending replies must not mutate public counters"],
@@ -76,6 +83,7 @@ function verifyStaticBaseline() {
   const greenBaseline = text(files.greenBaseline);
   const known = text(files.knownRegressions);
   const statusMigration = text(files.statusMigration);
+  const categoryTreeMigration = text(files.categoryTreeMigration);
 
   for (const token of [
     "RUSTOK_FORUM_TEST_DATABASE_URL",
@@ -112,6 +120,17 @@ function verifyStaticBaseline() {
     }
   }
 
+  for (const token of [
+    "forum_validate_category_parent",
+    "forum_categories_tree_guard",
+    "forum_categories_tree_insert",
+    "forum_categories_tree_update",
+  ]) {
+    if (!categoryTreeMigration.includes(token)) {
+      fail(`${files.categoryTreeMigration}: missing category-tree token ${token}`);
+    }
+  }
+
   if (known.includes("#[should_panic")) {
     fail(`${files.knownRegressions}: known defects must be real ignored tests, not should_panic placeholders`);
   }
@@ -122,25 +141,35 @@ function verifyStaticBaseline() {
     found.set(match[2], match[1]);
   }
 
-  if (found.size !== expectedKnownDefects.size) {
-    fail(`${files.knownRegressions}: expected ${expectedKnownDefects.size} ignored regressions, found ${found.size}`);
+  for (const [name, reason] of resolvedCompatibilityIgnores) {
+    if (found.get(name) !== reason) {
+      fail(`${files.knownRegressions}: resolved compatibility ignore ${name} is missing or changed`);
+    }
+  }
+
+  const tracked = new Map(
+    [...found].filter(([name]) => !resolvedCompatibilityIgnores.has(name)),
+  );
+
+  if (tracked.size !== expectedKnownDefects.size) {
+    fail(`${files.knownRegressions}: expected ${expectedKnownDefects.size} ignored regressions, found ${tracked.size}`);
   }
 
   for (const [name, reason] of expectedKnownDefects) {
-    if (!found.has(name)) {
+    if (!tracked.has(name)) {
       fail(`${files.knownRegressions}: missing ignored regression ${name}`);
     }
-    if (found.get(name) !== reason) {
-      fail(`${files.knownRegressions}: ${name} ignore reason changed; expected "${reason}", found "${found.get(name)}"`);
+    if (tracked.get(name) !== reason) {
+      fail(`${files.knownRegressions}: ${name} ignore reason changed; expected "${reason}", found "${tracked.get(name)}"`);
     }
   }
 
-  const unexpected = [...found.keys()].filter((name) => !expectedKnownDefects.has(name));
+  const unexpected = [...tracked.keys()].filter((name) => !expectedKnownDefects.has(name));
   if (unexpected.length > 0) {
     fail(`${files.knownRegressions}: unexpected ignored regressions: ${unexpected.join(", ")}`);
   }
 
-  console.log(`forum runtime baseline static verification passed (${found.size} tracked known defects)`);
+  console.log(`forum runtime baseline static verification passed (${tracked.size} tracked known defects)`);
 }
 
 function run(label, command, commandArgs) {
@@ -172,7 +201,7 @@ if (staticOnly) process.exit(0);
 
 if (knownDefects) {
   requirePostgresUrl("--known-defects");
-  run("ignored FORUM-04..07 reproductions", "cargo", [
+  run("ignored FORUM-05..07 reproductions", "cargo", [
     "test",
     "-p",
     "rustok-forum",
@@ -231,6 +260,20 @@ run("SQLite category atomicity regression", "cargo", [
   "rustok-forum",
   "--test",
   "category_atomicity_sqlite",
+]);
+run("SQLite category tree regression", "cargo", [
+  "test",
+  "-p",
+  "rustok-forum",
+  "--test",
+  "category_tree_integrity_sqlite",
+]);
+run("PostgreSQL category tree regression", "cargo", [
+  "test",
+  "-p",
+  "rustok-forum",
+  "--test",
+  "category_tree_integrity_postgres",
 ]);
 run("content orchestration compatibility", "cargo", [
   "test",
