@@ -11,7 +11,7 @@ use rustok_storage::{StorageError, StorageService};
 use crate::{
     dto::{
         MediaAssetSummary, MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
-        ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
+        DEFAULT_MAX_SIZE,
     },
     entities::{
         media::{self, ActiveModel as MediaActiveModel, Column as MediaCol, Entity as MediaEntity},
@@ -47,6 +47,12 @@ pub struct MediaUsageSnapshot {
     pub tenant_id: Uuid,
     pub file_count: i64,
     pub total_bytes: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VerifiedMediaType {
+    mime_type: &'static str,
+    extension: &'static str,
 }
 
 impl MediaStorageCleanupReport {
@@ -107,14 +113,7 @@ fn classify_cleanup_probe(
     }
 }
 
-fn validate_upload_policy(input: &UploadInput) -> Result<u64> {
-    if !ALLOWED_MIME_PREFIXES
-        .iter()
-        .any(|prefix| input.content_type.starts_with(prefix))
-    {
-        return Err(MediaError::UnsupportedMimeType(input.content_type.clone()));
-    }
-
+fn validate_upload_policy(input: &UploadInput) -> Result<(u64, VerifiedMediaType)> {
     let size = input.data.len() as u64;
     if size > DEFAULT_MAX_SIZE {
         return Err(MediaError::FileTooLarge {
@@ -122,8 +121,175 @@ fn validate_upload_policy(input: &UploadInput) -> Result<u64> {
             max: DEFAULT_MAX_SIZE,
         });
     }
+    if input.data.is_empty() {
+        return Err(MediaError::InvalidMediaContent {
+            declared: input.content_type.clone(),
+            reason: "empty files are not allowed".to_string(),
+        });
+    }
 
-    Ok(size)
+    let media_type = verify_media_type(&input.content_type, input.data.as_ref())?;
+    Ok((size, media_type))
+}
+
+fn verify_media_type(declared: &str, data: &[u8]) -> Result<VerifiedMediaType> {
+    let normalized = declared
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+
+    let candidate = match normalized.as_str() {
+        "image/jpeg" if starts_with(data, &[0xff, 0xd8, 0xff]) => {
+            Some(VerifiedMediaType { mime_type: "image/jpeg", extension: "jpg" })
+        }
+        "image/png" if starts_with(data, b"\x89PNG\r\n\x1a\n") => {
+            Some(VerifiedMediaType { mime_type: "image/png", extension: "png" })
+        }
+        "image/gif" if starts_with(data, b"GIF87a") || starts_with(data, b"GIF89a") => {
+            Some(VerifiedMediaType { mime_type: "image/gif", extension: "gif" })
+        }
+        "image/webp" if is_riff_type(data, b"WEBP") => {
+            Some(VerifiedMediaType { mime_type: "image/webp", extension: "webp" })
+        }
+        "image/bmp" if starts_with(data, b"BM") => {
+            Some(VerifiedMediaType { mime_type: "image/bmp", extension: "bmp" })
+        }
+        "image/tiff" if starts_with(data, b"II*\0") || starts_with(data, b"MM\0*") => {
+            Some(VerifiedMediaType { mime_type: "image/tiff", extension: "tiff" })
+        }
+        "image/avif" if is_iso_bmff_brand(data, &[b"avif", b"avis"]) => {
+            Some(VerifiedMediaType { mime_type: "image/avif", extension: "avif" })
+        }
+        "video/mp4" if is_iso_bmff(data) => {
+            Some(VerifiedMediaType { mime_type: "video/mp4", extension: "mp4" })
+        }
+        "video/quicktime" if is_iso_bmff_brand(data, &[b"qt  "]) => {
+            Some(VerifiedMediaType { mime_type: "video/quicktime", extension: "mov" })
+        }
+        "video/webm" if starts_with(data, &[0x1a, 0x45, 0xdf, 0xa3]) => {
+            Some(VerifiedMediaType { mime_type: "video/webm", extension: "webm" })
+        }
+        "video/x-msvideo" if is_riff_type(data, b"AVI ") => {
+            Some(VerifiedMediaType { mime_type: "video/x-msvideo", extension: "avi" })
+        }
+        "audio/mpeg" if is_mpeg_audio(data) => {
+            Some(VerifiedMediaType { mime_type: "audio/mpeg", extension: "mp3" })
+        }
+        "audio/wav" | "audio/x-wav" if is_riff_type(data, b"WAVE") => {
+            Some(VerifiedMediaType { mime_type: "audio/wav", extension: "wav" })
+        }
+        "audio/ogg" if starts_with(data, b"OggS") => {
+            Some(VerifiedMediaType { mime_type: "audio/ogg", extension: "ogg" })
+        }
+        "audio/flac" if starts_with(data, b"fLaC") => {
+            Some(VerifiedMediaType { mime_type: "audio/flac", extension: "flac" })
+        }
+        "audio/aac" if is_aac_adts(data) => {
+            Some(VerifiedMediaType { mime_type: "audio/aac", extension: "aac" })
+        }
+        "audio/mp4" if is_iso_bmff(data) => {
+            Some(VerifiedMediaType { mime_type: "audio/mp4", extension: "m4a" })
+        }
+        "application/pdf" if starts_with(data, b"%PDF-") => {
+            Some(VerifiedMediaType { mime_type: "application/pdf", extension: "pdf" })
+        }
+        _ => None,
+    };
+
+    candidate.ok_or_else(|| {
+        if normalized == "image/svg+xml" || normalized.ends_with("+xml") {
+            MediaError::UnsupportedMimeType(normalized)
+        } else if is_supported_declared_type(&normalized) {
+            MediaError::InvalidMediaContent {
+                declared: normalized,
+                reason: "file signature does not match the declared media type".to_string(),
+            }
+        } else {
+            MediaError::UnsupportedMimeType(normalized)
+        }
+    })
+}
+
+fn is_supported_declared_type(value: &str) -> bool {
+    matches!(
+        value,
+        "image/jpeg"
+            | "image/png"
+            | "image/gif"
+            | "image/webp"
+            | "image/bmp"
+            | "image/tiff"
+            | "image/avif"
+            | "video/mp4"
+            | "video/quicktime"
+            | "video/webm"
+            | "video/x-msvideo"
+            | "audio/mpeg"
+            | "audio/wav"
+            | "audio/x-wav"
+            | "audio/ogg"
+            | "audio/flac"
+            | "audio/aac"
+            | "audio/mp4"
+            | "application/pdf"
+    )
+}
+
+fn starts_with(data: &[u8], signature: &[u8]) -> bool {
+    data.get(..signature.len()) == Some(signature)
+}
+
+fn is_riff_type(data: &[u8], kind: &[u8; 4]) -> bool {
+    starts_with(data, b"RIFF") && data.get(8..12) == Some(kind.as_slice())
+}
+
+fn is_iso_bmff(data: &[u8]) -> bool {
+    data.get(4..8) == Some(b"ftyp".as_slice())
+}
+
+fn is_iso_bmff_brand(data: &[u8], brands: &[&[u8; 4]]) -> bool {
+    if !is_iso_bmff(data) {
+        return false;
+    }
+    data.get(8..12)
+        .is_some_and(|brand| brands.iter().any(|candidate| brand == candidate.as_slice()))
+        || data
+            .get(16..)
+            .is_some_and(|rest| rest.chunks_exact(4).any(|brand| {
+                brands
+                    .iter()
+                    .any(|candidate| brand == candidate.as_slice())
+            }))
+}
+
+fn is_mpeg_audio(data: &[u8]) -> bool {
+    starts_with(data, b"ID3")
+        || data
+            .get(..2)
+            .is_some_and(|prefix| prefix[0] == 0xff && prefix[1] & 0xe0 == 0xe0)
+}
+
+fn is_aac_adts(data: &[u8]) -> bool {
+    data.get(..2)
+        .is_some_and(|prefix| prefix[0] == 0xff && prefix[1] & 0xf6 == 0xf0)
+}
+
+fn normalize_original_name(value: &str, extension: &str) -> String {
+    let normalized_path = value.replace('\\', "/");
+    let basename = normalized_path.rsplit('/').next().unwrap_or_default();
+    let cleaned = basename
+        .chars()
+        .filter(|character| !character.is_control() && *character != '\0')
+        .take(255)
+        .collect::<String>();
+    let cleaned = cleaned.trim().trim_matches('.').to_string();
+    if cleaned.is_empty() {
+        format!("upload.{extension}")
+    } else {
+        cleaned
+    }
 }
 
 #[cfg(test)]
@@ -134,8 +300,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        classify_cleanup_probe, validate_upload_policy, MediaStorageCleanupDecision,
-        MediaStorageCleanupReport,
+        classify_cleanup_probe, normalize_original_name, validate_upload_policy,
+        verify_media_type, MediaStorageCleanupDecision, MediaStorageCleanupReport,
     };
     use crate::{
         dto::{UploadInput, DEFAULT_MAX_SIZE},
@@ -143,13 +309,13 @@ mod tests {
     };
     use rustok_storage::StorageError;
 
-    fn upload_input(content_type: &str, data_len: usize) -> UploadInput {
+    fn upload_input(content_type: &str, data: Vec<u8>) -> UploadInput {
         UploadInput {
             tenant_id: Uuid::new_v4(),
             uploaded_by: None,
             original_name: "asset.bin".to_string(),
             content_type: content_type.to_string(),
-            data: Bytes::from(vec![0_u8; data_len]),
+            data: Bytes::from(data),
         }
     }
 
@@ -175,36 +341,55 @@ mod tests {
     }
 
     #[test]
-    fn validate_upload_policy_accepts_supported_mime_at_size_limit() {
-        let input = upload_input("image/webp", DEFAULT_MAX_SIZE as usize);
-
-        assert_eq!(
-            validate_upload_policy(&input).expect("supported image should pass"),
-            DEFAULT_MAX_SIZE
-        );
+    fn validate_upload_policy_accepts_supported_signature() {
+        let input = upload_input("image/png", b"\x89PNG\r\n\x1a\nrest".to_vec());
+        let (size, media_type) = validate_upload_policy(&input).expect("valid PNG");
+        assert_eq!(size, input.data.len() as u64);
+        assert_eq!(media_type.mime_type, "image/png");
+        assert_eq!(media_type.extension, "png");
     }
 
     #[test]
-    fn validate_upload_policy_rejects_unsupported_mime_before_storage() {
-        let input = upload_input("text/html", 16);
-
-        let error = validate_upload_policy(&input).expect_err("html upload must be rejected");
+    fn validate_upload_policy_rejects_unsupported_or_spoofed_content() {
+        let html = upload_input("image/png", b"<html><script>alert(1)</script>".to_vec());
         assert!(matches!(
-            error,
-            MediaError::UnsupportedMimeType(content_type) if content_type == "text/html"
+            validate_upload_policy(&html),
+            Err(MediaError::InvalidMediaContent { .. })
+        ));
+
+        let svg = upload_input("image/svg+xml", b"<svg onload='alert(1)'>".to_vec());
+        assert!(matches!(
+            validate_upload_policy(&svg),
+            Err(MediaError::UnsupportedMimeType(_))
         ));
     }
 
     #[test]
     fn validate_upload_policy_rejects_payloads_over_limit() {
-        let input = upload_input("application/pdf", DEFAULT_MAX_SIZE as usize + 1);
-
+        let input = upload_input("application/pdf", vec![0_u8; DEFAULT_MAX_SIZE as usize + 1]);
         let error = validate_upload_policy(&input).expect_err("oversized upload must be rejected");
         assert!(matches!(
             error,
             MediaError::FileTooLarge { size, max }
                 if size == DEFAULT_MAX_SIZE + 1 && max == DEFAULT_MAX_SIZE
         ));
+    }
+
+    #[test]
+    fn content_type_parameters_are_normalized() {
+        let media_type = verify_media_type(
+            "application/pdf; charset=binary",
+            b"%PDF-1.7\n",
+        )
+        .expect("PDF signature");
+        assert_eq!(media_type.mime_type, "application/pdf");
+    }
+
+    #[test]
+    fn uploaded_display_name_cannot_preserve_path_components() {
+        assert_eq!(normalize_original_name("../../evil.png", "png"), "evil.png");
+        assert_eq!(normalize_original_name("..\\..\\evil.png", "png"), "evil.png");
+        assert_eq!(normalize_original_name("...", "jpg"), "upload.jpg");
     }
 
     #[test]
@@ -244,36 +429,31 @@ impl MediaService {
         Self { db, storage }
     }
 
-    // ── Upload ────────────────────────────────────────────────────────────────
-
     /// Validate, store, and record a new media upload.
     pub async fn upload(&self, input: UploadInput) -> Result<MediaItem> {
-        validate_upload_policy(&input)?;
-
-        // Generate storage path and persist to backend
-        let path = StorageService::generate_path(input.tenant_id, &input.original_name);
+        let (_, verified) = validate_upload_policy(&input)?;
+        let original_name = normalize_original_name(&input.original_name, verified.extension);
+        let canonical_name = format!("upload.{}", verified.extension);
+        let path = StorageService::generate_path(input.tenant_id, &canonical_name);
         let uploaded = self
             .storage
-            .store(&path, input.data, &input.content_type)
+            .store(&path, input.data, verified.mime_type)
             .await?;
 
-        // Sanitise filename (keep extension + uuid)
         let filename = std::path::Path::new(&path)
             .file_name()
-            .and_then(|n| n.to_str())
+            .and_then(|name| name.to_str())
             .unwrap_or(&path)
             .to_string();
-
         let id = generate_id();
         let now = Utc::now().fixed_offset();
-
         let active = MediaActiveModel {
             id: Set(id),
             tenant_id: Set(input.tenant_id),
             uploaded_by: Set(input.uploaded_by),
             filename: Set(filename),
-            original_name: Set(input.original_name.clone()),
-            mime_type: Set(input.content_type.clone()),
+            original_name: Set(original_name),
+            mime_type: Set(verified.mime_type.to_string()),
             size: Set(uploaded.size as i64),
             storage_path: Set(path.clone()),
             storage_driver: Set(self.storage.backend_name().to_string()),
@@ -283,11 +463,21 @@ impl MediaService {
             created_at: Set(now),
         };
 
-        let model = active.insert(&self.db).await?;
+        let model = match active.insert(&self.db).await {
+            Ok(model) => model,
+            Err(error) => {
+                if let Err(cleanup_error) = self.storage.delete(&path).await {
+                    tracing::error!(
+                        path = %path,
+                        error = %cleanup_error,
+                        "Failed to compensate media storage after database insert failure"
+                    );
+                }
+                return Err(error.into());
+            }
+        };
         Ok(self.to_item(model))
     }
-
-    // ── Queries ───────────────────────────────────────────────────────────────
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<MediaItem> {
         let model = MediaEntity::find_by_id(id)
@@ -311,7 +501,7 @@ impl MediaService {
         let total = query.clone().count(&self.db).await?;
         let items: Vec<crate::entities::media::Model> =
             query.limit(limit).offset(offset).all(&self.db).await?;
-        Ok((items.into_iter().map(|m| self.to_item(m)).collect(), total))
+        Ok((items.into_iter().map(|model| self.to_item(model)).collect(), total))
     }
 
     pub async fn get_asset_summary(
@@ -340,8 +530,6 @@ impl MediaService {
         ))
     }
 
-    // ── Delete ────────────────────────────────────────────────────────────────
-
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
         let model = MediaEntity::find_by_id(id)
             .filter(MediaCol::TenantId.eq(tenant_id))
@@ -349,12 +537,11 @@ impl MediaService {
             .await?
             .ok_or(MediaError::NotFound(id))?;
 
-        // Best-effort storage cleanup — log but don't fail on storage errors
-        if let Err(e) = self.storage.delete(&model.storage_path).await {
+        if let Err(error) = self.storage.delete(&model.storage_path).await {
             tracing::warn!(
                 media_id = %id,
                 path = %model.storage_path,
-                error = %e,
+                error = %error,
                 "Failed to delete media object from storage; DB record will still be removed"
             );
         }
@@ -363,15 +550,12 @@ impl MediaService {
         Ok(())
     }
 
-    // ── Translations ──────────────────────────────────────────────────────────
-
     pub async fn upsert_translation(
         &self,
         tenant_id: Uuid,
         media_id: Uuid,
         input: UpsertTranslationInput,
     ) -> Result<MediaTranslationItem> {
-        // Ensure media belongs to tenant
         let _ = self.get(tenant_id, media_id).await?;
         let input = input.normalize().map_err(MediaError::InvalidLocale)?;
 
@@ -423,22 +607,17 @@ impl MediaService {
             .await?;
         Ok(rows
             .into_iter()
-            .map(|m| MediaTranslationItem {
-                id: m.id,
-                media_id: m.media_id,
-                locale: m.locale,
-                title: m.title,
-                alt_text: m.alt_text,
-                caption: m.caption,
+            .map(|model| MediaTranslationItem {
+                id: model.id,
+                media_id: model.media_id,
+                locale: model.locale,
+                title: model.title,
+                alt_text: model.alt_text,
+                caption: model.caption,
             })
             .collect())
     }
 
-    // ── Storage cleanup ───────────────────────────────────────────────────────
-
-    /// Probe persisted media records and remove DB rows whose storage objects are
-    /// definitively absent or invalid. Readable objects are never deleted, while
-    /// transient storage failures are counted for retry instead of changing DB state.
     pub async fn cleanup_storage_orphans(
         &self,
         tenant_id: Uuid,
@@ -454,11 +633,6 @@ impl MediaService {
         self.cleanup_storage_rows(rows).await
     }
 
-    /// Run the same conservative orphan cleanup policy across all tenants.
-    ///
-    /// This is the module-owned maintenance entrypoint for the platform CLI.
-    /// The limit applies to the complete ordered result set, not separately to
-    /// each tenant, so an operator can bound one invocation deterministically.
     pub async fn cleanup_storage_orphans_all_tenants(
         &self,
         limit: u64,
@@ -506,25 +680,23 @@ impl MediaService {
         Ok(report)
     }
 
-    // ── Private ───────────────────────────────────────────────────────────────
-
-    fn to_item(&self, m: media::Model) -> MediaItem {
-        let public_url = self.storage.public_url(&m.storage_path);
+    fn to_item(&self, model: media::Model) -> MediaItem {
+        let public_url = self.storage.public_url(&model.storage_path);
         MediaItem {
-            id: m.id,
-            tenant_id: m.tenant_id,
-            uploaded_by: m.uploaded_by,
-            filename: m.filename,
-            original_name: m.original_name,
-            mime_type: m.mime_type,
-            size: m.size,
-            storage_path: m.storage_path,
-            storage_driver: m.storage_driver,
+            id: model.id,
+            tenant_id: model.tenant_id,
+            uploaded_by: model.uploaded_by,
+            filename: model.filename,
+            original_name: model.original_name,
+            mime_type: model.mime_type,
+            size: model.size,
+            storage_path: model.storage_path,
+            storage_driver: model.storage_driver,
             public_url,
-            width: m.width,
-            height: m.height,
-            metadata: m.metadata,
-            created_at: m.created_at.with_timezone(&Utc),
+            width: model.width,
+            height: model.height,
+            metadata: model.metadata,
+            created_at: model.created_at.with_timezone(&Utc),
         }
     }
 }
