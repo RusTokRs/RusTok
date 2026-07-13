@@ -2,6 +2,7 @@ use crate::auth::decode_access_token;
 use crate::context::{infer_user_role_from_permissions, TenantContextExt};
 use crate::models::{
     oauth_apps::{self, Entity as OAuthApps},
+    oauth_consents::Entity as OAuthConsents,
     sessions::Entity as Sessions,
     users::{self, Entity as Users},
 };
@@ -101,6 +102,36 @@ fn validate_oauth_token_scopes(
     Err((
         StatusCode::UNAUTHORIZED,
         "OAuth token scopes are no longer allowed",
+    ))
+}
+
+async fn validate_active_user_consent(
+    db: &DatabaseConnection,
+    app: &oauth_apps::Model,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    token_scopes: &[String],
+) -> Result<(), (StatusCode, &'static str)> {
+    if !app.requires_user_consent() {
+        return Ok(());
+    }
+
+    let consent = OAuthConsents::find_active_consent(db, app.id, user_id)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .filter(|consent| consent.tenant_id == tenant_id)
+        .ok_or((StatusCode::UNAUTHORIZED, "OAuth consent revoked or missing"))?;
+    let consent_scopes = consent.scopes_list();
+    if token_scopes
+        .iter()
+        .all(|scope| scope_matches(&consent_scopes, scope))
+    {
+        return Ok(());
+    }
+
+    Err((
+        StatusCode::UNAUTHORIZED,
+        "OAuth consent no longer covers token scopes",
     ))
 }
 
@@ -241,7 +272,7 @@ pub async fn resolve_current_user_from_access_token(
             StatusCode::UNAUTHORIZED,
             "OAuth user token is missing client_id",
         ))?;
-        resolve_active_oauth_app(
+        let app = resolve_active_oauth_app(
             db,
             tenant_id,
             client_id,
@@ -249,6 +280,7 @@ pub async fn resolve_current_user_from_access_token(
             &claims.scopes,
         )
         .await?;
+        validate_active_user_consent(db, &app, tenant_id, claims.sub, &claims.scopes).await?;
     }
 
     let (user, permissions, inferred_role, session_id, actor_kind) = match subject_kind {
