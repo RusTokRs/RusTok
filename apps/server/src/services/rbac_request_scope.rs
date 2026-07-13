@@ -16,9 +16,11 @@ impl RbacRequestScope {
     pub fn new(
         tenant_id: Uuid,
         actor_id: Uuid,
-        permissions: Vec<Permission>,
+        mut permissions: Vec<Permission>,
         role: UserRole,
     ) -> Self {
+        permissions.sort_by_cached_key(ToString::to_string);
+        permissions.dedup();
         Self {
             tenant_id,
             actor_id,
@@ -113,6 +115,26 @@ mod tests {
         .await;
 
         assert!(permissions_for(&tenant_id, &actor_id).is_none());
+    }
+
+    #[test]
+    fn snapshots_canonicalize_permission_order() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let first = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_LIST, Permission::USERS_READ],
+            UserRole::Admin,
+        );
+        let second = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_READ, Permission::USERS_LIST],
+            UserRole::Admin,
+        );
+
+        assert_eq!(first, second);
     }
 
     #[test]
