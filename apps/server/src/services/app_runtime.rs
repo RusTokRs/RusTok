@@ -113,7 +113,7 @@ pub async fn bootstrap_app_runtime(
         auth_config.clone(),
     );
     runtime_ctx.shared_insert(runtime_extensions.clone());
-    runtime_ctx.shared_insert(rustok_ai::SharedAiModuleRegistry(registry.clone()));
+    runtime_ctx.shared_insert(registry.clone());
     ManifestManager::validate(&manifest)
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, &registry))
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;

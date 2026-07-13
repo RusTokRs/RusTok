@@ -22,10 +22,13 @@ pub trait PricingReadPort: Send + Sync {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ResolveProductPriceRequest {
-    pub product_id: Uuid,
-    pub variant_id: Option<Uuid>,
+    pub product_id: Option<Uuid>,
+    pub variant_id: Uuid,
     pub region_id: Option<Uuid>,
     pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub price_list_id: Option<Uuid>,
+    pub quantity: Option<i32>,
     pub currency_code: String,
 }
 
@@ -37,11 +40,19 @@ pub struct PriceListProjectionRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedProductPriceSnapshot {
-    pub product_id: Uuid,
-    pub variant_id: Option<Uuid>,
+    pub product_id: Option<Uuid>,
+    pub variant_id: Uuid,
     pub currency_code: String,
     pub amount: Decimal,
+    pub compare_at_amount: Option<Decimal>,
+    pub discount_percent: Option<Decimal>,
+    pub on_sale: bool,
+    pub region_id: Option<Uuid>,
+    pub min_quantity: Option<i32>,
+    pub max_quantity: Option<i32>,
     pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -62,12 +73,35 @@ impl PricingReadPort for crate::PricingService {
     ) -> Result<ResolvedProductPriceSnapshot, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
-        let variant_id = request.variant_id.ok_or_else(|| {
-            PortError::validation(
-                "pricing.variant_id_required",
-                "resolve_product_price currently requires a variant_id boundary key",
-            )
-        })?;
+        let variant_id = request.variant_id;
+
+        // Resolve the tenant-owned product projection first and verify that the
+        // boundary keys describe the same aggregate. Previously the port resolved
+        // only variant_id and then echoed the caller-provided product_id, allowing a
+        // valid variant price to be mislabeled as belonging to another product.
+        if let Some(product_id) = request.product_id {
+            let locale = context.locale.as_str();
+            let product = self
+                .get_admin_product_pricing_with_locale_fallback(
+                    tenant_id,
+                    product_id,
+                    locale,
+                    Some(locale),
+                    None,
+                )
+                .await
+                .map_err(pricing_error_to_port_error)?;
+            if !product
+                .variants
+                .iter()
+                .any(|variant| variant.id == variant_id)
+            {
+                return Err(PortError::validation(
+                    "pricing.variant_product_mismatch",
+                    format!("variant {variant_id} does not belong to product {product_id}"),
+                ));
+            }
+        }
 
         let resolved = self
             .resolve_variant_price(
@@ -76,10 +110,10 @@ impl PricingReadPort for crate::PricingService {
                 crate::PriceResolutionContext {
                     currency_code: request.currency_code,
                     region_id: request.region_id,
-                    price_list_id: None,
+                    price_list_id: request.price_list_id,
                     channel_id: request.channel_id,
-                    channel_slug: None,
-                    quantity: None,
+                    channel_slug: request.channel_slug,
+                    quantity: request.quantity,
                 },
             )
             .await
@@ -95,10 +129,18 @@ impl PricingReadPort for crate::PricingService {
 
         Ok(ResolvedProductPriceSnapshot {
             product_id: request.product_id,
-            variant_id: Some(variant_id),
+            variant_id,
             currency_code: resolved.currency_code,
             amount: resolved.amount,
+            compare_at_amount: resolved.compare_at_amount,
+            discount_percent: resolved.discount_percent,
+            on_sale: resolved.on_sale,
+            region_id: resolved.region_id,
+            min_quantity: resolved.min_quantity,
+            max_quantity: resolved.max_quantity,
             price_list_id: resolved.price_list_id,
+            channel_id: resolved.channel_id,
+            channel_slug: resolved.channel_slug,
         })
     }
 

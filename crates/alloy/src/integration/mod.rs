@@ -12,7 +12,7 @@ mod tests {
     use rhai::Dynamic;
     use uuid::Uuid;
 
-    use crate::create_default_engine;
+    use crate::create_default_alloy_draft_runtime;
     use crate::integration::ScriptableEntity;
     use crate::model::{EventType, Script, ScriptTrigger};
     use crate::runner::{ExecutionOutcome, ScriptOrchestrator};
@@ -161,43 +161,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_deal_creation_with_scripts() {
-        let mut engine = create_default_engine();
-        engine.register_fn("is_below", |value: Dynamic, threshold: i64| -> bool {
-            value
-                .clone()
-                .try_cast::<i64>()
-                .is_some_and(|amount| amount < threshold)
-        });
-        engine.register_fn("is_above", |value: Dynamic, threshold: i64| -> bool {
-            value
-                .clone()
-                .try_cast::<i64>()
-                .is_some_and(|amount| amount > threshold)
-        });
-        engine.register_fn("is_below", |value: Dynamic, threshold: i32| -> bool {
-            value
-                .clone()
-                .try_cast::<i64>()
-                .is_some_and(|amount| amount < i64::from(threshold))
-        });
-        engine.register_fn("is_above", |value: Dynamic, threshold: i32| -> bool {
-            value
-                .clone()
-                .try_cast::<i64>()
-                .is_some_and(|amount| amount > i64::from(threshold))
-        });
-        let engine = Arc::new(engine);
         let storage = Arc::new(InMemoryStorage::new());
-        let orchestrator = Arc::new(ScriptOrchestrator::new(engine, storage.clone()));
+        let orchestrator = Arc::new(ScriptOrchestrator::new(
+            create_default_alloy_draft_runtime(),
+            storage.clone(),
+        ));
         let service = DealService::new(orchestrator);
 
         let mut validation_script = Script::new(
             "validate_deal",
             r#"
-                if is_below(entity["amount"], 100) {
+                if entity["amount"] < 100 {
                     abort("Minimum deal amount is 100");
                 }
-                if is_above(entity["amount"], 100000) {
+                if entity["amount"] > 100000 {
                     entity["status"] = "needs_approval";
                     entity["assigned_to"] = "senior_manager";
                 }

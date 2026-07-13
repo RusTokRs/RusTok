@@ -16,6 +16,9 @@ const expectedEcommerceFbaStatus = ({ module, registry }) => {
   if (module === 'order' && registry.runtime_evidence?.checkout_completion_owner_path?.status === 'runtime_verified') {
     return 'boundary_ready';
   }
+  if (module === 'cart' && registry.runtime_evidence?.checkout_provider_consumer_paths?.status === 'runtime_verified') {
+    return 'boundary_ready';
+  }
   return 'in_progress';
 };
 

@@ -31,7 +31,7 @@ pub use artifact::{
 };
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
-    ModuleControlPlaneSnapshot, ModuleErrorCode, ModuleSnapshotKind,
+    ModuleControlPlaneSnapshot, ModuleErrorCode, ModuleSnapshotKind, RevisionedModuleCommand,
 };
 pub use definition::{
     ModuleDefinition, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
@@ -51,10 +51,9 @@ pub use executor::{
 pub use installation::{
     ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord, ArtifactAdmissionService,
     ArtifactAdmissionStage, ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore,
-    ArtifactInstallationStore, ArtifactRegistry, DurableArtifactBlobStore,
-    InMemoryArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
-    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
-    SeaOrmArtifactInstallationStore, StagedArtifactBlob,
+    ArtifactRegistry, DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
+    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
+    OciArtifactReference, SeaOrmArtifactInstallationStore, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{

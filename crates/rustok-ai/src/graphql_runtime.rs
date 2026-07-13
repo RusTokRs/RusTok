@@ -3,6 +3,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+pub const AI_GRAPHQL_CONTRIBUTION: rustok_api::graphql::GraphqlContributionDescriptor =
+    rustok_api::graphql::GraphqlContributionDescriptor::new(
+        Some("graphql::AiQuery"),
+        Some("graphql::AiMutation"),
+        Some("graphql::AiSubscription"),
+        Some("graphql_runtime::attach_schema_data"),
+    );
+
 #[cfg(feature = "server")]
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 
@@ -14,6 +22,57 @@ pub trait AiGraphqlRoleSlugProvider: Send + Sync {
 #[derive(Clone)]
 pub struct AiGraphqlRoleSlugProviderHandle {
     provider: Arc<dyn AiGraphqlRoleSlugProvider>,
+}
+
+/// Single typed GraphQL context value owned by the AI capability.
+#[cfg(feature = "server")]
+#[derive(Clone)]
+pub struct AiGraphqlRuntimeData {
+    runtime: crate::AiHostRuntime,
+    role_slug_provider: AiGraphqlRoleSlugProviderHandle,
+}
+
+#[cfg(feature = "server")]
+impl AiGraphqlRuntimeData {
+    pub fn runtime(&self) -> &crate::AiHostRuntime {
+        &self.runtime
+    }
+
+    pub fn role_slug_provider(&self) -> &AiGraphqlRoleSlugProviderHandle {
+        &self.role_slug_provider
+    }
+}
+
+/// Capability-owned factory consumed by manifest-generated schema composition.
+#[cfg(feature = "server")]
+pub fn attach_schema_data(
+    inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
+) -> Result<AiGraphqlRuntimeData, String> {
+    let event_bus = inputs
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| "AI GraphQL requires TransactionalEventBus".to_string())?;
+    let registry = inputs
+        .shared_get::<rustok_core::ModuleRegistry>()
+        .ok_or_else(|| "AI GraphQL requires ModuleRegistry".to_string())?;
+    let mut runtime = crate::AiHostRuntime::new(inputs.db_clone(), event_bus, registry)
+        .with_storage(inputs.shared_get::<rustok_storage::StorageService>())
+        .with_alloy_runtime(inputs.shared_get::<alloy::SharedAlloyRuntime>());
+    if let Some(value) = inputs.shared_get::<crate::SharedAiSecretResolverRegistry>() {
+        runtime = runtime.with_secret_registry(value.0);
+    }
+    if let Some(value) = inputs.shared_get::<crate::SharedAiEgressPolicy>() {
+        runtime = runtime.with_egress_policy(value.0);
+    }
+    if let Some(value) = inputs.shared_get::<crate::SharedAiProviderTargetCatalog>() {
+        runtime = runtime.with_provider_targets(value.0);
+    }
+    let role_slug_provider = AiGraphqlRoleSlugProviderHandle::new(Arc::new(
+        SeaOrmAiGraphqlRoleSlugProvider::new(inputs.db_clone()),
+    ));
+    Ok(AiGraphqlRuntimeData {
+        runtime,
+        role_slug_provider,
+    })
 }
 
 impl AiGraphqlRoleSlugProviderHandle {

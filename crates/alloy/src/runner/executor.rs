@@ -1,29 +1,28 @@
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
 use tracing::{debug, warn, Instrument};
 
 use crate::context::ExecutionContext;
-use crate::engine::ScriptEngine;
 use crate::error::ScriptError;
 use crate::execution_log::ExecutionLogSink;
 use crate::model::{EntityProxy, Script};
 use crate::storage::ScriptRegistry;
+use crate::AlloyDraftRuntime;
 
 use super::result::{ExecutionOutcome, ExecutionResult};
 
 pub struct ScriptExecutor<R: ScriptRegistry> {
-    engine: Arc<ScriptEngine>,
+    runtime: AlloyDraftRuntime,
     registry: Arc<R>,
     max_chain_depth: usize,
     execution_log: Option<Arc<dyn ExecutionLogSink>>,
 }
 
 impl<R: ScriptRegistry> ScriptExecutor<R> {
-    pub fn new(engine: Arc<ScriptEngine>, registry: Arc<R>) -> Self {
+    pub fn new(runtime: AlloyDraftRuntime, registry: Arc<R>) -> Self {
         Self {
-            engine,
+            runtime,
             registry,
             max_chain_depth: 3,
             execution_log: None,
@@ -66,7 +65,6 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
     ) -> ExecutionResult {
         let execution_id = ctx.execution_id;
         let started_at = Utc::now();
-        let start_instant = Instant::now();
 
         if ctx.call_depth > self.max_chain_depth {
             warn!(
@@ -104,17 +102,8 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
             "Executing script"
         );
 
-        let outcome = match self
-            .engine
-            .execute(&script.name, &script.code, &ctx_with_entity)
-        {
-            Ok(return_value) => {
-                let entity_changes = ctx_with_entity
-                    .entity_proxy
-                    .as_ref()
-                    .map(EntityProxy::changes)
-                    .unwrap_or_else(HashMap::new);
-
+        let outcome = match self.runtime.execute(script, &ctx_with_entity).await {
+            Ok((return_value, entity_changes)) => {
                 debug!(
                     script.id = %script.id,
                     changes_count = entity_changes.len(),
@@ -144,16 +133,6 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
                 ExecutionOutcome::Failed { error }
             }
         };
-
-        let elapsed = start_instant.elapsed();
-        if elapsed > self.engine.config().timeout {
-            warn!(
-                script.id = %script.id,
-                elapsed_ms = elapsed.as_millis(),
-                timeout_ms = self.engine.config().timeout.as_millis(),
-                "Script exceeded timeout"
-            );
-        }
 
         let result = ExecutionResult {
             script_id: script.id,

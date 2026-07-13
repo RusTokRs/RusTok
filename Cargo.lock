@@ -11505,6 +11505,8 @@ dependencies = [
  "oci-distribution",
  "pubgrub",
  "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
  "rustok-sandbox",
  "sea-orm",
  "sea-orm-migration",
@@ -11759,6 +11761,7 @@ dependencies = [
  "sea-orm",
  "sea-orm-migration",
  "serde",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -11805,6 +11808,7 @@ dependencies = [
 name = "rustok-pricing-storefront"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "leptos 0.8.20",
  "leptos-ui-routing",
  "leptos_axum",
@@ -12059,6 +12063,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "url",
  "uuid",
  "wasmtime",
 ]

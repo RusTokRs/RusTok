@@ -6,9 +6,9 @@ use std::fmt::{Display, Formatter};
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
 
+use crate::core::CartCoreError;
 #[cfg(feature = "ssr")]
 use crate::core::normalize_public_channel_slug;
-use crate::core::CartCoreError;
 #[cfg(feature = "ssr")]
 use crate::core::{parse_cart_id, parse_line_item_id};
 use crate::model::StorefrontCartData;
@@ -311,6 +311,8 @@ async fn reprice_storefront_cart_line_items(
         return Ok(cart);
     }
 
+    use rustok_pricing::{PricingReadPort, ResolveProductPriceRequest};
+
     let pricing_service = rustok_pricing::PricingService::new(db, event_bus);
     let channel_id = cart
         .channel_id
@@ -323,21 +325,28 @@ async fn reprice_storefront_cart_line_items(
         let Some(variant_id) = line_item.variant_id else {
             continue;
         };
-        let pricing_context = rustok_pricing::PriceResolutionContext {
-            currency_code: cart.currency_code.to_ascii_uppercase(),
-            region_id: cart.region_id,
-            price_list_id: None,
-            channel_id,
-            channel_slug: channel_slug.clone(),
-            quantity: Some(line_item.quantity),
-        };
         let resolved_price = pricing_service
-            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+            .resolve_product_price(
+                rustok_api::PortContext::new(
+                    tenant_id.to_string(),
+                    rustok_api::PortActor::service("rustok-cart.storefront"),
+                    "en",
+                    format!("cart:{}:reprice", cart.id),
+                )
+                .with_deadline(std::time::Duration::from_secs(2)),
+                ResolveProductPriceRequest {
+                    product_id: line_item.product_id,
+                    variant_id,
+                    region_id: cart.region_id,
+                    channel_id,
+                    channel_slug: channel_slug.clone(),
+                    price_list_id: None,
+                    quantity: Some(line_item.quantity),
+                    currency_code: cart.currency_code.to_ascii_uppercase(),
+                },
+            )
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?
-            .ok_or_else(|| {
-                ServerFnError::new("Unable to resolve storefront price for cart line item")
-            })?;
+            .map_err(|err| ServerFnError::new(err.to_string()))?;
         updates.push(storefront_cart_pricing_update(
             line_item.id,
             line_item.quantity,
@@ -364,7 +373,7 @@ async fn storefront_cart_decrement_line_item(
     {
         use leptos::prelude::expect_context;
         use rustok_api::HostRuntimeContext;
-        use rustok_pricing::{PriceResolutionContext, PricingService};
+        use rustok_pricing::{PricingReadPort, PricingService, ResolveProductPriceRequest};
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let db = runtime_ctx.db_clone();
@@ -408,33 +417,39 @@ async fn storefront_cart_decrement_line_item(
                 .map_err(|err| ServerFnError::new(err.to_string()))?;
         } else {
             let next_quantity = line_item.quantity - 1;
-            let pricing_context = PriceResolutionContext {
-                currency_code: cart.currency_code.to_ascii_uppercase(),
-                region_id: cart.region_id,
-                price_list_id: None,
-                channel_id: cart
-                    .channel_id
-                    .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id)),
-                channel_slug: normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(
-                    || {
-                        request_context.as_ref().and_then(|ctx| {
-                            normalize_public_channel_slug(ctx.channel_slug.as_deref())
-                        })
-                    },
-                ),
-                quantity: Some(next_quantity),
-            };
             let pricing_service = PricingService::new(db, event_bus);
             let variant_id = line_item
                 .variant_id
                 .ok_or_else(|| ServerFnError::new("Cart line item is missing variant_id"))?;
             let resolved_price = pricing_service
-                .resolve_variant_price(tenant.id, variant_id, pricing_context)
+                .resolve_product_price(
+                    rustok_api::PortContext::new(
+                        tenant.id.to_string(),
+                        rustok_api::PortActor::service("rustok-cart.storefront"),
+                        "en",
+                        format!("cart:{}:decrement", parsed_cart_id),
+                    )
+                    .with_deadline(std::time::Duration::from_secs(2)),
+                    ResolveProductPriceRequest {
+                        product_id: line_item.product_id,
+                        variant_id,
+                        region_id: cart.region_id,
+                        channel_id: cart
+                            .channel_id
+                            .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id)),
+                        channel_slug: normalize_public_channel_slug(cart.channel_slug.as_deref())
+                            .or_else(|| {
+                                request_context.as_ref().and_then(|ctx| {
+                                    normalize_public_channel_slug(ctx.channel_slug.as_deref())
+                                })
+                            }),
+                        price_list_id: None,
+                        quantity: Some(next_quantity),
+                        currency_code: cart.currency_code.to_ascii_uppercase(),
+                    },
+                )
                 .await
-                .map_err(|err| ServerFnError::new(err.to_string()))?
-                .ok_or_else(|| {
-                    ServerFnError::new("Unable to resolve storefront price for cart line item")
-                })?;
+                .map_err(|err| ServerFnError::new(err.to_string()))?;
 
             let pricing_update =
                 storefront_cart_pricing_update(parsed_line_item_id, next_quantity, &resolved_price);
@@ -466,7 +481,7 @@ async fn storefront_cart_decrement_line_item(
 fn storefront_cart_pricing_update(
     line_item_id: Uuid,
     quantity: i32,
-    resolved_price: &rustok_pricing::ResolvedPrice,
+    resolved_price: &rustok_pricing::ResolvedProductPriceSnapshot,
 ) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
     let base_unit_price = resolved_price
         .compare_at_amount

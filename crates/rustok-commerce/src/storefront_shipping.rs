@@ -1,11 +1,9 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use rustok_fulfillment::FulfillmentService;
-use rustok_product::entities::{product, product_variant};
-
 use crate::{
     dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
     CommerceResult,
@@ -100,54 +98,6 @@ pub async fn load_cart_shipping_profile_slugs(
         .iter()
         .filter_map(|item| normalize_shipping_profile_slug(item.shipping_profile_slug.as_str()))
         .collect())
-}
-
-pub async fn load_current_shipping_profile_slug_for_line_item(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    product_id: Option<Uuid>,
-    variant_id: Option<Uuid>,
-) -> CommerceResult<String> {
-    let Some(variant_id) = variant_id else {
-        if let Some(product_id) = product_id {
-            let product = product::Entity::find_by_id(product_id)
-                .filter(product::Column::TenantId.eq(tenant_id))
-                .one(db)
-                .await?;
-            return Ok(product
-                .map(|product| {
-                    product_shipping_profile_slug(
-                        product.shipping_profile_slug.as_deref(),
-                        &product.metadata,
-                    )
-                })
-                .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string()));
-        }
-        return Ok(DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
-    };
-
-    let Some(variant) = product_variant::Entity::find_by_id(variant_id)
-        .filter(product_variant::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?
-    else {
-        return Ok(DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
-    };
-    let product_id = product_id.unwrap_or(variant.product_id);
-    let product = product::Entity::find_by_id(product_id)
-        .filter(product::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?;
-
-    Ok(product
-        .map(|product| {
-            effective_shipping_profile_slug(
-                product.shipping_profile_slug.as_deref(),
-                &product.metadata,
-                variant.shipping_profile_slug.as_deref(),
-            )
-        })
-        .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string()))
 }
 
 pub fn map_shipping_option_summary(option: &ShippingOptionResponse) -> CartShippingOptionSummary {

@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use parking_lot::RwLock;
 use rhai::{
-    AST, Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc,
-    Scope,
+    Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc, Scope,
+    AST,
 };
 use rhai_full as rhai;
 

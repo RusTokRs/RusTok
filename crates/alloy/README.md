@@ -43,8 +43,9 @@
 
 ## Runtime guarantees
 
-`ScriptEngine` is the Alloy context adapter over the neutral Rhai kernel. The
-kernel enforces configured Rhai operation, call-depth, string, array,
+Production `ScriptExecutor` uses `AlloyDraftRuntime` over the neutral
+`SandboxRuntime`; `ScriptEngine` is retained only for compile-time validation.
+The sandbox Rhai executor enforces configured Rhai operation, call-depth, string, array,
 and map-size limits. Runs that exceed the wall-clock budget return
 `ScriptError::Timeout`; Rhai operation pressure returns `ScriptError::OperationLimit`;
 data-size pressure returns `ScriptError::ResourceLimit`. Use

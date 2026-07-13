@@ -25,9 +25,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
+    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
     dto::{FulfillmentResponse, OrderResponse, PaymentCollectionResponse},
     storefront_shipping::normalize_shipping_profile_slug,
-    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -331,6 +331,13 @@ pub(crate) fn map_payment_orchestration_error(
         crate::PaymentOrchestrationError::Payment(error) => map_payment_error(error),
         crate::PaymentOrchestrationError::Provider(error) => {
             HttpError::bad_request("commerce_admin_invalid", error.to_string())
+        }
+        crate::PaymentOrchestrationError::ProviderAfterRefundReservation { source, .. } => {
+            HttpError::new(
+                axum::http::StatusCode::BAD_GATEWAY,
+                "commerce_admin_provider_unavailable",
+                source.to_string(),
+            )
         }
     }
 }

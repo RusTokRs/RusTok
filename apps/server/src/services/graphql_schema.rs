@@ -15,11 +15,31 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     }
 
     let event_bus = event_bus_from_context(ctx);
+    let transactional_event_bus = transactional_event_bus_from_context(ctx);
+    let registry = ctx
+        .shared_get::<rustok_core::ModuleRegistry>()
+        .expect("ModuleRegistry not initialized; bootstrap_app_runtime must run first");
+    let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
+        .with_shared_value(transactional_event_bus.clone())
+        .with_shared_value(registry);
+    #[cfg(feature = "mod-media")]
+    let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() {
+        host_runtime.with_shared_value(storage)
+    } else {
+        host_runtime
+    };
+    #[cfg(feature = "mod-alloy")]
+    let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
+        host_runtime.with_shared_value(alloy_runtime)
+    } else {
+        host_runtime
+    };
+    let graphql_runtime_inputs = rustok_api::graphql::GraphqlRuntimeInputs::new(host_runtime);
     let schema = Arc::new(build_schema(
         ctx.db_clone(),
         event_bus.clone(),
-        transactional_event_bus_from_context(ctx),
-        ai_runtime_from_ctx(ctx),
+        transactional_event_bus,
+        graphql_runtime_inputs,
         build_event_hub_from_context(ctx),
         field_definition_cache_from_context(ctx, event_bus),
         module_runtime_extensions_from_ctx(ctx),
@@ -41,22 +61,6 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 
     schema
-}
-
-fn ai_runtime_from_ctx(ctx: &ServerRuntimeContext) -> rustok_ai::AiHostRuntime {
-    let runtime = rustok_ai::AiHostRuntime::new(
-        ctx.db_clone(),
-        transactional_event_bus_from_context(ctx),
-        ctx.shared_get::<rustok_ai::SharedAiModuleRegistry>()
-            .expect("AI module registry not initialized; bootstrap_app_runtime must run first")
-            .0,
-    )
-    .with_storage(ctx.shared_get::<rustok_storage::StorageService>());
-
-    #[cfg(feature = "mod-alloy")]
-    let runtime = runtime.with_alloy_runtime(ctx.shared_get::<alloy::SharedAlloyRuntime>());
-
-    runtime
 }
 
 #[cfg(feature = "mod-alloy")]

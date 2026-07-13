@@ -28,29 +28,6 @@ pub trait CheckoutCompletionPort: Send + Sync {
         request: OrderStatusRequest,
     ) -> Result<OrderStatusSnapshot, PortError>;
 
-    async fn complete_checkout_order(
-        &self,
-        context: PortContext,
-        request: CompleteCheckoutPortRequest,
-    ) -> Result<OrderResponse, PortError>;
-
-    async fn read_checkout_order(
-        &self,
-        context: PortContext,
-        request: CheckoutOrderReadRequest,
-    ) -> Result<OrderResponse, PortError>;
-
-    async fn mark_checkout_order_paid(
-        &self,
-        context: PortContext,
-        request: CheckoutOrderPaidRequest,
-    ) -> Result<OrderResponse, PortError>;
-
-    async fn cancel_checkout_order(
-        &self,
-        context: PortContext,
-        request: CheckoutOrderCancellationRequest,
-    ) -> Result<OrderResponse, PortError>;
 }
 
 #[async_trait]
@@ -147,62 +124,6 @@ impl CheckoutCompletionPort for crate::OrderService {
         Ok(OrderStatusSnapshot::from_response(&response))
     }
 
-    async fn complete_checkout_order(
-        &self,
-        context: PortContext,
-        request: CompleteCheckoutPortRequest,
-    ) -> Result<OrderResponse, PortError> {
-        complete_checkout_order_for_port(self, context, request).await
-    }
-
-    async fn read_checkout_order(
-        &self,
-        context: PortContext,
-        request: CheckoutOrderReadRequest,
-    ) -> Result<OrderResponse, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
-        self.get_order_with_locale_fallback(
-            tenant_id,
-            request.order_id,
-            request.locale.as_str(),
-            request.fallback_locale.as_deref(),
-        )
-        .await
-        .map_err(order_error_to_port_error)
-    }
-
-    async fn mark_checkout_order_paid(
-        &self,
-        context: PortContext,
-        request: CheckoutOrderPaidRequest,
-    ) -> Result<OrderResponse, PortError> {
-        context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
-        let actor_id = parse_port_actor_id(&context)?;
-        self.mark_paid(
-            tenant_id,
-            actor_id,
-            request.order_id,
-            request.payment_reference,
-            request.payment_method,
-        )
-        .await
-        .map_err(order_error_to_port_error)
-    }
-
-    async fn cancel_checkout_order(
-        &self,
-        context: PortContext,
-        request: CheckoutOrderCancellationRequest,
-    ) -> Result<OrderResponse, PortError> {
-        context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
-        let actor_id = parse_port_actor_id(&context)?;
-        self.cancel_order(tenant_id, actor_id, request.order_id, request.reason)
-            .await
-            .map_err(order_error_to_port_error)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,26 +152,6 @@ pub struct CheckoutResultRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrderStatusRequest {
     pub order_id: Uuid,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CheckoutOrderReadRequest {
-    pub order_id: Uuid,
-    pub locale: String,
-    pub fallback_locale: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CheckoutOrderPaidRequest {
-    pub order_id: Uuid,
-    pub payment_reference: String,
-    pub payment_method: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CheckoutOrderCancellationRequest {
-    pub order_id: Uuid,
-    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -294,33 +195,6 @@ impl CheckoutCompletionSnapshot {
             total: response.total_amount,
             payment_collection_id,
         }
-    }
-}
-
-async fn complete_checkout_order_for_port(
-    service: &crate::OrderService,
-    context: PortContext,
-    request: CompleteCheckoutPortRequest,
-) -> Result<OrderResponse, PortError> {
-    let tenant_id = parse_port_tenant_id(&context)?;
-    let locale = request.locale.clone();
-    let fallback_locale = request.fallback_locale.clone();
-    let snapshot = service.complete_checkout(context, request).await?;
-
-    match locale.as_deref() {
-        Some(locale) => service
-            .get_order_with_locale_fallback(
-                tenant_id,
-                snapshot.order_id,
-                locale,
-                fallback_locale.as_deref(),
-            )
-            .await
-            .map_err(order_error_to_port_error),
-        None => service
-            .get_order(tenant_id, snapshot.order_id)
-            .await
-            .map_err(order_error_to_port_error),
     }
 }
 

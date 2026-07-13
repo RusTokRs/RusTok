@@ -8,8 +8,8 @@ pub use config::{RhaiConfig, RhaiLimits};
 pub use engine::{CompiledRhai, RhaiEngine, RhaiScopeProvider};
 pub use error::{RhaiError, RhaiResult};
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -23,6 +23,7 @@ use crate::{
 };
 
 const TIMEOUT_MARKER: &str = "__RUSTOK_SANDBOX_TIMEOUT__";
+const CANCELLATION_MARKER: &str = "__RUSTOK_SANDBOX_CANCELLED__";
 
 /// Executes pure Rhai payloads under the common sandbox limits.
 ///
@@ -41,6 +42,29 @@ pub struct RhaiExecutor {
 /// access from script code.
 pub trait RhaiHostExtension: Send + Sync {
     fn register(&self, engine: &mut Engine, request: &SandboxRequest, host: SandboxHost);
+
+    /// Adds request-scoped data to the Rhai scope after the neutral baseline
+    /// context has been populated. Extensions must not keep data in a shared
+    /// engine because a sandbox request may execute concurrently with another.
+    fn populate_scope(
+        &self,
+        _scope: &mut Scope<'static>,
+        _request: &SandboxRequest,
+    ) -> SandboxResult<()> {
+        Ok(())
+    }
+
+    /// Converts a successful Rhai value into the extension's public output
+    /// binding. The scope is still available so adapters can extract bounded
+    /// request-scoped state such as brokered entity changes.
+    fn map_output(
+        &self,
+        _scope: &mut Scope<'static>,
+        _request: &SandboxRequest,
+        output: Value,
+    ) -> SandboxResult<Value> {
+        Ok(output)
+    }
 }
 
 impl RhaiExecutor {
@@ -55,7 +79,11 @@ impl RhaiExecutor {
         self
     }
 
-    fn build_engine(request: &SandboxRequest, operations: Arc<AtomicU64>) -> Engine {
+    fn build_engine(
+        request: &SandboxRequest,
+        operations: Arc<AtomicU64>,
+        host: SandboxHost,
+    ) -> Engine {
         let mut engine = Engine::new();
         let limits = request.policy.limits;
         let started = Instant::now();
@@ -70,8 +98,12 @@ impl RhaiExecutor {
         engine.set_max_map_size(10_000);
         engine.on_progress(move |count| {
             operations.store(count, Ordering::Relaxed);
-            (started.elapsed().as_millis() > u128::from(limits.wall_clock_ms))
-                .then(|| Dynamic::from(TIMEOUT_MARKER))
+            if host.cancellation().is_cancelled() {
+                Some(Dynamic::from(CANCELLATION_MARKER))
+            } else {
+                (started.elapsed().as_millis() > u128::from(limits.wall_clock_ms))
+                    .then(|| Dynamic::from(TIMEOUT_MARKER))
+            }
         });
         engine
     }
@@ -93,6 +125,11 @@ impl RhaiExecutor {
 
     fn map_error(error: Box<EvalAltResult>, request: &SandboxRequest) -> SandboxError {
         match *error {
+            EvalAltResult::ErrorTerminated(reason, _)
+                if reason.to_string() == CANCELLATION_MARKER =>
+            {
+                SandboxError::Cancelled
+            }
             EvalAltResult::ErrorTerminated(reason, _) if reason.to_string() == TIMEOUT_MARKER => {
                 SandboxError::Timeout {
                     limit_ms: request.policy.limits.wall_clock_ms,
@@ -106,6 +143,18 @@ impl RhaiExecutor {
                 resource,
                 limit: request.policy.limits.max_memory_bytes,
             },
+            EvalAltResult::ErrorTerminated(reason, _) => SandboxError::Aborted(reason.to_string()),
+            EvalAltResult::ErrorRuntime(message, _)
+                if message.to_string().starts_with("ABORT:") =>
+            {
+                SandboxError::Aborted(
+                    message
+                        .to_string()
+                        .trim_start_matches("ABORT:")
+                        .trim()
+                        .to_string(),
+                )
+            }
             other => SandboxError::Trap(other.to_string()),
         }
     }
@@ -131,18 +180,24 @@ impl SandboxExecutor for RhaiExecutor {
         let source = std::str::from_utf8(&request.payload.bytes)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let operations = Arc::new(AtomicU64::new(0));
-        let mut engine = Self::build_engine(request, Arc::clone(&operations));
+        let mut engine = Self::build_engine(request, Arc::clone(&operations), host.clone());
         for extension in &self.extensions {
             extension.register(&mut engine, request, host.clone());
         }
         let mut scope = Self::build_scope(request);
+        for extension in &self.extensions {
+            extension.populate_scope(&mut scope, request)?;
+        }
         let ast = engine
             .compile_with_scope(&scope, source)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let output = engine
             .eval_ast_with_scope::<Dynamic>(&mut scope, &ast)
             .map_err(|error| Self::map_error(error, request))?;
-        let output = dynamic_to_json(output);
+        let mut output = dynamic_to_json(output);
+        for extension in &self.extensions {
+            output = extension.map_output(&mut scope, request, output)?;
+        }
         let output_bytes = serde_json::to_vec(&output)
             .map_err(|error| SandboxError::Internal(error.to_string()))?
             .len() as u64;

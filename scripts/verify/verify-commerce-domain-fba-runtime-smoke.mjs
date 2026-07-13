@@ -161,7 +161,7 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     if (!sameSet(traceEntry.fallback_profiles, smoke.fallback_profiles)) fail(`${module} invocation trace fallback profile drift`);
     if (!sameSet(traceEntry.degraded_modes, smoke.degraded_modes)) fail(`${module} invocation trace degraded mode drift`);
 
-    const allowedRegistryStatuses = module === 'product' && runtimeFallbackSmoke
+    const allowedRegistryStatuses = (module === 'product' && runtimeFallbackSmoke) || module === 'cart'
       ? ['in_progress', 'boundary_ready']
       : ['in_progress'];
     if (!allowedRegistryStatuses.includes(registry.status)) {
@@ -237,9 +237,8 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
       if (!body) fail(`${module}.${testCase.operation} implementation body missing`);
       let previous = -1;
       for (const marker of testCase.source_order) {
-        const index = body.indexOf(marker);
+        const index = body.indexOf(marker, previous + 1);
         if (index < 0) fail(`${module}.${testCase.operation} source marker missing: ${marker}`);
-        if (index <= previous) fail(`${module}.${testCase.operation} runtime order drift at: ${marker}`);
         previous = index;
       }
 

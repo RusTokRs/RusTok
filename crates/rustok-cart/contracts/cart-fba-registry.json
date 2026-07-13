@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "cart",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "cart.checkout.v2",
   "ports": [
     {
@@ -47,6 +47,25 @@
     "service": "CartService",
     "source": "crates/rustok-cart/src/ports.rs",
     "status": "implemented"
+  },
+  "runtime_evidence": {
+    "checkout_provider_consumer_paths": {
+      "status": "runtime_verified",
+      "runner": "cargo test -p rustok-commerce --test checkout_service_test",
+      "tests": [
+        "basic::complete_checkout_builds_order_payment_and_fulfillment_flow",
+        "validation::complete_checkout_rejects_line_item_without_channel_visible_inventory"
+      ],
+      "coverage": [
+        "snapshot_begin_complete",
+        "snapshot_begin_release_on_inventory_preflight_failure"
+      ],
+      "remaining": [
+        "context_update",
+        "recovery",
+        "fallback_and_degraded_paths"
+      ]
+    }
   },
   "contract_tests": {
     "status": "planned_cases_locked",

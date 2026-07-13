@@ -1,4 +1,6 @@
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -6,6 +8,24 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{SandboxError, SandboxPolicy};
+
+/// Cooperative, request-scoped cancellation handle for one sandbox execution.
+#[derive(Clone, Debug, Default)]
+pub struct SandboxCancellation(Arc<AtomicBool>);
+
+impl SandboxCancellation {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -152,6 +172,4 @@ pub struct ExecutionRecord {
     pub finished_at: Option<DateTime<Utc>>,
     pub metrics: Option<ExecutionMetrics>,
     pub error_code: Option<String>,
-    pub error_message: Option<String>,
 }
-

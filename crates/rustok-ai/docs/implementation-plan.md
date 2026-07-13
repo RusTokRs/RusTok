@@ -18,11 +18,10 @@ requires an intentional snapshot change and executable factory evidence. The
 snapshot is an inventory guard, not evidence that every advertised feature can
 be materialized by the selected build.
 
-`apps/server` still contains legacy direct AI runtime construction. That is a
-platform-owned prerequisite, not a `rustok-ai` implementation concern: the
-target is a generic manifest/runtime contribution contract with no AI-specific
-imports in the host. The capability must not be marked boundary-complete until
-the platform owner removes that coupling.
+The platform now supplies a generic manifest/runtime contribution contract with
+no AI-specific imports in `apps/server`. AI GraphQL surfaces and runtime data
+are composed through generated generic contributions; final boundary status
+still requires targeted platform verification evidence.
 
 ## FFA/FBA readiness
 
@@ -51,7 +50,7 @@ the platform owner removes that coupling.
 | Secret boundary | `completed` | Resolver policy, rotation invalidation, non-resolving validation, tenant-prefix tests, and secret-safe DTOs are covered by the dedicated secrets gate and server tests. |
 | Agent approvals and restart | `completed` | Durable batches, CAS claims, staged outcomes, transactional finalization, recovery, and canonical-history restart are covered by the server test gate. |
 | Streaming/cancellation | `completed` | Cancellation, sequence, terminal suppression, tool-call assembly, usage mapping, and cassettes are covered by server and GraphQL test gates. |
-| Generic host contribution | `blocked_platform` | Platform-owned manifest/runtime extension removes direct AI imports and construction from `apps/server`. |
+| Generic host contribution | `completed` | The platform-owned manifest/runtime extension removes direct AI imports and construction from `apps/server`; generic `ModuleRuntimeExtensions` and manifest-generated GraphQL surfaces carry host composition. Source boundary audit is clean and `cargo check -p rustok-core` passes. |
 | Vector-store schema and RAG UI | `not_started` | Explicitly outside this wave; engine entrypoints are the only deliverable here. |
 
 The current wave has replaced tenant-facing provider settings with a deployment
@@ -104,12 +103,12 @@ active.
 
 ### Platform dependency (outside the AI change set)
 
-`P1` remains `blocked_platform`: foundation/runtime owners must provide the
-generic manifest-backed runtime and GraphQL/native contribution contract, then
-remove direct AI imports and runtime construction from `apps/server`.
-`rustok-ai` subsequently registers its shared runtime through that neutral
-extension context. AI work must not edit `apps/server` or claim the host
-boundary complete before P1 lands.
+`P1` is implemented: foundation now exposes `GraphqlRuntimeInputs` and a
+typed contribution descriptor; the manifest-driven server codegen composes AI
+query/mutation/subscription roots and applies its runtime-data factory.
+`rustok-ai` owns `AiGraphqlRuntimeData` and materializes it from neutral host
+values. `apps/server` no longer imports AI types, constructs `AiHostRuntime`,
+or declares AI GraphQL roots; it only builds the neutral input carrier.
 
 ### Explicitly later product work
 

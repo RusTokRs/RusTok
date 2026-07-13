@@ -95,7 +95,7 @@ pub fn build_schema(
     db: DatabaseConnection,
     event_bus: EventBus,
     transactional_event_bus: TransactionalEventBus,
-    ai_runtime: rustok_ai::AiHostRuntime,
+    graphql_runtime_inputs: rustok_api::graphql::GraphqlRuntimeInputs,
     build_event_hub: Arc<BuildEventHub>,
     field_definition_cache: FieldDefinitionCache,
     runtime_extensions: Arc<ModuleRuntimeExtensions>,
@@ -111,9 +111,6 @@ pub fn build_schema(
     content_orchestration: rustok_content_orchestration::SharedContentOrchestrationService,
     #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
-    let ai_role_slug_provider = rustok_ai::AiGraphqlRoleSlugProviderHandle::new(Arc::new(
-        rustok_ai::SeaOrmAiGraphqlRoleSlugProvider::new(db.clone()),
-    ));
     let flex_runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),
         db.clone(),
@@ -154,9 +151,9 @@ pub fn build_schema(
         tokio::spawn,
     ));
 
+    let builder = schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)
+        .expect("manifest GraphQL runtime-data factory must materialize");
     let builder = builder
-        .data(ai_role_slug_provider)
-        .data(ai_runtime)
         .data(db)
         .data(event_bus)
         .data(transactional_event_bus)

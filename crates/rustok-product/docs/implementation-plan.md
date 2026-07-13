@@ -15,6 +15,9 @@ supported by the provider registry, static contract matrix, and fallback smoke.
 `transport_verified` still requires live provider execution evidence.
 The port also resolves variant-first consumer input to the owning product
 projection, so checkout consumers do not query product or variant entities.
+The compiled commerce checkout channel-inventory regression executes the
+in-process product projection provider before inventory preflight; it is a
+bounded consumer proof only and does not close the module transport gate.
 Product runtime contract, commerce transport, and module metadata remain synchronized.
 The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.

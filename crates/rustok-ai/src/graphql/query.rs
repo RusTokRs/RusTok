@@ -2,8 +2,8 @@ use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use rustok_api::AuthContext;
 use rustok_api::graphql::GraphQLError;
+use rustok_api::AuthContext;
 
 use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,
@@ -37,7 +37,7 @@ impl AiQuery {
     async fn ai_provider_targets(&self, ctx: &Context<'_>) -> Result<Vec<AiProviderTargetGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_read(auth)?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         Ok(runtime
             .provider_targets()
             .entries()

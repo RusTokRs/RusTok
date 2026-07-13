@@ -5,8 +5,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 
 use crate::{
-    CapabilityBroker, ExecutionRecord, ExecutionStatus, ExecutorRegistry, SandboxHost,
-    SandboxOutcome, SandboxRequest, SandboxResult,
+    CapabilityBroker, CapabilityObserver, ExecutionRecord, ExecutionStatus, ExecutorRegistry,
+    SandboxAdmissionLimits, SandboxCancellation, SandboxHost, SandboxOutcome, SandboxRequest,
+    SandboxResult,
 };
 
 #[async_trait]
@@ -26,6 +27,8 @@ pub struct SandboxRuntime {
     executors: ExecutorRegistry,
     broker: Arc<dyn CapabilityBroker>,
     observers: Vec<Arc<dyn ExecutionObserver>>,
+    capability_observers: Arc<Vec<Arc<dyn CapabilityObserver>>>,
+    admission: crate::admission::AdmissionController,
 }
 
 impl SandboxRuntime {
@@ -34,6 +37,8 @@ impl SandboxRuntime {
             executors,
             broker,
             observers: Vec::new(),
+            capability_observers: Arc::new(Vec::new()),
+            admission: crate::admission::AdmissionController::new(SandboxAdmissionLimits::default()),
         }
     }
 
@@ -42,9 +47,32 @@ impl SandboxRuntime {
         self
     }
 
+    pub fn with_capability_observer(mut self, observer: Arc<dyn CapabilityObserver>) -> Self {
+        Arc::make_mut(&mut self.capability_observers).push(observer);
+        self
+    }
+
+    pub fn with_admission_limits(mut self, limits: SandboxAdmissionLimits) -> Self {
+        self.admission = crate::admission::AdmissionController::new(limits);
+        self
+    }
+
     pub async fn execute(&self, request: SandboxRequest) -> SandboxResult<SandboxOutcome> {
+        self.execute_with_cancellation(request, SandboxCancellation::new())
+            .await
+    }
+
+    pub async fn execute_with_cancellation(
+        &self,
+        request: SandboxRequest,
+        cancellation: SandboxCancellation,
+    ) -> SandboxResult<SandboxOutcome> {
         request.validate()?;
+        if cancellation.is_cancelled() {
+            return Err(crate::SandboxError::Cancelled);
+        }
         let executor = self.executors.get(request.payload.executor)?;
+        let _permit = self.admission.admit(&request)?;
         let started_at = Utc::now();
         self.observe(ExecutionRecord {
             execution_id: request.context.execution_id,
@@ -55,18 +83,25 @@ impl SandboxRuntime {
             finished_at: None,
             metrics: None,
             error_code: None,
-            error_message: None,
         })
         .await;
 
         let timer = Instant::now();
-        let host = SandboxHost::new(Arc::new(request.policy.clone()), Arc::clone(&self.broker));
+        let host = SandboxHost::new(
+            Arc::new(request.policy.clone()),
+            Arc::clone(&self.broker),
+            request.subject.clone(),
+            &request.context,
+            Arc::clone(&self.capability_observers),
+            cancellation,
+        );
         let result = executor.execute(&request, host).await;
 
         match result {
             Ok(mut outcome) => {
                 outcome.execution_id = request.context.execution_id;
-                outcome.metrics.duration_ms = timer.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+                outcome.metrics.duration_ms =
+                    timer.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
                 self.observe(ExecutionRecord {
                     execution_id: request.context.execution_id,
                     subject: request.subject,
@@ -76,7 +111,6 @@ impl SandboxRuntime {
                     finished_at: Some(Utc::now()),
                     metrics: Some(outcome.metrics.clone()),
                     error_code: None,
-                    error_message: None,
                 })
                 .await;
                 Ok(outcome)
@@ -91,7 +125,6 @@ impl SandboxRuntime {
                     finished_at: Some(Utc::now()),
                     metrics: None,
                     error_code: Some(error.code().to_string()),
-                    error_message: Some(error.to_string()),
                 })
                 .await;
                 Err(error)
@@ -105,4 +138,3 @@ impl SandboxRuntime {
         }
     }
 }
-
