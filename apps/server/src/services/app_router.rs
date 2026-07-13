@@ -136,6 +136,12 @@ pub fn compose_application_router(
     runtime: AppRuntimeBootstrap,
     rustok_settings: &RustokSettings,
 ) -> Result<AxumRouter> {
+    // Metrics are not tenant-scoped and must be protected consistently in every
+    // deployment profile before the profile-specific middleware chain diverges.
+    let router = router.layer(axum_middleware::from_fn(
+        middleware::metrics_auth::require_bearer,
+    ));
+
     if rustok_settings.runtime.is_registry_only() || rustok_settings.runtime.is_worker_only() {
         return Ok(router
             .layer(Extension(runtime.registry))
@@ -233,7 +239,7 @@ pub fn compose_application_router(
     // Axum executes layers from the bottom of this chain outward. Runtime order:
     // security -> tenant -> locale -> auth -> invite acceptance -> OAuth token
     // service -> channel -> rate limit -> MCP scaffold workspace -> guest cart
-    // capability -> handler.
+    // capability -> metrics bearer -> handler.
     .layer(axum_middleware::from_fn(
         middleware::guest_cart_access::resolve,
     ))
