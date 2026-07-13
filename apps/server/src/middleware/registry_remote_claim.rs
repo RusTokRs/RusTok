@@ -21,16 +21,22 @@ use crate::services::registry_remote_transitions::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const CLAIM_PATH: &str = "/v2/catalog/runner/claim";
+const PUBLISH_PATH: &str = "/v2/catalog/publish";
 const MAX_RUNNER_BODY_BYTES: usize = 64 * 1024;
 
 /// Replace legacy read-check-update runner routes with database CAS operations.
 /// Claim, heartbeat, complete and fail are all serialized by stage status,
 /// claim id, runner id and lease expiry before the old controller can execute.
+/// The same globally installed boundary delegates first-party publish requests
+/// to the registry metadata policy before persistence.
 pub async fn claim_atomic(
     State(ctx): State<ServerRuntimeContext>,
     request: Request<Body>,
     next: Next,
 ) -> Response {
+    if request.method() == Method::POST && request.uri().path() == PUBLISH_PATH {
+        return crate::middleware::registry_publish_policy::enforce(request, next).await;
+    }
     if request.method() != Method::POST {
         return next.run(request).await;
     }
@@ -334,7 +340,7 @@ fn response(status: StatusCode, code: &str, message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{runner_route, RunnerRoute, CLAIM_PATH, MAX_RUNNER_BODY_BYTES};
+    use super::{runner_route, RunnerRoute, CLAIM_PATH, MAX_RUNNER_BODY_BYTES, PUBLISH_PATH};
 
     #[test]
     fn routes_all_atomic_runner_transitions() {
@@ -358,5 +364,6 @@ mod tests {
             })
         );
         assert_eq!(MAX_RUNNER_BODY_BYTES, 64 * 1024);
+        assert_eq!(PUBLISH_PATH, "/v2/catalog/publish");
     }
 }
