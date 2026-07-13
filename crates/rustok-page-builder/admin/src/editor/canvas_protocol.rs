@@ -1,4 +1,4 @@
-use fly_leptos::{BrowserRect, PointerSample, FLY_IFRAME_PROTOCOL_V1};
+use fly_leptos::{BrowserPoint, BrowserRect, PointerSample, FLY_IFRAME_PROTOCOL_V1};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -26,6 +26,13 @@ pub enum CanvasBridgeMessage {
     PointerMoved {
         sample: PointerSample,
     },
+    DragMoved {
+        position: BrowserPoint,
+    },
+    DropRequested {
+        position: BrowserPoint,
+    },
+    CancelDragRequested,
     FocusRequested {
         component_id: Option<String>,
     },
@@ -80,5 +87,20 @@ mod tests {
         assert!(decode_canvas_message(&payload, "canvas-a", Some(3)).is_some());
         assert!(decode_canvas_message(&payload, "canvas-a", Some(4)).is_none());
         assert!(decode_canvas_message(&payload, "canvas-b", None).is_none());
+    }
+
+    #[test]
+    fn drag_messages_round_trip() {
+        let payload = serde_json::to_string(&CanvasBridgeEnvelope {
+            protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
+            instance_id: "canvas-a".to_string(),
+            sequence: 5,
+            message: CanvasBridgeMessage::DropRequested {
+                position: BrowserPoint { x: 12.0, y: 24.0 },
+            },
+        })
+        .expect("serialize envelope");
+        let (_, message) = decode_canvas_message(&payload, "canvas-a", Some(4)).expect("decode");
+        assert!(matches!(message, CanvasBridgeMessage::DropRequested { .. }));
     }
 }
