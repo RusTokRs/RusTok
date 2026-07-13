@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod context_contract;
 mod i18n;
 mod model;
 pub mod transport;
