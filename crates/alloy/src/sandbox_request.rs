@@ -334,8 +334,28 @@ fn entity_changes(entity: EntityProxy) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
     use super::*;
     use crate::{ScriptStatus, ScriptTrigger};
+    use rustok_sandbox::{
+        CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutorRegistry,
+        SandboxRuntime,
+    };
+
+    struct NoCapabilities;
+
+    #[async_trait]
+    impl CapabilityBroker for NoCapabilities {
+        async fn invoke(
+            &self,
+            _call: &CapabilityCall,
+            _grant: &CapabilityGrant,
+        ) -> SandboxResult<CapabilityResponse> {
+            Err(SandboxError::Internal("unexpected capability call".into()))
+        }
+    }
 
     fn script() -> Script {
         let mut script = Script::new("draft", "input.params.value + 1", ScriptTrigger::Manual);
@@ -407,5 +427,43 @@ mod tests {
             .validate(),
             Err(AlloyDraftBindingError::EntityChangesMustBeObject)
         );
+    }
+
+    #[tokio::test]
+    async fn scope_extension_returns_pre_hook_entity_changes() {
+        let mut script = script();
+        script.code = "entity[\"status\"] = \"approved\"; params[\"amount\"]".into();
+        let context = ExecutionContext::new(ExecutionPhase::Before)
+            .with_tenant(Uuid::new_v4().to_string());
+        let request = AlloyDraftRequestBuilder::default()
+            .build(
+                &script,
+                &context,
+                AlloyDraftInput {
+                    params: serde_json::json!({ "amount": 42 }),
+                    entity: Some(AlloyDraftEntitySnapshot {
+                        id: "deal-1".into(),
+                        entity_type: "deal".into(),
+                        fields: serde_json::json!({ "status": "pending" }),
+                    }),
+                    ..Default::default()
+                },
+            )
+            .expect("request");
+        let mut executors = ExecutorRegistry::new();
+        executors
+            .register(
+                rustok_sandbox::rhai::RhaiExecutor::new()
+                    .with_extension(Arc::new(AlloyDraftScopeExtension)),
+            )
+            .expect("register executor");
+        let output = SandboxRuntime::new(executors, Arc::new(NoCapabilities))
+            .execute(request)
+            .await
+            .expect("execute draft");
+        let output: AlloyDraftOutput =
+            serde_json::from_value(output.output).expect("typed draft output");
+        assert_eq!(output.return_value, serde_json::json!(42));
+        assert_eq!(output.entity_changes, serde_json::json!({ "status": "approved" }));
     }
 }
