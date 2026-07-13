@@ -1,3 +1,4 @@
+mod cas_observability;
 mod envelope;
 mod fallback;
 mod generation;
@@ -14,6 +15,10 @@ mod shared_backend;
 mod typed;
 mod weighted;
 
+pub use cas_observability::{
+    format_cache_compare_and_set_prometheus_metrics, observe_cache_compare_and_set,
+    CacheCompareAndSetMetrics, CacheCompareAndSetStats,
+};
 pub use envelope::{
     CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
