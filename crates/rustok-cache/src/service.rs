@@ -9,6 +9,26 @@ use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheB
 #[cfg(feature = "redis-cache")]
 use rustok_core::{CircuitBreakerConfig, RedisCacheBackend};
 
+#[cfg(feature = "redis-cache")]
+const CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[cfg(feature = "redis-cache")]
+async fn redis_with_timeout<T, F, E>(operation: &str, future: F) -> Result<T, String>
+where
+    F: Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    tokio::time::timeout(CACHE_REDIS_OPERATION_TIMEOUT, future)
+        .await
+        .map_err(|_| {
+            format!(
+                "{operation} timed out after {} ms",
+                CACHE_REDIS_OPERATION_TIMEOUT.as_millis()
+            )
+        })?
+        .map_err(|error| format!("{operation} failed: {error}"))
+}
+
 /// Shared cache service providing backend creation from a centralized Redis connection.
 ///
 /// Other modules (tenant, RBAC, rate-limit) call `CacheService::backend()` instead of
@@ -279,24 +299,33 @@ impl CacheService {
 
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
-            match client.get_multiplexed_async_connection().await {
+            match redis_with_timeout(
+                "Redis cache health connection",
+                client.get_multiplexed_async_connection(),
+            )
+            .await
+            {
                 Ok(mut conn) => {
-                    let pong: redis::RedisResult<String> =
-                        redis::cmd("PING").query_async(&mut conn).await;
-                    match pong {
-                        Ok(ref s) if s == "PONG" => {
+                    match redis_with_timeout(
+                        "Redis cache health PING",
+                        redis::cmd("PING").query_async::<String>(&mut conn),
+                    )
+                    .await
+                    {
+                        Ok(ref pong) if pong == "PONG" => {
                             report.redis_healthy = true;
                         }
-                        Ok(s) => {
-                            report.redis_error = Some(format!("unexpected PING response: {s}"));
+                        Ok(pong) => {
+                            report.redis_error =
+                                Some(format!("unexpected PING response: {pong}"));
                         }
-                        Err(e) => {
-                            report.redis_error = Some(e.to_string());
+                        Err(error) => {
+                            report.redis_error = Some(error);
                         }
                     }
                 }
-                Err(e) => {
-                    report.redis_error = Some(e.to_string());
+                Err(error) => {
+                    report.redis_error = Some(error);
                 }
             }
         }
@@ -483,15 +512,17 @@ impl CacheInvalidationService {
             return Err("redis invalidation subscription is not configured".to_string());
         };
 
-        let mut pubsub = client
-            .get_async_pubsub()
-            .await
-            .map_err(|error| format!("pubsub connection failed: {error}"))?;
+        let mut pubsub = redis_with_timeout(
+            "Redis invalidation pub/sub connection",
+            client.get_async_pubsub(),
+        )
+        .await?;
 
-        pubsub
-            .subscribe(channel)
-            .await
-            .map_err(|error| format!("pubsub subscribe failed: {error}"))?;
+        redis_with_timeout(
+            "Redis invalidation subscribe",
+            pubsub.subscribe(channel),
+        )
+        .await?;
 
         ready().await;
 
@@ -547,26 +578,41 @@ impl CacheInvalidationService {
         #[cfg(feature = "redis-cache")]
         {
             if let Some(client) = &self.redis_client {
-                if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                    let published: redis::RedisResult<i64> = redis::cmd("PUBLISH")
-                        .arg(&message.channel)
-                        .arg(&message.key)
-                        .query_async(&mut conn)
+                match redis_with_timeout(
+                    "Redis invalidation publish connection",
+                    client.get_multiplexed_async_connection(),
+                )
+                .await
+                {
+                    Ok(mut conn) => {
+                        let published = redis_with_timeout(
+                            "Redis invalidation PUBLISH",
+                            redis::cmd("PUBLISH")
+                                .arg(&message.channel)
+                                .arg(&message.key)
+                                .query_async::<i64>(&mut conn),
+                        )
                         .await;
-                    outcome.redis_published = published.is_ok();
-                    if outcome.redis_published {
-                        self.stats
-                            .redis_publish_success_total
-                            .fetch_add(1, Ordering::Relaxed);
-                    } else {
+                        outcome.redis_published = published.is_ok();
+                        if outcome.redis_published {
+                            self.stats
+                                .redis_publish_success_total
+                                .fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            if let Err(error) = published {
+                                tracing::warn!(%error, "Redis invalidation publish failed");
+                            }
+                            self.stats
+                                .redis_publish_failure_total
+                                .fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "Redis invalidation connection failed");
                         self.stats
                             .redis_publish_failure_total
                             .fetch_add(1, Ordering::Relaxed);
                     }
-                } else {
-                    self.stats
-                        .redis_publish_failure_total
-                        .fetch_add(1, Ordering::Relaxed);
                 }
             }
         }
@@ -1131,6 +1177,19 @@ mod tests {
         assert_eq!(tenant_subscriber.channel(), "tenant.cache.invalidate");
         assert_eq!(tenant_message.key, "tenant-a");
         assert_eq!(rbac_message.key, "role:admin");
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    async fn service_redis_timeout_bounds_stalled_operations() {
+        let error = redis_with_timeout(
+            "test Redis operation",
+            std::future::pending::<Result<(), std::io::Error>>(),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.contains("timed out"));
     }
 
     #[cfg(feature = "redis-cache")]
