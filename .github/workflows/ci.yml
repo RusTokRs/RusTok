@@ -16,6 +16,10 @@ permissions:
   attestations: write
   id-token: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
@@ -151,7 +155,6 @@ jobs:
       - run: cargo +nightly udeps --workspace --all-targets --all-features
         env:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
-
 
   coverage:
     name: Code Coverage
@@ -355,7 +358,6 @@ jobs:
       - name: Build
         working-directory: ${{ matrix.app }}
         run: npm run build
-
 
   reference-artifacts:
     name: Reference Artifacts Export
