@@ -2,6 +2,7 @@
   "page_builder": {
     "title": "Page Builder",
     "subtitle": "Fly runtime, compatibility, and provider control surface.",
+    "editorSubtitle": "Full Fly authoring surface. Persistence remains owned by the consumer module facade.",
     "unbound": {
       "title": "No consumer document selected",
       "body": "Open a consumer-owned document to start full visual authoring. Page Builder does not own document persistence."
@@ -20,6 +21,15 @@
     "panel": {
       "layers": "Layers and selection",
       "diagnostics": "Diagnostics"
-    }
+    },
+    "field": {
+      "page": "Page",
+      "revision": "Revision",
+      "selectedComponent": "Selected component",
+      "none": "None",
+      "projectHash": "Project hash"
+    },
+    "diagnosticCount": "diagnostic(s)",
+    "facadeMissing": "Page Builder admin facade is not mounted for this canvas"
   }
 }
