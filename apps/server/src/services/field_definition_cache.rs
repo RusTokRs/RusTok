@@ -14,6 +14,7 @@ use flex::FieldDefinitionView;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const FIELD_DEFINITION_CACHE_TTL: Duration = Duration::from_secs(30);
+const FIELD_DEFINITION_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct FieldDefinitionCache {
@@ -35,9 +36,14 @@ impl Default for FieldDefinitionCache {
 
 impl FieldDefinitionCache {
     pub fn new() -> Self {
+        Self::with_max_weight(FIELD_DEFINITION_CACHE_MAX_WEIGHT_BYTES)
+    }
+
+    fn with_max_weight(max_weight_bytes: u64) -> Self {
         let inner = Cache::builder()
             .time_to_live(FIELD_DEFINITION_CACHE_TTL)
-            .max_capacity(10_000)
+            .weigher(field_definition_entry_weight)
+            .max_capacity(max_weight_bytes)
             .build();
 
         Self { inner }
@@ -72,6 +78,36 @@ impl FieldDefinitionCache {
     pub fn invalidate_all(&self) {
         self.inner.invalidate_all();
     }
+}
+
+fn field_definition_entry_weight(
+    key: &(Uuid, String),
+    rows: &Vec<FieldDefinitionView>,
+) -> u32 {
+    let mut weight = std::mem::size_of::<Uuid>()
+        .saturating_add(key.1.len())
+        .saturating_add(std::mem::size_of::<Vec<FieldDefinitionView>>());
+
+    for row in rows {
+        weight = weight
+            .saturating_add(std::mem::size_of::<FieldDefinitionView>())
+            .saturating_add(row.field_key.len())
+            .saturating_add(row.field_type.len())
+            .saturating_add(json_value_weight(&row.label))
+            .saturating_add(row.description.as_ref().map_or(0, json_value_weight))
+            .saturating_add(row.default_value.as_ref().map_or(0, json_value_weight))
+            .saturating_add(row.validation.as_ref().map_or(0, json_value_weight))
+            .saturating_add(row.created_at.len())
+            .saturating_add(row.updated_at.len());
+    }
+
+    weight.clamp(1, u32::MAX as usize) as u32
+}
+
+fn json_value_weight(value: &serde_json::Value) -> usize {
+    serde_json::to_vec(value)
+        .map(|encoded| encoded.len())
+        .unwrap_or(std::mem::size_of::<serde_json::Value>())
 }
 
 pub fn field_definition_cache_from_context(
@@ -137,7 +173,9 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
 
 #[cfg(test)]
 mod tests {
-    use super::{field_definition_cache_from_context, FieldDefinitionCache};
+    use super::{
+        field_definition_cache_from_context, field_definition_entry_weight, FieldDefinitionCache,
+    };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
     use flex::FieldDefinitionView;
@@ -165,6 +203,28 @@ mod tests {
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         }
+    }
+
+    #[test]
+    fn entry_weight_accounts_for_dynamic_schema_payloads() {
+        let tenant_id = Uuid::new_v4();
+        let rows = vec![mock_view("nickname")];
+        let weight = field_definition_entry_weight(&(tenant_id, "user".to_string()), &rows);
+
+        assert!(weight as usize >= "user".len() + "nickname".len());
+    }
+
+    #[tokio::test]
+    async fn oversized_schema_is_not_retained_beyond_weight_budget() {
+        let cache = FieldDefinitionCache::with_max_weight(128);
+        let tenant_id = Uuid::new_v4();
+        let mut row = mock_view("large");
+        row.description = Some(json!({"en": "x".repeat(2_048)}));
+
+        cache.set(tenant_id, "user", vec![row]).await;
+        cache.inner.run_pending_tasks().await;
+
+        assert!(cache.get(tenant_id, "user").await.is_none());
     }
 
     #[tokio::test]
