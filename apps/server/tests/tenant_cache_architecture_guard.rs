@@ -172,10 +172,12 @@ fn tenant_generation_health_is_context_scoped_and_component_aware() {
         "periodic_reconciliation",
         "state: Arc<TenantCacheGenerationListenerState>",
         "tenant_cache_generation_listener_snapshot",
-        ".mark_subscriber_healthy()",
+        ".mark_subscriber_ready_after_recovery()",
+        ".mark_subscriber_activity_healthy()",
         ".mark_reconciliation_healthy()",
         ".mark_subscriber_degraded(",
         ".mark_reconciliation_degraded(",
+        ".mark_local_degraded(",
     ] {
         assert!(
             generation.contains(required),
@@ -187,6 +189,8 @@ fn tenant_generation_health_is_context_scoped_and_component_aware() {
         "subscriber_ready && reconciliation_healthy",
         "MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES",
         "redis_health_requires_subscriber_and_reconciliation",
+        "subscriber_activity_does_not_hide_reconciliation_failure",
+        "reconciliation_success_does_not_hide_subscriber_failure",
         "independent_runtime_states_do_not_overwrite_each_other",
         "record_tenant_generation_listener_metrics",
     ] {
