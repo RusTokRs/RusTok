@@ -158,6 +158,11 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             db,
         ),
     );
+    let mcp_management_provider = Arc::new(
+        crate::services::mcp_management_guard::GuardedMcpManagementProvider::new(
+            mcp_management_provider,
+        ),
+    );
     extensions.insert(McpManagementRuntime::new(mcp_management_provider));
     Arc::new(extensions)
 }
