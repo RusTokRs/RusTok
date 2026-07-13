@@ -9,6 +9,7 @@ pub mod forum_reply_body;
 pub mod forum_reply_revision;
 pub mod forum_reply_vote;
 pub mod forum_solution;
+pub mod forum_subscription_policy;
 pub mod forum_topic;
 pub mod forum_topic_channel_access;
 pub mod forum_topic_revision;

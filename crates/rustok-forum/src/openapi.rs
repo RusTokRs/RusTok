@@ -18,6 +18,12 @@ use utoipa::OpenApi;
         crate::controllers::replies::create_reply,
         crate::controllers::replies::update_reply,
         crate::controllers::replies::delete_reply,
+        crate::controllers::subscriptions::get_category_subscription_settings,
+        crate::controllers::subscriptions::update_category_subscription_settings,
+        crate::controllers::subscriptions::get_topic_subscription_settings,
+        crate::controllers::subscriptions::update_topic_subscription_settings,
+        crate::controllers::subscriptions::get_subscription_policy,
+        crate::controllers::subscriptions::update_subscription_policy,
     ),
     components(
         schemas(
@@ -44,6 +50,13 @@ use utoipa::OpenApi;
             crate::CategoryCursorPage,
             crate::TopicCursorPage,
             crate::ReplyCursorPage,
+            crate::ForumSubscriptionLevel,
+            crate::ForumDigestMode,
+            crate::ForumSubscriptionTargetType,
+            crate::UpdateForumSubscriptionInput,
+            crate::ForumSubscriptionResponse,
+            crate::UpdateForumSubscriptionPolicyInput,
+            crate::ForumSubscriptionPolicyResponse,
         )
     ),
     tags((name = "forum", description = "Forum endpoints"))
