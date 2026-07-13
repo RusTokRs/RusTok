@@ -67,7 +67,7 @@ pub async fn create(
 
     let service = WorkflowService::new(runtime.db_clone());
     let id = service
-        .create(tenant.id, Some(auth.user_id), input)
+        .create(tenant.id, auth.human_user_id(), input)
         .await
         .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "id": id })))
@@ -88,7 +88,7 @@ pub async fn update(
 
     let service = WorkflowService::new(runtime.db_clone());
     service
-        .update(tenant.id, id, Some(auth.user_id), input)
+        .update(tenant.id, id, auth.human_user_id(), input)
         .await
         .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
     Ok(Json(serde_json::json!({ "ok": true })))
@@ -131,7 +131,7 @@ pub async fn activate(
         .update(
             tenant.id,
             id,
-            Some(auth.user_id),
+            auth.human_user_id(),
             UpdateWorkflowInput {
                 status: Some(WorkflowStatus::Active),
                 ..Default::default()
@@ -159,7 +159,7 @@ pub async fn pause(
         .update(
             tenant.id,
             id,
-            Some(auth.user_id),
+            auth.human_user_id(),
             UpdateWorkflowInput {
                 status: Some(WorkflowStatus::Paused),
                 ..Default::default()
@@ -196,7 +196,7 @@ pub async fn trigger_manual(
         .trigger_manual(
             tenant.id,
             id,
-            Some(auth.user_id),
+            auth.human_user_id(),
             input.payload,
             input.force,
         )
@@ -211,7 +211,7 @@ fn ensure_workflow_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "workflow_permission_denied",
             message.to_string(),
         ));
