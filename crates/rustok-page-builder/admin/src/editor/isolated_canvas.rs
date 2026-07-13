@@ -1,9 +1,9 @@
 use crate::editor::{
-    decode_canvas_message, render_canvas_srcdoc, AdminEditorRuntime, CanvasBridgeMessage,
-    CanvasComponentGeometry,
+    decode_canvas_message, dispatch_shortcut, render_canvas_srcdoc, AdminEditorRuntime,
+    CanvasBridgeMessage, CanvasComponentGeometry,
 };
 use fly_leptos::BrowserPoint;
-use fly_ui::{CanvasRect, UiIntent, ViewportState};
+use fly_ui::{resolve_editor_shortcut, CanvasRect, UiIntent, ViewportState};
 use leptos::prelude::*;
 use std::collections::BTreeMap;
 
@@ -208,6 +208,11 @@ fn handle_canvas_message(
             {
                 update_drag_candidates(runtime, geometry, position);
                 runtime.dispatch(UiIntent::Drop);
+            }
+        }
+        CanvasBridgeMessage::KeyStroke { stroke } => {
+            if let Some(shortcut) = resolve_editor_shortcut(&stroke) {
+                dispatch_shortcut(runtime, shortcut);
             }
         }
         CanvasBridgeMessage::CancelDragRequested => {
