@@ -26,7 +26,36 @@ jobs:
           cargo fmt --all
           fmt_status=$?
           git diff --binary > diagnostics/rustfmt.patch
-          cargo check -p rustok-forum --all-targets --all-features > diagnostics/cargo-check.log 2>&1
+
+          # Temporary diagnostic-only edits: these are unrelated main-branch
+          # blockers and are applied after capturing the formatter patch.
+          python - <<'PY'
+          from pathlib import Path
+
+          media = Path("crates/rustok-media/src/ports.rs")
+          source = media.read_text()
+          needle = "        MediaError::UnsupportedMimeType(content_type) => PortError::validation(\n"
+          replacement = (
+              "        MediaError::InvalidMediaContent { declared, reason } => PortError::validation(\n"
+              "            \"media.invalid_content\",\n"
+              "            format!(\"invalid media content declared as {declared}: {reason}\"),\n"
+              "        ),\n"
+              + needle
+          )
+          if needle not in source:
+              raise SystemExit("media diagnostic patch anchor missing")
+          media.write_text(source.replace(needle, replacement, 1))
+
+          events = Path("crates/rustok-events/src/types.rs")
+          source = events.read_text()
+          needle = "                media_type,\n                size_bytes,\n            } => {\n"
+          replacement = "                media_type,\n                size_bytes: _,\n            } => {\n"
+          if needle not in source:
+              raise SystemExit("events diagnostic patch anchor missing")
+          events.write_text(source.replace(needle, replacement, 1))
+          PY
+
+          RUSTFLAGS="-Dwarnings" cargo check -p rustok-forum --all-targets --all-features > diagnostics/cargo-check.log 2>&1
           check_status=$?
           cargo clippy -p rustok-forum --all-targets --all-features --no-deps -- -D warnings > diagnostics/clippy.log 2>&1
           clippy_status=$?
