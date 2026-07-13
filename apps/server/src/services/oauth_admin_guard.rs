@@ -22,6 +22,25 @@ impl GuardedOAuthAdminProvider {
     }
 }
 
+fn validate_grant_dependencies(
+    grant_types: &[String],
+) -> Result<(), AuthAdminMutationError> {
+    let has_authorization_code = grant_types
+        .iter()
+        .any(|grant| grant.trim() == "authorization_code");
+    let has_refresh_token = grant_types
+        .iter()
+        .any(|grant| grant.trim() == "refresh_token");
+
+    if has_refresh_token && !has_authorization_code {
+        return Err(AuthAdminMutationError::Validation(
+            "refresh_token grant requires authorization_code grant".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 #[async_trait]
 impl OAuthAdminPort for GuardedOAuthAdminProvider {
     async fn list_oauth_apps(
@@ -54,6 +73,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         command: CreateOAuthAppCommand,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        validate_grant_dependencies(&command.grant_types)?;
         self.inner.create_oauth_app(context, command).await
     }
 
@@ -62,6 +82,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         command: UpdateOAuthAppCommand,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
+        validate_grant_dependencies(&command.grant_types)?;
         self.inner.update_oauth_app(context, command).await
     }
 
@@ -113,5 +134,25 @@ fn map_consent_error(error: crate::error::Error) -> AuthAdminMutationError {
         crate::error::Error::BadRequest(message) => AuthAdminMutationError::Validation(message),
         crate::error::Error::Unauthorized(_) => AuthAdminMutationError::Unauthorized,
         other => AuthAdminMutationError::Internal(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_grant_dependencies;
+
+    #[test]
+    fn refresh_grant_requires_authorization_code() {
+        assert!(validate_grant_dependencies(&["refresh_token".to_string()]).is_err());
+        assert!(validate_grant_dependencies(&[
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn non_refresh_grants_remain_independent() {
+        assert!(validate_grant_dependencies(&["client_credentials".to_string()]).is_ok());
     }
 }
