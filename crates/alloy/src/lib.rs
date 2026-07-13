@@ -3,6 +3,10 @@ extern crate rhai_full as rhai;
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
+use rustok_sandbox::{
+    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutorRegistry,
+    SandboxError, SandboxResult, SandboxRuntime,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub mod api;
@@ -91,18 +95,59 @@ pub fn create_sandbox_rhai_executor() -> rustok_sandbox::rhai::RhaiExecutor {
         .with_extension(std::sync::Arc::new(HttpCapabilityBridge))
 }
 
+/// Builds the neutral runtime used for every Alloy production execution. Host
+/// capability handling is injected by the deployment; the Alloy crate never
+/// opens infrastructure clients directly.
+pub fn create_alloy_sandbox_runtime(
+    broker: std::sync::Arc<dyn CapabilityBroker>,
+) -> SandboxResult<SandboxRuntime> {
+    let mut executors = ExecutorRegistry::new();
+    executors.register(create_sandbox_rhai_executor())?;
+    Ok(SandboxRuntime::new(executors, broker))
+}
+
+/// Default-deny runtime for deployments that have not yet supplied a host
+/// capability broker. This preserves the existing Alloy production surface,
+/// which never exposed direct HTTP or storage clients.
+pub fn create_default_alloy_sandbox_runtime() -> SandboxRuntime {
+    create_alloy_sandbox_runtime(std::sync::Arc::new(DenyAlloyCapabilityBroker))
+        .expect("Alloy Rhai executor registration must be unique")
+}
+
+/// Default-deny draft adapter for Alloy-owned callers that do not receive a
+/// deployment capability broker yet.
+pub fn create_default_alloy_draft_runtime() -> AlloyDraftRuntime {
+    AlloyDraftRuntime::new(
+        create_default_alloy_sandbox_runtime(),
+        rustok_sandbox::SandboxPolicy::default(),
+    )
+}
+
+struct DenyAlloyCapabilityBroker;
+
+#[async_trait]
+impl CapabilityBroker for DenyAlloyCapabilityBroker {
+    async fn invoke(
+        &self,
+        call: &CapabilityCall,
+        _grant: &CapabilityGrant,
+    ) -> SandboxResult<CapabilityResponse> {
+        Err(SandboxError::CapabilityDenied(call.capability.clone()))
+    }
+}
+
 pub fn create_orchestrator<R: ScriptRegistry>(
     registry: std::sync::Arc<R>,
 ) -> ScriptOrchestrator<R> {
-    let engine = create_default_engine();
-    ScriptOrchestrator::new(std::sync::Arc::new(engine), registry)
+    let runtime = create_default_alloy_draft_runtime();
+    ScriptOrchestrator::new(runtime, registry)
 }
 
-pub fn create_orchestrator_with_engine<R: ScriptRegistry>(
-    engine: std::sync::Arc<ScriptEngine>,
+pub fn create_orchestrator_with_sandbox<R: ScriptRegistry>(
+    runtime: AlloyDraftRuntime,
     registry: std::sync::Arc<R>,
 ) -> ScriptOrchestrator<R> {
-    ScriptOrchestrator::new(engine, registry)
+    ScriptOrchestrator::new(runtime, registry)
 }
 
 impl MigrationSource for AlloyModule {
@@ -471,7 +516,7 @@ mod tests {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
         let orchestrator = ScriptOrchestrator::with_execution_log(
-            Arc::new(create_default_engine()),
+            create_default_alloy_draft_runtime(),
             Arc::clone(&storage),
             execution_log.clone(),
         );
@@ -514,7 +559,7 @@ mod tests {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
         let orchestrator = ScriptOrchestrator::with_execution_log(
-            Arc::new(create_default_engine()),
+            create_default_alloy_draft_runtime(),
             Arc::clone(&storage),
             execution_log.clone(),
         );
@@ -579,7 +624,7 @@ mod tests {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
         let orchestrator = ScriptOrchestrator::with_execution_log(
-            Arc::new(create_default_engine()),
+            create_default_alloy_draft_runtime(),
             Arc::clone(&storage),
             execution_log.clone(),
         );

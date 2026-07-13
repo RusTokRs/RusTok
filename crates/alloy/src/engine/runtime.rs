@@ -10,8 +10,8 @@ pub struct CompiledScript(Arc<CompiledRhai>);
 
 /// Alloy-specific adapter over the neutral Rhai execution kernel.
 ///
-/// This type maps Alloy context and errors only. Resource limits, compilation,
-/// caching and language execution are owned by `rustok-sandbox`.
+/// This type owns Alloy source compilation for CRUD validation. Production
+/// execution is performed only by `AlloyDraftRuntime` through `SandboxRuntime`.
 pub struct ScriptEngine {
     inner: RhaiEngine,
 }
@@ -54,6 +54,7 @@ impl ScriptEngine {
             .map_err(ScriptError::from)
     }
 
+    #[cfg(test)]
     pub fn execute(
         &self,
         name: &str,
@@ -65,6 +66,7 @@ impl ScriptEngine {
             .map_err(ScriptError::from)
     }
 
+    #[cfg(test)]
     pub fn execute_compiled(
         &self,
         compiled: &CompiledScript,

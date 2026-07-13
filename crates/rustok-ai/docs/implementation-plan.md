@@ -104,12 +104,12 @@ active.
 
 ### Platform dependency (outside the AI change set)
 
-`P1` remains `blocked_platform`: foundation/runtime owners must provide the
-generic manifest-backed runtime and GraphQL/native contribution contract, then
-remove direct AI imports and runtime construction from `apps/server`.
-`rustok-ai` subsequently registers its shared runtime through that neutral
-extension context. AI work must not edit `apps/server` or claim the host
-boundary complete before P1 lands.
+`P1` is implemented: foundation now exposes `GraphqlRuntimeInputs` and a
+typed contribution descriptor; the manifest-driven server codegen composes AI
+query/mutation/subscription roots and applies its runtime-data factory.
+`rustok-ai` owns `AiGraphqlRuntimeData` and materializes it from neutral host
+values. `apps/server` no longer imports AI types, constructs `AiHostRuntime`,
+or declares AI GraphQL roots; it only builds the neutral input carrier.
 
 ### Explicitly later product work
 

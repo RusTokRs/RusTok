@@ -409,6 +409,17 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
         out.push_str(&format!("    \"{factory}\",\n"));
     }
     out.push_str("];\n");
+    out.push_str("\npub fn attach_module_graphql_data(\n    mut builder: async_graphql::SchemaBuilder<super::Query, super::Mutation, super::Subscription>,\n    inputs: &rustok_api::graphql::GraphqlRuntimeInputs,\n) -> Result<async_graphql::SchemaBuilder<super::Query, super::Mutation, super::Subscription>, String> {\n");
+    for entry in entries {
+        if let Some(factory) = &entry.graphql_runtime_data_factory_expr {
+            out.push_str(&format!(
+                "    #[cfg(feature = \"{feature}\")]\n    {{\n        builder = builder.data({factory}(inputs)?);\n    }}\n",
+                feature = entry.feature,
+                factory = factory,
+            ));
+        }
+    }
+    out.push_str("    Ok(builder)\n}\n");
     out
 }
 

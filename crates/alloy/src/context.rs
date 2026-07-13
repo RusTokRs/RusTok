@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
-use rhai::{Map, Scope};
+use rhai::Map;
+#[cfg(test)]
+use rhai::Scope;
+#[cfg(test)]
 use rustok_sandbox::rhai::RhaiScopeProvider;
 use uuid::Uuid;
 
@@ -81,6 +84,7 @@ impl ExecutionContext {
         }
     }
 
+    #[cfg(test)]
     pub fn to_scope(&self) -> Scope<'static> {
         let mut scope = Scope::new();
 
@@ -112,6 +116,7 @@ impl ExecutionContext {
     }
 }
 
+#[cfg(test)]
 impl RhaiScopeProvider for ExecutionContext {
     fn rhai_scope(&self) -> Scope<'static> {
         self.to_scope()

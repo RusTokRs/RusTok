@@ -4,11 +4,11 @@ use std::sync::Arc;
 use rhai::Dynamic;
 
 use crate::context::{ExecutionContext, ExecutionPhase};
-use crate::engine::ScriptEngine;
 use crate::error::{ScriptError, ScriptResult};
 use crate::execution_log::ExecutionLogSink;
 use crate::model::{EntityProxy, EventType, Script};
 use crate::storage::{ScriptQuery, ScriptRegistry};
+use crate::AlloyDraftRuntime;
 
 use super::executor::ScriptExecutor;
 use super::result::{ExecutionOutcome, ExecutionResult, HookOutcome, PhaseResult};
@@ -19,20 +19,20 @@ pub struct ScriptOrchestrator<R: ScriptRegistry> {
 }
 
 impl<R: ScriptRegistry> ScriptOrchestrator<R> {
-    pub fn new(engine: Arc<ScriptEngine>, registry: Arc<R>) -> Self {
+    pub fn new(runtime: AlloyDraftRuntime, registry: Arc<R>) -> Self {
         Self {
-            executor: ScriptExecutor::new(engine, Arc::clone(&registry)),
+            executor: ScriptExecutor::new(runtime, Arc::clone(&registry)),
             registry,
         }
     }
 
     pub fn with_execution_log(
-        engine: Arc<ScriptEngine>,
+        runtime: AlloyDraftRuntime,
         registry: Arc<R>,
         execution_log: Arc<dyn ExecutionLogSink>,
     ) -> Self {
         Self {
-            executor: ScriptExecutor::new(engine, Arc::clone(&registry))
+            executor: ScriptExecutor::new(runtime, Arc::clone(&registry))
                 .with_execution_log(execution_log),
             registry,
         }

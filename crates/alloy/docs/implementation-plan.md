@@ -36,10 +36,10 @@ Implemented:
 
 Remaining:
 
-- production draft/manual/hook/scheduled execution still needs atomic cutover
-  from the direct `ScriptEngine` path to `SandboxRuntime`; the request binding
-  and scope extension exist, but callers and execution-log adaptation still
-  need to move atomically;
+- production draft/manual/hook/scheduled execution now uses
+  `AlloyDraftRuntime` over `SandboxRuntime`; `ScriptEngine` remains only for
+  compile-time CRUD validation and internal unit tests, never production code
+  execution;
 - entity/parameter semantics must become request-scoped Alloy extensions;
 - draft revision/CAS, review, and publication orchestration need owner contracts;
 - marketplace release import/fork needs a complete persisted workflow;

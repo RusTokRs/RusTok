@@ -197,7 +197,7 @@ mod tests {
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
 
-    use crate::engine::ScriptEngine;
+    use crate::create_default_alloy_draft_runtime;
     use crate::error::ScriptResult;
     use crate::execution_log::ExecutionLogSink;
     use crate::model::ScriptStatus;
@@ -228,9 +228,9 @@ mod tests {
     async fn scheduler_tick_persists_execution_log_with_script_tenant() {
         let storage = Arc::new(InMemoryStorage::new());
         let execution_log = Arc::new(CapturingExecutionLog::default());
-        let engine = Arc::new(ScriptEngine::new(Default::default()));
-        let executor = ScriptExecutor::new(engine, Arc::clone(&storage))
-            .with_execution_log(execution_log.clone());
+        let executor =
+            ScriptExecutor::new(create_default_alloy_draft_runtime(), Arc::clone(&storage))
+                .with_execution_log(execution_log.clone());
         let scheduler = Scheduler::new(executor, Arc::clone(&storage));
 
         let mut script = Script::new(

@@ -70,6 +70,7 @@ impl From<rustok_sandbox::SandboxError> for ScriptError {
             rustok_sandbox::SandboxError::Trap(message)
             | rustok_sandbox::SandboxError::InvalidRequest(message)
             | rustok_sandbox::SandboxError::Internal(message) => Self::Runtime(message),
+            rustok_sandbox::SandboxError::Aborted(reason) => Self::Aborted(reason),
             rustok_sandbox::SandboxError::CapabilityDenied(capability) => {
                 Self::Runtime(format!("capability `{capability}` is denied"))
             }

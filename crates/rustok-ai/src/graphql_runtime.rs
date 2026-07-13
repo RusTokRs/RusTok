@@ -52,9 +52,8 @@ pub fn attach_schema_data(
         .shared_get::<rustok_outbox::TransactionalEventBus>()
         .ok_or_else(|| "AI GraphQL requires TransactionalEventBus".to_string())?;
     let registry = inputs
-        .shared_get::<crate::SharedAiModuleRegistry>()
-        .ok_or_else(|| "AI GraphQL requires SharedAiModuleRegistry".to_string())?
-        .0;
+        .shared_get::<rustok_core::ModuleRegistry>()
+        .ok_or_else(|| "AI GraphQL requires ModuleRegistry".to_string())?;
     let mut runtime = crate::AiHostRuntime::new(inputs.db_clone(), event_bus, registry)
         .with_storage(inputs.shared_get::<rustok_storage::StorageService>())
         .with_alloy_runtime(inputs.shared_get::<alloy::SharedAlloyRuntime>());

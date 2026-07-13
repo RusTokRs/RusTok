@@ -355,7 +355,7 @@ and installed artifacts.
 
 - [x] Add an explicit Alloy draft request builder using
   `SandboxSubject::AlloyDraft` and a revision number.
-- [ ] Replace Alloy's direct production execution path atomically with
+- [x] Replace Alloy's direct production execution path atomically with
   `SandboxRuntime`; do not retain a fallback executor.
 - [ ] Preserve Alloy-specific entity, parameter, validation, and HTTP behavior
   as request-scoped extensions backed by the capability broker.

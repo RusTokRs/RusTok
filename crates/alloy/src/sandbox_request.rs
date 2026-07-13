@@ -150,9 +150,14 @@ impl AlloyDraftRuntime {
             .requests
             .build(script, context, input_from_context(context))
             .map_err(|error| ScriptError::Runtime(error.to_string()))?;
-        let output = self.sandbox.execute(request).await.map_err(ScriptError::from)?;
-        let output: AlloyDraftOutput = serde_json::from_value(output.output)
-            .map_err(|error| ScriptError::Runtime(format!("invalid Alloy sandbox output: {error}")))?;
+        let output = self
+            .sandbox
+            .execute(request)
+            .await
+            .map_err(ScriptError::from)?;
+        let output: AlloyDraftOutput = serde_json::from_value(output.output).map_err(|error| {
+            ScriptError::Runtime(format!("invalid Alloy sandbox output: {error}"))
+        })?;
         output
             .validate()
             .map_err(|error| ScriptError::Runtime(error.to_string()))?;
@@ -397,10 +402,7 @@ fn input_from_context(context: &ExecutionContext) -> AlloyDraftInput {
                 .collect(),
         ),
         entity: context.entity_proxy.as_ref().map(entity_snapshot),
-        entity_before: context
-            .entity_before_proxy
-            .as_ref()
-            .map(entity_snapshot),
+        entity_before: context.entity_before_proxy.as_ref().map(entity_snapshot),
     }
 }
 
@@ -418,9 +420,7 @@ fn entity_snapshot(entity: &EntityProxy) -> AlloyDraftEntitySnapshot {
     }
 }
 
-fn changes_from_json(
-    changes: serde_json::Value,
-) -> ScriptResult<HashMap<String, rhai::Dynamic>> {
+fn changes_from_json(changes: serde_json::Value) -> ScriptResult<HashMap<String, rhai::Dynamic>> {
     let changes = changes.as_object().ok_or_else(|| {
         ScriptError::Runtime("Alloy sandbox output entity changes must be an object".into())
     })?;

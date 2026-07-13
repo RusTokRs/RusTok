@@ -129,6 +129,18 @@ impl RhaiExecutor {
                 resource,
                 limit: request.policy.limits.max_memory_bytes,
             },
+            EvalAltResult::ErrorTerminated(reason, _) => SandboxError::Aborted(reason.to_string()),
+            EvalAltResult::ErrorRuntime(message, _)
+                if message.to_string().starts_with("ABORT:") =>
+            {
+                SandboxError::Aborted(
+                    message
+                        .to_string()
+                        .trim_start_matches("ABORT:")
+                        .trim()
+                        .to_string(),
+                )
+            }
             other => SandboxError::Trap(other.to_string()),
         }
     }

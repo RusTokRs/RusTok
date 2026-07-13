@@ -512,7 +512,10 @@ pub fn alloy_validate_script<R: ScriptRegistry>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy::{create_default_engine, InMemoryStorage, ScriptOrchestrator};
+    use alloy::{
+        create_default_alloy_draft_runtime, create_default_engine, InMemoryStorage,
+        ScriptOrchestrator,
+    };
     use anyhow::Result as AnyhowResult;
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -522,7 +525,10 @@ mod tests {
     fn test_state() -> AlloyMcpState<InMemoryStorage> {
         let engine = Arc::new(create_default_engine());
         let storage = Arc::new(InMemoryStorage::new());
-        let orchestrator = Arc::new(ScriptOrchestrator::new(engine.clone(), storage.clone()));
+        let orchestrator = Arc::new(ScriptOrchestrator::new(
+            create_default_alloy_draft_runtime(),
+            storage.clone(),
+        ));
         AlloyMcpState::new(storage, engine, orchestrator)
     }
 

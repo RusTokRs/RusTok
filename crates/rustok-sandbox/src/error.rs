@@ -16,6 +16,8 @@ pub enum SandboxError {
     Compilation(String),
     #[error("sandbox execution trapped: {0}")]
     Trap(String),
+    #[error("sandbox execution was aborted: {0}")]
+    Aborted(String),
     #[error("sandbox execution exceeded the {limit_ms} ms deadline")]
     Timeout { limit_ms: u64 },
     #[error("sandbox resource limit exceeded for `{resource}` ({limit})")]
@@ -40,6 +42,7 @@ impl SandboxError {
             Self::CapabilityDenied(_) => "CAPABILITY_DENIED",
             Self::Compilation(_) => "COMPILATION_FAILED",
             Self::Trap(_) => "EXECUTION_TRAPPED",
+            Self::Aborted(_) => "EXECUTION_ABORTED",
             Self::Timeout { .. } => "EXECUTION_TIMEOUT",
             Self::LimitExceeded { .. } => "RESOURCE_LIMIT_EXCEEDED",
             Self::HostCapability { .. } => "HOST_CAPABILITY_FAILED",
@@ -50,4 +53,3 @@ impl SandboxError {
 }
 
 pub type SandboxResult<T> = Result<T, SandboxError>;
-
