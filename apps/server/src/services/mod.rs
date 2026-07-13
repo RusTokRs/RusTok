@@ -23,6 +23,8 @@ pub mod module_event_dispatcher;
 pub mod module_lifecycle;
 pub mod oauth_app;
 pub mod oauth_token_service;
+#[cfg(feature = "mod-commerce")]
+pub mod paid_order_label_worker;
 pub mod platform_composition;
 
 pub mod event_transport_factory;
