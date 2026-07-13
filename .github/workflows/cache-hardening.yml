@@ -31,6 +31,7 @@ on:
       - "apps/server/src/services/field_definition_cache.rs"
       - "apps/server/src/services/rbac_runtime.rs"
       - "apps/server/tests/cache_architecture_guard.rs"
+      - "apps/server/tests/cache_legacy_fallback_guard.rs"
       - "apps/server/tests/cache_redis_status_architecture_guard.rs"
       - "apps/server/tests/generation_store_architecture_guard.rs"
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
@@ -71,6 +72,7 @@ on:
       - "apps/server/src/services/field_definition_cache.rs"
       - "apps/server/src/services/rbac_runtime.rs"
       - "apps/server/tests/cache_architecture_guard.rs"
+      - "apps/server/tests/cache_legacy_fallback_guard.rs"
       - "apps/server/tests/cache_redis_status_architecture_guard.rs"
       - "apps/server/tests/generation_store_architecture_guard.rs"
       - "apps/server/tests/tenant_cache_architecture_guard.rs"
@@ -119,7 +121,7 @@ jobs:
           cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
           cargo test -p rustok-cache --test redis_health_regression
           cargo test -p rustok-cache --test generation_store_regression
-          cargo test -p rustok-server --test cache_architecture_guard --test cache_redis_status_architecture_guard --test generation_store_architecture_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard
+          cargo test -p rustok-server --test cache_architecture_guard --test cache_legacy_fallback_guard --test cache_redis_status_architecture_guard --test generation_store_architecture_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_delivery_gate_guard --test tenant_generation_preflight_guard --test tenant_generation_readiness_guard --test tenant_listener_handle_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
           cargo test -p rustok-server tenant_generation_delivery_gate --lib
