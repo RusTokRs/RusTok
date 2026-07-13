@@ -65,23 +65,19 @@ impl DegradedWriteTracker {
             return Ok(());
         }
 
-        let scan = state
-            .insertion_order
-            .iter()
-            .take(DEGRADED_WRITE_PRUNE_SCAN)
-            .cloned()
-            .collect::<Vec<_>>();
-        for candidate in scan {
+        let scan = DEGRADED_WRITE_PRUNE_SCAN.min(state.insertion_order.len());
+        for _ in 0..scan {
+            let Some(candidate) = state.insertion_order.pop_front() else {
+                break;
+            };
+            if !state.keys.contains(&candidate) {
+                continue;
+            }
             if fallback.get(&candidate).await?.is_none() {
                 state.keys.remove(&candidate);
+            } else {
+                state.insertion_order.push_back(candidate);
             }
-        }
-        while state
-            .insertion_order
-            .front()
-            .is_some_and(|candidate| !state.keys.contains(candidate))
-        {
-            state.insertion_order.pop_front();
         }
 
         if state.keys.len() >= self.maximum_keys {
@@ -252,7 +248,18 @@ impl CacheBackend for DegradationAwareFallbackBackend {
                 }
 
                 match primary_value {
-                    Some(value) => Ok(Some(value)),
+                    Some(value) => {
+                        if let Err(error) =
+                            self.fallback.set(key.to_string(), value.clone()).await
+                        {
+                            tracing::warn!(
+                                %error,
+                                key,
+                                "Failed to refresh local cache mirror from primary read"
+                            );
+                        }
+                        Ok(Some(value))
+                    }
                     None => {
                         // A successful primary miss is authoritative. Remove any older local mirror
                         // so a later Redis outage cannot resurrect stale bytes.
@@ -771,6 +778,62 @@ mod tests {
         primary.fail_writes.store(false, Ordering::SeqCst);
 
         assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn primary_hit_refreshes_the_local_mirror() {
+        let primary = Arc::new(RecoveringStaleBackend {
+            fail_writes: AtomicBool::new(false),
+            value: StdMutex::new(Some(b"fresh".to_vec())),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        fallback
+            .set("key".to_string(), b"stale".to_vec())
+            .await
+            .unwrap();
+        let backend = backend(primary, Arc::clone(&fallback));
+
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"fresh".to_vec()));
+        assert_eq!(fallback.get("key").await.unwrap(), Some(b"fresh".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn degraded_tracker_rotates_prune_candidates_without_tombstone_growth() {
+        let tracker = DegradedWriteTracker::new(3);
+        let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 64);
+        fallback
+            .set("live".to_string(), b"live".to_vec())
+            .await
+            .unwrap();
+        tracker.insert("live", b"live", &fallback).await.unwrap();
+
+        for index in 0..64 {
+            let key = format!("expired-{index}");
+            fallback
+                .set(key.clone(), b"temporary".to_vec())
+                .await
+                .unwrap();
+            tracker
+                .insert(&key, b"temporary", &fallback)
+                .await
+                .unwrap();
+            fallback.invalidate(&key).await.unwrap();
+        }
+
+        fallback
+            .set("fresh".to_string(), b"fresh".to_vec())
+            .await
+            .unwrap();
+        tracker
+            .insert("fresh", b"fresh", &fallback)
+            .await
+            .unwrap();
+
+        let state = tracker.state.lock().await;
+        assert!(state.keys.contains("live"));
+        assert!(state.keys.contains("fresh"));
+        assert!(state.insertion_order.len() <= tracker.maximum_keys);
+        assert_eq!(state.insertion_order.len(), state.keys.len());
     }
 
     #[tokio::test]
