@@ -1,11 +1,16 @@
 use chrono::Utc;
+use rust_decimal::Decimal;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    Set, TransactionTrait,
 };
+use std::collections::BTreeMap;
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::atomic_checkout_port::{
+    CartCheckoutLineItemPricingUpdate, CartCheckoutPricingPlan,
+};
 use crate::checkout_snapshot::PrepareCartCheckoutSnapshotRequest;
 use crate::dto::{CartResponse, CartStatus, UpdateCartContextInput};
 use crate::entities;
@@ -14,8 +19,10 @@ use crate::error::{CartError, CartResult};
 use super::CartService;
 use super::helpers::{
     apply_shipping_selection_patch, load_cart_in_tx, normalize_country_code, normalize_locale_code,
-    recalculate_totals,
+    recalculate_totals, replace_pricing_adjustments,
 };
+
+const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";
 
 impl CartService {
     pub async fn complete_cart(&self, tenant_id: Uuid, cart_id: Uuid) -> CartResult<CartResponse> {
@@ -51,16 +58,25 @@ impl CartService {
         .await
     }
 
-    /// Atomically applies the effective checkout context, recalculates all
-    /// cart-owned totals and transitions the cart into `checking_out`.
-    ///
-    /// The status compare-and-set is executed first inside the transaction. It
-    /// acquires the cart row for the remainder of the transaction, so normal
-    /// active-cart mutations cannot race the prepared commercial snapshot.
+    /// Atomically applies checkout context and totals without an external
+    /// pricing plan. Kept for compatibility with non-storefront callers.
     pub async fn prepare_checkout(
         &self,
         tenant_id: Uuid,
         request: PrepareCartCheckoutSnapshotRequest,
+    ) -> CartResult<CartResponse> {
+        self.prepare_checkout_with_pricing(tenant_id, request, None)
+            .await
+    }
+
+    /// Atomically claims the active cart, verifies and applies a resolved
+    /// pricing plan, applies checkout context, recalculates cart-owned totals
+    /// and commits the `checking_out` state.
+    pub async fn prepare_checkout_with_pricing(
+        &self,
+        tenant_id: Uuid,
+        request: PrepareCartCheckoutSnapshotRequest,
+        pricing_plan: Option<CartCheckoutPricingPlan>,
     ) -> CartResult<CartResponse> {
         for selection in request.shipping_selections.iter().flatten() {
             selection
@@ -93,17 +109,20 @@ impl CartService {
         }
 
         let cart = load_cart_in_tx(&txn, tenant_id, request.cart_id).await?;
-        let has_line_items = entities::cart_line_item::Entity::find()
+        let line_items = entities::cart_line_item::Entity::find()
             .filter(entities::cart_line_item::Column::CartId.eq(cart.id))
-            .one(&txn)
-            .await?
-            .is_some();
-        if !has_line_items {
+            .all(&txn)
+            .await?;
+        if line_items.is_empty() {
             txn.rollback().await?;
             return Err(CartError::Validation(format!(
                 "cart {} has no line items",
                 cart.id
             )));
+        }
+
+        if let Some(pricing_plan) = pricing_plan {
+            apply_checkout_pricing_plan(&txn, &cart, &line_items, &request, pricing_plan).await?;
         }
 
         let shipping_patch_requested =
@@ -222,4 +241,141 @@ impl CartService {
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
     }
+}
+
+async fn apply_checkout_pricing_plan(
+    txn: &DatabaseTransaction,
+    cart: &entities::cart::Model,
+    line_items: &[entities::cart_line_item::Model],
+    request: &PrepareCartCheckoutSnapshotRequest,
+    pricing_plan: CartCheckoutPricingPlan,
+) -> CartResult<()> {
+    let expected_currency = cart.currency_code.trim().to_ascii_uppercase();
+    if pricing_plan.currency_code.trim().to_ascii_uppercase() != expected_currency {
+        return Err(checkout_pricing_changed(format!(
+            "currency changed from {} to {}",
+            pricing_plan.currency_code, cart.currency_code
+        )));
+    }
+    if pricing_plan.effective_region_id != cart.region_id.or(request.region_id) {
+        return Err(checkout_pricing_changed(
+            "effective region changed while resolving checkout prices",
+        ));
+    }
+    if pricing_plan.cart_channel_id != cart.channel_id
+        || normalize_channel_slug(pricing_plan.cart_channel_slug.as_deref())
+            != normalize_channel_slug(cart.channel_slug.as_deref())
+    {
+        return Err(checkout_pricing_changed(
+            "cart channel changed while resolving checkout prices",
+        ));
+    }
+
+    let mut updates = BTreeMap::<Uuid, CartCheckoutLineItemPricingUpdate>::new();
+    for update in pricing_plan.line_items {
+        let line_item_id = update.line_item_id;
+        if updates.insert(line_item_id, update).is_some() {
+            return Err(checkout_pricing_changed(format!(
+                "line item {line_item_id} has duplicate pricing updates"
+            )));
+        }
+    }
+
+    let expected_priced_lines = line_items
+        .iter()
+        .filter(|line_item| line_item.variant_id.is_some())
+        .count();
+    if updates.len() != expected_priced_lines {
+        return Err(checkout_pricing_changed(format!(
+            "pricing plan covers {} variant lines, expected {expected_priced_lines}",
+            updates.len()
+        )));
+    }
+
+    let mut pricing_adjustments = Vec::with_capacity(expected_priced_lines);
+    for line_item in line_items {
+        let Some(variant_id) = line_item.variant_id else {
+            continue;
+        };
+        let Some(update) = updates.remove(&line_item.id) else {
+            return Err(checkout_pricing_changed(format!(
+                "line item {} is missing from the pricing plan",
+                line_item.id
+            )));
+        };
+        validate_checkout_line_pricing(line_item, variant_id, &update)?;
+
+        let mut active: entities::cart_line_item::ActiveModel = line_item.clone().into();
+        active.unit_price = Set(update.unit_price);
+        active.total_price = Set(update.unit_price * Decimal::from(line_item.quantity));
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        pricing_adjustments.push((line_item.id, update.pricing_adjustment));
+    }
+
+    if let Some(unexpected_id) = updates.keys().next() {
+        return Err(checkout_pricing_changed(format!(
+            "pricing plan contains unknown line item {unexpected_id}"
+        )));
+    }
+
+    replace_pricing_adjustments(
+        txn,
+        cart.id,
+        cart.currency_code.as_str(),
+        pricing_adjustments,
+    )
+    .await
+}
+
+fn validate_checkout_line_pricing(
+    line_item: &entities::cart_line_item::Model,
+    variant_id: Uuid,
+    update: &CartCheckoutLineItemPricingUpdate,
+) -> CartResult<()> {
+    if update.variant_id != variant_id || update.quantity != line_item.quantity {
+        return Err(checkout_pricing_changed(format!(
+            "line item {} variant or quantity changed while resolving checkout prices",
+            line_item.id
+        )));
+    }
+    if !line_item
+        .currency_code
+        .eq_ignore_ascii_case(line_item.currency_code.as_str())
+    {
+        return Err(checkout_pricing_changed(format!(
+            "line item {} currency changed while resolving checkout prices",
+            line_item.id
+        )));
+    }
+    if update.unit_price < Decimal::ZERO {
+        return Err(CartError::Validation(format!(
+            "checkout pricing for line item {} cannot be negative",
+            line_item.id
+        )));
+    }
+    if let Some(adjustment) = &update.pricing_adjustment {
+        let maximum = update.unit_price * Decimal::from(line_item.quantity);
+        if adjustment.amount < Decimal::ZERO || adjustment.amount > maximum {
+            return Err(CartError::Validation(format!(
+                "checkout pricing adjustment for line item {} is outside the line total",
+                line_item.id
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn checkout_pricing_changed(message: impl Into<String>) -> CartError {
+    CartError::Validation(format!(
+        "{CHECKOUT_PRICING_CHANGED_PREFIX} {}",
+        message.into()
+    ))
+}
+
+fn normalize_channel_slug(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
 }
