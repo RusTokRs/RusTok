@@ -5,8 +5,13 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use moka::future::Cache;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use moka::{future::Cache, Expiry};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -26,11 +31,12 @@ use rustok_channel::{
 const CHANNEL_ID_HEADER: &str = "X-Channel-ID";
 const CHANNEL_SLUG_HEADER: &str = "X-Channel-Slug";
 const CHANNEL_CACHE_TTL: Duration = Duration::from_secs(60);
-const CHANNEL_CACHE_MAX_CAPACITY: u64 = 2_000;
+const CHANNEL_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(10);
+const CHANNEL_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Clone)]
 struct ChannelResolutionCache {
-    cache: Cache<ChannelCacheKey, Option<ChannelContext>>,
+    cache: Cache<ChannelCacheKey, CachedChannelResolution>,
     tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>,
 }
 
@@ -46,14 +52,78 @@ struct ChannelCacheKey {
     locale: Option<String>,
 }
 
+#[derive(Clone)]
+enum CachedChannelResolution {
+    Found(ChannelContext),
+    Missing,
+}
+
+impl CachedChannelResolution {
+    fn from_decision(decision: ResolutionDecision) -> Self {
+        resolved_detail_source_and_trace(decision)
+            .map(|(detail, source, trace)| {
+                let selected_target = detail
+                    .targets
+                    .iter()
+                    .find(|target| target.is_primary)
+                    .or_else(|| detail.targets.first());
+                Self::Found(ChannelContext {
+                    id: detail.channel.id,
+                    tenant_id: detail.channel.tenant_id,
+                    slug: detail.channel.slug,
+                    name: detail.channel.name,
+                    is_active: detail.channel.is_active,
+                    status: detail.channel.status,
+                    target_type: selected_target.map(|target| target.target_type.clone()),
+                    target_value: selected_target.map(|target| target.value.clone()),
+                    settings: detail.channel.settings,
+                    resolution_source: source,
+                    resolution_trace: trace,
+                })
+            })
+            .unwrap_or(Self::Missing)
+    }
+}
+
+struct ChannelCacheExpiry;
+
+impl Expiry<ChannelCacheKey, CachedChannelResolution> for ChannelCacheExpiry {
+    fn expire_after_create(
+        &self,
+        _key: &ChannelCacheKey,
+        value: &CachedChannelResolution,
+        _created_at: Instant,
+    ) -> Option<Duration> {
+        Some(ChannelResolutionCache::ttl_for(value))
+    }
+
+    fn expire_after_update(
+        &self,
+        _key: &ChannelCacheKey,
+        value: &CachedChannelResolution,
+        _updated_at: Instant,
+        _duration_until_expiry: Option<Duration>,
+    ) -> Option<Duration> {
+        Some(ChannelResolutionCache::ttl_for(value))
+    }
+}
+
 impl ChannelResolutionCache {
     fn new() -> Self {
         Self {
             cache: Cache::builder()
-                .time_to_live(CHANNEL_CACHE_TTL)
-                .max_capacity(CHANNEL_CACHE_MAX_CAPACITY)
+                .expire_after(ChannelCacheExpiry)
+                .weigher(channel_cache_entry_weight)
+                .max_capacity(CHANNEL_CACHE_MAX_WEIGHT_BYTES)
                 .build(),
             tenant_versions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    fn ttl_for(value: &CachedChannelResolution) -> Duration {
+        match value {
+            CachedChannelResolution::Found(_) => CHANNEL_CACHE_TTL,
+            CachedChannelResolution::Missing => CHANNEL_NEGATIVE_CACHE_TTL,
         }
     }
 
@@ -75,6 +145,32 @@ impl ChannelResolutionCache {
             .saturating_add(1);
         versions.insert(tenant_id, next_version);
     }
+}
+
+fn channel_cache_entry_weight(
+    key: &ChannelCacheKey,
+    value: &CachedChannelResolution,
+) -> u32 {
+    let key_strings = [
+        key.header_channel_slug.as_ref(),
+        key.query_channel_slug.as_ref(),
+        key.host.as_ref(),
+        key.locale.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(String::len)
+    .sum::<usize>();
+    let value_weight = match value {
+        CachedChannelResolution::Found(context) => serde_json::to_vec(context)
+            .map(|encoded| encoded.len())
+            .unwrap_or(std::mem::size_of::<ChannelContext>()),
+        CachedChannelResolution::Missing => 1,
+    };
+    std::mem::size_of::<ChannelCacheKey>()
+        .saturating_add(key_strings)
+        .saturating_add(value_weight)
+        .clamp(1, u32::MAX as usize) as u32
 }
 
 fn channel_cache(ctx: &ServerRuntimeContext) -> Arc<ChannelResolutionCache> {
@@ -110,44 +206,19 @@ pub async fn resolve(
     let cache_key =
         channel_cache_key_from_facts(&facts, cache.tenant_version(facts.tenant_id).await);
 
-    if let Some(cached_context) = cache.cache.get(&cache_key).await {
-        if let Some(context) = cached_context {
-            req.extensions_mut()
-                .insert(ChannelContextExtension(context));
-        }
-        return Ok(next.run(req).await);
-    }
-
-    let decision = resolver
-        .resolve(&facts)
+    let cached = cache
+        .cache
+        .try_get_with(cache_key, async move {
+            resolver
+                .resolve(&facts)
+                .await
+                .map(CachedChannelResolution::from_decision)
+                .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        })
         .await
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|error| *error)?;
 
-    let cached_context =
-        resolved_detail_source_and_trace(decision).map(|(detail, source, trace)| {
-            let selected_target = detail
-                .targets
-                .iter()
-                .find(|target| target.is_primary)
-                .or_else(|| detail.targets.first());
-            ChannelContext {
-                id: detail.channel.id,
-                tenant_id: detail.channel.tenant_id,
-                slug: detail.channel.slug,
-                name: detail.channel.name,
-                is_active: detail.channel.is_active,
-                status: detail.channel.status,
-                target_type: selected_target.map(|target| target.target_type.clone()),
-                target_value: selected_target.map(|target| target.value.clone()),
-                settings: detail.channel.settings,
-                resolution_source: source,
-                resolution_trace: trace,
-            }
-        });
-
-    cache.cache.insert(cache_key, cached_context.clone()).await;
-
-    if let Some(context) = cached_context {
+    if let CachedChannelResolution::Found(context) = cached {
         req.extensions_mut()
             .insert(ChannelContextExtension(context));
     }
@@ -184,12 +255,25 @@ fn channel_cache_key_from_facts(facts: &RequestFacts, version: u64) -> ChannelCa
         tenant_id: facts.tenant_id,
         version,
         header_channel_id: facts.header_channel_id,
-        header_channel_slug: facts.header_channel_slug.clone(),
-        query_channel_slug: facts.query_channel_slug.clone(),
-        host: facts.host.clone(),
+        header_channel_slug: facts
+            .header_channel_slug
+            .as_deref()
+            .map(bounded_cache_component),
+        query_channel_slug: facts
+            .query_channel_slug
+            .as_deref()
+            .map(bounded_cache_component),
+        host: facts.host.as_deref().map(bounded_cache_component),
         oauth_app_id: facts.oauth_app_id,
-        locale: facts.locale.clone(),
+        locale: facts.locale.as_deref().map(bounded_cache_component),
     }
+}
+
+fn bounded_cache_component(value: &str) -> String {
+    format!(
+        "sha256-{}",
+        hex::encode(Sha256::digest(value.as_bytes()))
+    )
 }
 
 fn resolved_detail_source_and_trace(
@@ -265,575 +349,5 @@ pub async fn invalidate_tenant_channel_cache(ctx: &ServerRuntimeContext, tenant_
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        build_request_facts, channel_cache_key_from_facts, channel_id_from_header,
-        channel_slug_from_header, channel_slug_from_query, resolved_detail_source_and_trace,
-        ChannelResolutionOutcome, ChannelResolutionStage,
-    };
-    use crate::common::RustokSettings;
-    use crate::context::ChannelResolutionSource;
-    use axum::http::{header::HOST, Extensions, HeaderMap};
-    use rustok_api::{
-        context::{AuthContext, AuthContextExtension},
-        request::ResolvedRequestLocale,
-    };
-    use rustok_channel::{
-        migrations, ChannelResolutionRuleDefinition, ChannelResolver, ChannelService,
-        CreateChannelInput, CreateChannelResolutionPolicySetInput,
-        CreateChannelResolutionRuleInput, CreateChannelTargetInput, ResolutionAction,
-        ResolutionPredicate,
-    };
-    use rustok_test_utils::setup_test_db;
-    use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
-    use sea_orm_migration::SchemaManager;
-    use uuid::Uuid;
-
-    async fn setup_channel_db() -> DatabaseConnection {
-        let db = setup_test_db().await;
-        db.execute(Statement::from_string(
-            db.get_database_backend(),
-            r#"
-            CREATE TABLE tenants (
-                id TEXT PRIMARY KEY NOT NULL,
-                name TEXT NOT NULL,
-                slug TEXT NOT NULL UNIQUE,
-                domain TEXT NULL UNIQUE,
-                settings TEXT NOT NULL DEFAULT '{}',
-                default_locale TEXT NOT NULL DEFAULT 'en',
-                is_active BOOLEAN NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            "#,
-        ))
-        .await
-        .expect("tenants table should exist for channel foreign keys");
-        db.execute(Statement::from_string(
-            db.get_database_backend(),
-            r#"
-            CREATE TABLE o_auth_apps (
-                id TEXT PRIMARY KEY NOT NULL,
-                tenant_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                slug TEXT NOT NULL,
-                app_type TEXT NOT NULL DEFAULT 'machine',
-                is_active BOOLEAN NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            "#,
-        ))
-        .await
-        .expect("o_auth_apps table should exist for channel foreign keys");
-        let manager = SchemaManager::new(&db);
-        for migration in migrations::migrations() {
-            migration
-                .up(&manager)
-                .await
-                .expect("channel migration should apply");
-        }
-        db
-    }
-
-    async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
-        db.execute(Statement::from_sql_and_values(
-            db.get_database_backend(),
-            "INSERT INTO tenants (id, name, slug, settings, default_locale, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-            [
-                tenant_id.into(),
-                format!("{slug} tenant").into(),
-                slug.to_string().into(),
-                "{}".to_string().into(),
-                "en".to_string().into(),
-                true.into(),
-            ],
-        ))
-        .await
-        .expect("tenant should be inserted");
-    }
-
-    async fn create_channel(service: &ChannelService, tenant_id: Uuid, slug: &str) -> Uuid {
-        service
-            .create_channel(CreateChannelInput {
-                tenant_id,
-                slug: slug.to_string(),
-                name: slug.to_string(),
-                settings: None,
-            })
-            .await
-            .expect("channel should be created")
-            .id
-    }
-
-    async fn add_web_target(service: &ChannelService, channel_id: Uuid, host: &str) {
-        service
-            .add_target(
-                channel_id,
-                CreateChannelTargetInput {
-                    target_type: "web_domain".to_string(),
-                    value: host.to_string(),
-                    is_primary: true,
-                    settings: None,
-                },
-            )
-            .await
-            .expect("host target should be created");
-    }
-
-    async fn add_locale_policy_rule(
-        service: &ChannelService,
-        tenant_id: Uuid,
-        channel_id: Uuid,
-        locale: &str,
-    ) {
-        let policy_set = service
-            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
-                tenant_id,
-                slug: format!("locale-{locale}"),
-                name: format!("Locale {locale}"),
-                is_active: true,
-            })
-            .await
-            .expect("locale policy set should be created");
-
-        service
-            .create_resolution_rule(
-                policy_set.id,
-                CreateChannelResolutionRuleInput {
-                    priority: 10,
-                    is_active: true,
-                    definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::LocaleEquals(locale.to_string())],
-                        action: ResolutionAction::ResolveToChannel { channel_id },
-                    },
-                },
-            )
-            .await
-            .expect("locale policy rule should be created");
-    }
-
-    async fn add_oauth_policy_rule(
-        service: &ChannelService,
-        tenant_id: Uuid,
-        channel_id: Uuid,
-        oauth_app_id: Uuid,
-    ) {
-        let policy_set = service
-            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
-                tenant_id,
-                slug: format!("oauth-{oauth_app_id}"),
-                name: format!("OAuth {oauth_app_id}"),
-                is_active: true,
-            })
-            .await
-            .expect("oauth policy set should be created");
-
-        service
-            .create_resolution_rule(
-                policy_set.id,
-                CreateChannelResolutionRuleInput {
-                    priority: 10,
-                    is_active: true,
-                    definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::OAuthAppEquals(oauth_app_id)],
-                        action: ResolutionAction::ResolveToChannel { channel_id },
-                    },
-                },
-            )
-            .await
-            .expect("oauth policy rule should be created");
-    }
-
-    fn test_settings() -> RustokSettings {
-        RustokSettings::default()
-    }
-
-    fn empty_extensions() -> Extensions {
-        Extensions::new()
-    }
-
-    #[test]
-    fn request_facts_include_auth_and_locale_extensions() {
-        let tenant_id = Uuid::new_v4();
-        let client_id = Uuid::new_v4();
-        let mut extensions = Extensions::new();
-        extensions.insert(AuthContextExtension(AuthContext {
-            user_id: Uuid::new_v4(),
-            session_id: Uuid::new_v4(),
-            tenant_id,
-            permissions: Vec::new(),
-            client_id: Some(client_id),
-            scopes: vec!["catalog:read".to_string()],
-            grant_type: "client_credentials".to_string(),
-        }));
-        extensions.insert(ResolvedRequestLocale {
-            requested_locale: Some("ru".to_string()),
-            effective_locale: "ru-RU".to_string(),
-        });
-
-        let facts = build_request_facts(
-            tenant_id,
-            &HeaderMap::new(),
-            None,
-            None,
-            &test_settings(),
-            &extensions,
-        );
-
-        assert_eq!(facts.oauth_app_id, Some(client_id));
-        assert_eq!(facts.locale.as_deref(), Some("ru-RU"));
-    }
-
-    #[test]
-    fn channel_cache_key_varies_by_oauth_app_and_locale() {
-        let tenant_id = Uuid::new_v4();
-        let client_id = Uuid::new_v4();
-
-        let base_facts = build_request_facts(
-            tenant_id,
-            &HeaderMap::new(),
-            Some("channel=storefront"),
-            None,
-            &test_settings(),
-            &empty_extensions(),
-        );
-
-        let mut locale_facts = base_facts.clone();
-        locale_facts.locale = Some("ru-RU".to_string());
-        let mut oauth_facts = base_facts.clone();
-        oauth_facts.oauth_app_id = Some(client_id);
-
-        let base_key = channel_cache_key_from_facts(&base_facts, 7);
-        let locale_key = channel_cache_key_from_facts(&locale_facts, 7);
-        let oauth_key = channel_cache_key_from_facts(&oauth_facts, 7);
-
-        assert_ne!(base_key, locale_key);
-        assert_ne!(base_key, oauth_key);
-        assert_ne!(locale_key, oauth_key);
-    }
-
-    #[test]
-    fn parses_channel_id_header() {
-        let mut headers = HeaderMap::new();
-        let channel_id = Uuid::new_v4();
-        headers.insert(
-            "X-Channel-ID",
-            channel_id.to_string().parse().expect("header"),
-        );
-
-        assert_eq!(channel_id_from_header(&headers), Some(channel_id));
-    }
-
-    #[test]
-    fn parses_channel_slug_from_header_and_query() {
-        let mut headers = HeaderMap::new();
-        headers.insert("X-Channel-Slug", "mobile-app".parse().expect("header"));
-
-        assert_eq!(
-            channel_slug_from_header(&headers).as_deref(),
-            Some("mobile-app")
-        );
-        assert_eq!(
-            channel_slug_from_query(Some("locale=ru&channel=web-store")).as_deref(),
-            Some("web-store")
-        );
-    }
-
-    #[tokio::test]
-    async fn select_channel_prefers_header_id_over_slug_query_host_and_default() {
-        let db = setup_channel_db().await;
-        let tenant_id = Uuid::new_v4();
-        seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db.clone());
-
-        let _default_channel_id = create_channel(&service, tenant_id, "default").await;
-        let header_id_channel_id = create_channel(&service, tenant_id, "header-id").await;
-        let _header_slug_channel_id = create_channel(&service, tenant_id, "header-slug").await;
-        let _query_channel_id = create_channel(&service, tenant_id, "query-channel").await;
-        let host_channel_id = create_channel(&service, tenant_id, "host-channel").await;
-        add_web_target(&service, host_channel_id, "shop.example.test").await;
-
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "X-Channel-ID",
-            header_id_channel_id
-                .to_string()
-                .parse()
-                .expect("channel id header"),
-        );
-        headers.insert(
-            "X-Channel-Slug",
-            "header-slug".parse().expect("slug header"),
-        );
-        headers.insert(HOST, "shop.example.test".parse().expect("host header"));
-
-        let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_source_and_trace(
-            resolver
-                .resolve(&build_request_facts(
-                    tenant_id,
-                    &headers,
-                    Some("channel=query-channel"),
-                    None,
-                    &test_settings(),
-                    &empty_extensions(),
-                ))
-                .await
-                .expect("resolution should succeed"),
-        )
-        .expect("channel should be resolved");
-
-        assert_eq!(selected.0.channel.id, header_id_channel_id);
-        assert_eq!(selected.0.channel.slug, "header-id");
-        assert_eq!(selected.1, ChannelResolutionSource::HeaderId);
-    }
-
-    #[tokio::test]
-    async fn select_channel_falls_back_from_missing_query_to_host() {
-        let db = setup_channel_db().await;
-        let tenant_id = Uuid::new_v4();
-        seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db.clone());
-
-        let _default_channel_id = create_channel(&service, tenant_id, "default").await;
-        let host_channel_id = create_channel(&service, tenant_id, "host-channel").await;
-        add_web_target(&service, host_channel_id, "https://shop.example.test/").await;
-
-        let mut headers = HeaderMap::new();
-        headers.insert(HOST, "SHOP.EXAMPLE.TEST.:443".parse().expect("host header"));
-
-        let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_source_and_trace(
-            resolver
-                .resolve(&build_request_facts(
-                    tenant_id,
-                    &headers,
-                    Some("channel=missing"),
-                    None,
-                    &test_settings(),
-                    &empty_extensions(),
-                ))
-                .await
-                .expect("resolution should succeed"),
-        )
-        .expect("host fallback should resolve");
-
-        assert_eq!(selected.0.channel.id, host_channel_id);
-        assert_eq!(selected.0.channel.slug, "host-channel");
-        assert_eq!(selected.1, ChannelResolutionSource::Host);
-        assert_eq!(selected.0.targets.len(), 1);
-        assert_eq!(selected.0.targets[0].value, "shop.example.test");
-    }
-
-    #[tokio::test]
-    async fn select_channel_falls_back_to_default_when_no_selector_matches() {
-        let db = setup_channel_db().await;
-        let tenant_id = Uuid::new_v4();
-        seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db.clone());
-
-        let first_channel_id = create_channel(&service, tenant_id, "default").await;
-        let explicit_default_channel_id = create_channel(&service, tenant_id, "secondary").await;
-        service
-            .set_default_channel(explicit_default_channel_id)
-            .await
-            .expect("explicit default channel should be saved");
-
-        let headers = HeaderMap::new();
-        let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_source_and_trace(
-            resolver
-                .resolve(&build_request_facts(
-                    tenant_id,
-                    &headers,
-                    Some("channel=missing"),
-                    None,
-                    &test_settings(),
-                    &empty_extensions(),
-                ))
-                .await
-                .expect("resolution should succeed"),
-        )
-        .expect("default fallback should resolve");
-
-        assert_ne!(selected.0.channel.id, first_channel_id);
-        assert_eq!(selected.0.channel.id, explicit_default_channel_id);
-        assert_eq!(selected.0.channel.slug, "secondary");
-        assert_eq!(selected.1, ChannelResolutionSource::Default);
-    }
-
-    #[tokio::test]
-    async fn select_channel_skips_inactive_explicit_slug_and_uses_host_fallback() {
-        let db = setup_channel_db().await;
-        let tenant_id = Uuid::new_v4();
-        seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db.clone());
-
-        let inactive_channel_id = create_channel(&service, tenant_id, "inactive").await;
-        db.execute(Statement::from_sql_and_values(
-            db.get_database_backend(),
-            "UPDATE channels SET is_active = ? WHERE id = ?",
-            [false.into(), inactive_channel_id.into()],
-        ))
-        .await
-        .expect("channel should be deactivated");
-
-        let host_channel_id = create_channel(&service, tenant_id, "host-channel").await;
-        add_web_target(&service, host_channel_id, "shop.example.test").await;
-
-        let mut headers = HeaderMap::new();
-        headers.insert("X-Channel-Slug", "inactive".parse().expect("slug header"));
-        headers.insert(HOST, "SHOP.EXAMPLE.TEST.:443".parse().expect("host header"));
-
-        let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_source_and_trace(
-            resolver
-                .resolve(&build_request_facts(
-                    tenant_id,
-                    &headers,
-                    None,
-                    None,
-                    &test_settings(),
-                    &empty_extensions(),
-                ))
-                .await
-                .expect("resolution should succeed"),
-        )
-        .expect("inactive channel must be skipped");
-
-        assert_eq!(selected.0.channel.id, host_channel_id);
-        assert_eq!(selected.0.channel.slug, "host-channel");
-        assert_eq!(selected.1, ChannelResolutionSource::Host);
-    }
-
-    #[tokio::test]
-    async fn runtime_locale_extension_can_select_policy_channel() {
-        let db = setup_channel_db().await;
-        let tenant_id = Uuid::new_v4();
-        seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db.clone());
-
-        let default_channel_id = create_channel(&service, tenant_id, "default").await;
-        let locale_channel_id = create_channel(&service, tenant_id, "locale-ru").await;
-        add_locale_policy_rule(&service, tenant_id, locale_channel_id, "ru-by").await;
-
-        let mut extensions = Extensions::new();
-        extensions.insert(ResolvedRequestLocale {
-            requested_locale: Some("ru".to_string()),
-            effective_locale: "RU_BY".to_string(),
-        });
-
-        let resolver = ChannelResolver::new(db);
-        let selected = resolved_detail_source_and_trace(
-            resolver
-                .resolve(&build_request_facts(
-                    tenant_id,
-                    &HeaderMap::new(),
-                    None,
-                    None,
-                    &test_settings(),
-                    &extensions,
-                ))
-                .await
-                .expect("resolution should succeed"),
-        )
-        .expect("locale policy channel should resolve");
-
-        assert_eq!(selected.0.channel.id, locale_channel_id);
-        assert_ne!(selected.0.channel.id, default_channel_id);
-        assert_eq!(selected.1, ChannelResolutionSource::Policy);
-    }
-
-    #[tokio::test]
-    async fn runtime_oauth_extension_can_select_policy_channel() {
-        let db = setup_channel_db().await;
-        let tenant_id = Uuid::new_v4();
-        let client_id = Uuid::new_v4();
-        seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db.clone());
-
-        let default_channel_id = create_channel(&service, tenant_id, "default").await;
-        let oauth_channel_id = create_channel(&service, tenant_id, "oauth-app").await;
-        add_oauth_policy_rule(&service, tenant_id, oauth_channel_id, client_id).await;
-
-        let mut extensions = Extensions::new();
-        extensions.insert(AuthContextExtension(AuthContext {
-            user_id: Uuid::new_v4(),
-            session_id: Uuid::new_v4(),
-            tenant_id,
-            permissions: Vec::new(),
-            client_id: Some(client_id),
-            scopes: vec!["catalog:read".to_string()],
-            grant_type: "client_credentials".to_string(),
-        }));
-
-        let resolver = ChannelResolver::new(db);
-        let selected = resolved_detail_source_and_trace(
-            resolver
-                .resolve(&build_request_facts(
-                    tenant_id,
-                    &HeaderMap::new(),
-                    None,
-                    None,
-                    &test_settings(),
-                    &extensions,
-                ))
-                .await
-                .expect("resolution should succeed"),
-        )
-        .expect("oauth policy channel should resolve");
-
-        assert_eq!(selected.0.channel.id, oauth_channel_id);
-        assert_ne!(selected.0.channel.id, default_channel_id);
-        assert_eq!(selected.1, ChannelResolutionSource::Policy);
-    }
-
-    #[tokio::test]
-    async fn resolved_context_keeps_resolution_trace_for_runtime_diagnostics() {
-        let db = setup_channel_db().await;
-        let tenant_id = Uuid::new_v4();
-        seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db.clone());
-
-        let _default_channel_id = create_channel(&service, tenant_id, "default").await;
-        let host_channel_id = create_channel(&service, tenant_id, "host-channel").await;
-        add_web_target(&service, host_channel_id, "shop.example.test").await;
-
-        let mut headers = HeaderMap::new();
-        headers.insert(HOST, "shop.example.test".parse().expect("host header"));
-
-        let resolver = ChannelResolver::new(db);
-        let selected = resolved_detail_source_and_trace(
-            resolver
-                .resolve(&build_request_facts(
-                    tenant_id,
-                    &headers,
-                    Some("channel=missing"),
-                    None,
-                    &test_settings(),
-                    &empty_extensions(),
-                ))
-                .await
-                .expect("resolution should succeed"),
-        )
-        .expect("host fallback should resolve");
-
-        assert!(
-            selected
-                .2
-                .iter()
-                .any(|step| step.stage == ChannelResolutionStage::Query
-                    && step.outcome == ChannelResolutionOutcome::Miss),
-            "trace should preserve pre-host misses for runtime diagnostics"
-        );
-        assert!(
-            selected
-                .2
-                .iter()
-                .any(|step| step.stage == ChannelResolutionStage::Host
-                    && step.outcome == ChannelResolutionOutcome::Matched),
-            "trace should preserve the final match"
-        );
-    }
-}
+#[path = "channel_tests.rs"]
+mod tests;
