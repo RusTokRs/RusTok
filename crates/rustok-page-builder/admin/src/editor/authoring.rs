@@ -68,12 +68,17 @@ impl AdminCanvasController {
 
     pub fn layer_items(&self) -> Vec<LayerItemView> {
         let mut items = Vec::new();
-        for page in &self.editor().document().project.pages {
-            let Some(root) = page.component.as_ref() else {
-                continue;
-            };
-            collect_layers(root, None, 0, 0, &mut items);
-        }
+        let Some(root) = self
+            .editor()
+            .document()
+            .project
+            .pages
+            .get(self.active_page_index())
+            .and_then(|page| page.component.as_ref())
+        else {
+            return items;
+        };
+        collect_layers(root, None, 0, 0, &mut items);
         items
     }
 
@@ -81,6 +86,9 @@ impl AdminCanvasController {
         let component_id = self.ui().state.selection.component_id.as_deref()?;
         let component = self.editor().document().component(component_id)?;
         let location = self.editor().document().component_location(component_id)?;
+        if location.page_index != self.active_page_index() {
+            return None;
+        }
         Some(SelectedComponentView {
             id: component_id.to_string(),
             component_type: component.component_type().to_string(),
@@ -117,32 +125,40 @@ impl AdminCanvasController {
 
         let (parent_id, index) = match self.ui().state.selection.component_id.as_deref() {
             Some(selected_id) => {
+                let location = document
+                    .component_location(selected_id)
+                    .ok_or_else(|| format!("selected component `{selected_id}` has no location"))?;
+                if location.page_index != self.active_page_index() {
+                    return Err("selected component is outside the active page".to_string());
+                }
                 let selected = document
                     .component(selected_id)
                     .ok_or_else(|| format!("selected component `{selected_id}` does not exist"))?;
                 if registries.accepts_child_type(
                     Some(selected.component_type()),
                     child_type.as_str(),
-                ) {
+                ) || location.depth == 0
+                {
                     (
                         Some(selected_id.to_string()),
                         selected.children().len(),
                     )
                 } else {
-                    let location = document
-                        .component_location(selected_id)
-                        .ok_or_else(|| format!("selected component `{selected_id}` has no location"))?;
-                    if location.depth == 0 {
-                        (None, document.root_child_count().unwrap_or_default())
-                    } else {
-                        (
-                            location.parent_component_id,
-                            location.index.saturating_add(1),
-                        )
-                    }
+                    (
+                        location.parent_component_id,
+                        location.index.saturating_add(1),
+                    )
                 }
             }
-            None => (None, document.root_child_count().unwrap_or_default()),
+            None => {
+                let root_id = self
+                    .active_root_id()
+                    .ok_or_else(|| "active page has no editable root".to_string())?;
+                let child_count = document
+                    .component_child_count(&root_id)
+                    .ok_or_else(|| "active page root is opaque or missing".to_string())?;
+                (Some(root_id), child_count)
+            }
         };
 
         let decision = registries.evaluate_placement(
@@ -201,19 +217,19 @@ impl AdminCanvasController {
         else {
             return Vec::new();
         };
-        let viewport = self.ui().state.viewport;
         let document = self.editor().document();
         let registries = self.editor().registries();
+        let active_page_index = self.active_page_index();
 
         let targets = geometries
             .into_iter()
             .filter_map(|geometry| {
+                let location = document.component_location(&geometry.component_id)?;
+                if location.page_index != active_page_index {
+                    return None;
+                }
                 let target_type = document.component_type_for_id(&geometry.component_id)?;
                 let allow_inside = registries.accepts_child_type(Some(target_type), &child_type);
-                let depth = document
-                    .component_location(&geometry.component_id)
-                    .map(|location| location.depth)
-                    .unwrap_or_default();
                 Some(BrowserDropTarget {
                     component_id: geometry.component_id,
                     parent_component_id: geometry.parent_component_id,
@@ -226,18 +242,16 @@ impl AdminCanvasController {
                     },
                     legal: true,
                     reason: None,
-                    priority: depth as f32,
+                    priority: location.depth as f32,
                 })
             })
             .collect::<Vec<_>>();
 
-        let transform = CoordinateTransform {
-            scroll_x: viewport.scroll_x,
-            scroll_y: viewport.scroll_y,
-            zoom: f64::from(viewport.zoom),
-            ..CoordinateTransform::default()
-        };
-        let mut candidates = hit_test_drop_targets(pointer, targets, transform);
+        let mut candidates = hit_test_drop_targets(
+            pointer,
+            targets,
+            CoordinateTransform::default(),
+        );
         for candidate in &mut candidates {
             let parent_component_id = match candidate.position {
                 DropPosition::Inside => Some(candidate.target_component_id.as_str()),
@@ -280,16 +294,19 @@ fn drag_source_identity(
     source: &DragSource,
 ) -> Option<(Option<String>, String)> {
     match source {
-        DragSource::ExistingComponent { component_id } => controller
-            .editor()
-            .document()
-            .component(component_id)
-            .map(|component| {
+        DragSource::ExistingComponent { component_id } => {
+            let document = controller.editor().document();
+            let location = document.component_location(component_id)?;
+            if location.page_index != controller.active_page_index() {
+                return None;
+            }
+            document.component(component_id).map(|component| {
                 (
                     Some(component_id.clone()),
                     component.component_type().to_string(),
                 )
-            }),
+            })
+        }
         DragSource::PaletteBlock { component, .. } => component
             .as_object()
             .map(|component| (None, component.component_type().to_string())),
@@ -348,6 +365,7 @@ fn layer_item(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly::{blank_page, PageCommand};
     use fly_ui::{DragSource, UiIntent};
     use serde_json::json;
 
@@ -357,6 +375,7 @@ mod tests {
             "rev-1",
             json!({
                 "pages": [{
+                    "id": "home",
                     "component": {
                         "id": "root",
                         "type": "wrapper",
@@ -373,10 +392,28 @@ mod tests {
     }
 
     #[test]
-    fn palette_and_layers_are_derived_from_engine_state() {
-        let controller = controller();
-        assert!(controller.palette_blocks().iter().any(|block| block.id == "section"));
+    fn palette_and_layers_are_derived_from_active_page() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::Execute(EditorCommand::Page {
+                command: PageCommand::Add {
+                    index: 1,
+                    page: blank_page("about", "About"),
+                },
+            }))
+            .expect("add page");
         assert_eq!(controller.layer_items().len(), 3);
+        controller
+            .dispatch(UiIntent::ActivatePage {
+                page_id: Some("about".to_string()),
+                page_index: 1,
+            })
+            .expect("activate about");
+        assert_eq!(controller.layer_items().len(), 1);
+        assert!(controller
+            .palette_blocks()
+            .iter()
+            .any(|block| block.id == "section"));
     }
 
     #[test]
@@ -392,6 +429,19 @@ mod tests {
             panic!("expected insert command");
         };
         assert_eq!(parent_id.as_deref(), Some("section"));
+        assert_eq!(index, 1);
+    }
+
+    #[test]
+    fn immediate_insert_without_selection_targets_active_root() {
+        let controller = controller();
+        let intent = controller
+            .insert_palette_block_intent("text")
+            .expect("insert intent");
+        let UiIntent::Execute(EditorCommand::Insert { parent_id, index, .. }) = intent else {
+            panic!("expected insert command");
+        };
+        assert_eq!(parent_id.as_deref(), Some("root"));
         assert_eq!(index, 1);
     }
 
