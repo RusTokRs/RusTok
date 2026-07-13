@@ -4,6 +4,8 @@
   let sequence = 0;
   let measureScheduled = false;
   let pointerScheduled = false;
+  let dragScheduled = false;
+  let lastDragPoint = null;
 
   const send = (type, payload = {}) => {
     parent.postMessage(JSON.stringify({
@@ -17,6 +19,8 @@
   const componentAt = (target) => target instanceof Element
     ? target.closest('[data-fly-component-id]')
     : null;
+
+  const point = (event) => ({ x: event.clientX, y: event.clientY });
 
   const reportViewport = () => send('viewport_changed', {
     width: Math.max(0, Math.round(window.innerWidth)),
@@ -45,6 +49,17 @@
     if (measureScheduled) return;
     measureScheduled = true;
     requestAnimationFrame(measure);
+  };
+
+  const scheduleDragPoint = (position) => {
+    lastDragPoint = position;
+    if (dragScheduled) return;
+    dragScheduled = true;
+    requestAnimationFrame(() => {
+      dragScheduled = false;
+      if (!lastDragPoint) return;
+      send('drag_moved', { position: lastDragPoint });
+    });
   };
 
   const announce = () => {
@@ -76,17 +91,34 @@
       const kind = ['mouse', 'touch', 'pen'].includes(event.pointerType)
         ? event.pointerType
         : 'unknown';
+      const position = point(event);
       send('pointer_moved', {
         sample: {
           pointer_id: event.pointerId,
           kind,
-          position: { x: event.clientX, y: event.clientY },
+          position,
           buttons: event.buttons,
           primary: event.isPrimary,
         },
       });
+      scheduleDragPoint(position);
     });
   }, { passive: true });
+  document.addEventListener('pointerup', (event) => {
+    send('drop_requested', { position: point(event) });
+  }, { passive: true });
+
+  document.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    scheduleDragPoint(point(event));
+  });
+  document.addEventListener('drop', (event) => {
+    event.preventDefault();
+    send('drop_requested', { position: point(event) });
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') send('cancel_drag_requested');
+  });
 
   const observer = new ResizeObserver(scheduleMeasure);
   observer.observe(document.documentElement);
