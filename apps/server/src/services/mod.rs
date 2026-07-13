@@ -4,6 +4,7 @@ pub mod app_runtime;
 pub mod auth_admin_mutation_provider;
 pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
+pub mod auth_password_reset;
 pub mod build_event_hub;
 pub mod build_executor;
 pub mod commerce_provider_runtime;
