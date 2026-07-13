@@ -1,7 +1,7 @@
 use crate::{
-    validate_project, ComponentNode, ComponentObject, FlyError, FlyResult, GrapesJsV1Codec,
-    ProjectDocument, RegistrySet, SequentialIdGenerator, ValidationDiagnostic, ValidationLimits,
-    ValidationReport,
+    validate_project, AssetDescriptor, ComponentNode, ComponentObject, FlyError, FlyResult,
+    GrapesJsV1Codec, ProjectDocument, RegistrySet, SequentialIdGenerator, ValidationDiagnostic,
+    ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -87,6 +87,13 @@ fn merge_style(current: &mut Option<Value>, patch: Value) {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
+pub enum AssetCommand {
+    Upsert { asset: Value },
+    Remove { asset_id: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "op", rename_all = "snake_case")]
 pub enum EditorCommand {
     Select {
         component_id: Option<String>,
@@ -107,6 +114,9 @@ pub enum EditorCommand {
     Patch {
         component_id: String,
         patch: ComponentPatch,
+    },
+    Asset {
+        command: AssetCommand,
     },
 }
 
@@ -440,6 +450,44 @@ impl FlyEditor {
                 patch.clone().apply(component);
                 Ok(())
             }
+            EditorCommand::Asset { command } => apply_asset_command(document, command),
+        }
+    }
+}
+
+fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -> FlyResult<()> {
+    match command {
+        AssetCommand::Upsert { asset } => {
+            let descriptor = AssetDescriptor::from_value(asset.clone()).ok_or_else(|| {
+                FlyError::InvalidAssetReference(
+                    "asset must be an object with src, source, or url".to_string(),
+                )
+            })?;
+            if let Some(index) = document
+                .project
+                .assets
+                .iter()
+                .position(|candidate| {
+                    AssetDescriptor::from_value(candidate.clone())
+                        .is_some_and(|candidate| candidate.id == descriptor.id)
+                })
+            {
+                document.project.assets[index] = asset.clone();
+            } else {
+                document.project.assets.push(asset.clone());
+            }
+            Ok(())
+        }
+        AssetCommand::Remove { asset_id } => {
+            let before = document.project.assets.len();
+            document.project.assets.retain(|candidate| {
+                AssetDescriptor::from_value(candidate.clone())
+                    .is_none_or(|candidate| candidate.id != *asset_id)
+            });
+            if document.project.assets.len() == before {
+                return Err(FlyError::AssetNotFound(asset_id.clone()));
+            }
+            Ok(())
         }
     }
 }
@@ -450,9 +498,9 @@ mod tests {
     use crate::{GrapesJsV1Codec, RegistrySet};
     use serde_json::json;
 
-    #[test]
-    fn style_patch_merges_and_can_remove_individual_properties() {
+    fn editor() -> FlyEditor {
         let document = GrapesJsV1Codec::decode_value(json!({
+            "assets": [],
             "pages": [{
                 "component": {
                     "id": "root",
@@ -466,7 +514,12 @@ mod tests {
             }]
         }))
         .expect("document");
-        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        FlyEditor::new(document, RegistrySet::with_builtins())
+    }
+
+    #[test]
+    fn style_patch_merges_and_can_remove_individual_properties() {
+        let mut editor = editor();
         editor
             .apply(EditorCommand::Patch {
                 component_id: "hero".to_string(),
@@ -489,21 +542,7 @@ mod tests {
 
     #[test]
     fn replace_style_is_explicit() {
-        let document = GrapesJsV1Codec::decode_value(json!({
-            "pages": [{
-                "component": {
-                    "id": "root",
-                    "type": "wrapper",
-                    "components": [{
-                        "id": "hero",
-                        "type": "section",
-                        "style": { "color": "red" }
-                    }]
-                }
-            }]
-        }))
-        .expect("document");
-        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        let mut editor = editor();
         editor
             .apply(EditorCommand::Patch {
                 component_id: "hero".to_string(),
@@ -521,5 +560,38 @@ mod tests {
             .expect("style");
         assert!(style.get("color").is_none());
         assert_eq!(style["width"], "320px");
+    }
+
+    #[test]
+    fn asset_commands_participate_in_history() {
+        let mut editor = editor();
+        editor
+            .apply(EditorCommand::Asset {
+                command: AssetCommand::Upsert {
+                    asset: json!({ "id": "hero-image", "src": "/media/hero.webp" }),
+                },
+            })
+            .expect("asset upsert");
+        assert_eq!(editor.document().project.assets.len(), 1);
+        editor.undo().expect("undo asset");
+        assert!(editor.document().project.assets.is_empty());
+        editor.redo().expect("redo asset");
+        assert_eq!(editor.document().project.assets.len(), 1);
+    }
+
+    #[test]
+    fn upsert_replaces_asset_with_same_normalized_id() {
+        let mut editor = editor();
+        for src in ["/media/one.webp", "/media/two.webp"] {
+            editor
+                .apply(EditorCommand::Asset {
+                    command: AssetCommand::Upsert {
+                        asset: json!({ "id": "hero-image", "src": src }),
+                    },
+                })
+                .expect("asset upsert");
+        }
+        assert_eq!(editor.document().project.assets.len(), 1);
+        assert_eq!(editor.document().project.assets[0]["src"], "/media/two.webp");
     }
 }
