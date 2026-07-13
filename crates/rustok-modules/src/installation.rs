@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, TryGetable,
+    Value as SqlValue,
 };
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,8 @@ use std::sync::Mutex;
 use thiserror::Error;
 use uuid::Uuid;
 
+use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_outbox::OutboxTransport;
 use rustok_sandbox::{
     SandboxContext, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
@@ -253,12 +256,6 @@ pub trait ArtifactRegistry: Send + Sync {
     ) -> Result<ModuleArtifactPackage, ModuleInstallationError>;
 }
 
-#[async_trait]
-pub trait ArtifactInstallationStore: Send + Sync {
-    async fn save(&self, artifact: &InstalledModuleArtifact)
-        -> Result<(), ModuleInstallationError>;
-}
-
 /// Platform-owned content-addressed storage for admitted executable payloads.
 #[async_trait]
 pub trait ArtifactBlobStore: Send + Sync {
@@ -280,6 +277,9 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
     ) -> Result<StagedArtifactBlob, ModuleInstallationError>;
     async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
     async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
+    /// Returns only digests that have crossed the durable publish boundary.
+    /// The reconciler compares this set with committed control-plane references.
+    async fn published_digests(&self) -> Result<Vec<String>, ModuleInstallationError>;
     async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError>;
 }
 
@@ -311,6 +311,8 @@ pub trait ArtifactAdmissionStore: Send + Sync {
     async fn unfinished_admissions(
         &self,
     ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError>;
+    /// Returns the durable CAS digests retained by a committed installation.
+    async fn referenced_blob_digests(&self) -> Result<BTreeSet<String>, ModuleInstallationError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -324,8 +326,9 @@ pub trait ArtifactBlobRetentionPolicy: Send + Sync {
     async fn may_delete(&self, digest: &str) -> Result<bool, ModuleInstallationError>;
 }
 
-/// Reconciles only temporary uploads. Published CAS blobs are retained until a
-/// reference/retention policy adapter explicitly authorizes their deletion.
+/// Reconciles temporary uploads and published CAS blobs. A published blob is
+/// removed only when no committed installation references it and the retention
+/// policy explicitly permits deletion.
 pub struct ArtifactAdmissionReconciler<B, S> {
     blobs: B,
     admissions: S,
@@ -350,6 +353,21 @@ where
             }
         }
         Ok(discarded)
+    }
+
+    pub async fn delete_unreferenced_published(
+        &self,
+        retention: &dyn ArtifactBlobRetentionPolicy,
+    ) -> Result<usize, ModuleInstallationError> {
+        let referenced = self.admissions.referenced_blob_digests().await?;
+        let mut deleted = 0;
+        for digest in self.blobs.published_digests().await? {
+            if !referenced.contains(&digest) && retention.may_delete(&digest).await? {
+                self.blobs.delete(&digest).await?;
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
     }
 }
 
@@ -455,6 +473,16 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
         Ok(())
     }
 
+    async fn published_digests(&self) -> Result<Vec<String>, ModuleInstallationError> {
+        Ok(self
+            .blobs
+            .lock()
+            .map_err(|_| ModuleInstallationError::Blob("blob store lock poisoned".into()))?
+            .keys()
+            .cloned()
+            .collect())
+    }
+
     async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError> {
         self.blobs
             .lock()
@@ -464,9 +492,8 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
     }
 }
 
-/// SeaORM adapter for the module-owned installation table. The OCI payload is
-/// deliberately not copied into PostgreSQL: execution resolves the immutable
-/// manifest reference and re-verifies the payload layer before sandboxing it.
+/// SeaORM adapter for the module-owned installation and admission tables. The
+/// OCI payload is deliberately not copied into PostgreSQL: CAS owns the bytes.
 #[derive(Clone)]
 pub struct SeaOrmArtifactInstallationStore {
     db: DatabaseConnection,
@@ -479,10 +506,11 @@ impl SeaOrmArtifactInstallationStore {
 }
 
 #[async_trait]
-impl ArtifactInstallationStore for SeaOrmArtifactInstallationStore {
-    async fn save(
+impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
+    async fn commit_admission(
         &self,
         artifact: &InstalledModuleArtifact,
+        staged: &StagedArtifactBlob,
     ) -> Result<(), ModuleInstallationError> {
         let transaction = self
             .db
@@ -500,27 +528,61 @@ impl ArtifactInstallationStore for SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         transaction
-            .commit()
+            .execute(Statement::from_sql_and_values(
+                backend,
+                admission_insert_sql(backend),
+                admission_values(artifact, staged, backend)?,
+            ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
-    async fn commit_admission(
-        &self,
-        artifact: &InstalledModuleArtifact,
-        _staged: &StagedArtifactBlob,
-    ) -> Result<(), ModuleInstallationError> {
-        self.save(artifact).await
+        let tenant_id = match &artifact.scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+        };
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    tenant_id,
+                    DomainEvent::ModuleArtifactAdmitted {
+                        installation_id: artifact.installation_id,
+                        artifact_digest: artifact.descriptor.artifact_digest.clone(),
+                        media_type: staged.media_type.clone(),
+                        size_bytes: staged.size_bytes,
+                    },
+                ),
+            )
+            .await
+            .map_err(|error| ModuleInstallationError::Outbox(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))
     }
 
     async fn unfinished_admissions(
         &self,
     ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
         Ok(Vec::new())
+    }
+
+    async fn referenced_blob_digests(&self) -> Result<BTreeSet<String>, ModuleInstallationError> {
+        let backend = self.db.get_database_backend();
+        let rows = self
+            .db
+            .query_all(Statement::from_string(
+                backend,
+                "SELECT payload_digest FROM module_artifact_admissions".to_string(),
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        rows.into_iter()
+            .map(|row| {
+                row.try_get("", "payload_digest")
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))
+            })
+            .collect()
     }
 }
 
@@ -604,6 +666,41 @@ fn installation_values(
         artifact.dependency_lock.graph_digest.clone().into(),
         SqlValue::Json(Some(Box::new(dependency_lock))),
         installed_at,
+    ])
+}
+
+fn admission_insert_sql(backend: DbBackend) -> String {
+    let placeholders = match backend {
+        DbBackend::Postgres => (1..=6).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        _ => (1..=6).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+    };
+    format!(
+        "INSERT INTO module_artifact_admissions (\
+            stage_id, installation_id, payload_digest, media_type, size_bytes, committed_at\
+         ) VALUES ({})",
+        placeholders.join(", ")
+    )
+}
+
+fn admission_values(
+    artifact: &InstalledModuleArtifact,
+    staged: &StagedArtifactBlob,
+    backend: DbBackend,
+) -> Result<Vec<SqlValue>, ModuleInstallationError> {
+    let committed_at = Utc::now();
+    let committed_at = match backend {
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(committed_at))),
+        _ => committed_at.to_rfc3339().into(),
+    };
+    let size_bytes = i64::try_from(staged.size_bytes)
+        .map_err(|_| ModuleInstallationError::Blob("artifact payload exceeds database size range".into()))?;
+    Ok(vec![
+        uuid_value(staged.stage_id, backend),
+        uuid_value(artifact.installation_id, backend),
+        staged.digest.clone().into(),
+        staged.media_type.clone().into(),
+        size_bytes.into(),
+        committed_at,
     ])
 }
 
@@ -735,6 +832,8 @@ pub enum ModuleInstallationError {
     Store(String),
     #[error("artifact blob store error: {0}")]
     Blob(String),
+    #[error("artifact admission outbox error: {0}")]
+    Outbox(String),
     #[error("admitted artifact blob `{0}` is unavailable")]
     BlobNotFound(String),
     #[error("artifact dependency lock is invalid: {0}")]
@@ -778,7 +877,7 @@ mod tests {
     use rustok_core::MigrationSource;
     use rustok_sandbox::{CapabilityGrant, CapabilityName, ExecutionPhase};
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TryGetable};
-    use sea_orm_migration::prelude::SchemaManager;
+    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
     use serde_json::json;
 
     use super::*;
@@ -799,24 +898,14 @@ mod tests {
     struct CapturingStore(Mutex<Vec<InstalledModuleArtifact>>);
 
     #[async_trait]
-    impl ArtifactInstallationStore for CapturingStore {
-        async fn save(
-            &self,
-            artifact: &InstalledModuleArtifact,
-        ) -> Result<(), ModuleInstallationError> {
-            self.0.lock().expect("store lock").push(artifact.clone());
-            Ok(())
-        }
-    }
-
-    #[async_trait]
     impl ArtifactAdmissionStore for CapturingStore {
         async fn commit_admission(
             &self,
             artifact: &InstalledModuleArtifact,
             _staged: &StagedArtifactBlob,
         ) -> Result<(), ModuleInstallationError> {
-            self.save(artifact).await
+            self.0.lock().expect("store lock").push(artifact.clone());
+            Ok(())
         }
 
         async fn unfinished_admissions(
@@ -824,9 +913,30 @@ mod tests {
         ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
             Ok(Vec::new())
         }
+
+        async fn referenced_blob_digests(
+            &self,
+        ) -> Result<BTreeSet<String>, ModuleInstallationError> {
+            Ok(self
+                .0
+                .lock()
+                .expect("store lock")
+                .iter()
+                .map(|artifact| artifact.descriptor.artifact_digest.clone())
+                .collect())
+        }
     }
 
     struct RecoveryStore(Vec<ArtifactAdmissionRecoveryRecord>);
+
+    struct AllowBlobDeletion;
+
+    #[async_trait]
+    impl ArtifactBlobRetentionPolicy for AllowBlobDeletion {
+        async fn may_delete(&self, _digest: &str) -> Result<bool, ModuleInstallationError> {
+            Ok(true)
+        }
+    }
 
     #[async_trait]
     impl ArtifactAdmissionStore for RecoveryStore {
@@ -842,6 +952,12 @@ mod tests {
             &self,
         ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
             Ok(self.0.clone())
+        }
+
+        async fn referenced_blob_digests(
+            &self,
+        ) -> Result<BTreeSet<String>, ModuleInstallationError> {
+            Ok(BTreeSet::new())
         }
     }
 
@@ -903,6 +1019,27 @@ mod tests {
         assert_eq!(
             reconciler
                 .discard_unpublished_staging()
+                .await
+                .expect("reconcile"),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn reconciler_deletes_only_unreferenced_published_blobs_allowed_by_policy() {
+        let blobs = InMemoryArtifactBlobStore::default();
+        let payload = b"orphaned admitted payload";
+        let digest = sha256_digest(payload);
+        let staged = blobs
+            .stage(&digest, RHAI_MEDIA_TYPE, payload)
+            .await
+            .expect("stage blob");
+        blobs.publish(&staged).await.expect("publish blob");
+        let reconciler = ArtifactAdmissionReconciler::new(blobs, RecoveryStore(Vec::new()));
+
+        assert_eq!(
+            reconciler
+                .delete_unreferenced_published(&AllowBlobDeletion)
                 .await
                 .expect("reconcile"),
             1
@@ -1011,6 +1148,10 @@ mod tests {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("database");
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
         let module = crate::ModulesModule;
         for migration in module.migrations() {
             migration
@@ -1075,6 +1216,36 @@ mod tests {
         assert_eq!(
             String::try_get(&row, "", "dependency_graph_digest").expect("dependency graph digest"),
             installed.dependency_lock.graph_digest
+        );
+        let admission = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT installation_id, payload_digest FROM module_artifact_admissions"
+                    .to_string(),
+            ))
+            .await
+            .expect("admission query")
+            .expect("admission row");
+        assert_eq!(
+            String::try_get(&admission, "", "installation_id").expect("admission installation id"),
+            installed.installation_id.to_string()
+        );
+        assert_eq!(
+            String::try_get(&admission, "", "payload_digest").expect("admission digest"),
+            installed.descriptor.artifact_digest
+        );
+        let outbox_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events WHERE event_type = 'module.artifact.admitted'"
+                    .to_string(),
+            ))
+            .await
+            .expect("outbox query")
+            .expect("outbox count");
+        assert_eq!(
+            i64::try_get(&outbox_count, "", "count").expect("outbox count"),
+            1
         );
     }
 }

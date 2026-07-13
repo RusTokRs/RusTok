@@ -173,6 +173,17 @@ function verifyStaticBaseline() {
     "expected_replied_events",
   ]);
 
+  for (const token of [
+    "forum_validate_category_parent",
+    "forum_categories_tree_guard",
+    "forum_categories_tree_insert",
+    "forum_categories_tree_update",
+  ]) {
+    if (!categoryTreeMigration.includes(token)) {
+      fail(`${files.categoryTreeMigration}: missing category-tree token ${token}`);
+    }
+  }
+
   if (known.includes("#[should_panic")) {
     fail(`${files.knownRegressions}: known defects must be real ignored tests, not should_panic placeholders`);
   }

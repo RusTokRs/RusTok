@@ -23,6 +23,15 @@ use crate::{
     SandboxResult, SandboxSubject,
 };
 
+/// Immutable v1 Component Model ABI identity and wire encoding.
+pub const WASM_COMPONENT_ABI_VERSION: &str = "v1";
+pub const WASM_COMPONENT_WIT_PACKAGE: &str = "rustok:module@1.0.0";
+pub const WASM_COMPONENT_WIT_WORLD: &str = "module-runtime";
+pub const WASM_COMPONENT_ENTRYPOINT: &str = "run";
+pub const WASM_COMPONENT_INPUT_ENCODING: &str = "application/json";
+pub const WASM_COMPONENT_OUTPUT_ENCODING: &str = "application/json";
+pub const WASM_COMPONENT_ERROR_ENCODING: &str = "wit-result-string";
+
 wasmtime::component::bindgen!({
     inline: r#"
         package rustok:module@1.0.0;
@@ -155,9 +164,11 @@ impl WasmComponentExecutor {
         let result = (|| {
             let instance = ModuleRuntime::instantiate(&mut store, &component, &linker)
                 .map_err(|error| SandboxError::Trap(error.to_string()))?;
-            if request.payload.entrypoint != "run" {
+            if request.payload.entrypoint != WASM_COMPONENT_ENTRYPOINT {
                 return Err(SandboxError::InvalidRequest(
-                    "Wasm Component v1 entrypoint must be `run`".to_string(),
+                    format!(
+                        "Wasm Component {WASM_COMPONENT_ABI_VERSION} entrypoint must be `{WASM_COMPONENT_ENTRYPOINT}`"
+                    ),
                 ));
             }
             let input = serde_json::to_string(&request.input)
@@ -236,6 +247,17 @@ mod tests {
         ExecutionPhase, SandboxContext, SandboxError, SandboxExecutorKind, SandboxPayload,
         SandboxPolicy, SandboxRequest, SandboxSubject,
     };
+
+    #[test]
+    fn v1_abi_constants_match_the_component_contract() {
+        assert_eq!(super::WASM_COMPONENT_ABI_VERSION, "v1");
+        assert_eq!(super::WASM_COMPONENT_WIT_PACKAGE, "rustok:module@1.0.0");
+        assert_eq!(super::WASM_COMPONENT_WIT_WORLD, "module-runtime");
+        assert_eq!(super::WASM_COMPONENT_ENTRYPOINT, "run");
+        assert_eq!(super::WASM_COMPONENT_INPUT_ENCODING, "application/json");
+        assert_eq!(super::WASM_COMPONENT_OUTPUT_ENCODING, "application/json");
+        assert_eq!(super::WASM_COMPONENT_ERROR_ENCODING, "wit-result-string");
+    }
 
     #[tokio::test]
     async fn invalid_component_bytes_are_rejected_before_instantiation() {
