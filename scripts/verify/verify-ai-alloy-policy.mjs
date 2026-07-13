@@ -87,7 +87,9 @@ hasAll(runtimeSource, [
   'access_context_for_operator(&execution_operator)',
   'async fn sync_workflow_stage_after_run(',
   'Self::sync_workflow_stage_after_run(db, operator.tenant_id, &record).await?',
-  'Column::RunId.eq(run.id)'
+  'Column::RunId.eq(run.id)',
+  'Column::LeaseExpiresAt.gte(Utc::now())',
+  'ai_agent_workflow_stages::Column::StartedAt'
 ], 'AI workflow runtime source');
 
 const agentSource = read('crates/rustok-ai/src/agent.rs');

@@ -51,7 +51,11 @@ impl CosignTrustVerifier {
             "--certificate-oidc-issuer".to_string(),
             issuer.to_string(),
         ];
-        let mut signature = vec!["verify".to_string(), "--output".to_string(), "json".to_string()];
+        let mut signature = vec![
+            "verify".to_string(),
+            "--output".to_string(),
+            "json".to_string(),
+        ];
         signature.extend(flags.clone());
         signature.push(reference.clone());
         self.run(signature).await?;
@@ -79,7 +83,11 @@ impl TrustVerifier for CosignTrustVerifier {
     ) -> Result<TrustVerificationDecision, String> {
         for identity in &self.policy.allowed_signer_identities {
             for issuer in &self.policy.allowed_oidc_issuers {
-                if self.verify_for_identity(&request, identity, issuer).await.is_ok() {
+                if self
+                    .verify_for_identity(&request, identity, issuer)
+                    .await
+                    .is_ok()
+                {
                     return Ok(TrustVerificationDecision {
                         signer_identity: identity.clone(),
                         trust_policy_revision: request.trust_policy_revision,
