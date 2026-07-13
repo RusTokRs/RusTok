@@ -40,12 +40,13 @@ FORUM-08B moves the public topic/reply lifecycle path into owner services:
 
 - `ReplyService` rejects locked topics with a typed error, allocates reply
   positions, and publishes counters/events only for approved replies.
-- `ReplyService::delete` explicitly redacts content, persists the tombstone,
-  removes solution state, updates projections, and emits the status event in
-  one transaction.
-- `TopicService::delete` explicitly redacts the whole thread, preserves
-  revisions, persists topic/reply tombstones, removes solution and flex state,
-  and updates category/user projections in one transaction.
+- `ReplyService::delete` atomically claims the live reply, explicitly redacts
+  content, persists the tombstone, removes solution state, updates projections,
+  and emits the status event in one transaction.
+- `TopicService::delete` atomically claims the live topic, explicitly redacts
+  the whole thread, preserves revisions, persists topic/reply tombstones,
+  removes solution and flex state, and updates category/user projections in one
+  transaction.
 - database triggers remain enabled as invariant protection for direct SQL and
   compatibility callers; they are no longer the primary root-service workflow.
 
