@@ -22,7 +22,7 @@ impl ProfilesMutation {
         input: GqlUpsertProfileInput,
     ) -> Result<GqlProfile> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_auth(ctx)?;
+        let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -48,7 +48,7 @@ impl ProfilesMutation {
         handle: String,
     ) -> Result<GqlProfile> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_auth(ctx)?;
+        let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -73,7 +73,7 @@ impl ProfilesMutation {
         input: GqlUpdateMyProfileContentInput,
     ) -> Result<GqlProfile> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_auth(ctx)?;
+        let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -99,7 +99,7 @@ impl ProfilesMutation {
         preferred_locale: Option<String>,
     ) -> Result<GqlProfile> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_auth(ctx)?;
+        let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -124,7 +124,7 @@ impl ProfilesMutation {
         visibility: GqlProfileVisibility,
     ) -> Result<GqlProfile> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_auth(ctx)?;
+        let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -149,7 +149,7 @@ impl ProfilesMutation {
         input: GqlUpdateMyProfileMediaInput,
     ) -> Result<GqlProfile> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_auth(ctx)?;
+        let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -170,10 +170,17 @@ impl ProfilesMutation {
     }
 }
 
-fn require_auth(ctx: &Context<'_>) -> Result<AuthContext> {
-    ctx.data::<AuthContext>()
+fn require_human_user(ctx: &Context<'_>) -> Result<AuthContext> {
+    let auth = ctx
+        .data::<AuthContext>()
         .cloned()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    if auth.is_service_principal() {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Profile self-service mutations require human-user credentials",
+        ));
+    }
+    Ok(auth)
 }
 
 async fn publish_profile_updated(
