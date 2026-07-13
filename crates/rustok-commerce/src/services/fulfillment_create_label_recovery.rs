@@ -1,3 +1,5 @@
+use chrono::Utc;
+use rustok_fulfillment::entities::{fulfillment, provider_operation};
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
     FulfillmentProviderRegistry,
@@ -7,7 +9,10 @@ use rustok_fulfillment::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
-use sea_orm::DatabaseConnection;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+};
+use serde_json::Value;
 use uuid::Uuid;
 
 use super::fulfillment_orchestration::{
@@ -50,15 +55,17 @@ impl FulfillmentCreateLabelRecoveryService {
             )));
         }
 
-        let fulfillment = FulfillmentService::new(self.db.clone())
-            .get_fulfillment(tenant_id, operation.fulfillment_id)
-            .await?;
         match operation.status.as_str() {
-            PROVIDER_OPERATION_COMMITTED => return Ok(fulfillment),
+            PROVIDER_OPERATION_COMMITTED => {
+                return FulfillmentService::new(self.db.clone())
+                    .get_fulfillment(tenant_id, operation.fulfillment_id)
+                    .await
+                    .map_err(Into::into);
+            }
             PROVIDER_OPERATION_SUCCEEDED => {
-                validate_result(&operation)?;
-                journal.mark_committed(operation_id).await?;
-                return Ok(fulfillment);
+                return self
+                    .commit_provider_result(&journal, operation)
+                    .await;
             }
             PROVIDER_OPERATION_RECONCILIATION_REQUIRED => {
                 if operation.provider_result.is_none() {
@@ -66,20 +73,20 @@ impl FulfillmentCreateLabelRecoveryService {
                         "create_label operation {operation_id} has an unknown provider outcome; resolve it before retrying"
                     )));
                 }
-                validate_result(&operation)?;
-                journal.mark_committed(operation_id).await?;
-                return Ok(fulfillment);
+                return self
+                    .commit_provider_result(&journal, operation)
+                    .await;
             }
             PROVIDER_OPERATION_EXECUTING => {
                 return Err(FulfillmentOrchestrationError::Validation(format!(
                     "create_label operation {operation_id} is already executing"
-                )))
+                )));
             }
             PROVIDER_OPERATION_ERROR | "pending" => {}
             other => {
                 return Err(FulfillmentOrchestrationError::Validation(format!(
                     "create_label operation {operation_id} cannot be retried from status `{other}`"
-                )))
+                )));
             }
         }
 
@@ -126,30 +133,119 @@ impl FulfillmentCreateLabelRecoveryService {
                 "failed to serialize create_label retry result for operation {operation_id}: {error}"
             ))
         })?;
-        journal
+        let operation = journal
             .mark_provider_succeeded(
                 operation_id,
                 result.external_reference.clone(),
                 payload,
             )
             .await?;
-        if let Err(source) = journal.mark_committed(operation_id).await {
-            let _ = journal
-                .mark_reconciliation_required(
-                    operation_id,
-                    format!("create_label retry succeeded, but journal commit failed: {source}"),
-                )
-                .await;
+        self.commit_provider_result(&journal, operation).await
+    }
+
+    async fn commit_provider_result(
+        &self,
+        journal: &FulfillmentProviderOperationJournal,
+        operation: provider_operation::Model,
+    ) -> FulfillmentOrchestrationResult<crate::dto::FulfillmentResponse> {
+        let result = validate_result(&operation)?;
+        let fulfillment = self
+            .persist_provider_result(&operation, &result)
+            .await
+            .map_err(|source| {
+                FulfillmentOrchestrationError::Validation(format!(
+                    "create_label provider result for operation {} could not be persisted locally: {source}",
+                    operation.id
+                ))
+            });
+
+        let fulfillment = match fulfillment {
+            Ok(fulfillment) => fulfillment,
+            Err(error) => {
+                if operation.status == PROVIDER_OPERATION_SUCCEEDED {
+                    let _ = journal
+                        .mark_reconciliation_required(
+                            operation.id,
+                            format!(
+                                "create_label provider succeeded, but local fulfillment projection failed: {error}"
+                            ),
+                        )
+                        .await;
+                }
+                return Err(error);
+            }
+        };
+
+        if let Err(source) = journal.mark_committed(operation.id).await {
+            if operation.status == PROVIDER_OPERATION_SUCCEEDED {
+                let _ = journal
+                    .mark_reconciliation_required(
+                        operation.id,
+                        format!(
+                            "create_label provider result was persisted locally, but journal commit failed: {source}"
+                        ),
+                    )
+                    .await;
+            }
             return Err(FulfillmentOrchestrationError::Validation(format!(
-                "create_label retry succeeded, but operation {operation_id} could not be committed: {source}"
+                "create_label operation {} could not be committed after local persistence: {source}",
+                operation.id
             )));
         }
+
         Ok(fulfillment)
+    }
+
+    async fn persist_provider_result(
+        &self,
+        operation: &provider_operation::Model,
+        result: &FulfillmentProviderOperationResult,
+    ) -> Result<crate::dto::FulfillmentResponse, rustok_fulfillment::FulfillmentError> {
+        let current = fulfillment::Entity::find_by_id(operation.fulfillment_id)
+            .filter(fulfillment::Column::TenantId.eq(operation.tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(rustok_fulfillment::FulfillmentError::FulfillmentNotFound(
+                operation.fulfillment_id,
+            ))?;
+
+        if label_operation_id(&current.metadata) != Some(operation.id) {
+            let mut active: fulfillment::ActiveModel = current.into();
+            let current_metadata = active.metadata.clone().take().unwrap_or_default();
+            active.metadata = Set(label_result_metadata(
+                current_metadata,
+                result,
+                operation.id,
+            ));
+            if active
+                .carrier
+                .clone()
+                .take()
+                .as_deref()
+                .is_none_or(str::is_empty)
+            {
+                active.carrier = Set(Some(result.provider_id.clone()));
+            }
+            if let Some(tracking_number) = result
+                .tracking_number
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                active.tracking_number = Set(Some(tracking_number.to_string()));
+            }
+            active.updated_at = Set(Utc::now().into());
+            active.update(&self.db).await?;
+        }
+
+        FulfillmentService::new(self.db.clone())
+            .get_fulfillment(operation.tenant_id, operation.fulfillment_id)
+            .await
     }
 }
 
 fn validate_result(
-    operation: &rustok_fulfillment::entities::provider_operation::Model,
+    operation: &provider_operation::Model,
 ) -> FulfillmentOrchestrationResult<FulfillmentProviderOperationResult> {
     let value = operation.provider_result.clone().ok_or_else(|| {
         FulfillmentOrchestrationError::Validation(format!(
@@ -157,10 +253,82 @@ fn validate_result(
             operation.id, operation.status
         ))
     })?;
-    serde_json::from_value(value).map_err(|error| {
+    let result: FulfillmentProviderOperationResult = serde_json::from_value(value).map_err(|error| {
         FulfillmentOrchestrationError::Validation(format!(
             "create_label operation {} contains invalid provider_result: {error}",
             operation.id
         ))
-    })
+    })?;
+    if result.provider_id != operation.provider_id {
+        return Err(FulfillmentOrchestrationError::Validation(format!(
+            "create_label operation {} provider result `{}` does not match journal provider `{}`",
+            operation.id, result.provider_id, operation.provider_id
+        )));
+    }
+    Ok(result)
+}
+
+fn label_operation_id(metadata: &Value) -> Option<Uuid> {
+    metadata
+        .get("label")
+        .and_then(|label| label.get("provider_operation_id"))
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+}
+
+fn label_result_metadata(
+    current: Value,
+    result: &FulfillmentProviderOperationResult,
+    operation_id: Uuid,
+) -> Value {
+    merge_metadata(
+        merge_metadata(current, result.metadata.clone()),
+        serde_json::json!({
+            "label": {
+                "provider_operation_id": operation_id,
+                "provider_id": result.provider_id,
+                "external_reference": result.external_reference,
+                "tracking_number": result.tracking_number,
+            }
+        }),
+    )
+}
+
+fn merge_metadata(current: Value, patch: Value) -> Value {
+    match (current, patch) {
+        (Value::Object(mut current), Value::Object(patch)) => {
+            for (key, value) in patch {
+                current.insert(key, value);
+            }
+            Value::Object(current)
+        }
+        (_, patch) => patch,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn label_result_metadata_preserves_existing_fields_and_marks_operation() {
+        let operation_id = Uuid::new_v4();
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: Some("label-1".to_string()),
+            tracking_number: Some("track-1".to_string()),
+            metadata: serde_json::json!({"provider_fact": true}),
+        };
+
+        let metadata = label_result_metadata(
+            serde_json::json!({"delivery_group": {"seller_id": "seller-1"}}),
+            &result,
+            operation_id,
+        );
+
+        assert_eq!(label_operation_id(&metadata), Some(operation_id));
+        assert_eq!(metadata["provider_fact"], true);
+        assert_eq!(metadata["delivery_group"]["seller_id"], "seller-1");
+        assert_eq!(metadata["label"]["tracking_number"], "track-1");
+    }
 }
