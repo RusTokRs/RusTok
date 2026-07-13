@@ -280,7 +280,7 @@ async fn revalidate_ws_auth(
 
 async fn close_ws_for_auth_change<S>(sink: &mut S) -> Result<(), S::Error>
 where
-    S: SinkExt<Message> + Unpin,
+    S: futures_util::Sink<Message> + Unpin,
 {
     sink.send(Message::Close(Some(CloseFrame {
         code: WS_CLOSE_UNAUTHORIZED,
