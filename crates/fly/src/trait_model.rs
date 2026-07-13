@@ -27,7 +27,7 @@ pub struct TraitOption {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TraitDefinition {
+pub struct TraitSchema {
     pub id: String,
     pub label: String,
     pub value_type: TraitValueKind,
@@ -44,11 +44,11 @@ pub struct TraitDefinition {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TraitSnapshot {
-    pub definition: TraitDefinition,
+    pub schema: TraitSchema,
     pub value: Option<Value>,
 }
 
-impl TraitDefinition {
+impl TraitSchema {
     pub fn applies_to_component(&self, component_type: &str) -> bool {
         self.applies_to.is_empty()
             || self
@@ -157,7 +157,7 @@ impl TraitDefinition {
     }
 }
 
-pub fn builtin_trait_definitions() -> Vec<TraitDefinition> {
+pub fn builtin_trait_schemas() -> Vec<TraitSchema> {
     vec![
         attribute_trait("fly.trait.id", "Element id", TraitValueKind::Text, "id", &["*"]),
         attribute_trait("fly.trait.class", "CSS classes", TraitValueKind::Text, "class", &["*"]),
@@ -191,14 +191,14 @@ pub fn builtin_trait_definitions() -> Vec<TraitDefinition> {
 
 pub fn trait_snapshots<'a>(
     component: &ComponentObject,
-    definitions: impl IntoIterator<Item = &'a TraitDefinition>,
+    schemas: impl IntoIterator<Item = &'a TraitSchema>,
 ) -> Vec<TraitSnapshot> {
-    definitions
+    schemas
         .into_iter()
-        .filter(|definition| definition.applies_to_component(component.component_type()))
-        .map(|definition| TraitSnapshot {
-            definition: definition.clone(),
-            value: definition.read(component),
+        .filter(|schema| schema.applies_to_component(component.component_type()))
+        .map(|schema| TraitSnapshot {
+            schema: schema.clone(),
+            value: schema.read(component),
         })
         .collect()
 }
@@ -209,8 +209,8 @@ fn attribute_trait(
     value_type: TraitValueKind,
     name: &str,
     applies_to: &[&str],
-) -> TraitDefinition {
-    TraitDefinition {
+) -> TraitSchema {
+    TraitSchema {
         id: id.to_string(),
         label: label.to_string(),
         value_type,
@@ -230,8 +230,8 @@ fn field_trait(
     value_type: TraitValueKind,
     name: &str,
     applies_to: &[&str],
-) -> TraitDefinition {
-    TraitDefinition {
+) -> TraitSchema {
+    TraitSchema {
         id: id.to_string(),
         label: label.to_string(),
         value_type,
@@ -251,8 +251,8 @@ fn select_trait(
     name: &str,
     applies_to: &[&str],
     options: &[(&str, &str)],
-) -> TraitDefinition {
-    TraitDefinition {
+) -> TraitSchema {
+    TraitSchema {
         id: id.to_string(),
         label: label.to_string(),
         value_type: TraitValueKind::Select,
@@ -298,18 +298,18 @@ mod tests {
 
     #[test]
     fn trait_patch_targets_attributes_and_fields() {
-        let href = builtin_trait_definitions()
+        let href = builtin_trait_schemas()
             .into_iter()
-            .find(|definition| definition.id == "fly.trait.href")
+            .find(|schema| schema.id == "fly.trait.href")
             .expect("href trait");
         let patch = href
             .patch_from_text("https://example.com")
             .expect("href patch");
         assert_eq!(patch.attributes["href"], "https://example.com");
 
-        let content = builtin_trait_definitions()
+        let content = builtin_trait_schemas()
             .into_iter()
-            .find(|definition| definition.id == "fly.trait.content")
+            .find(|schema| schema.id == "fly.trait.content")
             .expect("content trait");
         let patch = content.patch_from_text("Hello").expect("content patch");
         assert_eq!(patch.fields["content"], "Hello");
@@ -317,9 +317,9 @@ mod tests {
 
     #[test]
     fn empty_optional_trait_removes_target() {
-        let alt = builtin_trait_definitions()
+        let alt = builtin_trait_schemas()
             .into_iter()
-            .find(|definition| definition.id == "fly.trait.alt")
+            .find(|schema| schema.id == "fly.trait.alt")
             .expect("alt trait");
         let patch = alt.patch_from_text("").expect("remove patch");
         assert_eq!(patch.remove_attributes, vec!["alt"]);
@@ -327,16 +327,16 @@ mod tests {
 
     #[test]
     fn select_and_url_traits_validate_input() {
-        let method = builtin_trait_definitions()
+        let method = builtin_trait_schemas()
             .into_iter()
-            .find(|definition| definition.id == "fly.trait.method")
+            .find(|schema| schema.id == "fly.trait.method")
             .expect("method trait");
         assert!(method.patch_from_text("patch").is_err());
         assert!(method.patch_from_text("post").is_ok());
 
-        let href = builtin_trait_definitions()
+        let href = builtin_trait_schemas()
             .into_iter()
-            .find(|definition| definition.id == "fly.trait.href")
+            .find(|schema| schema.id == "fly.trait.href")
             .expect("href trait");
         assert!(href.patch_from_text("javascript:alert(1)").is_err());
         assert_eq!(
