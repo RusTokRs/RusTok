@@ -65,7 +65,9 @@ pub struct TenantCacheGenerationListenerState {
     local_ready: AtomicBool,
     subscriber_ready: AtomicBool,
     reconciliation_healthy: AtomicBool,
-    degraded: AtomicBool,
+    local_degraded: AtomicBool,
+    subscriber_degraded: AtomicBool,
+    reconciliation_degraded: AtomicBool,
     last_error: RwLock<Option<String>>,
 }
 
@@ -76,7 +78,9 @@ impl TenantCacheGenerationListenerState {
             local_ready: AtomicBool::new(false),
             subscriber_ready: AtomicBool::new(false),
             reconciliation_healthy: AtomicBool::new(!redis_required),
-            degraded: AtomicBool::new(false),
+            local_degraded: AtomicBool::new(false),
+            subscriber_degraded: AtomicBool::new(false),
+            reconciliation_degraded: AtomicBool::new(false),
             last_error: RwLock::new(None),
         });
         state.publish_metrics();
@@ -85,11 +89,14 @@ impl TenantCacheGenerationListenerState {
 
     pub async fn mark_local_healthy(&self) {
         self.local_ready.store(true, Ordering::Release);
-        if !self.redis_required {
-            self.degraded.store(false, Ordering::Release);
-            *self.last_error.write().await = None;
-        }
+        self.local_degraded.store(false, Ordering::Release);
+        self.clear_error_if_recovered().await;
         self.publish_metrics();
+    }
+
+    pub async fn mark_local_degraded(&self, error: impl Into<String>) {
+        self.local_degraded.store(true, Ordering::Release);
+        self.record_error(error).await;
     }
 
     pub fn mark_subscriber_starting(&self) {
@@ -97,50 +104,72 @@ impl TenantCacheGenerationListenerState {
         self.publish_metrics();
     }
 
-    pub async fn mark_subscriber_healthy(&self) {
+    /// The SUBSCRIBE ready hook also performs a durable generation read, so this transition can
+    /// safely recover both the subscriber and reconciliation components.
+    pub async fn mark_subscriber_ready_after_recovery(&self) {
         self.subscriber_ready.store(true, Ordering::Release);
+        self.subscriber_degraded.store(false, Ordering::Release);
         self.reconciliation_healthy.store(true, Ordering::Release);
-        self.degraded.store(false, Ordering::Release);
-        *self.last_error.write().await = None;
+        self.reconciliation_degraded.store(false, Ordering::Release);
+        self.clear_error_if_recovered().await;
+        self.publish_metrics();
+    }
+
+    /// Successful message handling proves subscriber activity only. It must not mask an
+    /// independent durable reconciliation failure.
+    pub async fn mark_subscriber_activity_healthy(&self) {
+        self.subscriber_ready.store(true, Ordering::Release);
+        self.subscriber_degraded.store(false, Ordering::Release);
+        self.clear_error_if_recovered().await;
         self.publish_metrics();
     }
 
     pub async fn mark_reconciliation_healthy(&self) {
         self.reconciliation_healthy.store(true, Ordering::Release);
-        if self.subscriber_ready.load(Ordering::Acquire) {
-            self.degraded.store(false, Ordering::Release);
-            *self.last_error.write().await = None;
-        }
-        self.publish_metrics();
-    }
-
-    pub async fn mark_degraded(&self, error: impl Into<String>) {
-        self.degraded.store(true, Ordering::Release);
-        *self.last_error.write().await = Some(bounded_listener_error(error.into()));
+        self.reconciliation_degraded.store(false, Ordering::Release);
+        self.clear_error_if_recovered().await;
         self.publish_metrics();
     }
 
     pub async fn mark_subscriber_degraded(&self, error: impl Into<String>) {
         self.subscriber_ready.store(false, Ordering::Release);
-        self.mark_degraded(error).await;
+        self.subscriber_degraded.store(true, Ordering::Release);
+        self.record_error(error).await;
     }
 
     pub async fn mark_reconciliation_degraded(&self, error: impl Into<String>) {
         self.reconciliation_healthy.store(false, Ordering::Release);
-        self.mark_degraded(error).await;
+        self.reconciliation_degraded.store(true, Ordering::Release);
+        self.record_error(error).await;
+    }
+
+    async fn record_error(&self, error: impl Into<String>) {
+        *self.last_error.write().await = Some(bounded_listener_error(error.into()));
+        self.publish_metrics();
+    }
+
+    async fn clear_error_if_recovered(&self) {
+        if !self.any_component_degraded() {
+            *self.last_error.write().await = None;
+        }
+    }
+
+    fn any_component_degraded(&self) -> bool {
+        self.local_degraded.load(Ordering::Acquire)
+            || self.subscriber_degraded.load(Ordering::Acquire)
+            || self.reconciliation_degraded.load(Ordering::Acquire)
     }
 
     fn components(&self) -> TenantGenerationListenerMetrics {
         let local_ready = self.local_ready.load(Ordering::Acquire);
         let subscriber_ready = self.subscriber_ready.load(Ordering::Acquire);
         let reconciliation_healthy = self.reconciliation_healthy.load(Ordering::Acquire);
-        let degraded = self.degraded.load(Ordering::Acquire);
         let ready = if self.redis_required {
             subscriber_ready && reconciliation_healthy
         } else {
             local_ready
         };
-        let status = if degraded {
+        let status = if self.any_component_degraded() {
             TenantCacheGenerationListenerStatus::Degraded
         } else if ready {
             TenantCacheGenerationListenerStatus::Healthy
@@ -203,7 +232,7 @@ mod tests {
             TenantCacheGenerationListenerStatus::Starting
         );
 
-        state.mark_subscriber_healthy().await;
+        state.mark_subscriber_ready_after_recovery().await;
         assert_eq!(
             state.snapshot().await.status,
             TenantCacheGenerationListenerStatus::Healthy
@@ -215,6 +244,37 @@ mod tests {
             state.snapshot().await.status,
             TenantCacheGenerationListenerStatus::Degraded
         );
+    }
+
+    #[tokio::test]
+    async fn subscriber_activity_does_not_hide_reconciliation_failure() {
+        let state = TenantCacheGenerationListenerState::new(true);
+        state.mark_subscriber_ready_after_recovery().await;
+        state
+            .mark_reconciliation_degraded("generation store unavailable")
+            .await;
+        state.mark_subscriber_activity_healthy().await;
+
+        let snapshot = state.snapshot().await;
+        assert_eq!(snapshot.status, TenantCacheGenerationListenerStatus::Degraded);
+        assert!(!snapshot.reconciliation_healthy);
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("generation store unavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn reconciliation_success_does_not_hide_subscriber_failure() {
+        let state = TenantCacheGenerationListenerState::new(true);
+        state.mark_subscriber_ready_after_recovery().await;
+        state.mark_subscriber_degraded("subscriber closed").await;
+        state.mark_reconciliation_healthy().await;
+
+        let snapshot = state.snapshot().await;
+        assert_eq!(snapshot.status, TenantCacheGenerationListenerStatus::Degraded);
+        assert!(!snapshot.subscriber_ready);
+        assert_eq!(snapshot.last_error.as_deref(), Some("subscriber closed"));
     }
 
     #[tokio::test]
@@ -234,7 +294,7 @@ mod tests {
     #[tokio::test]
     async fn degraded_snapshot_error_is_bounded() {
         let state = TenantCacheGenerationListenerState::new(true);
-        state.mark_degraded("é".repeat(1_024)).await;
+        state.mark_subscriber_degraded("é".repeat(1_024)).await;
         let degraded = state.snapshot().await;
         assert_eq!(degraded.status, TenantCacheGenerationListenerStatus::Degraded);
         assert!(degraded
