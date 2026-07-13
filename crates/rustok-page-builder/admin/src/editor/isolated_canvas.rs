@@ -1,6 +1,6 @@
 use crate::editor::{
-    decode_canvas_message, dispatch_shortcut, render_canvas_srcdoc, AdminEditorRuntime,
-    CanvasBridgeMessage, CanvasComponentGeometry, ResizeHandles,
+    decode_canvas_message, dispatch_shortcut, render_canvas_srcdoc_with_context,
+    AdminEditorRuntime, CanvasBridgeMessage, CanvasComponentGeometry, ResizeHandles,
 };
 use fly_leptos::BrowserPoint;
 use fly_ui::{resolve_editor_shortcut, CanvasRect, UiIntent, ViewportState};
@@ -26,6 +26,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let runtime = runtime.clone();
         let instance_id = instance_id.clone();
         move |_| {
+            let context = runtime.runtime_context.get();
             runtime.controller.with(|controller| {
                 let mut active_document = controller.editor().document().clone();
                 active_document.project.pages = controller
@@ -37,7 +38,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     .cloned()
                     .into_iter()
                     .collect();
-                render_canvas_srcdoc(&active_document, &instance_id)
+                render_canvas_srcdoc_with_context(&active_document, &instance_id, &context)
             })
         }
     });
