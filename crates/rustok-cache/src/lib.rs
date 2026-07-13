@@ -1,4 +1,5 @@
 mod envelope;
+mod invalidation;
 mod key;
 mod lease;
 mod policy;
@@ -9,6 +10,10 @@ mod weighted;
 pub use envelope::{
     CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+};
+pub use invalidation::{
+    CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
+    VersionedCacheInvalidation,
 };
 pub use key::{CacheKeyBuilder, CacheKeyError};
 pub use lease::{
