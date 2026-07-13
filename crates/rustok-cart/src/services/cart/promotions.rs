@@ -10,15 +10,15 @@ use crate::dto::CartResponse;
 use crate::entities;
 use crate::error::{CartError, CartResult};
 
+use super::CartService;
 use super::helpers::{
-    ensure_active, load_cart, load_cart_in_tx, normalize_required_adjustment_source_id,
-    promotion_metadata, recalculate_totals, reconcile_cart_shipping_state,
-    resolve_promotion_base_amount, resolve_shipping_promotion_base_amount,
-    sanitize_adjustment_metadata, CART_PROMOTION_SCOPE, LINE_ITEM_PROMOTION_SCOPE,
-    PROMOTION_ADJUSTMENT_SOURCE_TYPE, SHIPPING_PROMOTION_SCOPE,
+    CART_PROMOTION_SCOPE, LINE_ITEM_PROMOTION_SCOPE, PROMOTION_ADJUSTMENT_SOURCE_TYPE,
+    SHIPPING_PROMOTION_SCOPE, ensure_active, load_cart, load_cart_in_tx,
+    normalize_required_adjustment_source_id, promotion_metadata, recalculate_totals,
+    reconcile_cart_shipping_state, resolve_promotion_base_amount,
+    resolve_shipping_promotion_base_amount, sanitize_adjustment_metadata,
 };
 use super::types::{CartPromotionKind, CartPromotionPreview};
-use super::CartService;
 
 struct PromotionAdjustmentInput<'a> {
     line_item_id: Option<Uuid>,
@@ -414,7 +414,7 @@ impl CartService {
         .insert(&txn)
         .await?;
 
-        recalculate_totals(&txn, &self.tax_service, cart).await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await

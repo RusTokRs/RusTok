@@ -273,6 +273,7 @@ mod tests {
             descriptor: package.descriptor.clone(),
             dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
                 .expect("empty dependency lock"),
+            capability_grant_revision: 1,
             installed_at: Utc::now(),
         };
         let observed = Arc::new(Mutex::new(None));
@@ -327,6 +328,7 @@ mod tests {
             },
             dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
                 .expect("empty dependency lock"),
+            capability_grant_revision: 1,
             installed_at: Utc::now(),
         };
         let runtime = ArtifactRuntime::new(

@@ -19,6 +19,9 @@ pub struct TrustVerificationRequest {
 pub struct TrustPolicyRevision {
     pub trust_policy_revision: u64,
     pub capability_policy_revision: u64,
+    /// Revision of the concrete capability grants selected for this
+    /// installation. It is distinct from the policy used to evaluate them.
+    pub capability_grant_revision: u64,
 }
 
 /// Redacted worker decision. Evidence references address immutable attestations

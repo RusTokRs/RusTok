@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 use uuid::Uuid;
 
 use crate::{CalculatedTaxLine, TaxCalculationInput, TaxCalculationResult, TaxError};
@@ -14,6 +14,12 @@ pub trait TaxCalculationPort: Send + Sync {
         context: PortContext,
         request: TaxCalculationInput,
     ) -> Result<TaxCalculationResult, PortError>;
+}
+
+/// Builds the owner-managed in-process provider for consumers that do not
+/// supply a separately composed tax runtime.
+pub fn in_process_tax_calculation_port() -> Arc<dyn TaxCalculationPort> {
+    Arc::new(crate::TaxService::new())
 }
 
 #[async_trait]
@@ -59,9 +65,7 @@ fn validate_tax_request(request: &TaxCalculationInput) -> Result<(), PortError> 
     let mut country_codes = HashSet::new();
     for rule in &request.policy.country_rules {
         let country_code = rule.country_code.trim().to_ascii_uppercase();
-        if country_code.len() != 2
-            || !country_code.chars().all(|ch| ch.is_ascii_alphabetic())
-        {
+        if country_code.len() != 2 || !country_code.chars().all(|ch| ch.is_ascii_alphabetic()) {
             return Err(PortError::validation(
                 "tax.country_code_invalid",
                 "tax country rules require 2-letter country codes",
@@ -172,9 +176,7 @@ fn validate_tax_line(
         return Err(PortError::new(
             rustok_api::PortErrorKind::InvariantViolation,
             "tax.currency_mismatch",
-            format!(
-                "tax provider returned currency {line_currency}, expected {expected_currency}"
-            ),
+            format!("tax provider returned currency {line_currency}, expected {expected_currency}"),
             false,
         ));
     }

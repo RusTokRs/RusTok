@@ -113,14 +113,22 @@ impl AiMutation {
         let operator = operator_context(ctx, auth).await?;
         let mut stage_principal_ids = BTreeMap::new();
         let mut stage_model_assignment_ids = BTreeMap::new();
+        let mut stage_input_payloads = BTreeMap::new();
         for binding in input.stage_bindings {
+            let stage_id = binding.stage_id;
             if stage_principal_ids
-                .insert(binding.stage_id.clone(), binding.agent_principal_id)
+                .insert(stage_id.clone(), binding.agent_principal_id)
                 .is_some()
                 || stage_model_assignment_ids
-                    .insert(binding.stage_id, binding.model_assignment_id)
+                    .insert(stage_id.clone(), binding.model_assignment_id)
                     .is_some()
             {
+                return Err(async_graphql::Error::new(
+                    "agent workflow stage bindings must be unique",
+                ));
+            }
+            let payload = parse_metadata(Some(binding.input_payload))?;
+            if stage_input_payloads.insert(stage_id, payload).is_some() {
                 return Err(async_graphql::Error::new(
                     "agent workflow stage bindings must be unique",
                 ));
@@ -134,6 +142,7 @@ impl AiMutation {
                 workflow_slug: input.workflow_slug,
                 stage_principal_ids,
                 stage_model_assignment_ids,
+                stage_input_payloads,
                 input_payload: parse_metadata(Some(input.input_payload))?,
                 metadata: parse_metadata(input.metadata)?,
             },
@@ -509,6 +518,7 @@ impl AiMutation {
             crate::RunAiTaskJobInput {
                 title: input.title,
                 provider_profile_id: input.provider_profile_id,
+                model_override: input.model_override,
                 task_profile_id: input.task_profile_id,
                 execution_mode: input.execution_mode.map(Into::into),
                 locale: input.locale,

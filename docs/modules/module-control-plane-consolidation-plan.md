@@ -674,7 +674,9 @@ the external registry.
   module and writes the self-reference together with the new installation,
   admission row, and outbox event. A later rollback command advances it with
   its status transition.
-- [ ] Store capability grant revision separately from artifact declaration.
+- [x] Store capability grant revision separately from artifact declaration and
+  policy revision. The owner supplies it explicitly when constructing the
+  installer, and the admission transaction persists it with the installation.
 - [ ] Store migration/application checkpoint and irreversible migration flags.
 - [ ] Add optimistic revision and idempotency key.
 

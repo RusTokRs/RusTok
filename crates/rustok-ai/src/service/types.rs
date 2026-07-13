@@ -330,6 +330,8 @@ pub struct CreateAiAgentWorkflowRunInput {
     pub stage_principal_ids: BTreeMap<String, Uuid>,
     /// Maps each owner-declared stage id to an active assignment for that principal.
     pub stage_model_assignment_ids: BTreeMap<String, Uuid>,
+    /// Owner-validated task input for each stage execution binding.
+    pub stage_input_payloads: BTreeMap<String, serde_json::Value>,
     pub input_payload: serde_json::Value,
     pub metadata: serde_json::Value,
 }

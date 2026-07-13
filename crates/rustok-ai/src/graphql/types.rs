@@ -1111,6 +1111,7 @@ pub struct AiAgentWorkflowStageBindingInputGql {
     pub stage_id: String,
     pub agent_principal_id: Uuid,
     pub model_assignment_id: Uuid,
+    pub input_payload: String,
 }
 
 #[derive(Debug, Clone, InputObject)]

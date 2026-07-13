@@ -153,11 +153,11 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
             "cart.database_unavailable",
             format!("cart storage unavailable: {error}"),
         ),
-        CartError::Tax(error) => PortError::new(
-            rustok_api::PortErrorKind::InvariantViolation,
-            "cart.tax_invariant_violation",
-            format!("cart tax calculation failed: {error}"),
-            false,
-        ),
+        CartError::TaxBoundary {
+            kind,
+            code,
+            message,
+            retryable,
+        } => PortError::new(kind, code, message, retryable),
     }
 }

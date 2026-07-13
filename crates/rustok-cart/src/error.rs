@@ -16,6 +16,11 @@ pub enum CartError {
     InvalidTransition { from: String, to: String },
     #[error(transparent)]
     Database(#[from] DbErr),
-    #[error(transparent)]
-    Tax(#[from] rustok_tax::TaxError),
+    #[error("tax boundary failed with `{code}` ({kind:?}, retryable={retryable}): {message}")]
+    TaxBoundary {
+        kind: rustok_api::PortErrorKind,
+        code: String,
+        message: String,
+        retryable: bool,
+    },
 }

@@ -14,13 +14,16 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionTrait,
 };
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
 use rustok_core::generate_id;
-use rustok_tax::TaxService;
+use rustok_tax::{TaxCalculationPort, in_process_tax_calculation_port};
 
 use crate::dto::{
     AddCartLineItemInput, CartResponse, CreateCartInput, SetCartAdjustmentInput,
@@ -33,15 +36,24 @@ use helpers::*;
 
 pub struct CartService {
     db: DatabaseConnection,
-    tax_service: TaxService,
+    tax_calculation_port: Arc<dyn TaxCalculationPort>,
 }
 
 impl CartService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             db,
-            tax_service: TaxService::new(),
+            tax_calculation_port: in_process_tax_calculation_port(),
         }
+    }
+
+    /// Overrides the owner-managed tax provider with an explicitly composed port.
+    pub fn with_tax_calculation_port(
+        mut self,
+        tax_calculation_port: Arc<dyn TaxCalculationPort>,
+    ) -> Self {
+        self.tax_calculation_port = tax_calculation_port;
+        self
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
@@ -200,7 +212,7 @@ impl CartService {
         )
         .await?;
 
-        recalculate_totals(&txn, &self.tax_service, cart).await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -321,7 +333,7 @@ impl CartService {
             .await?;
         }
 
-        recalculate_totals(&txn, &self.tax_service, cart).await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
     }
@@ -357,7 +369,7 @@ impl CartService {
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
 
-        recalculate_totals(&txn, &self.tax_service, cart).await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -403,7 +415,7 @@ impl CartService {
         )
         .await?;
 
-        recalculate_totals(&txn, &self.tax_service, cart).await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -454,7 +466,7 @@ impl CartService {
         )
         .await?;
 
-        recalculate_totals(&txn, &self.tax_service, cart).await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -490,7 +502,7 @@ impl CartService {
         let active: entities::cart_line_item::ActiveModel = line_item.into();
         active.delete(&txn).await?;
 
-        recalculate_totals(&txn, &self.tax_service, cart).await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await

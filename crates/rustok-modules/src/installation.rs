@@ -167,6 +167,9 @@ pub struct InstalledModuleArtifact {
     /// execution receives only this immutable graph, never a live registry
     /// lookup or a floating version constraint.
     pub dependency_lock: ModuleDependencyLockGraph,
+    /// Exact capability grants selected by the control plane for this
+    /// installation, independent of the artifact declaration and policy.
+    pub capability_grant_revision: u64,
     pub installed_at: DateTime<Utc>,
 }
 
@@ -724,10 +727,10 @@ async fn configure_rls_scope<C: ConnectionTrait>(
 
 fn installation_insert_sql(backend: DbBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=18)
+        DbBackend::Postgres => (1..=19)
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>(),
-        _ => (1..=18)
+        _ => (1..=19)
             .map(|index| format!("?{index}"))
             .collect::<Vec<_>>(),
     };
@@ -736,7 +739,7 @@ fn installation_insert_sql(backend: DbBackend) -> String {
             installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
             slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
             dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at, \
-            previous_installation_id\
+            previous_installation_id, capability_grant_revision\
          ) VALUES ({})",
         placeholders.join(", ")
     )
@@ -759,6 +762,12 @@ fn installation_values(
         .map_err(|_| {
             ModuleInstallationError::DependencyLock(
                 "graph revision exceeds database integer range".into(),
+            )
+        })?;
+    let capability_grant_revision =
+        i64::try_from(artifact.capability_grant_revision).map_err(|_| {
+            ModuleInstallationError::DependencyLock(
+                "capability grant revision exceeds database integer range".into(),
             )
         })?;
     let installation_id = uuid_value(artifact.installation_id, backend);
@@ -786,6 +795,7 @@ fn installation_values(
         SqlValue::Json(Some(Box::new(dependency_lock))),
         installed_at,
         optional_uuid_value(previous_installation_id, backend),
+        capability_grant_revision.into(),
     ])
 }
 
@@ -1020,6 +1030,7 @@ where
             release,
             descriptor: package.descriptor,
             dependency_lock,
+            capability_grant_revision: self.trust_policy.capability_grant_revision,
             installed_at,
         };
         let evidence = ArtifactVerificationEvidence::from_decision(
@@ -1146,6 +1157,7 @@ mod tests {
         TrustPolicyRevision {
             trust_policy_revision: 1,
             capability_policy_revision: 1,
+            capability_grant_revision: 1,
         }
     }
 

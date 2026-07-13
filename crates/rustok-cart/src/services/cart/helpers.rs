@@ -5,15 +5,20 @@ use sea_orm::{
     Statement,
 };
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    time::Duration,
+};
 use uuid::Uuid;
 
-use rustok_api::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, normalize_locale_tag,
+};
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_core::generate_id;
 use rustok_fulfillment::entities::shipping_option;
 use rustok_tax::{
-    TaxCalculationInput, TaxPolicyCountryRule, TaxPolicySnapshot, TaxService, TaxableAmount,
+    TaxCalculationInput, TaxCalculationPort, TaxPolicyCountryRule, TaxPolicySnapshot, TaxableAmount,
 };
 
 use crate::dto::{
@@ -36,6 +41,32 @@ pub const PROMOTION_ADJUSTMENT_SOURCE_TYPE: &str = "promotion";
 pub const CART_PROMOTION_SCOPE: &str = "cart";
 pub const LINE_ITEM_PROMOTION_SCOPE: &str = "line_item";
 pub const SHIPPING_PROMOTION_SCOPE: &str = "shipping";
+
+fn cart_tax_port_context(cart: &entities::cart::Model) -> PortContext {
+    let context = PortContext::new(
+        cart.tenant_id.to_string(),
+        PortActor::service("rustok-cart.tax"),
+        cart.locale_code
+            .as_deref()
+            .unwrap_or(PLATFORM_FALLBACK_LOCALE),
+        format!("cart-tax:{}", cart.id),
+    )
+    .with_deadline(Duration::from_secs(2));
+
+    match cart.channel_id {
+        Some(channel_id) => context.with_channel(channel_id.to_string()),
+        None => context,
+    }
+}
+
+fn cart_tax_port_error(error: PortError) -> CartError {
+    CartError::TaxBoundary {
+        kind: error.kind,
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+    }
+}
 
 pub fn ensure_active(status: &str, action: &str) -> CartResult<()> {
     if status == STATUS_ACTIVE {
@@ -733,7 +764,7 @@ where
 
 pub async fn recalculate_tax_lines<C>(
     conn: &C,
-    tax_service: &TaxService,
+    tax_calculation_port: &dyn TaxCalculationPort,
     cart: &entities::cart::Model,
     line_items: &[entities::cart_line_item::Model],
     shipping_selections: &[entities::cart_shipping_selection::Model],
@@ -805,29 +836,33 @@ where
         });
     }
 
-    let result = tax_service
-        .calculate(TaxCalculationInput {
-            currency_code: cart.currency_code.clone(),
-            channel_id: cart.channel_id,
-            customer_tax_exempt: customer_tax_exempt(&cart.metadata),
-            policy: TaxPolicySnapshot {
-                provider_id: region.tax_provider_id.clone(),
-                channel_provider_id: channel_tax_provider_id(&region.metadata, cart.channel_id),
-                country_code: cart.country_code.clone(),
-                tax_rate,
-                tax_included: region.tax_included,
-                country_rules: country_tax_policies
-                    .into_iter()
-                    .map(|policy| TaxPolicyCountryRule {
-                        country_code: policy.country_code,
-                        tax_rate: policy.tax_rate,
-                        tax_included: policy.tax_included,
-                    })
-                    .collect(),
+    let result = tax_calculation_port
+        .calculate_tax(
+            cart_tax_port_context(cart),
+            TaxCalculationInput {
+                currency_code: cart.currency_code.clone(),
+                channel_id: cart.channel_id,
+                customer_tax_exempt: customer_tax_exempt(&cart.metadata),
+                policy: TaxPolicySnapshot {
+                    provider_id: region.tax_provider_id.clone(),
+                    channel_provider_id: channel_tax_provider_id(&region.metadata, cart.channel_id),
+                    country_code: cart.country_code.clone(),
+                    tax_rate,
+                    tax_included: region.tax_included,
+                    country_rules: country_tax_policies
+                        .into_iter()
+                        .map(|policy| TaxPolicyCountryRule {
+                            country_code: policy.country_code,
+                            tax_rate: policy.tax_rate,
+                            tax_included: policy.tax_included,
+                        })
+                        .collect(),
+                },
+                taxable_amounts,
             },
-            taxable_amounts,
-        })
-        .await?;
+        )
+        .await
+        .map_err(cart_tax_port_error)?;
 
     let tax_lines = result
         .lines
@@ -859,7 +894,7 @@ where
 
 pub async fn recalculate_totals<C>(
     conn: &C,
-    tax_service: &TaxService,
+    tax_calculation_port: &dyn TaxCalculationPort,
     cart: entities::cart::Model,
 ) -> CartResult<()>
 where
@@ -878,8 +913,14 @@ where
         .all(conn)
         .await?;
     let shipping_total = load_shipping_total(conn, &cart, &shipping_selections).await?;
-    let (tax_total, tax_included) =
-        recalculate_tax_lines(conn, tax_service, &cart, &line_items, &shipping_selections).await?;
+    let (tax_total, tax_included) = recalculate_tax_lines(
+        conn,
+        tax_calculation_port,
+        &cart,
+        &line_items,
+        &shipping_selections,
+    )
+    .await?;
     let subtotal = subtotal_amount(&line_items);
     let adjusted_total = net_total(subtotal, adjustment_total(&adjustments));
     let total_amount = if tax_included {

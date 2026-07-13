@@ -202,6 +202,147 @@ impl AiManagementService {
         Ok(promoted)
     }
 
+    /// Executes a claimed Alloy workflow stage through the canonical task-run
+    /// path. It does not create a parallel provider or tool execution path.
+    pub async fn execute_agent_workflow_stage(
+        runtime: &AiHostRuntime,
+        operator: &AiOperatorContext,
+        stage_id: Uuid,
+        lease_token: Uuid,
+    ) -> AiResult<AiChatRunRecord> {
+        let db = runtime.db();
+        let stage = ai_agent_workflow_stages::Entity::find_by_id(stage_id)
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
+            .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| AiError::Validation("workflow stage is not owned by this lease".to_string()))?;
+        let principal = ai_agent_principals::Entity::find_by_id(stage.agent_principal_id)
+            .filter(ai_agent_principals::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_agent_principals::Column::IsActive.eq(true))
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| AiError::Validation("workflow stage agent principal is unavailable".to_string()))?;
+        let catalog = crate::alloy_agent_catalog()?;
+        let principal_contract = crate::AgentPrincipal {
+            id: principal.id,
+            tenant_id: principal.tenant_id,
+            agent_slug: principal.descriptor_slug.clone(),
+            role_slugs: string_list(&principal.role_slugs).into_iter().collect(),
+            permission_slugs: string_list(&principal.permission_slugs).into_iter().collect(),
+        };
+        let initiator_permissions = operator
+            .permissions
+            .iter()
+            .map(ToString::to_string)
+            .collect::<std::collections::BTreeSet<_>>();
+        catalog.effective_permissions(&initiator_permissions, &principal_contract)?;
+        let execution = rustok_ai_alloy::validate_stage_execution_input(
+            &principal.descriptor_slug,
+            &stage.input_payload,
+        )
+        .map_err(AiError::Validation)?;
+        let assignment_id = stage.model_assignment_id.ok_or_else(|| {
+            AiError::Validation("workflow stage has no model assignment".to_string())
+        })?;
+        let assignment = ai_agent_model_assignments::Entity::find_by_id(assignment_id)
+            .filter(ai_agent_model_assignments::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_agent_model_assignments::Column::AgentPrincipalId.eq(principal.id))
+            .filter(ai_agent_model_assignments::Column::IsActive.eq(true))
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| AiError::Validation("workflow stage model assignment is unavailable".to_string()))?;
+        let task_profile = ai_task_profiles::Entity::find()
+            .filter(ai_task_profiles::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_task_profiles::Column::Slug.eq(execution.task_slug))
+            .filter(ai_task_profiles::Column::IsActive.eq(true))
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| {
+                AiError::Validation(format!(
+                    "active task profile `{}` required by the Alloy stage is unavailable",
+                    execution.task_slug
+                ))
+            })?;
+
+        let result = Self::run_task_job(
+            runtime,
+            operator,
+            RunAiTaskJobInput {
+                title: format!("{}: {}", principal.slug, stage.stage_id),
+                provider_profile_id: Some(assignment.provider_profile_id),
+                model_override: assignment.model_override,
+                task_profile_id: task_profile.id,
+                execution_mode: execution_mode_from_slug(&assignment.execution_mode)?,
+                locale: operator.preferred_locale.clone(),
+                task_input_json: stage.input_payload.clone(),
+                metadata: json!({
+                    "agent_workflow_run_id": stage.workflow_run_id,
+                    "agent_workflow_stage_id": stage.id,
+                    "agent_principal_id": principal.id,
+                }),
+            },
+        )
+        .await;
+
+        match result {
+            Ok(result) => {
+                let run = result.run;
+                let mut active: ai_agent_workflow_stages::ActiveModel = stage.into();
+                active.run_id = Set(Some(run.id));
+                active.updated_at = Set(Utc::now().into());
+                active.update(db).await.map_err(db_err)?;
+                if run.status == "completed" {
+                    Self::complete_agent_workflow_stage(
+                        db,
+                        operator.tenant_id,
+                        stage_id,
+                        lease_token,
+                        json!({"ai_run_id": run.id}),
+                    )
+                    .await?;
+                } else if run.status == "waiting_approval" {
+                    ai_agent_workflow_stages::Entity::update_many()
+                        .filter(ai_agent_workflow_stages::Column::TenantId.eq(operator.tenant_id))
+                        .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
+                        .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::Status,
+                            Expr::value("waiting_approval"),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::LeaseToken,
+                            Expr::cust("NULL"),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::LeaseExpiresAt,
+                            Expr::cust("NULL"),
+                        )
+                        .exec(db)
+                        .await
+                        .map_err(db_err)?;
+                }
+                Ok(run)
+            }
+            Err(error) => {
+                let mut active: ai_agent_workflow_stages::ActiveModel = stage.into();
+                active.status = Set("failed".to_string());
+                active.error_message = Set(Some(error.to_string()));
+                active.lease_token = Set(None);
+                active.lease_expires_at = Set(None);
+                active.completed_at = Set(Some(Utc::now().into()));
+                active.updated_at = Set(Utc::now().into());
+                active.update(db).await.map_err(db_err)?;
+                Err(error)
+            }
+        }
+    }
+
     pub async fn list_agent_principals(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -405,6 +546,15 @@ impl AiManagementService {
                 .await
                 .map_err(db_err)?
                 .ok_or_else(|| AiError::Validation(format!("model assignment for stage `{}` is unavailable", stage.id)))?;
+            let stage_input_payload = input
+                .stage_input_payloads
+                .get(&stage.id)
+                .cloned()
+                .ok_or_else(|| {
+                    AiError::Validation(format!("agent workflow stage `{}` has no task input", stage.id))
+                })?;
+            rustok_ai_alloy::validate_stage_execution_input(&stage.agent_slug, &stage_input_payload)
+                .map_err(AiError::Validation)?;
             let status = if stage.depends_on.is_empty() {
                 if stage.requires_approval {
                     "waiting_approval"
@@ -424,7 +574,7 @@ impl AiManagementService {
                 run_id: Set(None),
                 status: Set(status.to_string()),
                 requires_approval: Set(stage.requires_approval),
-                input_payload: Set(normalize_metadata(input.input_payload.clone())),
+                input_payload: Set(normalize_metadata(stage_input_payload)),
                 output_payload: Set(None),
                 error_message: Set(None),
                 metadata: Set(json!({"depends_on": stage.depends_on})),

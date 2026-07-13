@@ -903,6 +903,7 @@ async fn ai_run_task_job_native(
                     provider_profile_id,
                     "provider_profile_id",
                 )?,
+                model_override: None,
                 task_profile_id: parse_uuid(&task_profile_id, "task_profile_id")?,
                 execution_mode: execution_mode
                     .as_deref()
