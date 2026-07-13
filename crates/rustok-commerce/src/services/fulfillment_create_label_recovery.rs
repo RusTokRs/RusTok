@@ -261,10 +261,17 @@ fn validate_result(
 
 fn label_operation_id(metadata: &Value) -> Option<Uuid> {
     metadata
-        .get("label")
-        .and_then(|label| label.get("provider_operation_id"))
+        .get("provider_operation")
+        .and_then(|operation| operation.get("id"))
         .and_then(Value::as_str)
         .and_then(|value| Uuid::parse_str(value).ok())
+        .or_else(|| {
+            metadata
+                .get("label")
+                .and_then(|label| label.get("provider_operation_id"))
+                .and_then(Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+        })
 }
 
 fn label_result_metadata(
@@ -275,6 +282,10 @@ fn label_result_metadata(
     merge_metadata(
         current,
         serde_json::json!({
+            "provider_operation": {
+                "id": operation_id,
+                "operation": "create_label",
+            },
             "label": {
                 "provider_operation_id": operation_id,
                 "provider_id": result.provider_id,
@@ -319,6 +330,7 @@ mod tests {
         );
 
         assert_eq!(label_operation_id(&metadata), Some(operation_id));
+        assert_eq!(metadata["provider_operation"]["operation"], "create_label");
         assert_eq!(metadata["delivery_group"]["seller_id"], "seller-1");
         assert_eq!(metadata["label"]["tracking_number"], "track-1");
         assert_eq!(metadata["label"]["provider_metadata"]["provider_fact"], true);
