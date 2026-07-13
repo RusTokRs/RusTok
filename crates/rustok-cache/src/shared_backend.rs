@@ -248,7 +248,9 @@ impl CacheService {
     /// Create an entry-count backend from the Redis client owned by this service.
     ///
     /// This is the migration-safe replacement for factories that reconstruct a Redis client
-    /// from `redis_url`. It preserves fallback and instrumentation behavior.
+    /// from `redis_url`. It preserves fallback and instrumentation behavior. Logical keys are
+    /// transparently scoped by a monotonic backend generation, so namespace invalidation does not
+    /// require scanning Redis or enumerating process-local entries.
     pub async fn backend_shared_client(
         &self,
         prefix: &str,
@@ -274,6 +276,7 @@ impl CacheService {
         let backend = self
             .raw_shared_client_backend(prefix, ttl, max_capacity, &options)
             .await;
+        let backend = self.wrap_generation_aware_backend(prefix, backend).await;
         if options.metrics_enabled {
             Arc::new(SharedInstrumentedCacheBackend::new(prefix, backend))
         } else {
@@ -446,6 +449,7 @@ fn shared_circuit_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn shared_client_factory_preserves_memory_contract_without_redis() {
@@ -482,6 +486,23 @@ mod tests {
             CacheCompareAndSetOutcome::Applied
         );
         assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn standard_factory_switches_namespace_on_generation_change() {
+        let service = CacheService::from_url(None);
+        let prefix = format!("shared-generation:{}", Uuid::new_v4().simple());
+        let backend = service
+            .backend_shared_client(&prefix, Duration::from_secs(60), 16)
+            .await;
+        backend
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"old".to_vec()));
+
+        crate::observe_cache_backend_generation(&prefix, 1).unwrap();
+        assert_eq!(backend.get("key").await.unwrap(), None);
     }
 
     #[cfg(feature = "redis-cache")]
