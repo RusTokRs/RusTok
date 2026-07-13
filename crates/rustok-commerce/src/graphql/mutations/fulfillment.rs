@@ -11,6 +11,7 @@ use crate::ExchangeDifferenceRefundInput;
 
 use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;
+use super::provider_return_helpers::build_provider_refund_resolution_return_completion;
 
 #[derive(Default)]
 pub struct CommerceFulfillmentMutation;
@@ -193,7 +194,6 @@ impl CommerceFulfillmentMutation {
         let orchestration_service =
             post_order_orchestration_from_context(ctx, db.clone(), event_bus.clone());
 
-        // Fetch the order change to inspect its change_type
         let order_change = order_service.get_order_change(tenant_id, id).await?;
 
         let result = match order_change.change_type.as_str() {
@@ -374,7 +374,7 @@ impl CommerceFulfillmentMutation {
         };
 
         if let Some(refund_input) = input.refund {
-            complete_input = build_refund_resolution_return_completion(
+            complete_input = build_provider_refund_resolution_return_completion(
                 ctx,
                 db,
                 &order_service,
