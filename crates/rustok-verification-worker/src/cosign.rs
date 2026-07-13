@@ -6,9 +6,7 @@ use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustV
 use serde_json::Value;
 use tokio::process::Command;
 
-use crate::{
-    policy::vulnerability_severity_rank, VerificationPolicy, VerificationTrustRoot,
-};
+use crate::{policy::vulnerability_severity_rank, VerificationPolicy, VerificationTrustRoot};
 
 /// Concrete worker-only Cosign adapter. Command arguments derive exclusively
 /// from typed owner input and mounted policy; artifact-controlled values never
@@ -285,11 +283,8 @@ impl TrustVerifier for CosignTrustVerifier {
                 signer_identity,
                 ..
             } => {
-                self.verify_with_flags(
-                    &request,
-                    vec!["--key".to_string(), key_reference.clone()],
-                )
-                .await?;
+                self.verify_with_flags(&request, vec!["--key".to_string(), key_reference.clone()])
+                    .await?;
                 signer_identity.clone()
             }
         };
@@ -359,7 +354,12 @@ mod tests {
     fn slsa_fixture_requires_exact_subject_digest() {
         let output = cosign_output(include_str!("../fixtures/slsa-statement.json"));
         assert!(validate_slsa(&output, DIGEST, &policy()).is_ok());
-        assert!(validate_slsa(&output, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", &policy()).is_err());
+        assert!(validate_slsa(
+            &output,
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            &policy()
+        )
+        .is_err());
     }
 
     #[test]

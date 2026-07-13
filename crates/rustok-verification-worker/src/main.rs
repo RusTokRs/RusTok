@@ -21,11 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .server()?
         .concurrency_limit_per_connection(listener.concurrency_limit)
         .timeout(listener.request_timeout)
-        .add_service(VerificationServiceServer::new(
-            VerificationGrpcService::new(worker),
+        .add_service(
+            VerificationServiceServer::new(VerificationGrpcService::new(worker))
+                .max_decoding_message_size(listener.max_message_size)
+                .max_encoding_message_size(listener.max_message_size),
         )
-        .max_decoding_message_size(listener.max_message_size)
-        .max_encoding_message_size(listener.max_message_size))
         .serve(listener.address)
         .await?;
     Ok(())

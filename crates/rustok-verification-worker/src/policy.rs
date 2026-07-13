@@ -62,7 +62,10 @@ impl VerificationPolicy {
                 signer_identity,
                 ..
             } if key_reference.trim().is_empty() || signer_identity.trim().is_empty() => {
-                return Err("verification policy requires non-empty KMS key reference and signer identity".into());
+                return Err(
+                    "verification policy requires non-empty KMS key reference and signer identity"
+                        .into(),
+                );
             }
             VerificationTrustRoot::KmsKey { .. } => {}
         }
@@ -80,7 +83,9 @@ impl VerificationPolicy {
             VerificationTrustRoot::KeylessSigstore {
                 allowed_signer_identities,
                 ..
-            } => allowed_signer_identities.iter().any(|identity| identity == signer_identity),
+            } => allowed_signer_identities
+                .iter()
+                .any(|identity| identity == signer_identity),
             VerificationTrustRoot::KmsKey {
                 signer_identity: configured,
                 ..

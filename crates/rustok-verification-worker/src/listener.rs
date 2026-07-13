@@ -54,7 +54,10 @@ impl ListenerConfig {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.certificate_pem.is_empty() || self.private_key_pem.is_empty() || self.client_ca_pem.is_empty() {
+        if self.certificate_pem.is_empty()
+            || self.private_key_pem.is_empty()
+            || self.client_ca_pem.is_empty()
+        {
             return Err("verification listener TLS material must not be empty".to_string());
         }
         if self.request_timeout.is_zero() {
@@ -73,15 +76,14 @@ impl ListenerConfig {
     }
 
     pub fn server(&self) -> Result<Server, tonic::transport::Error> {
-        Server::builder()
-            .tls_config(
-                ServerTlsConfig::new()
-                    .identity(Identity::from_pem(
-                        self.certificate_pem.clone(),
-                        self.private_key_pem.clone(),
-                    ))
-                    .client_ca_root(Certificate::from_pem(self.client_ca_pem.clone())),
-            )
+        Server::builder().tls_config(
+            ServerTlsConfig::new()
+                .identity(Identity::from_pem(
+                    self.certificate_pem.clone(),
+                    self.private_key_pem.clone(),
+                ))
+                .client_ca_root(Certificate::from_pem(self.client_ca_pem.clone())),
+        )
     }
 }
 
