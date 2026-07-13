@@ -1,11 +1,11 @@
 pub mod category;
 pub mod moderation;
 mod rbac;
-mod reply;
+pub mod reply;
 mod reply_owner;
 pub mod revision;
 pub mod subscription;
-mod topic;
+pub mod topic;
 mod topic_owner;
 pub mod user_stats;
 pub mod vote;
