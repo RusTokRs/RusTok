@@ -4,6 +4,7 @@ use fly_ui::UiIntent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PageBuilderCapabilityResponse};
+use serde_json::{Map, Value};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -12,6 +13,7 @@ pub struct AdminEditorRuntime {
     pub last_error: RwSignal<Option<String>>,
     pub last_announcement: RwSignal<Option<String>>,
     pub trait_schemas: Arc<TraitSchemaRegistry>,
+    pub runtime_context: RwSignal<Value>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
@@ -31,6 +33,7 @@ impl AdminEditorRuntime {
             last_error: RwSignal::new(None),
             last_announcement: RwSignal::new(None),
             trait_schemas: Arc::new(TraitSchemaRegistry::with_builtins()),
+            runtime_context: RwSignal::new(Value::Object(Map::new())),
             facade,
             on_request,
             facade_missing: facade_missing.into(),
@@ -40,6 +43,11 @@ impl AdminEditorRuntime {
 
     pub fn with_trait_schemas(mut self, trait_schemas: Arc<TraitSchemaRegistry>) -> Self {
         self.trait_schemas = trait_schemas;
+        self
+    }
+
+    pub fn with_runtime_context(mut self, runtime_context: Value) -> Self {
+        self.runtime_context = RwSignal::new(runtime_context);
         self
     }
 
