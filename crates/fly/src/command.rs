@@ -15,7 +15,11 @@ pub struct ComponentPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub style: Option<Value>,
     #[serde(default)]
+    pub replace_style: bool,
+    #[serde(default)]
     pub clear_style: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remove_style_properties: Vec<String>,
     #[serde(default)]
     pub fields: Map<String, Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -31,8 +35,21 @@ impl ComponentPatch {
 
         if self.clear_style {
             component.style = None;
-        } else if let Some(style) = self.style {
-            component.style = Some(style);
+        } else {
+            if !self.remove_style_properties.is_empty() {
+                if let Some(Value::Object(style)) = component.style.as_mut() {
+                    for property in self.remove_style_properties {
+                        style.remove(&property);
+                    }
+                }
+            }
+            if let Some(style) = self.style {
+                if self.replace_style {
+                    component.style = Some(style);
+                } else {
+                    merge_style(&mut component.style, style);
+                }
+            }
         }
 
         for field in self.remove_fields {
@@ -58,6 +75,13 @@ impl ComponentPatch {
                 }
             }
         }
+    }
+}
+
+fn merge_style(current: &mut Option<Value>, patch: Value) {
+    match (current.as_mut(), patch) {
+        (Some(Value::Object(current)), Value::Object(patch)) => current.extend(patch),
+        (_, patch) => *current = Some(patch),
     }
 }
 
@@ -417,5 +441,85 @@ impl FlyEditor {
                 Ok(())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{GrapesJsV1Codec, RegistrySet};
+    use serde_json::json;
+
+    #[test]
+    fn style_patch_merges_and_can_remove_individual_properties() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "section",
+                        "style": { "color": "red", "padding": "24px" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        editor
+            .apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    style: Some(json!({ "width": "320px" })),
+                    remove_style_properties: vec!["color".to_string()],
+                    ..ComponentPatch::default()
+                },
+            })
+            .expect("patch");
+        let style = editor
+            .document()
+            .component("hero")
+            .and_then(|component| component.style.as_ref())
+            .expect("style");
+        assert_eq!(style["padding"], "24px");
+        assert_eq!(style["width"], "320px");
+        assert!(style.get("color").is_none());
+    }
+
+    #[test]
+    fn replace_style_is_explicit() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "section",
+                        "style": { "color": "red" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        editor
+            .apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    style: Some(json!({ "width": "320px" })),
+                    replace_style: true,
+                    ..ComponentPatch::default()
+                },
+            })
+            .expect("patch");
+        let style = editor
+            .document()
+            .component("hero")
+            .and_then(|component| component.style.as_ref())
+            .expect("style");
+        assert!(style.get("color").is_none());
+        assert_eq!(style["width"], "320px");
     }
 }
