@@ -68,6 +68,16 @@ impl DurableCacheInvalidationConsumer {
         })
     }
 
+    /// Acknowledge only after the in-order invalidation handler completes successfully.
+    pub fn acknowledge_applied(
+        &self,
+        channel: impl Into<String>,
+        applied_generation: u64,
+    ) -> Result<Option<u64>, BoundedInvalidationTrackerError> {
+        self.tracker
+            .acknowledge_applied(channel, applied_generation)
+    }
+
     /// Acknowledge only after namespace clear/rebuild/generation rotation completes successfully.
     pub fn acknowledge_recovery(
         &self,
@@ -117,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn contiguous_duplicate_and_gap_records_have_explicit_decisions() {
+    fn failed_apply_is_retried_until_explicit_acknowledgement() {
         let consumer = DurableCacheInvalidationConsumer::new(4).unwrap();
         consumer.seed("tenant.invalidate", 3).unwrap();
 
@@ -125,10 +135,26 @@ mod tests {
             consumer.decide(&record(4)).unwrap(),
             DurableInvalidationDecision::Apply { generation: 4 }
         );
+        assert_eq!(consumer.last_generation("tenant.invalidate"), Some(3));
+        assert_eq!(
+            consumer.decide(&record(4)).unwrap(),
+            DurableInvalidationDecision::Apply { generation: 4 }
+        );
+
+        consumer
+            .acknowledge_applied("tenant.invalidate", 4)
+            .unwrap();
         assert_eq!(
             consumer.decide(&record(4)).unwrap(),
             DurableInvalidationDecision::Ignore { generation: 4 }
         );
+    }
+
+    #[test]
+    fn gap_requires_recovery_acknowledgement() {
+        let consumer = DurableCacheInvalidationConsumer::new(4).unwrap();
+        consumer.seed("tenant.invalidate", 4).unwrap();
+
         assert_eq!(
             consumer.decide(&record(6)).unwrap(),
             DurableInvalidationDecision::RecoverThrough { generation: 6 }
