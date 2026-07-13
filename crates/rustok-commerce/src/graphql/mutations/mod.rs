@@ -17,3 +17,42 @@ pub struct CommerceMutation(
     pub pricing::CommercePricingMutation,
     pub provider_operations::CommerceProviderMutation,
 );
+
+#[cfg(test)]
+mod tests {
+    use async_graphql::{EmptySubscription, Schema};
+
+    use super::CommerceMutation;
+    use crate::graphql::CommerceQuery;
+
+    #[test]
+    fn provider_operations_remain_in_merged_schema() {
+        let schema = Schema::build(
+            CommerceQuery::default(),
+            CommerceMutation::default(),
+            EmptySubscription,
+        )
+        .finish();
+        let sdl = schema.sdl();
+
+        for field in [
+            "authorizePaymentCollection",
+            "capturePaymentCollection",
+            "cancelPaymentCollection",
+            "createRefund",
+            "completeRefund",
+            "cancelRefund",
+            "createFulfillment",
+            "shipFulfillment",
+            "deliverFulfillment",
+            "reopenFulfillment",
+            "reshipFulfillment",
+            "cancelFulfillment",
+        ] {
+            assert!(
+                sdl.contains(field),
+                "merged commerce schema must retain mutation field `{field}`"
+            );
+        }
+    }
+}
