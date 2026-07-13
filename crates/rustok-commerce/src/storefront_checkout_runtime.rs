@@ -1,4 +1,5 @@
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
+use rustok_cart::{CartCheckoutPort, CartCheckoutSnapshotRequest, in_process_cart_checkout_port};
 use rustok_customer::{
     CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
@@ -79,8 +80,14 @@ pub async fn read_storefront_payment_collection(
     cart_id: Uuid,
 ) -> Result<Option<rustok_payment::dto::PaymentCollectionResponse>, StorefrontCheckoutRuntimeError>
 {
-    let cart = rustok_cart::CartService::new(runtime.db_clone())
-        .get_cart(tenant.id, cart_id)
+    let cart = in_process_cart_checkout_port(runtime.db_clone())
+        .read_cart_checkout_snapshot(
+            storefront_cart_port_context(tenant.id, cart_id),
+            CartCheckoutSnapshotRequest {
+                cart_id,
+                locale: None,
+            },
+        )
         .await
         .map_err(runtime_error)?;
     let storefront_customer_id =
@@ -359,6 +366,16 @@ fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortConte
         PortActor::user(user_id.to_string()),
         "en",
         format!("storefront-customer:{user_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
+}
+
+fn storefront_cart_port_context(tenant_id: Uuid, cart_id: Uuid) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.storefront"),
+        "en",
+        format!("storefront-cart:{cart_id}"),
     )
     .with_deadline(std::time::Duration::from_secs(2))
 }

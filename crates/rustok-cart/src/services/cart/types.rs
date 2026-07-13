@@ -1,4 +1,5 @@
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -14,14 +15,14 @@ pub struct DeliveryGroupSnapshot {
     pub key: DeliveryGroupKey,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CartLineItemPricingUpdate {
     pub line_item_id: Uuid,
     pub unit_price: Decimal,
     pub pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CartPricingAdjustmentUpdate {
     pub source_id: Option<String>,
     pub amount: Decimal,

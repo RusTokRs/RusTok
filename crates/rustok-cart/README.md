@@ -20,6 +20,8 @@
   `base/compare-at unit_price + pricing-owned adjustments` so persisted unit
   prices do not drift across channel/region boundaries.
 - Prepare a stable handoff point for later checkout and order placement flows.
+- Publish an owner-managed in-process `CartCheckoutPort` factory for explicit
+  checkout and cart-read consumers.
 - Publish a module-owned storefront cart workspace for cart inspection.
 
 ## Interactions

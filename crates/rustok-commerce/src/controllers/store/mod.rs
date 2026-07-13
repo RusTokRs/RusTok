@@ -212,6 +212,37 @@ pub(crate) fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -
     .with_deadline(std::time::Duration::from_secs(2))
 }
 
+pub(crate) fn storefront_cart_port_context(
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    auth: Option<&rustok_api::AuthContext>,
+    resource_id: Uuid,
+    operation: &str,
+    is_write: bool,
+) -> PortContext {
+    let actor = auth
+        .map(|value| PortActor::user(value.user_id.to_string()))
+        .unwrap_or_else(|| PortActor::service("rustok-commerce.storefront"));
+    let correlation_id = format!("storefront-cart:{operation}:{resource_id}");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        request_context.locale.as_str(),
+        correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let context = request_context
+        .channel_slug
+        .as_deref()
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context);
+    if is_write {
+        context.with_idempotency_key(correlation_id)
+    } else {
+        context
+    }
+}
+
 pub(crate) async fn ensure_storefront_channel_enabled_for_db(
     db: &DatabaseConnection,
     request_context: &RequestContext,

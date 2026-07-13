@@ -45,6 +45,8 @@ identity.
   `validation::complete_checkout_rejects_line_item_without_channel_visible_inventory`
   proves snapshot/begin/release execution. Both run from
   `checkout_service_test` against the in-process provider.
+- Storefront payment-collection reads use the owner-managed
+  `CartCheckoutPort` factory rather than constructing `CartService` directly.
 
 ## Open results
 

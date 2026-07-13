@@ -77,7 +77,17 @@ hasAll(runtimeSource, [
   'workflow stage lease expired before its AI run could be recorded',
   'workflow stage lease expired before its AI approval state could be recorded',
   'ensure_agent_provider_capabilities(&provider, descriptor)?;',
-  'workflow {binding_name} bindings must match the owner-declared stages exactly'
+  'workflow {binding_name} bindings must match the owner-declared stages exactly',
+  'fn agent_workflow_execution_context(',
+  'workflow run is missing its persisted agent execution context',
+  '"agent_execution_context": {',
+  '&agent_operator,',
+  'async fn agent_execution_context_for_run(',
+  'let execution_operator = agent_execution_context_for_run',
+  'access_context_for_operator(&execution_operator)',
+  'async fn sync_workflow_stage_after_run(',
+  'Self::sync_workflow_stage_after_run(db, operator.tenant_id, &record).await?',
+  'Column::RunId.eq(run.id)'
 ], 'AI workflow runtime source');
 
 const agentSource = read('crates/rustok-ai/src/agent.rs');

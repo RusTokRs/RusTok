@@ -12,7 +12,12 @@ use super::{
     StoreCartResponse, StoreCreateCartInput, StoreUpdateCartInput, StoreUpdateCartLineItemInput,
 };
 use crate::dto::CartResponse;
-use rustok_cart::CartService;
+use rustok_cart::{
+    CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
+    CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
+    CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    CartStorefrontRemoveLineItemRequest, in_process_cart_storefront_port,
+};
 use rustok_pricing::PricingService;
 
 /// Create a storefront cart
@@ -59,11 +64,18 @@ pub async fn create_cart(
             )
         })?;
 
-    let service = CartService::new(runtime.db_clone());
-    let cart = service
-        .create_cart_with_channel(
-            tenant.id,
-            crate::dto::CreateCartInput {
+    let cart = in_process_cart_storefront_port(runtime.db_clone())
+        .create_storefront_cart(
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                tenant.id,
+                "create",
+                true,
+            ),
+            CartStorefrontCreateRequest {
+                input: crate::dto::CreateCartInput {
                 customer_id,
                 email: input.email,
                 region_id: context.region.as_ref().map(|region| region.id),
@@ -73,11 +85,12 @@ pub async fn create_cart(
                 currency_code,
                 metadata: input.metadata,
             },
-            request_context.channel_id,
-            request_context.channel_slug.clone(),
+                channel_id: request_context.channel_id,
+                channel_slug: request_context.channel_slug.clone(),
+            },
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
     let cart = super::enrich_storefront_cart_for_db(
         runtime.db(),
         tenant.id,
@@ -116,11 +129,20 @@ pub async fn get_cart(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(runtime.db_clone());
-    let cart = service
-        .get_cart(tenant.id, id)
+    let cart = in_process_cart_storefront_port(runtime.db_clone())
+        .read_storefront_cart(
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "read",
+                false,
+            ),
+            CartStorefrontReadRequest { cart_id: id },
+        )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
@@ -159,9 +181,18 @@ pub async fn update_cart_context(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let cart_service = CartService::new(runtime.db_clone());
-    let cart = cart_service
-        .get_cart(tenant.id, id)
+    let cart = in_process_cart_storefront_port(runtime.db_clone())
+        .read_storefront_cart(
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "read",
+                false,
+            ),
+            CartStorefrontReadRequest { cart_id: id },
+        )
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&cart, customer_id)?;
@@ -217,9 +248,12 @@ pub async fn add_cart_line_item(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(runtime.db_clone());
-    let existing = service
-        .get_cart(tenant.id, id)
+    let storefront_port = in_process_cart_storefront_port(runtime.db_clone());
+    let existing = storefront_port
+        .read_storefront_cart(
+            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "read", false),
+            CartStorefrontReadRequest { cart_id: id },
+        )
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
@@ -246,12 +280,10 @@ pub async fn add_cart_line_item(
     )
     .await?;
 
-    let cart = service
-        .add_line_item_with_pricing_adjustment(
-            tenant.id,
-            id,
-            resolved_input.add_line_item,
-            resolved_input.pricing_adjustment,
+    let cart = storefront_port
+        .add_storefront_line_item(
+            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "add-line-item", true),
+            CartStorefrontAddLineItemRequest { cart_id: id, input: resolved_input.add_line_item, pricing_adjustment: resolved_input.pricing_adjustment },
         )
         .await
         .map_err(super::map_cart_error)?;
@@ -295,9 +327,12 @@ pub async fn update_cart_line_item(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(runtime.db_clone());
-    let existing = service
-        .get_cart(tenant.id, id)
+    let storefront_port = in_process_cart_storefront_port(runtime.db_clone());
+    let existing = storefront_port
+        .read_storefront_cart(
+            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "read", false),
+            CartStorefrontReadRequest { cart_id: id },
+        )
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
@@ -341,20 +376,19 @@ pub async fn update_cart_line_item(
 
         let pricing_update =
             super::storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);
-        service
-            .update_line_item_pricing(
-                tenant.id,
-                id,
-                line_id,
-                input.quantity,
-                pricing_update.unit_price,
-                pricing_update.pricing_adjustment,
+        storefront_port
+            .update_storefront_line_item_pricing(
+                super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "update-line-item", true),
+                CartStorefrontLineItemPricingRequest { cart_id: id, line_item_id: line_id, quantity: input.quantity, unit_price: pricing_update.unit_price, pricing_adjustment: pricing_update.pricing_adjustment },
             )
             .await
             .map_err(super::map_cart_error)?
     } else {
-        service
-            .update_line_item_quantity(tenant.id, id, line_id, input.quantity)
+        storefront_port
+            .update_storefront_line_item_quantity(
+                super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "update-line-item", true),
+                CartStorefrontLineItemQuantityRequest { cart_id: id, line_item_id: line_id, quantity: input.quantity },
+            )
             .await
             .map_err(super::map_cart_error)?
     };
@@ -396,15 +430,21 @@ pub async fn remove_cart_line_item(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(runtime.db_clone());
-    let existing = service
-        .get_cart(tenant.id, id)
+    let storefront_port = in_process_cart_storefront_port(runtime.db_clone());
+    let existing = storefront_port
+        .read_storefront_cart(
+            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "read", false),
+            CartStorefrontReadRequest { cart_id: id },
+        )
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
 
-    let cart = service
-        .remove_line_item(tenant.id, id, line_id)
+    let cart = storefront_port
+        .remove_storefront_line_item(
+            super::storefront_cart_port_context(tenant.id, &request_context, auth.0.as_ref(), id, "remove-line-item", true),
+            CartStorefrontRemoveLineItemRequest { cart_id: id, line_item_id: line_id },
+        )
         .await
         .map_err(super::map_cart_error)?;
     Ok(Json(

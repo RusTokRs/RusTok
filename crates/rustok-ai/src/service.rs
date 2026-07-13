@@ -123,6 +123,52 @@ fn agent_workflow_execution_context(
     })
 }
 
+/// Returns the constrained authority for an already-created agent run. Normal
+/// interactive runs deliberately return `None` and retain their caller
+/// context; the durable stage association is the boundary discriminator.
+async fn agent_execution_context_for_run(
+    db: &DatabaseConnection,
+    scheduler_operator: &AiOperatorContext,
+    run_id: Uuid,
+) -> AiResult<Option<AiOperatorContext>> {
+    let Some(stage) = ai_agent_workflow_stages::Entity::find()
+        .filter(ai_agent_workflow_stages::Column::TenantId.eq(scheduler_operator.tenant_id))
+        .filter(ai_agent_workflow_stages::Column::RunId.eq(run_id))
+        .one(db)
+        .await
+        .map_err(db_err)?
+    else {
+        return Ok(None);
+    };
+    let workflow_run = ai_agent_workflow_runs::Entity::find_by_id(stage.workflow_run_id)
+        .filter(ai_agent_workflow_runs::Column::TenantId.eq(scheduler_operator.tenant_id))
+        .one(db)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| AiError::Validation("agent run parent workflow is unavailable".to_string()))?;
+    let principal = ai_agent_principals::Entity::find_by_id(stage.agent_principal_id)
+        .filter(ai_agent_principals::Column::TenantId.eq(scheduler_operator.tenant_id))
+        .filter(ai_agent_principals::Column::IsActive.eq(true))
+        .one(db)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| AiError::Validation("agent run principal is unavailable".to_string()))?;
+    let catalog = crate::agent_catalog()?;
+    let principal_contract = crate::AgentPrincipal {
+        id: principal.id,
+        tenant_id: principal.tenant_id,
+        agent_slug: principal.descriptor_slug,
+        role_slugs: string_list(&principal.role_slugs).into_iter().collect(),
+        permission_slugs: string_list(&principal.permission_slugs).into_iter().collect(),
+    };
+    Ok(Some(agent_workflow_execution_context(
+        scheduler_operator,
+        &workflow_run,
+        &catalog,
+        &principal_contract,
+    )?))
+}
+
 pub struct AiManagementService;
 
 impl AiManagementService {
@@ -178,6 +224,10 @@ impl AiManagementService {
             .col_expr(
                 ai_agent_workflow_stages::Column::AttemptCount,
                 Expr::col(ai_agent_workflow_stages::Column::AttemptCount).add(1),
+            )
+            .col_expr(
+                ai_agent_workflow_stages::Column::StartedAt,
+                Expr::value(Utc::now()),
             )
             .col_expr(
                 ai_agent_workflow_stages::Column::UpdatedAt,
@@ -255,6 +305,7 @@ impl AiManagementService {
             .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
             .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
             .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
             .one(db)
             .await
             .map_err(db_err)?;
@@ -266,6 +317,7 @@ impl AiManagementService {
             .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
             .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
             .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
             .col_expr(
                 ai_agent_workflow_stages::Column::Status,
                 Expr::value("completed"),
@@ -540,6 +592,7 @@ impl AiManagementService {
             .filter(ai_agent_workflow_stages::Column::TenantId.eq(operator.tenant_id))
             .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
             .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
             .one(db)
             .await
             .map_err(db_err)?
@@ -640,8 +693,9 @@ impl AiManagementService {
                 let recorded = ai_agent_workflow_stages::Entity::update_many()
                     .filter(ai_agent_workflow_stages::Column::TenantId.eq(operator.tenant_id))
                     .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
-                    .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
-                    .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+            .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
+            .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+            .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
                     .col_expr(
                         ai_agent_workflow_stages::Column::RunId,
                         Expr::value(run.id),
@@ -673,6 +727,7 @@ impl AiManagementService {
                         .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
                         .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
                         .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+                        .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
                         .col_expr(
                             ai_agent_workflow_stages::Column::Status,
                             Expr::value("waiting_approval"),
@@ -710,6 +765,7 @@ impl AiManagementService {
                     .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
                     .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
                     .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+                    .filter(ai_agent_workflow_stages::Column::LeaseExpiresAt.gte(Utc::now()))
                     .col_expr(
                         ai_agent_workflow_stages::Column::Status,
                         Expr::value("failed"),
@@ -2507,7 +2563,10 @@ impl AiManagementService {
             ));
         }
 
-        let access_context = access_context_for_operator(operator);
+        let execution_operator = agent_execution_context_for_run(db, operator, run.id)
+            .await?
+            .unwrap_or_else(|| operator.clone());
+        let access_context = access_context_for_operator(&execution_operator);
         let (tool_content, tool_metadata, trace) = if input.approved {
             let outcome = match approval_execution_outcome(&approval.metadata)? {
                 Some(outcome) => outcome,
@@ -2575,13 +2634,20 @@ impl AiManagementService {
         // RusToK records atomically so a database failure cannot duplicate a
         // tool trace or chat message on the next resume attempt.
         let transaction = db.begin().await.map_err(db_err)?;
-        insert_tool_trace(&transaction, operator.tenant_id, session.id, run.id, &trace).await?;
+        insert_tool_trace(
+            &transaction,
+            execution_operator.tenant_id,
+            session.id,
+            run.id,
+            &trace,
+        )
+        .await?;
         insert_message(
             &transaction,
-            operator.tenant_id,
+            execution_operator.tenant_id,
             session.id,
             Some(run.id),
-            Some(operator.user_id),
+            Some(execution_operator.user_id),
             ChatMessage {
                 role: ChatMessageRole::Tool,
                 content: Some(tool_content),
@@ -2627,7 +2693,7 @@ impl AiManagementService {
 
         let result = Self::continue_run(
             runtime,
-            operator,
+            &execution_operator,
             session.id,
             saved_run.id,
             provider,
@@ -2639,7 +2705,7 @@ impl AiManagementService {
             None,
         )
         .await?;
-        Self::sync_workflow_stage_after_run(db, operator.tenant_id, &result.run).await?;
+        Self::sync_workflow_stage_after_run(db, execution_operator.tenant_id, &result.run).await?;
         Ok(result)
     }
 
@@ -2657,28 +2723,69 @@ impl AiManagementService {
             .map_err(db_err)?;
         for stage in stages {
             let workflow_run_id = stage.workflow_run_id;
-            let mut active: ai_agent_workflow_stages::ActiveModel = stage.clone().into();
-            match run.status.as_str() {
+            let result = match run.status.as_str() {
                 "completed" => {
-                    active.status = Set("completed".to_string());
-                    active.output_payload = Set(Some(json!({"ai_run_id": run.id})));
-                    active.completed_at = Set(Some(Utc::now().into()));
+                    ai_agent_workflow_stages::Entity::update_many()
+                        .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+                        .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
+                        .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
+                        .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::Status,
+                            Expr::value("completed"),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::OutputPayload,
+                            Expr::value(json!({"ai_run_id": run.id})),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::CompletedAt,
+                            Expr::value(Utc::now()),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::UpdatedAt,
+                            Expr::value(Utc::now()),
+                        )
+                        .exec(db)
+                        .await
+                        .map_err(db_err)?
                 }
                 "failed" | "cancelled" => {
-                    active.status = Set("failed".to_string());
-                    active.error_message = Set(run.error_message.clone().or_else(|| {
-                        Some(format!("workflow AI run finished with status `{}`", run.status))
-                    }));
-                    active.completed_at = Set(Some(Utc::now().into()));
+                    ai_agent_workflow_stages::Entity::update_many()
+                        .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+                        .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
+                        .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
+                        .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::Status,
+                            Expr::value("failed"),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::ErrorMessage,
+                            Expr::value(run.error_message.clone().unwrap_or_else(|| {
+                                format!("workflow AI run finished with status `{}`", run.status)
+                            })),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::CompletedAt,
+                            Expr::value(Utc::now()),
+                        )
+                        .col_expr(
+                            ai_agent_workflow_stages::Column::UpdatedAt,
+                            Expr::value(Utc::now()),
+                        )
+                        .exec(db)
+                        .await
+                        .map_err(db_err)?
                 }
                 _ => continue,
-            }
-            active.updated_at = Set(Utc::now().into());
-            active.update(db).await.map_err(db_err)?;
-            if run.status == "completed" {
-                Self::promote_agent_workflow_stages(db, tenant_id, workflow_run_id).await?;
-            } else {
-                Self::sync_agent_workflow_run_status(db, tenant_id, workflow_run_id).await?;
+            };
+            if result.rows_affected == 1 {
+                if run.status == "completed" {
+                    Self::promote_agent_workflow_stages(db, tenant_id, workflow_run_id).await?;
+                } else {
+                    Self::sync_agent_workflow_run_status(db, tenant_id, workflow_run_id).await?;
+                }
             }
         }
         Ok(())
@@ -2710,7 +2817,9 @@ impl AiManagementService {
             None,
             None,
         );
-        Ok(map_run_record(saved)?)
+        let record = map_run_record(saved)?;
+        Self::sync_workflow_stage_after_run(db, operator.tenant_id, &record).await?;
+        Ok(record)
     }
 
     async fn execute_latest_turn(
