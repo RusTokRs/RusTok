@@ -205,7 +205,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn Redis_health_requires_subscriber_and_reconciliation() {
+    async fn redis_health_requires_subscriber_and_reconciliation() {
         let state = TenantCacheGenerationListenerState::new();
         state.initialize(true).await;
         assert_eq!(
