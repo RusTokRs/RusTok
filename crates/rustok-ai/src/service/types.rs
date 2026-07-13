@@ -268,6 +268,7 @@ pub struct StartAiChatSessionInput {
 pub struct RunAiTaskJobInput {
     pub title: String,
     pub provider_profile_id: Option<Uuid>,
+    pub model_override: Option<String>,
     pub task_profile_id: Uuid,
     pub execution_mode: Option<ExecutionMode>,
     pub locale: Option<String>,

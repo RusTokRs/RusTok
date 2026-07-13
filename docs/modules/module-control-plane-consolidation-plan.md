@@ -669,9 +669,11 @@ the external registry.
 - [x] Add explicit statuses: resolved, verifying, admitted, installed, active,
   failed, inactive, and rolled_back.
 - [x] Store verification evidence references and policy decision revision.
-- [x] Add a durable nullable previous-installation pointer with a self-reference
-  in the installation schema. A subsequent rollback command will select and
-  advance that pointer atomically with its status transition.
+- [x] Store a durable nullable previous-installation pointer for rollback. The
+  admission transaction selects the latest same-scope installation for the
+  module and writes the self-reference together with the new installation,
+  admission row, and outbox event. A later rollback command advances it with
+  its status transition.
 - [ ] Store capability grant revision separately from artifact declaration.
 - [ ] Store migration/application checkpoint and irreversible migration flags.
 - [ ] Add optimistic revision and idempotency key.

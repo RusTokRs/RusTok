@@ -1466,7 +1466,10 @@ impl AiManagementService {
             return Err(AiError::Validation("task profile is inactive".to_string()));
         }
         enforce_task_permissions(operator, Some(&task_profile))?;
-        if input.provider_profile_id.is_some() || input.execution_mode.is_some() {
+        if input.provider_profile_id.is_some()
+            || input.model_override.is_some()
+            || input.execution_mode.is_some()
+        {
             ensure_permission(operator, Permission::AI_ROUTER_OVERRIDE)?;
         }
 
@@ -1488,6 +1491,7 @@ impl AiManagementService {
             task_profile.tool_profile_id,
             &ExecutionOverride {
                 execution_mode: input.execution_mode,
+                model: input.model_override,
                 ..ExecutionOverride::default()
             },
             &operator.role_slugs,

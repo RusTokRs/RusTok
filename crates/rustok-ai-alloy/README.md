@@ -25,6 +25,8 @@ provider routing, MCP wiring, or host UI.
 
 - `register_alloy_ai_vertical_handlers`
 - `alloy_code_agents`, `alloy_swarm_workflows`
+- `alloy_stage_execution` binds each code-agent role to a validated `alloy_code`
+  task operation and input shape.
 - `alloy_script_execution_policy`
 - `validate_runtime_payload`
 

@@ -10,6 +10,11 @@ through an explicit mapping and remains the runtime and transport composition
 owner. The supported operations and payload rules are documented in the crate
 README and policy registry.
 
+Each code-agent role now also publishes an explicit execution binding to the
+existing `alloy_code` task contract. The runtime must validate the declared
+operation and input shape before invoking a stage; it must never infer one from
+the role name.
+
 ## FFA/FBA readiness
 
 - FFA status: `not_started` — this support adapter owns no UI surface.

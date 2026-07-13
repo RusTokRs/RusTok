@@ -43,14 +43,8 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE module_artifact_installations \
                 DROP COLUMN previous_installation_id"
             }
-            // SQLite cannot drop a referenced column without rebuilding the
-            // table. The local test backend treats migration rollback as an
-            // unsupported operation rather than silently losing data.
             DbBackend::Sqlite => {
-                return Err(DbErr::Migration(
-                    "SQLite rollback for module artifact rollback-pointer migration is unsupported"
-                        .to_string(),
-                ));
+                "ALTER TABLE module_artifact_installations DROP COLUMN previous_installation_id"
             }
             backend => {
                 return Err(DbErr::Migration(format!(

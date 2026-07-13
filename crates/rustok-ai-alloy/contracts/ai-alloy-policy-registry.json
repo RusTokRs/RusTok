@@ -40,7 +40,14 @@
       "alloy_code_verifier"
     ],
     "workflow": "alloy_change_review",
-    "apply_requires_approval": true
+    "apply_requires_approval": true,
+    "stage_execution_api": "alloy_stage_execution",
+    "stage_execution_bindings": [
+      "alloy_code_planner:list_scripts",
+      "alloy_code_implementer:validate_script",
+      "alloy_code_reviewer:validate_script",
+      "alloy_code_verifier:run_script"
+    ]
   },
   "evidence": {
     "local_plan": "crates/rustok-ai-alloy/docs/implementation-plan.md",

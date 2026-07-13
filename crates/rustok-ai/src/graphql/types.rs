@@ -1159,6 +1159,7 @@ pub struct StartAiChatSessionInputGql {
 pub struct RunAiTaskJobInputGql {
     pub title: String,
     pub provider_profile_id: Option<Uuid>,
+    pub model_override: Option<String>,
     pub task_profile_id: Uuid,
     pub execution_mode: Option<AiExecutionModeGql>,
     pub locale: Option<String>,

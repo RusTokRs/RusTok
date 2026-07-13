@@ -634,11 +634,13 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &artifact.scope).await?;
         let backend = transaction.get_database_backend();
+        let previous_installation_id =
+            previous_installation_id(&transaction, artifact, backend).await?;
         transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 installation_insert_sql(backend),
-                installation_values(artifact, backend)?,
+                installation_values(artifact, previous_installation_id, backend)?,
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -722,10 +724,10 @@ async fn configure_rls_scope<C: ConnectionTrait>(
 
 fn installation_insert_sql(backend: DbBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=17)
+        DbBackend::Postgres => (1..=18)
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>(),
-        _ => (1..=17)
+        _ => (1..=18)
             .map(|index| format!("?{index}"))
             .collect::<Vec<_>>(),
     };
@@ -733,7 +735,8 @@ fn installation_insert_sql(backend: DbBackend) -> String {
         "INSERT INTO module_artifact_installations (\
             installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
             slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
-            dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at\
+            dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at, \
+            previous_installation_id\
          ) VALUES ({})",
         placeholders.join(", ")
     )
@@ -741,6 +744,7 @@ fn installation_insert_sql(backend: DbBackend) -> String {
 
 fn installation_values(
     artifact: &InstalledModuleArtifact,
+    previous_installation_id: Option<Uuid>,
     backend: DbBackend,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
     let (scope_kind, tenant_id) = match &artifact.scope {
@@ -781,7 +785,52 @@ fn installation_values(
         artifact.dependency_lock.graph_digest.clone().into(),
         SqlValue::Json(Some(Box::new(dependency_lock))),
         installed_at,
+        optional_uuid_value(previous_installation_id, backend),
     ])
+}
+
+async fn previous_installation_id<C: ConnectionTrait>(
+    connection: &C,
+    artifact: &InstalledModuleArtifact,
+    backend: DbBackend,
+) -> Result<Option<Uuid>, ModuleInstallationError> {
+    let (scope_kind, tenant_id) = match &artifact.scope {
+        ModuleInstallationScope::Platform => ("platform", None),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
+    };
+    let placeholders = match backend {
+        DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
+        _ => ("?1", "?2", "?3", "?4"),
+    };
+    let sql = format!(
+        "SELECT installation_id FROM module_artifact_installations \
+         WHERE scope_kind = {} \
+           AND ((tenant_id IS NULL AND {} IS NULL) OR tenant_id = {}) \
+           AND slug = {} \
+         ORDER BY installed_at DESC, installation_id DESC LIMIT 1",
+        placeholders.0, placeholders.1, placeholders.2, placeholders.3,
+    );
+    let values = vec![
+        scope_kind.into(),
+        optional_uuid_value(tenant_id, backend),
+        optional_uuid_value(tenant_id, backend),
+        artifact.release.slug.clone().into(),
+    ];
+    let row = connection
+        .query_one(Statement::from_sql_and_values(backend, sql, values))
+        .await
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    row.map(|row| match backend {
+        DbBackend::Postgres => row
+            .try_get("", "installation_id")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string())),
+        _ => row
+            .try_get::<String>("", "installation_id")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .parse::<Uuid>()
+            .map_err(|error| ModuleInstallationError::Store(error.to_string())),
+    })
+    .transpose()
 }
 
 fn admission_insert_sql(backend: DbBackend) -> String {

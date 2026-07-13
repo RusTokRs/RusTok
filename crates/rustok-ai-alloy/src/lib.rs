@@ -223,6 +223,25 @@ pub fn alloy_stage_execution(agent_slug: &str) -> Option<&'static AlloyStageExec
         .find(|descriptor| descriptor.agent_slug == agent_slug)
 }
 
+pub fn validate_stage_execution_input(
+    agent_slug: &str,
+    payload: &serde_json::Value,
+) -> Result<&'static AlloyStageExecutionDescriptor, String> {
+    let binding = alloy_stage_execution(agent_slug)
+        .ok_or_else(|| format!("unknown Alloy code agent `{agent_slug}`"))?;
+    let operation = payload
+        .get("operation")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("{} requires a task input operation", binding.agent_slug))?;
+    if operation != binding.required_operation {
+        return Err(format!(
+            "{} requires operation `{}` rather than `{operation}`",
+            binding.agent_slug, binding.required_operation
+        ));
+    }
+    Ok(binding)
+}
+
 pub fn validate_runtime_payload(payload: Option<&str>) -> Result<(), String> {
     let Some(payload) = payload.filter(|value| !value.trim().is_empty()) else {
         return Ok(());
@@ -299,5 +318,19 @@ mod tests {
             assert_eq!(binding.task_slug, ALLOY_CODE_TASK_SLUG);
             assert!(ALLOY_SCRIPT_ALLOWED_OPERATIONS.contains(&binding.required_operation));
         }
+    }
+
+    #[test]
+    fn stage_input_cannot_select_an_operation_outside_its_role_binding() {
+        assert!(validate_stage_execution_input(
+            "alloy_code_verifier",
+            &serde_json::json!({"operation":"run_script"})
+        )
+        .is_ok());
+        assert!(validate_stage_execution_input(
+            "alloy_code_verifier",
+            &serde_json::json!({"operation":"validate_script"})
+        )
+        .is_err());
     }
 }

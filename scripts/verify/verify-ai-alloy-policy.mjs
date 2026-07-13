@@ -26,6 +26,8 @@ if (registry.support_adapter?.runtime_operation !== 'run_script' || registry.sup
 sameSet(registry.code_agents?.roles ?? [], ['alloy_code_planner', 'alloy_code_implementer', 'alloy_code_reviewer', 'alloy_code_verifier'], 'code agent roles');
 if (registry.code_agents?.owner !== 'rustok-ai-alloy' || registry.code_agents?.catalog_api !== 'alloy_code_agents' || registry.code_agents?.workflow_api !== 'alloy_swarm_workflows') fail('code agent ownership/API drift');
 if (registry.code_agents?.workflow !== 'alloy_change_review' || registry.code_agents?.apply_requires_approval !== true) fail('code agent workflow policy drift');
+sameSet(registry.code_agents?.stage_execution_bindings ?? [], ['alloy_code_planner:list_scripts', 'alloy_code_implementer:validate_script', 'alloy_code_reviewer:validate_script', 'alloy_code_verifier:run_script'], 'code agent stage execution bindings');
+if (registry.code_agents?.stage_execution_api !== 'alloy_stage_execution') fail('code agent stage execution API drift');
 
 const source = read(registry.support_adapter.source);
 hasAll(source, [
@@ -50,6 +52,9 @@ hasAll(source, [
   'ALLOY_SWARM_WORKFLOWS',
   'alloy_code_agents',
   'alloy_swarm_workflows',
+  'AlloyStageExecutionDescriptor',
+  'ALLOY_STAGE_EXECUTIONS',
+  'alloy_stage_execution',
   'slug: "alloy_change_review"',
   '!parsed.is_object()'
 ], 'support adapter source');
