@@ -1,4 +1,5 @@
 use fly_leptos::{BrowserPoint, BrowserRect, PointerSample, FLY_IFRAME_PROTOCOL_V1};
+use fly_ui::KeyStroke;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -31,6 +32,9 @@ pub enum CanvasBridgeMessage {
     },
     DropRequested {
         position: BrowserPoint,
+    },
+    KeyStroke {
+        stroke: KeyStroke,
     },
     CancelDragRequested,
     FocusRequested {
@@ -73,6 +77,7 @@ pub fn decode_canvas_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly_ui::ModifierState;
 
     #[test]
     fn decoder_rejects_replay_and_cross_instance_messages() {
@@ -102,5 +107,29 @@ mod tests {
         .expect("serialize envelope");
         let (_, message) = decode_canvas_message(&payload, "canvas-a", Some(4)).expect("decode");
         assert!(matches!(message, CanvasBridgeMessage::DropRequested { .. }));
+    }
+
+    #[test]
+    fn keyboard_messages_round_trip() {
+        let payload = serde_json::to_string(&CanvasBridgeEnvelope {
+            protocol: FLY_IFRAME_PROTOCOL_V1.to_string(),
+            instance_id: "canvas-a".to_string(),
+            sequence: 6,
+            message: CanvasBridgeMessage::KeyStroke {
+                stroke: KeyStroke {
+                    key: "s".to_string(),
+                    code: Some("KeyS".to_string()),
+                    modifiers: ModifierState {
+                        control: true,
+                        ..ModifierState::default()
+                    },
+                    repeat: false,
+                    editing_text: false,
+                },
+            },
+        })
+        .expect("serialize envelope");
+        let (_, message) = decode_canvas_message(&payload, "canvas-a", Some(5)).expect("decode");
+        assert!(matches!(message, CanvasBridgeMessage::KeyStroke { .. }));
     }
 }
