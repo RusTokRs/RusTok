@@ -29,11 +29,16 @@ impl LocalStorage {
     }
 
     fn validated_relative_path(&self, path: &str, allow_empty: bool) -> Result<PathBuf> {
-        if path.contains('\\') || path.contains('\0') || path.chars().any(char::is_control) {
+        if path.starts_with('/')
+            || path.starts_with('\\')
+            || path.contains('\\')
+            || path.contains('\0')
+            || path.chars().any(char::is_control)
+        {
             return Err(StorageError::InvalidPath(path.to_string()));
         }
 
-        let path = path.trim_matches('/');
+        let path = path.trim_end_matches('/');
         if path.is_empty() {
             return if allow_empty {
                 Ok(PathBuf::new())
@@ -307,11 +312,12 @@ mod tests {
     use super::LocalStorage;
 
     #[test]
-    fn local_storage_path_validation_rejects_traversal_and_backslashes() {
+    fn local_storage_path_validation_rejects_traversal_and_absolute_paths() {
         let storage = LocalStorage::new("storage/media", "/media");
         assert!(storage.validated_relative_path("tenant/file.png", false).is_ok());
+        assert!(storage.validated_relative_path("tenant/", true).is_ok());
         assert!(storage.validated_relative_path("../secret", false).is_err());
         assert!(storage.validated_relative_path("tenant\\..\\secret", false).is_err());
-        assert!(storage.validated_relative_path("/absolute", false).is_ok());
+        assert!(storage.validated_relative_path("/absolute", false).is_err());
     }
 }
