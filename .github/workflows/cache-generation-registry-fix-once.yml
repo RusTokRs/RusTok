@@ -1,0 +1,246 @@
+name: One-shot generation registry saturation fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cache-generation-registry-fix-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: Apply fail-closed generation registry saturation
+        shell: bash
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, name: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{name}: expected one exact match, found {count}")
+              return text.replace(old, new, 1)
+
+          generation_path = Path("crates/rustok-cache/src/generation.rs")
+          generation = generation_path.read_text()
+
+          generation = replace_once(
+              generation,
+              "    operation_timeout: Duration,\n    metrics: Arc<CacheGenerationMetrics>,\n}",
+              "    operation_timeout: Duration,\n    metrics: Arc<CacheGenerationMetrics>,\n    registry_rejected: bool,\n}",
+              "generation store rejection field",
+          )
+
+          constructor_tail = (
+              "            operation_timeout: DEFAULT_GENERATION_OPERATION_TIMEOUT,\n"
+              "            metrics: Arc::new(CacheGenerationMetrics::default()),\n"
+              "        }"
+          )
+          if generation.count(constructor_tail) != 2:
+              raise SystemExit(
+                  "generation constructors: expected two exact matches, found "
+                  f"{generation.count(constructor_tail)}"
+              )
+          generation = generation.replace(
+              constructor_tail,
+              "            operation_timeout: DEFAULT_GENERATION_OPERATION_TIMEOUT,\n"
+              "            metrics: Arc::new(CacheGenerationMetrics::default()),\n"
+              "            registry_rejected: false,\n"
+              "        }",
+          )
+
+          generation = replace_once(
+              generation,
+              "    pub fn with_operation_timeout(\n",
+              "    fn reject_registry_capacity(mut self) -> Self {\n"
+              "        self.registry_rejected = true;\n"
+              "        self\n"
+              "    }\n\n"
+              "    fn ensure_registry_available(&self) -> Result<(), CacheGenerationError> {\n"
+              "        if self.registry_rejected {\n"
+              "            Err(CacheGenerationError::GenerationStoreRegistryCapacityExceeded {\n"
+              "                maximum: DEFAULT_MAX_SHARED_GENERATION_STORES,\n"
+              "            })\n"
+              "        } else {\n"
+              "            Ok(())\n"
+              "        }\n"
+              "    }\n\n"
+              "    pub fn with_operation_timeout(\n",
+              "generation store rejection methods",
+          )
+
+          generation = replace_once(
+              generation,
+              "    ) -> Result<CacheNamespaceGeneration, CacheGenerationError> {\n"
+              "        let namespace_key = generation_key(namespace)?;\n",
+              "    ) -> Result<CacheNamespaceGeneration, CacheGenerationError> {\n"
+              "        if let Err(error) = self.ensure_registry_available() {\n"
+              "            self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);\n"
+              "            return Err(error);\n"
+              "        }\n"
+              "        let namespace_key = generation_key(namespace)?;\n",
+              "generation read saturation check",
+          )
+
+          generation = replace_once(
+              generation,
+              "    pub async fn bump(\n"
+              "        &self,\n"
+              "        namespace: &str,\n"
+              "    ) -> Result<CacheNamespaceGeneration, CacheGenerationError> {\n"
+              "        let namespace_key = generation_key(namespace)?;\n",
+              "    pub async fn bump(\n"
+              "        &self,\n"
+              "        namespace: &str,\n"
+              "    ) -> Result<CacheNamespaceGeneration, CacheGenerationError> {\n"
+              "        if let Err(error) = self.ensure_registry_available() {\n"
+              "            self.metrics.bump_failures.fetch_add(1, Ordering::Relaxed);\n"
+              "            return Err(error);\n"
+              "        }\n"
+              "        let namespace_key = generation_key(namespace)?;\n",
+              "generation bump saturation check",
+          )
+
+          generation = replace_once(
+              generation,
+              "    pub fn seed_local(&self, namespace: &str, generation: u64) -> Result<(), CacheGenerationError> {\n"
+              "        let namespace_key = generation_key(namespace)?;\n",
+              "    pub fn seed_local(&self, namespace: &str, generation: u64) -> Result<(), CacheGenerationError> {\n"
+              "        self.ensure_registry_available()?;\n"
+              "        let namespace_key = generation_key(namespace)?;\n",
+              "generation seed saturation check",
+          )
+
+          generation = replace_once(
+              generation,
+              "                \"Cache generation store registry is full; returning an unshared bounded store\"\n"
+              "            );\n"
+              "            return store;\n",
+              "                \"Cache generation store registry is full; returning a fail-closed store\"\n"
+              "            );\n"
+              "            return store.reject_registry_capacity();\n",
+              "generation registry saturation behavior",
+          )
+
+          generation = replace_once(
+              generation,
+              "    LocalSnapshotCapacityExceeded {\n"
+              "        count: usize,\n"
+              "        maximum: usize,\n"
+              "    },\n"
+              "    GenerationOverflow,\n",
+              "    LocalSnapshotCapacityExceeded {\n"
+              "        count: usize,\n"
+              "        maximum: usize,\n"
+              "    },\n"
+              "    GenerationStoreRegistryCapacityExceeded {\n"
+              "        maximum: usize,\n"
+              "    },\n"
+              "    GenerationOverflow,\n",
+              "generation registry saturation error",
+          )
+
+          generation = replace_once(
+              generation,
+              "            Self::LocalSnapshotCapacityExceeded { count, maximum } => write!(\n"
+              "                formatter,\n"
+              "                \"cache generation local snapshot count {count} exceeds maximum {maximum}\"\n"
+              "            ),\n"
+              "            Self::GenerationOverflow => write!(formatter, \"cache generation counter overflowed\"),\n",
+              "            Self::LocalSnapshotCapacityExceeded { count, maximum } => write!(\n"
+              "                formatter,\n"
+              "                \"cache generation local snapshot count {count} exceeds maximum {maximum}\"\n"
+              "            ),\n"
+              "            Self::GenerationStoreRegistryCapacityExceeded { maximum } => write!(\n"
+              "                formatter,\n"
+              "                \"cache generation store registry reached capacity {maximum}\"\n"
+              "            ),\n"
+              "            Self::GenerationOverflow => write!(formatter, \"cache generation counter overflowed\"),\n",
+              "generation registry saturation display",
+          )
+
+          generation = replace_once(
+              generation,
+              "    #[test]\n"
+              "    fn generation_namespace_is_validated_and_hashed() {\n",
+              "    #[tokio::test]\n"
+              "    async fn generation_store_registry_saturation_fails_closed() {\n"
+              "        #[cfg(feature = \"redis-cache\")]\n"
+              "        let store = CacheNamespaceGenerationStore::new(None);\n"
+              "        #[cfg(not(feature = \"redis-cache\"))]\n"
+              "        let store = CacheNamespaceGenerationStore::new();\n"
+              "        let store = store.reject_registry_capacity();\n"
+              "        let expected = CacheGenerationError::GenerationStoreRegistryCapacityExceeded {\n"
+              "            maximum: DEFAULT_MAX_SHARED_GENERATION_STORES,\n"
+              "        };\n\n"
+              "        assert_eq!(store.read(\"tenant-a\").await.unwrap_err(), expected);\n"
+              "        assert_eq!(store.bump(\"tenant-a\").await.unwrap_err(), expected);\n"
+              "        assert_eq!(store.seed_local(\"tenant-a\", 1).unwrap_err(), expected);\n"
+              "        assert_eq!(store.local_snapshot_count(), 0);\n"
+              "        assert_eq!(store.stats().read_failures, 1);\n"
+              "        assert_eq!(store.stats().bump_failures, 1);\n"
+              "    }\n\n"
+              "    #[test]\n"
+              "    fn generation_namespace_is_validated_and_hashed() {\n",
+              "generation saturation regression test",
+          )
+
+          generation_path.write_text(generation)
+
+          guard_path = Path("apps/server/tests/generation_store_architecture_guard.rs")
+          guard = guard_path.read_text()
+          guard = replace_once(
+              guard,
+              "        \"return registered.store.clone()\",\n"
+              "        \"service_handles_share_generation_snapshots_without_cross_service_aliasing\",\n",
+              "        \"return registered.store.clone()\",\n"
+              "        \"GenerationStoreRegistryCapacityExceeded\",\n"
+              "        \"return store.reject_registry_capacity()\",\n"
+              "        \"generation_store_registry_saturation_fails_closed\",\n"
+              "        \"service_handles_share_generation_snapshots_without_cross_service_aliasing\",\n",
+              "generation architecture required contracts",
+          )
+          guard = replace_once(
+              guard,
+              "    assert!(generation.contains(\"store: store.clone()\"));\n",
+              "    assert!(generation.contains(\"store: store.clone()\"));\n"
+              "    assert!(!generation.contains(\"returning an unshared bounded store\"));\n",
+              "generation architecture rejects unshared fallback",
+          )
+          guard_path.write_text(guard)
+          PY
+          rustfmt --edition 2021 crates/rustok-cache/src/generation.rs apps/server/tests/generation_store_architecture_guard.rs
+      - name: Verify generation registry fix
+        run: |
+          cargo fmt --all --check
+          cargo check -p rustok-cache --lib
+          cargo test -p rustok-cache --lib generation
+          cargo test -p rustok-server --test generation_store_architecture_guard
+      - name: Commit verified fix and remove workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/cache-generation-registry-fix-once.yml
+          git add crates/rustok-cache/src/generation.rs apps/server/tests/generation_store_architecture_guard.rs
+          git commit -m "fix(cache): fail closed on generation registry saturation"
+          git pull --rebase origin main
+          git push origin HEAD:main
