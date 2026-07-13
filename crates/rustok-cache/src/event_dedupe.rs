@@ -3,10 +3,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use uuid::Uuid;
 
 pub const DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES: usize = 4_096;
 pub const DEFAULT_CACHE_EVENT_DEDUPE_TTL: Duration = Duration::from_secs(60 * 60);
+const CACHE_EVENT_DEDUPE_LOCK_STRIPES: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheEventDedupeDecision {
@@ -66,6 +68,7 @@ pub struct BoundedCacheEventDedupe {
     max_entries: usize,
     ttl: Duration,
     state: Mutex<CacheEventDedupeState>,
+    event_locks: [AsyncMutex<()>; CACHE_EVENT_DEDUPE_LOCK_STRIPES],
     first_seen_total: AtomicU64,
     duplicate_total: AtomicU64,
     expired_total: AtomicU64,
@@ -95,6 +98,7 @@ impl BoundedCacheEventDedupe {
             max_entries,
             ttl,
             state: Mutex::new(CacheEventDedupeState::with_capacity(max_entries)),
+            event_locks: std::array::from_fn(|_| AsyncMutex::new(())),
             first_seen_total: AtomicU64::new(0),
             duplicate_total: AtomicU64::new(0),
             expired_total: AtomicU64::new(0),
@@ -102,11 +106,20 @@ impl BoundedCacheEventDedupe {
         })
     }
 
+    /// Serialize the probe/work/commit sequence for a stable event identifier.
+    ///
+    /// The bounded striped lock does not reserve or commit the identifier. Callers must re-check
+    /// `is_duplicate` after acquiring the guard and call `observe` only after the protected work
+    /// succeeds. A failed attempt simply drops the guard, allowing a retry to perform the work.
+    pub async fn serialize_event(&self, event_id: Uuid) -> AsyncMutexGuard<'_, ()> {
+        self.event_locks[event_lock_index(event_id)].lock().await
+    }
+
     /// Check whether an event was already committed to this dedupe window.
     ///
     /// A false result does not reserve the identifier. Call `observe` only after the protected
-    /// operation succeeds. Concurrent false negatives can cause duplicate work, which is safe for
-    /// generation rotation; they can never suppress the first successful invalidation.
+    /// operation succeeds. Callers that can process the same event concurrently should hold the
+    /// guard returned by `serialize_event` across probe, work, and commit.
     pub fn is_duplicate(&self, event_id: Uuid) -> bool {
         self.is_duplicate_at(event_id, Instant::now())
     }
@@ -195,9 +208,14 @@ impl BoundedCacheEventDedupe {
     }
 }
 
+fn event_lock_index(event_id: Uuid) -> usize {
+    (event_id.as_u128() % CACHE_EVENT_DEDUPE_LOCK_STRIPES as u128) as usize
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn duplicate_is_suppressed_within_ttl() {
@@ -226,6 +244,30 @@ mod tests {
             dedupe.observe_at(event_id, now + Duration::from_secs(2)),
             CacheEventDedupeDecision::FirstSeen
         );
+    }
+
+    #[tokio::test]
+    async fn same_event_serialization_closes_the_concurrent_probe_race() {
+        let dedupe = Arc::new(BoundedCacheEventDedupe::new(4, Duration::from_secs(30)).unwrap());
+        let event_id = Uuid::new_v4();
+        let first_guard = dedupe.serialize_event(event_id).await;
+
+        let waiter = {
+            let dedupe = Arc::clone(&dedupe);
+            tokio::spawn(async move {
+                let _guard = dedupe.serialize_event(event_id).await;
+                dedupe.is_duplicate(event_id)
+            })
+        };
+        tokio::task::yield_now().await;
+        assert!(!waiter.is_finished());
+
+        assert_eq!(
+            dedupe.observe(event_id),
+            CacheEventDedupeDecision::FirstSeen
+        );
+        drop(first_guard);
+        assert!(waiter.await.unwrap());
     }
 
     #[test]
