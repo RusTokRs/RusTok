@@ -1,9 +1,13 @@
+use std::any::Any;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use crate::error::{Error, Result};
-use rustok_core::events::{EventTransport, MemoryTransport};
+use rustok_core::events::{
+    EventBus, EventEnvelope, EventTransport, MemoryTransport, ReliabilityLevel,
+};
 use rustok_iggy::{IggyConfig, IggyTransport};
 use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
 use tokio::task::JoinHandle;
@@ -16,6 +20,9 @@ static OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone)]
 pub struct EventRuntime {
     pub transport: Arc<dyn EventTransport>,
+    /// Events accepted by the configured transport are delivered to module listeners on this bus.
+    /// This is deliberately separate from the outbound publisher bus to avoid relay-to-outbox loops.
+    pub listener_bus: EventBus,
     pub relay_config: Option<RelayRuntimeConfig>,
     pub channel_capacity: usize,
     pub relay_fallback_active: bool,
@@ -40,17 +47,24 @@ pub fn outbox_relay_supervisor_metrics_snapshot() -> OutboxRelaySupervisorMetric
 
 pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRuntime> {
     let settings = ctx.settings();
+    let channel_capacity = settings.events.channel_capacity;
 
     match settings.events.transport {
-        EventTransportKind::Memory => Ok(EventRuntime {
-            transport: Arc::new(MemoryTransport::new()),
-            relay_config: None,
-            channel_capacity: settings.events.channel_capacity,
-            relay_fallback_active: false,
-        }),
+        EventTransportKind::Memory => {
+            let transport = MemoryTransport::with_capacity(channel_capacity);
+            let listener_bus = transport.event_bus();
+            Ok(EventRuntime {
+                transport: Arc::new(transport),
+                listener_bus,
+                relay_config: None,
+                channel_capacity,
+                relay_fallback_active: false,
+            })
+        }
         EventTransportKind::Outbox => {
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
-            let (relay_target, relay_fallback_active) = resolve_relay_target(&settings).await?;
+            let (relay_target, listener_bus, relay_fallback_active) =
+                resolve_relay_target(&settings, channel_capacity).await?;
             let relay_policy = &settings.events.relay_retry_policy;
             let max_attempts = if settings.events.dlq.enabled {
                 settings.events.dlq.max_attempts
@@ -72,21 +86,27 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
 
             Ok(EventRuntime {
                 transport: outbox_transport,
+                listener_bus,
                 relay_config: Some(relay_config),
-                channel_capacity: settings.events.channel_capacity,
+                channel_capacity,
                 relay_fallback_active,
             })
         }
         EventTransportKind::Iggy => {
-            let transport = IggyTransport::new(resolve_iggy_config(&settings))
-                .await
-                .map_err(|error| {
-                    Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
-                })?;
+            let primary: Arc<dyn EventTransport> = Arc::new(
+                IggyTransport::new(resolve_iggy_config(&settings))
+                    .await
+                    .map_err(|error| {
+                        Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
+                    })?,
+            );
+            let (transport, listener_bus) =
+                transport_with_local_delivery(primary, channel_capacity);
             Ok(EventRuntime {
-                transport: Arc::new(transport),
+                transport,
+                listener_bus,
                 relay_config: None,
-                channel_capacity: settings.events.channel_capacity,
+                channel_capacity,
                 relay_fallback_active: false,
             })
         }
@@ -166,18 +186,29 @@ fn resolve_iggy_config(settings: &RustokSettings) -> IggyConfig {
 
 async fn resolve_relay_target(
     settings: &RustokSettings,
-) -> Result<(Arc<dyn EventTransport>, bool)> {
+    channel_capacity: usize,
+) -> Result<(Arc<dyn EventTransport>, EventBus, bool)> {
     match settings.events.relay_target {
-        RelayTargetKind::Memory => Ok((Arc::new(MemoryTransport::new()), false)),
+        RelayTargetKind::Memory => {
+            let transport = MemoryTransport::with_capacity(channel_capacity);
+            let listener_bus = transport.event_bus();
+            Ok((Arc::new(transport), listener_bus, false))
+        }
         RelayTargetKind::Iggy => match IggyTransport::new(resolve_iggy_config(settings)).await {
-            Ok(transport) => Ok((Arc::new(transport), false)),
+            Ok(transport) => {
+                let (target, listener_bus) =
+                    transport_with_local_delivery(Arc::new(transport), channel_capacity);
+                Ok((target, listener_bus, false))
+            }
             Err(error) => {
                 if settings.events.allow_relay_target_fallback {
                     tracing::warn!(
                         error = %error,
                         "Failed to initialize relay_target=iggy, fallback to memory due to explicit opt-in"
                     );
-                    Ok((Arc::new(MemoryTransport::new()), true))
+                    let transport = MemoryTransport::with_capacity(channel_capacity);
+                    let listener_bus = transport.event_bus();
+                    Ok((Arc::new(transport), listener_bus, true))
                 } else {
                     Err(Error::BadRequest(format!(
                         "Failed to initialize relay_target=iggy and fallback is disabled: {error}"
@@ -185,5 +216,90 @@ async fn resolve_relay_target(
                 }
             }
         },
+    }
+}
+
+fn transport_with_local_delivery(
+    primary: Arc<dyn EventTransport>,
+    channel_capacity: usize,
+) -> (Arc<dyn EventTransport>, EventBus) {
+    let local = MemoryTransport::with_capacity(channel_capacity);
+    let listener_bus = local.event_bus();
+    let transport = LocalDeliveryFanoutTransport { primary, local };
+    (Arc::new(transport), listener_bus)
+}
+
+#[derive(Clone)]
+struct LocalDeliveryFanoutTransport {
+    primary: Arc<dyn EventTransport>,
+    local: MemoryTransport,
+}
+
+#[async_trait]
+impl EventTransport for LocalDeliveryFanoutTransport {
+    async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+        // Deliver remotely first. Local consumers must not observe an event that the configured
+        // primary transport rejected. Redelivery remains safe because consumers are idempotent.
+        self.primary.publish(envelope.clone()).await?;
+        self.local.publish(envelope).await
+    }
+
+    async fn acknowledge(&self, event_id: uuid::Uuid) -> rustok_core::Result<()> {
+        self.primary.acknowledge(event_id).await
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        self.primary.reliability_level()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_events::{DomainEvent, EventEnvelope};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn fanout_transport_delivers_only_after_primary_accepts_event() {
+        let primary = MemoryTransport::with_capacity(8);
+        let mut primary_receiver = primary.subscribe();
+        let (transport, listener_bus) =
+            transport_with_local_delivery(Arc::new(primary), 8);
+        let mut listener = listener_bus.subscribe();
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(1),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(1),
+            },
+        );
+
+        transport.publish(envelope.clone()).await.unwrap();
+        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
+        assert_eq!(listener.recv().await.unwrap().id, envelope.id);
+    }
+
+    #[tokio::test]
+    async fn fanout_transport_does_not_deliver_locally_when_primary_rejects() {
+        let primary = MemoryTransport::with_capacity(8);
+        let (transport, listener_bus) =
+            transport_with_local_delivery(Arc::new(primary), 8);
+        let mut listener = listener_bus.subscribe();
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(2),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(2),
+            },
+        );
+
+        assert!(transport.publish(envelope).await.is_err());
+        assert!(tokio::time::timeout(Duration::from_millis(10), listener.recv())
+            .await
+            .is_err());
     }
 }
