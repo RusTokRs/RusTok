@@ -5,9 +5,10 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use rustok_cache::{
     bind_cache_backend_generation_aliases, cache_backend_generation_snapshot,
-    observe_cache_backend_generation, BoundedCacheInvalidationGapTracker,
-    CacheInvalidationMessage, CacheInvalidationObservation, CacheService,
-    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+    observe_cache_backend_generation, BoundedCacheEventDedupe,
+    BoundedCacheInvalidationGapTracker, CacheInvalidationMessage,
+    CacheInvalidationObservation, CacheService, DurableCacheInvalidationRecord,
+    VersionedCacheInvalidation,
 };
 use rustok_core::events::{
     DomainEvent, EventConsumerRuntime, EventEnvelope, EventTransport, ReliabilityLevel,
@@ -49,17 +50,34 @@ fn observe_tenant_backend_generation(generation: u64) -> Result<()> {
 pub struct TenantCacheGenerationTransport {
     inner: Arc<dyn EventTransport>,
     cache: CacheService,
+    successful_rotations: Arc<BoundedCacheEventDedupe>,
 }
 
 impl TenantCacheGenerationTransport {
     pub fn new(inner: Arc<dyn EventTransport>, cache: CacheService) -> Self {
-        Self { inner, cache }
+        Self {
+            inner,
+            cache,
+            successful_rotations: Arc::new(BoundedCacheEventDedupe::default()),
+        }
     }
 
     async fn publish_generation_if_needed(&self, envelope: &EventEnvelope) -> Result<()> {
         let Some(tenant_id) = tenant_cache_event_tenant_id(&envelope.event) else {
             return Ok(());
         };
+
+        // Probe first but commit the event ID only after INCR and invalidation publication succeed.
+        // A failed invalidation must be retried; a failed downstream transport after successful
+        // invalidation can safely retry delivery without rotating the namespace again.
+        if self.successful_rotations.is_duplicate(envelope.id) {
+            tracing::debug!(
+                event_id = %envelope.id,
+                event_type = %envelope.event_type,
+                "Tenant cache generation already rotated for event retry"
+            );
+            return Ok(());
+        }
 
         let generation = self
             .cache
@@ -100,6 +118,8 @@ impl TenantCacheGenerationTransport {
                     .to_string(),
             ));
         }
+
+        let _ = self.successful_rotations.observe(envelope.id);
         Ok(())
     }
 }
@@ -107,8 +127,8 @@ impl TenantCacheGenerationTransport {
 #[async_trait]
 impl EventTransport for TenantCacheGenerationTransport {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        // Rotation happens before downstream delivery. A later downstream failure may cause an
-        // extra generation on retry, which is safe; the inverse ordering can expose stale data.
+        // Rotation happens before downstream delivery. Once rotation succeeds, retries preserve
+        // the same event ID and skip only the already-completed invalidation work.
         self.publish_generation_if_needed(&envelope).await?;
         self.inner.publish(envelope).await
     }
@@ -437,6 +457,39 @@ mod tests {
             cache_backend_generation_snapshot(TENANT_CACHE_DATA_BACKEND_PREFIX).unwrap(),
             cache_backend_generation_snapshot(TENANT_CACHE_NEGATIVE_BACKEND_PREFIX).unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn retry_delivers_downstream_without_rotating_generation_twice() {
+        let _guard = generation_test_lock().lock().await;
+        bind_tenant_backend_generations().unwrap();
+        let cache = CacheService::from_url(None);
+        let primary = rustok_core::events::MemoryTransport::with_capacity(8);
+        let mut receiver = primary.subscribe();
+        let transport = TenantCacheGenerationTransport::new(Arc::new(primary), cache.clone());
+        let mut invalidations = cache
+            .invalidations()
+            .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
+        let envelope = tenant_event(DomainEvent::TenantUpdated {
+            tenant_id: Uuid::from_u128(43),
+        });
+
+        transport.publish(envelope.clone()).await.unwrap();
+        let first_message = invalidations.recv().await.unwrap();
+        let first_event = VersionedCacheInvalidation::from_message(&first_message).unwrap();
+        assert_eq!(receiver.recv().await.unwrap().id, envelope.id);
+
+        transport.publish(envelope.clone()).await.unwrap();
+        assert_eq!(receiver.recv().await.unwrap().id, envelope.id);
+        assert_eq!(
+            cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+                .unwrap()
+                .generation,
+            first_event.generation
+        );
+        assert!(tokio::time::timeout(Duration::from_millis(10), invalidations.recv())
+            .await
+            .is_err());
     }
 
     #[tokio::test]
