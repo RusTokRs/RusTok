@@ -1107,6 +1107,22 @@ pub struct CreateAiAgentModelAssignmentInputGql {
 }
 
 #[derive(Debug, Clone, InputObject)]
+pub struct UpdateAiAgentPrincipalInputGql {
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub metadata: Option<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateAiAgentModelAssignmentInputGql {
+    pub model_override: Option<String>,
+    pub execution_mode: AiExecutionModeGql,
+    pub metadata: Option<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
 pub struct AiAgentWorkflowStageBindingInputGql {
     pub stage_id: String,
     pub agent_principal_id: Uuid,

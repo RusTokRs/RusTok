@@ -17,6 +17,7 @@ use super::{
         CreateAiTaskProfileInputGql, CreateAiToolProfileInputGql,
         ResumeAiApprovalInputGql, RunAiTaskJobInputGql, StartAiChatSessionInputGql,
         UpdateAiProviderProfileInputGql, UpdateAiTaskProfileInputGql, UpdateAiToolProfileInputGql,
+        UpdateAiAgentModelAssignmentInputGql, UpdateAiAgentPrincipalInputGql,
     },
 };
 
@@ -95,6 +96,58 @@ impl AiMutation {
                 model_override: input.model_override,
                 execution_mode: input.execution_mode.into(),
                 metadata: parse_metadata(input.metadata)?,
+            },
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?
+        .into())
+    }
+
+    async fn update_ai_agent_principal(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: UpdateAiAgentPrincipalInputGql,
+    ) -> Result<AiAgentPrincipalGql> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_manage(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        Ok(crate::AiManagementService::update_agent_principal(
+            db,
+            &operator,
+            id,
+            crate::UpdateAiAgentPrincipalInput {
+                role_slugs: input.role_slugs,
+                permission_slugs: input.permission_slugs,
+                metadata: parse_metadata(input.metadata)?,
+                is_active: input.is_active,
+            },
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?
+        .into())
+    }
+
+    async fn update_ai_agent_model_assignment(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: UpdateAiAgentModelAssignmentInputGql,
+    ) -> Result<AiAgentModelAssignmentGql> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_manage(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        Ok(crate::AiManagementService::update_agent_model_assignment(
+            db,
+            &operator,
+            id,
+            crate::UpdateAiAgentModelAssignmentInput {
+                model_override: input.model_override,
+                execution_mode: input.execution_mode.into(),
+                metadata: parse_metadata(input.metadata)?,
+                is_active: input.is_active,
             },
         )
         .await

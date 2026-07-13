@@ -86,7 +86,8 @@ pub use service::{
     RunAiTaskJobInput, SendAiChatMessageInput,
     SharedAiEgressPolicy, SharedAiModuleRegistry, SharedAiProviderTargetCatalog,
     SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiProviderProfileInput,
-    UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
+    UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput, UpdateAiTaskProfileInput,
+    UpdateAiToolProfileInput,
 };
 #[cfg(feature = "server")]
 pub use streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};

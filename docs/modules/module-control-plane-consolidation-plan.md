@@ -621,8 +621,10 @@ rollback without relying on workspace source composition.
   evidence without exposing library-specific types as the public API.
 - [ ] Resolve upgrades and rollbacks against a snapshot, then atomically switch
   the full graph revision; never partially upgrade dependencies.
-- [ ] Detect cycles, self-dependencies, scope violations, and attempts to replace
-  Core/static-only providers.
+- [~] Detect cycles and self-dependencies in the durable lock graph. The
+  current graph validator also rejects duplicate and missing nodes. Scope
+  violations and attempts to replace Core/static-only providers remain part of
+  the resolution/selection service slice.
 
 ### 3.3 Platform Content-Addressed Artifact Store
 

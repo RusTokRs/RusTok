@@ -13,6 +13,7 @@ const files = commerceDomainModules.flatMap((module) => [
   'crates/rustok-commerce/contracts/commerce-fba-registry.json',
   'crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json',
   'crates/rustok-commerce/src/fba.rs',
+  'crates/rustok-commerce/src/services/checkout.rs',
   'crates/rustok-cart/src/services/cart.rs',
   'crates/rustok-cart/src/services/cart/helpers.rs',
   'crates/rustok-cart/src/error.rs',

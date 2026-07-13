@@ -396,6 +396,42 @@ impl AiManagementService {
         Ok(map_agent_principal(saved))
     }
 
+    pub async fn update_agent_principal(
+        db: &DatabaseConnection,
+        operator: &AiOperatorContext,
+        id: Uuid,
+        input: UpdateAiAgentPrincipalInput,
+    ) -> AiResult<AiAgentPrincipalRecord> {
+        let existing = ai_agent_principals::Entity::find_by_id(id)
+            .filter(ai_agent_principals::Column::TenantId.eq(operator.tenant_id))
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| AiError::NotFound("AI agent principal not found".to_string()))?;
+        let descriptor = crate::alloy_agent_catalog()?
+            .descriptor(&existing.descriptor_slug)
+            .filter(|descriptor| descriptor.owner == existing.descriptor_owner)
+            .ok_or_else(|| AiError::Validation("agent descriptor is no longer available".to_string()))?;
+        if descriptor
+            .required_permissions
+            .iter()
+            .any(|permission| !input.permission_slugs.contains(permission))
+        {
+            return Err(AiError::Validation(
+                "agent principal must include every descriptor-required permission".to_string(),
+            ));
+        }
+        let mut active: ai_agent_principals::ActiveModel = existing.into();
+        active.role_slugs = Set(json!(input.role_slugs));
+        active.permission_slugs = Set(json!(input.permission_slugs));
+        active.metadata = Set(normalize_metadata(input.metadata));
+        active.is_active = Set(input.is_active);
+        active.updated_by = Set(Some(operator.user_id));
+        active.updated_at = Set(Utc::now().into());
+        let saved = active.update(db).await.map_err(db_err)?;
+        Ok(map_agent_principal(saved))
+    }
+
     pub async fn list_agent_model_assignments(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -463,6 +499,29 @@ impl AiManagementService {
         .insert(db)
         .await
         .map_err(db_err)?;
+        map_agent_model_assignment(saved)
+    }
+
+    pub async fn update_agent_model_assignment(
+        db: &DatabaseConnection,
+        operator: &AiOperatorContext,
+        id: Uuid,
+        input: UpdateAiAgentModelAssignmentInput,
+    ) -> AiResult<AiAgentModelAssignmentRecord> {
+        let existing = ai_agent_model_assignments::Entity::find_by_id(id)
+            .filter(ai_agent_model_assignments::Column::TenantId.eq(operator.tenant_id))
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| AiError::NotFound("AI agent model assignment not found".to_string()))?;
+        let mut active: ai_agent_model_assignments::ActiveModel = existing.into();
+        active.model_override = Set(input.model_override.filter(|model| !model.trim().is_empty()));
+        active.execution_mode = Set(input.execution_mode.slug().to_string());
+        active.metadata = Set(normalize_metadata(input.metadata));
+        active.is_active = Set(input.is_active);
+        active.updated_by = Set(Some(operator.user_id));
+        active.updated_at = Set(Utc::now().into());
+        let saved = active.update(db).await.map_err(db_err)?;
         map_agent_model_assignment(saved)
     }
 

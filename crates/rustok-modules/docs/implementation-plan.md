@@ -171,7 +171,9 @@ absence of a tenant identifier.
   records both a nullable self-referencing predecessor pointer and an explicit
   capability-grant revision selected by the owner, independently of the
   artifact declaration and capability policy. The later rollback command will
-  advance the predecessor atomically with its lifecycle transition.
+  advance the predecessor atomically with its lifecycle transition. A separate
+  rollback-operations record supplies durable actor/reason audit and a unique
+  idempotency key; it does not duplicate mutable lifecycle state.
 - Enforce signature, signer, SBOM, provenance, compatibility, dependency, and
   capability admission before activation.
 - Use Cosign/Sigstore for digest-bound OCI signature and transparency-bundle
