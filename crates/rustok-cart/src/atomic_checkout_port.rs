@@ -1,57 +1,170 @@
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{
+    normalize_locale_tag, PortActor, PortCallPolicy, PortContext, PortError,
+    PLATFORM_FALLBACK_LOCALE,
+};
 use sea_orm::DatabaseConnection;
-use std::sync::Arc;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use uuid::Uuid;
 
 use crate::{
     in_process_cart_checkout_snapshot_port, CartCheckoutContextUpdateRequest,
     CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotPort,
-    CartCheckoutSnapshotRequest, CartError, CartResponse, CartService,
-    PrepareCartCheckoutSnapshotRequest,
+    CartCheckoutSnapshotRequest, CartError, CartResponse, CartService, CartStatus,
+    PrepareCartCheckoutSnapshotRequest, PreparedCartCheckoutSnapshot,
 };
 
+type PreparedState = Arc<Mutex<Option<PreparedCartCheckoutSnapshot>>>;
+
 /// Request-scoped adapter that preserves the existing `CartCheckoutPort`
-/// protocol while deferring persistence until the atomic checkout claim.
-///
-/// `update_cart_checkout_context` returns an owner-generated preview only.
-/// `begin_cart_checkout` applies the configured overlay, recalculates totals and
-/// locks the cart in one transaction through `CartService::prepare_checkout`.
+/// protocol while deferring persistence until the durable orchestration claim.
 pub struct AtomicCartCheckoutPort {
-    service: CartService,
+    service: Arc<CartService>,
     snapshot_port: Arc<dyn CartCheckoutSnapshotPort>,
     prepare_request: PrepareCartCheckoutSnapshotRequest,
+    prepared_state: PreparedState,
+}
+
+/// Handle retained by the checkout journal wrapper. It performs the owner
+/// prepare command after the operation lease is claimed and before any order or
+/// provider side effect is allowed.
+#[derive(Clone)]
+pub struct AtomicCartCheckoutHandle {
+    service: Arc<CartService>,
+    snapshot_port: Arc<dyn CartCheckoutSnapshotPort>,
+    prepare_request: PrepareCartCheckoutSnapshotRequest,
+    prepared_state: PreparedState,
+}
+
+pub struct AtomicCartCheckoutBinding {
+    pub port: Arc<dyn CartCheckoutPort>,
+    pub handle: AtomicCartCheckoutHandle,
 }
 
 impl AtomicCartCheckoutPort {
     pub fn new(db: DatabaseConnection, prepare_request: PrepareCartCheckoutSnapshotRequest) -> Self {
+        let service = Arc::new(CartService::new(db.clone()));
         Self {
-            service: CartService::new(db.clone()),
+            service,
             snapshot_port: in_process_cart_checkout_snapshot_port(db),
             prepare_request,
+            prepared_state: Arc::new(Mutex::new(None)),
         }
     }
 
     fn ensure_cart_id(&self, cart_id: Uuid) -> Result<(), PortError> {
-        if cart_id == self.prepare_request.cart_id {
-            Ok(())
-        } else {
-            Err(PortError::validation(
-                "cart.checkout_adapter_cart_mismatch",
-                format!(
-                    "checkout adapter is bound to cart {}, not {cart_id}",
-                    self.prepare_request.cart_id
-                ),
-            ))
-        }
+        ensure_bound_cart_id(self.prepare_request.cart_id, cart_id)
     }
+
+    fn prepared_for_orchestration(&self) -> Result<Option<CartResponse>, PortError> {
+        stored_snapshot(&self.prepared_state).map(|snapshot| {
+            snapshot.map(|snapshot| {
+                let mut cart = snapshot.cart;
+                cart.status = CartStatus::Active.as_str().to_string();
+                cart
+            })
+        })
+    }
+}
+
+impl AtomicCartCheckoutHandle {
+    pub fn cart_id(&self) -> Uuid {
+        self.prepare_request.cart_id
+    }
+
+    /// Prepares the cart once for this request. A retry may adopt an existing
+    /// `checking_out` or `completed` state only when the durable operation has
+    /// already executed at least once.
+    pub async fn prepare(
+        &self,
+        tenant_id: Uuid,
+        allow_existing_lock: bool,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        if let Some(snapshot) = stored_snapshot(&self.prepared_state)? {
+            return Ok(snapshot);
+        }
+
+        let cart = match self
+            .service
+            .prepare_checkout(tenant_id, self.prepare_request.clone())
+            .await
+        {
+            Ok(cart) => cart,
+            Err(CartError::InvalidTransition { from, .. })
+                if allow_existing_lock
+                    && matches!(
+                        from.as_str(),
+                        status if status == CartStatus::CheckingOut.as_str()
+                            || status == CartStatus::Completed.as_str()
+                    ) =>
+            {
+                self.service
+                    .get_cart(tenant_id, self.prepare_request.cart_id)
+                    .await
+                    .map_err(cart_error_to_port_error)?
+            }
+            Err(error) => return Err(cart_error_to_port_error(error)),
+        };
+
+        if !matches!(
+            cart.status.as_str(),
+            status if status == CartStatus::CheckingOut.as_str()
+                || status == CartStatus::Completed.as_str()
+        ) {
+            return Err(PortError::conflict(
+                "cart.checkout_not_locked",
+                format!(
+                    "cart {} is `{}` after checkout preparation",
+                    cart.id, cart.status
+                ),
+            ));
+        }
+
+        let snapshot = self
+            .snapshot_port
+            .prepare_checkout_snapshot(
+                snapshot_port_context(tenant_id, &self.prepare_request),
+                self.prepare_request.clone(),
+            )
+            .await?;
+        if cart.status == CartStatus::CheckingOut.as_str() {
+            store_snapshot(&self.prepared_state, snapshot.clone())?;
+        }
+        Ok(snapshot)
+    }
+}
+
+pub fn bind_in_process_atomic_cart_checkout(
+    db: DatabaseConnection,
+    prepare_request: PrepareCartCheckoutSnapshotRequest,
+) -> AtomicCartCheckoutBinding {
+    let service = Arc::new(CartService::new(db.clone()));
+    let snapshot_port = in_process_cart_checkout_snapshot_port(db);
+    let prepared_state = Arc::new(Mutex::new(None));
+    let port = Arc::new(AtomicCartCheckoutPort {
+        service: service.clone(),
+        snapshot_port: snapshot_port.clone(),
+        prepare_request: prepare_request.clone(),
+        prepared_state: prepared_state.clone(),
+    });
+    let handle = AtomicCartCheckoutHandle {
+        service,
+        snapshot_port,
+        prepare_request,
+        prepared_state,
+    };
+
+    AtomicCartCheckoutBinding { port, handle }
 }
 
 pub fn in_process_atomic_cart_checkout_port(
     db: DatabaseConnection,
     prepare_request: PrepareCartCheckoutSnapshotRequest,
 ) -> Arc<dyn CartCheckoutPort> {
-    Arc::new(AtomicCartCheckoutPort::new(db, prepare_request))
+    bind_in_process_atomic_cart_checkout(db, prepare_request).port
 }
 
 #[async_trait]
@@ -63,6 +176,9 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         self.ensure_cart_id(request.cart_id)?;
+        if let Some(cart) = self.prepared_for_orchestration()? {
+            return Ok(cart);
+        }
         self.service
             .get_cart(parse_port_tenant_id(&context)?, request.cart_id)
             .await
@@ -76,6 +192,9 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         self.ensure_cart_id(request.cart_id)?;
+        if let Some(cart) = self.prepared_for_orchestration()? {
+            return Ok(cart);
+        }
         self.snapshot_port
             .prepare_checkout_snapshot(context, self.prepare_request.clone())
             .await
@@ -89,6 +208,9 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         self.ensure_cart_id(request.cart_id)?;
+        if let Some(snapshot) = stored_snapshot(&self.prepared_state)? {
+            return Ok(snapshot.cart);
+        }
         self.service
             .prepare_checkout(
                 parse_port_tenant_id(&context)?,
@@ -123,6 +245,61 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
             .await
             .map_err(cart_error_to_port_error)
     }
+}
+
+fn snapshot_port_context(
+    tenant_id: Uuid,
+    request: &PrepareCartCheckoutSnapshotRequest,
+) -> PortContext {
+    let locale = request
+        .locale_code
+        .as_deref()
+        .and_then(normalize_locale_tag)
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-cart.atomic-checkout"),
+        locale,
+        format!("cart:{}:prepared-checkout-snapshot", request.cart_id),
+    )
+    .with_deadline(Duration::from_secs(2))
+}
+
+fn ensure_bound_cart_id(bound_cart_id: Uuid, cart_id: Uuid) -> Result<(), PortError> {
+    if cart_id == bound_cart_id {
+        Ok(())
+    } else {
+        Err(PortError::validation(
+            "cart.checkout_adapter_cart_mismatch",
+            format!("checkout adapter is bound to cart {bound_cart_id}, not {cart_id}"),
+        ))
+    }
+}
+
+fn stored_snapshot(state: &PreparedState) -> Result<Option<PreparedCartCheckoutSnapshot>, PortError> {
+    state
+        .lock()
+        .map(|snapshot| snapshot.clone())
+        .map_err(|_| {
+            PortError::invariant_violation(
+                "cart.checkout_prepared_state_poisoned",
+                "prepared checkout state is unavailable",
+            )
+        })
+}
+
+fn store_snapshot(
+    state: &PreparedState,
+    snapshot: PreparedCartCheckoutSnapshot,
+) -> Result<(), PortError> {
+    let mut state = state.lock().map_err(|_| {
+        PortError::invariant_violation(
+            "cart.checkout_prepared_state_poisoned",
+            "prepared checkout state is unavailable",
+        )
+    })?;
+    *state = Some(snapshot);
+    Ok(())
 }
 
 fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
