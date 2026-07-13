@@ -1,4 +1,5 @@
 mod cas_observability;
+mod durable_invalidation;
 mod envelope;
 mod fallback;
 mod generation;
@@ -18,6 +19,11 @@ mod weighted;
 pub use cas_observability::{
     format_cache_compare_and_set_prometheus_metrics, observe_cache_compare_and_set,
     CacheCompareAndSetMetrics, CacheCompareAndSetStats,
+};
+pub use durable_invalidation::{
+    DurableCacheInvalidationError, DurableCacheInvalidationRecord,
+    DEFAULT_MAX_DURABLE_INVALIDATION_BYTES, DURABLE_CACHE_INVALIDATION_FORMAT_VERSION,
+    MAX_DURABLE_INVALIDATION_CAUSE_BYTES, MAX_DURABLE_INVALIDATION_TRACE_ID_BYTES,
 };
 pub use envelope::{
     CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
