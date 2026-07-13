@@ -10,24 +10,34 @@ use subtle::ConstantTimeEq;
 
 use crate::services::marketplace_catalog::{
     RegistryRunnerClaimPayload, RegistryRunnerClaimRequest, RegistryRunnerClaimResponse,
+    RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest, RegistryRunnerMutationResponse,
     REGISTRY_MUTATION_SCHEMA_VERSION,
 };
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
+use crate::services::registry_remote_transitions::{
+    finish_remote_validation_stage_atomic, heartbeat_remote_validation_stage_atomic,
+    RegistryRemoteTransitionError, RemoteTerminalOutcome,
+};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const CLAIM_PATH: &str = "/v2/catalog/runner/claim";
-const MAX_CLAIM_BODY_BYTES: usize = 64 * 1024;
+const MAX_RUNNER_BODY_BYTES: usize = 64 * 1024;
 
-/// Replace the legacy read-then-update runner claim path with a database CAS.
-/// Other registry runner routes continue through the normal controller.
+/// Replace legacy read-check-update runner routes with database CAS operations.
+/// Claim, heartbeat, complete and fail are all serialized by stage status,
+/// claim id, runner id and lease expiry before the old controller can execute.
 pub async fn claim_atomic(
     State(ctx): State<ServerRuntimeContext>,
     request: Request<Body>,
     next: Next,
 ) -> Response {
-    if request.method() != Method::POST || request.uri().path() != CLAIM_PATH {
+    if request.method() != Method::POST {
         return next.run(request).await;
     }
+    let path = request.uri().path().to_string();
+    let Some(route) = runner_route(&path) else {
+        return next.run(request).await;
+    };
 
     let executor = &ctx.settings().registry.remote_executor;
     if !executor.enabled {
@@ -57,17 +67,37 @@ pub async fn claim_atomic(
     }
 
     let (_parts, body) = request.into_parts();
-    let bytes = match to_bytes(body, MAX_CLAIM_BODY_BYTES).await {
+    let bytes = match to_bytes(body, MAX_RUNNER_BODY_BYTES).await {
         Ok(bytes) => bytes,
         Err(_) => {
             return response(
                 StatusCode::BAD_REQUEST,
                 "invalid_request",
-                "Runner claim body is invalid or too large",
+                "Runner request body is invalid or too large",
             )
         }
     };
-    let input = match serde_json::from_slice::<RegistryRunnerClaimRequest>(&bytes) {
+
+    match route {
+        RunnerRoute::Claim => handle_claim(&ctx, executor.lease_ttl_ms, &bytes).await,
+        RunnerRoute::Heartbeat { claim_id } => {
+            handle_heartbeat(&ctx, executor.lease_ttl_ms, &claim_id, &bytes).await
+        }
+        RunnerRoute::Complete { claim_id } => {
+            handle_terminal(&ctx, &claim_id, &bytes, RemoteTerminalOutcome::Passed).await
+        }
+        RunnerRoute::Fail { claim_id } => {
+            handle_terminal(&ctx, &claim_id, &bytes, RemoteTerminalOutcome::Failed).await
+        }
+    }
+}
+
+async fn handle_claim(
+    ctx: &ServerRuntimeContext,
+    lease_ttl_ms: u64,
+    bytes: &[u8],
+) -> Response {
+    let input = match serde_json::from_slice::<RegistryRunnerClaimRequest>(bytes) {
         Ok(input) => input,
         Err(_) => {
             return response(
@@ -77,12 +107,8 @@ pub async fn claim_atomic(
             )
         }
     };
-    if input.schema_version != REGISTRY_MUTATION_SCHEMA_VERSION {
-        return response(
-            StatusCode::BAD_REQUEST,
-            "invalid_schema_version",
-            "Runner claim schema_version is not supported",
-        );
+    if let Err(response) = validate_schema_version(input.schema_version) {
+        return response;
     }
     if input.runner_id.trim().is_empty() {
         return response(
@@ -103,7 +129,7 @@ pub async fn claim_atomic(
         ctx.db(),
         &input.runner_id,
         &input.supported_stages,
-        executor.lease_ttl_ms,
+        lease_ttl_ms,
     )
     .await
     {
@@ -144,6 +170,157 @@ pub async fn claim_atomic(
     .into_response()
 }
 
+async fn handle_heartbeat(
+    ctx: &ServerRuntimeContext,
+    lease_ttl_ms: u64,
+    claim_id: &str,
+    bytes: &[u8],
+) -> Response {
+    let input = match serde_json::from_slice::<RegistryRunnerHeartbeatRequest>(bytes) {
+        Ok(input) => input,
+        Err(_) => {
+            return response(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Runner heartbeat body must be valid JSON",
+            )
+        }
+    };
+    if let Err(response) = validate_schema_version(input.schema_version) {
+        return response;
+    }
+
+    match heartbeat_remote_validation_stage_atomic(
+        ctx.db(),
+        claim_id,
+        &input.runner_id,
+        lease_ttl_ms,
+    )
+    .await
+    {
+        Ok(_) => mutation_response(claim_id, "running"),
+        Err(error) => transition_error_response(error),
+    }
+}
+
+async fn handle_terminal(
+    ctx: &ServerRuntimeContext,
+    claim_id: &str,
+    bytes: &[u8],
+    outcome: RemoteTerminalOutcome,
+) -> Response {
+    let input = match serde_json::from_slice::<RegistryRunnerCompletionRequest>(bytes) {
+        Ok(input) => input,
+        Err(_) => {
+            return response(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Runner terminal body must be valid JSON",
+            )
+        }
+    };
+    if let Err(response) = validate_schema_version(input.schema_version) {
+        return response;
+    }
+
+    match finish_remote_validation_stage_atomic(
+        ctx.db(),
+        claim_id,
+        &input.runner_id,
+        outcome,
+        input.detail.as_deref(),
+        input.reason_code.as_deref(),
+    )
+    .await
+    {
+        Ok(_) => mutation_response(
+            claim_id,
+            match outcome {
+                RemoteTerminalOutcome::Passed => "passed",
+                RemoteTerminalOutcome::Failed => "failed",
+            },
+        ),
+        Err(error) => transition_error_response(error),
+    }
+}
+
+fn validate_schema_version(schema_version: u32) -> Result<(), Response> {
+    if schema_version == REGISTRY_MUTATION_SCHEMA_VERSION {
+        Ok(())
+    } else {
+        Err(response(
+            StatusCode::BAD_REQUEST,
+            "invalid_schema_version",
+            "Runner request schema_version is not supported",
+        ))
+    }
+}
+
+fn mutation_response(claim_id: &str, status: &str) -> Response {
+    Json(RegistryRunnerMutationResponse {
+        accepted: true,
+        claim_id: claim_id.to_string(),
+        status: status.to_string(),
+        warnings: Vec::new(),
+    })
+    .into_response()
+}
+
+fn transition_error_response(error: RegistryRemoteTransitionError) -> Response {
+    match error {
+        RegistryRemoteTransitionError::Invalid(message) => {
+            response(StatusCode::BAD_REQUEST, "invalid_request", &message)
+        }
+        RegistryRemoteTransitionError::Forbidden(message) => {
+            response(StatusCode::FORBIDDEN, "forbidden", &message)
+        }
+        RegistryRemoteTransitionError::NotFound(message) => {
+            response(StatusCode::NOT_FOUND, "not_found", &message)
+        }
+        RegistryRemoteTransitionError::Conflict(message) => {
+            response(StatusCode::CONFLICT, "conflict", &message)
+        }
+        RegistryRemoteTransitionError::Internal(message) => {
+            tracing::error!(error = %message, "Atomic registry runner transition failed");
+            response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Failed to update registry validation stage",
+            )
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RunnerRoute {
+    Claim,
+    Heartbeat { claim_id: String },
+    Complete { claim_id: String },
+    Fail { claim_id: String },
+}
+
+fn runner_route(path: &str) -> Option<RunnerRoute> {
+    if path == CLAIM_PATH {
+        return Some(RunnerRoute::Claim);
+    }
+    let segments = path.trim_matches('/').split('/').collect::<Vec<_>>();
+    if segments.len() != 5
+        || segments[0] != "v2"
+        || segments[1] != "catalog"
+        || segments[2] != "runner"
+        || segments[3].is_empty()
+    {
+        return None;
+    }
+    let claim_id = segments[3].to_string();
+    match segments[4] {
+        "heartbeat" => Some(RunnerRoute::Heartbeat { claim_id }),
+        "complete" => Some(RunnerRoute::Complete { claim_id }),
+        "fail" => Some(RunnerRoute::Fail { claim_id }),
+        _ => None,
+    }
+}
+
 fn response(status: StatusCode, code: &str, message: &str) -> Response {
     (
         status,
@@ -157,11 +334,29 @@ fn response(status: StatusCode, code: &str, message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{CLAIM_PATH, MAX_CLAIM_BODY_BYTES};
+    use super::{runner_route, RunnerRoute, CLAIM_PATH, MAX_RUNNER_BODY_BYTES};
 
     #[test]
-    fn claim_boundary_is_narrow_and_bounded() {
-        assert_eq!(CLAIM_PATH, "/v2/catalog/runner/claim");
-        assert_eq!(MAX_CLAIM_BODY_BYTES, 64 * 1024);
+    fn routes_all_atomic_runner_transitions() {
+        assert_eq!(runner_route(CLAIM_PATH), Some(RunnerRoute::Claim));
+        assert_eq!(
+            runner_route("/v2/catalog/runner/rvc_1/heartbeat"),
+            Some(RunnerRoute::Heartbeat {
+                claim_id: "rvc_1".to_string()
+            })
+        );
+        assert_eq!(
+            runner_route("/v2/catalog/runner/rvc_1/complete"),
+            Some(RunnerRoute::Complete {
+                claim_id: "rvc_1".to_string()
+            })
+        );
+        assert_eq!(
+            runner_route("/v2/catalog/runner/rvc_1/fail"),
+            Some(RunnerRoute::Fail {
+                claim_id: "rvc_1".to_string()
+            })
+        );
+        assert_eq!(MAX_RUNNER_BODY_BYTES, 64 * 1024);
     }
 }
