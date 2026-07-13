@@ -1,6 +1,10 @@
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rustok_cache::{CacheGenerationSource, CacheLeaseOptions, CacheLeaseOutcome, CacheService};
+use rustok_cache::{
+    CacheGenerationSource, CacheLeaseOptions, CacheLeaseOutcome, CacheService,
+    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+};
 
 fn real_redis_url() -> String {
     std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
@@ -33,6 +37,81 @@ async fn namespace_generation_is_shared_and_monotonic_across_services() {
     let second = second_store.bump(&namespace).await.unwrap();
     assert_eq!(second.value(), 2);
     assert_eq!(first_store.read(&namespace).await.unwrap().value(), 2);
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated Redis instance via RUSTOK_CACHE_REAL_REDIS_URL"]
+async fn durable_invalidation_reaches_a_ready_redis_subscriber() {
+    let url = real_redis_url();
+    let publisher = CacheService::from_url(Some(&url));
+    let subscriber = CacheService::from_url(Some(&url));
+    let namespace = format!("real-invalidation-generation-{}", uuid::Uuid::new_v4());
+    let channel = format!("real.cache.invalidation.{}", uuid::Uuid::new_v4());
+
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let (message_tx, message_rx) = tokio::sync::oneshot::channel();
+    let message_tx = Arc::new(Mutex::new(Some(message_tx)));
+    let invalidations = subscriber.invalidations();
+    let subscribe_channel = channel.clone();
+    let task = tokio::spawn(async move {
+        invalidations
+            .consume_subscription_with_ready(
+                &subscribe_channel,
+                move || async move {
+                    let _ = ready_tx.send(());
+                },
+                move |message| {
+                    let message_tx = Arc::clone(&message_tx);
+                    async move {
+                        if let Some(sender) = message_tx
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .take()
+                        {
+                            let _ = sender.send(message);
+                        }
+                    }
+                },
+            )
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), ready_rx)
+        .await
+        .expect("Redis invalidation subscriber did not become ready")
+        .expect("Redis invalidation ready signal was dropped");
+
+    let generation = publisher
+        .bump_cache_backend_generation(&namespace)
+        .await
+        .unwrap();
+    let record = DurableCacheInvalidationRecord::new(
+        uuid::Uuid::new_v4(),
+        Some(uuid::Uuid::new_v4()),
+        channel,
+        "tenant:42",
+        generation.generation,
+        1_000,
+        "tenant.updated",
+        Some("live-redis-test".to_string()),
+    )
+    .unwrap();
+    let outcome = publisher
+        .invalidations()
+        .publish_durable(&record)
+        .await
+        .unwrap();
+    assert!(outcome.redis_published);
+
+    let message = tokio::time::timeout(Duration::from_secs(5), message_rx)
+        .await
+        .expect("Redis invalidation message was not received")
+        .expect("Redis invalidation message sender was dropped");
+    let decoded = VersionedCacheInvalidation::from_message(&message).unwrap();
+    assert_eq!(decoded.generation, generation.generation);
+    assert_eq!(decoded.key, "tenant:42");
+
+    task.abort();
 }
 
 #[tokio::test]
