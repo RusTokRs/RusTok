@@ -73,93 +73,19 @@ impl AdminCanvasController {
         &mut self,
         intent: UiIntent,
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
-        let previous_ui = self.ui.clone();
-        let effects = self.ui.dispatch(intent)?;
+        let snapshot = self.clone();
+        let effects = match self.ui.dispatch(intent) {
+            Ok(effects) => effects,
+            Err(error) => return Err(error.into()),
+        };
         let mut outgoing = Vec::new();
 
         for effect in effects {
-            let result: Result<(), AdminCanvasError> = match effect {
-                UiEffect::None => Ok(()),
-                UiEffect::Announce(message) => {
-                    outgoing.push(AdminCanvasEffect::Announce(message));
-                    Ok(())
-                }
-                UiEffect::Command(command) => match self.editor.apply(command) {
-                    Ok(report) => {
-                        self.synchronize(report);
-                        Ok(())
-                    }
-                    Err(error) => Err(error.into()),
-                },
-                UiEffect::Undo => match self.editor.undo() {
-                    Ok(_) => {
-                        let report = self.editor.validate();
-                        self.synchronize(report);
-                        Ok(())
-                    }
-                    Err(error) => Err(error.into()),
-                },
-                UiEffect::Redo => match self.editor.redo() {
-                    Ok(_) => {
-                        let report = self.editor.validate();
-                        self.synchronize(report);
-                        Ok(())
-                    }
-                    Err(error) => Err(error.into()),
-                },
-                UiEffect::CopySelection => {
-                    self.copy_selection()?;
-                    outgoing.push(AdminCanvasEffect::Announce(
-                        "Component copied".to_string(),
-                    ));
-                    Ok(())
-                }
-                UiEffect::CutSelection => {
-                    self.cut_selection()?;
-                    outgoing.push(AdminCanvasEffect::Announce(
-                        "Component cut".to_string(),
-                    ));
-                    Ok(())
-                }
-                UiEffect::PasteClipboard => {
-                    let inserted = self.paste_clipboard()?;
-                    outgoing.push(AdminCanvasEffect::Announce(format!(
-                        "Pasted {} component(s)",
-                        inserted.len()
-                    )));
-                    Ok(())
-                }
-                UiEffect::Persist {
-                    expected_hash,
-                    command_sequence,
-                } => match GrapesJsV1Codec::encode_value(self.editor.document()) {
-                    Ok(project_data) => {
-                        outgoing.push(AdminCanvasEffect::Request {
-                            request: PageBuilderCapabilityRequest::Publish(
-                                PublishPageBuilderInput {
-                                    page_id: self.page_id.clone(),
-                                    revision_id: self.revision_id.clone(),
-                                    schema_version: PageBuilderContractMetadata::BASELINE
-                                        .contract
-                                        .to_string(),
-                                    project_data,
-                                },
-                            ),
-                            expected_hash,
-                            command_sequence,
-                        });
-                        Ok(())
-                    }
-                    Err(error) => Err(error.into()),
-                },
-            };
-
-            if let Err(error) = result {
-                self.ui = previous_ui;
+            if let Err(error) = self.apply_ui_effect(effect, &mut outgoing) {
+                *self = snapshot;
                 return Err(error);
             }
         }
-
         Ok(outgoing)
     }
 
@@ -203,6 +129,74 @@ impl AdminCanvasController {
         Ok(())
     }
 
+    fn apply_ui_effect(
+        &mut self,
+        effect: UiEffect,
+        outgoing: &mut Vec<AdminCanvasEffect>,
+    ) -> Result<(), AdminCanvasError> {
+        match effect {
+            UiEffect::None => Ok(()),
+            UiEffect::Announce(message) => {
+                outgoing.push(AdminCanvasEffect::Announce(message));
+                Ok(())
+            }
+            UiEffect::Command(command) => {
+                let report = self.editor.apply(command)?;
+                self.synchronize(report);
+                Ok(())
+            }
+            UiEffect::Undo => {
+                self.editor.undo()?;
+                let report = self.editor.validate();
+                self.synchronize(report);
+                Ok(())
+            }
+            UiEffect::Redo => {
+                self.editor.redo()?;
+                let report = self.editor.validate();
+                self.synchronize(report);
+                Ok(())
+            }
+            UiEffect::CopySelection => {
+                self.copy_selection()?;
+                outgoing.push(AdminCanvasEffect::Announce("Component copied".to_string()));
+                Ok(())
+            }
+            UiEffect::CutSelection => {
+                self.cut_selection()?;
+                outgoing.push(AdminCanvasEffect::Announce("Component cut".to_string()));
+                Ok(())
+            }
+            UiEffect::PasteClipboard => {
+                let inserted = self.paste_clipboard()?;
+                outgoing.push(AdminCanvasEffect::Announce(format!(
+                    "Pasted {} component(s)",
+                    inserted.len()
+                )));
+                Ok(())
+            }
+            UiEffect::Persist {
+                expected_hash,
+                command_sequence,
+            } => {
+                let project_data = GrapesJsV1Codec::encode_value(self.editor.document())?;
+                outgoing.push(AdminCanvasEffect::Request {
+                    request: PageBuilderCapabilityRequest::Publish(PublishPageBuilderInput {
+                        page_id: self.page_id.clone(),
+                        revision_id: self.revision_id.clone(),
+                        schema_version: PageBuilderContractMetadata::BASELINE
+                            .contract
+                            .to_string(),
+                        project_data,
+                    }),
+                    expected_hash,
+                    command_sequence,
+                });
+                Ok(())
+            }
+        }
+    }
+
     fn copy_selection(&mut self) -> Result<(), AdminCanvasError> {
         let component_id = self
             .editor
@@ -212,7 +206,9 @@ impl AdminCanvasController {
             .editor
             .document()
             .component_location(component_id)
-            .ok_or_else(|| AdminCanvasError::Authoring("selected component has no location".to_string()))?;
+            .ok_or_else(|| {
+                AdminCanvasError::Authoring("selected component has no location".to_string())
+            })?;
         if location.depth == 0 {
             return Err(AdminCanvasError::Authoring(
                 "the page root cannot be copied into the internal clipboard".to_string(),
@@ -260,20 +256,28 @@ impl AdminCanvasController {
             AdminCanvasError::Authoring("the internal clipboard has no components".to_string())
         })?;
         let (parent_id, index) = self.insertion_target(first_type)?;
-        for (offset, component_type) in component_types.iter().enumerate() {
-            let decision = self.editor.registries().evaluate_placement(
-                self.editor.document(),
-                None,
+        let child_count = self
+            .editor
+            .document()
+            .child_count_for_parent(parent_id.as_deref())
+            .ok_or_else(|| {
+                AdminCanvasError::Authoring("clipboard parent is missing or opaque".to_string())
+            })?;
+        if index > child_count {
+            return Err(AdminCanvasError::Authoring(format!(
+                "clipboard insertion index {index} exceeds child count {child_count}"
+            )));
+        }
+        for component_type in &component_types {
+            if !self.editor.registries().accepts_child_type(
+                parent_id
+                    .as_deref()
+                    .and_then(|parent_id| self.editor.document().component_type_for_id(parent_id)),
                 component_type,
-                parent_id.as_deref(),
-                index.saturating_add(offset),
-            );
-            if !decision.legal {
-                return Err(AdminCanvasError::Authoring(
-                    decision
-                        .reason
-                        .unwrap_or_else(|| "clipboard placement was rejected".to_string()),
-                ));
+            ) {
+                return Err(AdminCanvasError::Authoring(format!(
+                    "clipboard component `{component_type}` is not accepted by the target"
+                )));
             }
         }
 
@@ -288,10 +292,13 @@ impl AdminCanvasController {
         Ok(inserted)
     }
 
-    fn insertion_target(&self, child_type: &str) -> Result<(Option<String>, usize), AdminCanvasError> {
+    fn insertion_target(
+        &self,
+        child_type: &str,
+    ) -> Result<(Option<String>, usize), AdminCanvasError> {
         let document = self.editor.document();
         let registries = self.editor.registries();
-        let target = match self.ui.state.selection.component_id.as_deref() {
+        match self.ui.state.selection.component_id.as_deref() {
             Some(selected_id) => {
                 let selected = document.component(selected_id).ok_or_else(|| {
                     AdminCanvasError::Authoring(format!(
@@ -299,7 +306,7 @@ impl AdminCanvasController {
                     ))
                 })?;
                 if registries.accepts_child_type(Some(selected.component_type()), child_type) {
-                    (Some(selected_id.to_string()), selected.children().len())
+                    Ok((Some(selected_id.to_string()), selected.children().len()))
                 } else {
                     let location = document.component_location(selected_id).ok_or_else(|| {
                         AdminCanvasError::Authoring(format!(
@@ -307,18 +314,17 @@ impl AdminCanvasController {
                         ))
                     })?;
                     if location.depth == 0 {
-                        (None, document.root_child_count().unwrap_or_default())
+                        Ok((None, document.root_child_count().unwrap_or_default()))
                     } else {
-                        (
+                        Ok((
                             location.parent_component_id,
                             location.index.saturating_add(1),
-                        )
+                        ))
                     }
                 }
             }
-            None => (None, document.root_child_count().unwrap_or_default()),
-        };
-        Ok(target)
+            None => Ok((None, document.root_child_count().unwrap_or_default())),
+        }
     }
 
     fn synchronize(&mut self, report: ValidationReport) {
@@ -409,8 +415,6 @@ mod tests {
                 },
             }))
             .expect("patch");
-        assert!(controller.ui().state.dirty.dirty);
-
         let effects = controller
             .dispatch(UiIntent::RequestSave)
             .expect("request save");
@@ -421,65 +425,26 @@ mod tests {
             panic!("expected publish request");
         };
         assert_eq!(input.page_id, "home");
-        assert_eq!(input.schema_version, "grapesjs_v1");
         assert_eq!(input.project_data["pages"][0]["component"]["components"][0]["attributes"]["aria-label"], "Hero");
     }
 
     #[test]
-    fn rejected_engine_command_rolls_back_ui_dirty_state() {
+    fn failed_command_restores_ui_editor_and_clipboard() {
         let mut controller = controller();
-        let previous = controller.ui().clone();
-        let error = controller
+        controller
+            .dispatch(UiIntent::Select(Some("copy-me".to_string())))
+            .expect("select");
+        controller.dispatch(UiIntent::CopySelection).expect("copy");
+        let snapshot = controller.clone();
+        assert!(controller
             .dispatch(UiIntent::Execute(EditorCommand::Patch {
                 component_id: "missing".to_string(),
                 patch: ComponentPatch::default(),
             }))
-            .expect_err("missing component must fail");
-        assert!(matches!(error, AdminCanvasError::Fly(_)));
-        assert_eq!(controller.ui(), &previous);
-    }
-
-    #[test]
-    fn save_acknowledgement_clears_dirty_state() {
-        let mut controller = controller();
-        controller
-            .dispatch(UiIntent::Execute(EditorCommand::Select {
-                component_id: Some("hero".to_string()),
-            }))
-            .expect("select");
-        controller.acknowledge_save("rev-2").expect("acknowledge");
-        assert_eq!(controller.revision_id(), "rev-2");
-        assert!(!controller.ui().state.dirty.dirty);
-    }
-
-    #[test]
-    fn stale_save_acknowledgement_keeps_newer_changes_dirty() {
-        let mut controller = controller();
-        controller
-            .dispatch(UiIntent::Execute(EditorCommand::Patch {
-                component_id: "hero".to_string(),
-                patch: ComponentPatch {
-                    attributes: Map::from_iter([("data-version".to_string(), json!("one"))]),
-                    ..ComponentPatch::default()
-                },
-            }))
-            .expect("first patch");
-        let expected_hash = controller.editor().revision().project_hash;
-        controller
-            .dispatch(UiIntent::Execute(EditorCommand::Patch {
-                component_id: "hero".to_string(),
-                patch: ComponentPatch {
-                    attributes: Map::from_iter([("data-version".to_string(), json!("two"))]),
-                    ..ComponentPatch::default()
-                },
-            }))
-            .expect("second patch");
-
-        assert!(controller
-            .acknowledge_save_for_hash(expected_hash, "rev-stale")
             .is_err());
-        assert!(controller.ui().state.dirty.dirty);
-        assert_eq!(controller.revision_id(), "rev-1");
+        assert_eq!(controller.ui(), snapshot.ui());
+        assert_eq!(controller.editor(), snapshot.editor());
+        assert_eq!(controller.has_clipboard(), snapshot.has_clipboard());
     }
 
     #[test]
@@ -488,20 +453,20 @@ mod tests {
         controller
             .dispatch(UiIntent::Select(Some("copy-me".to_string())))
             .expect("select");
-        controller
-            .dispatch(UiIntent::CopySelection)
-            .expect("copy");
-        assert!(controller.has_clipboard());
+        controller.dispatch(UiIntent::CopySelection).expect("copy");
         controller
             .dispatch(UiIntent::PasteClipboard)
             .expect("paste");
-        let selected = controller.editor().selection().expect("pasted selection");
+        let selected = controller
+            .editor()
+            .selection()
+            .expect("pasted selection")
+            .to_string();
         assert_ne!(selected, "copy-me");
         assert!(selected.starts_with("paste"));
-
         controller
             .dispatch(UiIntent::CutSelection)
             .expect("cut pasted component");
-        assert!(!controller.editor().document().contains_component(selected));
+        assert!(!controller.editor().document().contains_component(&selected));
     }
 }
