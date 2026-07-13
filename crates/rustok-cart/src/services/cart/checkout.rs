@@ -1,5 +1,7 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, Set, TransactionTrait};
+use sea_orm::{
+    sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+};
 use uuid::Uuid;
 
 use crate::dto::CartResponse;
@@ -7,33 +9,38 @@ use crate::entities;
 use crate::error::{CartError, CartResult};
 
 use super::CartService;
-use super::helpers::{
-    STATUS_ABANDONED, STATUS_ACTIVE, STATUS_CHECKING_OUT, STATUS_COMPLETED, load_cart_in_tx,
-};
+use super::helpers::load_cart_in_tx;
+use super::types::CartStatus;
 
 impl CartService {
     pub async fn complete_cart(&self, tenant_id: Uuid, cart_id: Uuid) -> CartResult<CartResponse> {
-        self.transition_cart_from_any(
+        self.transition_status(
             tenant_id,
             cart_id,
-            &[STATUS_ACTIVE, STATUS_CHECKING_OUT],
-            STATUS_COMPLETED,
+            &[CartStatus::Active, CartStatus::CheckingOut],
+            CartStatus::Completed,
             true,
         )
         .await
     }
 
     pub async fn abandon_cart(&self, tenant_id: Uuid, cart_id: Uuid) -> CartResult<CartResponse> {
-        self.transition_cart(tenant_id, cart_id, STATUS_ACTIVE, STATUS_ABANDONED, false)
-            .await
+        self.transition_status(
+            tenant_id,
+            cart_id,
+            &[CartStatus::Active],
+            CartStatus::Abandoned,
+            false,
+        )
+        .await
     }
 
     pub async fn begin_checkout(&self, tenant_id: Uuid, cart_id: Uuid) -> CartResult<CartResponse> {
-        self.transition_cart(
+        self.transition_status(
             tenant_id,
             cart_id,
-            STATUS_ACTIVE,
-            STATUS_CHECKING_OUT,
+            &[CartStatus::Active],
+            CartStatus::CheckingOut,
             false,
         )
         .await
@@ -44,74 +51,58 @@ impl CartService {
         tenant_id: Uuid,
         cart_id: Uuid,
     ) -> CartResult<CartResponse> {
-        self.transition_cart(
+        self.transition_status(
             tenant_id,
             cart_id,
-            STATUS_CHECKING_OUT,
-            STATUS_ACTIVE,
+            &[CartStatus::CheckingOut],
+            CartStatus::Active,
             false,
         )
         .await
     }
 
-    async fn transition_cart(
+    async fn transition_status(
         &self,
         tenant_id: Uuid,
         cart_id: Uuid,
-        expected_from: &str,
-        next_status: &str,
+        allowed_from: &[CartStatus],
+        target: CartStatus,
         mark_completed: bool,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
-        if cart.status != expected_from {
+        let now = Utc::now().fixed_offset();
+        let completed_at = mark_completed.then(|| now.clone());
+        let allowed_from = allowed_from
+            .iter()
+            .map(|status| status.as_str())
+            .collect::<Vec<_>>();
+
+        let result = entities::cart::Entity::update_many()
+            .col_expr(
+                entities::cart::Column::Status,
+                Expr::value(target.as_str()),
+            )
+            .col_expr(entities::cart::Column::UpdatedAt, Expr::value(now))
+            .col_expr(
+                entities::cart::Column::CompletedAt,
+                Expr::value(completed_at),
+            )
+            .filter(entities::cart::Column::TenantId.eq(tenant_id))
+            .filter(entities::cart::Column::Id.eq(cart_id))
+            .filter(entities::cart::Column::Status.is_in(allowed_from))
+            .exec(&txn)
+            .await?;
+
+        if result.rows_affected != 1 {
+            let current = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+            let from = current.status;
+            txn.rollback().await?;
             return Err(CartError::InvalidTransition {
-                from: cart.status,
-                to: next_status.to_string(),
+                from,
+                to: target.to_string(),
             });
         }
 
-        let mut active: entities::cart::ActiveModel = cart.into();
-        let now = Utc::now();
-        active.status = Set(next_status.to_string());
-        active.updated_at = Set(now.into());
-        active.completed_at = Set(if mark_completed {
-            Some(now.into())
-        } else {
-            None
-        });
-        active.update(&txn).await?;
-        txn.commit().await?;
-        self.get_cart(tenant_id, cart_id).await
-    }
-
-    async fn transition_cart_from_any(
-        &self,
-        tenant_id: Uuid,
-        cart_id: Uuid,
-        expected_from: &[&str],
-        next_status: &str,
-        mark_completed: bool,
-    ) -> CartResult<CartResponse> {
-        let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
-        if !expected_from.contains(&cart.status.as_str()) {
-            return Err(CartError::InvalidTransition {
-                from: cart.status,
-                to: next_status.to_string(),
-            });
-        }
-
-        let mut active: entities::cart::ActiveModel = cart.into();
-        let now = Utc::now();
-        active.status = Set(next_status.to_string());
-        active.updated_at = Set(now.into());
-        active.completed_at = Set(if mark_completed {
-            Some(now.into())
-        } else {
-            None
-        });
-        active.update(&txn).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
     }
