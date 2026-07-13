@@ -144,12 +144,12 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
     }
 }
 
-fn validate_page_metadata(
-    metadata: &PageMetadata,
-    page_path: &str,
-    report: &mut ValidationReport,
-) {
-    if metadata.title.as_deref().is_some_and(|title| title.chars().count() > 70) {
+fn validate_page_metadata(metadata: &PageMetadata, page_path: &str, report: &mut ValidationReport) {
+    if metadata
+        .title
+        .as_deref()
+        .is_some_and(|title| title.chars().count() > 70)
+    {
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Warning,
             "seo_title_too_long",
@@ -423,8 +423,7 @@ mod tests {
 
     #[test]
     fn empty_project_is_invalid() {
-        let document = GrapesJsV1Codec::decode_value(json!({ "pages": [] }))
-            .expect("document");
+        let document = GrapesJsV1Codec::decode_value(json!({ "pages": [] })).expect("document");
         let report = validate_project(
             &document,
             &RegistrySet::with_builtins(),

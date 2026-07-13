@@ -118,10 +118,7 @@ impl ForumReadModelService {
                     moderated: category.moderated,
                     topic_count: category.topic_count,
                     reply_count: category.reply_count,
-                    is_subscribed: subscriptions
-                        .get(&category.id)
-                        .copied()
-                        .unwrap_or(false),
+                    is_subscribed: subscriptions.get(&category.id).copied().unwrap_or(false),
                 }
             })
             .collect();
@@ -353,7 +350,10 @@ struct ReplyCursor {
 }
 
 fn encode_category_cursor(category: &forum_category::Model) -> String {
-    format!("{CATEGORY_CURSOR_VERSION}:{}:{}", category.position, category.id)
+    format!(
+        "{CATEGORY_CURSOR_VERSION}:{}:{}",
+        category.position, category.id
+    )
 }
 
 fn decode_category_cursor(value: &str) -> ForumResult<CategoryCursor> {

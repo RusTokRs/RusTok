@@ -22,7 +22,10 @@ async fn setup() -> (sea_orm::DatabaseConnection, OrderService) {
         .await
         .expect("order lifecycle serialization migration should install on SQLite");
 
-    (db.clone(), OrderService::new(db, mock_transactional_event_bus()))
+    (
+        db.clone(),
+        OrderService::new(db, mock_transactional_event_bus()),
+    )
 }
 
 fn order_input() -> CreateOrderInput {
@@ -101,7 +104,10 @@ async fn order_lifecycle_rejects_stale_and_reverse_transitions() {
             vec![order.id.into()],
         ))
         .await;
-    assert!(reverse.is_err(), "paid orders must not transition backwards");
+    assert!(
+        reverse.is_err(),
+        "paid orders must not transition backwards"
+    );
 
     let shipped = service
         .ship_order(
@@ -124,12 +130,7 @@ async fn order_lifecycle_rejects_stale_and_reverse_transitions() {
     assert!(delivered.delivered_at.is_some());
 
     let cancel_delivered = service
-        .cancel_order(
-            tenant_id,
-            actor_id,
-            order.id,
-            Some("too late".to_string()),
-        )
+        .cancel_order(tenant_id, actor_id, order.id, Some("too late".to_string()))
         .await;
     assert!(
         cancel_delivered.is_err(),

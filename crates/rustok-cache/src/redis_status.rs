@@ -93,9 +93,7 @@ impl CacheService {
                     url_present: true,
                     client_initialized: false,
                     connectivity_healthy: false,
-                    last_error: Some(
-                        "Redis client disappeared after initialization".to_string(),
-                    ),
+                    last_error: Some("Redis client disappeared after initialization".to_string()),
                 };
             };
             let connection = tokio::time::timeout(

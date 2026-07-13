@@ -1,15 +1,12 @@
-use rustok_page_builder::dto::{
-    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
-};
+use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PageBuilderCapabilityResponse};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 pub type PageBuilderAdminFacadeFuture = Pin<
     Box<
-        dyn Future<
-                Output = Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
-            > + 'static,
+        dyn Future<Output = Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>
+            + 'static,
     >,
 >;
 
@@ -46,10 +43,7 @@ impl PageBuilderAdminFacadeError {
         }
     }
 
-    pub fn with_stable_code(
-        message: impl Into<String>,
-        stable_code: impl Into<String>,
-    ) -> Self {
+    pub fn with_stable_code(message: impl Into<String>, stable_code: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             stable_code: Some(stable_code.into()),

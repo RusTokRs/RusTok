@@ -1,12 +1,12 @@
 use axum::{
-    Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{
-    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
+    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
@@ -245,9 +245,7 @@ fn required_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     if value.is_empty() || value.chars().count() > MAX_IDEMPOTENCY_KEY_LENGTH {
         return Err(HttpError::bad_request(
             "idempotency_key_invalid",
-            format!(
-                "Idempotency-Key must contain 1 to {MAX_IDEMPOTENCY_KEY_LENGTH} characters"
-            ),
+            format!("Idempotency-Key must contain 1 to {MAX_IDEMPOTENCY_KEY_LENGTH} characters"),
         ));
     }
 
@@ -256,25 +254,21 @@ fn required_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
 
 fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpError {
     match error {
-        crate::JournaledCheckoutError::Operation(
-            crate::CheckoutOperationError::Conflict(message),
-        ) => HttpError::new(
-            StatusCode::CONFLICT,
-            "checkout_operation_conflict",
+        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::Conflict(
             message,
-        ),
-        crate::JournaledCheckoutError::Operation(
-            crate::CheckoutOperationError::NotFound(id),
-        ) => HttpError::not_found(
-            "checkout_operation_not_found",
-            format!("Checkout operation {id} was not found"),
-        ),
-        crate::JournaledCheckoutError::Operation(
-            crate::CheckoutOperationError::Validation(message),
-        ) => HttpError::bad_request("checkout_operation_invalid", message),
-        crate::JournaledCheckoutError::Operation(
-            crate::CheckoutOperationError::Database(_),
-        ) => HttpError::internal("Checkout operation storage is unavailable"),
+        )) => HttpError::new(StatusCode::CONFLICT, "checkout_operation_conflict", message),
+        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::NotFound(id)) => {
+            HttpError::not_found(
+                "checkout_operation_not_found",
+                format!("Checkout operation {id} was not found"),
+            )
+        }
+        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::Validation(
+            message,
+        )) => HttpError::bad_request("checkout_operation_invalid", message),
+        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::Database(_)) => {
+            HttpError::internal("Checkout operation storage is unavailable")
+        }
         crate::JournaledCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
             kind: rustok_api::PortErrorKind::Conflict,
             code,
@@ -296,8 +290,8 @@ fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpEr
         crate::JournaledCheckoutError::Checkout(checkout) => {
             HttpError::bad_request("commerce_operation_failed", checkout.to_string())
         }
-        crate::JournaledCheckoutError::CheckoutAndJournal { .. } => HttpError::internal(
-            "Checkout requires reconciliation after a journal update failure",
-        ),
+        crate::JournaledCheckoutError::CheckoutAndJournal { .. } => {
+            HttpError::internal("Checkout requires reconciliation after a journal update failure")
+        }
     }
 }

@@ -109,15 +109,7 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
     let topic_id = Uuid::new_v4();
 
     seed_category(&db, tenant_id, category_id, false).await;
-    seed_topic(
-        &db,
-        tenant_id,
-        category_id,
-        topic_id,
-        author_id,
-        false,
-    )
-    .await;
+    seed_topic(&db, tenant_id, category_id, topic_id, author_id, false).await;
 
     let owner = SecurityContext::new(UserRole::Manager, Some(author_id));
     let reply = ReplyService::new(db.clone(), event_bus(db.clone()))
@@ -329,7 +321,9 @@ async fn reply_body(db: &DatabaseConnection, reply_id: Uuid) -> String {
 async fn topic_title(db: &DatabaseConnection, topic_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT title AS value FROM forum_topic_translations WHERE topic_id = '{topic_id}'"),
+        format!(
+            "SELECT title AS value FROM forum_topic_translations WHERE topic_id = '{topic_id}'"
+        ),
     )
     .await
 }

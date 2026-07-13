@@ -152,14 +152,12 @@ impl CacheService {
 
         self.load_or_fill(backend, key, ttl, move || async move {
             match loader_timeout {
-                Some(timeout) => tokio::time::timeout(timeout, loader())
-                    .await
-                    .map_err(|_| {
-                        rustok_core::Error::Cache(format!(
-                            "cache loader timed out after {} ms",
-                            timeout.as_millis()
-                        ))
-                    })?,
+                Some(timeout) => tokio::time::timeout(timeout, loader()).await.map_err(|_| {
+                    rustok_core::Error::Cache(format!(
+                        "cache loader timed out after {} ms",
+                        timeout.as_millis()
+                    ))
+                })?,
                 None => loader().await,
             }
         })
@@ -178,9 +176,7 @@ fn deterministic_jittered_ttl(
     }
 
     let base_nanos = ttl.as_nanos();
-    let max_delta = base_nanos
-        .saturating_mul(u128::from(max_jitter_percent))
-        / 100;
+    let max_delta = base_nanos.saturating_mul(u128::from(max_jitter_percent)) / 100;
     if max_delta == 0 {
         return ttl;
     }
@@ -232,12 +228,9 @@ mod tests {
 
     #[test]
     fn deterministic_jitter_is_stable_and_bounded() {
-        let policy = CacheTtlPolicy::deterministic_jitter(
-            Duration::from_secs(100),
-            10,
-            "tenant-cache:v1",
-        )
-        .unwrap();
+        let policy =
+            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(100), 10, "tenant-cache:v1")
+                .unwrap();
 
         let first = policy.ttl_for("tenant-a").unwrap();
         let second = policy.ttl_for("tenant-a").unwrap();
@@ -248,12 +241,9 @@ mod tests {
 
     #[test]
     fn deterministic_jitter_spreads_keys() {
-        let policy = CacheTtlPolicy::deterministic_jitter(
-            Duration::from_secs(100),
-            10,
-            "tenant-cache:v1",
-        )
-        .unwrap();
+        let policy =
+            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(100), 10, "tenant-cache:v1")
+                .unwrap();
 
         let values = (0..32)
             .map(|index| policy.ttl_for(&format!("tenant-{index}")).unwrap())
@@ -264,16 +254,14 @@ mod tests {
     #[test]
     fn jitter_validation_rejects_unsafe_configuration() {
         assert_eq!(
-            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 51, "cache")
-                .unwrap_err(),
+            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 51, "cache").unwrap_err(),
             CachePolicyError::JitterPercentTooLarge {
                 value: 51,
                 maximum: 50,
             }
         );
         assert_eq!(
-            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 10, "  ")
-                .unwrap_err(),
+            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 10, "  ").unwrap_err(),
             CachePolicyError::EmptyNamespace
         );
     }
@@ -287,12 +275,9 @@ mod tests {
             .unwrap();
 
         let error = service
-            .load_or_fill_with_policy(
-                backend.clone(),
-                "slow",
-                policy,
-                || std::future::pending::<rustok_core::Result<Vec<u8>>>(),
-            )
+            .load_or_fill_with_policy(backend.clone(), "slow", policy, || {
+                std::future::pending::<rustok_core::Result<Vec<u8>>>()
+            })
             .await
             .unwrap_err();
         assert!(error.to_string().contains("timed out"));
@@ -300,15 +285,10 @@ mod tests {
 
         let calls = AtomicUsize::new(0);
         let result = service
-            .load_or_fill_with_policy(
-                backend,
-                "slow",
-                CacheLoadPolicy::default(),
-                || async {
-                    calls.fetch_add(1, Ordering::SeqCst);
-                    Ok(b"recovered".to_vec())
-                },
-            )
+            .load_or_fill_with_policy(backend, "slow", CacheLoadPolicy::default(), || async {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(b"recovered".to_vec())
+            })
             .await
             .unwrap();
         assert_eq!(result.value, b"recovered".to_vec());

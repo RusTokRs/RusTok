@@ -92,11 +92,8 @@ fn PagesFlyBuilder(
 ) -> impl IntoView {
     let seed = core::edit_form_seed_from_page(&page, &default_locale);
     let revision_id = builder::page_revision(&page);
-    let controller = builder::controller_from_project(
-        &page.id,
-        &revision_id,
-        &seed.project_data_text,
-    );
+    let controller =
+        builder::controller_from_project(&page.id, &revision_id, &seed.project_data_text);
 
     match controller {
         Ok(controller) => {

@@ -76,10 +76,7 @@ impl BoundedCacheInvalidationGapTracker {
         self.advance_monotonically(channel.into(), recovered_through_generation)
     }
 
-    pub fn observe(
-        &self,
-        event: &VersionedCacheInvalidation,
-    ) -> CacheInvalidationObservation {
+    pub fn observe(&self, event: &VersionedCacheInvalidation) -> CacheInvalidationObservation {
         let generations = self
             .last_by_channel
             .lock()
@@ -150,10 +147,7 @@ impl BoundedCacheInvalidationGapTracker {
         if let Some(current) = generations.get(&channel).copied() {
             if proposed < current {
                 return Err(BoundedInvalidationTrackerError::Payload(
-                    CacheInvalidationPayloadError::OffsetRegressed {
-                        current,
-                        proposed,
-                    },
+                    CacheInvalidationPayloadError::OffsetRegressed { current, proposed },
                 ));
             }
             return Ok(generations.insert(channel, proposed));
@@ -265,9 +259,7 @@ mod tests {
             tracker.observe(&event("tenant.invalidate", 4)),
             CacheInvalidationObservation::InOrder { generation: 4 }
         );
-        tracker
-            .acknowledge_applied("tenant.invalidate", 4)
-            .unwrap();
+        tracker.acknowledge_applied("tenant.invalidate", 4).unwrap();
         assert_eq!(tracker.last_generation("tenant.invalidate"), Some(4));
         assert_eq!(
             tracker.observe(&event("tenant.invalidate", 4)),

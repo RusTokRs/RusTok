@@ -85,11 +85,7 @@ pub fn prepare_guest_cart_metadata(
         return (sanitize_guest_cart_metadata(metadata), None);
     }
 
-    let token = format!(
-        "{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    );
+    let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let mut object = metadata.as_object().cloned().unwrap_or_default();
     object.remove(GUEST_CART_TRANSIENT_TOKEN_METADATA_KEY);
     object.insert(

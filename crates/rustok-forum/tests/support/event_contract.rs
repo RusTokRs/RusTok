@@ -292,11 +292,7 @@ VALUES
             },
         )
         .await?;
-    if second_page.is_empty()
-        || second_page
-            .iter()
-            .any(|event| event.sequence_no <= cursor)
-    {
+    if second_page.is_empty() || second_page.iter().any(|event| event.sequence_no <= cursor) {
         return Err(test_error("forum event cursor did not advance"));
     }
 

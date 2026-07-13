@@ -73,8 +73,7 @@ pub use runtime::{
     SharedMcpAccessResolver, SharedMcpAuditSink, SharedMcpScaffoldDraftStore,
 };
 pub use scaffold_workspace::{
-    apply_authorized_module_scaffold, authorize_scaffold_workspace,
-    MCP_SCAFFOLD_WORKSPACE_ROOT_ENV,
+    apply_authorized_module_scaffold, authorize_scaffold_workspace, MCP_SCAFFOLD_WORKSPACE_ROOT_ENV,
 };
 pub use server::{serve_stdio, McpServerConfig, RusToKMcpServer};
 pub use tools::{

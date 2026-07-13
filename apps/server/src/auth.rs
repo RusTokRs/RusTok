@@ -331,14 +331,9 @@ mod tests {
         let config = AuthConfig::new(secret());
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
-        let token = encode_email_verification_token(
-            &config,
-            tenant_id,
-            user_id,
-            " User@Example.com ",
-            900,
-        )
-        .expect("encode verification token");
+        let token =
+            encode_email_verification_token(&config, tenant_id, user_id, " User@Example.com ", 900)
+                .expect("encode verification token");
         let claims =
             decode_email_verification_token(&config, &token).expect("decode verification token");
 

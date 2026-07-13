@@ -81,16 +81,21 @@ where
     };
 
     match db.get_database_backend() {
-        DbBackend::Postgres | DbBackend::MySql => {
-            role_query().lock_exclusive().one(db).await.map_err(internal)
-        }
+        DbBackend::Postgres | DbBackend::MySql => role_query()
+            .lock_exclusive()
+            .one(db)
+            .await
+            .map_err(internal),
         DbBackend::Sqlite => {
             let role = role_query().one(db).await.map_err(internal)?;
             if let Some(role) = role.as_ref() {
                 // SQLite has no SELECT ... FOR UPDATE. A no-op write obtains the
                 // database write lock before the continuity count is read.
                 roles::Entity::update_many()
-                    .col_expr(roles::Column::UpdatedAt, Expr::col(roles::Column::UpdatedAt))
+                    .col_expr(
+                        roles::Column::UpdatedAt,
+                        Expr::col(roles::Column::UpdatedAt),
+                    )
                     .filter(roles::Column::Id.eq(role.id))
                     .exec(db)
                     .await

@@ -80,7 +80,10 @@ pub struct AtomicCartCheckoutBinding {
 }
 
 impl AtomicCartCheckoutPort {
-    pub fn new(db: DatabaseConnection, prepare_request: PrepareCartCheckoutSnapshotRequest) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        prepare_request: PrepareCartCheckoutSnapshotRequest,
+    ) -> Self {
         let service = Arc::new(CartService::new(db.clone()));
         Self {
             service,
@@ -375,16 +378,15 @@ fn ensure_bound_cart_id(bound_cart_id: Uuid, cart_id: Uuid) -> Result<(), PortEr
     }
 }
 
-fn stored_snapshot(state: &PreparedState) -> Result<Option<PreparedCartCheckoutSnapshot>, PortError> {
-    state
-        .lock()
-        .map(|snapshot| snapshot.clone())
-        .map_err(|_| {
-            PortError::invariant_violation(
-                "cart.checkout_prepared_state_poisoned",
-                "prepared checkout state is unavailable",
-            )
-        })
+fn stored_snapshot(
+    state: &PreparedState,
+) -> Result<Option<PreparedCartCheckoutSnapshot>, PortError> {
+    state.lock().map(|snapshot| snapshot.clone()).map_err(|_| {
+        PortError::invariant_violation(
+            "cart.checkout_prepared_state_poisoned",
+            "prepared checkout state is unavailable",
+        )
+    })
 }
 
 fn store_snapshot(

@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -20,9 +19,8 @@ use crate::services::rbac::enforce_scope;
 use crate::subscription::ForumSubscriptionLevel;
 
 use super::helpers::{
-    ensure_revision_update, implicit_response, require_authenticated_user,
-    resolve_preferences, topic_response, validate_expected_revision,
-    validate_new_revision, INITIAL_REVISION,
+    ensure_revision_update, implicit_response, require_authenticated_user, resolve_preferences,
+    topic_response, validate_expected_revision, validate_new_revision, INITIAL_REVISION,
 };
 use super::SubscriptionService;
 
@@ -54,7 +52,9 @@ impl SubscriptionService {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         self.find_topic(tenant_id, topic_id).await?;
-        let existing = self.find_topic_subscription(tenant_id, topic_id, user_id).await?;
+        let existing = self
+            .find_topic_subscription(tenant_id, topic_id, user_id)
+            .await?;
         if let Some(existing) = existing {
             self.update_topic_subscription(
                 tenant_id,
@@ -84,15 +84,20 @@ impl SubscriptionService {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         self.find_topic(tenant_id, topic_id).await?;
-        Ok(match self.find_topic_subscription(tenant_id, topic_id, user_id).await? {
-            Some(model) => topic_response(model),
-            None => implicit_response(
-                tenant_id,
-                ForumSubscriptionTargetType::Topic,
-                topic_id,
-                user_id,
-            ),
-        })
+        Ok(
+            match self
+                .find_topic_subscription(tenant_id, topic_id, user_id)
+                .await?
+            {
+                Some(model) => topic_response(model),
+                None => implicit_response(
+                    tenant_id,
+                    ForumSubscriptionTargetType::Topic,
+                    topic_id,
+                    user_id,
+                ),
+            },
+        )
     }
 
     #[instrument(skip(self, security, input))]
@@ -145,9 +150,11 @@ impl SubscriptionService {
                     .filter(forum_topic_subscription::Column::UserId.eq(user_id))
                     .one(&txn)
                     .await?
-                    .ok_or_else(|| ForumError::Validation(
-                        "Forum topic subscription disappeared during update".to_string(),
-                    ))?
+                    .ok_or_else(|| {
+                        ForumError::Validation(
+                            "Forum topic subscription disappeared during update".to_string(),
+                        )
+                    })?
             }
             None => {
                 validate_new_revision(input.expected_revision)?;

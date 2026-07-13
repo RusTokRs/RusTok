@@ -150,10 +150,7 @@ struct ThreadSeed {
     author_id: Uuid,
 }
 
-async fn seed_thread(
-    db: &sea_orm::DatabaseConnection,
-    slug: &str,
-) -> TestResult<ThreadSeed> {
+async fn seed_thread(db: &sea_orm::DatabaseConnection, slug: &str) -> TestResult<ThreadSeed> {
     let seed = ThreadSeed {
         tenant_id: Uuid::new_v4(),
         category_id: Uuid::new_v4(),
@@ -260,10 +257,7 @@ WHERE tenant_id = '{}' AND reply_id = '{}' AND locale = 'en';
     .await
 }
 
-async fn refresh_counters(
-    db: &sea_orm::DatabaseConnection,
-    seed: &ThreadSeed,
-) -> TestResult<()> {
+async fn refresh_counters(db: &sea_orm::DatabaseConnection, seed: &ThreadSeed) -> TestResult<()> {
     execute(
         db,
         format!(

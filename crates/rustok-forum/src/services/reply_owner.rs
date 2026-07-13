@@ -131,21 +131,10 @@ impl ReplyService {
 
         if status == ReplyStatus::Approved {
             TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
-            CategoryService::adjust_counters_in_tx(
-                &txn,
-                tenant_id,
-                topic.category_id,
-                0,
-                1,
-            )
-            .await?;
-            UserStatsService::adjust_reply_count_in_tx(
-                &txn,
-                tenant_id,
-                security.user_id,
-                1,
-            )
-            .await?;
+            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
+                .await?;
+            UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, security.user_id, 1)
+                .await?;
 
             self.event_bus
                 .publish_in_tx(
@@ -162,9 +151,7 @@ impl ReplyService {
         }
 
         txn.commit().await?;
-        self.inner
-            .get(tenant_id, security, reply_id, &locale)
-            .await
+        self.inner.get(tenant_id, security, reply_id, &locale).await
     }
 
     #[instrument(skip(self, security))]
@@ -208,30 +195,14 @@ impl ReplyService {
 
         if reply.status == ReplyStatus::Approved {
             TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, -1).await?;
-            CategoryService::adjust_counters_in_tx(
-                &txn,
-                tenant_id,
-                topic.category_id,
-                0,
-                -1,
-            )
-            .await?;
-            UserStatsService::adjust_reply_count_in_tx(
-                &txn,
-                tenant_id,
-                reply.author_id,
-                -1,
-            )
-            .await?;
+            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, -1)
+                .await?;
+            UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, reply.author_id, -1)
+                .await?;
         }
         if solution_removed {
-            UserStatsService::adjust_solution_count_in_tx(
-                &txn,
-                tenant_id,
-                reply.author_id,
-                -1,
-            )
-            .await?;
+            UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, reply.author_id, -1)
+                .await?;
         }
 
         self.event_bus

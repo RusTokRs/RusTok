@@ -41,10 +41,7 @@ impl PageMetadata {
 
     pub fn into_page_patch(self) -> PagePatch {
         PagePatch {
-            fields: Map::from_iter([(
-                FLY_PAGE_METADATA_FIELD.to_string(),
-                self.into_value(),
-            )]),
+            fields: Map::from_iter([(FLY_PAGE_METADATA_FIELD.to_string(), self.into_value())]),
             ..PagePatch::default()
         }
     }
@@ -61,9 +58,7 @@ impl PageMetadata {
     }
 
     pub fn effective_open_graph_title(&self) -> Option<&str> {
-        self.open_graph_title
-            .as_deref()
-            .or(self.title.as_deref())
+        self.open_graph_title.as_deref().or(self.title.as_deref())
     }
 
     pub fn effective_open_graph_description(&self) -> Option<&str> {

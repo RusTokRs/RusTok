@@ -157,21 +157,13 @@ async fn seed_forum(db: &DatabaseConnection) -> TestResult<ForumSeed> {
             (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
          VALUES
             ('{}', '{}', '{}', 'open', '{{}}', 0, 0, 0);",
-        seed.category_id,
-        seed.tenant_id,
-        seed.topic_id,
-        seed.tenant_id,
-        seed.category_id,
+        seed.category_id, seed.tenant_id, seed.topic_id, seed.tenant_id, seed.category_id,
     ))
     .await?;
     Ok(seed)
 }
 
-async fn assert_rejected(
-    db: &DatabaseConnection,
-    sql: String,
-    label: &str,
-) -> TestResult<()> {
+async fn assert_rejected(db: &DatabaseConnection, sql: String, label: &str) -> TestResult<()> {
     if db.execute_unprepared(&sql).await.is_ok() {
         return Err(test_error(format!("{label} must be rejected")));
     }

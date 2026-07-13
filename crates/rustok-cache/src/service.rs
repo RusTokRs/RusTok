@@ -5,11 +5,9 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, Mutex as AsyncMutex};
 
-use rustok_core::{
-    CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
-};
 #[cfg(feature = "redis-cache")]
 use rustok_core::CircuitBreakerConfig;
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
 
 pub const MAX_CACHE_INVALIDATION_CHANNEL_BYTES: usize = 256;
 pub const MAX_CACHE_INVALIDATION_KEY_BYTES: usize = 4 * 1024;
@@ -457,11 +455,7 @@ impl CacheInvalidationService {
             client.get_async_pubsub(),
         )
         .await?;
-        redis_with_timeout(
-            "Redis invalidation subscribe",
-            pubsub.subscribe(channel),
-        )
-        .await?;
+        redis_with_timeout("Redis invalidation subscribe", pubsub.subscribe(channel)).await?;
 
         ready().await;
 

@@ -36,9 +36,12 @@ mod tests {
 
     #[test]
     fn operational_index_failure_is_not_reported_as_not_found() {
-        let error: rustok_core::Error = IndexError::Index("projection write failed".to_string()).into();
+        let error: rustok_core::Error =
+            IndexError::Index("projection write failed".to_string()).into();
 
-        assert!(matches!(error, rustok_core::Error::Cache(message) if message == "projection write failed"));
+        assert!(
+            matches!(error, rustok_core::Error::Cache(message) if message == "projection write failed")
+        );
     }
 
     #[test]
@@ -49,6 +52,8 @@ mod tests {
         }
         .into();
 
-        assert!(matches!(error, rustok_core::Error::NotFound(message) if message == "product with id 42"));
+        assert!(
+            matches!(error, rustok_core::Error::NotFound(message) if message == "product with id 42")
+        );
     }
 }

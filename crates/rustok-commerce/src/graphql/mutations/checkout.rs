@@ -1,9 +1,9 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
+use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
 use rustok_cart::{
-    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
+    CartStorefrontPort, CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
 };
 use rustok_payment::PaymentService;
 use uuid::Uuid;
@@ -11,9 +11,7 @@ use uuid::Uuid;
 use crate::{CheckoutService, ShippingProfileService};
 use rustok_fulfillment::FulfillmentService;
 
-use super::super::{
-    MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*,
-};
+use super::super::{current_tenant_scope, require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;
 
 #[derive(Default)]
@@ -34,11 +32,8 @@ impl CommerceCheckoutMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let tenant_id = current_tenant_scope(
-            ctx,
-            tenant_id,
-            "Storefront payment collection creation",
-        )?;
+        let tenant_id =
+            current_tenant_scope(ctx, tenant_id, "Storefront payment collection creation")?;
         let cart_storefront_port = in_process_cart_storefront_port(db.clone());
         let cart = cart_storefront_port
             .read_storefront_cart(
@@ -411,7 +406,8 @@ impl CommerceCheckoutMutation {
             &[Permission::FULFILLMENTS_UPDATE],
             "Permission denied: fulfillments:update required",
         )?;
-        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping profile deactivation")?;
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "Shipping profile deactivation")?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let profile = ShippingProfileService::new(db.clone())
@@ -433,7 +429,8 @@ impl CommerceCheckoutMutation {
             &[Permission::FULFILLMENTS_UPDATE],
             "Permission denied: fulfillments:update required",
         )?;
-        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping profile reactivation")?;
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "Shipping profile reactivation")?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let profile = ShippingProfileService::new(db.clone())

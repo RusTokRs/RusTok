@@ -1,7 +1,5 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    prelude::*, sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter,
-};
+use sea_orm::{prelude::*, sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter};
 
 use rustok_core::generate_id;
 

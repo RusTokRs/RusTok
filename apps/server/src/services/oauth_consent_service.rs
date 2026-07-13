@@ -3,7 +3,10 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::models::{oauth_apps::Entity as OAuthApps, users::{self, Entity as Users}};
+use crate::models::{
+    oauth_apps::Entity as OAuthApps,
+    users::{self, Entity as Users},
+};
 
 use super::oauth_app::OAuthAppService;
 
@@ -30,7 +33,9 @@ impl OAuthAppService {
             .one(db)
             .await?
             .filter(|user| user.is_active())
-            .ok_or_else(|| Error::Unauthorized("OAuth consent subject is missing or inactive".to_string()))?;
+            .ok_or_else(|| {
+                Error::Unauthorized("OAuth consent subject is missing or inactive".to_string())
+            })?;
 
         if user.id != user_id {
             return Err(Error::Unauthorized(

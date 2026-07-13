@@ -93,10 +93,7 @@ impl SecretResolver for GcpSecretManagerResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
         validate_gcp_project(&self.project)?;
         validate_gcp_secret_id(key)?;
-        let name = format!(
-            "projects/{}/secrets/{key}/versions/latest",
-            self.project
-        );
+        let name = format!("projects/{}/secrets/{key}/versions/latest", self.project);
         let response = self
             .client
             .access_secret_version()
@@ -162,12 +159,9 @@ impl AzureKeyVaultResolver {
                 "Azure Key Vault endpoint must be a plain HTTPS URL",
             ));
         }
-        let client = azure_security_keyvault_secrets::SecretClient::new(
-            endpoint.as_str(),
-            credential,
-            None,
-        )
-        .map_err(azure_error)?;
+        let client =
+            azure_security_keyvault_secrets::SecretClient::new(endpoint.as_str(), credential, None)
+                .map_err(azure_error)?;
         Ok(Self { client })
     }
 }
@@ -193,9 +187,8 @@ impl SecretResolver for AzureKeyVaultResolver {
 }
 
 fn validate_aws_secret_id(value: &str) -> Result<(), SecretError> {
-    let valid = !value.trim().is_empty()
-        && value.len() <= 2048
-        && !value.chars().any(char::is_control);
+    let valid =
+        !value.trim().is_empty() && value.len() <= 2048 && !value.chars().any(char::is_control);
     if valid {
         Ok(())
     } else {
@@ -210,10 +203,12 @@ fn validate_gcp_project(value: &str) -> Result<(), SecretError> {
     let bytes = value.as_bytes();
     let valid = (6..=30).contains(&bytes.len())
         && bytes.first().is_some_and(u8::is_ascii_lowercase)
-        && bytes.last().is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-        && bytes.iter().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-'
-        });
+        && bytes
+            .last()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-');
     if valid {
         Ok(())
     } else {
@@ -278,10 +273,9 @@ mod tests {
     fn gcp_resolver_rejects_cross_project_resource_names() {
         assert!(validate_gcp_project("rustok-prod1").is_ok());
         assert!(validate_gcp_secret_id("openai-api-key").is_ok());
-        assert!(validate_gcp_secret_id(
-            "projects/other-project/secrets/key/versions/latest"
-        )
-        .is_err());
+        assert!(
+            validate_gcp_secret_id("projects/other-project/secrets/key/versions/latest").is_err()
+        );
     }
 
     #[test]

@@ -3,9 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{
-    CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
-};
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
 use tokio::sync::Mutex;
 
 const MAX_DEGRADED_WRITE_KEYS: usize = 4_096;
@@ -42,11 +40,7 @@ impl DegradedWriteTracker {
         state.insertion_order.retain(|candidate| candidate != key);
     }
 
-    async fn insert(
-        &self,
-        key: &str,
-        fallback: &InMemoryCacheBackend,
-    ) -> rustok_core::Result<()> {
+    async fn insert(&self, key: &str, fallback: &InMemoryCacheBackend) -> rustok_core::Result<()> {
         if key.len() > MAX_DEGRADED_WRITE_KEY_BYTES {
             return Err(rustok_core::Error::Cache(format!(
                 "degraded cache write key is {} bytes; maximum is {MAX_DEGRADED_WRITE_KEY_BYTES}",
@@ -107,10 +101,7 @@ pub(crate) struct DegradationAwareFallbackBackend {
 }
 
 impl DegradationAwareFallbackBackend {
-    pub(crate) fn new(
-        primary: Arc<dyn CacheBackend>,
-        fallback: Arc<InMemoryCacheBackend>,
-    ) -> Self {
+    pub(crate) fn new(primary: Arc<dyn CacheBackend>, fallback: Arc<InMemoryCacheBackend>) -> Self {
         Self {
             primary,
             fallback,
@@ -142,17 +133,13 @@ impl DegradationAwareFallbackBackend {
         }
     }
 
-    async fn mirror_primary_cas(
-        &self,
-        key: &str,
-        value: Vec<u8>,
-        ttl: Option<Duration>,
-    ) {
+    async fn mirror_primary_cas(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) {
         let result = match ttl {
-            Some(ttl) => self
-                .fallback
-                .set_with_ttl(key.to_string(), value, ttl)
-                .await,
+            Some(ttl) => {
+                self.fallback
+                    .set_with_ttl(key.to_string(), value, ttl)
+                    .await
+            }
             None => self.fallback.set(key.to_string(), value).await,
         };
         if let Err(error) = result {

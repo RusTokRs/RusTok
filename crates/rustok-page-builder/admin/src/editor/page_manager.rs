@@ -1,8 +1,6 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use fly::{
-    blank_page, normalize_slug, EditorCommand, PageCommand, PageMetadata, PagePatch,
-};
+use fly::{blank_page, normalize_slug, EditorCommand, PageCommand, PageMetadata, PagePatch};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -17,11 +15,23 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     let add_label = t(locale.as_deref(), "page_builder.action.addPage", "Add page");
     let apply_label = t(locale.as_deref(), "page_builder.action.apply", "Apply");
     let move_up_label = t(locale.as_deref(), "page_builder.action.moveUp", "Move up");
-    let move_down_label = t(locale.as_deref(), "page_builder.action.moveDown", "Move down");
+    let move_down_label = t(
+        locale.as_deref(),
+        "page_builder.action.moveDown",
+        "Move down",
+    );
     let remove_label = t(locale.as_deref(), "page_builder.action.remove", "Remove");
-    let name_label = t(locale.as_deref(), "page_builder.field.pageName", "Page name");
+    let name_label = t(
+        locale.as_deref(),
+        "page_builder.field.pageName",
+        "Page name",
+    );
     let id_label = t(locale.as_deref(), "page_builder.field.pageId", "Page id");
-    let seo_title_label = t(locale.as_deref(), "page_builder.field.seoTitle", "SEO title");
+    let seo_title_label = t(
+        locale.as_deref(),
+        "page_builder.field.seoTitle",
+        "SEO title",
+    );
     let description_label = t(
         locale.as_deref(),
         "page_builder.field.seoDescription",

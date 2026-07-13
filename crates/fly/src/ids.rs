@@ -42,7 +42,11 @@ impl IdGenerator for SequentialIdGenerator {
         let id = format!(
             "{}-{}-{}",
             self.prefix,
-            if normalized.is_empty() { "node" } else { &normalized },
+            if normalized.is_empty() {
+                "node"
+            } else {
+                &normalized
+            },
             self.next
         );
         self.next += 1;

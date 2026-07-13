@@ -65,7 +65,10 @@ impl RbacService {
         let mut seen = HashSet::new();
         let mut resolved = Vec::with_capacity(rows.len());
         for row in rows {
-            let resource = row.resource.parse::<Resource>().map_err(Error::BadRequest)?;
+            let resource = row
+                .resource
+                .parse::<Resource>()
+                .map_err(Error::BadRequest)?;
             let action = row.action.parse::<Action>().map_err(Error::BadRequest)?;
             let permission = Permission::new(resource, action);
             if seen.insert(permission) {

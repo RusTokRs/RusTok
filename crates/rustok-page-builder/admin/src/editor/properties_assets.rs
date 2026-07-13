@@ -26,7 +26,11 @@ pub fn PropertiesAssetsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 fn PropertiesSection(runtime: AdminEditorRuntime) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
-    let properties_label = t(locale.as_deref(), "page_builder.panel.properties", "Properties");
+    let properties_label = t(
+        locale.as_deref(),
+        "page_builder.panel.properties",
+        "Properties",
+    );
     let apply_label = t(locale.as_deref(), "page_builder.action.apply", "Apply");
     let clear_label = t(locale.as_deref(), "page_builder.action.clear", "Clear");
     let selected_label = t(
@@ -272,9 +276,9 @@ fn StyleSection(runtime: AdminEditorRuntime) -> impl IntoView {
     Effect::new({
         let runtime = runtime.clone();
         move |_| {
-            let selected_id = runtime.controller.with(|controller| {
-                controller.ui().state.selection.component_id.clone()
-            });
+            let selected_id = runtime
+                .controller
+                .with(|controller| controller.ui().state.selection.component_id.clone());
             if observed_selection.get_untracked() == selected_id {
                 return;
             }
@@ -357,7 +361,11 @@ fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
     let remove_label = t(locale.as_deref(), "page_builder.action.remove", "Remove");
     let select_label = t(locale.as_deref(), "page_builder.action.select", "Use");
     let asset_id_label = t(locale.as_deref(), "page_builder.field.assetId", "Asset id");
-    let asset_url_label = t(locale.as_deref(), "page_builder.field.assetUrl", "Asset URL");
+    let asset_url_label = t(
+        locale.as_deref(),
+        "page_builder.field.assetUrl",
+        "Asset URL",
+    );
     let asset_id = RwSignal::new(String::new());
     let asset_url = RwSignal::new(String::new());
     let add_runtime = runtime.clone();
@@ -488,10 +496,7 @@ fn DiagnosticsSection(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
-fn selected_patch(
-    runtime: &AdminEditorRuntime,
-    patch: ComponentPatch,
-) -> Result<UiIntent, String> {
+fn selected_patch(runtime: &AdminEditorRuntime, patch: ComponentPatch) -> Result<UiIntent, String> {
     let component_id = runtime
         .controller
         .with(|controller| controller.ui().state.selection.component_id.clone())

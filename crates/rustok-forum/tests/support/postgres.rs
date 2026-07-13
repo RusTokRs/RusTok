@@ -56,9 +56,7 @@ impl PostgresForumTestDb {
 
         if let Err(error) = migration_result {
             let _ = control
-                .execute_unprepared(&format!(
-                    r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#
-                ))
+                .execute_unprepared(&format!(r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#))
                 .await;
             return Err(error.into());
         }

@@ -43,9 +43,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
     });
 
     #[cfg(target_arch = "wasm32")]
-    let bridge_subscription = StoredValue::new_local(
-        None::<fly_leptos::IframeJsonSubscription>,
-    );
+    let bridge_subscription = StoredValue::new_local(None::<fly_leptos::IframeJsonSubscription>);
 
     let on_iframe_load = {
         let runtime = runtime.clone();
@@ -65,13 +63,9 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     move |payload, last_sequence| {
                         decode_canvas_message(payload, &decoder_instance, last_sequence)
                     },
-                    move |message| handle_canvas_message(
-                        &message_runtime,
-                        geometry,
-                        ready,
-                        pointer,
-                        message,
-                    ),
+                    move |message| {
+                        handle_canvas_message(&message_runtime, geometry, ready, pointer, message)
+                    },
                 ) {
                     Ok(subscription) => bridge_subscription.set_value(Some(subscription)),
                     Err(error) => runtime.fail(error.to_string()),
@@ -145,9 +139,7 @@ enum OverlayKind {
 fn OverlayLayer(runtime: AdminEditorRuntime, kind: OverlayKind) -> impl IntoView {
     let class = match kind {
         OverlayKind::Hovered => "border border-dashed border-blue-400",
-        OverlayKind::Selected => {
-            "border-2 border-blue-600 shadow-[0_0_0_1px_rgba(255,255,255,.8)]"
-        }
+        OverlayKind::Selected => "border-2 border-blue-600 shadow-[0_0_0_1px_rgba(255,255,255,.8)]",
         OverlayKind::Insertion => "border-[3px] border-green-600 bg-green-600/10",
     };
     view! {

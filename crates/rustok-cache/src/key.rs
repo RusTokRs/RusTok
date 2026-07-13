@@ -97,11 +97,7 @@ impl CacheKeyBuilder {
         mut self,
         additional: [String; N],
     ) -> Result<Self, CacheKeyError> {
-        let next_count = self
-            .components
-            .len()
-            .checked_add(N)
-            .unwrap_or(usize::MAX);
+        let next_count = self.components.len().checked_add(N).unwrap_or(usize::MAX);
         if next_count > MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
             return Err(CacheKeyError::TooManyDynamicComponents {
                 count: next_count,
@@ -110,9 +106,9 @@ impl CacheKeyBuilder {
         }
 
         // Every appended component also adds one separator because the fixed prefix is non-empty.
-        let added_bytes = additional.iter().try_fold(N, |total, component| {
-            total.checked_add(component.len())
-        });
+        let added_bytes = additional
+            .iter()
+            .try_fold(N, |total, component| total.checked_add(component.len()));
         let next_input_bytes = added_bytes
             .and_then(|added| self.input_bytes.checked_add(added))
             .unwrap_or(usize::MAX);
@@ -195,10 +191,7 @@ impl std::fmt::Display for CacheKeyError {
 
 impl std::error::Error for CacheKeyError {}
 
-fn validate_fixed_component(
-    name: &'static str,
-    value: String,
-) -> Result<String, CacheKeyError> {
+fn validate_fixed_component(name: &'static str, value: String) -> Result<String, CacheKeyError> {
     if value.is_empty() {
         return Err(CacheKeyError::EmptyFixedComponent { name });
     }
@@ -250,9 +243,9 @@ fn joined_len(components: &[String]) -> usize {
 }
 
 fn is_safe_component(value: &[u8]) -> bool {
-    value.iter().all(|byte| {
-        byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.')
-    })
+    value
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.'))
 }
 
 fn sha256_hex(value: &[u8]) -> String {
@@ -264,21 +257,14 @@ mod tests {
     use super::*;
 
     fn base() -> CacheKeyBuilder {
-        CacheKeyBuilder::new("rustok", "prod", "tenant-a", "catalog", "v2", "product")
-            .unwrap()
+        CacheKeyBuilder::new("rustok", "prod", "tenant-a", "catalog", "v2", "product").unwrap()
     }
 
     #[test]
     fn builds_readable_versioned_tenant_key() {
-        let key = base()
-            .named_identity("id", "product-42")
-            .unwrap()
-            .build();
+        let key = base().named_identity("id", "product-42").unwrap().build();
 
-        assert_eq!(
-            key,
-            "rustok:prod:tenant-a:catalog:v2:product:id:product-42"
-        );
+        assert_eq!(key, "rustok:prod:tenant-a:catalog:v2:product:id:product-42");
     }
 
     #[test]
@@ -303,9 +289,7 @@ mod tests {
         assert_eq!(base().identity(&oversized).unwrap_err(), expected);
         assert_eq!(base().hashed(&oversized).unwrap_err(), expected);
         assert_eq!(
-            base()
-                .named_identity("query", &oversized)
-                .unwrap_err(),
+            base().named_identity("query", &oversized).unwrap_err(),
             expected
         );
     }
@@ -348,20 +332,16 @@ mod tests {
 
     #[test]
     fn tenant_and_version_are_part_of_identity() {
-        let first = CacheKeyBuilder::new(
-            "rustok", "prod", "tenant-a", "catalog", "v1", "product",
-        )
-        .unwrap()
-        .identity("42")
-        .unwrap()
-        .build();
-        let second = CacheKeyBuilder::new(
-            "rustok", "prod", "tenant-b", "catalog", "v2", "product",
-        )
-        .unwrap()
-        .identity("42")
-        .unwrap()
-        .build();
+        let first = CacheKeyBuilder::new("rustok", "prod", "tenant-a", "catalog", "v1", "product")
+            .unwrap()
+            .identity("42")
+            .unwrap()
+            .build();
+        let second = CacheKeyBuilder::new("rustok", "prod", "tenant-b", "catalog", "v2", "product")
+            .unwrap()
+            .identity("42")
+            .unwrap()
+            .build();
 
         assert_ne!(first, second);
     }

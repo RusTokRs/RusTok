@@ -125,10 +125,7 @@ pub fn blank_page(id: impl Into<String>, name: impl Into<String>) -> ProjectPage
     }
 }
 
-pub fn apply_page_command(
-    document: &mut ProjectDocument,
-    command: &PageCommand,
-) -> FlyResult<()> {
+pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand) -> FlyResult<()> {
     match command {
         PageCommand::Add { index, page } => {
             if *index > document.project.pages.len() {
@@ -242,7 +239,9 @@ fn ensure_page_id_available(
         .pages
         .iter()
         .enumerate()
-        .any(|(index, page)| index != except_index.unwrap_or(usize::MAX) && page.id.as_deref() == Some(id))
+        .any(|(index, page)| {
+            index != except_index.unwrap_or(usize::MAX) && page.id.as_deref() == Some(id)
+        })
     {
         return Err(FlyError::DuplicatePageId(id.to_string()));
     }

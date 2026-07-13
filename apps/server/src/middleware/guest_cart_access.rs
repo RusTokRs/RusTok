@@ -21,15 +21,13 @@ pub async fn resolve(request: Request<Body>, next: Next) -> Response {
             Err(message) => return (StatusCode::UNAUTHORIZED, message).into_response(),
         };
 
-        let (mut response, issued_token) = rustok_cart::with_guest_cart_request_scope(
-            presented_token,
-            async move {
+        let (mut response, issued_token) =
+            rustok_cart::with_guest_cart_request_scope(presented_token, async move {
                 let response = next.run(request).await;
                 let issued_token = rustok_cart::issued_guest_cart_token();
                 (response, issued_token)
-            },
-        )
-        .await;
+            })
+            .await;
 
         if let Some(token) = issued_token {
             if let Ok(header_value) = HeaderValue::from_str(&token) {

@@ -111,9 +111,7 @@ impl ServerAuthAdminMutationProvider {
         if actor_role.can_manage_role(target_role) {
             Ok(())
         } else {
-            Err(forbidden(
-                "cannot modify a peer or higher-privileged user",
-            ))
+            Err(forbidden("cannot modify a peer or higher-privileged user"))
         }
     }
 }
@@ -282,7 +280,11 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         if let Some(role) = requested_role.as_ref() {
             self.ensure_role_assignment_allowed(context, role).await?;
         }
-        let requested_status = command.status.as_deref().map(parse_user_status).transpose()?;
+        let requested_status = command
+            .status
+            .as_deref()
+            .map(parse_user_status)
+            .transpose()?;
 
         let locale = context
             .locale
@@ -315,10 +317,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active.status = Set(status.clone());
         }
         if let Some(password) = command.password {
-            active.password_hash = Set(
-                hash_password(&password)
-                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?,
-            );
+            active.password_hash = Set(hash_password(&password)
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);

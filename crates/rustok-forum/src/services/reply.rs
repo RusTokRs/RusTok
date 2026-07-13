@@ -14,7 +14,6 @@ use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::dto::{
     CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
 };
@@ -24,6 +23,7 @@ use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::user_stats::UserStatsService;
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::services::{CategoryService, TopicService};
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 pub struct ReplyService {
     db: DatabaseConnection,

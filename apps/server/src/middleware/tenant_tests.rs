@@ -1,7 +1,6 @@
 #[cfg(feature = "redis-cache")]
 use super::{
-    parse_invalidation_payload, TenantInvalidationListenerState,
-    TenantInvalidationListenerStatus,
+    parse_invalidation_payload, TenantInvalidationListenerState, TenantInvalidationListenerStatus,
 };
 use super::{
     resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
@@ -40,7 +39,10 @@ fn parse_invalidation_payload_returns_both_keys() {
 #[test]
 fn parse_invalidation_payload_rejects_malformed_payload() {
     assert_eq!(parse_invalidation_payload("tenant:v2:slug:demo"), None);
-    assert_eq!(parse_invalidation_payload("|tenant-negative:v2:slug:demo"), None);
+    assert_eq!(
+        parse_invalidation_payload("|tenant-negative:v2:slug:demo"),
+        None
+    );
     assert_eq!(parse_invalidation_payload("tenant:v2:slug:demo|"), None);
 }
 
@@ -145,8 +147,8 @@ fn tenant_context_from_projection_rejects_disabled_tenant_as_forbidden() {
 
 #[test]
 fn subdomain_resolution_extracts_single_label_slug() {
-    let slug = subdomain_identifier("store.example.test", &[String::from("example.test")])
-        .expect("slug");
+    let slug =
+        subdomain_identifier("store.example.test", &[String::from("example.test")]).expect("slug");
     assert_eq!(slug, "store");
     assert_eq!(
         subdomain_identifier("example.test", &[String::from("example.test")]),

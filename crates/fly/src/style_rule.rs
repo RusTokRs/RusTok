@@ -78,9 +78,9 @@ impl StyleRuleCatalog {
         component_id: &str,
         scope: &StyleRuleScope,
     ) -> Option<&StyleRuleDescriptor> {
-        self.rules.iter().find(|rule| {
-            rule.component_id.as_deref() == Some(component_id) && rule.scope == *scope
-        })
+        self.rules
+            .iter()
+            .find(|rule| rule.component_id.as_deref() == Some(component_id) && rule.scope == *scope)
     }
 
     pub fn component_rules<'a>(
@@ -156,7 +156,9 @@ pub fn apply_style_rule_command(
             if let Some(index) = existing {
                 let object = document.project.styles[index]
                     .as_object_mut()
-                    .ok_or_else(|| FlyError::Encode("style rule must remain an object".to_string()))?;
+                    .ok_or_else(|| {
+                        FlyError::Encode("style rule must remain an object".to_string())
+                    })?;
                 let style = object
                     .entry("style".to_string())
                     .or_insert_with(|| Value::Object(Map::new()));
@@ -169,10 +171,11 @@ pub fn apply_style_rule_command(
                 style.extend(declarations.clone());
                 synchronize_rule_identity(object, component_id, scope);
             } else if !declarations.is_empty() {
-                document
-                    .project
-                    .styles
-                    .push(component_rule_value(component_id, scope, declarations.clone()));
+                document.project.styles.push(component_rule_value(
+                    component_id,
+                    scope,
+                    declarations.clone(),
+                ));
             }
             remove_empty_component_rules(document);
             Ok(())
@@ -238,10 +241,7 @@ fn synchronize_rule_identity(
             object.remove("mediaText");
         }
         StyleRuleScope::Media { query } => {
-            object.insert(
-                "atRuleType".to_string(),
-                Value::String("media".to_string()),
-            );
+            object.insert("atRuleType".to_string(), Value::String("media".to_string()));
             object.insert(
                 "mediaText".to_string(),
                 Value::String(normalize_query(query)),
@@ -264,9 +264,8 @@ fn find_component_rule_index(
 
 fn remove_empty_component_rules(document: &mut ProjectDocument) {
     document.project.styles.retain(|raw| {
-        StyleRuleDescriptor::from_value(raw.clone()).is_none_or(|rule| {
-            rule.component_id.is_none() || !rule.declarations.is_empty()
-        })
+        StyleRuleDescriptor::from_value(raw.clone())
+            .is_none_or(|rule| rule.component_id.is_none() || !rule.declarations.is_empty())
     });
 }
 
@@ -401,7 +400,10 @@ mod tests {
             },
         )
         .expect("rule");
-        assert_eq!(document.project.styles[0]["customPluginField"]["keep"], true);
+        assert_eq!(
+            document.project.styles[0]["customPluginField"]["keep"],
+            true
+        );
         assert_eq!(document.project.styles[0]["style"]["color"], "red");
         assert_eq!(document.project.styles[0]["style"]["width"], "100%");
     }

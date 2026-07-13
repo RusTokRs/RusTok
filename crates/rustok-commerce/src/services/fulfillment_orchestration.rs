@@ -309,11 +309,13 @@ impl FulfillmentOrchestrationService {
                 },
             )
             .await
-            .map_err(|source| FulfillmentOrchestrationError::ProviderAfterPersistence {
-                fulfillment_id: fulfillment.id,
-                operation: "create_label",
-                source,
-            })?;
+            .map_err(
+                |source| FulfillmentOrchestrationError::ProviderAfterPersistence {
+                    fulfillment_id: fulfillment.id,
+                    operation: "create_label",
+                    source,
+                },
+            )?;
 
         Ok(fulfillment)
     }
@@ -332,22 +334,28 @@ impl FulfillmentOrchestrationService {
             .get_fulfillment(tenant_id, fulfillment_id)
             .await?;
         if !matches!(current.status.as_str(), "pending" | "shipped") {
-            return Err(rustok_fulfillment::error::FulfillmentError::InvalidTransition {
-                from: current.status,
-                to: "shipped".to_string(),
-            }
-            .into());
+            return Err(
+                rustok_fulfillment::error::FulfillmentError::InvalidTransition {
+                    from: current.status,
+                    to: "shipped".to_string(),
+                }
+                .into(),
+            );
         }
         let provider_id = self
             .provider_id_for_fulfillment(tenant_id, &current)
             .await?;
-        let shipped_before = current.items.iter().try_fold(0_i64, |sum, item| {
-            sum.checked_add(i64::from(item.shipped_quantity))
-        }).ok_or_else(|| {
-            FulfillmentOrchestrationError::Validation(
-                "fulfillment shipped quantity aggregation overflowed".to_string(),
-            )
-        })?;
+        let shipped_before = current
+            .items
+            .iter()
+            .try_fold(0_i64, |sum, item| {
+                sum.checked_add(i64::from(item.shipped_quantity))
+            })
+            .ok_or_else(|| {
+                FulfillmentOrchestrationError::Validation(
+                    "fulfillment shipped quantity aggregation overflowed".to_string(),
+                )
+            })?;
         let provider_result = self
             .fulfillment_provider_registry
             .execute_ship(
@@ -387,11 +395,13 @@ impl FulfillmentOrchestrationService {
                 },
             )
             .await
-            .map_err(|source| FulfillmentOrchestrationError::PersistenceAfterProvider {
-                fulfillment_id,
-                operation: "ship",
-                source,
-            })
+            .map_err(
+                |source| FulfillmentOrchestrationError::PersistenceAfterProvider {
+                    fulfillment_id,
+                    operation: "ship",
+                    source,
+                },
+            )
     }
 
     pub async fn reship_fulfillment(
@@ -408,22 +418,28 @@ impl FulfillmentOrchestrationService {
             .get_fulfillment(tenant_id, fulfillment_id)
             .await?;
         if current.status != "delivered" {
-            return Err(rustok_fulfillment::error::FulfillmentError::InvalidTransition {
-                from: current.status,
-                to: "shipped".to_string(),
-            }
-            .into());
+            return Err(
+                rustok_fulfillment::error::FulfillmentError::InvalidTransition {
+                    from: current.status,
+                    to: "shipped".to_string(),
+                }
+                .into(),
+            );
         }
         let provider_id = self
             .provider_id_for_fulfillment(tenant_id, &current)
             .await?;
-        let delivered_before = current.items.iter().try_fold(0_i64, |sum, item| {
-            sum.checked_add(i64::from(item.delivered_quantity))
-        }).ok_or_else(|| {
-            FulfillmentOrchestrationError::Validation(
-                "fulfillment delivered quantity aggregation overflowed".to_string(),
-            )
-        })?;
+        let delivered_before = current
+            .items
+            .iter()
+            .try_fold(0_i64, |sum, item| {
+                sum.checked_add(i64::from(item.delivered_quantity))
+            })
+            .ok_or_else(|| {
+                FulfillmentOrchestrationError::Validation(
+                    "fulfillment delivered quantity aggregation overflowed".to_string(),
+                )
+            })?;
         let provider_result = self
             .fulfillment_provider_registry
             .execute_ship(
@@ -463,11 +479,13 @@ impl FulfillmentOrchestrationService {
                 },
             )
             .await
-            .map_err(|source| FulfillmentOrchestrationError::PersistenceAfterProvider {
-                fulfillment_id,
-                operation: "reship",
-                source,
-            })
+            .map_err(
+                |source| FulfillmentOrchestrationError::PersistenceAfterProvider {
+                    fulfillment_id,
+                    operation: "reship",
+                    source,
+                },
+            )
     }
 
     pub async fn cancel_fulfillment(
@@ -484,11 +502,13 @@ impl FulfillmentOrchestrationService {
             return Ok(current);
         }
         if current.status == "delivered" {
-            return Err(rustok_fulfillment::error::FulfillmentError::InvalidTransition {
-                from: current.status,
-                to: "cancelled".to_string(),
-            }
-            .into());
+            return Err(
+                rustok_fulfillment::error::FulfillmentError::InvalidTransition {
+                    from: current.status,
+                    to: "cancelled".to_string(),
+                }
+                .into(),
+            );
         }
         let provider_id = self
             .provider_id_for_fulfillment(tenant_id, &current)
@@ -524,11 +544,13 @@ impl FulfillmentOrchestrationService {
                 },
             )
             .await
-            .map_err(|source| FulfillmentOrchestrationError::PersistenceAfterProvider {
-                fulfillment_id,
-                operation: "cancel",
-                source,
-            })
+            .map_err(
+                |source| FulfillmentOrchestrationError::PersistenceAfterProvider {
+                    fulfillment_id,
+                    operation: "cancel",
+                    source,
+                },
+            )
     }
 
     async fn provider_id_for_fulfillment(

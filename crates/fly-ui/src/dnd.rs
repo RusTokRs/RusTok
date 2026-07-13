@@ -24,8 +24,13 @@ pub struct HitTestCandidate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DragSource {
-    ExistingComponent { component_id: String },
-    PaletteBlock { block_id: String, component: ComponentNode },
+    ExistingComponent {
+        component_id: String,
+    },
+    PaletteBlock {
+        block_id: String,
+        component: ComponentNode,
+    },
     ClipboardFragment,
 }
 

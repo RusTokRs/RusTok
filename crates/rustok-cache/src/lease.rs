@@ -267,15 +267,29 @@ pub enum CacheLeaseError {
     EmptyScope,
     InvalidScope(String),
     EmptyCacheKey,
-    CacheKeyTooLarge { length: usize, maximum: usize },
+    CacheKeyTooLarge {
+        length: usize,
+        maximum: usize,
+    },
     ZeroTtl,
-    TtlTooLarge { maximum_seconds: u64 },
+    TtlTooLarge {
+        maximum_seconds: u64,
+    },
     ZeroOperationTimeout,
-    OperationTimeoutNotLessThanTtl { timeout_ms: u128, ttl_ms: u128 },
+    OperationTimeoutNotLessThanTtl {
+        timeout_ms: u128,
+        ttl_ms: u128,
+    },
     DeadlineOverflow,
     ExpiredBeforeConfirmation,
-    Timeout { operation: &'static str, millis: u128 },
-    Redis { operation: &'static str, message: String },
+    Timeout {
+        operation: &'static str,
+        millis: u128,
+    },
+    Redis {
+        operation: &'static str,
+        message: String,
+    },
 }
 
 impl std::fmt::Display for CacheLeaseError {
@@ -298,7 +312,10 @@ impl std::fmt::Display for CacheLeaseError {
                 "cache lease TTL exceeds maximum {maximum_seconds} seconds"
             ),
             Self::ZeroOperationTimeout => {
-                write!(formatter, "cache lease operation timeout must be greater than zero")
+                write!(
+                    formatter,
+                    "cache lease operation timeout must be greater than zero"
+                )
             }
             Self::OperationTimeoutNotLessThanTtl { timeout_ms, ttl_ms } => write!(
                 formatter,
@@ -434,8 +451,7 @@ mod tests {
             CacheLeaseError::ZeroOperationTimeout
         );
         assert_eq!(
-            CacheLeaseOptions::new(Duration::from_secs(301), Duration::from_secs(1))
-                .unwrap_err(),
+            CacheLeaseOptions::new(Duration::from_secs(301), Duration::from_secs(1)).unwrap_err(),
             CacheLeaseError::TtlTooLarge {
                 maximum_seconds: 300,
             }
@@ -452,7 +468,10 @@ mod tests {
 
     #[test]
     fn validates_source_cache_key_before_hashing() {
-        assert_eq!(lease_key("catalog", "   ").unwrap_err(), CacheLeaseError::EmptyCacheKey);
+        assert_eq!(
+            lease_key("catalog", "   ").unwrap_err(),
+            CacheLeaseError::EmptyCacheKey
+        );
         assert!(matches!(
             lease_key("catalog", &"k".repeat(MAX_LEASE_CACHE_KEY_BYTES + 1)).unwrap_err(),
             CacheLeaseError::CacheKeyTooLarge { .. }
@@ -469,11 +488,7 @@ mod tests {
     async fn acquisition_reports_unconfigured_redis_before_io() {
         let service = CacheService::from_url(Some("not-a-valid-redis-url"));
         let error = service
-            .try_acquire_distributed_lease(
-                "catalog",
-                "key",
-                CacheLeaseOptions::default(),
-            )
+            .try_acquire_distributed_lease("catalog", "key", CacheLeaseOptions::default())
             .await
             .unwrap_err();
         assert_eq!(error, CacheLeaseError::RedisNotConfigured);

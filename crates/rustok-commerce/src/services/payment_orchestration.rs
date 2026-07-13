@@ -98,8 +98,7 @@ impl PaymentOrchestrationService {
                 {
                     if matches!(
                         operation.status.as_str(),
-                        PROVIDER_OPERATION_SUCCEEDED
-                            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                        PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
                     ) {
                         mark_journal_committed(
                             &self.provider_operation_journal,
@@ -162,9 +161,7 @@ impl PaymentOrchestrationService {
                 collection_id,
                 AuthorizePaymentInput {
                     provider_id: Some(provider_result.provider_id),
-                    provider_payment_id: provider_result
-                        .external_reference
-                        .or(provider_payment_id),
+                    provider_payment_id: provider_result.external_reference.or(provider_payment_id),
                     amount: Some(provider_result.authorized_amount),
                     metadata: merge_provider_context(metadata, provider_result.metadata),
                 },
@@ -219,8 +216,7 @@ impl PaymentOrchestrationService {
                 {
                     if matches!(
                         operation.status.as_str(),
-                        PROVIDER_OPERATION_SUCCEEDED
-                            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                        PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
                     ) {
                         mark_journal_committed(
                             &self.provider_operation_journal,
@@ -330,8 +326,7 @@ impl PaymentOrchestrationService {
                 {
                     if matches!(
                         operation.status.as_str(),
-                        PROVIDER_OPERATION_SUCCEEDED
-                            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                        PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
                     ) {
                         mark_journal_committed(
                             &self.provider_operation_journal,
@@ -587,11 +582,7 @@ impl PaymentOrchestrationService {
     }
 }
 
-fn reconciliation_error(
-    operation_id: Uuid,
-    stage: &str,
-    source: PaymentError,
-) -> PaymentError {
+fn reconciliation_error(operation_id: Uuid, stage: &str, source: PaymentError) -> PaymentError {
     PaymentError::Validation(format!(
         "provider side effect succeeded, but failed to {stage} for operation {operation_id}: {source}"
     ))

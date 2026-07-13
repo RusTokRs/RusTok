@@ -123,10 +123,7 @@ pub struct CanvasRect {
 
 impl CanvasRect {
     pub fn contains(self, x: f64, y: f64) -> bool {
-        x >= self.x
-            && y >= self.y
-            && x <= self.x + self.width
-            && y <= self.y + self.height
+        x >= self.x && y >= self.y && x <= self.x + self.width && y <= self.y + self.height
     }
 }
 

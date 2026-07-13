@@ -270,33 +270,20 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             .await
             .map_err(storage_unavailable)?
         {
-            let snapshot = existing_reservation_snapshot(
-                &txn,
-                &variant,
-                &inventory_item,
-                existing,
-                &request,
-            )
-            .await?;
+            let snapshot =
+                existing_reservation_snapshot(&txn, &variant, &inventory_item, existing, &request)
+                    .await?;
             txn.commit().await.map_err(storage_unavailable)?;
             return Ok(snapshot);
         }
 
-        if let Some(existing) = find_reservation_by_external_id(
-            &txn,
-            inventory_item.id,
-            request.external_id.as_str(),
-        )
-        .await?
+        if let Some(existing) =
+            find_reservation_by_external_id(&txn, inventory_item.id, request.external_id.as_str())
+                .await?
         {
-            let snapshot = existing_reservation_snapshot(
-                &txn,
-                &variant,
-                &inventory_item,
-                existing,
-                &request,
-            )
-            .await?;
+            let snapshot =
+                existing_reservation_snapshot(&txn, &variant, &inventory_item, existing, &request)
+                    .await?;
             txn.commit().await.map_err(storage_unavailable)?;
             return Ok(snapshot);
         }
@@ -332,7 +319,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                     inventory_level::Column::ReservedQuantity,
                     Expr::col(inventory_level::Column::ReservedQuantity).add(request.quantity),
                 )
-                .col_expr(inventory_level::Column::UpdatedAt, Expr::current_timestamp())
+                .col_expr(
+                    inventory_level::Column::UpdatedAt,
+                    Expr::current_timestamp(),
+                )
                 .filter(inventory_level::Column::Id.eq(level.id));
             if !allows_backorder {
                 update = update.filter(
@@ -392,12 +382,14 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 .map_err(storage_unavailable)?
             {
                 Some(existing) => Some(existing),
-                None => find_reservation_by_external_id(
-                    &self.db,
-                    inventory_item.id,
-                    request.external_id.as_str(),
-                )
-                .await?,
+                None => {
+                    find_reservation_by_external_id(
+                        &self.db,
+                        inventory_item.id,
+                        request.external_id.as_str(),
+                    )
+                    .await?
+                }
             };
             if let Some(existing) = existing {
                 return existing_reservation_snapshot(
@@ -501,7 +493,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 inventory_level::Column::ReservedQuantity,
                 Expr::col(inventory_level::Column::ReservedQuantity).sub(released_quantity),
             )
-            .col_expr(inventory_level::Column::UpdatedAt, Expr::current_timestamp())
+            .col_expr(
+                inventory_level::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
             .filter(inventory_level::Column::InventoryItemId.eq(item.id))
             .filter(inventory_level::Column::LocationId.eq(reservation.location_id))
             .filter(inventory_level::Column::ReservedQuantity.gte(released_quantity))
@@ -518,7 +513,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let mut metadata = reservation.metadata.clone();
         if let Value::Object(object) = &mut metadata {
             object.insert("inventory_disposition".to_string(), Value::from("released"));
-            object.insert("released_at".to_string(), Value::from(Utc::now().to_rfc3339()));
+            object.insert(
+                "released_at".to_string(),
+                Value::from(Utc::now().to_rfc3339()),
+            );
         }
         let mut active: reservation_item::ActiveModel = reservation.clone().into();
         active.quantity = Set(0);
@@ -569,10 +567,8 @@ async fn load_inventory_item_for_update<C>(
 where
     C: ConnectionTrait,
 {
-    let query = || {
-        inventory_item::Entity::find()
-            .filter(inventory_item::Column::VariantId.eq(variant_id))
-    };
+    let query =
+        || inventory_item::Entity::find().filter(inventory_item::Column::VariantId.eq(variant_id));
     match conn.get_database_backend() {
         DbBackend::Sqlite => query().one(conn).await.map_err(storage_unavailable),
         DbBackend::Postgres | DbBackend::MySql => query()
@@ -663,19 +659,19 @@ where
         .await
         .map_err(storage_unavailable)?;
     levels.into_iter().try_fold(0_i32, |total, level| {
-        total
-            .checked_add(level_available(&level))
-            .ok_or_else(|| {
-                PortError::invariant_violation(
-                    "inventory.available_quantity_overflow",
-                    "inventory available quantity is outside the supported range",
-                )
-            })
+        total.checked_add(level_available(&level)).ok_or_else(|| {
+            PortError::invariant_violation(
+                "inventory.available_quantity_overflow",
+                "inventory available quantity is outside the supported range",
+            )
+        })
     })
 }
 
 fn level_available(level: &inventory_level::Model) -> i32 {
-    level.stocked_quantity.saturating_sub(level.reserved_quantity)
+    level
+        .stocked_quantity
+        .saturating_sub(level.reserved_quantity)
 }
 
 fn reservation_metadata(
@@ -689,9 +685,15 @@ fn reservation_metadata(
         _ => serde_json::Map::new(),
     };
     object.insert("source".to_string(), Value::from("inventory_identity_port"));
-    object.insert("reservation_id".to_string(), Value::from(reservation_id.to_string()));
+    object.insert(
+        "reservation_id".to_string(),
+        Value::from(reservation_id.to_string()),
+    );
     object.insert("external_id".to_string(), Value::from(external_id));
-    object.insert("variant_id".to_string(), Value::from(variant_id.to_string()));
+    object.insert(
+        "variant_id".to_string(),
+        Value::from(variant_id.to_string()),
+    );
     Value::Object(object)
 }
 
@@ -765,7 +767,10 @@ mod tests {
 
     #[test]
     fn reservation_external_id_is_trimmed_and_bounded() {
-        assert_eq!(normalize_external_id("  checkout:1  ".to_string()).unwrap(), "checkout:1");
+        assert_eq!(
+            normalize_external_id("  checkout:1  ".to_string()).unwrap(),
+            "checkout:1"
+        );
         assert!(normalize_external_id(String::new()).is_err());
         assert!(normalize_external_id("x".repeat(MAX_RESERVATION_EXTERNAL_ID_LENGTH + 1)).is_err());
     }

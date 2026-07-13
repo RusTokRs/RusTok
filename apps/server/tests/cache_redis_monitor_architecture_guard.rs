@@ -17,7 +17,9 @@ fn source(relative: &str) -> String {
 #[test]
 fn monitor_probes_immediately_and_refreshes_on_a_bounded_interval() {
     let monitor = source("apps/server/src/services/cache_redis_status_monitor.rs");
-    assert!(monitor.contains("const CACHE_REDIS_STATUS_INTERVAL: Duration = Duration::from_secs(10)"));
+    assert!(
+        monitor.contains("const CACHE_REDIS_STATUS_INTERVAL: Duration = Duration::from_secs(10)")
+    );
     assert!(monitor.contains("let initial = cache.redis_status().await"));
     assert!(monitor.contains("tokio::time::interval(CACHE_REDIS_STATUS_INTERVAL)"));
     assert!(monitor.contains("let current = cache.redis_status().await"));

@@ -3,7 +3,9 @@ use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-use rustok_api::{normalize_locale_tag, PortActor, PortContext, PortError, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{
+    normalize_locale_tag, PortActor, PortContext, PortError, PLATFORM_FALLBACK_LOCALE,
+};
 use rustok_cart::{
     in_process_cart_checkout_snapshot_port, AtomicCartCheckoutHandle, CartCheckoutSnapshotPort,
     PrepareCartCheckoutSnapshotRequest,
@@ -80,7 +82,8 @@ impl JournaledCheckoutService {
             if handle.cart_id() != input.cart_id {
                 return Err(CheckoutOperationError::Validation(format!(
                     "atomic cart checkout is bound to cart {}, not {}",
-                    handle.cart_id(), input.cart_id
+                    handle.cart_id(),
+                    input.cart_id
                 ))
                 .into());
             }
@@ -165,26 +168,20 @@ impl JournaledCheckoutService {
         if let Some(handle) = &self.atomic_cart_checkout {
             match claimed.stage.as_str() {
                 stage if stage == CheckoutOperationStage::Created.as_str() => {
-                    let prepared = match handle
-                        .prepare(tenant_id, claimed.attempt_count > 1)
-                        .await
+                    let prepared = match handle.prepare(tenant_id, claimed.attempt_count > 1).await
                     {
                         Ok(prepared) => prepared,
                         Err(error) => {
-                            let checkout_error = checkout_port_error(
-                                "prepare_atomic_cart_checkout",
-                                error,
-                            );
-                            return Err(
-                                persist_checkout_failure(
-                                    &self.journal,
-                                    tenant_id,
-                                    claimed.id,
-                                    lease_owner,
-                                    checkout_error,
-                                )
-                                .await,
-                            );
+                            let checkout_error =
+                                checkout_port_error("prepare_atomic_cart_checkout", error);
+                            return Err(persist_checkout_failure(
+                                &self.journal,
+                                tenant_id,
+                                claimed.id,
+                                lease_owner,
+                                checkout_error,
+                            )
+                            .await);
                         }
                     };
                     claimed = self
@@ -206,38 +203,30 @@ impl JournaledCheckoutService {
                     let prepared = match handle.prepare(tenant_id, true).await {
                         Ok(prepared) => prepared,
                         Err(error) => {
-                            let checkout_error = checkout_port_error(
-                                "resume_atomic_cart_checkout",
-                                error,
-                            );
-                            return Err(
-                                persist_checkout_failure(
-                                    &self.journal,
-                                    tenant_id,
-                                    claimed.id,
-                                    lease_owner,
-                                    checkout_error,
-                                )
-                                .await,
-                            );
-                        }
-                    };
-                    if claimed.snapshot_hash.as_deref()
-                        != Some(prepared.snapshot_hash.as_str())
-                    {
-                        let checkout_error = CheckoutError::Validation(
-                            "prepared cart snapshot changed after checkout lock".to_string(),
-                        );
-                        return Err(
-                            persist_checkout_failure(
+                            let checkout_error =
+                                checkout_port_error("resume_atomic_cart_checkout", error);
+                            return Err(persist_checkout_failure(
                                 &self.journal,
                                 tenant_id,
                                 claimed.id,
                                 lease_owner,
                                 checkout_error,
                             )
-                            .await,
+                            .await);
+                        }
+                    };
+                    if claimed.snapshot_hash.as_deref() != Some(prepared.snapshot_hash.as_str()) {
+                        let checkout_error = CheckoutError::Validation(
+                            "prepared cart snapshot changed after checkout lock".to_string(),
                         );
+                        return Err(persist_checkout_failure(
+                            &self.journal,
+                            tenant_id,
+                            claimed.id,
+                            lease_owner,
+                            checkout_error,
+                        )
+                        .await);
                     }
                 }
                 stage if stage == CheckoutOperationStage::CartCompleted.as_str() => {}
@@ -303,16 +292,14 @@ impl JournaledCheckoutService {
                     .await?;
                 Ok(response)
             }
-            Err(checkout_error) => Err(
-                persist_checkout_failure(
-                    &self.journal,
-                    tenant_id,
-                    claimed.id,
-                    lease_owner,
-                    checkout_error,
-                )
-                .await,
-            ),
+            Err(checkout_error) => Err(persist_checkout_failure(
+                &self.journal,
+                tenant_id,
+                claimed.id,
+                lease_owner,
+                checkout_error,
+            )
+            .await),
         }
     }
 
@@ -518,9 +505,9 @@ fn canonicalize_json(value: serde_json::Value) -> serde_json::Value {
                 .collect::<std::collections::BTreeMap<_, _>>();
             serde_json::Value::Object(ordered.into_iter().collect())
         }
-        serde_json::Value::Array(values) => serde_json::Value::Array(
-            values.into_iter().map(canonicalize_json).collect(),
-        ),
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.into_iter().map(canonicalize_json).collect())
+        }
         value => value,
     }
 }
@@ -538,8 +525,14 @@ mod tests {
 
     #[test]
     fn side_effect_stage_classification_is_fail_closed() {
-        assert!(stage_has_external_or_persisted_side_effects("capture_payment"));
-        assert!(stage_has_external_or_persisted_side_effects("mark_order_paid"));
-        assert!(!stage_has_external_or_persisted_side_effects("resolve_context"));
+        assert!(stage_has_external_or_persisted_side_effects(
+            "capture_payment"
+        ));
+        assert!(stage_has_external_or_persisted_side_effects(
+            "mark_order_paid"
+        ));
+        assert!(!stage_has_external_or_persisted_side_effects(
+            "resolve_context"
+        ));
     }
 }

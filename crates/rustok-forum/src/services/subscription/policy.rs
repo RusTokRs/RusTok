@@ -1,16 +1,13 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_core::SecurityContext;
 
-use crate::dto::{
-    ForumSubscriptionPolicyResponse, UpdateForumSubscriptionPolicyInput,
-};
+use crate::dto::{ForumSubscriptionPolicyResponse, UpdateForumSubscriptionPolicyInput};
 use crate::entities::forum_subscription_policy;
 use crate::error::{ForumError, ForumResult};
 
@@ -31,7 +28,9 @@ impl SubscriptionService {
         let model = forum_subscription_policy::Entity::find_by_id(tenant_id)
             .one(&self.db)
             .await?;
-        Ok(model.map(policy_response).unwrap_or_else(|| default_policy(tenant_id)))
+        Ok(model
+            .map(policy_response)
+            .unwrap_or_else(|| default_policy(tenant_id)))
     }
 
     #[instrument(skip(self, security, input))]
@@ -60,7 +59,7 @@ impl SubscriptionService {
                         auto_subscribe_topic_authors: Set(input.auto_subscribe_topic_authors),
                         topic_author_level: Set(input.topic_author_level),
                         auto_subscribe_reply_participants: Set(
-                            input.auto_subscribe_reply_participants,
+                            input.auto_subscribe_reply_participants
                         ),
                         reply_participant_level: Set(input.reply_participant_level),
                         revision: Set(next_revision),
@@ -73,9 +72,11 @@ impl SubscriptionService {
                 forum_subscription_policy::Entity::find_by_id(tenant_id)
                     .one(&txn)
                     .await?
-                    .ok_or_else(|| ForumError::Validation(
-                        "Forum subscription policy disappeared during update".to_string(),
-                    ))?
+                    .ok_or_else(|| {
+                        ForumError::Validation(
+                            "Forum subscription policy disappeared during update".to_string(),
+                        )
+                    })?
             }
             None => {
                 validate_new_revision(input.expected_revision)?;
@@ -83,9 +84,7 @@ impl SubscriptionService {
                     tenant_id: Set(tenant_id),
                     auto_subscribe_topic_authors: Set(input.auto_subscribe_topic_authors),
                     topic_author_level: Set(input.topic_author_level),
-                    auto_subscribe_reply_participants: Set(
-                        input.auto_subscribe_reply_participants,
-                    ),
+                    auto_subscribe_reply_participants: Set(input.auto_subscribe_reply_participants),
                     reply_participant_level: Set(input.reply_participant_level),
                     revision: Set(INITIAL_REVISION),
                     created_at: Set(now.into()),

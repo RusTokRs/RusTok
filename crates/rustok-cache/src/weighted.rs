@@ -3,14 +3,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{
-    CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
-};
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
 
 use crate::fallback::DegradationAwareFallbackBackend;
-use crate::{CacheBackendOptions, CacheService};
 #[cfg(feature = "redis-cache")]
 use crate::shared_backend::SharedClientRedisCacheBackend;
+use crate::{CacheBackendOptions, CacheService};
 
 impl CacheService {
     /// Create a backend whose in-process capacity is measured in bytes rather than entries.

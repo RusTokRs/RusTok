@@ -8,19 +8,17 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::atomic_checkout_port::{
-    CartCheckoutLineItemPricingUpdate, CartCheckoutPricingPlan,
-};
+use crate::atomic_checkout_port::{CartCheckoutLineItemPricingUpdate, CartCheckoutPricingPlan};
 use crate::checkout_snapshot::PrepareCartCheckoutSnapshotRequest;
 use crate::dto::{CartResponse, CartStatus, UpdateCartContextInput};
 use crate::entities;
 use crate::error::{CartError, CartResult};
 
-use super::CartService;
 use super::helpers::{
     apply_shipping_selection_patch, load_cart_in_tx, normalize_country_code, normalize_locale_code,
     recalculate_totals, replace_pricing_adjustments,
 };
+use super::CartService;
 
 const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";
 
@@ -171,12 +169,7 @@ impl CartService {
         }
 
         let prepared_cart = load_cart_in_tx(&txn, tenant_id, cart.id).await?;
-        recalculate_totals(
-            &txn,
-            self.tax_calculation_port.as_ref(),
-            prepared_cart,
-        )
-        .await?;
+        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), prepared_cart).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart.id).await
     }
@@ -213,10 +206,7 @@ impl CartService {
             .collect::<Vec<_>>();
 
         let result = entities::cart::Entity::update_many()
-            .col_expr(
-                entities::cart::Column::Status,
-                Expr::value(target.as_str()),
-            )
+            .col_expr(entities::cart::Column::Status, Expr::value(target.as_str()))
             .col_expr(entities::cart::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 entities::cart::Column::CompletedAt,
@@ -303,12 +293,7 @@ async fn apply_checkout_pricing_plan(
                 line_item.id
             )));
         };
-        validate_checkout_line_pricing(
-            line_item,
-            variant_id,
-            expected_currency.as_str(),
-            &update,
-        )?;
+        validate_checkout_line_pricing(line_item, variant_id, expected_currency.as_str(), &update)?;
 
         let mut active: entities::cart_line_item::ActiveModel = line_item.clone().into();
         active.unit_price = Set(update.unit_price);

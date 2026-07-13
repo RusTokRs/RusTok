@@ -53,7 +53,10 @@ fn exact_redis_gauges_use_the_shared_telemetry_registry() {
         "rustok_cache_redis_connectivity_healthy",
         "rustok_cache_redis_degraded",
     ] {
-        assert!(status.contains(metric), "missing exact Redis gauge {metric}");
+        assert!(
+            status.contains(metric),
+            "missing exact Redis gauge {metric}"
+        );
     }
     assert!(status.contains("rustok_telemetry::register_runtime_collector"));
     assert!(telemetry.contains("pub fn register_runtime_collector"));

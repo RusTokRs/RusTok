@@ -3,9 +3,7 @@ use fly::{ProjectHash, TraitSchemaRegistry};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_page_builder::dto::{
-    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
-};
+use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PageBuilderCapabilityResponse};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -46,10 +44,13 @@ impl AdminEditorRuntime {
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
-        let result = self.controller.try_update(|controller| controller.dispatch(intent));
+        let result = self
+            .controller
+            .try_update(|controller| controller.dispatch(intent));
         let Some(result) = result else {
-            self.last_error
-                .set(Some("Page Builder controller is no longer available".to_string()));
+            self.last_error.set(Some(
+                "Page Builder controller is no longer available".to_string(),
+            ));
             return;
         };
         match result {

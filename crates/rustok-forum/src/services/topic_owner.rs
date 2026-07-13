@@ -2,8 +2,8 @@ use std::ops::Deref;
 
 use flex::delete_attached_localized_values;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter,
-    TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;

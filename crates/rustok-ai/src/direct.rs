@@ -1054,35 +1054,35 @@ async fn generate_blog_draft(
     let generated: GeneratedBlogDraft = complete_typed(
         provider,
         ProviderChatRequest {
-                model: provider_config.model.clone(),
-                messages: vec![
-                    ChatMessage {
-                        role: ChatMessageRole::System,
-                        content: Some(system),
-                        name: None,
-                        tool_call_id: None,
-                        tool_calls: Vec::new(),
-                        metadata: json!({
-                            "locale": target_locale,
-                            "direct_generation": "blog_draft",
-                        }),
-                    },
-                    ChatMessage {
-                        role: ChatMessageRole::User,
-                        content: Some(prompt),
-                        name: None,
-                        tool_call_id: None,
-                        tool_calls: Vec::new(),
-                        metadata: json!({
-                            "locale": target_locale,
-                            "direct_generation": "blog_draft",
-                        }),
-                    },
-                ],
-                tools: Vec::new(),
-                temperature: provider_config.temperature,
-                max_tokens: provider_config.max_tokens,
-                locale: Some(target_locale.to_string()),
+            model: provider_config.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: ChatMessageRole::System,
+                    content: Some(system),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({
+                        "locale": target_locale,
+                        "direct_generation": "blog_draft",
+                    }),
+                },
+                ChatMessage {
+                    role: ChatMessageRole::User,
+                    content: Some(prompt),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({
+                        "locale": target_locale,
+                        "direct_generation": "blog_draft",
+                    }),
+                },
+            ],
+            tools: Vec::new(),
+            temperature: provider_config.temperature,
+            max_tokens: provider_config.max_tokens,
+            locale: Some(target_locale.to_string()),
         },
     )
     .await?;
@@ -1132,35 +1132,35 @@ pub(crate) async fn generate_content_moderation(
     let decision: GeneratedModerationDecision = complete_typed(
         provider,
         ProviderChatRequest {
-                model: provider_config.model.clone(),
-                messages: vec![
-                    ChatMessage {
-                        role: ChatMessageRole::System,
-                        content: Some(system),
-                        name: None,
-                        tool_call_id: None,
-                        tool_calls: Vec::new(),
-                        metadata: json!({
-                            "locale": target_locale,
-                            "direct_generation": "content_moderation",
-                        }),
-                    },
-                    ChatMessage {
-                        role: ChatMessageRole::User,
-                        content: Some(prompt),
-                        name: None,
-                        tool_call_id: None,
-                        tool_calls: Vec::new(),
-                        metadata: json!({
-                            "locale": target_locale,
-                            "direct_generation": "content_moderation",
-                        }),
-                    },
-                ],
-                tools: Vec::new(),
-                temperature: provider_config.temperature,
-                max_tokens: provider_config.max_tokens,
-                locale: Some(target_locale.to_string()),
+            model: provider_config.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: ChatMessageRole::System,
+                    content: Some(system),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({
+                        "locale": target_locale,
+                        "direct_generation": "content_moderation",
+                    }),
+                },
+                ChatMessage {
+                    role: ChatMessageRole::User,
+                    content: Some(prompt),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({
+                        "locale": target_locale,
+                        "direct_generation": "content_moderation",
+                    }),
+                },
+            ],
+            tools: Vec::new(),
+            temperature: provider_config.temperature,
+            max_tokens: provider_config.max_tokens,
+            locale: Some(target_locale.to_string()),
         },
     )
     .await?;
@@ -1275,35 +1275,35 @@ async fn generate_product_copy(
     let generated: GeneratedProductCopy = complete_typed(
         provider,
         ProviderChatRequest {
-                model: provider_config.model.clone(),
-                messages: vec![
-                    ChatMessage {
-                        role: ChatMessageRole::System,
-                        content: Some(system),
-                        name: None,
-                        tool_call_id: None,
-                        tool_calls: Vec::new(),
-                        metadata: json!({
-                            "locale": target_locale,
-                            "direct_generation": "product_copy",
-                        }),
-                    },
-                    ChatMessage {
-                        role: ChatMessageRole::User,
-                        content: Some(prompt),
-                        name: None,
-                        tool_call_id: None,
-                        tool_calls: Vec::new(),
-                        metadata: json!({
-                            "locale": target_locale,
-                            "direct_generation": "product_copy",
-                        }),
-                    },
-                ],
-                tools: Vec::new(),
-                temperature: provider_config.temperature,
-                max_tokens: provider_config.max_tokens,
-                locale: Some(target_locale.to_string()),
+            model: provider_config.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: ChatMessageRole::System,
+                    content: Some(system),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({
+                        "locale": target_locale,
+                        "direct_generation": "product_copy",
+                    }),
+                },
+                ChatMessage {
+                    role: ChatMessageRole::User,
+                    content: Some(prompt),
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: Vec::new(),
+                    metadata: json!({
+                        "locale": target_locale,
+                        "direct_generation": "product_copy",
+                    }),
+                },
+            ],
+            tools: Vec::new(),
+            temperature: provider_config.temperature,
+            max_tokens: provider_config.max_tokens,
+            locale: Some(target_locale.to_string()),
         },
     )
     .await?;

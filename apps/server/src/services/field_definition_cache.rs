@@ -80,10 +80,7 @@ impl FieldDefinitionCache {
     }
 }
 
-fn field_definition_entry_weight(
-    key: &(Uuid, String),
-    rows: &Vec<FieldDefinitionView>,
-) -> u32 {
+fn field_definition_entry_weight(key: &(Uuid, String), rows: &Vec<FieldDefinitionView>) -> u32 {
     let mut weight = std::mem::size_of::<Uuid>()
         .saturating_add(key.1.len())
         .saturating_add(std::mem::size_of::<Vec<FieldDefinitionView>>());

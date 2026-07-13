@@ -55,10 +55,7 @@ impl PaidOrderCreateLabelSweepService {
                 PROVIDER_OPERATION_PENDING.to_string(),
                 PROVIDER_OPERATION_ERROR.to_string(),
             ]))
-            .filter(
-                provider_operation::Column::FulfillmentId
-                    .in_subquery(paid_fulfillment_ids),
-            )
+            .filter(provider_operation::Column::FulfillmentId.in_subquery(paid_fulfillment_ids))
             .order_by_asc(provider_operation::Column::CreatedAt)
             .limit(limit.clamp(1, 500))
             .all(&self.db)

@@ -202,12 +202,12 @@ fn reply_input(content: &str) -> CreateReplyInput {
     }
 }
 
-async fn scalar_i64(
-    db: &sea_orm::DatabaseConnection,
-    sql: impl Into<String>,
-) -> TestResult<i64> {
+async fn scalar_i64(db: &sea_orm::DatabaseConnection, sql: impl Into<String>) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql.into()))
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            sql.into(),
+        ))
         .await?
         .ok_or_else(|| test_error("scalar query returned no row"))?;
     Ok(row.try_get("", "value")?)

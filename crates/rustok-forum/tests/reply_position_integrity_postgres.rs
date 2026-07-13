@@ -42,10 +42,7 @@ async fn postgres_allocates_unique_contiguous_reply_positions() -> TestResult<()
                  VALUES
                     ('{first_reply_id}', '{}', '{}', 'approved', 777),
                     ('{second_reply_id}', '{}', '{}', 'approved', 777)",
-                direct.tenant_id,
-                direct.topic_id,
-                direct.tenant_id,
-                direct.topic_id,
+                direct.tenant_id, direct.topic_id, direct.tenant_id, direct.topic_id,
             ),
         )
         .await?;
@@ -114,11 +111,7 @@ async fn seed_forum(db: &sea_orm::DatabaseConnection) -> TestResult<ForumSeed> {
                 (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
              VALUES
                 ('{}', '{}', '{}', 'open', '{{}}', FALSE, FALSE, 0);",
-            seed.category_id,
-            seed.tenant_id,
-            seed.topic_id,
-            seed.tenant_id,
-            seed.category_id,
+            seed.category_id, seed.tenant_id, seed.topic_id, seed.tenant_id, seed.category_id,
         ),
     )
     .await?;

@@ -452,7 +452,9 @@ mod tests {
     }
 
     async fn database() -> DatabaseConnection {
-        let db = Database::connect("sqlite::memory:").await.expect("database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
         SysEventsMigration
             .up(&SchemaManager::new(&db))
             .await

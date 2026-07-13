@@ -33,8 +33,12 @@ impl std::fmt::Display for BrowserRuntimeError {
             Self::InvalidElementType(id) => {
                 write!(formatter, "browser element `{id}` is not an iframe")
             }
-            Self::MissingContentWindow => formatter.write_str("iframe content window is unavailable"),
-            Self::Serialization(message) => write!(formatter, "iframe message serialization failed: {message}"),
+            Self::MissingContentWindow => {
+                formatter.write_str("iframe content window is unavailable")
+            }
+            Self::Serialization(message) => {
+                write!(formatter, "iframe message serialization failed: {message}")
+            }
             Self::Browser(message) => write!(formatter, "browser operation failed: {message}"),
         }
     }
@@ -43,11 +47,7 @@ impl std::fmt::Display for BrowserRuntimeError {
 impl std::error::Error for BrowserRuntimeError {}
 
 fn browser_error(value: JsValue) -> BrowserRuntimeError {
-    BrowserRuntimeError::Browser(
-        value
-            .as_string()
-            .unwrap_or_else(|| format!("{value:?}")),
-    )
+    BrowserRuntimeError::Browser(value.as_string().unwrap_or_else(|| format!("{value:?}")))
 }
 
 fn validate_origin(origin: impl Into<String>) -> Result<String, BrowserRuntimeError> {
@@ -129,7 +129,8 @@ impl ResizeObserverHandle {
                 .collect::<Vec<_>>();
             handler(rectangles);
         }) as Box<dyn FnMut(Array, ResizeObserver)>);
-        let observer = ResizeObserver::new(callback.as_ref().unchecked_ref()).map_err(browser_error)?;
+        let observer =
+            ResizeObserver::new(callback.as_ref().unchecked_ref()).map_err(browser_error)?;
         observer.observe(element);
         Ok(Self {
             observer,
@@ -166,30 +167,31 @@ impl WindowMessageSubscription {
         let last_sequence = Rc::new(Cell::new(None));
         let callback_sequence = Rc::clone(&last_sequence);
         let target: EventTarget = window.clone().unchecked_into();
-        let listener = EventListenerHandle::new::<MessageEvent>(&target, "message", move |event| {
-            if event.origin() != expected_origin {
-                return;
-            }
-            if let Some(expected_source) = expected_source.as_ref() {
-                let Some(actual_source) = event.source() else {
-                    return;
-                };
-                if !Object::is(actual_source.as_ref(), expected_source) {
+        let listener =
+            EventListenerHandle::new::<MessageEvent>(&target, "message", move |event| {
+                if event.origin() != expected_origin {
                     return;
                 }
-            }
-            let Some(payload) = event.data().as_string() else {
-                return;
-            };
-            let Ok(envelope) = serde_json::from_str::<IframeBridgeEnvelope>(&payload) else {
-                return;
-            };
-            if !envelope.is_accepted(&expected_instance_id, callback_sequence.get()) {
-                return;
-            }
-            callback_sequence.set(Some(envelope.sequence));
-            handler(envelope);
-        })?;
+                if let Some(expected_source) = expected_source.as_ref() {
+                    let Some(actual_source) = event.source() else {
+                        return;
+                    };
+                    if !Object::is(actual_source.as_ref(), expected_source) {
+                        return;
+                    }
+                }
+                let Some(payload) = event.data().as_string() else {
+                    return;
+                };
+                let Ok(envelope) = serde_json::from_str::<IframeBridgeEnvelope>(&payload) else {
+                    return;
+                };
+                if !envelope.is_accepted(&expected_instance_id, callback_sequence.get()) {
+                    return;
+                }
+                callback_sequence.set(Some(envelope.sequence));
+                handler(envelope);
+            })?;
         Ok(Self {
             _listener: listener,
             last_sequence,
@@ -240,25 +242,26 @@ impl IframeJsonSubscription {
         let last_sequence = Rc::new(Cell::new(None));
         let callback_sequence = Rc::clone(&last_sequence);
         let target: EventTarget = window.unchecked_into();
-        let listener = EventListenerHandle::new::<MessageEvent>(&target, "message", move |event| {
-            if event.origin() != expected_origin {
-                return;
-            }
-            let Some(actual_source) = event.source() else {
-                return;
-            };
-            if !Object::is(actual_source.as_ref(), &expected_source) {
-                return;
-            }
-            let Some(payload) = event.data().as_string() else {
-                return;
-            };
-            let Some((sequence, message)) = decode(&payload, callback_sequence.get()) else {
-                return;
-            };
-            callback_sequence.set(Some(sequence));
-            handler(message);
-        })?;
+        let listener =
+            EventListenerHandle::new::<MessageEvent>(&target, "message", move |event| {
+                if event.origin() != expected_origin {
+                    return;
+                }
+                let Some(actual_source) = event.source() else {
+                    return;
+                };
+                if !Object::is(actual_source.as_ref(), &expected_source) {
+                    return;
+                }
+                let Some(payload) = event.data().as_string() else {
+                    return;
+                };
+                let Some((sequence, message)) = decode(&payload, callback_sequence.get()) else {
+                    return;
+                };
+                callback_sequence.set(Some(sequence));
+                handler(message);
+            })?;
         Ok(Self {
             _listener: listener,
             last_sequence,
@@ -308,18 +311,12 @@ impl IframeMessagePort {
         Ok(sequence)
     }
 
-    pub fn teardown(
-        &mut self,
-        iframe: &HtmlIFrameElement,
-    ) -> Result<u64, BrowserRuntimeError> {
+    pub fn teardown(&mut self, iframe: &HtmlIFrameElement) -> Result<u64, BrowserRuntimeError> {
         self.post(iframe, IframeBridgeMessage::Teardown)
     }
 }
 
-pub fn set_pointer_capture(
-    element: &Element,
-    pointer_id: i32,
-) -> Result<(), BrowserRuntimeError> {
+pub fn set_pointer_capture(element: &Element, pointer_id: i32) -> Result<(), BrowserRuntimeError> {
     element
         .set_pointer_capture(pointer_id)
         .map_err(browser_error)

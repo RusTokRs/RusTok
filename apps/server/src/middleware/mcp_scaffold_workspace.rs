@@ -166,7 +166,9 @@ fn management_authority(parts: &Parts) -> Result<ManagementAuthority<'_>, Respon
         .ok_or_else(|| internal_error("Tenant context is unavailable"))?;
 
     if auth.tenant_id != tenant.id {
-        return Err(forbidden("Authenticated principal belongs to another tenant"));
+        return Err(forbidden(
+            "Authenticated principal belongs to another tenant",
+        ));
     }
     if !has_effective_permission(&auth.permissions, &Permission::MCP_MANAGE) {
         return Err(forbidden("mcp:manage permission is required"));

@@ -161,9 +161,8 @@ fn apply_shipping_overlay(
             selection
                 .validate()
                 .map_err(|error| CartError::Validation(error.to_string()))?;
-            let shipping_profile_slug = normalize_shipping_profile_slug(Some(
-                selection.shipping_profile_slug.as_str(),
-            ));
+            let shipping_profile_slug =
+                normalize_shipping_profile_slug(Some(selection.shipping_profile_slug.as_str()));
             let seller_id = normalize_seller_id(selection.seller_id.as_deref());
 
             for key in available_groups.iter().filter(|key| {
@@ -209,7 +208,9 @@ fn apply_shipping_overlay(
 
 fn hash_cart_snapshot(cart: &CartResponse) -> Result<String, CartError> {
     let mut value = serde_json::to_value(cart).map_err(|error| {
-        CartError::Validation(format!("failed to serialize cart checkout snapshot: {error}"))
+        CartError::Validation(format!(
+            "failed to serialize cart checkout snapshot: {error}"
+        ))
     })?;
     normalize_snapshot_value(&mut value)?;
     let canonical = canonicalize_json(value);
@@ -228,7 +229,10 @@ fn normalize_snapshot_value(value: &mut Value) -> Result<(), CartError> {
     let cart = value.as_object_mut().ok_or_else(|| {
         CartError::Validation("cart checkout snapshot must serialize as an object".to_string())
     })?;
-    remove_fields(cart, &["status", "created_at", "updated_at", "completed_at"]);
+    remove_fields(
+        cart,
+        &["status", "created_at", "updated_at", "completed_at"],
+    );
 
     normalize_record_array(cart.get_mut("line_items"), true)?;
     normalize_record_array(cart.get_mut("adjustments"), true)?;
@@ -247,9 +251,8 @@ fn normalize_snapshot_value(value: &mut Value) -> Result<(), CartError> {
                 )
             })?;
             group.remove("available_shipping_options");
-            if let Some(line_item_ids) = group
-                .get_mut("line_item_ids")
-                .and_then(Value::as_array_mut)
+            if let Some(line_item_ids) =
+                group.get_mut("line_item_ids").and_then(Value::as_array_mut)
             {
                 line_item_ids.sort_by_key(value_sort_key);
             }
@@ -260,7 +263,10 @@ fn normalize_snapshot_value(value: &mut Value) -> Result<(), CartError> {
     Ok(())
 }
 
-fn normalize_record_array(value: Option<&mut Value>, remove_timestamps: bool) -> Result<(), CartError> {
+fn normalize_record_array(
+    value: Option<&mut Value>,
+    remove_timestamps: bool,
+) -> Result<(), CartError> {
     let Some(value) = value else {
         return Ok(());
     };
@@ -327,9 +333,7 @@ fn canonicalize_json(value: Value) -> Value {
                 .collect::<BTreeMap<_, _>>();
             Value::Object(ordered.into_iter().collect())
         }
-        Value::Array(values) => {
-            Value::Array(values.into_iter().map(canonicalize_json).collect())
-        }
+        Value::Array(values) => Value::Array(values.into_iter().map(canonicalize_json).collect()),
         value => value,
     }
 }
@@ -345,10 +349,9 @@ fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
 
 fn cart_error_to_port_error(error: CartError) -> PortError {
     match error {
-        CartError::Validation(message) => PortError::validation(
-            "cart.checkout_snapshot_validation",
-            message,
-        ),
+        CartError::Validation(message) => {
+            PortError::validation("cart.checkout_snapshot_validation", message)
+        }
         CartError::CartNotFound(cart_id) => {
             PortError::not_found("cart.not_found", format!("cart {cart_id} not found"))
         }

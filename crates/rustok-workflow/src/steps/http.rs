@@ -114,9 +114,7 @@ impl WorkflowStep for HttpStep {
                     )));
                 }
                 let name = HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
-                    WorkflowError::InvalidStepConfig(format!(
-                        "http: invalid header name '{key}'"
-                    ))
+                    WorkflowError::InvalidStepConfig(format!("http: invalid header name '{key}'"))
                 })?;
                 if is_forbidden_header(&name) {
                     return Err(WorkflowError::InvalidStepConfig(format!(
@@ -169,11 +167,9 @@ impl WorkflowStep for HttpStep {
         }
 
         let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|error| WorkflowError::StepFailed(format!("http: response read failed: {error}")))?
-        {
+        while let Some(chunk) = response.chunk().await.map_err(|error| {
+            WorkflowError::StepFailed(format!("http: response read failed: {error}"))
+        })? {
             if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
                 return Err(WorkflowError::StepFailed(
                     "http: response exceeds the 1 MiB size limit".to_string(),
@@ -214,9 +210,8 @@ async fn validate_target(raw_url: &str) -> WorkflowResult<ValidatedTarget> {
             "http: URL exceeds the size limit".to_string(),
         ));
     }
-    let mut url = reqwest::Url::parse(raw_url).map_err(|error| {
-        WorkflowError::InvalidStepConfig(format!("http: invalid URL: {error}"))
-    })?;
+    let mut url = reqwest::Url::parse(raw_url)
+        .map_err(|error| WorkflowError::InvalidStepConfig(format!("http: invalid URL: {error}")))?;
     if !url.username().is_empty() || url.password().is_some() {
         return Err(WorkflowError::InvalidStepConfig(
             "http: URL userinfo is not allowed".to_string(),

@@ -362,7 +362,7 @@ INSERT INTO forum_domain_events (
         OLD.tenant_id, 'topic', OLD.topic_id,
         'forum.topic.tags_changed', 1, NULL, json_object('topic_id', OLD.topic_id, 'term_id', OLD.term_id, 'attached', 0)
     );
-END"##
+END"##,
     ] {
         connection.execute_unprepared(statement).await?;
     }

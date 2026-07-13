@@ -1,7 +1,5 @@
 use chrono::Utc;
-use sea_orm::{
-    sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
-};
+use sea_orm::{sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 
 use crate::auth::{
     decode_password_reset_token, hash_password, password_reset_credential_matches, AuthConfig,

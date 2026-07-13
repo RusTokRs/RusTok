@@ -3,9 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{
-    CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
-};
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
 
 #[cfg(feature = "redis-cache")]
 use rustok_core::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
@@ -419,10 +417,7 @@ fn ttl_millis(ttl: Duration) -> Option<u64> {
 }
 
 #[cfg(feature = "redis-cache")]
-async fn shared_redis_timeout<T, F>(
-    timeout: Duration,
-    future: F,
-) -> rustok_core::Result<T>
+async fn shared_redis_timeout<T, F>(timeout: Duration, future: F) -> rustok_core::Result<T>
 where
     F: std::future::Future<Output = rustok_core::Result<T>>,
 {
@@ -435,9 +430,7 @@ where
 }
 
 #[cfg(feature = "redis-cache")]
-fn shared_circuit_error(
-    error: CircuitBreakerError<rustok_core::Error>,
-) -> rustok_core::Error {
+fn shared_circuit_error(error: CircuitBreakerError<rustok_core::Error>) -> rustok_core::Error {
     match error {
         CircuitBreakerError::Open => {
             rustok_core::Error::Cache("Redis unavailable (circuit breaker open)".to_string())
@@ -463,7 +456,10 @@ mod tests {
             .set("present".to_string(), b"value".to_vec())
             .await
             .unwrap();
-        assert_eq!(backend.get("present").await.unwrap(), Some(b"value".to_vec()));
+        assert_eq!(
+            backend.get("present").await.unwrap(),
+            Some(b"value".to_vec())
+        );
         assert_eq!(backend.stats().entries, 1);
     }
 

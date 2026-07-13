@@ -41,18 +41,14 @@ UPDATE forum_categories SET parent_id = '{child_id}' WHERE id = '{grandchild_id}
 
     assert_rejected(
         &db,
-        format!(
-            "UPDATE forum_categories SET parent_id = '{grandchild_id}' WHERE id = '{root_id}'"
-        ),
+        format!("UPDATE forum_categories SET parent_id = '{grandchild_id}' WHERE id = '{root_id}'"),
         "three-level category cycle",
     )
     .await?;
 
     execute(
         &db,
-        format!(
-            "UPDATE forum_categories SET parent_id = '{root_id}' WHERE id = '{grandchild_id}'"
-        ),
+        format!("UPDATE forum_categories SET parent_id = '{root_id}' WHERE id = '{grandchild_id}'"),
     )
     .await?;
     execute(
@@ -107,11 +103,7 @@ async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
     Ok(())
 }
 
-async fn assert_rejected(
-    db: &DatabaseConnection,
-    sql: String,
-    label: &str,
-) -> TestResult<()> {
+async fn assert_rejected(db: &DatabaseConnection, sql: String, label: &str) -> TestResult<()> {
     let result = db.execute_unprepared(&sql).await;
     assert!(result.is_err(), "{label} must be rejected");
     Ok(())

@@ -277,7 +277,8 @@ impl Indexer for FlexIndexer {
                 debug!(entry_id = %entity_id, "Indexed flex entry");
             }
             None => {
-                self.delete_entry_from_index(ctx.tenant_id, entity_id).await?;
+                self.delete_entry_from_index(ctx.tenant_id, entity_id)
+                    .await?;
                 debug!(entry_id = %entity_id, tenant_id = %ctx.tenant_id, "Removed stale flex index entry");
             }
         }

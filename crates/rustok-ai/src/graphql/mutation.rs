@@ -16,9 +16,9 @@ use super::{
         CreateAiAgentWorkflowRunInputGql, CreateAiProviderProfileInputGql,
         CreateAiTaskProfileInputGql, CreateAiToolProfileInputGql,
         ResolveAiAgentWorkflowStageApprovalInputGql, ResumeAiApprovalInputGql,
-        RunAiTaskJobInputGql, StartAiChatSessionInputGql,
-        UpdateAiProviderProfileInputGql, UpdateAiTaskProfileInputGql, UpdateAiToolProfileInputGql,
-        UpdateAiAgentModelAssignmentInputGql, UpdateAiAgentPrincipalInputGql,
+        RunAiTaskJobInputGql, StartAiChatSessionInputGql, UpdateAiAgentModelAssignmentInputGql,
+        UpdateAiAgentPrincipalInputGql, UpdateAiProviderProfileInputGql,
+        UpdateAiTaskProfileInputGql, UpdateAiToolProfileInputGql,
     },
 };
 

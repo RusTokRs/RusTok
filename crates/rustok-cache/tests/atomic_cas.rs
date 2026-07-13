@@ -81,10 +81,7 @@ async fn concurrent_local_invalidation_cannot_be_lost_to_compare_and_set() {
 
     for iteration in 0..128 {
         let key = format!("invalidate-race-{iteration}");
-        backend
-            .set(key.clone(), b"old".to_vec())
-            .await
-            .unwrap();
+        backend.set(key.clone(), b"old".to_vec()).await.unwrap();
 
         let barrier = Arc::new(Barrier::new(3));
         let cas_backend = Arc::clone(&backend);
@@ -103,7 +100,10 @@ async fn concurrent_local_invalidation_cannot_be_lost_to_compare_and_set() {
         let invalidate_key = key.clone();
         let invalidate = tokio::spawn(async move {
             invalidate_barrier.wait().await;
-            invalidate_backend.invalidate(&invalidate_key).await.unwrap();
+            invalidate_backend
+                .invalidate(&invalidate_key)
+                .await
+                .unwrap();
         });
 
         barrier.wait().await;
@@ -168,12 +168,7 @@ async fn real_redis_compare_and_set_is_binary_safe_and_conditionally_deletes() {
 
     assert_eq!(
         backend
-            .compare_and_set(
-                "binary",
-                &replacement,
-                Vec::new(),
-                Some(Duration::ZERO),
-            )
+            .compare_and_set("binary", &replacement, Vec::new(), Some(Duration::ZERO),)
             .await
             .unwrap(),
         CacheCompareAndSetOutcome::Applied

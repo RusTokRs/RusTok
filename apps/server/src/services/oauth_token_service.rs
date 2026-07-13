@@ -14,8 +14,7 @@ use uuid::Uuid;
 use crate::auth::{self, AuthConfig};
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{
-    oauth_apps,
-    oauth_authorization_codes as oauth_codes,
+    oauth_apps, oauth_authorization_codes as oauth_codes,
     oauth_consents::Entity as OAuthConsents,
     oauth_tokens::{self, Entity as OAuthTokens},
     users::{self, Entity as Users},
@@ -75,11 +74,7 @@ impl OAuthTokenProtocolError {
         )
     }
 
-    fn new(
-        status: StatusCode,
-        error: &'static str,
-        description: impl Into<String>,
-    ) -> Self {
+    fn new(status: StatusCode, error: &'static str, description: impl Into<String>) -> Self {
         Self {
             status,
             error,
@@ -128,23 +123,15 @@ impl OAuthTokenService {
                 require_grant(&app, AUTHORIZATION_CODE_GRANT)?;
                 authenticate_client(&app, request, false)?;
                 let code = required(request.code.as_deref(), "code is required")?;
-                let redirect_uri = required(
-                    request.redirect_uri.as_deref(),
-                    "redirect_uri is required",
-                )?;
+                let redirect_uri =
+                    required(request.redirect_uri.as_deref(), "redirect_uri is required")?;
                 let verifier = required(
                     request.code_verifier.as_deref(),
                     "code_verifier is required",
                 )?;
-                let authorization = validate_authorization_code(
-                    db,
-                    &app,
-                    tenant_id,
-                    code,
-                    redirect_uri,
-                    verifier,
-                )
-                .await?;
+                let authorization =
+                    validate_authorization_code(db, &app, tenant_id, code, redirect_uri, verifier)
+                        .await?;
                 let scopes = authorization.scopes_list();
                 let prepared = prepare_user_tokens(
                     db,
@@ -169,20 +156,11 @@ impl OAuthTokenService {
                 let current =
                     validate_refresh_token(db, &app, tenant_id, raw_refresh_token).await?;
                 let user_id = current.user_id.ok_or_else(|| {
-                    OAuthTokenProtocolError::invalid_grant(
-                        "Refresh token has no associated user",
-                    )
+                    OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
                 })?;
                 let scopes = current.scopes_list();
-                let prepared = prepare_user_tokens(
-                    db,
-                    &app,
-                    auth_config,
-                    user_id,
-                    &scopes,
-                    true,
-                )
-                .await?;
+                let prepared =
+                    prepare_user_tokens(db, &app, auth_config, user_id, &scopes, true).await?;
 
                 commit_refresh_rotation(db, &current, &prepared).await?;
                 prepared.into_response(&scopes)
@@ -312,10 +290,7 @@ fn validate_scope_subset(
     allowed: &[String],
     requested: &[String],
 ) -> Result<(), OAuthTokenProtocolError> {
-    if requested
-        .iter()
-        .all(|scope| scope_matches(allowed, scope))
-    {
+    if requested.iter().all(|scope| scope_matches(allowed, scope)) {
         Ok(())
     } else {
         Err(OAuthTokenProtocolError::invalid_scope(
@@ -428,9 +403,7 @@ async fn validate_active_subject_and_consent(
     if app.requires_user_consent() {
         let consent = OAuthConsents::find_active_consent(db, app.id, user.id)
             .await
-            .map_err(|_| {
-                OAuthTokenProtocolError::server_error("Failed to validate OAuth consent")
-            })?
+            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate OAuth consent"))?
             .filter(|consent| consent.tenant_id == tenant_id)
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("OAuth consent is missing or revoked")
@@ -473,15 +446,11 @@ async fn prepare_user_tokens(
     include_refresh_token: bool,
 ) -> Result<PreparedUserTokens, OAuthTokenProtocolError> {
     validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
-    let permissions = RbacService::get_user_permissions_authoritative(
-        db,
-        &app.tenant_id,
-        &user_id,
-    )
-    .await
-    .map_err(|_| {
-        OAuthTokenProtocolError::server_error("Failed to resolve current user permissions")
-    })?;
+    let permissions = RbacService::get_user_permissions_authoritative(db, &app.tenant_id, &user_id)
+        .await
+        .map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to resolve current user permissions")
+        })?;
     let role = infer_user_role_from_permissions(&permissions);
     let access_token = auth::encode_oauth_access_token(
         config,
@@ -570,9 +539,7 @@ async fn commit_refresh_rotation(
         .filter(oauth_tokens::Column::ExpiresAt.gt(now))
         .exec(&tx)
         .await
-        .map_err(|_| {
-            OAuthTokenProtocolError::server_error("Failed to consume refresh token")
-        })?;
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to consume refresh token"))?;
     if consumed.rows_affected != 1 {
         tx.rollback().await.map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to roll back refresh-token rotation")

@@ -1,6 +1,6 @@
+pub mod agent;
 #[cfg(feature = "server")]
 pub mod direct;
-pub mod agent;
 pub mod engine;
 #[cfg(feature = "server")]
 pub mod entities;
@@ -23,6 +23,12 @@ pub mod service;
 pub mod streaming;
 
 #[cfg(feature = "server")]
+pub use agent::agent_catalog;
+pub use agent::{
+    AgentCatalog, AgentDescriptor, AgentKind, AgentPrincipal, AgentStageStatus,
+    AgentWorkflowDescriptor, AgentWorkflowStage, AgentWorkflowStatus,
+};
+#[cfg(feature = "server")]
 pub use direct::{
     AlloyScriptAssistHandler, BlogDraftHandler, DirectExecutionRegistry, DirectExecutionRequest,
     DirectExecutionResult, DirectTaskHandler, MediaImageAssetHandler, ProductCopyHandler,
@@ -44,12 +50,6 @@ pub use engine::{
     provider_factory_supports, AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy,
 };
 pub use error::{AiError, AiResult};
-pub use agent::{
-    AgentCatalog, AgentDescriptor, AgentKind, AgentPrincipal, AgentStageStatus,
-    AgentWorkflowDescriptor, AgentWorkflowStage, AgentWorkflowStatus,
-};
-#[cfg(feature = "server")]
-pub use agent::agent_catalog;
 #[cfg(all(feature = "graphql", feature = "server"))]
 pub use graphql_runtime::{
     attach_schema_data, AiGraphqlRuntimeData, SeaOrmAiGraphqlRoleSlugProvider,
@@ -78,17 +78,16 @@ pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]
 pub use service::{
     AiAgentModelAssignmentRecord, AiAgentPrincipalRecord, AiApprovalRequestRecord,
-    AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail, AiChatSessionSummary,
-    AiHostRuntime, AiManagementService, AiOperatorContext, AiProviderProfileRecord,
-    AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
-    CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput, CreateAiProviderProfileInput,
-    CreateAiAgentWorkflowRunInput, CreateAiTaskProfileInput, CreateAiToolProfileInput,
-    ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput,
-    RunAiTaskJobInput, SendAiChatMessageInput,
-    SharedAiEgressPolicy, SharedAiModuleRegistry, SharedAiProviderTargetCatalog,
-    SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiProviderProfileInput,
-    UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput, UpdateAiTaskProfileInput,
-    UpdateAiToolProfileInput,
+    AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail, AiChatSessionSummary, AiHostRuntime,
+    AiManagementService, AiOperatorContext, AiProviderProfileRecord, AiRecentRunRecord,
+    AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
+    CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput, CreateAiAgentWorkflowRunInput,
+    CreateAiProviderProfileInput, CreateAiTaskProfileInput, CreateAiToolProfileInput,
+    ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput, RunAiTaskJobInput,
+    SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiModuleRegistry,
+    SharedAiProviderTargetCatalog, SharedAiSecretResolverRegistry, StartAiChatSessionInput,
+    UpdateAiAgentModelAssignmentInput, UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput,
+    UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
 };
 #[cfg(feature = "server")]
 pub use streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};

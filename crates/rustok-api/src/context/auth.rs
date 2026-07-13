@@ -407,8 +407,7 @@ mod tests {
     #[test]
     fn forum_namespace_scope_preserves_forum_manage_permission() {
         let permission = Permission::new(Resource::ForumTopics, Action::Manage);
-        let restricted =
-            restrict_permissions_to_scopes(&[permission], &["forum:*".to_string()]);
+        let restricted = restrict_permissions_to_scopes(&[permission], &["forum:*".to_string()]);
         assert_eq!(restricted, vec![permission]);
     }
 

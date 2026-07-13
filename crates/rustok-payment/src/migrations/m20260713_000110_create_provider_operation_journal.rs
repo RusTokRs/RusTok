@@ -59,10 +59,7 @@ impl MigrationTrait for Migration {
                             .string_len(191),
                     )
                     .col(ColumnDef::new(PaymentProviderOperations::ProviderResult).json_binary())
-                    .col(
-                        ColumnDef::new(PaymentProviderOperations::ErrorMessage)
-                            .string_len(2000),
-                    )
+                    .col(ColumnDef::new(PaymentProviderOperations::ErrorMessage).string_len(2000))
                     .col(
                         ColumnDef::new(PaymentProviderOperations::CreatedAt)
                             .timestamp_with_time_zone()

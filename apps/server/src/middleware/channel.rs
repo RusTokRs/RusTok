@@ -147,10 +147,7 @@ impl ChannelResolutionCache {
     }
 }
 
-fn channel_cache_entry_weight(
-    key: &ChannelCacheKey,
-    value: &CachedChannelResolution,
-) -> u32 {
+fn channel_cache_entry_weight(key: &ChannelCacheKey, value: &CachedChannelResolution) -> u32 {
     let key_strings = [
         key.header_channel_slug.as_ref(),
         key.query_channel_slug.as_ref(),
@@ -270,10 +267,7 @@ fn channel_cache_key_from_facts(facts: &RequestFacts, version: u64) -> ChannelCa
 }
 
 fn bounded_cache_component(value: &str) -> String {
-    format!(
-        "sha256-{}",
-        hex::encode(Sha256::digest(value.as_bytes()))
-    )
+    format!("sha256-{}", hex::encode(Sha256::digest(value.as_bytes())))
 }
 
 fn resolved_detail_source_and_trace(

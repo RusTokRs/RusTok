@@ -42,10 +42,8 @@ impl FulfillmentOrchestrationService {
         mut self,
         fulfillment_provider_registry: FulfillmentProviderRegistry,
     ) -> Self {
-        let (legacy, create_label_registry_error) = legacy_with_journaled_labels(
-            self.db.clone(),
-            fulfillment_provider_registry.clone(),
-        );
+        let (legacy, create_label_registry_error) =
+            legacy_with_journaled_labels(self.db.clone(), fulfillment_provider_registry.clone());
         self.legacy = legacy;
         self.journaled = JournaledFulfillmentOrchestrationService::new(self.db.clone())
             .with_provider_registry(fulfillment_provider_registry);

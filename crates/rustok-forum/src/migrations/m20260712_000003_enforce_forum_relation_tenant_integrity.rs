@@ -381,7 +381,10 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     }
 
     for statement in sqlite_triggers() {
-        manager.get_connection().execute_unprepared(statement).await?;
+        manager
+            .get_connection()
+            .execute_unprepared(statement)
+            .await?;
     }
     Ok(())
 }
@@ -474,9 +477,14 @@ async fn ensure_sqlite_query_empty(
 ) -> Result<(), DbErr> {
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(DatabaseBackend::Sqlite, query.to_owned()))
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            query.to_owned(),
+        ))
         .await?
-        .ok_or_else(|| DbErr::Custom("failed to validate forum relation tenant integrity".to_owned()))?;
+        .ok_or_else(|| {
+            DbErr::Custom("failed to validate forum relation tenant integrity".to_owned())
+        })?;
     let invalid_count: i64 = row.try_get("", "invalid_count")?;
     if invalid_count != 0 {
         return Err(DbErr::Custom(message.to_owned()));

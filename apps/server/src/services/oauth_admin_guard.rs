@@ -22,9 +22,7 @@ impl GuardedOAuthAdminProvider {
     }
 }
 
-fn validate_grant_dependencies(
-    grant_types: &[String],
-) -> Result<(), AuthAdminMutationError> {
+fn validate_grant_dependencies(grant_types: &[String]) -> Result<(), AuthAdminMutationError> {
     let has_authorization_code = grant_types
         .iter()
         .any(|grant| grant.trim() == "authorization_code");

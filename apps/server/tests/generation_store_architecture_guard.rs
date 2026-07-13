@@ -39,7 +39,9 @@ fn generation_store_is_clone_shared_bounded_and_identity_safe() {
     assert!(generation.contains("store: store.clone()"));
     assert!(regression.contains("cache_service_generation_handles_share_trusted_local_snapshots"));
     assert!(
-        !generation.contains("CacheNamespaceGenerationStore::new(self.redis_client().cloned())\n        }"),
+        !generation.contains(
+            "CacheNamespaceGenerationStore::new(self.redis_client().cloned())\n        }"
+        ),
         "namespace_generations must not return a fresh Redis store on every call"
     );
 }

@@ -25,9 +25,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
     dto::{FulfillmentResponse, OrderResponse, PaymentCollectionResponse},
     storefront_shipping::normalize_shipping_profile_slug,
+    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

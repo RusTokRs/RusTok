@@ -60,7 +60,7 @@ pub(super) async fn schema(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
    FOR EACH ROW
    BEGIN
        SELECT RAISE(ABORT, 'forum domain events are append-only');
-   END"##
+   END"##,
     ] {
         connection.execute_unprepared(statement).await?;
     }

@@ -7,8 +7,8 @@ pub mod checkout_snapshot;
 pub mod dto;
 pub mod entities;
 pub mod error;
-pub mod guest_access;
 mod guarded_ports;
+pub mod guest_access;
 pub mod migrations;
 pub mod ports;
 pub mod services;
@@ -18,19 +18,19 @@ pub use checkout_snapshot::*;
 pub use dto::*;
 pub use entities::*;
 pub use error::{CartError, CartResult};
-pub use guest_access::*;
 pub use guarded_ports::{
     guarded_cart_checkout_port as in_process_cart_checkout_port,
     guarded_cart_storefront_port as in_process_cart_storefront_port,
 };
+pub use guest_access::*;
 pub use ports::{
-    in_process_cart_promotion_port, CartCheckoutContextUpdateRequest,
-    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
-    CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest, CartPromotionScopeRequest,
-    CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
-    CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
-    CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
-    CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
+    in_process_cart_promotion_port, CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest,
+    CartCheckoutPort, CartCheckoutSnapshotRequest, CartPromotionKindRequest, CartPromotionPort,
+    CartPromotionRequest, CartPromotionScopeRequest, CartStorefrontAddLineItemRequest,
+    CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
+    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
+    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    CartStorefrontRepriceRequest,
 };
 pub use services::cart::{CartLineItemPricingUpdate, CartPricingAdjustmentUpdate};
 pub use services::CartService;

@@ -33,7 +33,11 @@ impl McpManagementAuthorityService {
         granted_permissions: &[String],
     ) -> Result<(), McpManagementAuthorityError> {
         let delegated = delegated_permissions(db, tenant_id, actor_type, delegated_user_id).await?;
-        validate_all_authorities(granted_permissions, manager_permissions, delegated.as_deref())
+        validate_all_authorities(
+            granted_permissions,
+            manager_permissions,
+            delegated.as_deref(),
+        )
     }
 
     pub async fn validate_policy_update(
@@ -44,14 +48,14 @@ impl McpManagementAuthorityService {
         granted_permissions: &[String],
     ) -> Result<(), McpManagementAuthorityError> {
         let client = require_client(db, tenant_id, client_id).await?;
-        let delegated = delegated_permissions(
-            db,
-            tenant_id,
-            client.actor_type(),
-            client.delegated_user_id,
+        let delegated =
+            delegated_permissions(db, tenant_id, client.actor_type(), client.delegated_user_id)
+                .await?;
+        validate_all_authorities(
+            granted_permissions,
+            manager_permissions,
+            delegated.as_deref(),
         )
-        .await?;
-        validate_all_authorities(granted_permissions, manager_permissions, delegated.as_deref())
     }
 
     pub async fn validate_token_rotation(
@@ -61,13 +65,9 @@ impl McpManagementAuthorityService {
         client_id: Uuid,
     ) -> Result<(), McpManagementAuthorityError> {
         let client = require_client(db, tenant_id, client_id).await?;
-        let delegated = delegated_permissions(
-            db,
-            tenant_id,
-            client.actor_type(),
-            client.delegated_user_id,
-        )
-        .await?;
+        let delegated =
+            delegated_permissions(db, tenant_id, client.actor_type(), client.delegated_user_id)
+                .await?;
         let policy = mcp_policies::Entity::find_by_client(db, client.id)
             .await
             .map_err(|error| McpManagementAuthorityError::Internal(error.to_string()))?;

@@ -33,8 +33,7 @@ impl FulfillmentProviderOperationRecovery {
         provider_operation::Entity::find()
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(
-                provider_operation::Column::Status
-                    .eq(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
+                provider_operation::Column::Status.eq(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
             )
             .order_by_asc(provider_operation::Column::UpdatedAt)
             .limit(limit.clamp(1, 500))
@@ -126,8 +125,7 @@ impl FulfillmentProviderOperationRecovery {
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
-                provider_operation::Column::Status
-                    .eq(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
+                provider_operation::Column::Status.eq(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
             )
             .filter(provider_operation::Column::ProviderResult.is_null())
             .exec(&self.db)
@@ -230,8 +228,7 @@ impl FulfillmentProviderOperationRecovery {
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
-                provider_operation::Column::Status
-                    .eq(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
+                provider_operation::Column::Status.eq(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
             )
             .filter(provider_operation::Column::ProviderResult.is_null())
             .exec(&self.db)

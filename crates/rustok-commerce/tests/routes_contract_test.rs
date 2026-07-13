@@ -50,7 +50,10 @@ fn exposes_store_and_admin_route_groups() {
         let (source, route) = if let Some(route) = expected.strip_prefix("/store") {
             (store_routes, route)
         } else {
-            (admin_routes, expected.strip_prefix("/admin").unwrap_or(expected))
+            (
+                admin_routes,
+                expected.strip_prefix("/admin").unwrap_or(expected),
+            )
         };
         assert!(
             source.contains(&format!("\"{route}\"")),

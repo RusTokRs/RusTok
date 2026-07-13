@@ -360,8 +360,7 @@ pub async fn complete_order_return(
             .map_err(super::map_order_error)?;
 
         let preview = attach_return_order_change_context(exchange_input.preview, id, "exchange")?;
-        let metadata =
-            attach_return_order_change_context(exchange_input.metadata, id, "exchange")?;
+        let metadata = attach_return_order_change_context(exchange_input.metadata, id, "exchange")?;
 
         let order_change = order_service
             .create_order_change(

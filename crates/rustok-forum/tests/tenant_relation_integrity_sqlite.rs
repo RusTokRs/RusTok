@@ -18,7 +18,10 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(url);
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
 
     execute(
@@ -163,11 +166,7 @@ async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
     Ok(())
 }
 
-async fn assert_rejected(
-    db: &DatabaseConnection,
-    sql: String,
-    relation: &str,
-) -> TestResult<()> {
+async fn assert_rejected(db: &DatabaseConnection, sql: String, relation: &str) -> TestResult<()> {
     let result = db.execute_unprepared(&sql).await;
     assert!(result.is_err(), "{relation} must be rejected");
     Ok(())

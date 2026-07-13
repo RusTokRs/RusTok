@@ -1,7 +1,5 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forum::{
-    CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput,
-};
+use rustok_forum::{CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
 };
@@ -314,15 +312,9 @@ async fn execute(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<
     Ok(())
 }
 
-async fn scalar_i64(
-    db: &DatabaseConnection,
-    sql: impl Into<String>,
-) -> TestResult<i64> {
+async fn scalar_i64(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
-            DatabaseBackend::Sqlite,
-            sql.into(),
-        ))
+        .query_one(Statement::from_string(DatabaseBackend::Sqlite, sql.into()))
         .await?
         .ok_or_else(|| std::io::Error::other("scalar query returned no row"))?;
     Ok(row.try_get("", "value")?)

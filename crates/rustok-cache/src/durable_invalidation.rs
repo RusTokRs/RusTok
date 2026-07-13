@@ -116,7 +116,11 @@ impl DurableCacheInvalidationRecord {
             }
             None => digest.update([0]),
         }
-        for value in [self.channel.as_bytes(), self.key.as_bytes(), self.cause.as_bytes()] {
+        for value in [
+            self.channel.as_bytes(),
+            self.key.as_bytes(),
+            self.cause.as_bytes(),
+        ] {
             digest.update((value.len() as u64).to_be_bytes());
             digest.update(value);
         }
@@ -143,11 +147,9 @@ impl DurableCacheInvalidationRecord {
             return Err(DurableCacheInvalidationError::ZeroSizeLimit);
         }
         self.validate()?;
-        let encoded_len = postcard::serialize_with_flavor(
-            self,
-            postcard::ser_flavors::Size::default(),
-        )
-        .map_err(|error| DurableCacheInvalidationError::Encode(error.to_string()))?;
+        let encoded_len =
+            postcard::serialize_with_flavor(self, postcard::ser_flavors::Size::default())
+                .map_err(|error| DurableCacheInvalidationError::Encode(error.to_string()))?;
         if encoded_len > maximum {
             return Err(DurableCacheInvalidationError::TooLarge {
                 length: encoded_len,
@@ -296,7 +298,10 @@ impl std::fmt::Display for DurableCacheInvalidationError {
                 formatter,
                 "trace id is {length} bytes; maximum is {maximum}"
             ),
-            Self::ZeroSizeLimit => write!(formatter, "durable invalidation size limit must be non-zero"),
+            Self::ZeroSizeLimit => write!(
+                formatter,
+                "durable invalidation size limit must be non-zero"
+            ),
             Self::UnsupportedFormatVersion { found, supported } => write!(
                 formatter,
                 "unsupported durable invalidation format version {found}; supported {supported}"
@@ -306,8 +311,12 @@ impl std::fmt::Display for DurableCacheInvalidationError {
                 "durable invalidation record is {length} bytes; maximum is {maximum}"
             ),
             Self::Invalidation(error) => write!(formatter, "invalid cache invalidation: {error}"),
-            Self::Encode(message) => write!(formatter, "durable invalidation encode failed: {message}"),
-            Self::Decode(message) => write!(formatter, "durable invalidation decode failed: {message}"),
+            Self::Encode(message) => {
+                write!(formatter, "durable invalidation encode failed: {message}")
+            }
+            Self::Decode(message) => {
+                write!(formatter, "durable invalidation decode failed: {message}")
+            }
         }
     }
 }
@@ -340,8 +349,7 @@ mod tests {
         assert_eq!(decoded, record);
         assert_eq!(
             decoded.to_versioned_invalidation().unwrap(),
-            VersionedCacheInvalidation::new("tenant.invalidate", "tenant:42", 11, 1_000)
-                .unwrap()
+            VersionedCacheInvalidation::new("tenant.invalidate", "tenant:42", 11, 1_000).unwrap()
         );
     }
 
@@ -361,7 +369,10 @@ mod tests {
         .unwrap();
         assert_eq!(first.idempotency_key(), record().idempotency_key());
         assert_ne!(first.idempotency_key(), second.idempotency_key());
-        assert_eq!(first.idempotency_key().len(), "cache-invalidation:v1:".len() + 64);
+        assert_eq!(
+            first.idempotency_key().len(),
+            "cache-invalidation:v1:".len() + 64
+        );
     }
 
     #[test]

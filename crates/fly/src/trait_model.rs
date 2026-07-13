@@ -149,23 +149,28 @@ impl TraitSchema {
                 if !trait_url_allowed(raw) {
                     return Err(FlyError::InvalidTraitValue {
                         trait_id: self.id.clone(),
-                        message: "URL must be relative, http, https, mailto, tel, hash, or data:image"
-                            .to_string(),
+                        message:
+                            "URL must be relative, http, https, mailto, tel, hash, or data:image"
+                                .to_string(),
                     });
                 }
                 Value::String(raw.to_string())
             }
-            TraitValueKind::Boolean => Value::Bool(parse_boolean(raw).ok_or_else(|| {
-                FlyError::InvalidTraitValue {
-                    trait_id: self.id.clone(),
-                    message: "expected true or false".to_string(),
-                }
-            })?),
+            TraitValueKind::Boolean => {
+                Value::Bool(
+                    parse_boolean(raw).ok_or_else(|| FlyError::InvalidTraitValue {
+                        trait_id: self.id.clone(),
+                        message: "expected true or false".to_string(),
+                    })?,
+                )
+            }
             TraitValueKind::Number => {
-                let number = raw.parse::<f64>().map_err(|_| FlyError::InvalidTraitValue {
-                    trait_id: self.id.clone(),
-                    message: "expected a number".to_string(),
-                })?;
+                let number = raw
+                    .parse::<f64>()
+                    .map_err(|_| FlyError::InvalidTraitValue {
+                        trait_id: self.id.clone(),
+                        message: "expected a number".to_string(),
+                    })?;
                 Value::Number(Number::from_f64(number).ok_or_else(|| {
                     FlyError::InvalidTraitValue {
                         trait_id: self.id.clone(),
@@ -222,33 +227,225 @@ impl TraitSchema {
 
 pub fn builtin_trait_schemas() -> Vec<TraitSchema> {
     vec![
-        attribute_trait("fly.trait.id", "Element id", TraitValueKind::Text, "id", &["*"]),
-        attribute_trait("fly.trait.class", "CSS classes", TraitValueKind::Text, "class", &["*"]),
-        attribute_trait("fly.trait.title", "Title", TraitValueKind::Text, "title", &["*"]),
-        attribute_trait("fly.trait.aria_label", "ARIA label", TraitValueKind::Text, "aria-label", &["*"]),
-        field_trait("fly.trait.content", "Content", TraitValueKind::Multiline, "content", &["text", "heading", "link", "button", "label", "option", "submit"]),
-        field_trait("fly.trait.tag_name", "HTML tag", TraitValueKind::Text, "tagName", &["section", "container", "row", "column", "grid", "text", "heading", "link", "button", "media", "form"]),
-        attribute_trait("fly.trait.href", "Link URL", TraitValueKind::Url, "href", &["link", "button"]),
-        select_trait("fly.trait.target", "Link target", "target", &["link", "button"], &[("Same frame", "_self"), ("New tab", "_blank"), ("Parent frame", "_parent"), ("Top frame", "_top")]),
-        attribute_trait("fly.trait.rel", "Link relation", TraitValueKind::Text, "rel", &["link", "button"]),
-        attribute_trait("fly.trait.src", "Source URL", TraitValueKind::Url, "src", &["image", "video"]),
-        attribute_trait("fly.trait.alt", "Alternative text", TraitValueKind::Text, "alt", &["image"]),
-        attribute_trait("fly.trait.poster", "Poster URL", TraitValueKind::Url, "poster", &["video"]),
-        attribute_trait("fly.trait.controls", "Show controls", TraitValueKind::Boolean, "controls", &["video"]),
-        attribute_trait("fly.trait.autoplay", "Autoplay", TraitValueKind::Boolean, "autoplay", &["video"]),
-        attribute_trait("fly.trait.loop", "Loop", TraitValueKind::Boolean, "loop", &["video"]),
-        attribute_trait("fly.trait.muted", "Muted", TraitValueKind::Boolean, "muted", &["video"]),
-        select_trait("fly.trait.input_type", "Input type", "type", &["input"], &[("Text", "text"), ("Email", "email"), ("Password", "password"), ("Number", "number"), ("Telephone", "tel"), ("URL", "url"), ("Date", "date"), ("Hidden", "hidden")]),
-        attribute_trait("fly.trait.name", "Field name", TraitValueKind::Text, "name", &["input", "textarea", "select", "checkbox"]),
-        attribute_trait("fly.trait.placeholder", "Placeholder", TraitValueKind::Text, "placeholder", &["input", "textarea"]),
-        attribute_trait("fly.trait.value", "Value", TraitValueKind::Text, "value", &["input", "option", "checkbox"]),
-        attribute_trait("fly.trait.required", "Required", TraitValueKind::Boolean, "required", &["input", "textarea", "select", "checkbox"]),
-        attribute_trait("fly.trait.disabled", "Disabled", TraitValueKind::Boolean, "disabled", &["input", "textarea", "select", "checkbox", "button", "submit"]),
-        attribute_trait("fly.trait.checked", "Checked", TraitValueKind::Boolean, "checked", &["checkbox"]),
-        attribute_trait("fly.trait.rows", "Rows", TraitValueKind::Number, "rows", &["textarea"]),
-        attribute_trait("fly.trait.action", "Form action", TraitValueKind::Url, "action", &["form"]),
-        select_trait("fly.trait.method", "Form method", "method", &["form"], &[("GET", "get"), ("POST", "post")]),
-        attribute_trait("fly.trait.enctype", "Form encoding", TraitValueKind::Text, "enctype", &["form"]),
+        attribute_trait(
+            "fly.trait.id",
+            "Element id",
+            TraitValueKind::Text,
+            "id",
+            &["*"],
+        ),
+        attribute_trait(
+            "fly.trait.class",
+            "CSS classes",
+            TraitValueKind::Text,
+            "class",
+            &["*"],
+        ),
+        attribute_trait(
+            "fly.trait.title",
+            "Title",
+            TraitValueKind::Text,
+            "title",
+            &["*"],
+        ),
+        attribute_trait(
+            "fly.trait.aria_label",
+            "ARIA label",
+            TraitValueKind::Text,
+            "aria-label",
+            &["*"],
+        ),
+        field_trait(
+            "fly.trait.content",
+            "Content",
+            TraitValueKind::Multiline,
+            "content",
+            &[
+                "text", "heading", "link", "button", "label", "option", "submit",
+            ],
+        ),
+        field_trait(
+            "fly.trait.tag_name",
+            "HTML tag",
+            TraitValueKind::Text,
+            "tagName",
+            &[
+                "section",
+                "container",
+                "row",
+                "column",
+                "grid",
+                "text",
+                "heading",
+                "link",
+                "button",
+                "media",
+                "form",
+            ],
+        ),
+        attribute_trait(
+            "fly.trait.href",
+            "Link URL",
+            TraitValueKind::Url,
+            "href",
+            &["link", "button"],
+        ),
+        select_trait(
+            "fly.trait.target",
+            "Link target",
+            "target",
+            &["link", "button"],
+            &[
+                ("Same frame", "_self"),
+                ("New tab", "_blank"),
+                ("Parent frame", "_parent"),
+                ("Top frame", "_top"),
+            ],
+        ),
+        attribute_trait(
+            "fly.trait.rel",
+            "Link relation",
+            TraitValueKind::Text,
+            "rel",
+            &["link", "button"],
+        ),
+        attribute_trait(
+            "fly.trait.src",
+            "Source URL",
+            TraitValueKind::Url,
+            "src",
+            &["image", "video"],
+        ),
+        attribute_trait(
+            "fly.trait.alt",
+            "Alternative text",
+            TraitValueKind::Text,
+            "alt",
+            &["image"],
+        ),
+        attribute_trait(
+            "fly.trait.poster",
+            "Poster URL",
+            TraitValueKind::Url,
+            "poster",
+            &["video"],
+        ),
+        attribute_trait(
+            "fly.trait.controls",
+            "Show controls",
+            TraitValueKind::Boolean,
+            "controls",
+            &["video"],
+        ),
+        attribute_trait(
+            "fly.trait.autoplay",
+            "Autoplay",
+            TraitValueKind::Boolean,
+            "autoplay",
+            &["video"],
+        ),
+        attribute_trait(
+            "fly.trait.loop",
+            "Loop",
+            TraitValueKind::Boolean,
+            "loop",
+            &["video"],
+        ),
+        attribute_trait(
+            "fly.trait.muted",
+            "Muted",
+            TraitValueKind::Boolean,
+            "muted",
+            &["video"],
+        ),
+        select_trait(
+            "fly.trait.input_type",
+            "Input type",
+            "type",
+            &["input"],
+            &[
+                ("Text", "text"),
+                ("Email", "email"),
+                ("Password", "password"),
+                ("Number", "number"),
+                ("Telephone", "tel"),
+                ("URL", "url"),
+                ("Date", "date"),
+                ("Hidden", "hidden"),
+            ],
+        ),
+        attribute_trait(
+            "fly.trait.name",
+            "Field name",
+            TraitValueKind::Text,
+            "name",
+            &["input", "textarea", "select", "checkbox"],
+        ),
+        attribute_trait(
+            "fly.trait.placeholder",
+            "Placeholder",
+            TraitValueKind::Text,
+            "placeholder",
+            &["input", "textarea"],
+        ),
+        attribute_trait(
+            "fly.trait.value",
+            "Value",
+            TraitValueKind::Text,
+            "value",
+            &["input", "option", "checkbox"],
+        ),
+        attribute_trait(
+            "fly.trait.required",
+            "Required",
+            TraitValueKind::Boolean,
+            "required",
+            &["input", "textarea", "select", "checkbox"],
+        ),
+        attribute_trait(
+            "fly.trait.disabled",
+            "Disabled",
+            TraitValueKind::Boolean,
+            "disabled",
+            &[
+                "input", "textarea", "select", "checkbox", "button", "submit",
+            ],
+        ),
+        attribute_trait(
+            "fly.trait.checked",
+            "Checked",
+            TraitValueKind::Boolean,
+            "checked",
+            &["checkbox"],
+        ),
+        attribute_trait(
+            "fly.trait.rows",
+            "Rows",
+            TraitValueKind::Number,
+            "rows",
+            &["textarea"],
+        ),
+        attribute_trait(
+            "fly.trait.action",
+            "Form action",
+            TraitValueKind::Url,
+            "action",
+            &["form"],
+        ),
+        select_trait(
+            "fly.trait.method",
+            "Form method",
+            "method",
+            &["form"],
+            &[("GET", "get"), ("POST", "post")],
+        ),
+        attribute_trait(
+            "fly.trait.enctype",
+            "Form encoding",
+            TraitValueKind::Text,
+            "enctype",
+            &["form"],
+        ),
     ]
 }
 
@@ -309,7 +506,10 @@ fn attribute_trait(
             name: name.to_string(),
         },
         required: false,
-        applies_to: applies_to.iter().map(|value| (*value).to_string()).collect(),
+        applies_to: applies_to
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
         options: Vec::new(),
         placeholder: None,
     }
@@ -330,7 +530,10 @@ fn field_trait(
             name: name.to_string(),
         },
         required: false,
-        applies_to: applies_to.iter().map(|value| (*value).to_string()).collect(),
+        applies_to: applies_to
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
         options: Vec::new(),
         placeholder: None,
     }
@@ -351,7 +554,10 @@ fn select_trait(
             name: name.to_string(),
         },
         required: false,
-        applies_to: applies_to.iter().map(|value| (*value).to_string()).collect(),
+        applies_to: applies_to
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
         options: options
             .iter()
             .map(|(label, value)| TraitOption {

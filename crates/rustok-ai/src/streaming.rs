@@ -139,8 +139,8 @@ pub fn ai_run_stream_hub() -> Arc<AiRunStreamHub> {
 #[cfg(test)]
 mod tests {
     use super::{AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};
-    use crate::model::ToolCall;
     use crate::model::ProviderUsage;
+    use crate::model::ToolCall;
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -214,7 +214,10 @@ mod tests {
         let hub = AiRunStreamHub::new(8);
         let session_id = Uuid::new_v4();
         let run_id = Uuid::new_v4();
-        for event_kind in [AiRunStreamEventKind::Started, AiRunStreamEventKind::Completed] {
+        for event_kind in [
+            AiRunStreamEventKind::Started,
+            AiRunStreamEventKind::Completed,
+        ] {
             assert!(hub.publish(AiRunStreamEvent {
                 session_id,
                 run_id,

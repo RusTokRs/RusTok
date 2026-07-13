@@ -127,12 +127,7 @@ async fn database_rejects_rebinding_collection_to_another_order() {
     let collection = service
         .create_collection(
             tenant_id,
-            collection_input(
-                cart_id,
-                customer_id,
-                Some(first_order_id),
-                "49.99",
-            ),
+            collection_input(cart_id, customer_id, Some(first_order_id), "49.99"),
         )
         .await
         .expect("collection should be created with an order binding");

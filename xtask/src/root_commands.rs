@@ -15,10 +15,7 @@ pub(crate) fn validate_module_local_docs_contract(slug: &str, module_root: &Path
     validate_module_local_docs_file(
         slug,
         &module_root.join("docs").join("implementation-plan.md"),
-        &[
-            "## Current state",
-            "## Verification",
-        ],
+        &["## Current state", "## Verification"],
     )?;
 
     Ok(())

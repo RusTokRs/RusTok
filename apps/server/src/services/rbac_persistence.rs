@@ -18,10 +18,7 @@ where
 {
     record_authz_entrypoint_call("assign_role_permissions_via_store", "core_runtime");
     rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_permissions_on(
-        db,
-        *tenant_id,
-        *user_id,
-        role,
+        db, *tenant_id, *user_id, role,
     )
     .await
     .map_err(|error| Error::Message(error.to_string()))

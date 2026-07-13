@@ -10,11 +10,11 @@ use rustok_inventory::{
     InventoryAvailabilityRequest, InventoryReservationPort, InventoryReservationReleaseRequest,
     InventoryReservationRequest, InventoryService,
 };
-use rustok_product::CatalogService;
 use rustok_product::dto::{
     AdjustInventoryInput, CreateProductInput, CreateVariantInput, PriceInput,
     ProductTranslationInput,
 };
+use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use std::str::FromStr;

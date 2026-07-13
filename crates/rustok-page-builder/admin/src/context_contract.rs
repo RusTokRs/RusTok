@@ -1,4 +1,4 @@
-use crate::{PageBuilderAdminHostContext, PageBuilderAdminFacade};
+use crate::{PageBuilderAdminFacade, PageBuilderAdminHostContext};
 use std::sync::Arc;
 
 fn assert_send_sync<T: Send + Sync>() {}

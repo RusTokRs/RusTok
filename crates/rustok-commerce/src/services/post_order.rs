@@ -524,7 +524,9 @@ fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestratio
     }
 }
 
-fn return_items_amount(order_return: &OrderReturnResponse) -> PostOrderOrchestrationResult<Decimal> {
+fn return_items_amount(
+    order_return: &OrderReturnResponse,
+) -> PostOrderOrchestrationResult<Decimal> {
     order_return
         .items
         .iter()
@@ -574,10 +576,7 @@ fn difference_refund_from_order_change(
     }))
 }
 
-fn decimal_from_json_value(
-    value: &Value,
-    field: &str,
-) -> PostOrderOrchestrationResult<Decimal> {
+fn decimal_from_json_value(value: &Value, field: &str) -> PostOrderOrchestrationResult<Decimal> {
     let text = match value {
         Value::String(value) => value.clone(),
         Value::Number(value) => value.to_string(),

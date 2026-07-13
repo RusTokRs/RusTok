@@ -5,9 +5,7 @@ use rustok_auth::{
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -100,13 +98,10 @@ impl ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         requested_permissions: &[String],
     ) -> Result<(), AuthAdminMutationError> {
-        let actor_permissions = RbacService::get_user_permissions(
-            &self.db,
-            &context.tenant_id,
-            &context.actor_id,
-        )
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let actor_permissions =
+            RbacService::get_user_permissions(&self.db, &context.tenant_id, &context.actor_id)
+                .await
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
 
         for value in requested_permissions {
             let permission = Permission::from_str(value).map_err(|error| {

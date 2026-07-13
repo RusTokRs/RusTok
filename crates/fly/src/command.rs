@@ -404,11 +404,9 @@ impl FlyEditor {
                 parent_id,
                 index,
                 component,
-            } => document.project.insert_component(
-                parent_id.as_deref(),
-                *index,
-                component.clone(),
-            ),
+            } => document
+                .project
+                .insert_component(parent_id.as_deref(), *index, component.clone()),
             EditorCommand::Remove { component_id } => {
                 document.project.remove_component(component_id)?;
                 Ok(())
@@ -470,15 +468,10 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
                     "asset must be an object with src, source, or url".to_string(),
                 )
             })?;
-            if let Some(index) = document
-                .project
-                .assets
-                .iter()
-                .position(|candidate| {
-                    AssetDescriptor::from_value(candidate.clone())
-                        .is_some_and(|candidate| candidate.id == descriptor.id)
-                })
-            {
+            if let Some(index) = document.project.assets.iter().position(|candidate| {
+                AssetDescriptor::from_value(candidate.clone())
+                    .is_some_and(|candidate| candidate.id == descriptor.id)
+            }) {
                 document.project.assets[index] = asset.clone();
             } else {
                 document.project.assets.push(asset.clone());
@@ -503,8 +496,7 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 mod tests {
     use super::*;
     use crate::{
-        blank_page, GrapesJsV1Codec, PageLocator, RegistrySet, StyleRuleCatalog,
-        StyleRuleScope,
+        blank_page, GrapesJsV1Codec, PageLocator, RegistrySet, StyleRuleCatalog, StyleRuleScope,
     };
     use serde_json::json;
 
@@ -604,7 +596,10 @@ mod tests {
                 .expect("asset upsert");
         }
         assert_eq!(editor.document().project.assets.len(), 1);
-        assert_eq!(editor.document().project.assets[0]["src"], "/media/two.webp");
+        assert_eq!(
+            editor.document().project.assets[0]["src"],
+            "/media/two.webp"
+        );
     }
 
     #[test]

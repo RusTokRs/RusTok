@@ -134,15 +134,11 @@ impl AdminCanvasController {
                 let selected = document
                     .component(selected_id)
                     .ok_or_else(|| format!("selected component `{selected_id}` does not exist"))?;
-                if registries.accepts_child_type(
-                    Some(selected.component_type()),
-                    child_type.as_str(),
-                ) || location.depth == 0
+                if registries
+                    .accepts_child_type(Some(selected.component_type()), child_type.as_str())
+                    || location.depth == 0
                 {
-                    (
-                        Some(selected_id.to_string()),
-                        selected.children().len(),
-                    )
+                    (Some(selected_id.to_string()), selected.children().len())
                 } else {
                     (
                         location.parent_component_id,
@@ -247,11 +243,8 @@ impl AdminCanvasController {
             })
             .collect::<Vec<_>>();
 
-        let mut candidates = hit_test_drop_targets(
-            pointer,
-            targets,
-            CoordinateTransform::default(),
-        );
+        let mut candidates =
+            hit_test_drop_targets(pointer, targets, CoordinateTransform::default());
         for candidate in &mut candidates {
             let parent_component_id = match candidate.position {
                 DropPosition::Inside => Some(candidate.target_component_id.as_str()),
@@ -275,15 +268,12 @@ impl AdminCanvasController {
             candidate.reason = decision.reason;
         }
         candidates.sort_by(|left, right| {
-            right
-                .legal
-                .cmp(&left.legal)
-                .then_with(|| {
-                    right
-                        .score
-                        .partial_cmp(&left.score)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
+            right.legal.cmp(&left.legal).then_with(|| {
+                right
+                    .score
+                    .partial_cmp(&left.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
         });
         candidates
     }
@@ -335,13 +325,7 @@ fn collect_layers(
         depth,
     ));
     for (child_index, child) in component.children().iter().enumerate() {
-        collect_layers(
-            child,
-            Some(id.clone()),
-            child_index,
-            depth + 1,
-            items,
-        );
+        collect_layers(child, Some(id.clone()), child_index, depth + 1, items);
     }
 }
 
@@ -425,7 +409,10 @@ mod tests {
         let intent = controller
             .insert_palette_block_intent("text")
             .expect("insert intent");
-        let UiIntent::Execute(EditorCommand::Insert { parent_id, index, .. }) = intent else {
+        let UiIntent::Execute(EditorCommand::Insert {
+            parent_id, index, ..
+        }) = intent
+        else {
             panic!("expected insert command");
         };
         assert_eq!(parent_id.as_deref(), Some("section"));
@@ -438,7 +425,10 @@ mod tests {
         let intent = controller
             .insert_palette_block_intent("text")
             .expect("insert intent");
-        let UiIntent::Execute(EditorCommand::Insert { parent_id, index, .. }) = intent else {
+        let UiIntent::Execute(EditorCommand::Insert {
+            parent_id, index, ..
+        }) = intent
+        else {
             panic!("expected insert command");
         };
         assert_eq!(parent_id.as_deref(), Some("root"));

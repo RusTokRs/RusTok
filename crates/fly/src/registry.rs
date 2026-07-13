@@ -54,10 +54,32 @@ impl<T: RegistryItem> Registry<T> {
 
 fn validate_registry_id(id: &str) -> FlyResult<()> {
     const BUILT_INS: &[&str] = &[
-        "wrapper", "section", "container", "row", "column", "grid", "text", "heading",
-        "list", "list_item", "link", "image", "video", "media", "button", "divider",
-        "spacer", "form", "label", "input", "textarea", "select", "option", "checkbox",
-        "submit", "raw_html",
+        "wrapper",
+        "section",
+        "container",
+        "row",
+        "column",
+        "grid",
+        "text",
+        "heading",
+        "list",
+        "list_item",
+        "link",
+        "image",
+        "video",
+        "media",
+        "button",
+        "divider",
+        "spacer",
+        "form",
+        "label",
+        "input",
+        "textarea",
+        "select",
+        "option",
+        "checkbox",
+        "submit",
+        "raw_html",
     ];
     if id.is_empty() || (!id.contains('.') && !BUILT_INS.contains(&id)) {
         return Err(FlyError::InvalidRegistryId(id.to_string()));
@@ -278,14 +300,7 @@ pub fn builtin_component_definitions() -> Vec<ComponentDefinition> {
             };
             let accepts_any_child = matches!(
                 id,
-                "wrapper"
-                    | "section"
-                    | "container"
-                    | "row"
-                    | "column"
-                    | "grid"
-                    | "media"
-                    | "form"
+                "wrapper" | "section" | "container" | "row" | "column" | "grid" | "media" | "form"
             );
             ComponentDefinition {
                 id: id.to_string(),
@@ -338,10 +353,32 @@ pub fn builtin_commands() -> Vec<CommandDefinition> {
 
 fn builtin_component_ids() -> Vec<&'static str> {
     vec![
-        "wrapper", "section", "container", "row", "column", "grid", "text", "heading",
-        "list", "list_item", "link", "image", "video", "media", "button", "divider",
-        "spacer", "form", "label", "input", "textarea", "select", "option", "checkbox",
-        "submit", "raw_html",
+        "wrapper",
+        "section",
+        "container",
+        "row",
+        "column",
+        "grid",
+        "text",
+        "heading",
+        "list",
+        "list_item",
+        "link",
+        "image",
+        "video",
+        "media",
+        "button",
+        "divider",
+        "spacer",
+        "form",
+        "label",
+        "input",
+        "textarea",
+        "select",
+        "option",
+        "checkbox",
+        "submit",
+        "raw_html",
     ]
 }
 
@@ -621,9 +658,7 @@ fn humanize_id(id: &str) -> String {
 
 fn builtin_category(id: &str) -> &'static str {
     match id {
-        "section" | "container" | "row" | "column" | "grid" | "divider" | "spacer" => {
-            "layout"
-        }
+        "section" | "container" | "row" | "column" | "grid" | "divider" | "spacer" => "layout",
         "image" | "video" | "media" => "media",
         "form" | "input" | "textarea" | "select" | "checkbox" | "submit" => "forms",
         "raw_html" => "advanced",

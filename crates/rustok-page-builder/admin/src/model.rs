@@ -182,9 +182,7 @@ impl AdminCanvasController {
             .pages
             .get(*page_index)
             .ok_or_else(|| {
-                AdminCanvasError::Authoring(format!(
-                    "page index {page_index} does not exist"
-                ))
+                AdminCanvasError::Authoring(format!("page index {page_index} does not exist"))
             })?;
         if page_id.is_some() && page.id.as_ref() != page_id.as_ref() {
             return Err(AdminCanvasError::Authoring(format!(
@@ -250,9 +248,7 @@ impl AdminCanvasController {
                     request: PageBuilderCapabilityRequest::Publish(PublishPageBuilderInput {
                         page_id: self.page_id.clone(),
                         revision_id: self.revision_id.clone(),
-                        schema_version: PageBuilderContractMetadata::BASELINE
-                            .contract
-                            .to_string(),
+                        schema_version: PageBuilderContractMetadata::BASELINE.contract.to_string(),
                         project_data,
                     }),
                     expected_hash,
@@ -403,13 +399,9 @@ impl AdminCanvasController {
                         "active page does not contain an editable root component".to_string(),
                     )
                 })?;
-                let child_count = document
-                    .component_child_count(&root_id)
-                    .ok_or_else(|| {
-                        AdminCanvasError::Authoring(
-                            "active page root is opaque or missing".to_string(),
-                        )
-                    })?;
+                let child_count = document.component_child_count(&root_id).ok_or_else(|| {
+                    AdminCanvasError::Authoring("active page root is opaque or missing".to_string())
+                })?;
                 Ok((Some(root_id), child_count))
             }
         }
@@ -426,7 +418,9 @@ impl AdminCanvasController {
                 .map(|_| component_id.to_string())
         });
         if selection.is_none() && self.editor.selection().is_some() {
-            let _ = self.editor.apply(EditorCommand::Select { component_id: None });
+            let _ = self
+                .editor
+                .apply(EditorCommand::Select { component_id: None });
         }
         self.ui.state.selection.component_id = selection;
         self.ui.state.set_diagnostics(report.diagnostics);
@@ -531,10 +525,7 @@ mod tests {
             .dispatch(UiIntent::Execute(EditorCommand::Patch {
                 component_id: "hero".to_string(),
                 patch: ComponentPatch {
-                    attributes: Map::from_iter([(
-                        "aria-label".to_string(),
-                        json!("Hero"),
-                    )]),
+                    attributes: Map::from_iter([("aria-label".to_string(), json!("Hero"))]),
                     ..ComponentPatch::default()
                 },
             }))
@@ -549,7 +540,11 @@ mod tests {
             panic!("expected publish request");
         };
         assert_eq!(input.page_id, "home");
-        assert_eq!(input.project_data["pages"][0]["component"]["components"][0]["attributes"]["aria-label"], "Hero");
+        assert_eq!(
+            input.project_data["pages"][0]["component"]["components"][0]["attributes"]
+                ["aria-label"],
+            "Hero"
+        );
     }
 
     #[test]

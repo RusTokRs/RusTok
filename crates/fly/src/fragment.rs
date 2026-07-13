@@ -61,10 +61,7 @@ impl ProjectFragment {
         })
     }
 
-    pub fn remap_ids(
-        &mut self,
-        generator: &mut impl IdGenerator,
-    ) -> BTreeMap<String, String> {
+    pub fn remap_ids(&mut self, generator: &mut impl IdGenerator) -> BTreeMap<String, String> {
         let mut source_ids = Vec::new();
         for component in &self.components {
             component.collect_ids(&mut source_ids);

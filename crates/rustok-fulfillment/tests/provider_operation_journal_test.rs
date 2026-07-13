@@ -2,9 +2,8 @@ use chrono::Utc;
 use rustok_fulfillment::entities::fulfillment;
 use rustok_fulfillment::{
     BeginProviderOperation, FulfillmentProviderOperationJournal,
-    FulfillmentProviderOperationRecovery, PROVIDER_OPERATION_COMMITTED,
-    PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED,
+    FulfillmentProviderOperationRecovery, PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
@@ -45,16 +44,17 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     );
     let first = first.expect("first claim");
     let second = second.expect("second claim");
-    assert_ne!(first.is_some(), second.is_some(), "exactly one caller must claim");
+    assert_ne!(
+        first.is_some(),
+        second.is_some(),
+        "exactly one caller must claim"
+    );
 
     let ambiguous = journal
         .mark_provider_error(operation.id, "carrier request timed out")
         .await
         .expect("ambiguous outcome should be quarantined");
-    assert_eq!(
-        ambiguous.status,
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-    );
+    assert_eq!(ambiguous.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED);
     assert!(ambiguous.provider_completed_at.is_some());
     assert!(ambiguous.provider_result.is_none());
 
@@ -164,10 +164,7 @@ async fn manual_success_reconciliation_validates_provider_identity() {
         .await
         .expect("valid result should be persisted");
     assert_eq!(reconciled.status, PROVIDER_OPERATION_SUCCEEDED);
-    assert_eq!(
-        reconciled.provider_reference.as_deref(),
-        Some("label-1")
-    );
+    assert_eq!(reconciled.provider_reference.as_deref(), Some("label-1"));
 }
 
 #[tokio::test]

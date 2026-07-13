@@ -141,60 +141,82 @@ fn verify_media_type(declared: &str, data: &[u8]) -> Result<VerifiedMediaType> {
         .to_ascii_lowercase();
 
     let candidate = match normalized.as_str() {
-        "image/jpeg" if starts_with(data, &[0xff, 0xd8, 0xff]) => {
-            Some(VerifiedMediaType { mime_type: "image/jpeg", extension: "jpg" })
-        }
-        "image/png" if starts_with(data, b"\x89PNG\r\n\x1a\n") => {
-            Some(VerifiedMediaType { mime_type: "image/png", extension: "png" })
-        }
+        "image/jpeg" if starts_with(data, &[0xff, 0xd8, 0xff]) => Some(VerifiedMediaType {
+            mime_type: "image/jpeg",
+            extension: "jpg",
+        }),
+        "image/png" if starts_with(data, b"\x89PNG\r\n\x1a\n") => Some(VerifiedMediaType {
+            mime_type: "image/png",
+            extension: "png",
+        }),
         "image/gif" if starts_with(data, b"GIF87a") || starts_with(data, b"GIF89a") => {
-            Some(VerifiedMediaType { mime_type: "image/gif", extension: "gif" })
+            Some(VerifiedMediaType {
+                mime_type: "image/gif",
+                extension: "gif",
+            })
         }
-        "image/webp" if is_riff_type(data, b"WEBP") => {
-            Some(VerifiedMediaType { mime_type: "image/webp", extension: "webp" })
-        }
-        "image/bmp" if starts_with(data, b"BM") => {
-            Some(VerifiedMediaType { mime_type: "image/bmp", extension: "bmp" })
-        }
+        "image/webp" if is_riff_type(data, b"WEBP") => Some(VerifiedMediaType {
+            mime_type: "image/webp",
+            extension: "webp",
+        }),
+        "image/bmp" if starts_with(data, b"BM") => Some(VerifiedMediaType {
+            mime_type: "image/bmp",
+            extension: "bmp",
+        }),
         "image/tiff" if starts_with(data, b"II*\0") || starts_with(data, b"MM\0*") => {
-            Some(VerifiedMediaType { mime_type: "image/tiff", extension: "tiff" })
+            Some(VerifiedMediaType {
+                mime_type: "image/tiff",
+                extension: "tiff",
+            })
         }
-        "image/avif" if is_iso_bmff_brand(data, &[b"avif", b"avis"]) => {
-            Some(VerifiedMediaType { mime_type: "image/avif", extension: "avif" })
-        }
-        "video/mp4" if is_iso_bmff(data) => {
-            Some(VerifiedMediaType { mime_type: "video/mp4", extension: "mp4" })
-        }
-        "video/quicktime" if is_iso_bmff_brand(data, &[b"qt  "]) => {
-            Some(VerifiedMediaType { mime_type: "video/quicktime", extension: "mov" })
-        }
-        "video/webm" if starts_with(data, &[0x1a, 0x45, 0xdf, 0xa3]) => {
-            Some(VerifiedMediaType { mime_type: "video/webm", extension: "webm" })
-        }
-        "video/x-msvideo" if is_riff_type(data, b"AVI ") => {
-            Some(VerifiedMediaType { mime_type: "video/x-msvideo", extension: "avi" })
-        }
-        "audio/mpeg" if is_mpeg_audio(data) => {
-            Some(VerifiedMediaType { mime_type: "audio/mpeg", extension: "mp3" })
-        }
-        "audio/wav" | "audio/x-wav" if is_riff_type(data, b"WAVE") => {
-            Some(VerifiedMediaType { mime_type: "audio/wav", extension: "wav" })
-        }
-        "audio/ogg" if starts_with(data, b"OggS") => {
-            Some(VerifiedMediaType { mime_type: "audio/ogg", extension: "ogg" })
-        }
-        "audio/flac" if starts_with(data, b"fLaC") => {
-            Some(VerifiedMediaType { mime_type: "audio/flac", extension: "flac" })
-        }
-        "audio/aac" if is_aac_adts(data) => {
-            Some(VerifiedMediaType { mime_type: "audio/aac", extension: "aac" })
-        }
-        "audio/mp4" if is_iso_bmff(data) => {
-            Some(VerifiedMediaType { mime_type: "audio/mp4", extension: "m4a" })
-        }
-        "application/pdf" if starts_with(data, b"%PDF-") => {
-            Some(VerifiedMediaType { mime_type: "application/pdf", extension: "pdf" })
-        }
+        "image/avif" if is_iso_bmff_brand(data, &[b"avif", b"avis"]) => Some(VerifiedMediaType {
+            mime_type: "image/avif",
+            extension: "avif",
+        }),
+        "video/mp4" if is_iso_bmff(data) => Some(VerifiedMediaType {
+            mime_type: "video/mp4",
+            extension: "mp4",
+        }),
+        "video/quicktime" if is_iso_bmff_brand(data, &[b"qt  "]) => Some(VerifiedMediaType {
+            mime_type: "video/quicktime",
+            extension: "mov",
+        }),
+        "video/webm" if starts_with(data, &[0x1a, 0x45, 0xdf, 0xa3]) => Some(VerifiedMediaType {
+            mime_type: "video/webm",
+            extension: "webm",
+        }),
+        "video/x-msvideo" if is_riff_type(data, b"AVI ") => Some(VerifiedMediaType {
+            mime_type: "video/x-msvideo",
+            extension: "avi",
+        }),
+        "audio/mpeg" if is_mpeg_audio(data) => Some(VerifiedMediaType {
+            mime_type: "audio/mpeg",
+            extension: "mp3",
+        }),
+        "audio/wav" | "audio/x-wav" if is_riff_type(data, b"WAVE") => Some(VerifiedMediaType {
+            mime_type: "audio/wav",
+            extension: "wav",
+        }),
+        "audio/ogg" if starts_with(data, b"OggS") => Some(VerifiedMediaType {
+            mime_type: "audio/ogg",
+            extension: "ogg",
+        }),
+        "audio/flac" if starts_with(data, b"fLaC") => Some(VerifiedMediaType {
+            mime_type: "audio/flac",
+            extension: "flac",
+        }),
+        "audio/aac" if is_aac_adts(data) => Some(VerifiedMediaType {
+            mime_type: "audio/aac",
+            extension: "aac",
+        }),
+        "audio/mp4" if is_iso_bmff(data) => Some(VerifiedMediaType {
+            mime_type: "audio/mp4",
+            extension: "m4a",
+        }),
+        "application/pdf" if starts_with(data, b"%PDF-") => Some(VerifiedMediaType {
+            mime_type: "application/pdf",
+            extension: "pdf",
+        }),
         _ => None,
     };
 
@@ -255,13 +277,10 @@ fn is_iso_bmff_brand(data: &[u8], brands: &[&[u8; 4]]) -> bool {
     }
     data.get(8..12)
         .is_some_and(|brand| brands.iter().any(|candidate| brand == candidate.as_slice()))
-        || data
-            .get(16..)
-            .is_some_and(|rest| rest.chunks_exact(4).any(|brand| {
-                brands
-                    .iter()
-                    .any(|candidate| brand == candidate.as_slice())
-            }))
+        || data.get(16..).is_some_and(|rest| {
+            rest.chunks_exact(4)
+                .any(|brand| brands.iter().any(|candidate| brand == candidate.as_slice()))
+        })
 }
 
 fn is_mpeg_audio(data: &[u8]) -> bool {
@@ -300,8 +319,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        classify_cleanup_probe, normalize_original_name, validate_upload_policy,
-        verify_media_type, MediaStorageCleanupDecision, MediaStorageCleanupReport,
+        classify_cleanup_probe, normalize_original_name, validate_upload_policy, verify_media_type,
+        MediaStorageCleanupDecision, MediaStorageCleanupReport,
     };
     use crate::{
         dto::{UploadInput, DEFAULT_MAX_SIZE},
@@ -377,18 +396,18 @@ mod tests {
 
     #[test]
     fn content_type_parameters_are_normalized() {
-        let media_type = verify_media_type(
-            "application/pdf; charset=binary",
-            b"%PDF-1.7\n",
-        )
-        .expect("PDF signature");
+        let media_type = verify_media_type("application/pdf; charset=binary", b"%PDF-1.7\n")
+            .expect("PDF signature");
         assert_eq!(media_type.mime_type, "application/pdf");
     }
 
     #[test]
     fn uploaded_display_name_cannot_preserve_path_components() {
         assert_eq!(normalize_original_name("../../evil.png", "png"), "evil.png");
-        assert_eq!(normalize_original_name("..\\..\\evil.png", "png"), "evil.png");
+        assert_eq!(
+            normalize_original_name("..\\..\\evil.png", "png"),
+            "evil.png"
+        );
         assert_eq!(normalize_original_name("...", "jpg"), "upload.jpg");
     }
 
@@ -501,7 +520,10 @@ impl MediaService {
         let total = query.clone().count(&self.db).await?;
         let items: Vec<crate::entities::media::Model> =
             query.limit(limit).offset(offset).all(&self.db).await?;
-        Ok((items.into_iter().map(|model| self.to_item(model)).collect(), total))
+        Ok((
+            items.into_iter().map(|model| self.to_item(model)).collect(),
+            total,
+        ))
     }
 
     pub async fn get_asset_summary(

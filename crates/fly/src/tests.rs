@@ -10,10 +10,9 @@ fn baseline() -> ProjectDocument {
 
 #[test]
 fn grapesjs_round_trip_preserves_unknown_fields() {
-    let input: Value = serde_json::from_str(include_str!(
-        "../fixtures/grapesjs/unknown-provider.json"
-    ))
-    .expect("fixture json");
+    let input: Value =
+        serde_json::from_str(include_str!("../fixtures/grapesjs/unknown-provider.json"))
+            .expect("fixture json");
     let document = GrapesJsV1Codec::decode_value(input.clone()).expect("decode");
     let output = GrapesJsV1Codec::encode_value(&document).expect("encode");
     assert_eq!(output, input);
@@ -52,10 +51,9 @@ fn commands_and_history_are_transactional() {
 
 #[test]
 fn validation_preserves_missing_provider_nodes() {
-    let document = GrapesJsV1Codec::decode_str(include_str!(
-        "../fixtures/grapesjs/unknown-provider.json"
-    ))
-    .expect("decode");
+    let document =
+        GrapesJsV1Codec::decode_str(include_str!("../fixtures/grapesjs/unknown-provider.json"))
+            .expect("decode");
     let report = validate_project(
         &document,
         &RegistrySet::with_builtins(),
@@ -72,8 +70,7 @@ fn validation_preserves_missing_provider_nodes() {
 #[test]
 fn clipboard_remaps_internal_references() {
     let document = baseline();
-    let mut fragment =
-        ProjectFragment::from_component(&document, "hero").expect("fragment");
+    let mut fragment = ProjectFragment::from_component(&document, "hero").expect("fragment");
     let mut generator = SequentialIdGenerator::new("copy");
     let mapping = fragment.remap_ids(&mut generator);
     assert_eq!(mapping.get("hero"), Some(&"copy-paste-1".to_string()));

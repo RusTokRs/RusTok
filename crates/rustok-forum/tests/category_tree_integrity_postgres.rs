@@ -37,9 +37,7 @@ UPDATE forum_categories SET parent_id = '{child_id}' WHERE id = '{grandchild_id}
 
         expect_rejected(
             &context.db,
-            format!(
-                "UPDATE forum_categories SET parent_id = '{root_id}' WHERE id = '{root_id}'"
-            ),
+            format!("UPDATE forum_categories SET parent_id = '{root_id}' WHERE id = '{root_id}'"),
             "self-parent category",
         )
         .await?;
@@ -62,9 +60,7 @@ UPDATE forum_categories SET parent_id = '{child_id}' WHERE id = '{grandchild_id}
         .await?;
         execute(
             &context.db,
-            format!(
-                "UPDATE forum_categories SET parent_id = NULL WHERE id = '{grandchild_id}'"
-            ),
+            format!("UPDATE forum_categories SET parent_id = NULL WHERE id = '{grandchild_id}'"),
         )
         .await?;
 

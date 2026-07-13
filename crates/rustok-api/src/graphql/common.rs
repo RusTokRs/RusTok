@@ -148,10 +148,7 @@ pub async fn require_module_enabled(ctx: &Context<'_>, slug: &str) -> Result<()>
 /// Permission snapshots, module enablement and auth claims are all bound to the
 /// request tenant. Accepting a different resolver argument would reuse that
 /// authority against another tenant's rows.
-pub fn resolve_graphql_tenant_id(
-    ctx: &Context<'_>,
-    requested: Option<Uuid>,
-) -> Result<Uuid> {
+pub fn resolve_graphql_tenant_id(ctx: &Context<'_>, requested: Option<Uuid>) -> Result<Uuid> {
     let tenant = ctx.data::<TenantContext>()?;
     match requested {
         Some(requested) if requested != tenant.id => Err(async_graphql::Error::new(
@@ -185,7 +182,11 @@ mod tests {
 
     #[Object]
     impl Query {
-        async fn resolved(&self, ctx: &Context<'_>, requested: Option<Uuid>) -> async_graphql::Result<Uuid> {
+        async fn resolved(
+            &self,
+            ctx: &Context<'_>,
+            requested: Option<Uuid>,
+        ) -> async_graphql::Result<Uuid> {
             resolve_graphql_tenant_id(ctx, requested)
         }
     }

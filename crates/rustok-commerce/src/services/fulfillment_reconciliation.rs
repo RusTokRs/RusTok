@@ -110,60 +110,53 @@ impl FulfillmentReconciliationService {
             operation.operation.as_str(),
         );
 
-        let updated = match operation.operation.as_str() {
-            "ship" => {
-                let input = ShipFulfillmentInput {
-                    carrier: required_string(orchestration, "carrier", operation_id)?,
-                    tracking_number: provider_result
-                        .tracking_number
-                        .unwrap_or(required_string(
-                            orchestration,
-                            "tracking_number",
-                            operation_id,
-                        )?),
-                    items: optional_field(orchestration, "items", operation_id)?,
-                    metadata: local_metadata,
-                };
-                service
-                    .ship_fulfillment(tenant_id, operation.fulfillment_id, input)
-                    .await?
-            }
-            "reship" => {
-                let input = ReshipFulfillmentInput {
-                    carrier: required_string(orchestration, "carrier", operation_id)?,
-                    tracking_number: provider_result
-                        .tracking_number
-                        .unwrap_or(required_string(
-                            orchestration,
-                            "tracking_number",
-                            operation_id,
-                        )?),
-                    items: optional_field(orchestration, "items", operation_id)?,
-                    metadata: local_metadata,
-                };
-                service
-                    .reship_fulfillment(tenant_id, operation.fulfillment_id, input)
-                    .await?
-            }
-            "cancel" => {
-                let input = CancelFulfillmentInput {
-                    reason: optional_field(orchestration, "reason", operation_id)?,
-                    metadata: local_metadata,
-                };
-                service
-                    .cancel_fulfillment(tenant_id, operation.fulfillment_id, input)
-                    .await?
-            }
-            "create_label" => {
-                journal.mark_committed(operation_id).await?;
-                return Ok(current);
-            }
-            other => {
-                return Err(FulfillmentOrchestrationError::Validation(format!(
-                    "unsupported fulfillment reconciliation operation `{other}`"
-                )))
-            }
-        };
+        let updated =
+            match operation.operation.as_str() {
+                "ship" => {
+                    let input = ShipFulfillmentInput {
+                        carrier: required_string(orchestration, "carrier", operation_id)?,
+                        tracking_number: provider_result.tracking_number.unwrap_or(
+                            required_string(orchestration, "tracking_number", operation_id)?,
+                        ),
+                        items: optional_field(orchestration, "items", operation_id)?,
+                        metadata: local_metadata,
+                    };
+                    service
+                        .ship_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .await?
+                }
+                "reship" => {
+                    let input = ReshipFulfillmentInput {
+                        carrier: required_string(orchestration, "carrier", operation_id)?,
+                        tracking_number: provider_result.tracking_number.unwrap_or(
+                            required_string(orchestration, "tracking_number", operation_id)?,
+                        ),
+                        items: optional_field(orchestration, "items", operation_id)?,
+                        metadata: local_metadata,
+                    };
+                    service
+                        .reship_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .await?
+                }
+                "cancel" => {
+                    let input = CancelFulfillmentInput {
+                        reason: optional_field(orchestration, "reason", operation_id)?,
+                        metadata: local_metadata,
+                    };
+                    service
+                        .cancel_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .await?
+                }
+                "create_label" => {
+                    journal.mark_committed(operation_id).await?;
+                    return Ok(current);
+                }
+                other => {
+                    return Err(FulfillmentOrchestrationError::Validation(format!(
+                        "unsupported fulfillment reconciliation operation `{other}`"
+                    )))
+                }
+            };
 
         let reconciled = journal.get(operation_id).await?;
         if reconciled.status != PROVIDER_OPERATION_COMMITTED {
@@ -266,12 +259,9 @@ mod tests {
             quantity: 2,
         };
         let object = serde_json::json!({"items": [item]});
-        let parsed: Option<Vec<FulfillmentItemQuantityInput>> = optional_field(
-            object.as_object().expect("object"),
-            "items",
-            operation_id,
-        )
-        .expect("items");
+        let parsed: Option<Vec<FulfillmentItemQuantityInput>> =
+            optional_field(object.as_object().expect("object"), "items", operation_id)
+                .expect("items");
         assert_eq!(parsed.expect("some items").len(), 1);
     }
 }

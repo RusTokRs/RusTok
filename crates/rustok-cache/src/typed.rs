@@ -92,24 +92,29 @@ impl CacheService {
         }
 
         let result = self
-            .load_or_fill_with_policy(Arc::clone(&backend), key.clone(), policy, move || async move {
-                let envelope = loader().await?;
-                if envelope.schema_version() != expected_schema_version {
-                    return Err(rustok_core::Error::Cache(format!(
-                        "cache loader produced schema version {}; expected {}",
-                        envelope.schema_version(),
-                        expected_schema_version
-                    )));
-                }
-                if envelope.is_hard_expired(now_unix_ms) {
-                    return Err(rustok_core::Error::Cache(
-                        "cache loader produced an already hard-expired envelope".to_string(),
-                    ));
-                }
-                envelope
-                    .encode_with_limit(max_encoded_bytes)
-                    .map_err(envelope_error_to_core)
-            })
+            .load_or_fill_with_policy(
+                Arc::clone(&backend),
+                key.clone(),
+                policy,
+                move || async move {
+                    let envelope = loader().await?;
+                    if envelope.schema_version() != expected_schema_version {
+                        return Err(rustok_core::Error::Cache(format!(
+                            "cache loader produced schema version {}; expected {}",
+                            envelope.schema_version(),
+                            expected_schema_version
+                        )));
+                    }
+                    if envelope.is_hard_expired(now_unix_ms) {
+                        return Err(rustok_core::Error::Cache(
+                            "cache loader produced an already hard-expired envelope".to_string(),
+                        ));
+                    }
+                    envelope
+                        .encode_with_limit(max_encoded_bytes)
+                        .map_err(envelope_error_to_core)
+                },
+            )
             .await?;
 
         let envelope = match CacheEnvelope::<T>::decode_with_limit(
@@ -248,8 +253,7 @@ mod tests {
                 1024,
                 1_500,
                 || async {
-                    CacheEnvelope::new(2, 1_400, "new".to_string())
-                        .map_err(envelope_error_to_core)
+                    CacheEnvelope::new(2, 1_400, "new".to_string()).map_err(envelope_error_to_core)
                 },
             )
             .await
@@ -387,8 +391,7 @@ mod tests {
                 1024,
                 1_500,
                 || async {
-                    CacheEnvelope::new(2, 1_400, "new".to_string())
-                        .map_err(envelope_error_to_core)
+                    CacheEnvelope::new(2, 1_400, "new".to_string()).map_err(envelope_error_to_core)
                 },
             )
             .await;

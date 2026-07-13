@@ -12,9 +12,7 @@ use uuid::Uuid;
 use crate::graphql_runtime::post_order_orchestration_from_context;
 use crate::ExchangeDifferenceRefundInput;
 
-use super::super::{
-    current_tenant_scope, require_commerce_permission, types::*, MODULE_SLUG,
-};
+use super::super::{current_tenant_scope, require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;
 use super::provider_return_helpers::build_provider_refund_resolution_return_completion;
 

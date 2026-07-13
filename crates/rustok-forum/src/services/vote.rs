@@ -12,10 +12,10 @@ use rustok_core::SecurityContext;
 
 use rustok_api::{Action, Resource};
 
-use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::entities::{forum_reply, forum_reply_vote, forum_topic, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VoteSummary {

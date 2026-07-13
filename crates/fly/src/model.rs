@@ -97,11 +97,7 @@ impl GrapesProject {
         }
     }
 
-    fn ensure_stable_ids(
-        &mut self,
-        generator: &mut impl IdGenerator,
-        used: &mut BTreeSet<String>,
-    ) {
+    fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator, used: &mut BTreeSet<String>) {
         for page in &mut self.pages {
             if let Some(root) = page.component.as_mut() {
                 root.ensure_stable_ids(generator, used);
@@ -213,10 +209,7 @@ impl ComponentNode {
         if object.id() == Some(id) {
             return Some(object);
         }
-        object
-            .children()
-            .iter()
-            .find_map(|child| child.find(id))
+        object.children().iter().find_map(|child| child.find(id))
     }
 
     pub fn find_mut(&mut self, id: &str) -> Option<&mut ComponentObject> {
@@ -241,19 +234,11 @@ impl ComponentNode {
         };
         visitor(object, depth, path);
         for (index, child) in object.children().iter().enumerate() {
-            child.visit(
-                depth + 1,
-                &format!("{path}.components[{index}]"),
-                visitor,
-            );
+            child.visit(depth + 1, &format!("{path}.components[{index}]"), visitor);
         }
     }
 
-    fn ensure_stable_ids(
-        &mut self,
-        generator: &mut impl IdGenerator,
-        used: &mut BTreeSet<String>,
-    ) {
+    fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator, used: &mut BTreeSet<String>) {
         let Some(object) = self.as_object_mut() else {
             return;
         };

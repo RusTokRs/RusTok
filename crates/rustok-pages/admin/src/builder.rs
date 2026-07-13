@@ -108,18 +108,15 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
             )
             .await
             .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
-            let persisted_page = transport::fetch_page(
-                snapshot.token,
-                snapshot.tenant_slug,
-                snapshot.page_id,
-            )
-            .await
-            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
-            .ok_or_else(|| {
-                PageBuilderAdminFacadeError::new(
-                    "Pages document disappeared after a successful builder save",
-                )
-            })?;
+            let persisted_page =
+                transport::fetch_page(snapshot.token, snapshot.tenant_slug, snapshot.page_id)
+                    .await
+                    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
+                    .ok_or_else(|| {
+                        PageBuilderAdminFacadeError::new(
+                            "Pages document disappeared after a successful builder save",
+                        )
+                    })?;
             let persisted_revision = page_revision(&persisted_page);
             if persisted_revision.starts_with("page:") {
                 return Err(PageBuilderAdminFacadeError::new(
@@ -143,8 +140,8 @@ pub fn controller_from_project(
     revision_id: &str,
     raw_project: &str,
 ) -> Result<AdminCanvasController, PageBuilderAdminFacadeError> {
-    let project = core::parse_project_data(raw_project)
-        .map_err(PageBuilderAdminFacadeError::new)?;
+    let project =
+        core::parse_project_data(raw_project).map_err(PageBuilderAdminFacadeError::new)?;
     let project = canonicalize_builder_project(project)?;
     AdminCanvasController::new(page_id, revision_id, project)
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))
@@ -189,7 +186,10 @@ pub fn canonicalize_builder_project(
         page.insert("component".to_string(), component.clone());
         synchronize_frame_component(page, component)?;
         if page.get("id").is_none_or(Value::is_null) {
-            page.insert("id".to_string(), Value::String(format!("page-{page_index}")));
+            page.insert(
+                "id".to_string(),
+                Value::String(format!("page-{page_index}")),
+            );
         }
     }
 

@@ -42,7 +42,6 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
-use crate::state_machine::TopicStatus;
 use crate::dto::{
     CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput,
 };
@@ -56,6 +55,7 @@ use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
 use crate::services::user_stats::UserStatsService;
 use crate::services::vote::{VoteService, VoteSummary};
+use crate::state_machine::TopicStatus;
 
 mod topic_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("topic_field_definitions");
@@ -155,13 +155,8 @@ impl TopicService {
                 .map_err(|error| ForumError::Validation(error.to_string()))?;
         }
 
-        self.sync_channel_access_in_tx(
-            &txn,
-            tenant_id,
-            topic_id,
-            input.channel_slugs.as_deref(),
-        )
-        .await?;
+        self.sync_channel_access_in_tx(&txn, tenant_id, topic_id, input.channel_slugs.as_deref())
+            .await?;
         self.sync_topic_tags_in_tx(&txn, tenant_id, topic_id, &locale, &normalized_tags)
             .await?;
         CategoryService::adjust_counters_in_tx(&txn, tenant_id, input.category_id, 1, 0).await?;
@@ -224,9 +219,7 @@ impl TopicService {
         let tags = self
             .load_topic_tags(tenant_id, topic.id, &locale, fallback_locale.as_deref())
             .await?;
-        let solution_reply_id = self
-            .load_solution_reply_id(tenant_id, topic_id)
-            .await?;
+        let solution_reply_id = self.load_solution_reply_id(tenant_id, topic_id).await?;
         let vote_summary = VoteService::new(self.db.clone())
             .topic_vote_summary(tenant_id, topic_id, security.user_id)
             .await?;
@@ -826,9 +819,7 @@ impl TopicService {
         let translations_by_topic_id = self
             .load_translations_map_for_topics(tenant_id, &topic_ids)
             .await?;
-        let channels = self
-            .load_channel_slugs_map(tenant_id, &topic_ids)
-            .await?;
+        let channels = self.load_channel_slugs_map(tenant_id, &topic_ids).await?;
         let solution_reply_ids = self
             .load_solution_reply_ids_map(tenant_id, &topic_ids)
             .await?;

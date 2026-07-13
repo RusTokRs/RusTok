@@ -1,6 +1,4 @@
-use fly::{
-    render_page, FlyResult, GrapesJsV1Codec, PageSelection, RenderPolicy, RenderedPage,
-};
+use fly::{render_page, FlyResult, GrapesJsV1Codec, PageSelection, RenderPolicy, RenderedPage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

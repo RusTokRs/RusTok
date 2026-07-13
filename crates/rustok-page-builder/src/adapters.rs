@@ -1,6 +1,4 @@
-use crate::dto::{
-    BuilderTreeNode, PageBuilderCapabilityRequest, PageBuilderContractMetadata,
-};
+use crate::dto::{BuilderTreeNode, PageBuilderCapabilityRequest, PageBuilderContractMetadata};
 use crate::transport::{PageBuilderTransportError, PageBuilderTransportSuccess};
 use fly::{
     validate_project, ComponentNode, GrapesJsV1Codec, ProjectDocument, RegistrySet,
@@ -105,10 +103,7 @@ impl FlyProjectInspection {
             .enumerate()
             .filter_map(|(page_index, page)| {
                 page.component.as_ref().and_then(|component| {
-                    component_to_tree(
-                        component,
-                        &format!("pages[{page_index}].component"),
-                    )
+                    component_to_tree(component, &format!("pages[{page_index}].component"))
                 })
             })
             .collect()
@@ -391,10 +386,8 @@ mod tests {
     use serde_json::json;
 
     fn baseline() -> Value {
-        serde_json::from_str(include_str!(
-            "../../fly/fixtures/grapesjs/baseline.json"
-        ))
-        .expect("baseline fixture must be valid JSON")
+        serde_json::from_str(include_str!("../../fly/fixtures/grapesjs/baseline.json"))
+            .expect("baseline fixture must be valid JSON")
     }
 
     #[test]
@@ -445,10 +438,7 @@ mod tests {
             .require_valid()
             .expect_err("duplicate IDs must fail validation");
 
-        assert!(matches!(
-            error,
-            FlyProjectAdapterError::Validation { .. }
-        ));
+        assert!(matches!(error, FlyProjectAdapterError::Validation { .. }));
     }
 
     #[test]

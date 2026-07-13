@@ -68,7 +68,10 @@ pub mod tenant {
         cause: &'static str,
     ) {
         let Some(cache) = ctx.shared_get::<CacheService>() else {
-            tracing::warn!(cause, "Tenant cache generation rotation skipped: cache service missing");
+            tracing::warn!(
+                cause,
+                "Tenant cache generation rotation skipped: cache service missing"
+            );
             return;
         };
 
@@ -112,9 +115,15 @@ pub mod tenant {
         };
 
         if cache.redis_configuration_present() && !outcome.redis_published {
-            tracing::warn!(cause, "Tenant generation advanced but Redis publication was unavailable");
+            tracing::warn!(
+                cause,
+                "Tenant generation advanced but Redis publication was unavailable"
+            );
         } else if !cache.redis_configuration_present() && outcome.local_subscribers == 0 {
-            tracing::warn!(cause, "Tenant generation advanced without a local subscriber");
+            tracing::warn!(
+                cause,
+                "Tenant generation advanced without a local subscriber"
+            );
         }
     }
 

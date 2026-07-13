@@ -95,12 +95,7 @@ async fn sqlite_rejects_unknown_forum_lifecycle_statuses() -> TestResult<()> {
         .await?;
     }
     for status in [
-        "pending",
-        "approved",
-        "rejected",
-        "hidden",
-        "flagged",
-        "deleted",
+        "pending", "approved", "rejected", "hidden", "flagged", "deleted",
     ] {
         execute(
             &db,
@@ -155,11 +150,7 @@ async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
     Ok(())
 }
 
-async fn assert_rejected(
-    db: &DatabaseConnection,
-    sql: String,
-    label: &str,
-) -> TestResult<()> {
+async fn assert_rejected(db: &DatabaseConnection, sql: String, label: &str) -> TestResult<()> {
     let result = db.execute_unprepared(&sql).await;
     assert!(result.is_err(), "{label} must be rejected");
     Ok(())

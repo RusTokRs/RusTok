@@ -254,9 +254,7 @@ fn stale_refresh_is_bounded_deduplicated_and_atomic() {
         "background refresh must publish through backend-level atomic CAS"
     );
     assert!(
-        !refresh.contains(
-            "backend.get(&key).await?.as_deref() != Some(observed_bytes.as_slice())"
-        ),
+        !refresh.contains("backend.get(&key).await?.as_deref() != Some(observed_bytes.as_slice())"),
         "background refresh must not use a racy prewrite GET check"
     );
     assert!(
@@ -310,9 +308,8 @@ fn generation_fallback_is_trusted_monotonic_and_bounded() {
         "new generation namespaces must fail closed after snapshot capacity is reached"
     );
     assert!(
-        generation.contains(
-            "trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces"
-        ),
+        generation
+            .contains("trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces"),
         "generation capacity must retain regression coverage without evicting trusted state"
     );
 }

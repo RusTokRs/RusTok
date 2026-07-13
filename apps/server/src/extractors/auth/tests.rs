@@ -154,11 +154,7 @@ fn token_claim_classifier_separates_user_and_service_subjects() {
 
 #[test]
 fn token_claim_classifier_rejects_ambiguous_subjects() {
-    let ambiguous = claims(
-        "authorization_code",
-        Some(Uuid::new_v4()),
-        Uuid::new_v4(),
-    );
+    let ambiguous = claims("authorization_code", Some(Uuid::new_v4()), Uuid::new_v4());
     assert!(classify_access_token_claims(&ambiguous).is_err());
 }
 
@@ -185,21 +181,11 @@ fn service_current_user_builds_service_security_context() {
 async fn oauth_service_token_intersects_app_permissions_with_scopes() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
-    let tenant = tenants::ActiveModel::new(
-        "OAuth tenant",
-        &format!("tenant-{}", Uuid::new_v4()),
-    )
-    .insert(&db)
-    .await
-    .expect("create tenant");
-    let app = insert_oauth_app(
-        &db,
-        tenant.id,
-        "service",
-        &["client_credentials"],
-        true,
-    )
-    .await;
+    let tenant = tenants::ActiveModel::new("OAuth tenant", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db)
+        .await
+        .expect("create tenant");
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
     let (permissions, inferred_role) = resolve_service_token_permissions(
         &db,
@@ -230,14 +216,7 @@ async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
     .insert(&db)
     .await
     .expect("create tenant");
-    let app = insert_oauth_app(
-        &db,
-        tenant.id,
-        "service",
-        &["client_credentials"],
-        true,
-    )
-    .await;
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
     let (permissions, _) = resolve_service_token_permissions(
         &db,
@@ -264,14 +243,7 @@ async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
     .insert(&db)
     .await
     .expect("create tenant");
-    let app = insert_oauth_app(
-        &db,
-        tenant.id,
-        "service",
-        &["client_credentials"],
-        true,
-    )
-    .await;
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
     let error = resolve_service_token_permissions(
         &db,
@@ -344,22 +316,13 @@ async fn authorization_code_token_rejects_scope_removed_from_oauth_app() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
     let auth_runtime = test_auth_runtime(db.clone());
-    let tenant = tenants::ActiveModel::new(
-        "OAuth scope tenant",
-        &format!("tenant-{}", Uuid::new_v4()),
-    )
-    .insert(&db)
-    .await
-    .expect("create tenant");
+    let tenant =
+        tenants::ActiveModel::new("OAuth scope tenant", &format!("tenant-{}", Uuid::new_v4()))
+            .insert(&db)
+            .await
+            .expect("create tenant");
     let (user, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
-    let app = insert_oauth_app(
-        &db,
-        tenant.id,
-        "third_party",
-        &["authorization_code"],
-        true,
-    )
-    .await;
+    let app = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
     let removed_scopes = vec!["admin:*".to_string()];
     let token = encode_oauth_access_token(
         &test_auth_config(),
@@ -431,8 +394,7 @@ async fn access_token_resolver_returns_forbidden_for_inactive_user() {
     .insert(&db)
     .await
     .expect("create tenant");
-    let (user, session_id) =
-        insert_user_with_session(&db, tenant.id, UserStatus::Inactive).await;
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Inactive).await;
     let token = encode_access_token(
         &test_auth_config(),
         user.id,
@@ -456,13 +418,11 @@ async fn access_token_resolver_returns_forbidden_for_inactive_user() {
 async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_failure() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let auth_runtime = test_auth_runtime(db.clone());
-    let tenant = tenants::ActiveModel::new(
-        "RBAC failure tenant",
-        &format!("tenant-{}", Uuid::new_v4()),
-    )
-    .insert(&db)
-    .await
-    .expect("create tenant");
+    let tenant =
+        tenants::ActiveModel::new("RBAC failure tenant", &format!("tenant-{}", Uuid::new_v4()))
+            .insert(&db)
+            .await
+            .expect("create tenant");
     let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     let token = encode_access_token(
         &test_auth_config(),

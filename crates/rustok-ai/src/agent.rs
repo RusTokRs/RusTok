@@ -145,7 +145,9 @@ impl AgentCatalog {
     }
 
     pub fn descriptor(&self, slug: &str) -> Option<&AgentDescriptor> {
-        self.descriptors.iter().find(|descriptor| descriptor.slug == slug)
+        self.descriptors
+            .iter()
+            .find(|descriptor| descriptor.slug == slug)
     }
 
     #[cfg(feature = "server")]
@@ -208,7 +210,10 @@ impl AgentCatalog {
         principal: &AgentPrincipal,
     ) -> AiResult<BTreeSet<String>> {
         let descriptor = self.descriptor(&principal.agent_slug).ok_or_else(|| {
-            AiError::Validation(format!("unknown agent descriptor `{}`", principal.agent_slug))
+            AiError::Validation(format!(
+                "unknown agent descriptor `{}`",
+                principal.agent_slug
+            ))
         })?;
         let effective = initiator_permissions
             .intersection(&principal.permission_slugs)
@@ -235,11 +240,19 @@ impl AgentCatalog {
             .workflows
             .iter()
             .find(|workflow| workflow.slug == workflow_slug)
-            .ok_or_else(|| AiError::Validation(format!("unknown agent workflow `{workflow_slug}`")))?;
+            .ok_or_else(|| {
+                AiError::Validation(format!("unknown agent workflow `{workflow_slug}`"))
+            })?;
         Ok(workflow
             .stages
             .iter()
-            .filter(|stage| states.get(&stage.id).copied().unwrap_or(AgentStageStatus::Pending) == AgentStageStatus::Pending)
+            .filter(|stage| {
+                states
+                    .get(&stage.id)
+                    .copied()
+                    .unwrap_or(AgentStageStatus::Pending)
+                    == AgentStageStatus::Pending
+            })
             .filter(|stage| {
                 stage.depends_on.iter().all(|dependency| {
                     states.get(dependency).copied() == Some(AgentStageStatus::Completed)
@@ -293,7 +306,10 @@ impl AgentCatalog {
                         workflow.slug, stage.agent_slug
                     )));
                 }
-                if stage.depends_on.iter().any(|dependency| dependency == &stage.id)
+                if stage
+                    .depends_on
+                    .iter()
+                    .any(|dependency| dependency == &stage.id)
                     || stage
                         .depends_on
                         .iter()
@@ -423,27 +439,29 @@ pub fn agent_catalog() -> AiResult<AgentCatalog> {
                 .collect(),
         })
         .collect();
-    workflows.extend(rustok_ai_product::product_ai_workflows().iter().map(|workflow| {
-        AgentWorkflowDescriptor {
-            slug: workflow.slug.to_string(),
-            display_name: workflow.display_name.to_string(),
-            owner: "rustok-ai-product".to_string(),
-            stages: workflow
-                .stages
-                .iter()
-                .map(|stage| AgentWorkflowStage {
-                    id: stage.id.to_string(),
-                    agent_slug: stage.agent_slug.to_string(),
-                    depends_on: stage
-                        .depends_on
-                        .iter()
-                        .map(|value| (*value).to_string())
-                        .collect(),
-                    requires_approval: stage.requires_approval,
-                })
-                .collect(),
-        }
-    }));
+    workflows.extend(
+        rustok_ai_product::product_ai_workflows()
+            .iter()
+            .map(|workflow| AgentWorkflowDescriptor {
+                slug: workflow.slug.to_string(),
+                display_name: workflow.display_name.to_string(),
+                owner: "rustok-ai-product".to_string(),
+                stages: workflow
+                    .stages
+                    .iter()
+                    .map(|stage| AgentWorkflowStage {
+                        id: stage.id.to_string(),
+                        agent_slug: stage.agent_slug.to_string(),
+                        depends_on: stage
+                            .depends_on
+                            .iter()
+                            .map(|value| (*value).to_string())
+                            .collect(),
+                        requires_approval: stage.requires_approval,
+                    })
+                    .collect(),
+            }),
+    );
     let mut stage_validators = BTreeMap::new();
     for agent in rustok_ai_alloy::alloy_code_agents() {
         stage_validators.insert(agent.slug.to_string(), AgentStageValidator::Alloy);
@@ -534,7 +552,9 @@ mod tests {
         };
         let catalog = AgentCatalog::new(vec![descriptor()], vec![workflow]).unwrap();
         assert_eq!(
-            catalog.ready_stages("catalog_review", &BTreeMap::new()).unwrap(),
+            catalog
+                .ready_stages("catalog_review", &BTreeMap::new())
+                .unwrap(),
             vec!["draft"]
         );
         assert_eq!(

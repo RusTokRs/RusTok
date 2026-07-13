@@ -51,9 +51,9 @@ pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
     Effect::new({
         let runtime = runtime.clone();
         move |_| {
-            let selected_id = runtime.controller.with(|controller| {
-                controller.ui().state.selection.component_id.clone()
-            });
+            let selected_id = runtime
+                .controller
+                .with(|controller| controller.ui().state.selection.component_id.clone());
             let key = selected_id.as_ref().map(|selected_id| {
                 format!(
                     "{}|{}|{}",
@@ -182,14 +182,11 @@ pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
-fn dispatch_rule_patch(
-    runtime: &AdminEditorRuntime,
-    breakpoint_id: &str,
-    entry: StyleEntry,
-) {
-    let Some(component_id) = runtime.controller.with(|controller| {
-        controller.ui().state.selection.component_id.clone()
-    }) else {
+fn dispatch_rule_patch(runtime: &AdminEditorRuntime, breakpoint_id: &str, entry: StyleEntry) {
+    let Some(component_id) = runtime
+        .controller
+        .with(|controller| controller.ui().state.selection.component_id.clone())
+    else {
         runtime.fail("select a component before editing responsive styles");
         return;
     };
@@ -226,14 +223,11 @@ fn dispatch_rule_patch(
     }));
 }
 
-fn current_rule_value(
-    runtime: &AdminEditorRuntime,
-    breakpoint_id: &str,
-    property: &str,
-) -> String {
-    let Some(component_id) = runtime.controller.with(|controller| {
-        controller.ui().state.selection.component_id.clone()
-    }) else {
+fn current_rule_value(runtime: &AdminEditorRuntime, breakpoint_id: &str, property: &str) -> String {
+    let Some(component_id) = runtime
+        .controller
+        .with(|controller| controller.ui().state.selection.component_id.clone())
+    else {
         return String::new();
     };
     let Some(breakpoint) = responsive_breakpoint(breakpoint_id) else {
@@ -252,9 +246,10 @@ fn current_rule_value(
 }
 
 fn selected_rule_summary(runtime: &AdminEditorRuntime, breakpoint_id: &str) -> String {
-    let Some(component_id) = runtime.controller.with(|controller| {
-        controller.ui().state.selection.component_id.clone()
-    }) else {
+    let Some(component_id) = runtime
+        .controller
+        .with(|controller| controller.ui().state.selection.component_id.clone())
+    else {
         return "No component selected".to_string();
     };
     let Some(breakpoint) = responsive_breakpoint(breakpoint_id) else {

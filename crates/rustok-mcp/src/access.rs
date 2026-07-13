@@ -390,7 +390,8 @@ mod tests {
             policy: McpAccessPolicy::default(),
         };
 
-        let decision = context.authorize_tool(&default_tool_requirement("future_unregistered_tool"));
+        let decision =
+            context.authorize_tool(&default_tool_requirement("future_unregistered_tool"));
 
         assert!(!decision.allowed);
         assert_eq!(decision.code.as_deref(), Some("missing_permissions"));

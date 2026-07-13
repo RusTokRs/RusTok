@@ -172,11 +172,9 @@ where
 
         // Measure before allocating the output buffer. Checking a fully allocated Vec after
         // serialization defeats the size limit for large or attacker-controlled payloads.
-        let encoded_len = postcard::serialize_with_flavor(
-            self,
-            postcard::ser_flavors::Size::default(),
-        )
-        .map_err(|error| CacheEnvelopeError::Encode(error.to_string()))?;
+        let encoded_len =
+            postcard::serialize_with_flavor(self, postcard::ser_flavors::Size::default())
+                .map_err(|error| CacheEnvelopeError::Encode(error.to_string()))?;
         if encoded_len > max_encoded_bytes {
             return Err(CacheEnvelopeError::TooLarge {
                 length: encoded_len,
@@ -197,10 +195,7 @@ impl<T> CacheEnvelope<T>
 where
     T: DeserializeOwned,
 {
-    pub fn decode(
-        bytes: &[u8],
-        expected_schema_version: u32,
-    ) -> Result<Self, CacheEnvelopeError> {
+    pub fn decode(bytes: &[u8], expected_schema_version: u32) -> Result<Self, CacheEnvelopeError> {
         Self::decode_with_limit(
             bytes,
             expected_schema_version,
@@ -442,11 +437,9 @@ mod tests {
     #[test]
     fn encode_rejects_oversized_output_before_allocating_it() {
         let envelope = CacheEnvelope::new(1, 1_000, vec![7_u8; 256]).unwrap();
-        let measured = postcard::serialize_with_flavor(
-            &envelope,
-            postcard::ser_flavors::Size::default(),
-        )
-        .unwrap();
+        let measured =
+            postcard::serialize_with_flavor(&envelope, postcard::ser_flavors::Size::default())
+                .unwrap();
 
         assert_eq!(
             envelope.encode_with_limit(64).unwrap_err(),

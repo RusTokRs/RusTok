@@ -10,8 +10,7 @@ use rustok_forum::{
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -239,7 +238,10 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .all(&db)
         .await
         .expect("subscription events should load");
-    assert!(events.len() >= 4, "auto, mute, participant and clear events expected");
+    assert!(
+        events.len() >= 4,
+        "auto, mute, participant and clear events expected"
+    );
     let topic_id_text = topic.id.to_string();
     let author_id_text = author_id.to_string();
     let mute_event = events

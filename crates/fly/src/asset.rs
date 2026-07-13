@@ -118,10 +118,10 @@ impl AssetDescriptor {
     pub fn from_value(raw: Value) -> Option<Self> {
         let object = raw.as_object()?;
         let source = string_field(object, &["src", "source", "url"])?;
-        let id = string_field(object, &["id", "assetId"])
-            .unwrap_or_else(|| stable_source_id(&source));
-        let mime_type = string_field(object, &["mimeType", "mime", "type"])
-            .filter(|value| value.contains('/'));
+        let id =
+            string_field(object, &["id", "assetId"]).unwrap_or_else(|| stable_source_id(&source));
+        let mime_type =
+            string_field(object, &["mimeType", "mime", "type"]).filter(|value| value.contains('/'));
         let kind = object
             .get("kind")
             .and_then(Value::as_str)
@@ -196,7 +196,8 @@ pub fn source_allowed(source: &str, kind: AssetKind, policy: &AssetPolicy) -> bo
     if normalized.starts_with("data:image/") {
         return policy.allow_data_images && kind == AssetKind::Image;
     }
-    if normalized.starts_with('/') || normalized.starts_with("./") || normalized.starts_with("../") {
+    if normalized.starts_with('/') || normalized.starts_with("./") || normalized.starts_with("../")
+    {
         return policy.allow_relative;
     }
     false
@@ -254,13 +255,25 @@ fn kind_from_source(source: &str) -> AssetKind {
             .any(|extension| source.ends_with(extension))
     {
         AssetKind::Image
-    } else if [".mp4", ".webm", ".mov"].iter().any(|extension| source.ends_with(extension)) {
+    } else if [".mp4", ".webm", ".mov"]
+        .iter()
+        .any(|extension| source.ends_with(extension))
+    {
         AssetKind::Video
-    } else if [".mp3", ".wav", ".ogg"].iter().any(|extension| source.ends_with(extension)) {
+    } else if [".mp3", ".wav", ".ogg"]
+        .iter()
+        .any(|extension| source.ends_with(extension))
+    {
         AssetKind::Audio
-    } else if [".woff", ".woff2", ".ttf", ".otf"].iter().any(|extension| source.ends_with(extension)) {
+    } else if [".woff", ".woff2", ".ttf", ".otf"]
+        .iter()
+        .any(|extension| source.ends_with(extension))
+    {
         AssetKind::Font
-    } else if [".pdf", ".txt", ".doc", ".docx"].iter().any(|extension| source.ends_with(extension)) {
+    } else if [".pdf", ".txt", ".doc", ".docx"]
+        .iter()
+        .any(|extension| source.ends_with(extension))
+    {
         AssetKind::Document
     } else {
         AssetKind::Other

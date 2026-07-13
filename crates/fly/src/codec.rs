@@ -5,8 +5,8 @@ pub struct GrapesJsV1Codec;
 
 impl GrapesJsV1Codec {
     pub fn decode_slice(input: &[u8]) -> FlyResult<ProjectDocument> {
-        let value: Value = serde_json::from_slice(input)
-            .map_err(|error| FlyError::Decode(error.to_string()))?;
+        let value: Value =
+            serde_json::from_slice(input).map_err(|error| FlyError::Decode(error.to_string()))?;
         Self::decode_value(value)
     }
 
@@ -19,8 +19,8 @@ impl GrapesJsV1Codec {
             return Err(FlyError::InvalidProjectRoot);
         }
         hydrate_page_components_from_frames(&mut value);
-        let project: GrapesProject = serde_json::from_value(value)
-            .map_err(|error| FlyError::Decode(error.to_string()))?;
+        let project: GrapesProject =
+            serde_json::from_value(value).map_err(|error| FlyError::Decode(error.to_string()))?;
         Ok(ProjectDocument::new(project))
     }
 
@@ -53,7 +53,10 @@ fn hydrate_page_components_from_frames(project: &mut Value) {
         let Some(page) = page.as_object_mut() else {
             continue;
         };
-        if page.get("component").is_some_and(|component| !component.is_null()) {
+        if page
+            .get("component")
+            .is_some_and(|component| !component.is_null())
+        {
             continue;
         }
         let component = page
@@ -75,8 +78,8 @@ fn canonical_project(document: &ProjectDocument) -> FlyResult<GrapesProject> {
         let Some(component) = page.component.as_ref() else {
             continue;
         };
-        let component = serde_json::to_value(component)
-            .map_err(|error| FlyError::Encode(error.to_string()))?;
+        let component =
+            serde_json::to_value(component).map_err(|error| FlyError::Encode(error.to_string()))?;
         synchronize_first_frame(&mut page.frames, component);
     }
     Ok(project)
@@ -130,7 +133,13 @@ mod tests {
         }))
         .expect("decode");
 
-        assert_eq!(document.project.pages[0].component.as_ref().and_then(|node| node.id()), Some("root"));
+        assert_eq!(
+            document.project.pages[0]
+                .component
+                .as_ref()
+                .and_then(|node| node.id()),
+            Some("root")
+        );
     }
 
     #[test]
@@ -155,7 +164,10 @@ mod tests {
         .expect("decode");
         let encoded = GrapesJsV1Codec::encode_value(&document).expect("encode");
 
-        assert_eq!(encoded["pages"][0]["frames"][0]["component"]["components"][0]["id"], "current");
+        assert_eq!(
+            encoded["pages"][0]["frames"][0]["component"]["components"][0]["id"],
+            "current"
+        );
         assert_eq!(encoded["pages"][0]["frames"][0]["id"], "frame-home");
     }
 
@@ -190,6 +202,9 @@ mod tests {
             .expect("patch");
 
         let bytes = GrapesJsV1Codec::encode_vec(editor.document()).expect("encode");
-        assert_eq!(editor.revision().project_hash, crate::ProjectHash::from_bytes(&bytes));
+        assert_eq!(
+            editor.revision().project_hash,
+            crate::ProjectHash::from_bytes(&bytes)
+        );
     }
 }

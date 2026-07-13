@@ -42,12 +42,8 @@ impl NegativeCachePolicy {
         namespace: impl Into<String>,
     ) -> Result<Self, NegativeCachePolicyError> {
         validate_schema_and_ttl(schema_version, ttl)?;
-        let ttl = CacheTtlPolicy::deterministic_jitter(
-            ttl,
-            max_jitter_percent,
-            namespace,
-        )
-        .map_err(NegativeCachePolicyError::CachePolicy)?;
+        let ttl = CacheTtlPolicy::deterministic_jitter(ttl, max_jitter_percent, namespace)
+            .map_err(NegativeCachePolicyError::CachePolicy)?;
         Ok(Self {
             schema_version,
             ttl,
@@ -125,7 +121,10 @@ impl std::fmt::Display for NegativeCachePolicyError {
             }
             Self::ZeroTtl => write!(formatter, "negative cache TTL must be greater than zero"),
             Self::ZeroSizeLimit => {
-                write!(formatter, "negative cache encoded size limit must be non-zero")
+                write!(
+                    formatter,
+                    "negative cache encoded size limit must be non-zero"
+                )
             }
             Self::CachePolicy(error) => write!(formatter, "negative cache policy error: {error}"),
         }
@@ -212,8 +211,8 @@ impl CacheService {
         let ttl = policy
             .ttl_for(&key)
             .map_err(negative_policy_error_to_core)?;
-        let hard_expires_at_unix_ms = generated_at_unix_ms
-            .saturating_add(duration_millis_ceil(ttl));
+        let hard_expires_at_unix_ms =
+            generated_at_unix_ms.saturating_add(duration_millis_ceil(ttl));
 
         let mut envelope = CacheEnvelope::new(
             policy.schema_version,

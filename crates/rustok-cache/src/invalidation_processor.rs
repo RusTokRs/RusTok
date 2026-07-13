@@ -213,12 +213,8 @@ mod tests {
         let (first, second) = tokio::join!(first, second);
         let outcomes = [first.unwrap(), second.unwrap()];
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert!(outcomes.contains(&DurableInvalidationProcessOutcome::Applied {
-            generation: 4
-        }));
-        assert!(outcomes.contains(&DurableInvalidationProcessOutcome::Ignored {
-            generation: 4
-        }));
+        assert!(outcomes.contains(&DurableInvalidationProcessOutcome::Applied { generation: 4 }));
+        assert!(outcomes.contains(&DurableInvalidationProcessOutcome::Ignored { generation: 4 }));
         let stats = consumer.stats();
         assert_eq!(stats.attempted, 2);
         assert_eq!(stats.applied, 1);

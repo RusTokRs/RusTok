@@ -95,7 +95,8 @@ pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
     AlloyCodeAgentDescriptor {
         slug: "alloy_code_implementer",
         display_name: "Alloy code implementer",
-        responsibility: "Draft and validate Alloy script changes; applying a change stays approval-gated.",
+        responsibility:
+            "Draft and validate Alloy script changes; applying a change stays approval-gated.",
         required_permissions: ALLOY_TASK_RUN_PERMISSIONS,
         allowed_operations: &["list_scripts", "get_script", "validate_script"],
         requires_approval: true,
@@ -113,7 +114,12 @@ pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
         display_name: "Alloy code verifier",
         responsibility: "Validate and execute permitted verification scripts.",
         required_permissions: ALLOY_TASK_RUN_PERMISSIONS,
-        allowed_operations: &["list_scripts", "get_script", "validate_script", "run_script"],
+        allowed_operations: &[
+            "list_scripts",
+            "get_script",
+            "validate_script",
+            "run_script",
+        ],
         requires_approval: true,
     },
 ];

@@ -311,7 +311,7 @@ mod tests {
                 }],
             },
             |content, format| summarize_content(Some("en"), content, format),
-            "empty".to_string()
+            "empty".to_string(),
         );
 
         assert_eq!(summary, "Hello");
@@ -345,7 +345,7 @@ mod tests {
                 }],
             },
             |content, format| summarize_content(Some("en"), content, format),
-            "empty".to_string()
+            "empty".to_string(),
         );
 
         assert_eq!(

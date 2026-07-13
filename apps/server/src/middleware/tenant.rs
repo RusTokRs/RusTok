@@ -592,10 +592,7 @@ impl TenantCacheInfrastructure {
                         .and_then(|envelope| {
                             envelope.with_expirations(
                                 None,
-                                Some(
-                                    generated_at
-                                        .saturating_add(duration_millis_ceil(cache_ttl)),
-                                ),
+                                Some(generated_at.saturating_add(duration_millis_ceil(cache_ttl))),
                             )
                         })
                         .map_err(cache_envelope_error_to_core)
@@ -878,7 +875,10 @@ pub fn resolve_identifier(
                 None if matches!(
                     settings.tenant.fallback_mode,
                     TenantFallbackMode::DefaultTenant
-                ) => settings.tenant.default_id.to_string(),
+                ) =>
+                {
+                    settings.tenant.default_id.to_string()
+                }
                 None => {
                     tracing::warn!(
                         header_name = %settings.tenant.header_name,

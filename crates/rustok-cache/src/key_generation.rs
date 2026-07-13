@@ -5,10 +5,7 @@ impl CacheKeyBuilder {
     ///
     /// After `CacheNamespaceGenerationStore::bump`, callers rebuild the same logical key with
     /// the new generation. Old values remain bounded by their TTL but are no longer reachable.
-    pub fn generation(
-        self,
-        generation: CacheNamespaceGeneration,
-    ) -> Result<Self, CacheKeyError> {
+    pub fn generation(self, generation: CacheNamespaceGeneration) -> Result<Self, CacheKeyError> {
         self.named_identity("generation", generation.key_component())
     }
 }
@@ -26,34 +23,22 @@ mod tests {
         let second = generations.bump("catalog-products").await.unwrap();
 
         assert_eq!(first.source(), CacheGenerationSource::LocalOnly);
-        let first_key = CacheKeyBuilder::new(
-            "rustok",
-            "prod",
-            "tenant-a",
-            "catalog",
-            "v1",
-            "product",
-        )
-        .unwrap()
-        .generation(first)
-        .unwrap()
-        .named_identity("id", "42")
-        .unwrap()
-        .build();
-        let second_key = CacheKeyBuilder::new(
-            "rustok",
-            "prod",
-            "tenant-a",
-            "catalog",
-            "v1",
-            "product",
-        )
-        .unwrap()
-        .generation(second)
-        .unwrap()
-        .named_identity("id", "42")
-        .unwrap()
-        .build();
+        let first_key =
+            CacheKeyBuilder::new("rustok", "prod", "tenant-a", "catalog", "v1", "product")
+                .unwrap()
+                .generation(first)
+                .unwrap()
+                .named_identity("id", "42")
+                .unwrap()
+                .build();
+        let second_key =
+            CacheKeyBuilder::new("rustok", "prod", "tenant-a", "catalog", "v1", "product")
+                .unwrap()
+                .generation(second)
+                .unwrap()
+                .named_identity("id", "42")
+                .unwrap()
+                .build();
 
         assert_ne!(first_key, second_key);
         assert!(first_key.contains(":generation:g-0:"));

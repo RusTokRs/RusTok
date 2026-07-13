@@ -94,13 +94,10 @@ mod tests {
     use std::path::PathBuf;
 
     fn workspace(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "rustok-mcp-{label}-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("rustok-mcp-{label}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("crates")).expect("crates directory");
-        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
-            .expect("workspace manifest");
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("workspace manifest");
         root
     }
 

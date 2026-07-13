@@ -189,11 +189,7 @@ async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
     Ok(())
 }
 
-async fn assert_rejected(
-    db: &DatabaseConnection,
-    sql: String,
-    relation: &str,
-) -> TestResult<()> {
+async fn assert_rejected(db: &DatabaseConnection, sql: String, relation: &str) -> TestResult<()> {
     let result = db
         .execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await;

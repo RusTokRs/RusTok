@@ -2,8 +2,8 @@ use rig::{
     client::{EmbeddingsClient, RerankingClient},
     embeddings::EmbeddingModel,
     providers::{
-        azure, cohere, copilot, gemini, llamafile, mistral, ollama, openai,
-        openrouter, together, voyageai,
+        azure, cohere, copilot, gemini, llamafile, mistral, ollama, openai, openrouter, together,
+        voyageai,
     },
     rerank::RerankModel,
 };
@@ -130,11 +130,9 @@ pub async fn embed(
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             let input_type = setting_str(config, "input_type").unwrap_or("search_document");
             let model = match request.dimensions {
-                Some(dimensions) => client.embedding_model_with_ndims(
-                    request.model.clone(),
-                    input_type,
-                    dimensions,
-                ),
+                Some(dimensions) => {
+                    client.embedding_model_with_ndims(request.model.clone(), input_type, dimensions)
+                }
                 None => client.embedding_model(request.model.clone(), input_type),
             };
             embed_with(model, request.documents).await
@@ -146,10 +144,10 @@ pub async fn embed(
         ProviderIntegration::Together => keyed_embed!(together),
         ProviderIntegration::VoyageAi => keyed_embed!(voyageai),
         ProviderIntegration::AwsBedrock => {
-            let region = setting_str(config, "region")
-                .unwrap_or(rig_bedrock::client::DEFAULT_AWS_REGION);
-            let client = if let Some(profile) = setting_str(config, "profile")
-                .filter(|value| !value.trim().is_empty())
+            let region =
+                setting_str(config, "region").unwrap_or(rig_bedrock::client::DEFAULT_AWS_REGION);
+            let client = if let Some(profile) =
+                setting_str(config, "profile").filter(|value| !value.trim().is_empty())
             {
                 rig_bedrock::client::Client::with_profile_name(profile)
             } else {
@@ -250,7 +248,12 @@ pub async fn rerank(
             let client = builder
                 .build()
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rerank_with(client.rerank_model(request.model), request.query, request.documents).await?
+            rerank_with(
+                client.rerank_model(request.model),
+                request.query,
+                request.documents,
+            )
+            .await?
         }
         _ => {
             return Err(AiError::InvalidConfig(format!(

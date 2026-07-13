@@ -15,7 +15,8 @@ use rustok_product::dto::{
 use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    Statement,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -79,10 +80,7 @@ async fn setup() -> (
     )
 }
 
-async fn create_product_and_variant(
-    catalog: &CatalogService,
-    tenant_id: Uuid,
-) -> (Uuid, Uuid) {
+async fn create_product_and_variant(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid, Uuid) {
     let product = catalog
         .create_product(
             tenant_id,
@@ -197,15 +195,7 @@ async fn order_inventory_is_reserved_released_and_consumed_across_lifecycle() {
         .await
         .expect("inventory should be stocked");
 
-    let first = create_order(
-        &orders,
-        tenant_id,
-        actor_id,
-        product_id,
-        variant_id,
-        4,
-    )
-    .await;
+    let first = create_order(&orders, tenant_id, actor_id, product_id, variant_id, 4).await;
     orders
         .confirm_order(tenant_id, actor_id, first.id)
         .await
@@ -221,15 +211,7 @@ async fn order_inventory_is_reserved_released_and_consumed_across_lifecycle() {
     assert_eq!(first_reservation.quantity, 4);
     assert!(first_reservation.deleted_at.is_none());
 
-    let second = create_order(
-        &orders,
-        tenant_id,
-        actor_id,
-        product_id,
-        variant_id,
-        2,
-    )
-    .await;
+    let second = create_order(&orders, tenant_id, actor_id, product_id, variant_id, 2).await;
     let insufficient = orders.confirm_order(tenant_id, actor_id, second.id).await;
     assert!(insufficient.is_err(), "overselling confirmation must fail");
     assert_eq!(inventory_quantities(&db, variant_id).await, (5, 4));
@@ -317,15 +299,7 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
         .set_inventory(tenant_id, actor_id, variant_id, 5)
         .await
         .expect("inventory should be stocked");
-    let order = create_order(
-        &orders,
-        tenant_id,
-        actor_id,
-        product_id,
-        variant_id,
-        3,
-    )
-    .await;
+    let order = create_order(&orders, tenant_id, actor_id, product_id, variant_id, 3).await;
     orders
         .confirm_order(tenant_id, actor_id, order.id)
         .await
@@ -430,7 +404,9 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
         .await
         .expect("paid order should be markable as shipped");
 
-    let premature_delivery = orders.deliver_order(tenant_id, actor_id, order.id, None).await;
+    let premature_delivery = orders
+        .deliver_order(tenant_id, actor_id, order.id, None)
+        .await;
     assert!(
         premature_delivery.is_err(),
         "order delivery must wait for its active fulfillment to be delivered"

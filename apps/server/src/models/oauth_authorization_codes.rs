@@ -1,6 +1,4 @@
-use sea_orm::{
-    prelude::*, sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter,
-};
+use sea_orm::{prelude::*, sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter};
 
 use super::_entities::oauth_authorization_codes::{self};
 pub use super::_entities::oauth_authorization_codes::{ActiveModel, Column, Entity, Model};
@@ -38,10 +36,7 @@ impl Entity {
     ) -> Result<Option<Model>, DbErr> {
         let now = chrono::Utc::now();
         let reserved = Self::update_many()
-            .col_expr(
-                oauth_authorization_codes::Column::UsedAt,
-                Expr::value(now),
-            )
+            .col_expr(oauth_authorization_codes::Column::UsedAt, Expr::value(now))
             .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
             .filter(oauth_authorization_codes::Column::UsedAt.is_null())
             .filter(oauth_authorization_codes::Column::ExpiresAt.gt(now))

@@ -215,10 +215,7 @@ impl PaymentProviderOperationJournal {
         active.update(&self.db).await.map_err(Into::into)
     }
 
-    pub async fn mark_committed(
-        &self,
-        id: Uuid,
-    ) -> PaymentResult<provider_operation::Model> {
+    pub async fn mark_committed(&self, id: Uuid) -> PaymentResult<provider_operation::Model> {
         let model = self.get(id).await?;
         if model.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(model);
@@ -293,7 +290,10 @@ fn ensure_transition(from: &str, to: &str) -> PaymentResult<()> {
         }
         PROVIDER_OPERATION_SUCCEEDED => from == PROVIDER_OPERATION_EXECUTING,
         PROVIDER_OPERATION_ERROR => {
-            matches!(from, PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_ERROR)
+            matches!(
+                from,
+                PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_ERROR
+            )
         }
         PROVIDER_OPERATION_RECONCILIATION_REQUIRED => from == PROVIDER_OPERATION_SUCCEEDED,
         PROVIDER_OPERATION_COMMITTED => matches!(
@@ -333,15 +333,31 @@ mod tests {
 
     #[test]
     fn provider_operation_transition_matrix_is_fail_closed() {
-        assert!(ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_EXECUTING).is_ok());
+        assert!(
+            ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_EXECUTING).is_ok()
+        );
         assert!(ensure_transition(PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING).is_ok());
         assert!(ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_ERROR).is_ok());
-        assert!(ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED).is_ok());
-        assert!(ensure_transition(PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED).is_ok());
-        assert!(ensure_transition(PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED).is_ok());
-        assert!(ensure_transition(PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_PENDING).is_err());
-        assert!(ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_SUCCEEDED).is_err());
-        assert!(ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_COMMITTED).is_err());
+        assert!(
+            ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED).is_ok()
+        );
+        assert!(
+            ensure_transition(PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED).is_ok()
+        );
+        assert!(ensure_transition(
+            PROVIDER_OPERATION_SUCCEEDED,
+            PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+        )
+        .is_ok());
+        assert!(
+            ensure_transition(PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_PENDING).is_err()
+        );
+        assert!(
+            ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_SUCCEEDED).is_err()
+        );
+        assert!(
+            ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_COMMITTED).is_err()
+        );
     }
 
     #[test]

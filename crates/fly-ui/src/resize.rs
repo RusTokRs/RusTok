@@ -20,14 +20,24 @@ impl ResizeHandle {
     pub const fn changes_width(self) -> bool {
         matches!(
             self,
-            Self::NorthEast | Self::East | Self::SouthEast | Self::SouthWest | Self::West | Self::NorthWest
+            Self::NorthEast
+                | Self::East
+                | Self::SouthEast
+                | Self::SouthWest
+                | Self::West
+                | Self::NorthWest
         )
     }
 
     pub const fn changes_height(self) -> bool {
         matches!(
             self,
-            Self::North | Self::NorthEast | Self::SouthEast | Self::South | Self::SouthWest | Self::NorthWest
+            Self::North
+                | Self::NorthEast
+                | Self::SouthEast
+                | Self::South
+                | Self::SouthWest
+                | Self::NorthWest
         )
     }
 
@@ -108,7 +118,10 @@ impl ResizeSession {
             }
         }
 
-        if self.policy.preserve_aspect_ratio && self.handle.changes_width() && self.handle.changes_height() {
+        if self.policy.preserve_aspect_ratio
+            && self.handle.changes_width()
+            && self.handle.changes_height()
+        {
             if dx.abs() >= dy.abs() {
                 rect.height = rect.width / aspect.max(f64::EPSILON);
             } else {
@@ -167,9 +180,16 @@ fn snap(value: f64, grid_size: Option<f64>) -> f64 {
 }
 
 fn clamp_dimension(value: f64, minimum: f64, maximum: Option<f64>) -> f64 {
-    let minimum = if minimum.is_finite() { minimum.max(0.0) } else { 0.0 };
+    let minimum = if minimum.is_finite() {
+        minimum.max(0.0)
+    } else {
+        0.0
+    };
     let maximum = maximum.filter(|maximum| maximum.is_finite() && *maximum >= minimum);
-    maximum.map_or_else(|| value.max(minimum), |maximum| value.clamp(minimum, maximum))
+    maximum.map_or_else(
+        || value.max(minimum),
+        |maximum| value.clamp(minimum, maximum),
+    )
 }
 
 fn px(value: f64) -> String {
@@ -185,10 +205,18 @@ mod tests {
         ResizeSession {
             component_id: "hero".to_string(),
             handle,
-            start_rect: CanvasRect { x: 10.0, y: 20.0, width: 200.0, height: 100.0 },
+            start_rect: CanvasRect {
+                x: 10.0,
+                y: 20.0,
+                width: 200.0,
+                height: 100.0,
+            },
             start_x: 200.0,
             start_y: 100.0,
-            policy: ResizePolicy { grid_size: Some(8.0), ..ResizePolicy::default() },
+            policy: ResizePolicy {
+                grid_size: Some(8.0),
+                ..ResizePolicy::default()
+            },
         }
     }
 

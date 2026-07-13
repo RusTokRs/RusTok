@@ -14,15 +14,43 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
     let copy = t(locale.as_deref(), "page_builder.action.copy", "Copy");
     let cut = t(locale.as_deref(), "page_builder.action.cut", "Cut");
     let paste = t(locale.as_deref(), "page_builder.action.paste", "Paste");
-    let duplicate = t(locale.as_deref(), "page_builder.action.duplicate", "Duplicate");
-    let remove = t(locale.as_deref(), "page_builder.action.remove", "Remove selected");
+    let duplicate = t(
+        locale.as_deref(),
+        "page_builder.action.duplicate",
+        "Duplicate",
+    );
+    let remove = t(
+        locale.as_deref(),
+        "page_builder.action.remove",
+        "Remove selected",
+    );
     let move_up = t(locale.as_deref(), "page_builder.action.moveUp", "Move up");
-    let move_down = t(locale.as_deref(), "page_builder.action.moveDown", "Move down");
-    let move_mode = t(locale.as_deref(), "page_builder.action.move", "Move selected");
-    let cancel_drag = t(locale.as_deref(), "page_builder.action.cancelDrag", "Cancel drag");
+    let move_down = t(
+        locale.as_deref(),
+        "page_builder.action.moveDown",
+        "Move down",
+    );
+    let move_mode = t(
+        locale.as_deref(),
+        "page_builder.action.move",
+        "Move selected",
+    );
+    let cancel_drag = t(
+        locale.as_deref(),
+        "page_builder.action.cancelDrag",
+        "Cancel drag",
+    );
     let saving = t(locale.as_deref(), "page_builder.status.saving", "Saving");
-    let failed = t(locale.as_deref(), "page_builder.status.saveFailed", "Save failed");
-    let dirty = t(locale.as_deref(), "page_builder.status.dirty", "Unsaved changes");
+    let failed = t(
+        locale.as_deref(),
+        "page_builder.status.saveFailed",
+        "Save failed",
+    );
+    let dirty = t(
+        locale.as_deref(),
+        "page_builder.status.dirty",
+        "Unsaved changes",
+    );
     let saved = t(locale.as_deref(), "page_builder.status.saved", "Saved");
     let device = t(locale.as_deref(), "page_builder.field.device", "Device");
 
@@ -208,10 +236,7 @@ fn selection_disabled(runtime: AdminEditorRuntime, reject_root: bool) -> Signal<
     })
 }
 
-fn shortcut_callback(
-    runtime: AdminEditorRuntime,
-    shortcut: EditorShortcut,
-) -> Callback<()> {
+fn shortcut_callback(runtime: AdminEditorRuntime, shortcut: EditorShortcut) -> Callback<()> {
     Callback::new(move |_| dispatch_shortcut(&runtime, shortcut))
 }
 

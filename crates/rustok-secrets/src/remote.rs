@@ -71,9 +71,7 @@ impl VaultResolver {
         validate_optional_header_value(namespace.as_deref(), "Vault namespace")?;
         validate_path(&kv_mount, "Vault KV mount")?;
         if let VaultAuth::Kubernetes {
-            role,
-            auth_mount,
-            ..
+            role, auth_mount, ..
         } = &auth
         {
             validate_plain_value(role, "Vault Kubernetes role")?;
@@ -258,8 +256,7 @@ impl SecretResolver for KubernetesSecretResolver {
             .map_err(kubernetes_error)?
             .error_for_status()
             .map_err(kubernetes_error)?;
-        let response: KubernetesSecretResponse =
-            read_bounded_json(response, "kubernetes").await?;
+        let response: KubernetesSecretResponse = read_bounded_json(response, "kubernetes").await?;
         let encoded = response
             .data
             .get(field)
@@ -284,9 +281,9 @@ fn validate_path<'a>(value: &'a str, label: &str) -> Result<Vec<&'a str>, Secret
     if segments.iter().any(|segment| {
         segment.is_empty()
             || matches!(*segment, "." | "..")
-            || segment
-                .chars()
-                .any(|character| matches!(character, '\\' | '?' | '#' | '%' ) || character.is_control())
+            || segment.chars().any(|character| {
+                matches!(character, '\\' | '?' | '#' | '%') || character.is_control()
+            })
     }) {
         return Err(remote_policy_error(
             label,
@@ -299,11 +296,13 @@ fn validate_path<'a>(value: &'a str, label: &str) -> Result<Vec<&'a str>, Secret
 fn validate_plain_value(value: &str, label: &str) -> Result<(), SecretError> {
     if value.trim().is_empty()
         || value.chars().any(|character| {
-            matches!(character, '/' | '\\' | '#' | '%' | '\r' | '\n')
-                || character.is_control()
+            matches!(character, '/' | '\\' | '#' | '%' | '\r' | '\n') || character.is_control()
         })
     {
-        return Err(remote_policy_error(label, "contains unsupported characters"));
+        return Err(remote_policy_error(
+            label,
+            "contains unsupported characters",
+        ));
     }
     Ok(())
 }
@@ -325,9 +324,7 @@ fn validate_dns_name(value: &str, label: &str) -> Result<(), SecretError> {
                 && !part.starts_with('-')
                 && !part.ends_with('-')
                 && part.chars().all(|character| {
-                    character.is_ascii_lowercase()
-                        || character.is_ascii_digit()
-                        || character == '-'
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
                 })
         });
     if valid {
@@ -386,10 +383,13 @@ async fn read_bounded_json<T: DeserializeOwned>(
             message: "remote secret response exceeds size limit".to_string(),
         });
     }
-    let bytes = response.bytes().await.map_err(|error| SecretError::Resolver {
-        resolver: resolver.to_string(),
-        message: error.to_string(),
-    })?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| SecretError::Resolver {
+            resolver: resolver.to_string(),
+            message: error.to_string(),
+        })?;
     if bytes.len() > MAX_SECRET_RESPONSE_BYTES {
         return Err(SecretError::Resolver {
             resolver: resolver.to_string(),
@@ -503,7 +503,10 @@ mod tests {
             VaultAuth::Token(SecretString::from("server-token")),
         )
         .unwrap();
-        assert!(vault.resolve("tenants/allowed/../../sys#value").await.is_err());
+        assert!(vault
+            .resolve("tenants/allowed/../../sys#value")
+            .await
+            .is_err());
         assert!(vault.resolve("tenants/%2e%2e/sys#value").await.is_err());
 
         let kubernetes = KubernetesSecretResolver::with_client(

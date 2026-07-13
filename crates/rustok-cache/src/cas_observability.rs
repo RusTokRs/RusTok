@@ -3,9 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{
-    CacheBackend, CacheCompareAndSetOutcome, CacheStats, Result as CoreResult,
-};
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, Result as CoreResult};
 
 #[derive(Default)]
 struct CacheCompareAndSetCounters {
@@ -45,9 +43,7 @@ impl CacheCompareAndSetMetrics {
 }
 
 /// Render CAS metrics without cache-key or namespace labels.
-pub fn format_cache_compare_and_set_prometheus_metrics(
-    stats: &CacheCompareAndSetStats,
-) -> String {
+pub fn format_cache_compare_and_set_prometheus_metrics(stats: &CacheCompareAndSetStats) -> String {
     format!(
         "rustok_cache_cas_attempted_total {attempted}\n\
          rustok_cache_cas_applied_total {applied}\n\
@@ -103,12 +99,7 @@ impl CacheBackend for ObservedCacheBackend {
         self.backend.set(key, value).await
     }
 
-    async fn set_with_ttl(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> CoreResult<()> {
+    async fn set_with_ttl(&self, key: String, value: Vec<u8>, ttl: Duration) -> CoreResult<()> {
         self.backend.set_with_ttl(key, value, ttl).await
     }
 
@@ -151,10 +142,7 @@ impl CacheBackend for ObservedCacheBackend {
                 Ok(CacheCompareAndSetOutcome::Mismatch)
             }
             Err(error) => {
-                self.metrics
-                    .counters
-                    .failed
-                    .fetch_add(1, Ordering::Relaxed);
+                self.metrics.counters.failed.fetch_add(1, Ordering::Relaxed);
                 Err(error)
             }
         }
@@ -212,7 +200,10 @@ mod tests {
     async fn observed_backend_counts_applied_mismatch_and_failure() {
         let service = crate::CacheService::from_url(None);
         let backend = service.memory_backend(Duration::from_secs(60), 16);
-        backend.set("key".to_string(), b"old".to_vec()).await.unwrap();
+        backend
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
         let (backend, metrics) = observe_cache_compare_and_set(backend);
 
         assert_eq!(
@@ -253,15 +244,13 @@ mod tests {
 
     #[test]
     fn prometheus_metrics_are_label_free() {
-        let metrics = format_cache_compare_and_set_prometheus_metrics(
-            &CacheCompareAndSetStats {
-                attempted: 9,
-                applied: 4,
-                mismatches: 3,
-                failed: 2,
-                in_flight: 1,
-            },
-        );
+        let metrics = format_cache_compare_and_set_prometheus_metrics(&CacheCompareAndSetStats {
+            attempted: 9,
+            applied: 4,
+            mismatches: 3,
+            failed: 2,
+            in_flight: 1,
+        });
         assert!(metrics.contains("rustok_cache_cas_attempted_total 9"));
         assert!(metrics.contains("rustok_cache_cas_mismatch_total 3"));
         assert!(metrics.contains("rustok_cache_cas_failed_total 2"));

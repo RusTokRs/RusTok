@@ -70,7 +70,10 @@ mod tests {
     #[test]
     fn detects_builder_body_case_insensitively() {
         assert!(is_page_builder_body(&body("GrapesJS_V1", "{}".to_string())));
-        assert!(!is_page_builder_body(&body("markdown", "# Hello".to_string())));
+        assert!(!is_page_builder_body(&body(
+            "markdown",
+            "# Hello".to_string()
+        )));
     }
 
     #[test]
@@ -90,10 +93,9 @@ mod tests {
 
     #[test]
     fn invalid_builder_json_is_rejected() {
-        assert!(decode_page_builder_body(&body(
-            GRAPESJS_V1_BODY_FORMAT,
-            "{invalid".to_string(),
-        ))
-        .is_err());
+        assert!(
+            decode_page_builder_body(&body(GRAPESJS_V1_BODY_FORMAT, "{invalid".to_string(),))
+                .is_err()
+        );
     }
 }

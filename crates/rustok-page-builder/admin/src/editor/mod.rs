@@ -17,12 +17,12 @@ mod trait_panel;
 
 pub use admin_shell::AdminShell;
 pub use authoring::{LayerItemView, PaletteBlockView, SelectedComponentView};
-pub use modular_canvas::AdminCanvas;
 pub(crate) use canvas_document::render_canvas_srcdoc;
 pub(crate) use canvas_protocol::{
     decode_canvas_message, CanvasBridgeMessage, CanvasComponentGeometry,
 };
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
+pub use modular_canvas::AdminCanvas;
 pub(crate) use page_manager::PageManagerPanel;
 pub(crate) use palette_layers::PaletteLayersPanel;
 pub(crate) use properties_assets::PropertiesAssetsPanel;

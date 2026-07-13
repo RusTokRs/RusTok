@@ -126,9 +126,7 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Sqlite => {
                 manager
                     .get_connection()
-                    .execute_unprepared(
-                        "DROP TRIGGER IF EXISTS order_delivery_fulfillment_guard;",
-                    )
+                    .execute_unprepared("DROP TRIGGER IF EXISTS order_delivery_fulfillment_guard;")
                     .await?;
             }
             _ => {}

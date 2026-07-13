@@ -125,7 +125,10 @@ where
         };
         let nodes = match project_data {
             Some(project_data) => self
-                .inspect(PageBuilderContractMetadata::BASELINE.contract, &project_data)?
+                .inspect(
+                    PageBuilderContractMetadata::BASELINE.contract,
+                    &project_data,
+                )?
                 .tree_nodes(),
             None => Vec::new(),
         };
@@ -164,8 +167,11 @@ where
                 return Err(error);
             }
         } {
-            self.inspect(PageBuilderContractMetadata::BASELINE.contract, &project_data)?
-                .component_properties(&input.node_id)?;
+            self.inspect(
+                PageBuilderContractMetadata::BASELINE.contract,
+                &project_data,
+            )?
+            .component_properties(&input.node_id)?;
         }
 
         Ok(crate::dto::BuilderNodePropertiesResult {

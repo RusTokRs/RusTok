@@ -121,11 +121,8 @@ async fn distributed_lease_enforces_token_ownership_and_reacquisition() {
     let first_service = CacheService::from_url(Some(&url));
     let second_service = CacheService::from_url(Some(&url));
     let key = format!("real-lease-{}", uuid::Uuid::new_v4());
-    let options = CacheLeaseOptions::new(
-        Duration::from_secs(2),
-        Duration::from_millis(500),
-    )
-    .unwrap();
+    let options =
+        CacheLeaseOptions::new(Duration::from_secs(2), Duration::from_millis(500)).unwrap();
 
     let first = match first_service
         .try_acquire_distributed_lease("hardening", &key, options)

@@ -6,17 +6,13 @@ use axum::{
 use chrono::{Duration, Utc};
 use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_fulfillment::providers::FulfillmentProviderOperationResult;
-use rustok_fulfillment::{
-    entities::provider_operation, FulfillmentProviderOperationRecovery,
-};
+use rustok_fulfillment::{entities::provider_operation, FulfillmentProviderOperationRecovery};
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{admin::map_fulfillment_orchestration_error, CommerceHttpRuntime};
-use crate::{
-    FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
-};
+use crate::{FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ListReconciliationParams {
@@ -118,12 +114,7 @@ async fn resolve_unknown_as_succeeded(
         )
     })?;
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
-        .resolve_unknown_as_succeeded(
-            tenant.id,
-            operation_id,
-            provider_reference,
-            provider_result,
-        )
+        .resolve_unknown_as_succeeded(tenant.id, operation_id, provider_reference, provider_result)
         .await
         .map_err(super::admin::map_fulfillment_error)?;
     Ok(Json(operation))

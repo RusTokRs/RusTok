@@ -109,14 +109,20 @@ mod tests {
         assert_eq!(
             resolve_editor_shortcut(&stroke(
                 "z",
-                ModifierState { control: true, ..ModifierState::default() }
+                ModifierState {
+                    control: true,
+                    ..ModifierState::default()
+                }
             )),
             Some(EditorShortcut::Undo)
         );
         assert_eq!(
             resolve_editor_shortcut(&stroke(
                 "s",
-                ModifierState { meta: true, ..ModifierState::default() }
+                ModifierState {
+                    meta: true,
+                    ..ModifierState::default()
+                }
             )),
             Some(EditorShortcut::Save)
         );
@@ -126,7 +132,10 @@ mod tests {
     fn text_editing_does_not_intercept_native_copy_paste() {
         let mut input = stroke(
             "c",
-            ModifierState { control: true, ..ModifierState::default() },
+            ModifierState {
+                control: true,
+                ..ModifierState::default()
+            },
         );
         input.editing_text = true;
         assert_eq!(resolve_editor_shortcut(&input), None);
@@ -137,7 +146,11 @@ mod tests {
         assert_eq!(
             resolve_editor_shortcut(&stroke(
                 "Z",
-                ModifierState { control: true, shift: true, ..ModifierState::default() }
+                ModifierState {
+                    control: true,
+                    shift: true,
+                    ..ModifierState::default()
+                }
             )),
             Some(EditorShortcut::Redo)
         );

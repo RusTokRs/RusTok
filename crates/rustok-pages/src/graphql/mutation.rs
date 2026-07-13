@@ -449,12 +449,9 @@ mod tests {
             mutation_tenant_id(&tenant(current), &auth(current), None).unwrap(),
             current
         );
-        assert!(mutation_tenant_id(
-            &tenant(current),
-            &auth(current),
-            Some(Uuid::new_v4())
-        )
-        .is_err());
+        assert!(
+            mutation_tenant_id(&tenant(current), &auth(current), Some(Uuid::new_v4())).is_err()
+        );
         assert!(mutation_tenant_id(&tenant(current), &auth(Uuid::new_v4()), None).is_err());
     }
 }

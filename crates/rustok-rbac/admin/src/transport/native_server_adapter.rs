@@ -1,16 +1,14 @@
 use leptos::prelude::*;
 
+use crate::model::RbacAdminBootstrap;
 #[cfg(feature = "ssr")]
 use crate::model::{RbacModulePermissionGroup, RbacRoleInfo};
-use crate::model::RbacAdminBootstrap;
 
 #[server(prefix = "/api/fn", endpoint = "rbac/bootstrap")]
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{
-            has_effective_permission, AuthContext, Permission, TenantContext,
-        };
+        use rustok_api::{has_effective_permission, AuthContext, Permission, TenantContext};
         use rustok_core::{infer_user_role_from_permissions, ModuleRegistry, Rbac, UserRole};
 
         let registry = expect_context::<ModuleRegistry>();

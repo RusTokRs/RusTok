@@ -49,10 +49,7 @@ const REQUIRED_TENANT_INDEXES: &[&str] = &[
     "idx_forum_reply_revisions_tenant_reply_created",
 ];
 
-const REQUIRED_REVISION_TABLES: &[&str] = &[
-    "forum_topic_revisions",
-    "forum_reply_revisions",
-];
+const REQUIRED_REVISION_TABLES: &[&str] = &["forum_topic_revisions", "forum_reply_revisions"];
 
 const REQUIRED_RUNTIME_TRIGGERS: &[&str] = &[
     "forum_00_reject_nonempty_category_delete",

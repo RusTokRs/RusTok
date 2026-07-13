@@ -27,7 +27,6 @@ pub trait CheckoutCompletionPort: Send + Sync {
         context: PortContext,
         request: OrderStatusRequest,
     ) -> Result<OrderStatusSnapshot, PortError>;
-
 }
 
 #[async_trait]
@@ -123,7 +122,6 @@ impl CheckoutCompletionPort for crate::OrderService {
             .map_err(order_error_to_port_error)?;
         Ok(OrderStatusSnapshot::from_response(&response))
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

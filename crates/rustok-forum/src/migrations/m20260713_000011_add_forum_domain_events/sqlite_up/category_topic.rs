@@ -272,7 +272,7 @@ INSERT INTO forum_domain_events (
         NEW.tenant_id, 'topic', NEW.topic_id,
         'forum.topic.updated', 1, NULL, json_object('topic_id', NEW.topic_id, 'change_scope', 'translation', 'locale', NEW.locale)
     );
-END"##
+END"##,
     ] {
         connection.execute_unprepared(statement).await?;
     }

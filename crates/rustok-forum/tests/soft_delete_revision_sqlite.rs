@@ -108,8 +108,20 @@ async fn sqlite_preserves_forum_tombstones_and_revision_history() -> TestResult<
         ),
     )
     .await?;
-    assert_absent(&db, "forum_topics", cascade_seed.tenant_id, cascade_seed.topic_id).await?;
-    assert_absent(&db, "forum_replies", cascade_seed.tenant_id, cascade_seed.reply_id).await?;
+    assert_absent(
+        &db,
+        "forum_topics",
+        cascade_seed.tenant_id,
+        cascade_seed.topic_id,
+    )
+    .await?;
+    assert_absent(
+        &db,
+        "forum_replies",
+        cascade_seed.tenant_id,
+        cascade_seed.reply_id,
+    )
+    .await?;
 
     Ok(())
 }
@@ -453,11 +465,7 @@ async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
     Ok(())
 }
 
-async fn assert_rejected(
-    db: &DatabaseConnection,
-    sql: String,
-    label: &str,
-) -> TestResult<()> {
+async fn assert_rejected(db: &DatabaseConnection, sql: String, label: &str) -> TestResult<()> {
     if db.execute_unprepared(&sql).await.is_ok() {
         return Err(test_error(format!("{label} must be rejected")));
     }

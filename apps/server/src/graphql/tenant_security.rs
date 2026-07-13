@@ -230,11 +230,7 @@ fn collect_nested_tenant_value(
     match value {
         Value::Variable(name) => {
             if let Some(value) = resolve_variable(name, variables, defaults) {
-                collect_nested_tenant_const_value(
-                    value,
-                    &format!("{path}.${name}"),
-                    policy,
-                );
+                collect_nested_tenant_const_value(value, &format!("{path}.${name}"), policy);
             }
         }
         Value::Object(object) => {
@@ -328,8 +324,10 @@ fn set_invalid_argument(policy: &mut GraphqlTenantArgumentPolicy, message: Strin
 }
 
 fn tenant_policy_error(message: &str) -> Response {
-    Response::from_errors(vec![<FieldError as GraphQLError>::permission_denied(message)
-        .into_server_error(Pos::default())])
+    Response::from_errors(vec![<FieldError as GraphQLError>::permission_denied(
+        message,
+    )
+    .into_server_error(Pos::default())])
 }
 
 #[async_trait::async_trait]
@@ -441,10 +439,8 @@ mod tests {
         let other = Uuid::new_v4();
         let response = schema()
             .execute(
-                Request::new(format!(
-                    "query {{ echoTenant(tenantId: \"{other}\") }}"
-                ))
-                .data(tenant(tenant_id)),
+                Request::new(format!("query {{ echoTenant(tenantId: \"{other}\") }}"))
+                    .data(tenant(tenant_id)),
             )
             .await;
 
@@ -457,11 +453,9 @@ mod tests {
         let other = Uuid::new_v4();
         let response = schema()
             .execute(
-                Request::new(
-                    "query Tenant($target: UUID) { echoTenant(tenantId: $target) }",
-                )
-                .variables(Variables::from_json(json!({ "target": other })))
-                .data(tenant(tenant_id)),
+                Request::new("query Tenant($target: UUID) { echoTenant(tenantId: $target) }")
+                    .variables(Variables::from_json(json!({ "target": other })))
+                    .data(tenant(tenant_id)),
             )
             .await;
 
@@ -490,13 +484,11 @@ mod tests {
         let other = Uuid::new_v4();
         let response = schema()
             .execute(
-                Request::new(
-                    "query Tenant($input: TenantInput!) { echoInput(input: $input) }",
-                )
-                .variables(Variables::from_json(json!({
-                    "input": { "tenantId": other }
-                })))
-                .data(tenant(tenant_id)),
+                Request::new("query Tenant($input: TenantInput!) { echoInput(input: $input) }")
+                    .variables(Variables::from_json(json!({
+                        "input": { "tenantId": other }
+                    })))
+                    .data(tenant(tenant_id)),
             )
             .await;
 
@@ -555,10 +547,8 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let response = schema()
             .execute(
-                Request::new(format!(
-                    "query {{ echoTenant(tenantId: \"{tenant_id}\") }}"
-                ))
-                .data(tenant(tenant_id)),
+                Request::new(format!("query {{ echoTenant(tenantId: \"{tenant_id}\") }}"))
+                    .data(tenant(tenant_id)),
             )
             .await;
 

@@ -49,42 +49,236 @@ pub struct StyleInputError {
 
 pub fn builtin_style_properties() -> Vec<StylePropertyDescriptor> {
     vec![
-        property("display", "Display", StyleGroup::Layout, StyleValueKind::Keyword, &["block", "inline", "inline-block", "flex", "grid", "none"]),
-        property("flex-direction", "Flex direction", StyleGroup::Layout, StyleValueKind::Keyword, &["row", "column", "row-reverse", "column-reverse"]),
-        property("justify-content", "Justify content", StyleGroup::Layout, StyleValueKind::Keyword, &["start", "center", "end", "space-between", "space-around"]),
-        property("align-items", "Align items", StyleGroup::Layout, StyleValueKind::Keyword, &["stretch", "start", "center", "end", "baseline"]),
-        property("grid-template-columns", "Grid columns", StyleGroup::Layout, StyleValueKind::Text, &[]),
-        property("gap", "Gap", StyleGroup::Spacing, StyleValueKind::Length, &[]),
-        property("width", "Width", StyleGroup::Size, StyleValueKind::Length, &[]),
-        property("height", "Height", StyleGroup::Size, StyleValueKind::Length, &[]),
-        property("min-width", "Minimum width", StyleGroup::Size, StyleValueKind::Length, &[]),
-        property("min-height", "Minimum height", StyleGroup::Size, StyleValueKind::Length, &[]),
-        property("max-width", "Maximum width", StyleGroup::Size, StyleValueKind::Length, &[]),
-        property("max-height", "Maximum height", StyleGroup::Size, StyleValueKind::Length, &[]),
-        property("margin", "Margin", StyleGroup::Spacing, StyleValueKind::Text, &[]),
-        property("padding", "Padding", StyleGroup::Spacing, StyleValueKind::Text, &[]),
-        property("font-family", "Font family", StyleGroup::Typography, StyleValueKind::Text, &[]),
-        property("font-size", "Font size", StyleGroup::Typography, StyleValueKind::Length, &[]),
-        property("font-weight", "Font weight", StyleGroup::Typography, StyleValueKind::Text, &[]),
-        property("line-height", "Line height", StyleGroup::Typography, StyleValueKind::Text, &[]),
-        property("text-align", "Text align", StyleGroup::Typography, StyleValueKind::Keyword, &["left", "center", "right", "justify"]),
-        property("color", "Text color", StyleGroup::Typography, StyleValueKind::Color, &[]),
-        property("background", "Background", StyleGroup::Background, StyleValueKind::Text, &[]),
-        property("background-color", "Background color", StyleGroup::Background, StyleValueKind::Color, &[]),
-        property("border", "Border", StyleGroup::Border, StyleValueKind::Text, &[]),
-        property("border-radius", "Border radius", StyleGroup::Border, StyleValueKind::Length, &[]),
-        property("box-shadow", "Box shadow", StyleGroup::Effects, StyleValueKind::Text, &[]),
-        property("opacity", "Opacity", StyleGroup::Effects, StyleValueKind::Number, &[]),
-        property("position", "Position", StyleGroup::Position, StyleValueKind::Keyword, &["static", "relative", "absolute", "sticky", "fixed"]),
-        property("top", "Top", StyleGroup::Position, StyleValueKind::Length, &[]),
-        property("right", "Right", StyleGroup::Position, StyleValueKind::Length, &[]),
-        property("bottom", "Bottom", StyleGroup::Position, StyleValueKind::Length, &[]),
-        property("left", "Left", StyleGroup::Position, StyleValueKind::Length, &[]),
-        property("z-index", "Z index", StyleGroup::Position, StyleValueKind::Number, &[]),
+        property(
+            "display",
+            "Display",
+            StyleGroup::Layout,
+            StyleValueKind::Keyword,
+            &["block", "inline", "inline-block", "flex", "grid", "none"],
+        ),
+        property(
+            "flex-direction",
+            "Flex direction",
+            StyleGroup::Layout,
+            StyleValueKind::Keyword,
+            &["row", "column", "row-reverse", "column-reverse"],
+        ),
+        property(
+            "justify-content",
+            "Justify content",
+            StyleGroup::Layout,
+            StyleValueKind::Keyword,
+            &["start", "center", "end", "space-between", "space-around"],
+        ),
+        property(
+            "align-items",
+            "Align items",
+            StyleGroup::Layout,
+            StyleValueKind::Keyword,
+            &["stretch", "start", "center", "end", "baseline"],
+        ),
+        property(
+            "grid-template-columns",
+            "Grid columns",
+            StyleGroup::Layout,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "gap",
+            "Gap",
+            StyleGroup::Spacing,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "width",
+            "Width",
+            StyleGroup::Size,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "height",
+            "Height",
+            StyleGroup::Size,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "min-width",
+            "Minimum width",
+            StyleGroup::Size,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "min-height",
+            "Minimum height",
+            StyleGroup::Size,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "max-width",
+            "Maximum width",
+            StyleGroup::Size,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "max-height",
+            "Maximum height",
+            StyleGroup::Size,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "margin",
+            "Margin",
+            StyleGroup::Spacing,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "padding",
+            "Padding",
+            StyleGroup::Spacing,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "font-family",
+            "Font family",
+            StyleGroup::Typography,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "font-size",
+            "Font size",
+            StyleGroup::Typography,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "font-weight",
+            "Font weight",
+            StyleGroup::Typography,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "line-height",
+            "Line height",
+            StyleGroup::Typography,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "text-align",
+            "Text align",
+            StyleGroup::Typography,
+            StyleValueKind::Keyword,
+            &["left", "center", "right", "justify"],
+        ),
+        property(
+            "color",
+            "Text color",
+            StyleGroup::Typography,
+            StyleValueKind::Color,
+            &[],
+        ),
+        property(
+            "background",
+            "Background",
+            StyleGroup::Background,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "background-color",
+            "Background color",
+            StyleGroup::Background,
+            StyleValueKind::Color,
+            &[],
+        ),
+        property(
+            "border",
+            "Border",
+            StyleGroup::Border,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "border-radius",
+            "Border radius",
+            StyleGroup::Border,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "box-shadow",
+            "Box shadow",
+            StyleGroup::Effects,
+            StyleValueKind::Text,
+            &[],
+        ),
+        property(
+            "opacity",
+            "Opacity",
+            StyleGroup::Effects,
+            StyleValueKind::Number,
+            &[],
+        ),
+        property(
+            "position",
+            "Position",
+            StyleGroup::Position,
+            StyleValueKind::Keyword,
+            &["static", "relative", "absolute", "sticky", "fixed"],
+        ),
+        property(
+            "top",
+            "Top",
+            StyleGroup::Position,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "right",
+            "Right",
+            StyleGroup::Position,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "bottom",
+            "Bottom",
+            StyleGroup::Position,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "left",
+            "Left",
+            StyleGroup::Position,
+            StyleValueKind::Length,
+            &[],
+        ),
+        property(
+            "z-index",
+            "Z index",
+            StyleGroup::Position,
+            StyleValueKind::Number,
+            &[],
+        ),
     ]
 }
 
-pub fn style_patch(entries: impl IntoIterator<Item = StyleEntry>) -> Result<ComponentPatch, Vec<StyleInputError>> {
+pub fn style_patch(
+    entries: impl IntoIterator<Item = StyleEntry>,
+) -> Result<ComponentPatch, Vec<StyleInputError>> {
     let descriptors = builtin_style_properties();
     let mut style = Map::new();
     let mut remove_style_properties = Vec::new();
@@ -93,9 +287,14 @@ pub fn style_patch(entries: impl IntoIterator<Item = StyleEntry>) -> Result<Comp
     for entry in entries {
         let property = entry.property.trim().to_ascii_lowercase();
         let value = entry.value.trim();
-        let descriptor = descriptors.iter().find(|descriptor| descriptor.property == property);
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor.property == property);
         if !safe_property_name(&property) {
-            errors.push(StyleInputError { property, message: "invalid CSS property name".to_string() });
+            errors.push(StyleInputError {
+                property,
+                message: "invalid CSS property name".to_string(),
+            });
             continue;
         }
         if value.is_empty() {
@@ -103,7 +302,10 @@ pub fn style_patch(entries: impl IntoIterator<Item = StyleEntry>) -> Result<Comp
             continue;
         }
         if !safe_style_value(value) {
-            errors.push(StyleInputError { property, message: "style value contains a forbidden construct".to_string() });
+            errors.push(StyleInputError {
+                property,
+                message: "style value contains a forbidden construct".to_string(),
+            });
             continue;
         }
         if let Some(descriptor) = descriptor {
@@ -172,7 +374,10 @@ fn validate_value(descriptor: &StylePropertyDescriptor, value: &str) -> Result<(
             if descriptor.keywords.iter().any(|keyword| keyword == value) {
                 Ok(())
             } else {
-                Err(format!("expected one of: {}", descriptor.keywords.join(", ")))
+                Err(format!(
+                    "expected one of: {}",
+                    descriptor.keywords.join(", ")
+                ))
             }
         }
         StyleValueKind::Text | StyleValueKind::Keyword => Ok(()),
@@ -180,10 +385,15 @@ fn validate_value(descriptor: &StylePropertyDescriptor, value: &str) -> Result<(
 }
 
 fn validate_length(value: &str) -> Result<(), String> {
-    if matches!(value, "auto" | "min-content" | "max-content" | "fit-content") {
+    if matches!(
+        value,
+        "auto" | "min-content" | "max-content" | "fit-content"
+    ) {
         return Ok(());
     }
-    let units = ["px", "rem", "em", "%", "vw", "vh", "vmin", "vmax", "ch", "ex"];
+    let units = [
+        "px", "rem", "em", "%", "vw", "vh", "vmin", "vmax", "ch", "ex",
+    ];
     let unit = units.iter().find(|unit| value.ends_with(**unit)).copied();
     let numeric = unit.map_or(value, |unit| &value[..value.len() - unit.len()]);
     if numeric.trim().parse::<f64>().is_ok() && (unit.is_some() || numeric.trim() == "0") {
@@ -195,7 +405,16 @@ fn validate_length(value: &str) -> Result<(), String> {
 
 fn validate_color(value: &str) -> Result<(), String> {
     let normalized = value.to_ascii_lowercase();
-    let named = ["transparent", "currentcolor", "black", "white", "red", "green", "blue", "inherit"];
+    let named = [
+        "transparent",
+        "currentcolor",
+        "black",
+        "white",
+        "red",
+        "green",
+        "blue",
+        "inherit",
+    ];
     if normalized.starts_with('#')
         || normalized.starts_with("rgb(")
         || normalized.starts_with("rgba(")
@@ -243,8 +462,14 @@ mod tests {
     #[test]
     fn typed_style_patch_merges_valid_entries_and_removes_empty_values() {
         let patch = style_patch([
-            StyleEntry { property: "width".to_string(), value: "320px".to_string() },
-            StyleEntry { property: "color".to_string(), value: "".to_string() },
+            StyleEntry {
+                property: "width".to_string(),
+                value: "320px".to_string(),
+            },
+            StyleEntry {
+                property: "color".to_string(),
+                value: "".to_string(),
+            },
         ])
         .expect("patch");
         assert_eq!(patch.style.expect("style")["width"], "320px");
@@ -253,7 +478,15 @@ mod tests {
 
     #[test]
     fn typed_style_patch_rejects_urls_and_invalid_lengths() {
-        assert!(style_patch([StyleEntry { property: "background".to_string(), value: "url(https://example.com/a.png)".to_string() }]).is_err());
-        assert!(style_patch([StyleEntry { property: "width".to_string(), value: "wide".to_string() }]).is_err());
+        assert!(style_patch([StyleEntry {
+            property: "background".to_string(),
+            value: "url(https://example.com/a.png)".to_string()
+        }])
+        .is_err());
+        assert!(style_patch([StyleEntry {
+            property: "width".to_string(),
+            value: "wide".to_string()
+        }])
+        .is_err());
     }
 }

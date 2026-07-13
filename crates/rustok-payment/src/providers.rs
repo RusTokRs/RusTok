@@ -189,9 +189,10 @@ impl PaymentProviderRegistry {
             )));
         }
         if registration.descriptor.default_for_new_collections
-            && self.registrations.values().any(|existing| {
-                existing.descriptor.default_for_new_collections
-            })
+            && self
+                .registrations
+                .values()
+                .any(|existing| existing.descriptor.default_for_new_collections)
         {
             return Err(PaymentError::Validation(
                 "only one payment provider may be default for new collections".to_string(),
@@ -343,7 +344,8 @@ impl PaymentProviderRegistry {
                 "payment provider `{provider_id}` {operation} returned a negative amount"
             )));
         }
-        if result.authorized_amount > requested_amount || result.captured_amount > requested_amount {
+        if result.authorized_amount > requested_amount || result.captured_amount > requested_amount
+        {
             return Err(PaymentError::Validation(format!(
                 "payment provider `{provider_id}` {operation} returned an amount above the request"
             )));

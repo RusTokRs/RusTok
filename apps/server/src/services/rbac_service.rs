@@ -9,7 +9,9 @@ use rustok_rbac::PermissionResolver;
 use rustok_telemetry::metrics;
 
 use super::rbac_persistence::replace_user_role_via_store;
-use super::rbac_request_scope::{permissions_for as scoped_permissions_for, role_for as scoped_role_for};
+use super::rbac_request_scope::{
+    permissions_for as scoped_permissions_for, role_for as scoped_role_for,
+};
 pub use super::rbac_runtime::RbacResolverMetricsSnapshot;
 use super::rbac_runtime::{
     authorize_request as authorize_rbac_request,
@@ -483,12 +485,8 @@ mod tests {
     #[tokio::test]
     async fn request_scope_prevents_database_permission_restoration() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let (tenant_id, user_id) = insert_tenant_and_user(
-            &db,
-            "test-request-scope",
-            "request-scope@example.com",
-        )
-        .await;
+        let (tenant_id, user_id) =
+            insert_tenant_and_user(&db, "test-request-scope", "request-scope@example.com").await;
         RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Admin)
             .await
             .expect("admin role assignment should succeed");

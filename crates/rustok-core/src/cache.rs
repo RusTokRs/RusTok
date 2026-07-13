@@ -1,6 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
 #[cfg(feature = "redis-cache")]
 use std::future::Future;
-use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -448,9 +448,9 @@ impl CacheBackend for RedisCacheBackend {
             })
             .await
             .map_err(|e| match e {
-                CircuitBreakerError::Open => crate::Error::Cache(
-                    "Redis unavailable (circuit breaker open)".to_string(),
-                ),
+                CircuitBreakerError::Open => {
+                    crate::Error::Cache("Redis unavailable (circuit breaker open)".to_string())
+                }
                 CircuitBreakerError::Upstream(err) => err,
             })
     }
@@ -528,25 +528,16 @@ impl FallbackCacheBackend {
     }
 
     async fn has_degraded_write(&self, key: &str) -> bool {
-        self.degraded_writes
-            .get(key)
-            .await
-            .ok()
-            .flatten()
-            .is_some()
+        self.degraded_writes.get(key).await.ok().flatten().is_some()
     }
 
-    async fn mirror_primary_cas(
-        &self,
-        key: &str,
-        value: Vec<u8>,
-        ttl: Option<Duration>,
-    ) {
+    async fn mirror_primary_cas(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) {
         let result = match ttl {
-            Some(ttl) => self
-                .fallback
-                .set_with_ttl(key.to_string(), value, ttl)
-                .await,
+            Some(ttl) => {
+                self.fallback
+                    .set_with_ttl(key.to_string(), value, ttl)
+                    .await
+            }
             None => self.fallback.set(key.to_string(), value).await,
         };
         if let Err(error) = result {
@@ -683,10 +674,7 @@ mod in_memory_capacity_tests {
     #[tokio::test]
     async fn weighted_cache_does_not_retain_entry_larger_than_its_budget() {
         let cache = InMemoryCacheBackend::new_weighted(Duration::from_secs(60), 64);
-        cache
-            .set("large".to_string(), vec![0; 256])
-            .await
-            .unwrap();
+        cache.set("large".to_string(), vec![0; 256]).await.unwrap();
         cache.cache.run_pending_tasks().await;
 
         assert_eq!(cache.get("large").await.unwrap(), None);
@@ -695,10 +683,7 @@ mod in_memory_capacity_tests {
     #[tokio::test]
     async fn in_memory_compare_and_set_applies_only_to_matching_bytes() {
         let cache = InMemoryCacheBackend::new(Duration::from_secs(60), 16);
-        cache
-            .set("key".to_string(), b"old".to_vec())
-            .await
-            .unwrap();
+        cache.set("key".to_string(), b"old".to_vec()).await.unwrap();
 
         assert_eq!(
             cache

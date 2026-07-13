@@ -81,7 +81,12 @@ impl PageHead {
             html.push_str(&escape_html(title));
             html.push_str("</title>");
         }
-        push_meta(&mut html, "name", "description", self.description.as_deref());
+        push_meta(
+            &mut html,
+            "name",
+            "description",
+            self.description.as_deref(),
+        );
         push_meta(&mut html, "name", "robots", self.robots.as_deref());
         push_meta(
             &mut html,
@@ -248,8 +253,10 @@ fn render_component(
         let Some(value) = scalar_string(value) else {
             continue;
         };
-        if matches!(name.as_str(), "href" | "src" | "poster" | "action" | "formaction")
-            && !url_allowed(&value, policy)
+        if matches!(
+            name.as_str(),
+            "href" | "src" | "poster" | "action" | "formaction"
+        ) && !url_allowed(&value, policy)
         {
             continue;
         }
@@ -421,9 +428,9 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
 fn safe_attribute_name(name: &str) -> bool {
     !name.to_ascii_lowercase().starts_with("on")
         && !name.is_empty()
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':'))
+        && name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':')
+        })
 }
 
 fn scalar_string(value: &Value) -> Option<String> {
@@ -624,12 +631,8 @@ mod tests {
 
     #[test]
     fn storefront_renderer_uses_style_hooks_without_editor_instrumentation() {
-        let rendered = render_page(
-            &document(),
-            &PageSelection::First,
-            &RenderPolicy::default(),
-        )
-        .expect("render page");
+        let rendered = render_page(&document(), &PageSelection::First, &RenderPolicy::default())
+            .expect("render page");
         assert!(!rendered.html.contains("data-fly-component-id"));
         assert!(rendered.html.contains("data-fly-style-id=\"hero\""));
         assert!(rendered.css.contains("data-fly-style-id"));

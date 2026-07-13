@@ -11,9 +11,7 @@ use rustok_mcp::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use super::mcp_management_authority::{
-    McpManagementAuthorityError, McpManagementAuthorityService,
-};
+use super::mcp_management_authority::{McpManagementAuthorityError, McpManagementAuthorityService};
 use super::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
 use super::rbac_request_scope::permissions_for;
 
@@ -33,8 +31,7 @@ impl GuardedMcpManagementProvider {
     ) -> Result<Vec<Permission>, McpManagementMutationError> {
         permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
             McpManagementMutationError::Validation(
-                "MCP management requires a request-bound effective permission snapshot"
-                    .to_string(),
+                "MCP management requires a request-bound effective permission snapshot".to_string(),
             )
         })
     }
@@ -170,7 +167,9 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         client_id: Uuid,
         reason: Option<String>,
     ) -> Result<(), McpManagementMutationError> {
-        self.inner.deactivate_client(context, client_id, reason).await
+        self.inner
+            .deactivate_client(context, client_id, reason)
+            .await
     }
 
     async fn stage_scaffold_draft(

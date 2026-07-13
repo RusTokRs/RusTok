@@ -1,7 +1,5 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use sha2::{Digest, Sha256};
 
 use crate::auth::{decode_invite_token, AuthConfig};
@@ -52,8 +50,8 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> Result<AcceptedInvite, InviteAcceptanceError> {
-        let claims = decode_invite_token(config, token)
-            .map_err(|_| InviteAcceptanceError::InvalidToken)?;
+        let claims =
+            decode_invite_token(config, token).map_err(|_| InviteAcceptanceError::InvalidToken)?;
         if claims.tenant_id != tenant_id {
             return Err(InviteAcceptanceError::InvalidToken);
         }

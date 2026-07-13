@@ -86,10 +86,7 @@ impl CacheRefreshCoordinator {
     {
         let key = key.into();
         if validate_refresh_key(&key).is_err() {
-            self.inner
-                .metrics
-                .rejected
-                .fetch_add(1, Ordering::Relaxed);
+            self.inner.metrics.rejected.fetch_add(1, Ordering::Relaxed);
             return CacheRefreshSchedule::InvalidKey;
         }
 
@@ -121,10 +118,7 @@ impl CacheRefreshCoordinator {
             Ok(permit) => permit,
             Err(_) => {
                 self.remove_in_flight(&refresh_key);
-                self.inner
-                    .metrics
-                    .saturated
-                    .fetch_add(1, Ordering::Relaxed);
+                self.inner.metrics.saturated.fetch_add(1, Ordering::Relaxed);
                 return CacheRefreshSchedule::AtCapacity;
             }
         };
@@ -231,7 +225,10 @@ impl std::fmt::Display for CacheRefreshCoordinatorError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ZeroConcurrency => {
-                write!(formatter, "cache refresh concurrency must be greater than zero")
+                write!(
+                    formatter,
+                    "cache refresh concurrency must be greater than zero"
+                )
             }
         }
     }
@@ -423,9 +420,11 @@ where
         ));
     }
 
-    let bytes = envelope.encode_with_limit(max_encoded_bytes).map_err(|error| {
-        rustok_core::Error::Cache(format!("cache refresh envelope error: {error}"))
-    })?;
+    let bytes = envelope
+        .encode_with_limit(max_encoded_bytes)
+        .map_err(|error| {
+            rustok_core::Error::Cache(format!("cache refresh envelope error: {error}"))
+        })?;
 
     match backend
         .compare_and_set(&key, &observed_bytes, bytes, ttl)
@@ -433,7 +432,10 @@ where
     {
         CacheCompareAndSetOutcome::Applied => Ok(()),
         CacheCompareAndSetOutcome::Mismatch => {
-            tracing::debug!(key, "Skipping stale cache refresh because the entry changed");
+            tracing::debug!(
+                key,
+                "Skipping stale cache refresh because the entry changed"
+            );
             Ok(())
         }
     }
@@ -474,7 +476,9 @@ mod tests {
     #[tokio::test]
     async fn coordinator_deduplicates_and_releases_refresh_keys() {
         let service = CacheService::from_url(None);
-        let backend = service.backend_shared_client("refresh-test", Duration::from_secs(60), 16).await;
+        let backend = service
+            .backend_shared_client("refresh-test", Duration::from_secs(60), 16)
+            .await;
         let coordinator = CacheRefreshCoordinator::new(2).unwrap();
         let (started_tx, started_rx) = oneshot::channel();
         let (release_tx, release_rx) = oneshot::channel();
@@ -511,7 +515,9 @@ mod tests {
     #[tokio::test]
     async fn coordinator_rejects_new_key_when_global_capacity_is_full() {
         let service = CacheService::from_url(None);
-        let backend = service.backend_shared_client("refresh-capacity", Duration::from_secs(60), 16).await;
+        let backend = service
+            .backend_shared_client("refresh-capacity", Duration::from_secs(60), 16)
+            .await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let (started_tx, started_rx) = oneshot::channel();
         let (_release_tx, release_rx) = oneshot::channel::<()>();
@@ -535,14 +541,13 @@ mod tests {
     #[tokio::test]
     async fn coordinator_rejects_invalid_keys_without_running_refresh() {
         let service = CacheService::from_url(None);
-        let backend = service.backend_shared_client("refresh-invalid", Duration::from_secs(60), 16).await;
+        let backend = service
+            .backend_shared_client("refresh-invalid", Duration::from_secs(60), 16)
+            .await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
 
-        for key in [
-            "".to_string(),
-            "x".repeat(MAX_CACHE_REFRESH_KEY_BYTES + 1),
-        ] {
+        for key in ["".to_string(), "x".repeat(MAX_CACHE_REFRESH_KEY_BYTES + 1)] {
             let calls = Arc::clone(&calls);
             assert_eq!(
                 coordinator.schedule(&backend, key, move || async move {
@@ -562,7 +567,9 @@ mod tests {
     #[tokio::test]
     async fn swr_rejects_invalid_key_before_backend_or_loader_work() {
         let service = CacheService::from_url(None);
-        let backend = service.backend_shared_client("refresh-invalid-swr", Duration::from_secs(60), 16).await;
+        let backend = service
+            .backend_shared_client("refresh-invalid-swr", Duration::from_secs(60), 16)
+            .await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         let loader_calls = Arc::clone(&calls);
@@ -596,7 +603,9 @@ mod tests {
     #[tokio::test]
     async fn stale_value_is_served_while_one_background_refresh_replaces_it() {
         let service = CacheService::from_url(None);
-        let backend = service.backend_shared_client("refresh-stale", Duration::from_secs(60), 16).await;
+        let backend = service
+            .backend_shared_client("refresh-stale", Duration::from_secs(60), 16)
+            .await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let stale = CacheEnvelope::new(1, 1_000, "stale".to_string())
             .unwrap()
@@ -653,7 +662,9 @@ mod tests {
     #[tokio::test]
     async fn concurrent_replacement_wins_over_slow_stale_refresh() {
         let service = CacheService::from_url(None);
-        let backend = service.backend_shared_client("refresh-race", Duration::from_secs(60), 16).await;
+        let backend = service
+            .backend_shared_client("refresh-race", Duration::from_secs(60), 16)
+            .await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let stale = CacheEnvelope::new(1, 1_000, "stale".to_string())
             .unwrap()
@@ -725,7 +736,9 @@ mod tests {
     #[tokio::test]
     async fn foreground_stale_fill_does_not_run_loader_twice() {
         let service = CacheService::from_url(None);
-        let backend = service.backend_shared_client("refresh-foreground", Duration::from_secs(60), 16).await;
+        let backend = service
+            .backend_shared_client("refresh-foreground", Duration::from_secs(60), 16)
+            .await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         let loader_calls = Arc::clone(&calls);

@@ -1,8 +1,6 @@
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::dto::{ForumDomainEventQuery, ForumDomainEventResponse};
@@ -48,8 +46,7 @@ impl ForumEventService {
             .filter(forum_domain_event::Column::SequenceNo.gt(after_sequence));
 
         if let Some(aggregate_type) = normalize_filter(query.aggregate_type, "aggregate_type")? {
-            select =
-                select.filter(forum_domain_event::Column::AggregateType.eq(aggregate_type));
+            select = select.filter(forum_domain_event::Column::AggregateType.eq(aggregate_type));
         }
         if let Some(aggregate_id) = query.aggregate_id {
             select = select.filter(forum_domain_event::Column::AggregateId.eq(aggregate_id));
@@ -87,9 +84,7 @@ fn normalize_filter(value: Option<String>, field: &str) -> ForumResult<Option<St
         .map(|value| {
             let normalized = value.trim().to_ascii_lowercase();
             if normalized.is_empty() {
-                return Err(ForumError::Validation(format!(
-                    "{field} must not be empty"
-                )));
+                return Err(ForumError::Validation(format!("{field} must not be empty")));
             }
             if normalized.len() > 96 {
                 return Err(ForumError::Validation(format!(

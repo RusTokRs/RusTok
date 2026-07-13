@@ -368,7 +368,7 @@ WHEN NEW.event_type = 'forum.topic.replied'
  )
 BEGIN
     SELECT RAISE(IGNORE);
-END"#
+END"#,
     ] {
         connection.execute_unprepared(statement).await?;
     }
@@ -384,7 +384,7 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         "DROP TRIGGER IF EXISTS forum_categories_public_reply_count_update",
         "DROP TRIGGER IF EXISTS forum_topics_public_reply_count_update",
         "DROP TRIGGER IF EXISTS forum_replies_inactive_topic_insert",
-        "DROP TRIGGER IF EXISTS forum_replies_locked_topic_insert"
+        "DROP TRIGGER IF EXISTS forum_replies_locked_topic_insert",
     ] {
         connection.execute_unprepared(statement).await?;
     }

@@ -46,10 +46,7 @@ impl VersionedCacheInvalidation {
             hex::encode(self.key.as_bytes())
         );
         validate_payload_length(payload.len())?;
-        Ok(CacheInvalidationMessage::new(
-            self.channel.clone(),
-            payload,
-        ))
+        Ok(CacheInvalidationMessage::new(self.channel.clone(), payload))
     }
 
     pub fn from_message(
@@ -86,17 +83,12 @@ impl VersionedCacheInvalidation {
                 maximum: MAX_INVALIDATION_KEY_BYTES,
             });
         }
-        let key_bytes = hex::decode(key_hex)
-            .map_err(|_| CacheInvalidationPayloadError::InvalidKeyEncoding)?;
+        let key_bytes =
+            hex::decode(key_hex).map_err(|_| CacheInvalidationPayloadError::InvalidKeyEncoding)?;
         let key = String::from_utf8(key_bytes)
             .map_err(|_| CacheInvalidationPayloadError::InvalidKeyEncoding)?;
 
-        Self::new(
-            message.channel.clone(),
-            key,
-            generation,
-            emitted_at_unix_ms,
-        )
+        Self::new(message.channel.clone(), key, generation, emitted_at_unix_ms)
     }
 
     fn validate(&self) -> Result<(), CacheInvalidationPayloadError> {
@@ -157,7 +149,10 @@ impl std::fmt::Display for CacheInvalidationPayloadError {
             ),
             Self::MalformedPayload => write!(formatter, "malformed versioned invalidation payload"),
             Self::UnsupportedVersion(version) => {
-                write!(formatter, "unsupported invalidation payload version {version:?}")
+                write!(
+                    formatter,
+                    "unsupported invalidation payload version {version:?}"
+                )
             }
             Self::InvalidGeneration => write!(formatter, "invalid invalidation generation"),
             Self::InvalidTimestamp => write!(formatter, "invalid invalidation timestamp"),
@@ -205,10 +200,7 @@ impl CacheInvalidationGapTracker {
         self.advance_monotonically(channel, recovered_through_generation)
     }
 
-    pub fn observe(
-        &self,
-        event: &VersionedCacheInvalidation,
-    ) -> CacheInvalidationObservation {
+    pub fn observe(&self, event: &VersionedCacheInvalidation) -> CacheInvalidationObservation {
         let mut generations = self
             .last_by_channel
             .lock()
@@ -277,10 +269,7 @@ impl CacheInvalidationGapTracker {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(current) = generations.get(&channel).copied() {
             if proposed < current {
-                return Err(CacheInvalidationPayloadError::OffsetRegressed {
-                    current,
-                    proposed,
-                });
+                return Err(CacheInvalidationPayloadError::OffsetRegressed { current, proposed });
             }
         }
         Ok(generations.insert(channel, proposed))
@@ -369,8 +358,8 @@ mod tests {
             1_234,
         )
         .unwrap();
-        let decoded = VersionedCacheInvalidation::from_message(&original.to_message().unwrap())
-            .unwrap();
+        let decoded =
+            VersionedCacheInvalidation::from_message(&original.to_message().unwrap()).unwrap();
 
         assert_eq!(decoded, original);
     }

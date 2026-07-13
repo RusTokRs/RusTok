@@ -10,10 +10,11 @@ use crate::guest_access::{
 };
 use crate::ports::{
     CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
-    CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
-    CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
-    CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
+    CartCheckoutSnapshotRequest, CartStorefrontAddLineItemRequest,
+    CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
+    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
+    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    CartStorefrontRepriceRequest,
 };
 use crate::CartResponse;
 
@@ -37,10 +38,7 @@ struct GuardedCartPort {
 }
 
 impl GuardedCartPort {
-    fn new(
-        storefront: Arc<dyn CartStorefrontPort>,
-        checkout: Arc<dyn CartCheckoutPort>,
-    ) -> Self {
+    fn new(storefront: Arc<dyn CartStorefrontPort>, checkout: Arc<dyn CartCheckoutPort>) -> Self {
         Self {
             storefront,
             checkout,
@@ -54,10 +52,7 @@ impl GuardedCartPort {
     ) -> Result<(), PortError> {
         let cart = self
             .storefront
-            .read_storefront_cart(
-                context.clone(),
-                CartStorefrontReadRequest { cart_id },
-            )
+            .read_storefront_cart(context.clone(), CartStorefrontReadRequest { cart_id })
             .await?;
         authorize_guest_cart(context, &cart)
     }
@@ -265,8 +260,8 @@ mod tests {
     use super::authorize_guest_cart;
     use crate::guest_access::{guest_cart_claim, prepare_guest_cart_metadata};
     use crate::CartResponse;
-    use rustok_api::{PortActor, PortContext};
     use rust_decimal::Decimal;
+    use rustok_api::{PortActor, PortContext};
     use serde_json::json;
     use uuid::Uuid;
 

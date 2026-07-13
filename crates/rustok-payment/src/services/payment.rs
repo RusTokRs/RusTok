@@ -122,23 +122,12 @@ impl PaymentService {
             return Err(conflict.into());
         };
 
-        validate_reusable_collection(
-            &existing,
-            cart_id,
-            customer_id,
-            currency_code,
-            amount,
-        )?;
+        validate_reusable_collection(&existing, cart_id, customer_id, currency_code, amount)?;
 
         match order_id {
             Some(order_id) => {
-                self.attach_order_to_collection(
-                    tenant_id,
-                    existing.id,
-                    order_id,
-                    metadata,
-                )
-                .await
+                self.attach_order_to_collection(tenant_id, existing.id, order_id, metadata)
+                    .await
             }
             None => Ok(existing),
         }

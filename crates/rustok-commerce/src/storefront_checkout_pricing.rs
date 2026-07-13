@@ -2,9 +2,8 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{PortError, PortErrorKind};
 use rustok_cart::{
-    AtomicCartCheckoutPricingResolver, CartCheckoutLineItemPricingUpdate,
-    CartCheckoutPricingPlan, CartPricingAdjustmentUpdate, CartResponse,
-    PrepareCartCheckoutSnapshotRequest,
+    AtomicCartCheckoutPricingResolver, CartCheckoutLineItemPricingUpdate, CartCheckoutPricingPlan,
+    CartPricingAdjustmentUpdate, CartResponse, PrepareCartCheckoutSnapshotRequest,
 };
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;

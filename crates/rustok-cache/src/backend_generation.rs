@@ -416,12 +416,18 @@ mod tests {
         let raw = service.memory_backend(Duration::from_secs(60), 16);
         let backend = service.wrap_generation_aware_backend(&prefix, raw).await;
 
-        backend.set("key".to_string(), b"old".to_vec()).await.unwrap();
+        backend
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
         assert_eq!(backend.get("key").await.unwrap(), Some(b"old".to_vec()));
 
         observe_cache_backend_generation(&prefix, 1).unwrap();
         assert_eq!(backend.get("key").await.unwrap(), None);
-        backend.set("key".to_string(), b"new".to_vec()).await.unwrap();
+        backend
+            .set("key".to_string(), b"new".to_vec())
+            .await
+            .unwrap();
         assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
     }
 
@@ -478,8 +484,14 @@ mod tests {
     async fn local_generation_bumps_are_persistent_and_monotonic() {
         let service = CacheService::from_url(None);
         let prefix = unique_prefix("local-bump");
-        let first = service.bump_cache_backend_generation(&prefix).await.unwrap();
-        let second = service.bump_cache_backend_generation(&prefix).await.unwrap();
+        let first = service
+            .bump_cache_backend_generation(&prefix)
+            .await
+            .unwrap();
+        let second = service
+            .bump_cache_backend_generation(&prefix)
+            .await
+            .unwrap();
         assert_eq!(second.generation, first.generation + 1);
         assert!(second.trusted);
     }
@@ -507,9 +519,17 @@ mod tests {
         let raw = service.memory_backend(Duration::from_secs(60), 16);
         let backend = service.wrap_generation_aware_backend(&prefix, raw).await;
 
-        backend.set("key".to_string(), b"value".to_vec()).await.unwrap();
+        backend
+            .set("key".to_string(), b"value".to_vec())
+            .await
+            .unwrap();
         assert_eq!(backend.get("key").await.unwrap(), Some(b"value".to_vec()));
-        assert_eq!(cache_backend_generation_snapshot(&prefix).unwrap().generation, 7);
+        assert_eq!(
+            cache_backend_generation_snapshot(&prefix)
+                .unwrap()
+                .generation,
+            7
+        );
     }
 
     #[test]

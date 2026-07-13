@@ -99,11 +99,7 @@ impl StorageService {
     }
 }
 
-fn validate_storage_path(
-    path: &str,
-    allow_empty: bool,
-    allow_trailing_slash: bool,
-) -> Result<()> {
+fn validate_storage_path(path: &str, allow_empty: bool, allow_trailing_slash: bool) -> Result<()> {
     if path.starts_with('/')
         || path.starts_with('\\')
         || path.contains('\\')

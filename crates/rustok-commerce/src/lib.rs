@@ -30,8 +30,8 @@ mod search;
 pub mod services;
 pub mod state_machine;
 mod storefront_channel;
-pub mod storefront_checkout_runtime;
 mod storefront_checkout_pricing;
+pub mod storefront_checkout_runtime;
 mod storefront_shipping;
 
 #[cfg(test)]
@@ -45,15 +45,15 @@ pub use services::{
     ApplyOrderChangeResult, BeginCheckoutOperation, CheckoutError, CheckoutOperationCheckpoint,
     CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationResult,
     CheckoutOperationStage, CheckoutOperationStatus, CheckoutResult, CheckoutService,
-    CreateReturnDecisionInput, DEFAULT_CHECKOUT_LEASE_SECONDS, ExchangeDifferenceRefundInput,
+    CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
     FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
-    MAX_CHECKOUT_LEASE_SECONDS, PaidOrderCreateLabelSweepReport,
-    PaidOrderCreateLabelSweepService, PaymentOrchestrationError, PaymentOrchestrationResult,
-    PaymentOrchestrationService, PostOrderOrchestrationError, PostOrderOrchestrationService,
-    RefundReconciliationService, ReturnClaimDecisionInput, ReturnDecisionInput,
-    ReturnDecisionResponse, ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
-    ShippingProfileService, StoreContextError, StoreContextResult, StoreContextService,
+    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService, PaymentOrchestrationError,
+    PaymentOrchestrationResult, PaymentOrchestrationService, PostOrderOrchestrationError,
+    PostOrderOrchestrationService, RefundReconciliationService, ReturnClaimDecisionInput,
+    ReturnDecisionInput, ReturnDecisionResponse, ReturnExchangeDecisionInput,
+    ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
+    StoreContextService, DEFAULT_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_LEASE_SECONDS,
 };
 pub(crate) use services::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,

@@ -144,10 +144,7 @@ mod tests {
             .map(|kind| kind.as_str())
             .collect();
         assert_eq!(error_kinds, PAGE_BUILDER_ERROR_CATALOG);
-        assert_eq!(
-            PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
-            "FEATURE_DISABLED"
-        );
+        assert_eq!(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, "FEATURE_DISABLED");
     }
 
     #[test]
@@ -165,7 +162,10 @@ mod tests {
         let error = ensure_capability(&flags, BuilderCapabilityKind::Publish)
             .expect_err("publish should be disabled");
         assert!(matches!(error, BuilderRolloutError::FeatureDisabled(_)));
-        assert_eq!(error.stable_code(), PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE);
+        assert_eq!(
+            error.stable_code(),
+            PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE
+        );
     }
 
     #[test]

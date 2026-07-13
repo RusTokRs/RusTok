@@ -61,7 +61,9 @@ impl JournaledFulfillmentOrchestrationService {
             .into());
         }
 
-        let provider_id = self.provider_id_for_fulfillment(tenant_id, &current).await?;
+        let provider_id = self
+            .provider_id_for_fulfillment(tenant_id, &current)
+            .await?;
         let request_metadata = merge_metadata(
             input.metadata.clone(),
             serde_json::json!({
@@ -108,12 +110,8 @@ impl JournaledFulfillmentOrchestrationService {
         {
             Ok(updated) => updated,
             Err(source) => {
-                self.mark_reconciliation_required(
-                    journaled.operation_id,
-                    "ship",
-                    &source,
-                )
-                .await;
+                self.mark_reconciliation_required(journaled.operation_id, "ship", &source)
+                    .await;
                 return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id,
                     operation: "ship",
@@ -121,7 +119,8 @@ impl JournaledFulfillmentOrchestrationService {
                 });
             }
         };
-        self.ensure_committed(journaled.operation_id, "ship").await?;
+        self.ensure_committed(journaled.operation_id, "ship")
+            .await?;
         Ok(updated)
     }
 
@@ -144,7 +143,9 @@ impl JournaledFulfillmentOrchestrationService {
             .into());
         }
 
-        let provider_id = self.provider_id_for_fulfillment(tenant_id, &current).await?;
+        let provider_id = self
+            .provider_id_for_fulfillment(tenant_id, &current)
+            .await?;
         let request_metadata = merge_metadata(
             input.metadata.clone(),
             serde_json::json!({
@@ -191,12 +192,8 @@ impl JournaledFulfillmentOrchestrationService {
         {
             Ok(updated) => updated,
             Err(source) => {
-                self.mark_reconciliation_required(
-                    journaled.operation_id,
-                    "reship",
-                    &source,
-                )
-                .await;
+                self.mark_reconciliation_required(journaled.operation_id, "reship", &source)
+                    .await;
                 return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id,
                     operation: "reship",
@@ -204,7 +201,8 @@ impl JournaledFulfillmentOrchestrationService {
                 });
             }
         };
-        self.ensure_committed(journaled.operation_id, "reship").await?;
+        self.ensure_committed(journaled.operation_id, "reship")
+            .await?;
         Ok(updated)
     }
 
@@ -227,7 +225,9 @@ impl JournaledFulfillmentOrchestrationService {
             .into());
         }
 
-        let provider_id = self.provider_id_for_fulfillment(tenant_id, &current).await?;
+        let provider_id = self
+            .provider_id_for_fulfillment(tenant_id, &current)
+            .await?;
         let request_metadata = merge_metadata(
             input.metadata.clone(),
             serde_json::json!({
@@ -266,12 +266,8 @@ impl JournaledFulfillmentOrchestrationService {
         {
             Ok(updated) => updated,
             Err(source) => {
-                self.mark_reconciliation_required(
-                    journaled.operation_id,
-                    "cancel",
-                    &source,
-                )
-                .await;
+                self.mark_reconciliation_required(journaled.operation_id, "cancel", &source)
+                    .await;
                 return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id,
                     operation: "cancel",
@@ -279,7 +275,8 @@ impl JournaledFulfillmentOrchestrationService {
                 });
             }
         };
-        self.ensure_committed(journaled.operation_id, "cancel").await?;
+        self.ensure_committed(journaled.operation_id, "cancel")
+            .await?;
         Ok(updated)
     }
 
@@ -289,12 +286,11 @@ impl JournaledFulfillmentOrchestrationService {
         operation: &'static str,
         request: FulfillmentProviderOperationRequest,
     ) -> FulfillmentOrchestrationResult<JournaledProviderResult> {
-        let idempotency_key = request
-            .idempotency_key
-            .clone()
-            .ok_or_else(|| FulfillmentOrchestrationError::Validation(
-                format!("journaled fulfillment provider operation `{operation}` requires idempotency_key"),
-            ))?;
+        let idempotency_key = request.idempotency_key.clone().ok_or_else(|| {
+            FulfillmentOrchestrationError::Validation(format!(
+                "journaled fulfillment provider operation `{operation}` requires idempotency_key"
+            ))
+        })?;
         let request_payload = serde_json::to_value(&request).map_err(|error| {
             FulfillmentOrchestrationError::Validation(format!(
                 "failed to serialize fulfillment {operation} request: {error}"
@@ -323,7 +319,10 @@ impl JournaledFulfillmentOrchestrationService {
                 return Err(FulfillmentOrchestrationError::Validation(format!(
                     "fulfillment provider operation {} requires reconciliation: {}",
                     journal_operation.id,
-                    journal_operation.error_message.as_deref().unwrap_or("unknown local persistence failure")
+                    journal_operation
+                        .error_message
+                        .as_deref()
+                        .unwrap_or("unknown local persistence failure")
                 )));
             }
             return Ok(JournaledProviderResult {
@@ -336,7 +335,11 @@ impl JournaledFulfillmentOrchestrationService {
             return Err(operation_in_progress(journal_operation.id, operation));
         }
 
-        if journal.claim_execution(journal_operation.id).await?.is_none() {
+        if journal
+            .claim_execution(journal_operation.id)
+            .await?
+            .is_none()
+        {
             let current = journal.get(journal_operation.id).await?;
             if matches!(
                 current.status.as_str(),
@@ -349,7 +352,10 @@ impl JournaledFulfillmentOrchestrationService {
                     return Err(FulfillmentOrchestrationError::Validation(format!(
                         "fulfillment provider operation {} requires reconciliation: {}",
                         current.id,
-                        current.error_message.as_deref().unwrap_or("unknown local persistence failure")
+                        current
+                            .error_message
+                            .as_deref()
+                            .unwrap_or("unknown local persistence failure")
                     )));
                 }
                 return Ok(JournaledProviderResult {
@@ -362,14 +368,16 @@ impl JournaledFulfillmentOrchestrationService {
         }
 
         let provider_result = match operation {
-            "ship" | "reship" => self
-                .fulfillment_provider_registry
-                .execute_ship(provider_id, request)
-                .await,
-            "cancel" => self
-                .fulfillment_provider_registry
-                .execute_cancel(provider_id, request)
-                .await,
+            "ship" | "reship" => {
+                self.fulfillment_provider_registry
+                    .execute_ship(provider_id, request)
+                    .await
+            }
+            "cancel" => {
+                self.fulfillment_provider_registry
+                    .execute_cancel(provider_id, request)
+                    .await
+            }
             _ => Err(FulfillmentError::Validation(format!(
                 "unsupported journaled fulfillment provider operation `{operation}`"
             ))),

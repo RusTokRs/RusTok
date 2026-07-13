@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use crate::error::{Error, Result};
+use async_trait::async_trait;
 use rustok_cache::CacheService;
 use rustok_core::events::{
     EventBus, EventEnvelope, EventTransport, MemoryTransport, ReliabilityLevel,
@@ -65,9 +65,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     let settings = ctx.settings();
     let channel_capacity = settings.events.channel_capacity;
     let cache = ctx.shared_get::<CacheService>().ok_or_else(|| {
-        Error::BadRequest(
-            "CacheService must be initialized before the event runtime".to_string(),
-        )
+        Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
     })?;
 
     // Subscribe before any transport can publish a tenant generation. This also restores the
@@ -78,9 +76,10 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         EventTransportKind::Memory => {
             let transport = MemoryTransport::with_capacity(channel_capacity);
             let listener_bus = transport.event_bus();
-            let transport: Arc<dyn EventTransport> = Arc::new(
-                TenantCacheGenerationTransport::new(Arc::new(transport), cache.clone()),
-            );
+            let transport: Arc<dyn EventTransport> = Arc::new(TenantCacheGenerationTransport::new(
+                Arc::new(transport),
+                cache.clone(),
+            ));
             EventRuntime {
                 transport,
                 listener_bus,
@@ -135,9 +134,8 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                         Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
                     })?,
             );
-            let primary: Arc<dyn EventTransport> = Arc::new(
-                TenantCacheGenerationTransport::new(primary, cache.clone()),
-            );
+            let primary: Arc<dyn EventTransport> =
+                Arc::new(TenantCacheGenerationTransport::new(primary, cache.clone()));
             let (transport, listener_bus) =
                 transport_with_local_delivery(primary, channel_capacity);
             EventRuntime {
@@ -320,8 +318,7 @@ mod tests {
     async fn fanout_transport_delivers_only_after_primary_accepts_event() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();
-        let (transport, listener_bus) =
-            transport_with_local_delivery(Arc::new(primary), 8);
+        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
         let mut listener = listener_bus.subscribe();
         let envelope = EventEnvelope::new(
             Uuid::from_u128(1),
@@ -339,8 +336,7 @@ mod tests {
     #[tokio::test]
     async fn fanout_transport_does_not_deliver_locally_when_primary_rejects() {
         let primary = MemoryTransport::with_capacity(8);
-        let (transport, listener_bus) =
-            transport_with_local_delivery(Arc::new(primary), 8);
+        let (transport, listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
         let mut listener = listener_bus.subscribe();
         let envelope = EventEnvelope::new(
             Uuid::from_u128(2),
@@ -351,17 +347,18 @@ mod tests {
         );
 
         assert!(transport.publish(envelope).await.is_err());
-        assert!(tokio::time::timeout(Duration::from_millis(10), listener.recv())
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), listener.recv())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn accepted_remote_delivery_is_not_retried_when_local_bus_has_no_receivers() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();
-        let (transport, _listener_bus) =
-            transport_with_local_delivery(Arc::new(primary), 8);
+        let (transport, _listener_bus) = transport_with_local_delivery(Arc::new(primary), 8);
         let before = event_local_delivery_metrics_snapshot().failure_total;
         let envelope = EventEnvelope::new(
             Uuid::from_u128(3),

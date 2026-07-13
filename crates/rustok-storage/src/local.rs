@@ -314,10 +314,14 @@ mod tests {
     #[test]
     fn local_storage_path_validation_rejects_traversal_and_absolute_paths() {
         let storage = LocalStorage::new("storage/media", "/media");
-        assert!(storage.validated_relative_path("tenant/file.png", false).is_ok());
+        assert!(storage
+            .validated_relative_path("tenant/file.png", false)
+            .is_ok());
         assert!(storage.validated_relative_path("tenant/", true).is_ok());
         assert!(storage.validated_relative_path("../secret", false).is_err());
-        assert!(storage.validated_relative_path("tenant\\..\\secret", false).is_err());
+        assert!(storage
+            .validated_relative_path("tenant\\..\\secret", false)
+            .is_err());
         assert!(storage.validated_relative_path("/absolute", false).is_err());
     }
 }

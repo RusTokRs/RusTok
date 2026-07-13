@@ -221,8 +221,7 @@ async fn handle_graphql_ws(
             None => None,
         };
 
-        let next_message =
-            with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await;
+        let next_message = with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await;
         let Some(message) = next_message else {
             break;
         };
@@ -257,13 +256,10 @@ async fn revalidate_ws_auth(
     auth_runtime: &ServerAuthRuntime,
     lease: &GraphqlWsAuthLease,
 ) -> Result<RbacRequestScope, ()> {
-    let current_user = resolve_current_user_from_access_token(
-        auth_runtime,
-        lease.tenant_id,
-        &lease.access_token,
-    )
-    .await
-    .map_err(|_| ())?;
+    let current_user =
+        resolve_current_user_from_access_token(auth_runtime, lease.tenant_id, &lease.access_token)
+            .await
+            .map_err(|_| ())?;
     let current_scope = RbacRequestScope::new(
         current_user.user.tenant_id,
         current_user.user.id,

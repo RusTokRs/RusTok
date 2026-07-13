@@ -2,7 +2,7 @@ use crate::editor::AdminEditorRuntime;
 use leptos::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-use fly::{EditorCommand};
+use fly::EditorCommand;
 #[cfg(target_arch = "wasm32")]
 use fly_ui::{CanvasRect, ResizeHandle, ResizePolicy, ResizeResult, UiIntent, ViewportState};
 #[cfg(target_arch = "wasm32")]
@@ -17,12 +17,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
     let captured_element = StoredValue::new_local(None::<Element>);
     let preview = RwSignal::new(None::<ResizeResult>);
 
-    install_resize_listeners(
-        runtime.clone(),
-        session,
-        captured_element,
-        preview,
-    );
+    install_resize_listeners(runtime.clone(), session, captured_element, preview);
 
     let handles = [
         ResizeHandle::North,
@@ -156,10 +151,8 @@ fn install_resize_listeners(
     let up_runtime = runtime.clone();
     let up_session = session;
     let up_element = captured_element;
-    let up_listener = fly_leptos::EventListenerHandle::new::<PointerEvent>(
-        &target,
-        "pointerup",
-        move |event| {
+    let up_listener =
+        fly_leptos::EventListenerHandle::new::<PointerEvent>(&target, "pointerup", move |event| {
             let Some(active) = up_session.get_value() else {
                 return;
             };
@@ -179,8 +172,7 @@ fn install_resize_listeners(
             up_element.set_value(None);
             up_session.set_value(None);
             preview.set(None);
-        },
-    );
+        });
 
     match (move_listener, up_listener) {
         (Ok(move_listener), Ok(up_listener)) => {

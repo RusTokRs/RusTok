@@ -14,11 +14,7 @@ pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> St
         },
     );
     let (head, canvas, project_styles) = match rendered {
-        Ok(rendered) => (
-            rendered.head.render_html(),
-            rendered.html,
-            rendered.css,
-        ),
+        Ok(rendered) => (rendered.head.render_html(), rendered.html, rendered.css),
         Err(error) => (
             String::new(),
             format!(
@@ -31,8 +27,8 @@ pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> St
 
     let protocol = serde_json::to_string(FLY_IFRAME_PROTOCOL_V1)
         .unwrap_or_else(|_| "\"fly_iframe_v1\"".to_string());
-    let instance = serde_json::to_string(instance_id)
-        .unwrap_or_else(|_| "\"fly-canvas\"".to_string());
+    let instance =
+        serde_json::to_string(instance_id).unwrap_or_else(|_| "\"fly-canvas\"".to_string());
     let script = CANVAS_SCRIPT
         .replace("__FLY_PROTOCOL__", &protocol)
         .replace("__FLY_INSTANCE__", &instance);

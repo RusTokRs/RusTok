@@ -370,8 +370,8 @@ mod tests {
 
     #[test]
     fn prometheus_metrics_are_label_free() {
-        let metrics = format_durable_invalidation_prometheus_metrics(
-            &DurableInvalidationConsumerStats {
+        let metrics =
+            format_durable_invalidation_prometheus_metrics(&DurableInvalidationConsumerStats {
                 attempted: 9,
                 applied: 3,
                 ignored: 2,
@@ -379,8 +379,7 @@ mod tests {
                 failed: 3,
                 saturated: 1,
                 in_flight: 2,
-            },
-        );
+            });
         assert!(metrics.contains("rustok_cache_durable_invalidation_attempted_total 9"));
         assert!(metrics.contains("rustok_cache_durable_invalidation_recovered_total 1"));
         assert!(metrics.contains("rustok_cache_durable_invalidation_saturated_total 1"));

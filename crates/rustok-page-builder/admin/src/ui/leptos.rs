@@ -33,10 +33,7 @@ impl PageBuilderAdminHostContext {
         self
     }
 
-    pub fn with_trait_schemas(
-        mut self,
-        trait_schemas: Arc<TraitSchemaRegistry>,
-    ) -> Self {
+    pub fn with_trait_schemas(mut self, trait_schemas: Arc<TraitSchemaRegistry>) -> Self {
         self.trait_schemas = Some(trait_schemas);
         self
     }

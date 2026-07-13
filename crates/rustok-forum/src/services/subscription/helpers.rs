@@ -10,9 +10,7 @@ use crate::entities::{
     forum_category_subscription, forum_subscription_policy, forum_topic_subscription,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::subscription::{
-    ForumSubscriptionLevel, ForumSubscriptionPreferences,
-};
+use crate::subscription::{ForumSubscriptionLevel, ForumSubscriptionPreferences};
 
 pub(super) const INITIAL_REVISION: i64 = 1;
 
@@ -37,10 +35,7 @@ pub(super) fn ensure_revision_update(rows_affected: u64) -> ForumResult<()> {
     Ok(())
 }
 
-pub(super) fn validate_expected_revision(
-    expected: Option<i64>,
-    actual: i64,
-) -> ForumResult<()> {
+pub(super) fn validate_expected_revision(expected: Option<i64>, actual: i64) -> ForumResult<()> {
     if expected.is_some_and(|expected| expected != actual) {
         return Err(ForumError::Validation(format!(
             "Forum subscription revision conflict: expected {}, actual {actual}",
@@ -59,9 +54,7 @@ pub(super) fn validate_new_revision(expected: Option<i64>) -> ForumResult<()> {
     Ok(())
 }
 
-pub(super) fn validate_policy(
-    input: &UpdateForumSubscriptionPolicyInput,
-) -> ForumResult<()> {
+pub(super) fn validate_policy(input: &UpdateForumSubscriptionPolicyInput) -> ForumResult<()> {
     if input.auto_subscribe_topic_authors
         && input.topic_author_level == ForumSubscriptionLevel::Muted
     {
@@ -92,9 +85,7 @@ pub(super) fn enforce_policy_scope(security: &SecurityContext) -> ForumResult<()
     Ok(())
 }
 
-pub(super) fn require_authenticated_user(
-    security: &SecurityContext,
-) -> ForumResult<Uuid> {
+pub(super) fn require_authenticated_user(security: &SecurityContext) -> ForumResult<Uuid> {
     security.user_id.ok_or_else(|| {
         ForumError::forbidden("Authenticated user context is required for subscriptions")
     })
@@ -147,9 +138,7 @@ pub(super) fn category_response(
     }
 }
 
-pub(super) fn topic_response(
-    model: forum_topic_subscription::Model,
-) -> ForumSubscriptionResponse {
+pub(super) fn topic_response(model: forum_topic_subscription::Model) -> ForumSubscriptionResponse {
     ForumSubscriptionResponse {
         tenant_id: model.tenant_id,
         target_type: ForumSubscriptionTargetType::Topic,

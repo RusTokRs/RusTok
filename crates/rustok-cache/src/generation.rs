@@ -242,11 +242,7 @@ impl CacheNamespaceGenerationStore {
     /// Seed a generation restored from a durable consumer checkpoint.
     ///
     /// A seed can advance or repeat the current snapshot, but it can never lower it.
-    pub fn seed_local(
-        &self,
-        namespace: &str,
-        generation: u64,
-    ) -> Result<(), CacheGenerationError> {
+    pub fn seed_local(&self, namespace: &str, generation: u64) -> Result<(), CacheGenerationError> {
         let namespace_key = generation_key(namespace)?;
         self.observe_shared(&namespace_key, generation)
     }
@@ -257,10 +253,7 @@ impl CacheNamespaceGenerationStore {
             shared_bumps: self.metrics.shared_bumps.load(Ordering::Relaxed),
             read_failures: self.metrics.read_failures.load(Ordering::Relaxed),
             bump_failures: self.metrics.bump_failures.load(Ordering::Relaxed),
-            local_fallback_reads: self
-                .metrics
-                .local_fallback_reads
-                .load(Ordering::Relaxed),
+            local_fallback_reads: self.metrics.local_fallback_reads.load(Ordering::Relaxed),
         }
     }
 
@@ -339,7 +332,9 @@ impl CacheNamespaceGenerationStore {
         let value = generation_timeout(
             self.operation_timeout,
             "generation GET",
-            redis::cmd("GET").arg(key).query_async::<Option<u64>>(&mut connection),
+            redis::cmd("GET")
+                .arg(key)
+                .query_async::<Option<u64>>(&mut connection),
         )
         .await?;
         Ok(value.unwrap_or(0))
@@ -360,7 +355,9 @@ impl CacheNamespaceGenerationStore {
         generation_timeout(
             self.operation_timeout,
             "generation INCR",
-            redis::cmd("INCR").arg(key).query_async::<u64>(&mut connection),
+            redis::cmd("INCR")
+                .arg(key)
+                .query_async::<u64>(&mut connection),
         )
         .await
     }

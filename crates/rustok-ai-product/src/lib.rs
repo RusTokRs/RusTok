@@ -71,12 +71,11 @@ const PRODUCT_ENRICHMENT_STAGES: &[ProductAiWorkflowStageDescriptor] = &[
     },
 ];
 
-pub const PRODUCT_AI_WORKFLOWS: &[ProductAiWorkflowDescriptor] =
-    &[ProductAiWorkflowDescriptor {
-        slug: "product_enrichment",
-        display_name: "Product enrichment",
-        stages: PRODUCT_ENRICHMENT_STAGES,
-    }];
+pub const PRODUCT_AI_WORKFLOWS: &[ProductAiWorkflowDescriptor] = &[ProductAiWorkflowDescriptor {
+    slug: "product_enrichment",
+    display_name: "Product enrichment",
+    stages: PRODUCT_ENRICHMENT_STAGES,
+}];
 
 pub fn product_ai_agents() -> &'static [ProductAiAgentDescriptor] {
     PRODUCT_AI_AGENTS
@@ -250,11 +249,10 @@ mod tests {
             .unwrap(),
             PRODUCT_COPY_TASK_SLUG
         );
-        assert!(validate_product_agent_stage_input(
-            "product_copywriter",
-            &serde_json::json!({}),
-        )
-        .is_err());
+        assert!(
+            validate_product_agent_stage_input("product_copywriter", &serde_json::json!({}),)
+                .is_err()
+        );
     }
 
     #[test]

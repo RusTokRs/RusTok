@@ -202,9 +202,7 @@ fn validate_locale_code(value: &str) -> Result<(), ValidationError> {
     let Some(language) = segments.next() else {
         return Err(ValidationError::new("locale_code"));
     };
-    if !(2..=3).contains(&language.len())
-        || !language.chars().all(|ch| ch.is_ascii_alphabetic())
-    {
+    if !(2..=3).contains(&language.len()) || !language.chars().all(|ch| ch.is_ascii_alphabetic()) {
         return Err(ValidationError::new("locale_code"));
     }
     if segments.any(|segment| {

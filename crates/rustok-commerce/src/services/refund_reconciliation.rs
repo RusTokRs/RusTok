@@ -1,15 +1,12 @@
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use rustok_payment::{
-    PaymentError, PaymentProviderOperationJournal, PaymentService,
-    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED,
+    PaymentError, PaymentProviderOperationJournal, PaymentService, PROVIDER_OPERATION_COMMITTED,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use super::payment_orchestration::{
-    PaymentOrchestrationError, PaymentOrchestrationResult,
-};
+use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationResult};
 
 const MANUAL_PROVIDER_ID: &str = "manual";
 
@@ -46,7 +43,10 @@ impl RefundReconciliationService {
         tenant_id: Uuid,
         refund_id: Uuid,
     ) -> PaymentOrchestrationResult<rustok_payment::RefundResponse> {
-        let refund = self.payment_service.get_refund(tenant_id, refund_id).await?;
+        let refund = self
+            .payment_service
+            .get_refund(tenant_id, refund_id)
+            .await?;
         let collection = self
             .payment_service
             .get_collection(tenant_id, refund.payment_collection_id)
@@ -201,11 +201,7 @@ impl RefundReconciliationService {
     }
 }
 
-fn reconciliation_error(
-    operation_id: Uuid,
-    stage: &str,
-    source: PaymentError,
-) -> PaymentError {
+fn reconciliation_error(operation_id: Uuid, stage: &str, source: PaymentError) -> PaymentError {
     PaymentError::Validation(format!(
         "provider side effect succeeded, but failed to {stage} for operation {operation_id}: {source}"
     ))

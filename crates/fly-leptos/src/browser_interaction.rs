@@ -117,7 +117,11 @@ fn target_accepts_text_input(target: &EventTarget) -> bool {
         || element
             .get_attribute("contenteditable")
             .is_some_and(|value| value.is_empty() || value.eq_ignore_ascii_case("true"))
-        || element.closest("[contenteditable='true']").ok().flatten().is_some()
+        || element
+            .closest("[contenteditable='true']")
+            .ok()
+            .flatten()
+            .is_some()
 }
 
 #[cfg(test)]

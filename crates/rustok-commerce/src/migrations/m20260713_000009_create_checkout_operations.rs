@@ -23,11 +23,7 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(CheckoutOperations::CartId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(CheckoutOperations::CartId).uuid().not_null())
                     .col(
                         ColumnDef::new(CheckoutOperations::IdempotencyKey)
                             .string_len(191)
@@ -63,10 +59,7 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone(),
                     )
                     .col(ColumnDef::new(CheckoutOperations::LastErrorCode).string_len(100))
-                    .col(
-                        ColumnDef::new(CheckoutOperations::LastErrorMessage)
-                            .string_len(2000),
-                    )
+                    .col(ColumnDef::new(CheckoutOperations::LastErrorMessage).string_len(2000))
                     .col(
                         ColumnDef::new(CheckoutOperations::CreatedAt)
                             .timestamp_with_time_zone()
@@ -79,10 +72,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(CheckoutOperations::CompletedAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(CheckoutOperations::CompletedAt).timestamp_with_time_zone())
                     .foreign_key(
                         ForeignKey::create()
                             .from(CheckoutOperations::Table, CheckoutOperations::CartId)

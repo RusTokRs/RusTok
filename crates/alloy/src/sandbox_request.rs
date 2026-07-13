@@ -358,9 +358,10 @@ fn empty_object() -> serde_json::Value {
 }
 
 fn alloy_input(request: &SandboxRequest) -> SandboxResult<AlloyDraftInput> {
-    let input: AlloyDraftInput = serde_json::from_value(request.input.clone()).map_err(|error| {
-        SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}"))
-    })?;
+    let input: AlloyDraftInput =
+        serde_json::from_value(request.input.clone()).map_err(|error| {
+            SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}"))
+        })?;
     input
         .validate()
         .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;

@@ -253,7 +253,10 @@ impl StorageBackend for S3Storage {
                     continue;
                 };
                 let Some(path) = self.relative_path(key) else {
-                    tracing::warn!(key, "Ignoring S3 object outside validated storage key policy");
+                    tracing::warn!(
+                        key,
+                        "Ignoring S3 object outside validated storage key policy"
+                    );
                     continue;
                 };
                 let size = u64::try_from(object.size().unwrap_or_default()).map_err(|_| {

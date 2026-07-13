@@ -341,8 +341,7 @@ impl CheckoutOperationJournal {
             .filter(checkout_operation::Column::TenantId.eq(input.tenant_id))
             .filter(checkout_operation::Column::Id.eq(input.operation_id))
             .filter(
-                checkout_operation::Column::Status
-                    .eq(CheckoutOperationStatus::Executing.as_str()),
+                checkout_operation::Column::Status.eq(CheckoutOperationStatus::Executing.as_str()),
             )
             .filter(checkout_operation::Column::Stage.eq(input.expected_stage.as_str()))
             .filter(checkout_operation::Column::LeaseOwner.eq(lease_owner))
@@ -369,7 +368,9 @@ impl CheckoutOperationJournal {
 
         let result = update.exec(&self.db).await?;
         if result.rows_affected == 0 {
-            return Err(self.cas_conflict(input.tenant_id, input.operation_id, "checkpoint").await?);
+            return Err(self
+                .cas_conflict(input.tenant_id, input.operation_id, "checkpoint")
+                .await?);
         }
         self.get(input.tenant_id, input.operation_id).await
     }
@@ -606,7 +607,9 @@ impl CheckoutOperationJournal {
             .exec(&self.db)
             .await?;
         if update.rows_affected == 0 {
-            return Err(self.cas_conflict(tenant_id, id, next_status.as_str()).await?);
+            return Err(self
+                .cas_conflict(tenant_id, id, next_status.as_str())
+                .await?);
         }
         self.get(tenant_id, id).await
     }
@@ -668,7 +671,9 @@ impl CheckoutOperationJournal {
         }
         let result = update.exec(&self.db).await?;
         if result.rows_affected == 0 {
-            return Err(self.cas_conflict(tenant_id, id, next_status.as_str()).await?);
+            return Err(self
+                .cas_conflict(tenant_id, id, next_status.as_str())
+                .await?);
         }
         self.get(tenant_id, id).await
     }
@@ -718,7 +723,8 @@ fn ensure_same_request(
     existing: &checkout_operation::Model,
     input: &BeginCheckoutOperation,
 ) -> CheckoutOperationResult<()> {
-    if existing.request_hash != input.request_hash || existing.snapshot_hash != input.snapshot_hash {
+    if existing.request_hash != input.request_hash || existing.snapshot_hash != input.snapshot_hash
+    {
         return Err(CheckoutOperationError::Conflict(format!(
             "idempotency key `{}` is already bound to a different checkout request",
             input.idempotency_key

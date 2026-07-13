@@ -3,11 +3,11 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
-use rustok_fulfillment::FulfillmentService;
 use crate::{
     dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
     CommerceResult,
 };
+use rustok_fulfillment::FulfillmentService;
 
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
 

@@ -144,8 +144,8 @@ impl RegistrySet {
             }
         }
 
-        let parent_type = parent_component_id
-            .and_then(|parent_id| document.component_type_for_id(parent_id));
+        let parent_type =
+            parent_component_id.and_then(|parent_id| document.component_type_for_id(parent_id));
         if !self.accepts_child_type(parent_type, child_type) {
             let parent_name = parent_type.unwrap_or("project root");
             return PlacementDecision::rejected(format!(
@@ -242,28 +242,19 @@ mod tests {
     fn placement_rejects_leaf_parent() {
         let document = document();
         let registries = RegistrySet::with_builtins();
-        let decision = registries.evaluate_placement(
-            &document,
-            None,
-            "text",
-            Some("text-a"),
-            0,
-        );
+        let decision = registries.evaluate_placement(&document, None, "text", Some("text-a"), 0);
         assert!(!decision.legal);
-        assert!(decision.reason.unwrap_or_default().contains("does not accept"));
+        assert!(decision
+            .reason
+            .unwrap_or_default()
+            .contains("does not accept"));
     }
 
     #[test]
     fn placement_allows_builtin_inside_container() {
         let document = document();
         let registries = RegistrySet::with_builtins();
-        let decision = registries.evaluate_placement(
-            &document,
-            None,
-            "text",
-            Some("section-b"),
-            0,
-        );
+        let decision = registries.evaluate_placement(&document, None, "text", Some("section-b"), 0);
         assert!(decision.legal, "{:?}", decision.reason);
     }
 }

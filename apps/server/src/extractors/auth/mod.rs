@@ -205,8 +205,7 @@ async fn resolve_service_token_permissions(
         );
     }
 
-    let effective_permissions =
-        restrict_permissions_to_scopes(&granted_permissions, token_scopes);
+    let effective_permissions = restrict_permissions_to_scopes(&granted_permissions, token_scopes);
     Ok((effective_permissions, inferred_role))
 }
 
@@ -299,13 +298,10 @@ pub async fn resolve_current_user_from_access_token(
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
 
-            let granted_permissions = RbacService::get_user_permissions_authoritative(
-                db,
-                &tenant_id,
-                &user.id,
-            )
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+            let granted_permissions =
+                RbacService::get_user_permissions_authoritative(db, &tenant_id, &user.id)
+                    .await
+                    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
             let inferred_role = infer_user_role_from_permissions(&granted_permissions);
             if claims.role != inferred_role {

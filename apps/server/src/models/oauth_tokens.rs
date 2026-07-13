@@ -81,7 +81,8 @@ impl Entity {
 
 impl Model {
     pub fn is_active(&self) -> bool {
-        self.revoked_at.is_none() && self.expires_at.with_timezone(&chrono::Utc) > chrono::Utc::now()
+        self.revoked_at.is_none()
+            && self.expires_at.with_timezone(&chrono::Utc) > chrono::Utc::now()
     }
 
     pub fn scopes_list(&self) -> Vec<String> {

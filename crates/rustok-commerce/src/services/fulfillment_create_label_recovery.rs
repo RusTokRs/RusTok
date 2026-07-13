@@ -9,9 +9,7 @@ use rustok_fulfillment::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -94,12 +92,14 @@ impl FulfillmentCreateLabelRecoveryService {
             )));
         }
 
-        let request: FulfillmentProviderOperationRequest =
-            serde_json::from_value(operation.request_payload.clone()).map_err(|error| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "create_label operation {operation_id} contains invalid request_payload: {error}"
-                ))
-            })?;
+        let request: FulfillmentProviderOperationRequest = serde_json::from_value(
+            operation.request_payload.clone(),
+        )
+        .map_err(|error| {
+            FulfillmentOrchestrationError::Validation(format!(
+                "create_label operation {operation_id} contains invalid request_payload: {error}"
+            ))
+        })?;
         if request.tenant_id != tenant_id || request.fulfillment_id != operation.fulfillment_id {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "create_label operation {operation_id} request identity does not match the journal"
@@ -244,12 +244,13 @@ fn validate_result(
             operation.id, operation.status
         ))
     })?;
-    let result: FulfillmentProviderOperationResult = serde_json::from_value(value).map_err(|error| {
-        FulfillmentOrchestrationError::Validation(format!(
-            "create_label operation {} contains invalid provider_result: {error}",
-            operation.id
-        ))
-    })?;
+    let result: FulfillmentProviderOperationResult =
+        serde_json::from_value(value).map_err(|error| {
+            FulfillmentOrchestrationError::Validation(format!(
+                "create_label operation {} contains invalid provider_result: {error}",
+                operation.id
+            ))
+        })?;
     if result.provider_id != operation.provider_id {
         return Err(FulfillmentOrchestrationError::Validation(format!(
             "create_label operation {} provider result `{}` does not match journal provider `{}`",
@@ -333,7 +334,10 @@ mod tests {
         assert_eq!(metadata["provider_operation"]["operation"], "create_label");
         assert_eq!(metadata["delivery_group"]["seller_id"], "seller-1");
         assert_eq!(metadata["label"]["tracking_number"], "track-1");
-        assert_eq!(metadata["label"]["provider_metadata"]["provider_fact"], true);
+        assert_eq!(
+            metadata["label"]["provider_metadata"]["provider_fact"],
+            true
+        );
     }
 
     #[test]

@@ -58,10 +58,8 @@ mod tests {
             rustok_api::HostRuntimeContext::new(db.clone()),
             &server,
         );
-        let second = attach_commerce_provider_registries(
-            rustok_api::HostRuntimeContext::new(db),
-            &server,
-        );
+        let second =
+            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
 
         let first_payment = first
             .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()

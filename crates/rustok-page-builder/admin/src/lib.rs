@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod context_contract;
+pub mod editor;
 mod i18n;
 mod model;
 pub mod transport;
-pub mod editor;
 pub mod ui;
 
 pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};

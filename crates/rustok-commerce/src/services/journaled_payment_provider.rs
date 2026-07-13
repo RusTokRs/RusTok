@@ -8,9 +8,7 @@ use rustok_payment::{
 };
 use uuid::Uuid;
 
-use super::payment_orchestration::{
-    PaymentOrchestrationError, PaymentOrchestrationResult,
-};
+use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationResult};
 
 pub(crate) struct JournaledProviderResult {
     pub operation_id: Uuid,
@@ -103,12 +101,10 @@ pub(crate) async fn execute_journaled_provider_operation(
                 )));
             }
             return match refund_id {
-                Some(refund_id) => Err(
-                    PaymentOrchestrationError::ProviderAfterRefundReservation {
-                        refund_id,
-                        source,
-                    },
-                ),
+                Some(refund_id) => Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                    refund_id,
+                    source,
+                }),
                 None => Err(PaymentOrchestrationError::Provider(source)),
             };
         }
@@ -126,18 +122,11 @@ pub(crate) async fn execute_journaled_provider_operation(
         )
         .await
     {
-        let source = reconciliation_error(
-            journal_operation.id,
-            "record provider success",
-            source,
-        );
+        let source = reconciliation_error(journal_operation.id, "record provider success", source);
         return match refund_id {
-            Some(refund_id) => Err(
-                PaymentOrchestrationError::ProviderAfterRefundReservation {
-                    refund_id,
-                    source,
-                },
-            ),
+            Some(refund_id) => {
+                Err(PaymentOrchestrationError::ProviderAfterRefundReservation { refund_id, source })
+            }
             None => Err(PaymentOrchestrationError::Provider(source)),
         };
     }
@@ -225,11 +214,7 @@ pub(crate) fn local_persistence_after_provider_error(
     )))
 }
 
-fn reconciliation_error(
-    operation_id: Uuid,
-    stage: &str,
-    source: PaymentError,
-) -> PaymentError {
+fn reconciliation_error(operation_id: Uuid, stage: &str, source: PaymentError) -> PaymentError {
     PaymentError::Validation(format!(
         "provider side effect succeeded, but failed to {stage} for operation {operation_id}: {source}"
     ))

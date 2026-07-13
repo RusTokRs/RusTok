@@ -44,10 +44,7 @@ impl CachedRegistryCatalog {
     }
 }
 
-fn cached_registry_catalog_weight(
-    key: &String,
-    value: &Arc<CachedRegistryCatalog>,
-) -> u32 {
+fn cached_registry_catalog_weight(key: &String, value: &Arc<CachedRegistryCatalog>) -> u32 {
     key.len()
         .saturating_add(value.encoded_bytes)
         .saturating_add(std::mem::size_of::<CachedRegistryCatalog>())
@@ -162,10 +159,8 @@ impl HardenedRegistryMarketplaceProvider {
         validate_cache_key_component("slug", slug)?;
 
         let use_catalog_fallback = {
-            let _permit = try_acquire_fetch_permit(
-                Arc::clone(&self.fetch_permits),
-                &self.saturated_fetches,
-            )?;
+            let _permit =
+                try_acquire_fetch_permit(Arc::clone(&self.fetch_permits), &self.saturated_fetches)?;
             match fetch_module_from_path(
                 &self.client,
                 registry_url,
@@ -348,10 +343,7 @@ async fn fetch_module_from_path(
     Ok(registry_module_into_catalog(module))
 }
 
-async fn read_bounded_response(
-    response: Response,
-    maximum: usize,
-) -> anyhow::Result<Vec<u8>> {
+async fn read_bounded_response(response: Response, maximum: usize) -> anyhow::Result<Vec<u8>> {
     if response
         .content_length()
         .is_some_and(|length| length > maximum as u64)
@@ -598,16 +590,10 @@ mod tests {
     #[test]
     fn cache_key_is_bounded_hashed_and_length_delimited() {
         let registry_url = "https://registry.example.test/private/path";
-        let first = registry_catalog_cache_key(
-            registry_url,
-            &query("a|category=b", "c", "d"),
-        )
-        .unwrap();
-        let second = registry_catalog_cache_key(
-            registry_url,
-            &query("a", "b|category=c", "d"),
-        )
-        .unwrap();
+        let first =
+            registry_catalog_cache_key(registry_url, &query("a|category=b", "c", "d")).unwrap();
+        let second =
+            registry_catalog_cache_key(registry_url, &query("a", "b|category=c", "d")).unwrap();
 
         assert_ne!(first, second);
         assert!(first.starts_with("registry-catalog:v1:"));
@@ -773,10 +759,7 @@ mod tests {
 
     #[tokio::test]
     async fn chunked_oversized_response_is_rejected_before_json_parse() {
-        let app = Router::new().route(
-            registry_catalog_path(),
-            get(|| async { "x".repeat(4_096) }),
-        );
+        let app = Router::new().route(registry_catalog_path(), get(|| async { "x".repeat(4_096) }));
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

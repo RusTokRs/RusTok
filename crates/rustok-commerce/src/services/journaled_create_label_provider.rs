@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use rustok_fulfillment::providers::{
     FulfillmentProvider, FulfillmentProviderDescriptor, FulfillmentProviderOperationRequest,
-    FulfillmentProviderOperationResult, FulfillmentProviderRegistry, FulfillmentProviderWebhookRequest,
-    FulfillmentProviderWebhookResult, FulfillmentRateQuote, FulfillmentRateQuoteRequest,
+    FulfillmentProviderOperationResult, FulfillmentProviderRegistry,
+    FulfillmentProviderWebhookRequest, FulfillmentProviderWebhookResult, FulfillmentRateQuote,
+    FulfillmentRateQuoteRequest,
 };
 use rustok_fulfillment::{
     BeginProviderOperation, FulfillmentError, FulfillmentProviderOperationJournal,
@@ -64,14 +65,11 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
         &self,
         request: FulfillmentProviderOperationRequest,
     ) -> FulfillmentResult<FulfillmentProviderOperationResult> {
-        let idempotency_key = request
-            .idempotency_key
-            .clone()
-            .ok_or_else(|| {
-                FulfillmentError::Validation(
-                    "journaled create_label requires idempotency_key".to_string(),
-                )
-            })?;
+        let idempotency_key = request.idempotency_key.clone().ok_or_else(|| {
+            FulfillmentError::Validation(
+                "journaled create_label requires idempotency_key".to_string(),
+            )
+        })?;
         let request_payload = serde_json::to_value(&request).map_err(|error| {
             FulfillmentError::Validation(format!(
                 "failed to serialize create_label provider request: {error}"

@@ -19,6 +19,9 @@ fn postgres_and_sqlite_subscription_contracts_remain_present() {
         "ON CONFLICT(tenant_id,topic_id,user_id) DO UPDATE SET",
         "forum_subscription_policies",
     ] {
-        assert!(migration.contains(token), "missing subscription contract token {token}");
+        assert!(
+            migration.contains(token),
+            "missing subscription contract token {token}"
+        );
     }
 }
