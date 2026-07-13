@@ -21,6 +21,7 @@ mod redis_status;
 mod refresh;
 mod service;
 mod shared_backend;
+mod tenant_generation_observability;
 mod typed;
 mod weighted;
 
@@ -98,6 +99,10 @@ pub use service::{
     CacheService, LocalCacheInvalidationSubscription, DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS,
     MAX_CACHE_INVALIDATION_CHANNEL_BYTES, MAX_CACHE_INVALIDATION_KEY_BYTES,
     MAX_CACHE_LOAD_KEY_BYTES,
+};
+pub use tenant_generation_observability::{
+    format_tenant_generation_listener_prometheus_metrics,
+    record_tenant_generation_listener_metrics, TenantGenerationListenerMetrics,
 };
 pub use typed::TypedCacheLoadResult;
 
