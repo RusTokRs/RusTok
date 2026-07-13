@@ -1,5 +1,5 @@
 use crate::{BrowserRect, IframeBridgeEnvelope, IframeBridgeMessage};
-use js_sys::Array;
+use js_sys::{Array, Object};
 use std::cell::Cell;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -136,6 +136,7 @@ pub struct WindowMessageSubscription {
 impl WindowMessageSubscription {
     pub fn subscribe(
         window: &Window,
+        expected_source: Option<&Window>,
         expected_origin: impl Into<String>,
         expected_instance_id: impl Into<String>,
         mut handler: impl FnMut(IframeBridgeEnvelope) + 'static,
@@ -144,6 +145,7 @@ impl WindowMessageSubscription {
         if expected_origin.trim().is_empty() || expected_origin == "*" {
             return Err(BrowserRuntimeError::InvalidTargetOrigin);
         }
+        let expected_source = expected_source.map(|window| JsValue::from(window.clone()));
         let expected_instance_id = expected_instance_id.into();
         let last_sequence = Rc::new(Cell::new(None));
         let callback_sequence = Rc::clone(&last_sequence);
@@ -151,6 +153,14 @@ impl WindowMessageSubscription {
         let listener = EventListenerHandle::new::<MessageEvent>(&target, "message", move |event| {
             if event.origin() != expected_origin {
                 return;
+            }
+            if let Some(expected_source) = expected_source.as_ref() {
+                let Some(actual_source) = event.source() else {
+                    return;
+                };
+                if !Object::is(actual_source.as_ref(), expected_source) {
+                    return;
+                }
             }
             let Some(payload) = event.data().as_string() else {
                 return;
