@@ -43,7 +43,79 @@ async fn concurrent_local_compare_and_set_has_exactly_one_winner() {
 
     assert_eq!(applied.len(), 1);
     assert_eq!(mismatches, CONTENDERS - 1);
-    assert_eq!(backend.get("contended").await.unwrap(), Some(applied.remove(0)));
+    assert_eq!(
+        backend.get("contended").await.unwrap(),
+        Some(applied.remove(0))
+    );
+}
+
+#[tokio::test]
+async fn expired_local_entry_cannot_be_revived_by_compare_and_set() {
+    let service = CacheService::from_url(None);
+    let backend = service.memory_backend(Duration::from_secs(60), 64);
+    backend
+        .set_with_ttl(
+            "expired".to_string(),
+            b"old".to_vec(),
+            Duration::from_millis(5),
+        )
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(25)).await;
+
+    assert_eq!(
+        backend
+            .compare_and_set("expired", b"old", b"new".to_vec(), None)
+            .await
+            .unwrap(),
+        CacheCompareAndSetOutcome::Mismatch
+    );
+    assert_eq!(backend.get("expired").await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn concurrent_local_invalidation_cannot_be_lost_to_compare_and_set() {
+    let service = CacheService::from_url(None);
+    let backend = service.memory_backend(Duration::from_secs(60), 256);
+
+    for iteration in 0..128 {
+        let key = format!("invalidate-race-{iteration}");
+        backend
+            .set(key.clone(), b"old".to_vec())
+            .await
+            .unwrap();
+
+        let barrier = Arc::new(Barrier::new(3));
+        let cas_backend = Arc::clone(&backend);
+        let cas_barrier = Arc::clone(&barrier);
+        let cas_key = key.clone();
+        let cas = tokio::spawn(async move {
+            cas_barrier.wait().await;
+            cas_backend
+                .compare_and_set(&cas_key, b"old", b"new".to_vec(), None)
+                .await
+                .unwrap()
+        });
+
+        let invalidate_backend = Arc::clone(&backend);
+        let invalidate_barrier = Arc::clone(&barrier);
+        let invalidate_key = key.clone();
+        let invalidate = tokio::spawn(async move {
+            invalidate_barrier.wait().await;
+            invalidate_backend.invalidate(&invalidate_key).await.unwrap();
+        });
+
+        barrier.wait().await;
+        let outcome = cas.await.unwrap();
+        invalidate.await.unwrap();
+
+        assert!(matches!(
+            outcome,
+            CacheCompareAndSetOutcome::Applied | CacheCompareAndSetOutcome::Mismatch
+        ));
+        assert_eq!(backend.get(&key).await.unwrap(), None);
+    }
 }
 
 #[tokio::test]
