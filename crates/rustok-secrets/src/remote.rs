@@ -2,10 +2,13 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use base64::Engine;
+use reqwest::Url;
 use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
+use serde::{de::DeserializeOwned, Deserialize};
 
 use crate::{SecretError, SecretResolver};
+
+const MAX_SECRET_RESPONSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone)]
 pub enum VaultAuth {
@@ -35,7 +38,7 @@ impl std::fmt::Debug for VaultAuth {
 #[derive(Clone, Debug)]
 pub struct VaultResolver {
     client: reqwest::Client,
-    endpoint: String,
+    endpoint: Url,
     namespace: Option<String>,
     kv_mount: String,
     auth: VaultAuth,
@@ -48,7 +51,11 @@ impl VaultResolver {
         kv_mount: impl Into<String>,
         auth: VaultAuth,
     ) -> Result<Self, SecretError> {
-        Self::with_client(reqwest::Client::new(), endpoint, namespace, kv_mount, auth)
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(vault_error)?;
+        Self::with_client(client, endpoint, namespace, kv_mount, auth)
     }
 
     pub fn with_client(
@@ -58,13 +65,18 @@ impl VaultResolver {
         kv_mount: impl Into<String>,
         auth: VaultAuth,
     ) -> Result<Self, SecretError> {
-        let endpoint = endpoint.into().trim_end_matches('/').to_string();
-        let url = reqwest::Url::parse(&endpoint).map_err(vault_error)?;
-        if url.scheme() != "https" && !cfg!(test) {
-            return Err(SecretError::Resolver {
-                resolver: "vault".to_string(),
-                message: "Vault endpoint must use HTTPS".to_string(),
-            });
+        let endpoint = Url::parse(endpoint.into().trim_end_matches('/')).map_err(vault_error)?;
+        require_secure_remote_endpoint(&endpoint, "Vault")?;
+        validate_optional_header_value(namespace.as_deref(), "Vault namespace")?;
+        validate_path(&kv_mount.into(), "Vault KV mount")?;
+        if let VaultAuth::Kubernetes {
+            role,
+            auth_mount,
+            ..
+        } = &auth
+        {
+            validate_plain_value(role, "Vault Kubernetes role")?;
+            validate_path(auth_mount, "Vault auth mount")?;
         }
         Ok(Self {
             client,
@@ -86,22 +98,22 @@ impl VaultResolver {
                 let jwt = tokio::fs::read_to_string(service_account_token_path)
                     .await
                     .map_err(vault_error)?;
-                let response: VaultLoginResponse = self
+                let url = append_url_path(
+                    &self.endpoint,
+                    &["v1", "auth"],
+                    validate_path(auth_mount, "Vault auth mount")?,
+                    &["login"],
+                )?;
+                let response = self
                     .client
-                    .post(format!(
-                        "{}/v1/auth/{}/login",
-                        self.endpoint,
-                        auth_mount.trim_matches('/')
-                    ))
+                    .post(url)
                     .json(&serde_json::json!({"role": role, "jwt": jwt.trim()}))
                     .send()
                     .await
                     .map_err(vault_error)?
                     .error_for_status()
-                    .map_err(vault_error)?
-                    .json()
-                    .await
                     .map_err(vault_error)?;
+                let response: VaultLoginResponse = read_bounded_json(response, "vault").await?;
                 Ok(SecretString::from(response.auth.client_token))
             }
         }
@@ -132,28 +144,26 @@ struct VaultReadData {
 impl SecretResolver for VaultResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
         let (path, field) = key.split_once('#').unwrap_or((key, "value"));
+        let path = validate_path(path, "Vault secret path")?;
+        validate_plain_value(field, "Vault secret field")?;
+        let mount = validate_path(&self.kv_mount, "Vault KV mount")?;
         let token = self.token().await?;
+        let url = append_url_path(&self.endpoint, &["v1"], mount, &["data"])?;
+        let url = append_url_path(&url, &[], path, &[])?;
         let mut request = self
             .client
-            .get(format!(
-                "{}/v1/{}/data/{}",
-                self.endpoint,
-                self.kv_mount.trim_matches('/'),
-                path.trim_matches('/')
-            ))
+            .get(url)
             .header("X-Vault-Token", token.expose_secret());
         if let Some(namespace) = &self.namespace {
             request = request.header("X-Vault-Namespace", namespace);
         }
-        let response: VaultReadResponse = request
+        let response = request
             .send()
             .await
             .map_err(vault_error)?
             .error_for_status()
-            .map_err(vault_error)?
-            .json()
-            .await
             .map_err(vault_error)?;
+        let response: VaultReadResponse = read_bounded_json(response, "vault").await?;
         response
             .data
             .data
@@ -180,17 +190,20 @@ impl KubernetesSecretResolver {
         let host = std::env::var("KUBERNETES_SERVICE_HOST").map_err(kubernetes_error)?;
         let port =
             std::env::var("KUBERNETES_SERVICE_PORT_HTTPS").unwrap_or_else(|_| "443".to_string());
+        let namespace = namespace.into();
+        validate_dns_name(&namespace, "Kubernetes namespace")?;
         let ca = std::fs::read("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
             .map_err(kubernetes_error)?;
         let certificate = reqwest::Certificate::from_pem(&ca).map_err(kubernetes_error)?;
         let client = reqwest::Client::builder()
             .add_root_certificate(certificate)
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(kubernetes_error)?;
         Ok(Self {
             client,
             api_server: format!("https://{host}:{port}"),
-            namespace: namespace.into(),
+            namespace,
             token_path: PathBuf::from("/var/run/secrets/kubernetes.io/serviceaccount/token"),
         })
     }
@@ -219,24 +232,31 @@ struct KubernetesSecretResponse {
 impl SecretResolver for KubernetesSecretResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
         let (name, field) = key.split_once('#').unwrap_or((key, "value"));
+        validate_dns_name(&self.namespace, "Kubernetes namespace")?;
+        validate_dns_name(name, "Kubernetes secret name")?;
+        validate_plain_value(field, "Kubernetes secret field")?;
+        let api_server = Url::parse(&self.api_server).map_err(kubernetes_error)?;
+        require_secure_remote_endpoint(&api_server, "Kubernetes API")?;
+        let url = append_url_path(
+            &api_server,
+            &["api", "v1", "namespaces", self.namespace.as_str(), "secrets", name],
+            Vec::new(),
+            &[],
+        )?;
         let token = tokio::fs::read_to_string(&self.token_path)
             .await
             .map_err(kubernetes_error)?;
-        let response: KubernetesSecretResponse = self
+        let response = self
             .client
-            .get(format!(
-                "{}/api/v1/namespaces/{}/secrets/{}",
-                self.api_server, self.namespace, name
-            ))
+            .get(url)
             .bearer_auth(token.trim())
             .send()
             .await
             .map_err(kubernetes_error)?
             .error_for_status()
-            .map_err(kubernetes_error)?
-            .json()
-            .await
             .map_err(kubernetes_error)?;
+        let response: KubernetesSecretResponse =
+            read_bounded_json(response, "kubernetes").await?;
         let encoded = response
             .data
             .get(field)
@@ -249,6 +269,133 @@ impl SecretResolver for KubernetesSecretResolver {
             .map_err(kubernetes_error)?;
         let value = String::from_utf8(bytes).map_err(kubernetes_error)?;
         Ok(SecretString::from(value))
+    }
+}
+
+fn validate_path<'a>(value: &'a str, label: &str) -> Result<Vec<&'a str>, SecretError> {
+    let value = value.trim_matches('/');
+    if value.is_empty() {
+        return Err(remote_policy_error(label, "must not be empty"));
+    }
+    let segments = value.split('/').collect::<Vec<_>>();
+    if segments.iter().any(|segment| {
+        segment.is_empty()
+            || matches!(*segment, "." | "..")
+            || segment.contains(['\\', '?', '#', '%'])
+            || segment.chars().any(char::is_control)
+    }) {
+        return Err(remote_policy_error(
+            label,
+            "contains an unsafe URL path segment",
+        ));
+    }
+    Ok(segments)
+}
+
+fn validate_plain_value(value: &str, label: &str) -> Result<(), SecretError> {
+    if value.trim().is_empty()
+        || value.contains(['/', '\\', '#', '%', '\r', '\n'])
+        || value.chars().any(char::is_control)
+    {
+        return Err(remote_policy_error(label, "contains unsupported characters"));
+    }
+    Ok(())
+}
+
+fn validate_optional_header_value(value: Option<&str>, label: &str) -> Result<(), SecretError> {
+    if let Some(value) = value {
+        if value.contains(['\r', '\n']) || value.chars().any(char::is_control) {
+            return Err(remote_policy_error(label, "contains control characters"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_dns_name(value: &str, label: &str) -> Result<(), SecretError> {
+    let value = value.trim();
+    let valid = !value.is_empty()
+        && value.len() <= 253
+        && value.split('.').all(|part| {
+            !part.is_empty()
+                && part.len() <= 63
+                && !part.starts_with('-')
+                && !part.ends_with('-')
+                && part
+                    .chars()
+                    .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-')
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(remote_policy_error(label, "must be a DNS-1123 name"))
+    }
+}
+
+fn require_secure_remote_endpoint(url: &Url, label: &str) -> Result<(), SecretError> {
+    if url.username() != "" || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+        return Err(remote_policy_error(
+            label,
+            "endpoint must not contain userinfo, query, or fragment",
+        ));
+    }
+    if url.scheme() != "https" && !cfg!(test) {
+        return Err(remote_policy_error(label, "endpoint must use HTTPS"));
+    }
+    Ok(())
+}
+
+fn append_url_path(
+    base: &Url,
+    prefix: &[&str],
+    dynamic: Vec<&str>,
+    suffix: &[&str],
+) -> Result<Url, SecretError> {
+    let mut url = base.clone();
+    {
+        let mut path = url
+            .path_segments_mut()
+            .map_err(|_| remote_policy_error("remote secret endpoint", "cannot be a base URL"))?;
+        path.pop_if_empty();
+        for segment in prefix.iter().chain(dynamic.iter()).chain(suffix.iter()) {
+            path.push(segment);
+        }
+    }
+    Ok(url)
+}
+
+async fn read_bounded_json<T: DeserializeOwned>(
+    response: reqwest::Response,
+    resolver: &str,
+) -> Result<T, SecretError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_SECRET_RESPONSE_BYTES as u64)
+    {
+        return Err(SecretError::Resolver {
+            resolver: resolver.to_string(),
+            message: "remote secret response exceeds size limit".to_string(),
+        });
+    }
+    let bytes = response.bytes().await.map_err(|error| SecretError::Resolver {
+        resolver: resolver.to_string(),
+        message: error.to_string(),
+    })?;
+    if bytes.len() > MAX_SECRET_RESPONSE_BYTES {
+        return Err(SecretError::Resolver {
+            resolver: resolver.to_string(),
+            message: "remote secret response exceeds size limit".to_string(),
+        });
+    }
+    serde_json::from_slice(&bytes).map_err(|error| SecretError::Resolver {
+        resolver: resolver.to_string(),
+        message: error.to_string(),
+    })
+}
+
+fn remote_policy_error(label: &str, message: &str) -> SecretError {
+    SecretError::Resolver {
+        resolver: "remote".to_string(),
+        message: format!("{label} {message}"),
     }
 }
 
@@ -334,5 +481,27 @@ mod tests {
         let request = request.await.unwrap();
         assert!(request.starts_with("GET /api/v1/namespaces/operator/secrets/ai "));
         assert!(request.contains("authorization: Bearer workload-token"));
+    }
+
+    #[tokio::test]
+    async fn remote_resolvers_reject_path_traversal_before_network_io() {
+        let vault = VaultResolver::with_client(
+            reqwest::Client::builder().no_proxy().build().unwrap(),
+            "http://127.0.0.1:9",
+            None,
+            "kv",
+            VaultAuth::Token(SecretString::from("server-token")),
+        )
+        .unwrap();
+        assert!(vault.resolve("tenants/allowed/../../sys#value").await.is_err());
+        assert!(vault.resolve("tenants/%2e%2e/sys#value").await.is_err());
+
+        let kubernetes = KubernetesSecretResolver::with_client(
+            reqwest::Client::builder().no_proxy().build().unwrap(),
+            "http://127.0.0.1:9",
+            "operator",
+            "/missing/token",
+        );
+        assert!(kubernetes.resolve("../pods#token").await.is_err());
     }
 }
