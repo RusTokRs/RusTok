@@ -1,7 +1,7 @@
 use crate::auth::decode_access_token;
 use crate::context::{infer_user_role_from_permissions, TenantContextExt};
 use crate::models::{
-    oauth_apps::Entity as OAuthApps,
+    oauth_apps::{self, Entity as OAuthApps},
     sessions::Entity as Sessions,
     users::{self, Entity as Users},
 };
@@ -83,12 +83,12 @@ fn classify_access_token_claims(
     }
 }
 
-async fn resolve_service_token_permissions(
+async fn resolve_active_oauth_app(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
     client_id: uuid::Uuid,
-    claimed_role: UserRole,
-) -> Result<(Vec<Permission>, UserRole), (StatusCode, &'static str)> {
+    required_grant_type: &'static str,
+) -> Result<oauth_apps::Model, (StatusCode, &'static str)> {
     let app = OAuthApps::find_active_by_client_id(db, client_id)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
@@ -96,6 +96,33 @@ async fn resolve_service_token_permissions(
 
     if app.tenant_id != tenant_id {
         return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
+    }
+
+    if !app.supports_grant_type(required_grant_type) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "OAuth grant is no longer allowed for this app",
+        ));
+    }
+
+    Ok(app)
+}
+
+async fn resolve_service_token_permissions(
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    subject_id: uuid::Uuid,
+    client_id: uuid::Uuid,
+    claimed_role: UserRole,
+) -> Result<(Vec<Permission>, UserRole), (StatusCode, &'static str)> {
+    let app = resolve_active_oauth_app(db, tenant_id, client_id, CLIENT_CREDENTIALS_GRANT_TYPE)
+        .await?;
+
+    if app.id != subject_id {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "OAuth service token subject mismatch",
+        ));
     }
 
     let permissions = app.parsed_granted_permissions().map_err(|_| {
@@ -169,9 +196,19 @@ pub async fn resolve_current_user_from_access_token(
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
             .ok_or((StatusCode::UNAUTHORIZED, "Session not found"))?;
 
+        if session.user_id != claims.sub {
+            return Err((StatusCode::UNAUTHORIZED, "Session subject mismatch"));
+        }
+
         if session.tenant_id != tenant_id || !session.is_active() {
             return Err((StatusCode::UNAUTHORIZED, "Session expired"));
         }
+    } else if claims.grant_type == AUTHORIZATION_CODE_GRANT_TYPE {
+        let client_id = claims.client_id.ok_or((
+            StatusCode::UNAUTHORIZED,
+            "OAuth user token is missing client_id",
+        ))?;
+        resolve_active_oauth_app(db, tenant_id, client_id, AUTHORIZATION_CODE_GRANT_TYPE).await?;
     }
 
     let (user, permissions, inferred_role, session_id, actor_kind) = match subject_kind {
@@ -181,6 +218,10 @@ pub async fn resolve_current_user_from_access_token(
                 .await
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
                 .ok_or((StatusCode::UNAUTHORIZED, "User not found"))?;
+
+            if user.tenant_id != tenant_id {
+                return Err((StatusCode::FORBIDDEN, "User belongs to another tenant"));
+            }
 
             if !user.is_active() {
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
@@ -215,8 +256,14 @@ pub async fn resolve_current_user_from_access_token(
                 StatusCode::UNAUTHORIZED,
                 "OAuth service token is missing client_id",
             ))?;
-            let (permissions, inferred_role) =
-                resolve_service_token_permissions(db, tenant_id, client_id, claims.role).await?;
+            let (permissions, inferred_role) = resolve_service_token_permissions(
+                db,
+                tenant_id,
+                claims.sub,
+                client_id,
+                claims.role,
+            )
+            .await?;
 
             (
                 users::Model::default_service_user(claims.sub, tenant_id),

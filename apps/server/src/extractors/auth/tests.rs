@@ -2,7 +2,9 @@ use super::{
     classify_access_token_claims, resolve_current_user_from_access_token,
     resolve_service_token_permissions, AccessTokenSubjectKind, CurrentUser,
 };
-use crate::auth::{encode_access_token, AuthConfig, AuthSettingsOverrides, Claims};
+use crate::auth::{
+    encode_access_token, encode_oauth_access_token, AuthConfig, AuthSettingsOverrides, Claims,
+};
 use crate::common::settings::RustokSettings;
 use crate::models::{oauth_apps, sessions, tenants, users};
 use crate::services::rbac_service::RbacService;
@@ -95,6 +97,41 @@ async fn insert_user_with_session(
     (user, session_id)
 }
 
+async fn insert_oauth_app(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    app_type: &str,
+    grant_types: &[&str],
+    is_active: bool,
+) -> oauth_apps::Model {
+    oauth_apps::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        name: Set("Auth extractor test app".to_string()),
+        slug: Set(format!("auth-test-{}", Uuid::new_v4())),
+        description: Set(Some("Auth extractor integration test".to_string())),
+        app_type: Set(app_type.to_string()),
+        icon_url: Set(None),
+        client_id: Set(Uuid::new_v4()),
+        client_secret_hash: Set(Some("hash".to_string())),
+        redirect_uris: Set(serde_json::json!(["https://example.com/callback"])),
+        scopes: Set(serde_json::json!(["forum:*"])),
+        grant_types: Set(serde_json::json!(grant_types)),
+        granted_permissions: Set(serde_json::json!(["forum_topics:list", "modules:list"])),
+        manifest_ref: Set(None),
+        auto_created: Set(false),
+        is_active: Set(is_active),
+        revoked_at: Set(None),
+        last_used_at: Set(None),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(chrono::Utc::now().into()),
+        updated_at: Set(chrono::Utc::now().into()),
+    }
+    .insert(db)
+    .await
+    .expect("insert oauth app")
+}
+
 #[test]
 fn token_claim_classifier_separates_user_and_service_subjects() {
     let direct = claims("direct", None, Uuid::new_v4());
@@ -155,33 +192,14 @@ async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
     .insert(&db)
     .await
     .expect("create tenant");
-
-    let created = oauth_apps::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        tenant_id: Set(tenant.id),
-        name: Set("Forum Bot".to_string()),
-        slug: Set("forum-bot".to_string()),
-        description: Set(Some("Service integration".to_string())),
-        app_type: Set("service".to_string()),
-        icon_url: Set(None),
-        client_id: Set(Uuid::new_v4()),
-        client_secret_hash: Set(Some("hash".to_string())),
-        redirect_uris: Set(serde_json::json!([])),
-        scopes: Set(serde_json::json!(["forum:*"])),
-        grant_types: Set(serde_json::json!(["client_credentials"])),
-        granted_permissions: Set(serde_json::json!(["forum_topics:list", "modules:list"])),
-        manifest_ref: Set(None),
-        auto_created: Set(false),
-        is_active: Set(true),
-        revoked_at: Set(None),
-        last_used_at: Set(None),
-        metadata: Set(serde_json::json!({})),
-        created_at: Set(chrono::Utc::now().into()),
-        updated_at: Set(chrono::Utc::now().into()),
-    }
-    .insert(&db)
-    .await
-    .expect("insert oauth app");
+    let created = insert_oauth_app(
+        &db,
+        tenant.id,
+        "service",
+        &["client_credentials"],
+        true,
+    )
+    .await;
 
     let expected_permissions = vec![
         Permission::from_str("forum_topics:list").expect("forum permission"),
@@ -190,6 +208,7 @@ async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
     let (permissions, inferred_role) = resolve_service_token_permissions(
         &db,
         tenant.id,
+        created.id,
         created.client_id,
         rustok_core::UserRole::Customer,
     )
@@ -200,6 +219,125 @@ async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
     assert_eq!(
         inferred_role,
         crate::context::infer_user_role_from_permissions(&permissions)
+    );
+}
+
+#[tokio::test]
+async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let tenant = tenants::ActiveModel::new(
+        "OAuth subject tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let app = insert_oauth_app(
+        &db,
+        tenant.id,
+        "service",
+        &["client_credentials"],
+        true,
+    )
+    .await;
+
+    let error = resolve_service_token_permissions(
+        &db,
+        tenant.id,
+        Uuid::new_v4(),
+        app.client_id,
+        UserRole::Customer,
+    )
+    .await
+    .expect_err("service token subject must equal app id");
+
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "OAuth service token subject mismatch",
+        )
+    );
+}
+
+#[tokio::test]
+async fn authorization_code_token_rejects_inactive_oauth_app() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let auth_runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new(
+        "Inactive OAuth app tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let (user, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let app = insert_oauth_app(
+        &db,
+        tenant.id,
+        "third_party",
+        &["authorization_code"],
+        false,
+    )
+    .await;
+    let token = encode_oauth_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Customer,
+        app.client_id,
+        &[],
+        "authorization_code",
+        900,
+    )
+    .expect("encode oauth access token");
+
+    let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
+        .await
+        .expect_err("inactive OAuth app must revoke authorization-code access");
+
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "OAuth app not found or inactive",
+        )
+    );
+}
+
+#[tokio::test]
+async fn direct_token_rejects_session_owned_by_another_subject() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let auth_runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new(
+        "Session subject tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let (_, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let token = encode_access_token(
+        &test_auth_config(),
+        Uuid::new_v4(),
+        tenant.id,
+        UserRole::Customer,
+        session_id,
+    )
+    .expect("encode mismatched access token");
+
+    let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
+        .await
+        .expect_err("session must be bound to token subject");
+
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "Session subject mismatch",
+        )
     );
 }
 
