@@ -1,3 +1,4 @@
+pub mod dashboard_security;
 pub mod forum_principal_security;
 pub mod legacy_disable_user;
 pub mod loaders;
