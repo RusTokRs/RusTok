@@ -41,7 +41,7 @@ mod tests {
                 .build();
 
         assert_ne!(first_key, second_key);
-        assert!(first_key.contains(":generation:g-0:"));
-        assert!(second_key.contains(":generation:g-1:"));
+        assert!(first_key.contains(":n:generation:g-0:n:id:42"));
+        assert!(second_key.contains(":n:generation:g-1:n:id:42"));
     }
 }
