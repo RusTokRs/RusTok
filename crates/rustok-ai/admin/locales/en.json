@@ -19,7 +19,8 @@
       "newSession": "New Session",
       "sessions": "Sessions",
       "operatorChat": "Operator Chat",
-      "productAttributes": "Product Attributes"
+      "productAttributes": "Product Attributes",
+      "agents": "Agents"
     },
     "field": {
       "slug": "Slug",
@@ -206,6 +207,16 @@
     },
     "hint": {
       "productAttributesRequirements": "Select task profile and product id to enable generation."
+    },
+    "agents": {
+      "ownerCatalog": "Owner catalog",
+      "workflows": "Workflows",
+      "configuredPrincipals": "Configured principals",
+      "modelAssignments": "Model assignments",
+      "operations": "Operations",
+      "capabilities": "Capabilities",
+      "requiredPermissions": "Required permissions",
+      "noModelAssignment": "No configured model assignment"
     }
   }
 }

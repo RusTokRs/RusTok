@@ -4,7 +4,10 @@ use axum::{
     http::StatusCode,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
-use rustok_cart::CartService;
+use rustok_cart::{
+    CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_checkout_port,
+    in_process_cart_storefront_port,
+};
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
@@ -39,11 +42,23 @@ pub async fn create_payment_collection(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let cart_service = CartService::new(runtime.db_clone());
-    let cart = cart_service
-        .get_cart(tenant.id, input.cart_id)
+    let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
+    let cart = cart_storefront_port
+        .read_storefront_cart(
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                input.cart_id,
+                "read",
+                false,
+            ),
+            CartStorefrontReadRequest {
+                cart_id: input.cart_id,
+            },
+        )
         .await
-        .map_err(super::map_cart_error)?;
+        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     super::ensure_cart_allows_payment_collection(&cart)?;
     let cart = super::reprice_storefront_cart_line_items_for_db(
@@ -51,7 +66,7 @@ pub async fn create_payment_collection(
         runtime.event_bus(),
         tenant.id,
         &request_context,
-        &cart_service,
+        cart_storefront_port.as_ref(),
         cart,
     )
     .await?;
@@ -111,11 +126,21 @@ pub async fn complete_cart_checkout(
 ) -> HttpResult<Json<CompleteCheckoutResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let cart_service = CartService::new(runtime.db_clone());
-    let mut cart = cart_service
-        .get_cart(tenant.id, cart_id)
+    let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
+    let mut cart = cart_storefront_port
+        .read_storefront_cart(
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                cart_id,
+                "read",
+                false,
+            ),
+            CartStorefrontReadRequest { cart_id },
+        )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
     super::ensure_store_cart_access(&cart, customer_id)?;
@@ -156,7 +181,7 @@ pub async fn complete_cart_checkout(
         runtime.event_bus(),
         tenant.id,
         &request_context,
-        &cart_service,
+        cart_storefront_port.as_ref(),
         cart,
     )
     .await?;
@@ -166,7 +191,7 @@ pub async fn complete_cart_checkout(
         runtime.db_clone(),
         event_bus.clone(),
         std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
-        std::sync::Arc::new(rustok_cart::CartService::new(runtime.db_clone())),
+        in_process_cart_checkout_port(runtime.db_clone()),
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
             runtime.db_clone(),
             event_bus.clone(),

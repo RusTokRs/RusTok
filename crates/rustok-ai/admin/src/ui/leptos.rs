@@ -29,8 +29,8 @@ use wasm_bindgen::{closure::Closure, JsCast};
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
-use super::components::chat_session_panel::AiChatSessionPanel;
 use super::components::agent_panel::AiAgentPanel;
+use super::components::chat_session_panel::AiChatSessionPanel;
 use super::components::diagnostics_panel::AiDiagnosticsPanel;
 use super::components::jobs_panel::AiJobsPanel;
 use super::components::provider_panel::AiProviderPanel;
@@ -718,12 +718,9 @@ pub fn AiAdmin() -> impl IntoView {
                                     | AiRunStreamEventKindPayload::WaitingApproval
                             );
 
-                            let is_duplicate = live_stream
-                                .get_untracked()
-                                .is_some_and(|current| {
-                                    current.run_id == event.run_id
-                                        && event.sequence <= current.sequence
-                                });
+                            let is_duplicate = live_stream.get_untracked().is_some_and(|current| {
+                                current.run_id == event.run_id && event.sequence <= current.sequence
+                            });
                             if is_duplicate {
                                 return;
                             }

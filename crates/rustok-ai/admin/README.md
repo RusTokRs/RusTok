@@ -15,6 +15,8 @@ Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
   chrome, diagnostics, operator chat, approval flows, and session history surfaces.
 - Owns the provider profile, tool policy, chat session, trace, and approval flows for the AI
   control plane.
+- Renders the owner-provided agent catalog, workflows, principals, and model assignments as a
+  read-only control-plane view. Agent role assignment remains a platform RBAC concern.
 - Shows live incremental assistant output for active sessions through the shared GraphQL WebSocket
   subscription `aiSessionEvents`.
 - Shows bounded recent stream-event history in diagnostics and session detail through the

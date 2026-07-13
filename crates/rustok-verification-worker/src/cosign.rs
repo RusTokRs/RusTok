@@ -6,11 +6,11 @@ use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustV
 use serde_json::Value;
 use tokio::process::Command;
 
-use crate::VerificationPolicy;
+use crate::{policy::vulnerability_severity_rank, VerificationPolicy};
 
-/// Concrete worker-only Cosign adapter. It accepts no caller-provided command
-/// arguments: image reference, identities and issuers are derived from typed
-/// owner input and mounted policy only.
+/// Concrete worker-only Cosign adapter. Command arguments derive exclusively
+/// from typed owner input and mounted policy; artifact-controlled values never
+/// become executable arguments.
 pub struct CosignTrustVerifier {
     program: String,
     policy: VerificationPolicy,
@@ -47,12 +47,16 @@ impl CosignTrustVerifier {
         issuer: &str,
     ) -> Result<(), String> {
         let reference = request.reference.canonical();
-        let flags = vec![
+        let mut flags = vec![
             "--certificate-identity".to_string(),
             identity.to_string(),
             "--certificate-oidc-issuer".to_string(),
             issuer.to_string(),
         ];
+        if self.policy.require_transparency_bundle {
+            flags.push("--offline".to_string());
+        }
+
         let mut signature = vec![
             "verify".to_string(),
             "--output".to_string(),
@@ -61,72 +65,189 @@ impl CosignTrustVerifier {
         signature.extend(flags.clone());
         signature.push(reference.clone());
         self.run(signature).await?;
-        let mut attestation_outputs = Vec::new();
+
+        let mut attestations = Vec::new();
         for predicate in ["slsaprovenance", "cyclonedx"] {
-            let mut attestation = vec![
+            let mut command = vec![
                 "verify-attestation".to_string(),
                 "--type".to_string(),
                 predicate.to_string(),
                 "--output".to_string(),
                 "json".to_string(),
             ];
-            attestation.extend(flags.clone());
-            attestation.push(reference.clone());
-            attestation_outputs.push(self.run(attestation).await?);
+            command.extend(flags.clone());
+            command.push(reference.clone());
+            attestations.push(self.run(command).await?);
         }
-        validate_slsa(&attestation_outputs[0], request, &self.policy)?;
-        validate_cyclonedx(&attestation_outputs[1], request, &self.policy)?;
-        Ok(())
+        validate_slsa(&attestations[0], request, &self.policy)?;
+        validate_cyclonedx(&attestations[1], request, &self.policy)
     }
 }
 
-fn attestation_predicate(output: &[u8]) -> Result<Value, String> {
-    let values: Value = serde_json::from_slice(output)
+fn attestation_statements(output: &[u8]) -> Result<Vec<Value>, String> {
+    let records: Value = serde_json::from_slice(output)
         .map_err(|_| "cosign attestation output is not JSON".to_string())?;
-    let payload = values
-        .as_array()
-        .and_then(|items| items.first())
-        .and_then(|item| item.get("payload").or_else(|| item.get("Payload")))
-        .and_then(Value::as_str)
-        .ok_or_else(|| "cosign attestation payload is missing".to_string())?;
-    let envelope: Value = serde_json::from_slice(
-        &STANDARD
+    let records = records.as_array().ok_or_else(|| {
+        "cosign attestation output must contain a JSON array of verified records".to_string()
+    })?;
+    let mut statements = Vec::with_capacity(records.len());
+    for record in records {
+        let payload = record
+            .get("payload")
+            .or_else(|| record.get("Payload"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| "cosign attestation payload is missing".to_string())?;
+        let bytes = STANDARD
             .decode(payload)
-            .map_err(|_| "cosign attestation payload is not base64".to_string())?,
-    )
-    .map_err(|_| "in-toto statement is not JSON".to_string())?;
-    envelope
-        .get("predicate")
-        .cloned()
-        .ok_or_else(|| "in-toto attestation predicate is missing".to_string())
+            .map_err(|_| "cosign attestation payload is not base64".to_string())?;
+        let statement = serde_json::from_slice(&bytes)
+            .map_err(|_| "in-toto statement is not JSON".to_string())?;
+        statements.push(statement);
+    }
+    if statements.is_empty() {
+        return Err("cosign returned no verified attestations".to_string());
+    }
+    Ok(statements)
 }
 
-fn validate_slsa(output: &[u8], request: &TrustVerificationRequest, policy: &VerificationPolicy) -> Result<(), String> {
-    let predicate = attestation_predicate(output)?;
-    let builder = predicate.pointer("/runDetails/builder/id").and_then(Value::as_str).unwrap_or_default();
-    let build_type = predicate.pointer("/buildDefinition/buildType").and_then(Value::as_str).unwrap_or_default();
-    let source = predicate.pointer("/buildDefinition/externalParameters/source/uri").and_then(Value::as_str).unwrap_or_default();
-    if !policy.allowed_builders.contains(&builder.to_string()) || !policy.allowed_build_types.contains(&build_type.to_string()) || !policy.allowed_source_repositories.iter().any(|allowed| source.starts_with(allowed)) {
-        return Err("SLSA provenance does not satisfy builder, build-type, or source policy".into());
-    }
-    let statement = serde_json::to_string(&predicate).map_err(|_| "could not inspect SLSA provenance".to_string())?;
-    if !statement.contains(&request.descriptor.artifact_digest) {
-        return Err("SLSA provenance does not reference the admitted payload digest".into());
-    }
-    Ok(())
+fn expected_sha256(request: &TrustVerificationRequest) -> Result<&str, String> {
+    request
+        .descriptor
+        .artifact_digest
+        .strip_prefix("sha256:")
+        .ok_or_else(|| "artifact descriptor digest must be sha256".to_string())
 }
 
-fn validate_cyclonedx(output: &[u8], request: &TrustVerificationRequest, policy: &VerificationPolicy) -> Result<(), String> {
-    let predicate = attestation_predicate(output)?;
-    let bom = predicate.get("bom").unwrap_or(&predicate);
-    if bom.get("bomFormat").and_then(Value::as_str) != Some("CycloneDX") {
-        return Err("SBOM attestation is not CycloneDX JSON".into());
-    }
-    let text = serde_json::to_string(bom).map_err(|_| "could not inspect CycloneDX SBOM".to_string())?;
-    if !text.contains(&request.descriptor.artifact_digest) || !policy.allowed_licenses.iter().any(|license| text.contains(license)) {
-        return Err("CycloneDX SBOM does not satisfy subject or license policy".into());
-    }
-    Ok(())
+fn subject_matches(statement: &Value, expected_digest: &str) -> bool {
+    statement
+        .get("subject")
+        .and_then(Value::as_array)
+        .is_some_and(|subjects| {
+            subjects.iter().any(|subject| {
+                subject.pointer("/digest/sha256").and_then(Value::as_str) == Some(expected_digest)
+            })
+        })
+}
+
+fn allowed(values: &[String], actual: &str) -> bool {
+    values.iter().any(|value| value == actual)
+}
+
+fn validate_slsa(
+    output: &[u8],
+    request: &TrustVerificationRequest,
+    policy: &VerificationPolicy,
+) -> Result<(), String> {
+    let expected_digest = expected_sha256(request)?;
+    let accepted = attestation_statements(output)?
+        .into_iter()
+        .any(|statement| {
+            let builder = statement
+                .pointer("/predicate/runDetails/builder/id")
+                .and_then(Value::as_str);
+            let build_type = statement
+                .pointer("/predicate/buildDefinition/buildType")
+                .and_then(Value::as_str);
+            let source = statement
+                .pointer("/predicate/buildDefinition/externalParameters/source/uri")
+                .and_then(Value::as_str);
+            subject_matches(&statement, expected_digest)
+                && builder.is_some_and(|value| allowed(&policy.allowed_builders, value))
+                && build_type.is_some_and(|value| allowed(&policy.allowed_build_types, value))
+                && source.is_some_and(|value| {
+                    policy
+                        .allowed_source_repositories
+                        .iter()
+                        .any(|repository| value.starts_with(repository))
+                })
+        });
+    accepted.then_some(()).ok_or_else(|| {
+        "SLSA provenance does not satisfy subject, builder, build-type, or source policy"
+            .to_string()
+    })
+}
+
+fn license_identifiers(bom: &Value) -> Vec<&str> {
+    bom.get("metadata")
+        .and_then(|metadata| metadata.get("component"))
+        .into_iter()
+        .chain(
+            bom.get("components")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten(),
+        )
+        .flat_map(|component| {
+            component
+                .get("licenses")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .filter_map(|entry| entry.get("license"))
+        .filter_map(|license| {
+            license
+                .get("id")
+                .or_else(|| license.get("name"))
+                .and_then(Value::as_str)
+        })
+        .collect()
+}
+
+fn vulnerabilities_are_within_policy(bom: &Value, maximum: &str) -> bool {
+    let Some(maximum) = vulnerability_severity_rank(maximum) else {
+        return false;
+    };
+    bom.get("vulnerabilities")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .all(|vulnerability| {
+            let ratings = vulnerability.get("ratings").and_then(Value::as_array);
+            ratings.is_some_and(|ratings| {
+                !ratings.is_empty()
+                    && ratings.iter().all(|rating| {
+                        rating
+                            .get("severity")
+                            .and_then(Value::as_str)
+                            .and_then(vulnerability_severity_rank)
+                            .is_some_and(|severity| severity <= maximum)
+                    })
+            })
+        })
+}
+
+fn validate_cyclonedx(
+    output: &[u8],
+    request: &TrustVerificationRequest,
+    policy: &VerificationPolicy,
+) -> Result<(), String> {
+    let expected_digest = expected_sha256(request)?;
+    let accepted = attestation_statements(output)?
+        .into_iter()
+        .any(|statement| {
+            let bom = statement
+                .pointer("/predicate/bom")
+                .unwrap_or_else(|| statement.get("predicate").unwrap_or(&Value::Null));
+            let licenses = license_identifiers(bom);
+            subject_matches(&statement, expected_digest)
+                && bom.get("bomFormat").and_then(Value::as_str) == Some("CycloneDX")
+                && bom
+                    .get("specVersion")
+                    .and_then(Value::as_str)
+                    .is_some_and(|version| {
+                        allowed(&policy.allowed_cyclonedx_spec_versions, version)
+                    })
+                && !licenses.is_empty()
+                && licenses
+                    .iter()
+                    .all(|license| allowed(&policy.allowed_licenses, license))
+                && vulnerabilities_are_within_policy(bom, &policy.maximum_vulnerability_severity)
+        });
+    accepted.then_some(()).ok_or_else(|| {
+        "CycloneDX SBOM does not satisfy subject, schema, license, or vulnerability policy"
+            .to_string()
+    })
 }
 
 #[async_trait]
@@ -135,6 +256,7 @@ impl TrustVerifier for CosignTrustVerifier {
         &self,
         request: TrustVerificationRequest,
     ) -> Result<TrustVerificationDecision, String> {
+        self.policy.validate()?;
         for identity in &self.policy.allowed_signer_identities {
             for issuer in &self.policy.allowed_oidc_issuers {
                 if self

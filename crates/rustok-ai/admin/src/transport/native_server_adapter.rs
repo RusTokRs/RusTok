@@ -7,8 +7,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     AiAdminBootstrap, AiAgentDescriptorPayload, AiAgentModelAssignmentPayload,
-    AiAgentPrincipalPayload,
-    AiAgentWorkflowPayload, AiAgentWorkflowStagePayload, AiChatRunPayload,
+    AiAgentPrincipalPayload, AiAgentWorkflowPayload, AiAgentWorkflowStagePayload, AiChatRunPayload,
     AiChatSessionDetailPayload, AiCredentialRefPayload, AiProviderProfilePayload,
     AiProviderSettingPayload, AiProviderTargetPayload, AiProviderTestResultPayload,
     AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
@@ -1041,7 +1040,10 @@ async fn ai_resume_approval_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/resolve-agent-workflow-stage-approval")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/resolve-agent-workflow-stage-approval"
+)]
 async fn ai_resolve_agent_workflow_stage_approval_native(
     stage_id: String,
     approved: bool,

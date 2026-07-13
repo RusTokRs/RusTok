@@ -1,12 +1,17 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
 use uuid::Uuid;
 
 use crate::StoreContextService;
-use rustok_cart::CartService;
+use rustok_cart::{
+    CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
+    CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
+    CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    CartStorefrontRemoveLineItemRequest, in_process_cart_storefront_port,
+};
 use rustok_pricing::PricingService;
 
-use super::super::{types::*, MODULE_SLUG};
+use super::super::{MODULE_SLUG, types::*};
 use super::helpers::*;
 
 #[derive(Default)]
@@ -57,23 +62,33 @@ impl CommerceCartMutation {
                 )
             })?;
 
-        let cart = CartService::new(db.clone())
-            .create_cart_with_channel(
-                tenant_id,
-                crate::dto::CreateCartInput {
-                    customer_id,
-                    email: input.email,
-                    region_id: context.region.as_ref().map(|region| region.id),
-                    country_code: input.country_code,
-                    locale_code: Some(context.locale.clone()),
-                    selected_shipping_option_id: None,
-                    currency_code,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        let cart = in_process_cart_storefront_port(db.clone())
+            .create_storefront_cart(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    tenant_id,
+                    "create",
+                    true,
+                ),
+                CartStorefrontCreateRequest {
+                    input: crate::dto::CreateCartInput {
+                        customer_id,
+                        email: input.email,
+                        region_id: context.region.as_ref().map(|region| region.id),
+                        country_code: input.country_code,
+                        locale_code: Some(context.locale.clone()),
+                        selected_shipping_option_id: None,
+                        currency_code,
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
+                    channel_id: request_context.channel_id,
+                    channel_slug: request_context.channel_slug.clone(),
                 },
-                request_context.channel_id,
-                request_context.channel_slug.clone(),
             )
-            .await?;
+            .await
+            .map_err(cart_port_error)?;
         let cart = enrich_storefront_cart(
             db,
             tenant_id,
@@ -106,8 +121,21 @@ impl CommerceCartMutation {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let cart_service = CartService::new(db.clone());
-        let cart = cart_service.get_cart(tenant_id, cart_id).await?;
+        let cart_storefront_port = in_process_cart_storefront_port(db.clone());
+        let cart = cart_storefront_port
+            .read_storefront_cart(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    cart_id,
+                    "read",
+                    false,
+                ),
+                CartStorefrontReadRequest { cart_id },
+            )
+            .await
+            .map_err(cart_port_error)?;
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let pricing_service = PricingService::new(db.clone(), event_bus.clone());
@@ -133,14 +161,24 @@ impl CommerceCartMutation {
         )
         .await?;
 
-        let updated = cart_service
-            .add_line_item_with_pricing_adjustment(
-                tenant_id,
-                cart_id,
-                resolved_input.add_line_item,
-                resolved_input.pricing_adjustment,
+        let updated = cart_storefront_port
+            .add_storefront_line_item(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    cart_id,
+                    "add-line-item",
+                    true,
+                ),
+                CartStorefrontAddLineItemRequest {
+                    cart_id,
+                    input: resolved_input.add_line_item,
+                    pricing_adjustment: resolved_input.pricing_adjustment,
+                },
             )
-            .await?;
+            .await
+            .map_err(cart_port_error)?;
         Ok(enrich_storefront_cart(
             db,
             tenant_id,
@@ -169,8 +207,21 @@ impl CommerceCartMutation {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let cart_service = CartService::new(db.clone());
-        let cart = cart_service.get_cart(tenant_id, cart_id).await?;
+        let cart_storefront_port = in_process_cart_storefront_port(db.clone());
+        let cart = cart_storefront_port
+            .read_storefront_cart(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    cart_id,
+                    "read",
+                    false,
+                ),
+                CartStorefrontReadRequest { cart_id },
+            )
+            .await
+            .map_err(cart_port_error)?;
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
 
@@ -232,29 +283,39 @@ impl CommerceCartMutation {
         )
         .await?;
 
-        let updated = cart_service
-            .update_context(
-                tenant_id,
-                cart_id,
-                crate::dto::UpdateCartContextInput {
-                    email,
-                    region_id: context.region.as_ref().map(|region| region.id),
-                    country_code: requested_country_code,
-                    locale_code: Some(context.locale.clone()),
-                    selected_shipping_option_id: requested_shipping_option_id,
-                    shipping_selections: Some(
-                        requested_shipping_selections
-                            .unwrap_or_else(|| current_shipping_selections(&cart)),
-                    ),
+        let updated = cart_storefront_port
+            .update_storefront_context(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    cart_id,
+                    "update-context",
+                    true,
+                ),
+                CartStorefrontContextUpdateRequest {
+                    cart_id,
+                    input: crate::dto::UpdateCartContextInput {
+                        email,
+                        region_id: context.region.as_ref().map(|region| region.id),
+                        country_code: requested_country_code,
+                        locale_code: Some(context.locale.clone()),
+                        selected_shipping_option_id: requested_shipping_option_id,
+                        shipping_selections: Some(
+                            requested_shipping_selections
+                                .unwrap_or_else(|| current_shipping_selections(&cart)),
+                        ),
+                    },
                 },
             )
-            .await?;
+            .await
+            .map_err(cart_port_error)?;
         let updated = reprice_storefront_cart_line_items(
             db,
             tenant_id,
             request_context,
             event_bus,
-            &cart_service,
+            cart_storefront_port.as_ref(),
             updated,
         )
         .await?;
@@ -291,8 +352,21 @@ impl CommerceCartMutation {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let cart_service = CartService::new(db.clone());
-        let cart = cart_service.get_cart(tenant_id, cart_id).await?;
+        let cart_storefront_port = in_process_cart_storefront_port(db.clone());
+        let cart = cart_storefront_port
+            .read_storefront_cart(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    cart_id,
+                    "read",
+                    false,
+                ),
+                CartStorefrontReadRequest { cart_id },
+            )
+            .await
+            .map_err(cart_port_error)?;
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
@@ -334,20 +408,45 @@ impl CommerceCartMutation {
 
             let pricing_update =
                 storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);
-            cart_service
-                .update_line_item_pricing(
-                    tenant_id,
-                    cart_id,
-                    line_id,
-                    input.quantity,
-                    pricing_update.unit_price,
-                    pricing_update.pricing_adjustment,
+            cart_storefront_port
+                .update_storefront_line_item_pricing(
+                    storefront_cart_port_context(
+                        tenant_id,
+                        request_context,
+                        ctx.data_opt::<AuthContext>(),
+                        cart_id,
+                        "update-line-item",
+                        true,
+                    ),
+                    CartStorefrontLineItemPricingRequest {
+                        cart_id,
+                        line_item_id: line_id,
+                        quantity: input.quantity,
+                        unit_price: pricing_update.unit_price,
+                        pricing_adjustment: pricing_update.pricing_adjustment,
+                    },
                 )
-                .await?
+                .await
+                .map_err(cart_port_error)?
         } else {
-            cart_service
-                .update_line_item_quantity(tenant_id, cart_id, line_id, input.quantity)
-                .await?
+            cart_storefront_port
+                .update_storefront_line_item_quantity(
+                    storefront_cart_port_context(
+                        tenant_id,
+                        request_context,
+                        ctx.data_opt::<AuthContext>(),
+                        cart_id,
+                        "update-line-item",
+                        true,
+                    ),
+                    CartStorefrontLineItemQuantityRequest {
+                        cart_id,
+                        line_item_id: line_id,
+                        quantity: input.quantity,
+                    },
+                )
+                .await
+                .map_err(cart_port_error)?
         };
         Ok(enrich_storefront_cart(
             db,
@@ -376,16 +475,44 @@ impl CommerceCartMutation {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let cart_service = CartService::new(db.clone());
-        let cart = cart_service.get_cart(tenant_id, cart_id).await?;
+        let request_context = ctx.data::<RequestContext>()?;
+        let cart_storefront_port = in_process_cart_storefront_port(db.clone());
+        let cart = cart_storefront_port
+            .read_storefront_cart(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    cart_id,
+                    "read",
+                    false,
+                ),
+                CartStorefrontReadRequest { cart_id },
+            )
+            .await
+            .map_err(cart_port_error)?;
         ensure_storefront_cart_access(&cart, customer_id)?;
-        let updated = cart_service
-            .remove_line_item(tenant_id, cart_id, line_id)
-            .await?;
+        let updated = cart_storefront_port
+            .remove_storefront_line_item(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    cart_id,
+                    "remove-line-item",
+                    true,
+                ),
+                CartStorefrontRemoveLineItemRequest {
+                    cart_id,
+                    line_item_id: line_id,
+                },
+            )
+            .await
+            .map_err(cart_port_error)?;
         Ok(enrich_storefront_cart(
             db,
             tenant_id,
-            ctx.data::<RequestContext>()?,
+            request_context,
             tenant.default_locale.as_str(),
             updated,
         )

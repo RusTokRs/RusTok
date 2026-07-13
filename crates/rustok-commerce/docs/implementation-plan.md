@@ -46,6 +46,10 @@ already handed to payment-owned storefront transport.
   updates, and `begin/release/complete` lifecycle transitions. Every write has
   a checkout-derived idempotency key and deadline; direct `CartService` use is
   removed from checkout orchestration. Runtime evidence remains required.
+- REST storefront cart handlers plus GraphQL cart reads and mutations call
+  cart-owned `CartStorefrontPort` for cart reads, creation, line-item
+  mutations, context updates, and repricing. Checkout adapter constructions
+  remain tracked separately and prevent transport verification.
 - Targeted compiled provider-consumer execution is recorded by
   `cargo test -p rustok-commerce --test checkout_service_test
   validation::complete_checkout_rejects_line_item_without_channel_visible_inventory -- --exact`.

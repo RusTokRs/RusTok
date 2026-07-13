@@ -9,9 +9,8 @@ use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,
     ensure_ai_task_profile_read,
     types::{
-        AiAgentDescriptorGql, AiAgentModelAssignmentGql, AiAgentPrincipalGql,
-        AiAgentWorkflowGql, AiChatSessionDetailGql, AiChatSessionSummaryGql,
-        AiProviderCatalogEntryGql,
+        AiAgentDescriptorGql, AiAgentModelAssignmentGql, AiAgentPrincipalGql, AiAgentWorkflowGql,
+        AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderCatalogEntryGql,
         AiProviderProfileGql, AiProviderTargetGql, AiRecentRunGql, AiRunStreamEventGql,
         AiRuntimeMetricsGql, AiTaskProfileGql, AiToolProfileGql, AiToolTraceGql,
     },
@@ -53,12 +52,14 @@ impl AiQuery {
         let auth = require_auth_context(ctx)?;
         ensure_ai_overview_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        Ok(crate::AiManagementService::list_agent_principals(db, auth.tenant_id)
-            .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?
-            .into_iter()
-            .map(Into::into)
-            .collect())
+        Ok(
+            crate::AiManagementService::list_agent_principals(db, auth.tenant_id)
+                .await
+                .map_err(|error| async_graphql::Error::new(error.to_string()))?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        )
     }
 
     async fn ai_agent_model_assignments(
@@ -70,23 +71,24 @@ impl AiQuery {
         ensure_ai_overview_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let assignments = match agent_principal_id {
-            Some(agent_principal_id) => crate::AiManagementService::list_agent_model_assignments(
-                db,
-                auth.tenant_id,
-                agent_principal_id,
-            )
-            .await,
-            None => crate::AiManagementService::list_tenant_agent_model_assignments(
-                db,
-                auth.tenant_id,
-            )
-            .await,
+            Some(agent_principal_id) => {
+                crate::AiManagementService::list_agent_model_assignments(
+                    db,
+                    auth.tenant_id,
+                    agent_principal_id,
+                )
+                .await
+            }
+            None => {
+                crate::AiManagementService::list_tenant_agent_model_assignments(db, auth.tenant_id)
+                    .await
+            }
         };
         Ok(assignments
-        .map_err(|error| async_graphql::Error::new(error.to_string()))?
-        .into_iter()
-        .map(Into::into)
-        .collect())
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
 
     async fn ai_provider_catalog(

@@ -19,7 +19,8 @@
       "newSession": "Новая сессия",
       "sessions": "Сессии",
       "operatorChat": "Операторский чат",
-      "productAttributes": "Атрибуты товара"
+      "productAttributes": "Атрибуты товара",
+      "agents": "Агенты"
     },
     "field": {
       "slug": "Slug",
@@ -206,6 +207,16 @@
     },
     "hint": {
       "productAttributesRequirements": "Выберите профиль задачи и product id для запуска генерации."
+    },
+    "agents": {
+      "ownerCatalog": "Каталог владельца",
+      "workflows": "Сценарии",
+      "configuredPrincipals": "Настроенные принципалы",
+      "modelAssignments": "Назначения моделей",
+      "operations": "Операции",
+      "capabilities": "Возможности",
+      "requiredPermissions": "Обязательные разрешения",
+      "noModelAssignment": "Назначение модели не настроено"
     }
   }
 }

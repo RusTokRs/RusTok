@@ -50,6 +50,9 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const cartServiceSource = read('crates/rustok-cart/src/services/cart.rs');
   const cartHelpersSource = read('crates/rustok-cart/src/services/cart/helpers.rs');
   const cartErrorSource = read('crates/rustok-cart/src/error.rs');
+  const cartStorefrontRestSource = read('crates/rustok-commerce/src/controllers/store/carts.rs');
+  const cartStorefrontGraphqlSource = read('crates/rustok-commerce/src/graphql/query.rs');
+  const cartStorefrontMutationSource = read('crates/rustok-commerce/src/graphql/mutations/cart.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
   if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
@@ -167,6 +170,36 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   if (cartServiceSource.includes('TaxService') || cartHelpersSource.includes('TaxService')) {
     fail('cart must not access TaxService outside the TaxCalculationPort boundary');
+  }
+  for (const [surface, source] of [
+    ['REST storefront cart adapter', cartStorefrontRestSource],
+    ['GraphQL storefront cart query adapter', cartStorefrontGraphqlSource],
+    ['GraphQL storefront cart mutation adapter', cartStorefrontMutationSource],
+  ]) {
+    for (const marker of [
+      'in_process_cart_storefront_port(',
+      '.read_storefront_cart(',
+      'CartStorefrontReadRequest',
+    ]) {
+      if (!source.includes(marker)) {
+        fail(`${surface} missing CartStorefrontPort consumer marker: ${marker}`);
+      }
+    }
+    if (source.includes('CartService::new(')) {
+      fail(`${surface} must not construct CartService outside CartStorefrontPort`);
+    }
+  }
+  for (const marker of [
+    '.create_storefront_cart(',
+    '.add_storefront_line_item(',
+    '.update_storefront_context(',
+    '.update_storefront_line_item_quantity(',
+    '.update_storefront_line_item_pricing(',
+    '.remove_storefront_line_item(',
+  ]) {
+    if (!cartStorefrontMutationSource.includes(marker)) {
+      fail(`GraphQL storefront cart mutation adapter missing CartStorefrontPort operation: ${marker}`);
+    }
   }
 
   for (const module of modules) {

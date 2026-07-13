@@ -1,7 +1,10 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
-use rustok_cart::CartService;
+use rustok_cart::{
+    CartStorefrontContextUpdateRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    in_process_cart_checkout_port, in_process_cart_storefront_port,
+};
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 
@@ -30,8 +33,23 @@ impl CommerceCheckoutMutation {
         let request_context = ctx.data::<RequestContext>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
-        let cart_service = CartService::new(db.clone());
-        let cart = cart_service.get_cart(tenant_id, input.cart_id).await?;
+        let cart_storefront_port = in_process_cart_storefront_port(db.clone());
+        let cart = cart_storefront_port
+            .read_storefront_cart(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    input.cart_id,
+                    "read",
+                    false,
+                ),
+                CartStorefrontReadRequest {
+                    cart_id: input.cart_id,
+                },
+            )
+            .await
+            .map_err(cart_port_error)?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
@@ -41,7 +59,7 @@ impl CommerceCheckoutMutation {
             tenant_id,
             request_context,
             event_bus,
-            &cart_service,
+            cart_storefront_port.as_ref(),
             cart,
         )
         .await?;
@@ -105,8 +123,23 @@ impl CommerceCheckoutMutation {
         let request_context = ctx.data::<RequestContext>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
-        let cart_service = CartService::new(db.clone());
-        let mut cart = cart_service.get_cart(tenant_id, input.cart_id).await?;
+        let cart_storefront_port = in_process_cart_storefront_port(db.clone());
+        let mut cart = cart_storefront_port
+            .read_storefront_cart(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    ctx.data_opt::<AuthContext>(),
+                    input.cart_id,
+                    "read",
+                    false,
+                ),
+                CartStorefrontReadRequest {
+                    cart_id: input.cart_id,
+                },
+            )
+            .await
+            .map_err(cart_port_error)?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
@@ -173,27 +206,37 @@ impl CommerceCheckoutMutation {
             )
             .await?;
 
-            cart = cart_service
-                .update_context(
-                    tenant_id,
-                    cart.id,
-                    crate::dto::UpdateCartContextInput {
-                        email: cart.email.clone(),
-                        region_id: context.region.as_ref().map(|region| region.id),
-                        country_code: requested_country_code,
-                        locale_code: Some(context.locale.clone()),
-                        selected_shipping_option_id: requested_shipping_option_id,
-                        shipping_selections: Some(requested_shipping_selections),
+            cart = cart_storefront_port
+                .update_storefront_context(
+                    storefront_cart_port_context(
+                        tenant_id,
+                        request_context,
+                        ctx.data_opt::<AuthContext>(),
+                        cart.id,
+                        "update-context",
+                        true,
+                    ),
+                    CartStorefrontContextUpdateRequest {
+                        cart_id: cart.id,
+                        input: crate::dto::UpdateCartContextInput {
+                            email: cart.email.clone(),
+                            region_id: context.region.as_ref().map(|region| region.id),
+                            country_code: requested_country_code,
+                            locale_code: Some(context.locale.clone()),
+                            selected_shipping_option_id: requested_shipping_option_id,
+                            shipping_selections: Some(requested_shipping_selections),
+                        },
                     },
                 )
-                .await?;
+                .await
+                .map_err(cart_port_error)?;
         }
         let _ = reprice_storefront_cart_line_items(
             db,
             tenant_id,
             request_context,
             event_bus,
-            &cart_service,
+            cart_storefront_port.as_ref(),
             cart,
         )
         .await?;
@@ -206,7 +249,7 @@ impl CommerceCheckoutMutation {
             db.clone(),
             event_bus.clone(),
             std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
-            std::sync::Arc::new(rustok_cart::CartService::new(db.clone())),
+            in_process_cart_checkout_port(db.clone()),
             std::sync::Arc::new(rustok_inventory::InventoryService::new(
                 db.clone(),
                 event_bus.clone(),

@@ -5,6 +5,7 @@ use rustok_api::{
     AuthContext, RequestContext, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
 };
+use rustok_cart::{CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_customer::{
     CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
@@ -334,9 +335,13 @@ impl CommerceQuery {
         });
         let (context, public_channel_slug, required_shipping_profiles) =
             if let Some(cart_id) = filter.cart_id {
-                let cart = rustok_cart::CartService::new(db.clone())
-                    .get_cart(tenant_id, cart_id)
-                    .await?;
+                let cart = in_process_cart_storefront_port(db.clone())
+                    .read_storefront_cart(
+                        graphql_cart_port_context(tenant_id, cart_id),
+                        CartStorefrontReadRequest { cart_id },
+                    )
+                    .await
+                    .map_err(|error| async_graphql::Error::new(error.message))?;
                 ensure_storefront_cart_access(&cart, customer_id)?;
                 let required_shipping_profiles =
                     load_cart_shipping_profile_slugs(db, tenant_id, &cart).await?;
@@ -666,13 +671,16 @@ impl CommerceQuery {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let cart = match rustok_cart::CartService::new(db.clone())
-            .get_cart(tenant_id, id)
+        let cart = match in_process_cart_storefront_port(db.clone())
+            .read_storefront_cart(
+                graphql_cart_port_context(tenant_id, id),
+                CartStorefrontReadRequest { cart_id: id },
+            )
             .await
         {
             Ok(cart) => cart,
-            Err(rustok_cart::error::CartError::CartNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(error) if error.code == "cart.cart_not_found" => return Ok(None),
+            Err(error) => return Err(error.message.into()),
         };
 
         ensure_storefront_cart_access(&cart, customer_id)?;
@@ -704,13 +712,16 @@ impl CommerceQuery {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant.id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let cart = match rustok_cart::CartService::new(db.clone())
-            .get_cart(tenant.id, cart_id)
+        let cart = match in_process_cart_storefront_port(db.clone())
+            .read_storefront_cart(
+                graphql_cart_port_context(tenant.id, cart_id),
+                CartStorefrontReadRequest { cart_id },
+            )
             .await
         {
             Ok(cart) => cart,
-            Err(rustok_cart::error::CartError::CartNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(error) if error.code == "cart.cart_not_found" => return Ok(None),
+            Err(error) => return Err(error.message.into()),
         };
         ensure_storefront_cart_access(&cart, customer_id)?;
 
@@ -2370,6 +2381,16 @@ fn graphql_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> rustok_api::
         rustok_api::PortActor::user(user_id.to_string()),
         "en",
         format!("storefront-customer:{user_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
+}
+
+fn graphql_cart_port_context(tenant_id: Uuid, cart_id: Uuid) -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::service("rustok-commerce.graphql"),
+        "en",
+        format!("storefront-cart:{cart_id}"),
     )
     .with_deadline(std::time::Duration::from_secs(2))
 }

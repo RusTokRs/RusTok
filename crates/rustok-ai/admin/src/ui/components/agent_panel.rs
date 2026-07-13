@@ -21,24 +21,49 @@ pub fn AiAgentPanel(
     let catalog_locale = ui_locale.clone();
     let workflows_locale = ui_locale.clone();
     let principals_locale = ui_locale.clone();
-    let assignment_summaries = assignments.into_iter().fold(BTreeMap::new(), |mut items, assignment| {
-        let summary = format!(
-            "{} / {} / {}{}",
-            assignment.provider_profile_id,
-            assignment.execution_mode,
-            if assignment.is_active { "active" } else { "inactive" },
-            assignment
-                .model_override
-                .as_deref()
-                .map(|model| format!(" / {model}"))
-                .unwrap_or_default(),
-        );
-        items
-            .entry(assignment.agent_principal_id)
-            .or_insert_with(Vec::new)
-            .push(summary);
-        items
-    });
+    let operations_label = t(ui_locale.as_deref(), "ai.agents.operations", "Operations");
+    let capabilities_label = t(
+        ui_locale.as_deref(),
+        "ai.agents.capabilities",
+        "Capabilities",
+    );
+    let required_permissions_label = t(
+        ui_locale.as_deref(),
+        "ai.agents.requiredPermissions",
+        "Required permissions",
+    );
+    let no_assignment_label = t(
+        ui_locale.as_deref(),
+        "ai.agents.noModelAssignment",
+        "No configured model assignment",
+    );
+    let active_label = t(ui_locale.as_deref(), "ai.common.active", "active");
+    let inactive_label = t(ui_locale.as_deref(), "ai.common.inactive", "inactive");
+    let assignment_summaries =
+        assignments
+            .into_iter()
+            .fold(BTreeMap::new(), |mut items, assignment| {
+                let summary = format!(
+                    "{} / {} / {}{}",
+                    assignment.provider_profile_id,
+                    assignment.execution_mode,
+                    if assignment.is_active {
+                        active_label.as_str()
+                    } else {
+                        inactive_label.as_str()
+                    },
+                    assignment
+                        .model_override
+                        .as_deref()
+                        .map(|model| format!(" / {model}"))
+                        .unwrap_or_default(),
+                );
+                items
+                    .entry(assignment.agent_principal_id)
+                    .or_insert_with(Vec::new)
+                    .push(summary);
+                items
+            });
 
     view! {
         <Card title=t(ui_locale.as_deref(), "ai.card.agents", "Agents")>
@@ -50,9 +75,9 @@ pub fn AiAgentPanel(
                             <div class="font-medium">{agent.display_name}</div>
                             <div class="text-xs text-muted-foreground">{format!("{} / {} / {}", agent.owner, agent.kind, agent.slug)}</div>
                             <div class="mt-1 text-muted-foreground">{agent.responsibility}</div>
-                            <div class="mt-1 text-xs text-muted-foreground">{format!("Operations: {}", agent.allowed_operations.join(", "))}</div>
-                            <div class="mt-1 text-xs text-muted-foreground">{format!("Capabilities: {}", agent.required_capabilities.join(", "))}</div>
-                            <div class="mt-1 text-xs text-muted-foreground">{format!("Required permissions: {}", agent.required_permissions.join(", "))}</div>
+                            <div class="mt-1 text-xs text-muted-foreground">{format!("{}: {}", operations_label, agent.allowed_operations.join(", "))}</div>
+                            <div class="mt-1 text-xs text-muted-foreground">{format!("{}: {}", capabilities_label, agent.required_capabilities.join(", "))}</div>
+                            <div class="mt-1 text-xs text-muted-foreground">{format!("{}: {}", required_permissions_label, agent.required_permissions.join(", "))}</div>
                         </div>
                     </For>
                 </div>
@@ -70,7 +95,7 @@ pub fn AiAgentPanel(
                     <For each=move || principals.clone() key=|principal| principal.id.clone() let:principal>
                         <div class="rounded border border-border p-3 text-xs text-muted-foreground">
                             <div class="font-medium text-foreground">{principal.slug}</div>
-                            <div>{assignment_summaries.get(&principal.id).map(|items| items.join(", ")).unwrap_or_else(|| "No configured model assignment".to_string())}</div>
+                            <div>{assignment_summaries.get(&principal.id).map(|items| items.join(", ")).unwrap_or_else(|| no_assignment_label.clone())}</div>
                         </div>
                     </For>
                 </div>

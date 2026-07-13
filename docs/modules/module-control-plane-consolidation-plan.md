@@ -721,8 +721,13 @@ of an admitted blob.
   policy revisions at construction, calls it before CAS stage/publish, and
   commits the resulting decision as admission evidence. Worker unavailability,
   malformed responses, policy-revision mismatch, or incomplete evidence reject
-  installation; no local or legacy verifier exists as a fallback. The remaining
-  slice is injected Cosign/SLSA/CycloneDX adapters in the isolated worker.
+  installation; no local or legacy verifier exists as a fallback. The worker
+  now executes fixed Cosign verification commands and fails closed unless its
+  complete typed allow-list accepts the signed in-toto subject digest, SLSA
+  builder/build type/source, and CycloneDX JSON version, component-license, and
+  vulnerability evidence.
+  The remaining rollout work is deployment mTLS/authentication, request limits,
+  private KMS trust-root mode, and fixture-backed adapter verification.
 - Alloy/Rhai drafts are not marketplace-installable and do not require this
   publication trust policy. Static promotion uses its separate reviewed
   distribution-build policy.

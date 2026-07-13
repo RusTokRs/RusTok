@@ -47,7 +47,7 @@ identity.
   `checkout_service_test` against the in-process provider.
 - Storefront payment-collection reads use the owner-managed
   `CartCheckoutPort` factory rather than constructing `CartService` directly.
-- Storefront REST cart reads and line-item mutations consume
+- Storefront REST and GraphQL cart reads and mutations consume
   `CartStorefrontPort`; the port preserves tenant, actor, channel, locale,
   deadline, and write-idempotency context at the owner boundary.
 

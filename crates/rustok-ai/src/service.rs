@@ -154,6 +154,14 @@ async fn agent_execution_context_for_run(
         .ok_or_else(|| {
             AiError::Validation("agent run parent workflow is unavailable".to_string())
         })?;
+    if !matches!(
+        workflow_run.status.as_str(),
+        "queued" | "running" | "waiting_approval"
+    ) {
+        return Err(AiError::Validation(
+            "agent run parent workflow is terminal".to_string(),
+        ));
+    }
     let principal = ai_agent_principals::Entity::find_by_id(stage.agent_principal_id)
         .filter(ai_agent_principals::Column::TenantId.eq(scheduler_operator.tenant_id))
         .filter(ai_agent_principals::Column::IsActive.eq(true))
@@ -445,11 +453,10 @@ impl AiManagementService {
         if matches!(run.status.as_str(), "failed" | "cancelled" | "completed") {
             return Ok(());
         }
-        let status = if stages
-            .iter()
-            .any(|stage| matches!(stage.status.as_str(), "failed" | "cancelled"))
-        {
+        let status = if stages.iter().any(|stage| stage.status == "failed") {
             "failed"
+        } else if stages.iter().any(|stage| stage.status == "cancelled") {
+            "cancelled"
         } else if !stages.is_empty() && stages.iter().all(|stage| stage.status == "completed") {
             "completed"
         } else if stages
@@ -467,7 +474,7 @@ impl AiManagementService {
         }
         let now = Utc::now();
         let set_started_at = status == "running" && run.started_at.is_none();
-        let set_completed_at = matches!(status, "completed" | "failed");
+        let set_completed_at = matches!(status, "completed" | "failed" | "cancelled");
         let mut active: ai_agent_workflow_runs::ActiveModel = run.into();
         active.status = Set(status.to_string());
         if set_started_at {
@@ -504,6 +511,23 @@ impl AiManagementService {
                     "workflow stage is not awaiting an admission approval".to_string(),
                 )
             })?;
+        let parent_is_active = ai_agent_workflow_runs::Entity::find_by_id(stage.workflow_run_id)
+            .filter(ai_agent_workflow_runs::Column::TenantId.eq(operator.tenant_id))
+            .filter(
+                Condition::any()
+                    .add(ai_agent_workflow_runs::Column::Status.eq("queued"))
+                    .add(ai_agent_workflow_runs::Column::Status.eq("running"))
+                    .add(ai_agent_workflow_runs::Column::Status.eq("waiting_approval")),
+            )
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .is_some();
+        if !parent_is_active {
+            return Err(AiError::Validation(
+                "workflow stage parent run is terminal".to_string(),
+            ));
+        }
         let now = Utc::now();
         let approval_reason = input.reason.clone();
         let mut metadata = normalize_metadata(stage.metadata.clone());
@@ -582,6 +606,9 @@ impl AiManagementService {
                 .exec(db)
                 .await
                 .map_err(db_err)?;
+        } else {
+            Self::sync_agent_workflow_run_status(db, operator.tenant_id, stage.workflow_run_id)
+                .await?;
         }
         Ok(true)
     }
@@ -614,6 +641,14 @@ impl AiManagementService {
             .ok_or_else(|| {
                 AiError::Validation("workflow stage parent run is unavailable".to_string())
             })?;
+        if !matches!(
+            workflow_run.status.as_str(),
+            "queued" | "running" | "waiting_approval"
+        ) {
+            return Err(AiError::Validation(
+                "workflow stage parent run is terminal".to_string(),
+            ));
+        }
         let principal = ai_agent_principals::Entity::find_by_id(stage.agent_principal_id)
             .filter(ai_agent_principals::Column::TenantId.eq(operator.tenant_id))
             .filter(ai_agent_principals::Column::IsActive.eq(true))
@@ -2621,6 +2656,10 @@ impl AiManagementService {
             ));
         }
 
+        let execution_operator = agent_execution_context_for_run(db, operator, run.id)
+            .await?
+            .unwrap_or_else(|| operator.clone());
+
         if !claim_approval_resolution(db, operator.tenant_id, approval.id, &approval.status).await?
         {
             return Err(AiError::Validation(
@@ -2628,9 +2667,6 @@ impl AiManagementService {
             ));
         }
 
-        let execution_operator = agent_execution_context_for_run(db, operator, run.id)
-            .await?
-            .unwrap_or_else(|| operator.clone());
         let access_context = access_context_for_operator(&execution_operator);
         let (tool_content, tool_metadata, trace) = if input.approved {
             let outcome = match approval_execution_outcome(&approval.metadata)? {
@@ -2813,7 +2849,7 @@ impl AiManagementService {
                     .exec(db)
                     .await
                     .map_err(db_err)?,
-                "failed" | "cancelled" => ai_agent_workflow_stages::Entity::update_many()
+                "failed" => ai_agent_workflow_stages::Entity::update_many()
                     .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
                     .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
                     .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
@@ -2826,6 +2862,32 @@ impl AiManagementService {
                         ai_agent_workflow_stages::Column::ErrorMessage,
                         Expr::value(run.error_message.clone().unwrap_or_else(|| {
                             format!("workflow AI run finished with status `{}`", run.status)
+                        })),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::CompletedAt,
+                        Expr::value(Utc::now()),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::UpdatedAt,
+                        Expr::value(Utc::now()),
+                    )
+                    .exec(db)
+                    .await
+                    .map_err(db_err)?,
+                "cancelled" => ai_agent_workflow_stages::Entity::update_many()
+                    .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+                    .filter(ai_agent_workflow_stages::Column::Id.eq(stage.id))
+                    .filter(ai_agent_workflow_stages::Column::RunId.eq(run.id))
+                    .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::Status,
+                        Expr::value("cancelled"),
+                    )
+                    .col_expr(
+                        ai_agent_workflow_stages::Column::ErrorMessage,
+                        Expr::value(run.error_message.clone().unwrap_or_else(|| {
+                            "workflow AI run was cancelled".to_string()
                         })),
                     )
                     .col_expr(

@@ -2,7 +2,7 @@ use async_graphql::{Context, FieldError, Result};
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{AuthContext, PortActor, PortContext, RequestContext, graphql::GraphQLError};
-use rustok_cart::CartService;
+use rustok_cart::{CartStorefrontPort, CartStorefrontRepriceRequest};
 use rustok_customer::{
     CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
@@ -619,6 +619,41 @@ fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortConte
     .with_deadline(std::time::Duration::from_secs(2))
 }
 
+pub(crate) fn storefront_cart_port_context(
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    auth: Option<&AuthContext>,
+    cart_id: Uuid,
+    operation: &str,
+    is_write: bool,
+) -> PortContext {
+    let actor = auth
+        .map(|value| PortActor::user(value.user_id.to_string()))
+        .unwrap_or_else(|| PortActor::service("rustok-commerce.graphql"));
+    let correlation_id = format!("storefront-cart:{operation}:{cart_id}");
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        request_context.locale.as_str(),
+        correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let context = request_context
+        .channel_slug
+        .as_deref()
+        .map(|channel| context.with_channel(channel))
+        .unwrap_or(context);
+    if is_write {
+        context.with_idempotency_key(correlation_id)
+    } else {
+        context
+    }
+}
+
+pub(crate) fn cart_port_error(error: rustok_api::PortError) -> async_graphql::Error {
+    async_graphql::Error::new(error.message)
+}
+
 pub(crate) fn ensure_storefront_cart_access(
     cart: &crate::dto::CartResponse,
     customer_id: Option<Uuid>,
@@ -1145,7 +1180,7 @@ pub(crate) async fn reprice_storefront_cart_line_items(
     tenant_id: Uuid,
     request_context: &RequestContext,
     event_bus: &rustok_outbox::TransactionalEventBus,
-    cart_service: &CartService,
+    cart_storefront_port: &dyn CartStorefrontPort,
     cart: crate::dto::CartResponse,
 ) -> Result<crate::dto::CartResponse> {
     if cart.line_items.is_empty() {
@@ -1186,10 +1221,23 @@ pub(crate) async fn reprice_storefront_cart_line_items(
     if updates.is_empty() {
         Ok(cart)
     } else {
-        cart_service
-            .reprice_line_items(tenant_id, cart.id, updates)
+        cart_storefront_port
+            .reprice_storefront_line_items(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    None,
+                    cart.id,
+                    "reprice",
+                    true,
+                ),
+                CartStorefrontRepriceRequest {
+                    cart_id: cart.id,
+                    updates,
+                },
+            )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))
+            .map_err(cart_port_error)
     }
 }
 
