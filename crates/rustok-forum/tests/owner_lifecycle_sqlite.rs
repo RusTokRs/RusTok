@@ -43,7 +43,7 @@ async fn owner_reply_commands_enforce_lock_moderation_and_soft_delete() {
     .await;
 
     let service = ReplyService::new(db.clone(), event_bus(db.clone()));
-    let owner = SecurityContext::new(UserRole::Customer, Some(author_id));
+    let owner = SecurityContext::new(UserRole::Manager, Some(author_id));
     let locked_error = service
         .create(
             tenant_id,
@@ -113,7 +113,7 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
     )
     .await;
 
-    let owner = SecurityContext::new(UserRole::Customer, Some(author_id));
+    let owner = SecurityContext::new(UserRole::Manager, Some(author_id));
     let reply = ReplyService::new(db.clone(), event_bus(db.clone()))
         .create(
             tenant_id,
