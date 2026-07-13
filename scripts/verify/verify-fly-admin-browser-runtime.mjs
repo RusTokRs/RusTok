@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 const files = {
   workspace: 'Cargo.toml',
   appsAdmin: 'apps/admin/Cargo.toml',
+  flyCodec: 'crates/fly/src/codec.rs',
+  flyCommand: 'crates/fly/src/command.rs',
   leptosCargo: 'crates/fly-leptos/Cargo.toml',
   leptosRoot: 'crates/fly-leptos/src/root.rs',
   browser: 'crates/fly-leptos/src/browser_runtime.rs',
@@ -39,6 +41,22 @@ const forbidMarker = (key, marker, message) => {
 };
 
 requireMarker('workspace', '"crates/rustok-page-builder/admin"', 'Page Builder admin must be an explicit workspace member');
+
+for (const marker of [
+  'hydrate_page_components_from_frames',
+  'canonical_project',
+  'synchronize_first_frame',
+  'GrapesJsV1Codec::encode_vec',
+]) {
+  requireMarker('flyCodec', marker, `Fly GrapesJS codec is missing ${marker}`);
+}
+for (const marker of [
+  'GrapesJsV1Codec::encode_vec(document)',
+  'pub fn from_bytes(bytes: &[u8])',
+]) {
+  requireMarker('flyCommand', marker, `Fly canonical project hashing is missing ${marker}`);
+}
+
 requireMarker('leptosCargo', '[target.\'cfg(target_arch = "wasm32")\'.dependencies]', 'fly-leptos browser dependencies must be wasm32-targeted');
 for (const dependency of ['wasm-bindgen', 'web-sys', 'js-sys', '"Document"']) {
   requireMarker('leptosCargo', dependency, `fly-leptos must declare ${dependency}`);
@@ -119,11 +137,15 @@ for (const marker of [
   'mark_save_started',
   'mark_save_failed',
   'acknowledge_save_for_hash',
+  'StoredValue::new_local',
+  'bridge_subscription.set_value(None)',
   'sandbox="allow-scripts"',
 ]) {
   requireMarker('adminCanvas', marker, `admin canvas is missing ${marker}`);
 }
 forbidMarker('adminCanvas', 'allow-same-origin', 'default admin iframe must not combine scripts with same-origin privileges');
+forbidMarker('adminCanvas', 'on_cleanup(', 'browser subscription must not use the Send + Sync cleanup hook');
+forbidMarker('adminCanvas', 'RefCell', 'browser subscription must use owner-scoped local storage, not an external RefCell');
 
 for (const marker of [
   'Content-Security-Policy',
