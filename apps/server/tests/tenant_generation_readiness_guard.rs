@@ -29,6 +29,10 @@ fn tenant_readiness_and_metrics_use_canonical_generation_listener() {
         "tenant_cache_generation_listener_snapshot(ctx)",
         "super::tenant_legacy::tenant_cache_stats(ctx).await",
         "stats.invalidation_listener_status = listener.status.metric_value()",
+        "pub async fn init_tenant_cache_infrastructure(",
+        "super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await",
+        "shared_map::<tokio::task::JoinHandle<()>, _>",
+        "task.abort()",
     ] {
         assert!(
             middleware.contains(required),
