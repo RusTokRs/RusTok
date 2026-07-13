@@ -1,3 +1,4 @@
+pub mod legacy_disable_user;
 pub mod loaders;
 pub mod mutations;
 pub mod observability;
