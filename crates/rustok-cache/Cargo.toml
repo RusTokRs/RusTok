@@ -11,6 +11,7 @@ redis-cache = ["rustok-core/redis-cache", "dep:redis", "dep:futures-util"]
 
 [dependencies]
 rustok-core = { workspace = true }
+rustok-telemetry = { workspace = true }
 async-trait.workspace = true
 tracing.workspace = true
 moka = { workspace = true, features = ["future"] }
@@ -20,6 +21,7 @@ hex.workspace = true
 serde.workspace = true
 postcard.workspace = true
 uuid.workspace = true
+prometheus = { version = "0.14" }
 futures-util = { version = "0.3", optional = true }
 
 # Optional Redis
