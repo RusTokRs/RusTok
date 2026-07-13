@@ -6,6 +6,7 @@
 mod asset;
 mod codec;
 mod command;
+mod dynamic;
 mod error;
 mod fragment;
 mod ids;
@@ -22,6 +23,7 @@ mod validation;
 pub use asset::*;
 pub use codec::*;
 pub use command::*;
+pub use dynamic::*;
 pub use error::*;
 pub use fragment::*;
 pub use ids::*;
