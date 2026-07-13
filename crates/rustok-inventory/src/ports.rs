@@ -5,8 +5,8 @@ use rustok_commerce_foundation::entities::{
     inventory_item, inventory_level, product_variant, reservation_item, stock_location,
 };
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, Set, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -256,11 +256,8 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
 
         let txn = self.db.begin().await.map_err(storage_unavailable)?;
         let variant = load_tenant_variant(&txn, tenant_id, request.variant_id).await?;
-        let inventory_item = inventory_item::Entity::find()
-            .filter(inventory_item::Column::VariantId.eq(request.variant_id))
-            .one(&txn)
-            .await
-            .map_err(storage_unavailable)?
+        let inventory_item = load_inventory_item_for_update(&txn, request.variant_id)
+            .await?
             .ok_or_else(|| {
                 PortError::conflict(
                     "inventory.state_not_found",
@@ -285,13 +282,12 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             return Ok(snapshot);
         }
 
-        if let Some(existing) = reservation_item::Entity::find()
-            .filter(reservation_item::Column::InventoryItemId.eq(inventory_item.id))
-            .filter(reservation_item::Column::ExternalId.eq(request.external_id.clone()))
-            .order_by_desc(reservation_item::Column::CreatedAt)
-            .one(&txn)
-            .await
-            .map_err(storage_unavailable)?
+        if let Some(existing) = find_reservation_by_external_id(
+            &txn,
+            inventory_item.id,
+            request.external_id.as_str(),
+        )
+        .await?
         {
             let snapshot = existing_reservation_snapshot(
                 &txn,
@@ -390,11 +386,20 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
 
         if let Err(error) = inserted {
             txn.rollback().await.map_err(storage_unavailable)?;
-            if let Some(existing) = reservation_item::Entity::find_by_id(request.reservation_id)
+            let existing = match reservation_item::Entity::find_by_id(request.reservation_id)
                 .one(&self.db)
                 .await
                 .map_err(storage_unavailable)?
             {
+                Some(existing) => Some(existing),
+                None => find_reservation_by_external_id(
+                    &self.db,
+                    inventory_item.id,
+                    request.external_id.as_str(),
+                )
+                .await?,
+            };
+            if let Some(existing) = existing {
                 return existing_reservation_snapshot(
                     &self.db,
                     &variant,
@@ -447,10 +452,8 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 "reservation id is bound to another external identity",
             ));
         }
-        let item = inventory_item::Entity::find_by_id(reservation.inventory_item_id)
-            .one(&txn)
-            .await
-            .map_err(storage_unavailable)?
+        let item = load_inventory_item_by_id_for_update(&txn, reservation.inventory_item_id)
+            .await?
             .ok_or_else(|| {
                 PortError::invariant_violation(
                     "inventory.reservation_item_missing",
@@ -539,6 +542,62 @@ where
                 format!("variant {variant_id} was not found"),
             )
         })
+}
+
+async fn load_inventory_item_for_update<C>(
+    conn: &C,
+    variant_id: Uuid,
+) -> Result<Option<inventory_item::Model>, PortError>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        inventory_item::Entity::find()
+            .filter(inventory_item::Column::VariantId.eq(variant_id))
+    };
+    match conn.get_database_backend() {
+        DbBackend::Sqlite => query().one(conn).await.map_err(storage_unavailable),
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(conn)
+            .await
+            .map_err(storage_unavailable),
+    }
+}
+
+async fn load_inventory_item_by_id_for_update<C>(
+    conn: &C,
+    inventory_item_id: Uuid,
+) -> Result<Option<inventory_item::Model>, PortError>
+where
+    C: ConnectionTrait,
+{
+    let query = || inventory_item::Entity::find_by_id(inventory_item_id);
+    match conn.get_database_backend() {
+        DbBackend::Sqlite => query().one(conn).await.map_err(storage_unavailable),
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(conn)
+            .await
+            .map_err(storage_unavailable),
+    }
+}
+
+async fn find_reservation_by_external_id<C>(
+    conn: &C,
+    inventory_item_id: Uuid,
+    external_id: &str,
+) -> Result<Option<reservation_item::Model>, PortError>
+where
+    C: ConnectionTrait,
+{
+    reservation_item::Entity::find()
+        .filter(reservation_item::Column::InventoryItemId.eq(inventory_item_id))
+        .filter(reservation_item::Column::ExternalId.eq(external_id))
+        .order_by_desc(reservation_item::Column::CreatedAt)
+        .one(conn)
+        .await
+        .map_err(storage_unavailable)
 }
 
 async fn existing_reservation_snapshot<C>(
