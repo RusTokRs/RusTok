@@ -12,6 +12,9 @@ pub enum MediaError {
     #[error("Unsupported media type: {0}")]
     UnsupportedMimeType(String),
 
+    #[error("Media content does not match declared type `{declared}`: {reason}")]
+    InvalidMediaContent { declared: String, reason: String },
+
     #[error("File too large: {size} bytes (max {max} bytes)")]
     FileTooLarge { size: u64, max: u64 },
 
