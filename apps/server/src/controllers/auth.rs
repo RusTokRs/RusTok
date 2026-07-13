@@ -359,6 +359,7 @@ async fn request_verification(
                 encode_email_verification_token(
                     &config,
                     tenant.id,
+                    record.id,
                     &record.email,
                     DEFAULT_VERIFY_TOKEN_TTL_SECS,
                 )
@@ -415,8 +416,11 @@ async fn confirm_verification(
         return Err(Error::Unauthorized("Invalid verification token".into()));
     }
 
-    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &claims.sub)
+    let user = Users::find_by_id(claims.user_id)
+        .filter(users::Column::TenantId.eq(tenant.id))
+        .one(ctx.runtime_ctx().db())
         .await?
+        .filter(|record| record.email.eq_ignore_ascii_case(&claims.sub))
         .ok_or_else(|| Error::Unauthorized("Invalid verification token".into()))?;
 
     if user.email_verified_at.is_none() {
