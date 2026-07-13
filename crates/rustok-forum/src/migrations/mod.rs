@@ -16,6 +16,7 @@ mod m20260712_000006_serialize_forum_counter_mutations;
 mod m20260713_000007_enforce_forum_reply_publication;
 mod m20260713_000008_enforce_forum_reply_positions;
 mod m20260713_000009_add_forum_soft_delete_revisions;
+mod m20260713_000010_harden_forum_wave_invariants;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -40,6 +41,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000007_enforce_forum_reply_publication::Migration),
         Box::new(m20260713_000008_enforce_forum_reply_positions::Migration),
         Box::new(m20260713_000009_add_forum_soft_delete_revisions::Migration),
+        Box::new(m20260713_000010_harden_forum_wave_invariants::Migration),
     ]
 }
 
