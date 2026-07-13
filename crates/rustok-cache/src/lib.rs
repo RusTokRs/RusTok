@@ -24,10 +24,10 @@ mod typed;
 mod weighted;
 
 pub use backend_generation::{
-    cache_backend_generation_registry_size, cache_backend_generation_snapshot,
-    observe_cache_backend_generation, CacheBackendGenerationError,
-    CacheBackendGenerationSnapshot, DEFAULT_MAX_CACHE_BACKEND_GENERATIONS,
-    MAX_CACHE_BACKEND_PREFIX_BYTES,
+    bind_cache_backend_generation_aliases, cache_backend_generation_registry_size,
+    cache_backend_generation_snapshot, observe_cache_backend_generation,
+    CacheBackendGenerationError, CacheBackendGenerationSnapshot,
+    DEFAULT_MAX_CACHE_BACKEND_GENERATIONS, MAX_CACHE_BACKEND_PREFIX_BYTES,
 };
 pub use bounded_invalidation::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
@@ -79,9 +79,7 @@ pub use observability::{
     format_cache_generation_prometheus_metrics, format_cache_refresh_prometheus_metrics,
 };
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
-pub use redis_status::{
-    format_redis_cache_status_prometheus_metrics, RedisCacheStatus,
-};
+pub use redis_status::{format_redis_cache_status_prometheus_metrics, RedisCacheStatus};
 pub use refresh::{
     CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
     CacheRefreshStats, StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
