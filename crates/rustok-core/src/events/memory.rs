@@ -24,6 +24,14 @@ impl MemoryTransport {
         }
     }
 
+    /// Clone the delivery bus used by this transport.
+    ///
+    /// Consumers that must observe events after they pass through the configured transport use
+    /// this bus instead of subscribing to an unrelated process-local publisher bus.
+    pub fn event_bus(&self) -> EventBus {
+        self.bus.clone()
+    }
+
     pub fn stats(&self) -> Arc<EventBusStats> {
         self.bus.stats()
     }
