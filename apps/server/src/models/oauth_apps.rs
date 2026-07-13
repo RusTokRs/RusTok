@@ -89,9 +89,19 @@ impl Model {
         serde_json::from_value(self.redirect_uris.clone()).unwrap_or_default()
     }
 
-    /// Check if the app supports a specific grant type
+    /// Check whether the app supports a grant type.
+    ///
+    /// Manifest-managed clients created before `refresh_token` became explicit
+    /// historically received refresh tokens from `authorization_code`. Preserve
+    /// that compatibility only for auto-created apps. Manual apps must declare
+    /// `refresh_token` explicitly and therefore remain governed by strict grant
+    /// configuration.
     pub fn supports_grant_type(&self, grant_type: &str) -> bool {
-        self.grant_types_list().iter().any(|gt| gt == grant_type)
+        let grants = self.grant_types_list();
+        grants.iter().any(|value| value == grant_type)
+            || (grant_type == "refresh_token"
+                && self.auto_created
+                && grants.iter().any(|value| value == "authorization_code"))
     }
 
     pub fn can_edit(&self) -> bool {
@@ -112,5 +122,51 @@ impl Model {
 
     pub fn requires_user_consent(&self) -> bool {
         self.app_type == "third_party"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Model;
+    use sea_orm::prelude::DateTimeWithTimeZone;
+    use uuid::Uuid;
+
+    fn app(auto_created: bool, grants: serde_json::Value) -> Model {
+        let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+        Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "test".to_string(),
+            slug: "test".to_string(),
+            description: None,
+            app_type: "third_party".to_string(),
+            icon_url: None,
+            client_id: Uuid::new_v4(),
+            client_secret_hash: Some("hash".to_string()),
+            redirect_uris: serde_json::json!([]),
+            scopes: serde_json::json!([]),
+            grant_types: grants,
+            granted_permissions: serde_json::json!([]),
+            manifest_ref: auto_created.then(|| "manifest".to_string()),
+            auto_created,
+            is_active: true,
+            revoked_at: None,
+            last_used_at: None,
+            metadata: serde_json::json!({}),
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn manual_apps_require_explicit_refresh_grant() {
+        let app = app(false, serde_json::json!(["authorization_code"]));
+        assert!(!app.supports_grant_type("refresh_token"));
+    }
+
+    #[test]
+    fn legacy_manifest_apps_preserve_authorization_code_refresh() {
+        let app = app(true, serde_json::json!(["authorization_code"]));
+        assert!(app.supports_grant_type("refresh_token"));
     }
 }
