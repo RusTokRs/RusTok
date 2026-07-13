@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 use rustok_payment::dto::{
-    CancelPaymentInput, CancelRefundInput, CompleteRefundInput, CreateRefundInput,
-    PaymentCollectionResponse, RefundResponse,
+    AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
+    CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
 };
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
@@ -55,6 +55,145 @@ impl PaymentOrchestrationService {
     ) -> Self {
         self.payment_provider_registry = payment_provider_registry;
         self
+    }
+
+    pub async fn authorize_collection(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        input: AuthorizePaymentInput,
+    ) -> PaymentOrchestrationResult<PaymentCollectionResponse> {
+        let collection = self
+            .payment_service
+            .get_collection(tenant_id, collection_id)
+            .await?;
+        match collection.status.as_str() {
+            "authorized" | "captured" => return Ok(collection),
+            "pending" => {}
+            status => {
+                return Err(PaymentError::InvalidTransition {
+                    from: status.to_string(),
+                    to: "authorized".to_string(),
+                }
+                .into());
+            }
+        }
+
+        let AuthorizePaymentInput {
+            provider_id,
+            provider_payment_id,
+            amount,
+            metadata,
+        } = input;
+        let provider_id = provider_id
+            .or_else(|| collection.provider_id.clone())
+            .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+        let requested_amount = amount.unwrap_or(collection.amount);
+        let provider_result = self
+            .payment_provider_registry
+            .execute_authorize(
+                provider_id.as_str(),
+                PaymentProviderOperationRequest {
+                    tenant_id,
+                    collection_id,
+                    amount: requested_amount,
+                    currency_code: collection.currency_code.clone(),
+                    idempotency_key: Some(format!(
+                        "payment_collection:{}:authorize",
+                        collection_id
+                    )),
+                    metadata: merge_provider_context(
+                        metadata.clone(),
+                        serde_json::json!({
+                            "commerce_orchestration": {
+                                "operation": "authorize_payment_collection"
+                            }
+                        }),
+                    ),
+                },
+            )
+            .await
+            .map_err(PaymentOrchestrationError::Provider)?;
+
+        Ok(self
+            .payment_service
+            .authorize_collection(
+                tenant_id,
+                collection_id,
+                AuthorizePaymentInput {
+                    provider_id: Some(provider_result.provider_id),
+                    provider_payment_id: provider_result
+                        .external_reference
+                        .or(provider_payment_id),
+                    amount: Some(provider_result.authorized_amount),
+                    metadata: merge_provider_context(metadata, provider_result.metadata),
+                },
+            )
+            .await?)
+    }
+
+    pub async fn capture_collection(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        input: CapturePaymentInput,
+    ) -> PaymentOrchestrationResult<PaymentCollectionResponse> {
+        let collection = self
+            .payment_service
+            .get_collection(tenant_id, collection_id)
+            .await?;
+        match collection.status.as_str() {
+            "captured" => return Ok(collection),
+            "authorized" => {}
+            status => {
+                return Err(PaymentError::InvalidTransition {
+                    from: status.to_string(),
+                    to: "captured".to_string(),
+                }
+                .into());
+            }
+        }
+
+        let CapturePaymentInput { amount, metadata } = input;
+        let provider_id = provider_id_for_collection(&collection);
+        let requested_amount = amount.unwrap_or(collection.authorized_amount);
+        let provider_result = self
+            .payment_provider_registry
+            .execute_capture(
+                provider_id.as_str(),
+                PaymentProviderOperationRequest {
+                    tenant_id,
+                    collection_id,
+                    amount: requested_amount,
+                    currency_code: collection.currency_code.clone(),
+                    idempotency_key: Some(format!(
+                        "payment_collection:{}:capture",
+                        collection_id
+                    )),
+                    metadata: merge_provider_context(
+                        metadata.clone(),
+                        serde_json::json!({
+                            "commerce_orchestration": {
+                                "operation": "capture_payment_collection"
+                            }
+                        }),
+                    ),
+                },
+            )
+            .await
+            .map_err(PaymentOrchestrationError::Provider)?;
+
+        Ok(self
+            .payment_service
+            .capture_collection(
+                tenant_id,
+                collection_id,
+                CapturePaymentInput {
+                    amount: Some(provider_result.captured_amount),
+                    metadata: merge_provider_context(metadata, provider_result.metadata),
+                },
+            )
+            .await?)
     }
 
     pub async fn cancel_collection(
