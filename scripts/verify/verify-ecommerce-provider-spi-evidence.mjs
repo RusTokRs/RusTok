@@ -21,27 +21,29 @@ const sameSet = (actual, expected) =>
   Array.isArray(expected) &&
   actual.length === expected.length &&
   expected.every((item) => actual.includes(item));
+const requireMarkers = (source, markers, message) => {
+  for (const marker of markers) {
+    if (!source.includes(marker)) fail(message(marker));
+  }
+};
 
 const requiredOperationAssertions = [
   'typed_provider_error_mapping',
   'idempotency_key_preserved',
   'provider_side_effects_not_persisted_by_adapter',
 ];
-
 const requiredWebhookAssertions = [
   'idempotency_key_required',
   'duplicate_delivery_replayed_without_duplicate_lifecycle_transition',
   'raw_payload_retained_for_audit',
   'lifecycle_transition_delegated_to_owner_service',
 ];
-
 const requiredExternalAdapterAssertions = [
   'descriptor_capability_match_required',
   'health_status_mapping_required',
   'degraded_mode_mapping_required',
   'adapter_does_not_persist_lifecycle_state',
 ];
-
 const requiredRuntimeModeCases = [
   {
     case: 'missing_provider',
@@ -84,7 +86,6 @@ const requiredRuntimeModeCases = [
     ],
   },
 ];
-
 const requiredRegistrationCases = [
   'descriptor_id_mismatch',
   'adapter_descriptor_mismatch',
@@ -92,7 +93,6 @@ const requiredRegistrationCases = [
   'non_ready_without_degraded_mode',
   'unavailable_default_provider',
 ];
-
 const requiredLiveExecutionCases = [
   'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
   'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence',
@@ -103,7 +103,10 @@ const requiredLiveExecutionCases = [
 
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
   const commerceCheckoutSource = readText(root, 'crates/rustok-commerce/src/services/checkout.rs');
-  const commercePaymentOrchestrationSource = readText(root, 'crates/rustok-commerce/src/services/payment_orchestration.rs');
+  const commercePaymentOrchestrationSource = readText(
+    root,
+    'crates/rustok-commerce/src/services/payment_orchestration.rs',
+  );
 
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
@@ -127,7 +130,9 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     if (evidence.runner !== 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs') {
       fail(`${module} provider SPI evidence runner drift`);
     }
-    if (evidence.contract_version !== registry.contract_version) fail(`${module} provider SPI contract version drift`);
+    if (evidence.contract_version !== registry.contract_version) {
+      fail(`${module} provider SPI contract version drift`);
+    }
     if (evidence.provider_spi_status !== providerSpi.status) fail(`${module} provider SPI status drift`);
     if (evidence.default_provider_id !== providerSpi.default_provider_id) fail(`${module} default provider drift`);
     if (evidence.promotion_gate !== 'does_not_raise_boundary_ready_without_runtime_execution') {
@@ -154,7 +159,9 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     const webhook = evidence.webhook_replay_contract;
     if (!webhook) fail(`${module} provider SPI evidence lacks webhook replay contract`);
     if (webhook.status !== 'static_locked_runtime_pending') fail(`${module} webhook replay status drift`);
-    if (!sameSet(webhook.assertions, requiredWebhookAssertions)) fail(`${module} webhook replay assertions drift`);
+    if (!sameSet(webhook.assertions, requiredWebhookAssertions)) {
+      fail(`${module} webhook replay assertions drift`);
+    }
     if (providerSpi.webhook_ingress?.idempotency_required !== true || providerSpi.webhook_ingress?.replay_required !== true) {
       fail(`${module} registry webhook ingress must keep idempotency and replay required`);
     }
@@ -230,21 +237,17 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     if (runtimeSmoke.webhook_runtime_case?.adapter_operation !== providerSpi.webhook_ingress.adapter_operation) {
       fail(`${module} runtime smoke webhook adapter operation drift`);
     }
-    if (
-      !sameSet(runtimeSmoke.webhook_runtime_case?.assertions, [
-        'idempotency_key_required_by_contract',
-        'raw_payload_audit_required',
-        'owner_service_replay_guard_required',
-      ])
-    ) {
+    if (!sameSet(runtimeSmoke.webhook_runtime_case?.assertions, [
+      'idempotency_key_required_by_contract',
+      'raw_payload_audit_required',
+      'owner_service_replay_guard_required',
+    ])) {
       fail(`${module} runtime smoke webhook assertions drift`);
     }
 
     const liveExecutionPlan = runtimeSmoke.live_execution_plan;
     if (!liveExecutionPlan) fail(`${module} runtime smoke lacks live execution plan`);
-    if (liveExecutionPlan.status !== 'planned_contract_locked') {
-      fail(`${module} live execution plan status drift`);
-    }
+    if (liveExecutionPlan.status !== 'planned_contract_locked') fail(`${module} live execution plan status drift`);
     if (liveExecutionPlan.promotion_gate !== 'requires_concrete_external_adapter_execution') {
       fail(`${module} live execution plan must require concrete external adapter execution`);
     }
@@ -270,9 +273,7 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     if (liveAdapterContract.status !== 'live_adapter_contract_locked') {
       fail(`${module} live adapter contract status drift`);
     }
-    if (liveAdapterContract.generated_from !== runtimeSmokePath) {
-      fail(`${module} live adapter contract source drift`);
-    }
+    if (liveAdapterContract.generated_from !== runtimeSmokePath) fail(`${module} live adapter contract source drift`);
     if (liveAdapterContract.runner !== 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs') {
       fail(`${module} live adapter contract runner drift`);
     }
@@ -298,11 +299,21 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
         fail(`${module} live adapter contract case ${requiredCase} assertions drift`);
       }
     }
-    const successCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard');
-    const unavailableLiveCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'unavailable_mode_blocks_adapter_invocation');
-    const degradedLiveCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed');
-    const webhookLiveCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service');
-    if (successCase?.expected_adapter_invocations !== 1) fail(`${module} live adapter success invocation count drift`);
+    const successCase = liveAdapterContract.required_cases.find(
+      (entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
+    );
+    const unavailableLiveCase = liveAdapterContract.required_cases.find(
+      (entry) => entry.case === 'unavailable_mode_blocks_adapter_invocation',
+    );
+    const degradedLiveCase = liveAdapterContract.required_cases.find(
+      (entry) => entry.case === 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed',
+    );
+    const webhookLiveCase = liveAdapterContract.required_cases.find(
+      (entry) => entry.case === 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service',
+    );
+    if (successCase?.expected_adapter_invocations !== 1) {
+      fail(`${module} live adapter success invocation count drift`);
+    }
     if (unavailableLiveCase?.expected_adapter_invocations !== 0 || unavailableLiveCase?.expected_can_execute !== false) {
       fail(`${module} live adapter unavailable blocking drift`);
     }
@@ -342,11 +353,21 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
         fail(`${module} live adapter evidence case ${requiredCase} assertions drift`);
       }
     }
-    const executedSuccessCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard');
-    const executedUnavailableCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'unavailable_mode_blocks_adapter_invocation');
-    const executedDegradedCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed');
-    const executedWebhookCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service');
-    if (executedSuccessCase?.observed_adapter_invocations !== 1) fail(`${module} live adapter evidence success invocation count drift`);
+    const executedSuccessCase = liveAdapterEvidence.executed_cases.find(
+      (entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
+    );
+    const executedUnavailableCase = liveAdapterEvidence.executed_cases.find(
+      (entry) => entry.case === 'unavailable_mode_blocks_adapter_invocation',
+    );
+    const executedDegradedCase = liveAdapterEvidence.executed_cases.find(
+      (entry) => entry.case === 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed',
+    );
+    const executedWebhookCase = liveAdapterEvidence.executed_cases.find(
+      (entry) => entry.case === 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service',
+    );
+    if (executedSuccessCase?.observed_adapter_invocations !== 1) {
+      fail(`${module} live adapter evidence success invocation count drift`);
+    }
     if (executedUnavailableCase?.observed_adapter_invocations !== 0 || executedUnavailableCase?.observed_can_execute !== false) {
       fail(`${module} live adapter evidence unavailable blocking drift`);
     }
@@ -364,21 +385,22 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       module === 'payment' ? 'PaymentProviderDegradedMode' : 'FulfillmentProviderDegradedMode';
     const registryType = module === 'payment' ? 'PaymentProviderRegistry' : 'FulfillmentProviderRegistry';
     const runtimeModeType = module === 'payment' ? 'PaymentProviderRuntimeMode' : 'FulfillmentProviderRuntimeMode';
-    for (const marker of [
-      registrationType,
-      healthType,
-      degradedType,
-      registryType,
-      runtimeModeType,
-      'pub fn validate(&self, expected_provider_id: &str)',
-      'pub fn register_external(',
-      'pub fn runtime_mode(',
-      'fn executable_provider(',
-    ]) {
-      if (!providerSource.includes(marker)) {
-        fail(`${module} provider SPI source lacks external registration marker ${marker}`);
-      }
-    }
+    requireMarkers(
+      providerSource,
+      [
+        registrationType,
+        healthType,
+        degradedType,
+        registryType,
+        runtimeModeType,
+        'pub fn validate(&self, expected_provider_id: &str)',
+        'pub fn register_external(',
+        'pub fn runtime_mode(',
+        'fn executable_provider(',
+      ],
+      (marker) => `${module} provider SPI source lacks external registration marker ${marker}`,
+    );
+
     const executionMarkers =
       module === 'payment'
         ? [
@@ -403,57 +425,72 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
             '.cancel(request)',
             '.handle_tracking_webhook(request)',
           ];
-    for (const marker of executionMarkers) {
-      if (!providerSource.includes(marker)) {
-        fail(`${module} provider SPI source lacks guarded execution marker ${marker}`);
-      }
-    }
+    requireMarkers(
+      providerSource,
+      executionMarkers,
+      (marker) => `${module} provider SPI source lacks guarded execution marker ${marker}`,
+    );
     if (!providerSource.includes('if !mode.can_execute')) {
       fail(`${module} provider SPI source lacks unavailable execution guard`);
     }
 
-
-    const commerceExecutionMarkers =
-      module === 'payment'
-        ? [
-            'payment_provider_registry: PaymentProviderRegistry',
-            'pub fn with_provider_registries(',
-            '.execute_authorize(',
-            '.execute_capture(',
-            'execute_authorize_payment_provider',
-            'execute_capture_payment_provider',
-            'PaymentProviderOperationRequest {',
-            'idempotency_key: Some(format!',
-          ]
-        : [
-            'fulfillment_provider_registry: FulfillmentProviderRegistry',
-            'pub fn with_provider_registries(',
-            '.execute_create_label(',
-            'execute_fulfillment_label_provider',
-            'FulfillmentProviderOperationRequest {',
-            'idempotency_key: Some(format!',
-          ];
-    for (const marker of commerceExecutionMarkers) {
-      if (!commerceCheckoutSource.includes(marker)) {
-        fail(`commerce checkout orchestration lacks ${module} guarded execution marker ${marker}`);
-      }
-    }
-
     if (module === 'payment') {
-      for (const marker of [
-        'PaymentOrchestrationService',
-        'payment_provider_registry: PaymentProviderRegistry',
-        '.execute_cancel(',
-        '.execute_refund(',
-        'cancel_payment_collection',
-        'create_refund',
-        'PaymentProviderOperationRequest {',
-        'idempotency_key: Some(format!',
-      ]) {
-        if (!commercePaymentOrchestrationSource.includes(marker)) {
-          fail(`commerce payment orchestration lacks guarded post-order execution marker ${marker}`);
-        }
+      requireMarkers(
+        commerceCheckoutSource,
+        [
+          'payment_provider_registry: PaymentProviderRegistry',
+          'pub fn with_provider_registries(',
+          '.execute_authorize(',
+          '.execute_capture(',
+          'execute_authorize_payment_provider',
+          'execute_capture_payment_provider',
+          'PaymentProviderOperationRequest {',
+          'idempotency_key: Some(format!',
+        ],
+        (marker) => `commerce checkout orchestration lacks payment guarded execution marker ${marker}`,
+      );
+      requireMarkers(
+        commercePaymentOrchestrationSource,
+        [
+          'PaymentOrchestrationService',
+          'payment_provider_registry: PaymentProviderRegistry',
+          '.execute_cancel(',
+          '.execute_refund(',
+          'cancel_payment_collection',
+          'create_refund',
+          'PaymentProviderOperationRequest {',
+          'idempotency_key: Some(format!',
+        ],
+        (marker) => `commerce payment orchestration lacks guarded post-order execution marker ${marker}`,
+      );
+    } else {
+      if (
+        commerceCheckoutSource.includes('.execute_create_label(') ||
+        commerceCheckoutSource.includes('fulfillment_provider_registry: FulfillmentProviderRegistry')
+      ) {
+        fail('commerce checkout must not execute fulfillment labels before payment');
       }
+      const durableFulfillmentSource = [
+        readText(root, 'crates/rustok-commerce/src/services/paid_order_create_label.rs'),
+        readText(root, 'crates/rustok-commerce/src/services/fulfillment_create_label_recovery.rs'),
+        readText(root, 'crates/rustok-commerce/src/services/paid_order_create_label_sweep.rs'),
+      ].join('\n');
+      requireMarkers(
+        durableFulfillmentSource,
+        [
+          'PaidOrderCreateLabelHandler',
+          'DomainEvent::OrderStatusChanged',
+          'new_status == "paid"',
+          'PaidOrderCreateLabelSweepService',
+          'FulfillmentCreateLabelRecoveryService',
+          '.execute_create_label(',
+          'FulfillmentProviderOperationRequest',
+          'claim_execution(',
+          'mark_provider_succeeded(',
+          'commit_provider_result',
+        ],
+        (marker) => `commerce fulfillment orchestration lacks durable post-payment marker ${marker}`,
+      );
     }
 
     for (const marker of [
