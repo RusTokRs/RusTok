@@ -1,3 +1,5 @@
+use chrono::Utc;
+use rustok_fulfillment::entities::fulfillment;
 use rustok_fulfillment::{
     BeginProviderOperation, FulfillmentProviderOperationJournal,
     FulfillmentProviderOperationRecovery, PROVIDER_OPERATION_COMMITTED,
@@ -5,6 +7,7 @@ use rustok_fulfillment::{
     PROVIDER_OPERATION_SUCCEEDED,
 };
 use rustok_test_utils::db::setup_test_db;
+use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use uuid::Uuid;
 
 mod support;
@@ -13,6 +16,7 @@ mod support;
 async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconciliation() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
+    support::ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
@@ -98,6 +102,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
 async fn manual_success_reconciliation_validates_provider_identity() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
+    support::ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
@@ -163,4 +168,90 @@ async fn manual_success_reconciliation_validates_provider_identity() {
         reconciled.provider_reference.as_deref(),
         Some("label-1")
     );
+}
+
+#[tokio::test]
+async fn fulfillment_metadata_commits_provider_operation_in_the_same_database_write() {
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+    support::ensure_provider_journal_guards(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
+    let now = Utc::now().fixed_offset();
+
+    fulfillment::ActiveModel {
+        id: Set(fulfillment_id),
+        tenant_id: Set(tenant_id),
+        order_id: Set(Uuid::new_v4()),
+        shipping_option_id: Set(None),
+        customer_id: Set(None),
+        status: Set("pending".to_string()),
+        carrier: Set(None),
+        tracking_number: Set(None),
+        delivered_note: Set(None),
+        cancellation_reason: Set(None),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(now),
+        updated_at: Set(now),
+        shipped_at: Set(None),
+        delivered_at: Set(None),
+        cancelled_at: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("fulfillment row");
+
+    let journal = FulfillmentProviderOperationJournal::new(db.clone());
+    let operation = journal
+        .begin(BeginProviderOperation {
+            tenant_id,
+            fulfillment_id,
+            operation: "ship".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "trigger-commit".to_string(),
+            request_payload: serde_json::json!({
+                "tenant_id": tenant_id,
+                "fulfillment_id": fulfillment_id,
+                "idempotency_key": "trigger-commit",
+                "metadata": {}
+            }),
+        })
+        .await
+        .expect("journal operation");
+    journal
+        .claim_execution(operation.id)
+        .await
+        .expect("claim")
+        .expect("claimed");
+    journal
+        .mark_provider_succeeded(
+            operation.id,
+            Some("shipment-trigger".to_string()),
+            serde_json::json!({
+                "provider_id": "carrier",
+                "external_reference": "shipment-trigger",
+                "tracking_number": "TRACK-TRIGGER",
+                "metadata": {}
+            }),
+        )
+        .await
+        .expect("provider success");
+
+    let model = fulfillment::Entity::find_by_id(fulfillment_id)
+        .one(&db)
+        .await
+        .expect("load fulfillment")
+        .expect("fulfillment exists");
+    let mut active: fulfillment::ActiveModel = model.into();
+    active.metadata = Set(serde_json::json!({
+        "provider_operation": {
+            "id": operation.id,
+            "operation": "ship"
+        }
+    }));
+    active.update(&db).await.expect("owner metadata update");
+
+    let committed = journal.get(operation.id).await.expect("committed journal");
+    assert_eq!(committed.status, PROVIDER_OPERATION_COMMITTED);
+    assert!(committed.committed_at.is_some());
 }
