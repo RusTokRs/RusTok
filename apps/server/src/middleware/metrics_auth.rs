@@ -6,30 +6,29 @@ use axum::{
 };
 use subtle::ConstantTimeEq;
 
-const METRICS_TOKEN_ENV: &str = "RUSTOK_METRICS_BEARER_TOKEN";
+const OBSERVABILITY_TOKEN_ENV: &str = "RUSTOK_OBSERVABILITY_BEARER_TOKEN";
+const LEGACY_METRICS_TOKEN_ENV: &str = "RUSTOK_METRICS_BEARER_TOKEN";
 
-/// Protect the Prometheus endpoint without coupling it to tenant resolution.
+/// Protect Prometheus and detailed operational diagnostics without coupling
+/// them to tenant resolution.
 ///
-/// Production is fail-closed when no token is configured. Debug builds retain
-/// unauthenticated local scraping unless the token environment variable is
-/// explicitly set, in which case the same bearer check is enforced.
+/// Basic liveness (`/health`, `/health/live`) remains public. Production is
+/// fail-closed for protected observability paths when no host token is
+/// configured. Debug builds retain unauthenticated local inspection unless a
+/// token environment variable is explicitly set.
 pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
-    if !is_metrics_path(request.uri().path()) {
+    if !is_protected_observability_path(request.uri().path()) {
         return next.run(request).await;
     }
 
-    let expected = std::env::var(METRICS_TOKEN_ENV)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-
+    let expected = configured_token();
     let Some(expected) = expected else {
         if cfg!(debug_assertions) {
             return next.run(request).await;
         }
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            "metrics authentication is not configured",
+            "observability authentication is not configured",
         )
             .into_response();
     };
@@ -46,14 +45,32 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
 
     (
         StatusCode::UNAUTHORIZED,
-        [(header::WWW_AUTHENTICATE, "Bearer realm=\"metrics\"")],
-        "metrics bearer token required",
+        [(header::WWW_AUTHENTICATE, "Bearer realm=\"observability\"")],
+        "observability bearer token required",
     )
         .into_response()
 }
 
-fn is_metrics_path(path: &str) -> bool {
-    matches!(path, "/metrics" | "/metrics/" | "/api/_health/metrics")
+fn configured_token() -> Option<String> {
+    [OBSERVABILITY_TOKEN_ENV, LEGACY_METRICS_TOKEN_ENV]
+        .into_iter()
+        .find_map(|name| {
+            std::env::var(name)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
+fn is_protected_observability_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/metrics"
+            | "/metrics/"
+            | "/api/_health/metrics"
+            | "/health/runtime"
+            | "/health/modules"
+    )
 }
 
 fn parse_bearer_token(value: &str) -> Option<&str> {
@@ -71,15 +88,23 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{constant_time_eq, is_metrics_path, parse_bearer_token};
+    use super::{constant_time_eq, is_protected_observability_path, parse_bearer_token};
 
     #[test]
-    fn matches_only_metrics_paths() {
-        assert!(is_metrics_path("/metrics"));
-        assert!(is_metrics_path("/metrics/"));
-        assert!(is_metrics_path("/api/_health/metrics"));
-        assert!(!is_metrics_path("/api/graphql"));
-        assert!(!is_metrics_path("/metrics/debug"));
+    fn protects_metrics_and_detailed_health_only() {
+        for path in [
+            "/metrics",
+            "/metrics/",
+            "/api/_health/metrics",
+            "/health/runtime",
+            "/health/modules",
+        ] {
+            assert!(is_protected_observability_path(path), "{path}");
+        }
+        assert!(!is_protected_observability_path("/health"));
+        assert!(!is_protected_observability_path("/health/live"));
+        assert!(!is_protected_observability_path("/health/ready"));
+        assert!(!is_protected_observability_path("/api/graphql"));
     }
 
     #[test]
