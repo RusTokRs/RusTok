@@ -9,6 +9,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
+use validator::Validate;
 
 use rustok_payment::PaymentService;
 
@@ -63,6 +64,10 @@ impl PaymentOrchestrationService {
         collection_id: Uuid,
         input: AuthorizePaymentInput,
     ) -> PaymentOrchestrationResult<PaymentCollectionResponse> {
+        input
+            .validate()
+            .map_err(|error| PaymentError::Validation(error.to_string()))?;
+
         let collection = self
             .payment_service
             .get_collection(tenant_id, collection_id)
