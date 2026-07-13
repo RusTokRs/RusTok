@@ -15,7 +15,7 @@ The source contract now includes:
 - bounded degraded-write markers that distinguish outage writes from ordinary Redis misses;
 - strict shared-primary health reporting while request paths retain bounded local fallback;
 - shared invalidation error propagation instead of silent success;
-- backend-scoped, cancellation-safe `load_or_fill` gates;
+- backend-scoped, cancellation-safe and globally bounded `load_or_fill` gates;
 - count-limited and byte-weighted Moka backends exposed through `CacheService`;
 - default, count and weighted Redis factories reusing the client owned by `CacheService`;
 - deterministic TTL jitter and leader loader deadlines;
@@ -24,6 +24,8 @@ The source contract now includes:
   serialization;
 - typed loading that invalidates corrupted, incompatible and hard-expired entries;
 - bounded stale-while-revalidate coordination with per-key deduplication;
+- backend-level atomic compare-and-set for local and Redis stale refresh writes;
+- fail-closed fallback CAS when the shared primary is unavailable;
 - explicit typed negative-cache policy with short independent TTLs;
 - shared namespace generation counters for scan-free recovery;
 - bounded, non-evicting trusted generation snapshots for outage fallback;
@@ -69,13 +71,15 @@ generation, but the transactional outbox/stream source remains domain/platform w
    - gate identity includes backend instance and key;
    - different backends do not block on equal keys;
    - RAII cleanup covers success, errors and task cancellation;
-   - policy loading supports bounded leader deadlines.
+   - policy loading supports bounded leader deadlines;
+   - raw keys and unique in-flight gates have explicit process limits.
 
 5. **Resource bounds**
    - Redis backend and cache-service operations have deadlines;
    - local caches support byte-weighted capacity;
    - envelope encoding is measured before output allocation and written through a bounded writer;
    - cache keys bound one identity, aggregate canonical input and dynamic component count;
+   - invalidation, loader and refresh keys have explicit limits;
    - trusted generation snapshots have a non-evicting process capacity;
    - weighted factories remain centralized in `CacheService`.
 
@@ -91,7 +95,7 @@ generation, but the transactional outbox/stream source remains domain/platform w
    - deterministic per-key TTL jitter is available through `CacheLoadPolicy`;
    - token-safe Redis leases use `SET NX PX` and ownership-checking Lua scripts;
    - `CacheRefreshCoordinator` returns stale values while one bounded process-local refresh
-     runs and records refresh saturation/failure metrics.
+     runs and records refresh saturation/failure/rejection metrics.
 
 8. **Negative caching**
    - positive and negative values can use separate schema namespaces/backends;
@@ -112,45 +116,50 @@ generation, but the transactional outbox/stream source remains domain/platform w
     - namespace backend construction no longer reopens Redis from the stored URL;
     - architecture guards reject restoration of the legacy URL-based factory.
 
+11. **Atomic stale refresh writes**
+    - `CacheBackend` exposes explicit `Applied` / `Mismatch` compare-and-set outcomes;
+    - unsupported backends fail closed rather than emulating CAS with `GET` plus `SET`;
+    - in-memory writes and CAS share bounded striped locks;
+    - legacy and service-owned Redis backends use one binary-safe Lua compare-and-write command;
+    - fallback CAS never acknowledges a process-local write when the shared primary is down;
+    - all active instrumentation and weighted wrappers delegate CAS;
+    - SWR publishes through CAS and treats a mismatch as an authoritative newer write.
+
 ## Verification in progress
 
-A focused draft PR (`#1706`) runs the current source tree through the hosted `Cache hardening`
-workflow. The required jobs are:
+Atomic CAS source changes were merged through PR `#1713`. The focused hosted `Cache hardening`
+workflow is still the source of truth for compiled and live-service evidence. The required jobs are:
 
 - `Compiled cache contract`: format, core/cache/server compile, targeted unit and architecture
   tests, Clippy with warnings denied, and module validate/test gates;
 - `Live Redis cache contract`: ignored `rustok-cache` and `rustok-core` Redis suites against an
-  isolated Redis 7 service.
+  isolated Redis 7 service, including binary-safe CAS applied/mismatch behavior.
 
-Do not mark this follow-up pass as compiled/live verified until those jobs complete successfully.
+Do not mark the atomic CAS phase compiled/live verified until those jobs complete successfully.
 
 ## Remaining work
 
-1. **SWR compare-and-set semantics.** Background refresh currently deduplicates refresh work but
-   the backend contract does not provide a distributed conditional write. Add revision/token-aware
-   CAS so a slow refresh cannot overwrite a newer external write.
-
-2. **Bound generic invalidation and loader inputs.** `CacheInvalidationMessage` and raw
-   `load_or_fill` callers still need explicit input length and global unique-flight limits in
-   addition to canonical key-builder limits.
-
-3. **Harden the registry marketplace host cache.** Replace count-only capacity and raw URL/query
+1. **Harden the registry marketplace host cache.** Replace count-only capacity and raw URL/query
    keys with a byte-weighted cache, bounded hashed identity and coalesced remote fetches. Keep this
    as a dedicated change because `marketplace_catalog.rs` is large and concurrently edited.
 
-4. **Complete host adoption.** Continue migrating correctness-sensitive caches to canonical keys,
+2. **Complete host adoption.** Continue migrating correctness-sensitive caches to canonical keys,
    envelopes, explicit load/negative policy and shared generations. Tenant is the reference path;
    remaining callers should not silently accept incompatible payloads or process-local-only
    invalidation.
 
-5. **Connect durable recoverable invalidation.** Supply `VersionedCacheInvalidation` generations
+3. **Connect durable recoverable invalidation.** Supply `VersionedCacheInvalidation` generations
    from transactional outbox/event offsets, seed consumers from persisted offsets and execute
    domain recovery actions on `UnverifiedFirst`/`Gap`.
 
-6. **Operational proof and tuning.** Add load and chaos gates for synchronized expiry, oversized
-   payloads, Redis latency/restart, generation capacity/read/bump failure, refresh saturation,
-   lease expiry and invalidation listener lag. Tune byte budgets and TTLs from production payload
-   distributions rather than assumptions.
+4. **Operational proof and tuning.** Add load and chaos gates for synchronized expiry, oversized
+   payloads, Redis latency/restart, CAS contention/timeouts, generation capacity/read/bump failure,
+   refresh saturation, lease expiry and invalidation listener lag. Tune byte budgets and TTLs from
+   production payload distributions rather than assumptions.
+
+5. **Local CAS expiry semantics.** Verify under stress that Moka expiration/eviction cannot revive an
+   entry between comparison and replacement. If the implementation cannot prove this invariant,
+   move local CAS to a backend primitive that couples value comparison and entry mutation.
 
 ## Verification commands
 
