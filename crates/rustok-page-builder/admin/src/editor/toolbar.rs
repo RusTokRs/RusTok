@@ -1,8 +1,6 @@
-use crate::editor::AdminEditorRuntime;
+use crate::editor::{dispatch_shortcut, AdminEditorRuntime};
 use crate::i18n::t;
-use fly_ui::{
-    builtin_viewport_presets, viewport_preset, EditorShortcut, UiIntent,
-};
+use fly_ui::{builtin_viewport_presets, viewport_preset, EditorShortcut, UiIntent};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -30,6 +28,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
 
     install_keyboard_bindings(runtime.clone());
     let presets = builtin_viewport_presets();
+    let status_runtime = runtime.clone();
 
     view! {
         <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" role="toolbar" aria-label="Page builder actions">
@@ -158,7 +157,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             </label>
 
             <span class="text-sm text-muted-foreground" aria-live="polite">
-                {move || runtime.controller.with(|controller| {
+                {move || status_runtime.controller.with(|controller| {
                     if controller.ui().state.dirty.save_in_progress {
                         saving.clone()
                     } else if controller.ui().state.dirty.save_failed {
@@ -213,50 +212,7 @@ fn shortcut_callback(
     runtime: AdminEditorRuntime,
     shortcut: EditorShortcut,
 ) -> Callback<()> {
-    Callback::new(move |_| handle_shortcut(&runtime, shortcut))
-}
-
-fn handle_shortcut(runtime: &AdminEditorRuntime, shortcut: EditorShortcut) {
-    match shortcut {
-        EditorShortcut::Undo => runtime.dispatch(UiIntent::Undo),
-        EditorShortcut::Redo => runtime.dispatch(UiIntent::Redo),
-        EditorShortcut::Save => runtime.dispatch(UiIntent::RequestSave),
-        EditorShortcut::Copy => runtime.dispatch(UiIntent::CopySelection),
-        EditorShortcut::Cut => runtime.dispatch(UiIntent::CutSelection),
-        EditorShortcut::Paste => runtime.dispatch(UiIntent::PasteClipboard),
-        EditorShortcut::Duplicate => {
-            runtime.dispatch(UiIntent::CopySelection);
-            if runtime.last_error.get_untracked().is_none() {
-                runtime.dispatch(UiIntent::PasteClipboard);
-            }
-        }
-        EditorShortcut::DeleteSelection => {
-            let intent = runtime
-                .controller
-                .with(|controller| controller.remove_selected_intent());
-            runtime.dispatch_result(intent);
-        }
-        EditorShortcut::Cancel => {
-            if runtime
-                .controller
-                .with(|controller| controller.ui().state.drag.is_some())
-            {
-                runtime.dispatch(UiIntent::CancelDrag);
-            }
-        }
-        EditorShortcut::MoveSelectionUp => {
-            let intent = runtime
-                .controller
-                .with(|controller| controller.move_selected_up_intent());
-            runtime.dispatch_result(intent);
-        }
-        EditorShortcut::MoveSelectionDown => {
-            let intent = runtime
-                .controller
-                .with(|controller| controller.move_selected_down_intent());
-            runtime.dispatch_result(intent);
-        }
-    }
+    Callback::new(move |_| dispatch_shortcut(&runtime, shortcut))
 }
 
 fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
@@ -278,7 +234,7 @@ fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
                     return;
                 };
                 fly_leptos::prevent_editor_shortcut_default(event, shortcut);
-                handle_shortcut(&keyboard_runtime, shortcut);
+                dispatch_shortcut(&keyboard_runtime, shortcut);
             },
         ) {
             Ok(handle) => {
