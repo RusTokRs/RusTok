@@ -1,4 +1,5 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{hash_map::DefaultHasher, HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,6 +10,7 @@ use tokio::sync::Mutex;
 const MAX_DEGRADED_WRITE_KEYS: usize = 4_096;
 const MAX_DEGRADED_WRITE_KEY_BYTES: usize = 4 * 1_024;
 const DEGRADED_WRITE_PRUNE_SCAN: usize = 16;
+const FALLBACK_KEY_LOCK_STRIPES: usize = 256;
 
 #[derive(Debug)]
 struct DegradedWriteTracker {
@@ -103,11 +105,13 @@ impl DegradedWriteTracker {
 /// records only writes whose primary operation failed, so those newer local bytes remain
 /// authoritative during reconnects instead of being overwritten by stale shared data. Tracker
 /// capacity is never recovered by evicting a live degraded write; new writes surface the primary
-/// error when they cannot be tracked safely.
+/// error when they cannot be tracked safely. A fixed set of striped locks serializes operations for
+/// the same key without introducing an unbounded per-key registry.
 pub(crate) struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
     degraded_writes: DegradedWriteTracker,
+    key_locks: Vec<Mutex<()>>,
 }
 
 impl DegradationAwareFallbackBackend {
@@ -116,7 +120,16 @@ impl DegradationAwareFallbackBackend {
             primary,
             fallback,
             degraded_writes: DegradedWriteTracker::new(MAX_DEGRADED_WRITE_KEYS),
+            key_locks: (0..FALLBACK_KEY_LOCK_STRIPES)
+                .map(|_| Mutex::new(()))
+                .collect(),
         }
+    }
+
+    fn key_lock(&self, key: &str) -> &Mutex<()> {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        &self.key_locks[(hasher.finish() as usize) % self.key_locks.len()]
     }
 
     async fn mark_degraded_write(&self, key: &str, expected: &[u8]) -> rustok_core::Result<()> {
@@ -200,6 +213,22 @@ impl DegradationAwareFallbackBackend {
         );
         Ok(())
     }
+
+    async fn invalidate_locked(&self, key: &str) -> rustok_core::Result<()> {
+        if let Err(error) = self.fallback.invalidate(key).await {
+            tracing::warn!(%error, key, "Failed to invalidate local cache fallback");
+        }
+        self.clear_degraded_write(key).await;
+
+        self.primary.invalidate(key).await.map_err(|error| {
+            tracing::warn!(
+                %error,
+                key,
+                "Primary cache invalidation failed; stale shared data may remain"
+            );
+            error
+        })
+    }
 }
 
 #[async_trait]
@@ -209,14 +238,15 @@ impl CacheBackend for DegradationAwareFallbackBackend {
     }
 
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+        let _guard = self.key_lock(key).lock().await;
         if let Some(value) = self.read_degraded_write(key).await? {
             return Ok(Some(value));
         }
 
         match self.primary.get(key).await {
             Ok(primary_value) => {
-                // A degraded write may complete while the primary read is in flight. Re-check the
-                // marker before trusting Redis or deleting the local mirror.
+                // Keep the defensive re-check even though same-key operations are serialized: a
+                // test or maintenance path may manipulate the concrete fallback directly.
                 if let Some(value) = self.read_degraded_write(key).await? {
                     return Ok(Some(value));
                 }
@@ -242,6 +272,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
     }
 
     async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
+        let _guard = self.key_lock(&key).lock().await;
         if let Err(error) = self.fallback.set(key.clone(), value.clone()).await {
             tracing::warn!(%error, key, "Failed to update local cache fallback");
         }
@@ -264,10 +295,11 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         value: Vec<u8>,
         ttl: Duration,
     ) -> rustok_core::Result<()> {
+        let _guard = self.key_lock(&key).lock().await;
         if ttl.is_zero() {
             // Zero TTL is a deletion, not an availability-preserving write. A failed shared delete
             // must remain visible to callers or stale Redis bytes could be reported as removed.
-            return self.invalidate(&key).await;
+            return self.invalidate_locked(&key).await;
         }
 
         if let Err(error) = self
@@ -301,6 +333,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         value: Vec<u8>,
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+        let _guard = self.key_lock(key).lock().await;
         let outcome = self
             .primary
             .compare_and_set(key, expected, value.clone(), ttl)
@@ -325,19 +358,8 @@ impl CacheBackend for DegradationAwareFallbackBackend {
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
-        if let Err(error) = self.fallback.invalidate(key).await {
-            tracing::warn!(%error, key, "Failed to invalidate local cache fallback");
-        }
-        self.clear_degraded_write(key).await;
-
-        self.primary.invalidate(key).await.map_err(|error| {
-            tracing::warn!(
-                %error,
-                key,
-                "Primary cache invalidation failed; stale shared data may remain"
-            );
-            error
-        })
+        let _guard = self.key_lock(key).lock().await;
+        self.invalidate_locked(key).await
     }
 
     fn stats(&self) -> CacheStats {
@@ -356,7 +378,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Mutex;
+    use std::sync::Mutex as StdMutex;
     use tokio::sync::Notify;
 
     struct HealthControlledBackend {
@@ -502,7 +524,7 @@ mod tests {
 
     struct RecoveringStaleBackend {
         fail_writes: AtomicBool,
-        value: Mutex<Option<Vec<u8>>>,
+        value: StdMutex<Option<Vec<u8>>>,
     }
 
     #[async_trait]
@@ -564,6 +586,21 @@ mod tests {
         fallback: Arc<InMemoryCacheBackend>,
     ) -> DegradationAwareFallbackBackend {
         DegradationAwareFallbackBackend::new(primary, fallback)
+    }
+
+    #[test]
+    fn same_key_uses_one_bounded_lock_stripe() {
+        let primary = Arc::new(HealthControlledBackend {
+            healthy: AtomicBool::new(false),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let backend = backend(primary, fallback);
+
+        assert_eq!(backend.key_locks.len(), FALLBACK_KEY_LOCK_STRIPES);
+        assert!(std::ptr::eq(
+            backend.key_lock("same-key"),
+            backend.key_lock("same-key")
+        ));
     }
 
     #[tokio::test]
@@ -721,7 +758,7 @@ mod tests {
     async fn recovered_stale_primary_does_not_override_a_degraded_write() {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(true),
-            value: Mutex::new(Some(b"old".to_vec())),
+            value: StdMutex::new(Some(b"old".to_vec())),
         });
         let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
         let primary_backend: Arc<dyn CacheBackend> = primary.clone();
@@ -740,7 +777,7 @@ mod tests {
     async fn zero_ttl_delete_fails_closed_when_shared_primary_is_unavailable() {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(true),
-            value: Mutex::new(Some(b"old".to_vec())),
+            value: StdMutex::new(Some(b"old".to_vec())),
         });
         let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
         let backend = backend(primary, fallback);
