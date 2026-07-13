@@ -74,6 +74,7 @@ for (const dependency of [
   'rustok-page-builder =',
   'rustok-ui-core.workspace = true',
   'rustok-ui-i18n-leptos.workspace = true',
+  'csr = ["leptos/csr"]',
 ]) {
   requireMarker('adminCargo', dependency, `admin package is missing ${dependency}`);
 }
@@ -82,6 +83,7 @@ for (const forbidden of ['rustok-api', 'rustok-graphql', 'leptos_axum', 'reqwest
 }
 for (const hostMarker of [
   'rustok-page-builder-admin = { path = "../../crates/rustok-page-builder/admin"',
+  '"rustok-page-builder-admin/csr"',
   '"rustok-page-builder-admin/hydrate"',
   '"rustok-page-builder-admin/ssr"',
 ]) {
