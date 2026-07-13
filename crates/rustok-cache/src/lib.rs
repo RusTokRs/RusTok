@@ -1,4 +1,5 @@
 mod service;
+mod weighted;
 
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
