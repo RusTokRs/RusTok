@@ -6,8 +6,9 @@ use async_trait::async_trait;
 use rustok_cache::{
     bind_cache_backend_generation_aliases, cache_backend_generation_snapshot,
     observe_cache_backend_generation, BoundedCacheEventDedupe,
-    BoundedCacheInvalidationGapTracker, CacheInvalidationMessage,
-    CacheInvalidationObservation, CacheService, DurableCacheInvalidationRecord,
+    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
+    CacheBackendGenerationError, CacheInvalidationMessage, CacheInvalidationObservation,
+    CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
     VersionedCacheInvalidation,
 };
 use rustok_core::events::{
@@ -43,11 +44,18 @@ fn bind_tenant_backend_generations() -> Result<()> {
 }
 
 fn observe_tenant_backend_generation(generation: u64) -> Result<()> {
-    // The physical prefixes are aliases of this canonical state, so one atomic store switches
-    // data and negative cache backends together.
-    observe_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX, generation)
-        .map_err(|error| Error::Cache(error.to_string()))?;
-    Ok(())
+    // A concurrent durable reconciliation may already have advanced the shared state beyond this
+    // event. Treat that specific regression as a safe superseded no-op; all other failures remain
+    // fail-closed. The physical prefixes alias this one canonical state.
+    match observe_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX, generation) {
+        Ok(_) => Ok(()),
+        Err(CacheBackendGenerationError::GenerationRegressed { current, proposed })
+            if current >= proposed =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(Error::Cache(error.to_string())),
+    }
 }
 
 #[derive(Clone)]
@@ -208,6 +216,19 @@ impl TenantCacheGenerationListener {
         Ok(value)
     }
 
+    fn acknowledge_applied_generation(&self, generation: u64) -> Result<()> {
+        match self
+            .tracker
+            .acknowledge_applied(TENANT_CACHE_GENERATION_CHANNEL, generation)
+        {
+            Ok(_) => Ok(()),
+            Err(BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::OffsetRegressed { current, proposed },
+            )) if current >= proposed => Ok(()),
+            Err(error) => Err(Error::Cache(error.to_string())),
+        }
+    }
+
     async fn handle_message(&self, message: CacheInvalidationMessage) -> Result<()> {
         let started_at = Instant::now();
         let event = VersionedCacheInvalidation::from_message(&message)
@@ -222,9 +243,7 @@ impl TenantCacheGenerationListener {
         match self.tracker.observe(&event) {
             CacheInvalidationObservation::InOrder { generation } => {
                 observe_tenant_backend_generation(generation)?;
-                self.tracker
-                    .acknowledge_applied(TENANT_CACHE_GENERATION_CHANNEL, generation)
-                    .map_err(|error| Error::Cache(error.to_string()))?;
+                self.acknowledge_applied_generation(generation)?;
             }
             CacheInvalidationObservation::Duplicate { .. }
             | CacheInvalidationObservation::Stale { .. } => {}
@@ -592,6 +611,37 @@ mod tests {
         assert!(tokio::time::timeout(Duration::from_millis(10), invalidations.recv())
             .await
             .is_err());
+    }
+
+    #[test]
+    fn superseded_apply_is_a_safe_noop() {
+        let _guard = generation_test_lock().blocking_lock();
+        bind_tenant_backend_generations().unwrap();
+        let current = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+            .unwrap()
+            .generation
+            .saturating_add(2);
+        observe_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX, current).unwrap();
+        assert!(observe_tenant_backend_generation(current - 1).is_ok());
+        assert_eq!(
+            cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+                .unwrap()
+                .generation,
+            current
+        );
+
+        let listener = TenantCacheGenerationListener::new(CacheService::from_url(None));
+        listener
+            .tracker
+            .seed(TENANT_CACHE_GENERATION_CHANNEL, current)
+            .unwrap();
+        assert!(listener.acknowledge_applied_generation(current - 1).is_ok());
+        assert_eq!(
+            listener
+                .tracker
+                .last_generation(TENANT_CACHE_GENERATION_CHANNEL),
+            Some(current)
+        );
     }
 
     #[tokio::test]
