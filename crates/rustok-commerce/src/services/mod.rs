@@ -2,6 +2,7 @@ pub mod checkout;
 pub mod context;
 mod fulfillment_orchestration;
 mod fulfillment_orchestration_facade;
+mod journaled_create_label_provider;
 mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
 mod payment_orchestration;
