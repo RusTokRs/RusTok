@@ -29,6 +29,7 @@ pub const TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = "tenant-cache:v2:negative
 pub const TENANT_CACHE_GENERATION_CHANNEL: &str = "tenant.cache.generation.v1";
 const LISTENER_RESTART_DELAY: Duration = Duration::from_secs(1);
 const GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
+const PREFLIGHT_GENERATION: u64 = 1;
 
 fn bind_tenant_backend_generations() -> Result<()> {
     bind_cache_backend_generation_aliases(
@@ -73,13 +74,33 @@ impl TenantCacheGenerationTransport {
         }
     }
 
+    fn validated_record(
+        envelope: &EventEnvelope,
+        tenant_id: uuid::Uuid,
+        generation: u64,
+        emitted_at_unix_ms: u64,
+    ) -> Result<DurableCacheInvalidationRecord> {
+        DurableCacheInvalidationRecord::new(
+            envelope.id,
+            Some(tenant_id),
+            TENANT_CACHE_GENERATION_CHANNEL,
+            tenant_id.to_string(),
+            generation,
+            emitted_at_unix_ms,
+            envelope.event_type.clone(),
+            envelope.trace_id.clone(),
+        )
+        .map_err(|error| Error::Cache(error.to_string()))
+    }
+
     async fn publish_generation_if_needed(&self, envelope: &EventEnvelope) -> Result<()> {
         let Some(tenant_id) = tenant_cache_event_tenant_id(&envelope.event) else {
             return Ok(());
         };
 
-        // Hold the bounded per-event stripe across probe, rotation, publication, and commit. This
-        // closes the concurrent false-negative window without precommitting failed work.
+        // Hold the bounded per-event stripe across probe, validation, rotation, publication, and
+        // commit. This closes the concurrent false-negative window without precommitting failed
+        // work. All deterministic validation completes before the durable counter is advanced.
         let _event_guard = self.successful_rotations.serialize_event(envelope.id).await;
         if self.successful_rotations.is_duplicate(envelope.id) {
             tracing::debug!(
@@ -90,28 +111,30 @@ impl TenantCacheGenerationTransport {
             return Ok(());
         }
 
-        let generation = self
-            .cache
-            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
-            .await
-            .map_err(|error| Error::Cache(error.to_string()))?;
         let emitted_at_unix_ms =
             u64::try_from(envelope.timestamp.timestamp_millis()).map_err(|_| {
                 Error::Validation(
                     "tenant cache invalidation timestamp precedes Unix epoch".to_string(),
                 )
             })?;
-        let record = DurableCacheInvalidationRecord::new(
-            envelope.id,
-            Some(tenant_id),
-            TENANT_CACHE_GENERATION_CHANNEL,
-            tenant_id.to_string(),
+        let _preflight = Self::validated_record(
+            envelope,
+            tenant_id,
+            PREFLIGHT_GENERATION,
+            emitted_at_unix_ms,
+        )?;
+
+        let generation = self
+            .cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+            .map_err(|error| Error::Cache(error.to_string()))?;
+        let record = Self::validated_record(
+            envelope,
+            tenant_id,
             generation.generation,
             emitted_at_unix_ms,
-            envelope.event_type.clone(),
-            envelope.trace_id.clone(),
-        )
-        .map_err(|error| Error::Cache(error.to_string()))?;
+        )?;
         let outcome = self
             .cache
             .invalidations()
@@ -576,6 +599,36 @@ mod tests {
         assert_eq!(
             cache_backend_generation_snapshot(TENANT_CACHE_DATA_BACKEND_PREFIX).unwrap(),
             cache_backend_generation_snapshot(TENANT_CACHE_NEGATIVE_BACKEND_PREFIX).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_envelope_does_not_advance_generation() {
+        let _guard = generation_test_lock().lock().await;
+        bind_tenant_backend_generations().unwrap();
+        let cache = CacheService::from_url(None);
+        let transport = TenantCacheGenerationTransport::new(
+            Arc::new(rustok_core::events::MemoryTransport::with_capacity(8)),
+            cache,
+        );
+        let before = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+            .unwrap()
+            .generation;
+        let mut envelope = tenant_event(DomainEvent::TenantUpdated {
+            tenant_id: Uuid::from_u128(44),
+        });
+        envelope.timestamp =
+            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(-1).unwrap();
+
+        assert!(transport
+            .publish_generation_if_needed(&envelope)
+            .await
+            .is_err());
+        assert_eq!(
+            cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
+                .unwrap()
+                .generation,
+            before
         );
     }
 
