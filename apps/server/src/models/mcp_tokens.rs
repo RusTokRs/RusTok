@@ -44,6 +44,14 @@ impl Entity {
             return Ok(None);
         }
 
+        let policy = mcp_policies::Entity::find_by_client(db, client.id).await?;
+        if policy
+            .as_ref()
+            .is_some_and(|policy| policy.tenant_id != client.tenant_id)
+        {
+            return Ok(None);
+        }
+
         if let Some(delegated_user_id) = client.delegated_user_id {
             let delegated_user = users::Entity::find_by_id(delegated_user_id)
                 .filter(users::Column::TenantId.eq(client.tenant_id))
@@ -53,7 +61,7 @@ impl Entity {
                 return Ok(None);
             };
 
-            if let Some(policy) = mcp_policies::Entity::find_by_client(db, client.id).await? {
+            if let Some(policy) = policy {
                 let authoritative = RbacService::get_user_permissions_authoritative(
                     db,
                     &client.tenant_id,
