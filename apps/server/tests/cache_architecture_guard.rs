@@ -77,15 +77,66 @@ fn stale_refresh_does_not_duplicate_a_foreground_fill() {
 }
 
 #[test]
-fn invalidation_stream_requires_recovery_without_a_seeded_offset() {
+fn invalidation_recovery_is_two_phase_and_monotonic() {
     let invalidation = source("crates/rustok-cache/src/invalidation.rs");
     assert!(
         invalidation.contains("UnverifiedFirst"),
         "unseeded invalidation consumers must not trust the first observed generation"
     );
     assert!(
-        invalidation.contains("pub fn seed("),
-        "gap tracker must support a persisted durable consumer offset"
+        invalidation.contains("pub fn acknowledge_recovery("),
+        "gap recovery must be acknowledged only after clear/rebuild succeeds"
+    );
+    assert!(
+        invalidation.contains("OffsetRegressed"),
+        "durable invalidation offsets must never move backwards"
+    );
+    assert!(
+        invalidation.contains("gap_does_not_advance_until_recovery_is_acknowledged"),
+        "gap tracking must retain regression coverage for failed recovery"
+    );
+}
+
+#[test]
+fn generation_fallback_is_trusted_and_monotonic() {
+    let generation = source("crates/rustok-cache/src/generation.rs");
+    assert!(
+        generation.contains("NoLocalSnapshot"),
+        "Redis generation failure without a trusted local snapshot must fail closed"
+    );
+    assert!(
+        generation.contains("GenerationRegressed"),
+        "shared generation loss must not lower a locally observed generation"
+    );
+}
+
+#[test]
+fn typed_loading_invalidates_raced_incompatible_values() {
+    let typed = source("crates/rustok-cache/src/typed.rs");
+    assert!(
+        typed.contains("incompatible_value_racing_after_initial_probe_is_invalidated"),
+        "typed loading must retain race regression coverage"
+    );
+    assert!(
+        typed.contains("backend.invalidate(&key).await?"),
+        "typed validation failures must propagate shared invalidation failures"
+    );
+}
+
+#[test]
+fn distributed_lease_deadline_is_usable_after_confirmation() {
+    let lease = source("crates/rustok-cache/src/lease.rs");
+    assert!(
+        lease.contains("OperationTimeoutNotLessThanTtl"),
+        "lease operation timeout must remain strictly below lease TTL"
+    );
+    assert!(
+        lease.contains("ExpiredBeforeConfirmation"),
+        "a lease confirmed after its deadline must not be returned as acquired"
+    );
+    assert!(
+        lease.contains("MAX_LEASE_CACHE_KEY_BYTES"),
+        "lease source keys must be bounded before hashing"
     );
 }
 
