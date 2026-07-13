@@ -326,7 +326,7 @@ mod tests {
         let admin_response = app
             .oneshot(
                 Request::builder()
-                    .uri("/admin/dashboard")
+                    .uri("/admin")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -335,14 +335,38 @@ mod tests {
         assert_eq!(admin_response.status(), StatusCode::NOT_FOUND);
     }
 
-    #[cfg(not(feature = "embed-admin"))]
     #[tokio::test]
-    async fn disabled_admin_router_returns_service_unavailable() {
-        let app = build_admin_router();
-        let response = app
+    async fn mount_application_shell_supports_server_with_admin_profile() {
+        let admin_router = AxumRouter::new().route("/dashboard", get(|| async { "admin" }));
+        let app = mount_application_shell(AxumRouter::new(), Some(admin_router), None);
+
+        let admin_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/dashboard")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(admin_response.status(), StatusCode::OK);
+
+        let root_response = app
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
             .await
             .unwrap();
+        assert_eq!(root_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[cfg(not(feature = "embed-admin"))]
+    #[tokio::test]
+    async fn disabled_admin_router_returns_service_unavailable() {
+        let response = build_admin_router()
+            .oneshot(Request::builder().uri("/any").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
