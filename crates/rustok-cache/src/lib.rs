@@ -1,8 +1,13 @@
+mod envelope;
 mod key;
 mod policy;
 mod service;
 mod weighted;
 
+pub use envelope::{
+    CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
+    DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+};
 pub use key::{CacheKeyBuilder, CacheKeyError};
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use service::{
