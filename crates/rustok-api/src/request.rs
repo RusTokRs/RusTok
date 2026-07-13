@@ -5,7 +5,9 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::context::{ChannelContextExtension, ChannelResolutionSource, TenantContextExtension};
+use crate::context::{
+    AuthContextExtension, ChannelContextExtension, ChannelResolutionSource, TenantContextExtension,
+};
 
 const ADMIN_LOCALE_COOKIE: &str = "rustok-admin-locale";
 const MEDUSA_LOCALE_HEADER: &str = "x-medusa-locale";
@@ -56,11 +58,13 @@ where
             })
             .ok_or((StatusCode::BAD_REQUEST, "X-Tenant-ID header required"))?;
 
+        // Never trust a caller-supplied X-User-ID header. The authenticated
+        // middleware owns identity resolution and inserts AuthContextExtension
+        // only after validating the token, tenant, session/app and user state.
         let user_id = parts
-            .headers
-            .get("X-User-ID")
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| Uuid::parse_str(value).ok());
+            .extensions
+            .get::<AuthContextExtension>()
+            .map(|extension| extension.0.user_id);
 
         let locale = parts
             .extensions
@@ -162,8 +166,10 @@ mod tests {
     use tokio::runtime::Runtime;
     use uuid::Uuid;
 
-    use crate::context::{ChannelContext, ChannelContextExtension, ChannelResolutionSource};
-    use crate::context::{TenantContext, TenantContextExtension};
+    use crate::context::{
+        AuthContext, AuthContextExtension, ChannelContext, ChannelContextExtension,
+        ChannelResolutionSource, TenantContext, TenantContextExtension,
+    };
 
     use super::*;
 
@@ -182,6 +188,53 @@ mod tests {
             .expect("request context");
 
         assert_eq!(context.locale, "ru-RU");
+    }
+
+    #[test]
+    fn caller_supplied_user_header_cannot_impersonate_identity() {
+        let spoofed_user_id = Uuid::new_v4();
+        let request = Request::builder()
+            .header("X-Tenant-ID", Uuid::nil().to_string())
+            .header("X-User-ID", spoofed_user_id.to_string())
+            .body(())
+            .expect("request");
+        let (mut parts, _) = request.into_parts();
+
+        let runtime = Runtime::new().expect("tokio runtime");
+        let context = runtime
+            .block_on(RequestContext::from_request_parts(&mut parts, &()))
+            .expect("request context");
+
+        assert_eq!(context.user_id, None);
+        assert!(context.require_user().is_err());
+    }
+
+    #[test]
+    fn authenticated_extension_is_the_only_user_identity_source() {
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let request = Request::builder()
+            .header("X-Tenant-ID", tenant_id.to_string())
+            .body(())
+            .expect("request");
+        let (mut parts, _) = request.into_parts();
+        parts.extensions.insert(AuthContextExtension(AuthContext {
+            user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: Vec::new(),
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }));
+
+        let runtime = Runtime::new().expect("tokio runtime");
+        let context = runtime
+            .block_on(RequestContext::from_request_parts(&mut parts, &()))
+            .expect("request context");
+
+        assert_eq!(context.user_id, Some(user_id));
+        assert_eq!(context.require_user(), Ok(user_id));
     }
 
     #[test]
