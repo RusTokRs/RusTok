@@ -112,43 +112,45 @@ impl CheckoutStagePipeline {
         initial_plan: Option<CheckoutOrderPlanPayload>,
     ) -> CheckoutStagePipelineResult<CheckoutCompletedState> {
         let lease_owner = lease_owner.into();
-        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+        let payment_ready_rank = stage_rank(CheckoutOperationStage::PaymentReady.as_str())?;
+        let payment_captured_rank = stage_rank(CheckoutOperationStage::PaymentCaptured.as_str())?;
+        let fulfillment_created_rank =
+            stage_rank(CheckoutOperationStage::FulfillmentCreated.as_str())?;
 
-        let payment_ready = match stage_rank(operation.stage.as_str())? {
-            rank if rank <= stage_rank(CheckoutOperationStage::PaymentReady.as_str())? => {
-                self.order_stage
-                    .advance_to_payment_ready(
-                        tenant_id,
-                        actor_id,
-                        operation_id,
-                        lease_owner.clone(),
-                        snapshot,
-                        initial_plan,
-                    )
-                    .await?
-            }
-            _ => self.load_payment_ready_state(tenant_id, operation_id).await?,
+        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+        let payment_ready = if stage_rank(operation.stage.as_str())? <= payment_ready_rank {
+            self.order_stage
+                .advance_to_payment_ready(
+                    tenant_id,
+                    actor_id,
+                    operation_id,
+                    lease_owner.clone(),
+                    snapshot,
+                    initial_plan,
+                )
+                .await?
+        } else {
+            self.load_payment_ready_state(tenant_id, operation_id).await?
         };
 
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
-        let payment_captured = match stage_rank(operation.stage.as_str())? {
-            rank if rank <= stage_rank(CheckoutOperationStage::PaymentCaptured.as_str())? => {
-                self.payment_stage
-                    .advance_to_payment_captured(
-                        tenant_id,
-                        operation_id,
-                        lease_owner.clone(),
-                        payment_ready.order,
-                        payment_ready.plan,
-                    )
-                    .await?
-            }
-            _ => self.load_payment_captured_state(tenant_id, operation_id).await?,
+        let payment_captured = if stage_rank(operation.stage.as_str())? <= payment_captured_rank {
+            self.payment_stage
+                .advance_to_payment_captured(
+                    tenant_id,
+                    operation_id,
+                    lease_owner.clone(),
+                    payment_ready.order,
+                    payment_ready.plan,
+                )
+                .await?
+        } else {
+            self.load_payment_captured_state(tenant_id, operation_id).await?
         };
 
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
-        let fulfillment_created = match stage_rank(operation.stage.as_str())? {
-            rank if rank <= stage_rank(CheckoutOperationStage::FulfillmentCreated.as_str())? => {
+        let fulfillment_created =
+            if stage_rank(operation.stage.as_str())? <= fulfillment_created_rank {
                 self.fulfillment_stage
                     .advance_to_fulfillment_created(
                         tenant_id,
@@ -157,11 +159,10 @@ impl CheckoutStagePipeline {
                         payment_captured,
                     )
                     .await?
-            }
-            _ => self
-                .load_fulfillment_created_state(tenant_id, operation_id)
-                .await?,
-        };
+            } else {
+                self.load_fulfillment_created_state(tenant_id, operation_id)
+                    .await?
+            };
 
         self.finalization
             .complete(tenant_id, actor_id, lease_owner, fulfillment_created)
@@ -230,6 +231,7 @@ impl CheckoutStagePipeline {
         operation_id: Uuid,
     ) -> CheckoutStagePipelineResult<CheckoutFulfillmentCreatedState> {
         let captured = self.load_payment_captured_state(tenant_id, operation_id).await?;
+        let operation_id_text = operation_id.to_string();
         let fulfillments = self
             .fulfillment_service
             .list_by_order(tenant_id, captured.order.id, 500, 0)
@@ -241,7 +243,7 @@ impl CheckoutStagePipeline {
                     .get("checkout")
                     .and_then(|checkout| checkout.get("operation_id"))
                     .and_then(Value::as_str)
-                    == Some(operation_id.to_string().as_str())
+                    == Some(operation_id_text.as_str())
             })
             .collect::<Vec<_>>();
         validate_loaded_fulfillments(&captured.plan, &fulfillments)?;
