@@ -1,4 +1,7 @@
-use fly::{FlyEditor, GrapesJsV1Codec, ProjectHash, RegistrySet, ValidationReport};
+use fly::{
+    EditorCommand, FlyEditor, GrapesJsV1Codec, ProjectFragment, ProjectHash, RegistrySet,
+    ValidationReport,
+};
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderContractMetadata, PublishPageBuilderInput,
@@ -11,6 +14,7 @@ pub struct AdminCanvasController {
     revision_id: String,
     editor: FlyEditor,
     ui: FlyUiStateMachine,
+    clipboard: Option<ProjectFragment>,
 }
 
 impl AdminCanvasController {
@@ -30,6 +34,7 @@ impl AdminCanvasController {
             revision_id: revision_id.into(),
             editor,
             ui: FlyUiStateMachine::new(Presentation::Full),
+            clipboard: None,
         };
         let report = controller.editor.validate();
         controller.synchronize(report);
@@ -58,6 +63,10 @@ impl AdminCanvasController {
 
     pub fn can_redo(&self) -> bool {
         self.editor.history().can_redo()
+    }
+
+    pub fn has_clipboard(&self) -> bool {
+        self.clipboard.is_some()
     }
 
     pub fn dispatch(
@@ -98,6 +107,28 @@ impl AdminCanvasController {
                     }
                     Err(error) => Err(error.into()),
                 },
+                UiEffect::CopySelection => {
+                    self.copy_selection()?;
+                    outgoing.push(AdminCanvasEffect::Announce(
+                        "Component copied".to_string(),
+                    ));
+                    Ok(())
+                }
+                UiEffect::CutSelection => {
+                    self.cut_selection()?;
+                    outgoing.push(AdminCanvasEffect::Announce(
+                        "Component cut".to_string(),
+                    ));
+                    Ok(())
+                }
+                UiEffect::PasteClipboard => {
+                    let inserted = self.paste_clipboard()?;
+                    outgoing.push(AdminCanvasEffect::Announce(format!(
+                        "Pasted {} component(s)",
+                        inserted.len()
+                    )));
+                    Ok(())
+                }
                 UiEffect::Persist {
                     expected_hash,
                     command_sequence,
@@ -172,6 +203,124 @@ impl AdminCanvasController {
         Ok(())
     }
 
+    fn copy_selection(&mut self) -> Result<(), AdminCanvasError> {
+        let component_id = self
+            .editor
+            .selection()
+            .ok_or_else(|| AdminCanvasError::Authoring("no component is selected".to_string()))?;
+        let location = self
+            .editor
+            .document()
+            .component_location(component_id)
+            .ok_or_else(|| AdminCanvasError::Authoring("selected component has no location".to_string()))?;
+        if location.depth == 0 {
+            return Err(AdminCanvasError::Authoring(
+                "the page root cannot be copied into the internal clipboard".to_string(),
+            ));
+        }
+        self.clipboard = Some(ProjectFragment::from_component(
+            self.editor.document(),
+            component_id,
+        )?);
+        Ok(())
+    }
+
+    fn cut_selection(&mut self) -> Result<(), AdminCanvasError> {
+        self.copy_selection()?;
+        let component_id = self
+            .editor
+            .selection()
+            .ok_or_else(|| AdminCanvasError::Authoring("no component is selected".to_string()))?
+            .to_string();
+        let report = self.editor.apply(EditorCommand::Remove { component_id })?;
+        self.synchronize(report);
+        Ok(())
+    }
+
+    fn paste_clipboard(&mut self) -> Result<Vec<String>, AdminCanvasError> {
+        let fragment = self.clipboard.clone().ok_or_else(|| {
+            AdminCanvasError::Authoring("the internal clipboard is empty".to_string())
+        })?;
+        let component_types = fragment
+            .components
+            .iter()
+            .map(|component| {
+                component
+                    .as_object()
+                    .map(|component| component.component_type().to_string())
+                    .ok_or_else(|| {
+                        AdminCanvasError::Authoring(
+                            "opaque clipboard components cannot be pasted interactively"
+                                .to_string(),
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let first_type = component_types.first().ok_or_else(|| {
+            AdminCanvasError::Authoring("the internal clipboard has no components".to_string())
+        })?;
+        let (parent_id, index) = self.insertion_target(first_type)?;
+        for (offset, component_type) in component_types.iter().enumerate() {
+            let decision = self.editor.registries().evaluate_placement(
+                self.editor.document(),
+                None,
+                component_type,
+                parent_id.as_deref(),
+                index.saturating_add(offset),
+            );
+            if !decision.legal {
+                return Err(AdminCanvasError::Authoring(
+                    decision
+                        .reason
+                        .unwrap_or_else(|| "clipboard placement was rejected".to_string()),
+                ));
+            }
+        }
+
+        let inserted = fragment.insert(&mut self.editor, parent_id, index)?;
+        if let Some(component_id) = inserted.first() {
+            self.editor.apply(EditorCommand::Select {
+                component_id: Some(component_id.clone()),
+            })?;
+        }
+        let report = self.editor.validate();
+        self.synchronize(report);
+        Ok(inserted)
+    }
+
+    fn insertion_target(&self, child_type: &str) -> Result<(Option<String>, usize), AdminCanvasError> {
+        let document = self.editor.document();
+        let registries = self.editor.registries();
+        let target = match self.ui.state.selection.component_id.as_deref() {
+            Some(selected_id) => {
+                let selected = document.component(selected_id).ok_or_else(|| {
+                    AdminCanvasError::Authoring(format!(
+                        "selected component `{selected_id}` does not exist"
+                    ))
+                })?;
+                if registries.accepts_child_type(Some(selected.component_type()), child_type) {
+                    (Some(selected_id.to_string()), selected.children().len())
+                } else {
+                    let location = document.component_location(selected_id).ok_or_else(|| {
+                        AdminCanvasError::Authoring(format!(
+                            "selected component `{selected_id}` has no location"
+                        ))
+                    })?;
+                    if location.depth == 0 {
+                        (None, document.root_child_count().unwrap_or_default())
+                    } else {
+                        (
+                            location.parent_component_id,
+                            location.index.saturating_add(1),
+                        )
+                    }
+                }
+            }
+            None => (None, document.root_child_count().unwrap_or_default()),
+        };
+        Ok(target)
+    }
+
     fn synchronize(&mut self, report: ValidationReport) {
         self.ui.state.selection.component_id =
             self.editor.selection().map(ToString::to_string);
@@ -205,6 +354,8 @@ pub enum AdminCanvasEffect {
 pub enum AdminCanvasError {
     #[error("page id must not be empty")]
     InvalidPageId,
+    #[error("{0}")]
+    Authoring(String),
     #[error(transparent)]
     Fly(#[from] fly::FlyError),
     #[error(transparent)]
@@ -230,7 +381,11 @@ mod tests {
                         "components": [{
                             "id": "hero",
                             "type": "section",
-                            "components": []
+                            "components": [{
+                                "id": "copy-me",
+                                "type": "text",
+                                "content": "Hello"
+                            }]
                         }]
                     }
                 }]
@@ -325,5 +480,28 @@ mod tests {
             .is_err());
         assert!(controller.ui().state.dirty.dirty);
         assert_eq!(controller.revision_id(), "rev-1");
+    }
+
+    #[test]
+    fn copy_cut_and_paste_use_internal_fragment_with_new_ids() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::Select(Some("copy-me".to_string())))
+            .expect("select");
+        controller
+            .dispatch(UiIntent::CopySelection)
+            .expect("copy");
+        assert!(controller.has_clipboard());
+        controller
+            .dispatch(UiIntent::PasteClipboard)
+            .expect("paste");
+        let selected = controller.editor().selection().expect("pasted selection");
+        assert_ne!(selected, "copy-me");
+        assert!(selected.starts_with("paste"));
+
+        controller
+            .dispatch(UiIntent::CutSelection)
+            .expect("cut pasted component");
+        assert!(!controller.editor().document().contains_component(selected));
     }
 }
