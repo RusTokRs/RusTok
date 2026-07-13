@@ -4,6 +4,7 @@ mod canvas_document;
 mod canvas_protocol;
 mod isolated_canvas;
 mod modular_canvas;
+mod page_manager;
 mod palette_layers;
 mod properties_assets;
 mod resize_handles;
@@ -21,6 +22,7 @@ pub(crate) use canvas_protocol::{
     decode_canvas_message, CanvasBridgeMessage, CanvasComponentGeometry,
 };
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
+pub(crate) use page_manager::PageManagerPanel;
 pub(crate) use palette_layers::PaletteLayersPanel;
 pub(crate) use properties_assets::PropertiesAssetsPanel;
 pub(crate) use resize_handles::ResizeHandles;
