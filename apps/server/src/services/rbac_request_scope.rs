@@ -4,7 +4,7 @@ use rustok_api::Permission;
 use rustok_core::UserRole;
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RbacRequestScope {
     pub tenant_id: Uuid,
     pub actor_id: Uuid,
@@ -113,5 +113,32 @@ mod tests {
         .await;
 
         assert!(permissions_for(&tenant_id, &actor_id).is_none());
+    }
+
+    #[test]
+    fn snapshots_detect_permission_or_role_drift() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let baseline = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_READ],
+            UserRole::Admin,
+        );
+        let changed_permissions = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_LIST],
+            UserRole::Admin,
+        );
+        let changed_role = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_READ],
+            UserRole::Manager,
+        );
+
+        assert_ne!(baseline, changed_permissions);
+        assert_ne!(baseline, changed_role);
     }
 }
