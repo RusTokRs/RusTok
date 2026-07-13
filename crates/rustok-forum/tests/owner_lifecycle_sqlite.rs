@@ -83,7 +83,7 @@ async fn owner_reply_commands_enforce_lock_moderation_and_soft_delete() {
     assert_eq!(event_count(&db, "forum.topic.replied").await, 1);
 
     service
-        .delete(tenant_id, pending.id, owner)
+        .delete(tenant_id, pending.id, owner.clone())
         .await
         .expect("owner should soft-delete reply explicitly");
     assert_eq!(reply_status(&db, pending.id).await, "deleted");
@@ -92,6 +92,12 @@ async fn owner_reply_commands_enforce_lock_moderation_and_soft_delete() {
     assert_eq!(reply_revision_count(&db, pending.id).await, 1);
     assert_eq!(topic_reply_count(&db, moderated_topic_id).await, 0);
     assert_eq!(category_reply_count(&db, category_id).await, 0);
+
+    let repeated = service
+        .delete(tenant_id, pending.id, owner)
+        .await
+        .expect_err("repeated reply deletion must return a typed error");
+    assert!(matches!(repeated, ForumError::ReplyDeleted));
 }
 
 #[tokio::test]
@@ -126,8 +132,9 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
     assert_eq!(reply.status, "approved");
     assert_eq!(topic_reply_count(&db, topic_id).await, 1);
 
-    TopicService::new(db.clone(), event_bus(db.clone()))
-        .delete(tenant_id, topic_id, owner)
+    let service = TopicService::new(db.clone(), event_bus(db.clone()));
+    service
+        .delete(tenant_id, topic_id, owner.clone())
         .await
         .expect("owner should explicitly soft-delete topic thread");
 
@@ -142,6 +149,12 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
     assert_eq!(reply_revision_count(&db, reply.id).await, 1);
     assert_eq!(category_topic_count(&db, category_id).await, 0);
     assert_eq!(category_reply_count(&db, category_id).await, 0);
+
+    let repeated = service
+        .delete(tenant_id, topic_id, owner)
+        .await
+        .expect_err("repeated topic deletion must return a typed error");
+    assert!(matches!(repeated, ForumError::TopicDeleted));
 }
 
 fn reply_input(content: &str) -> CreateReplyInput {
