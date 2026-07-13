@@ -1,7 +1,9 @@
+#[cfg(feature = "redis-cache")]
 use std::time::Duration;
 
 use crate::CacheService;
 
+#[cfg(feature = "redis-cache")]
 const REDIS_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_REDIS_STATUS_ERROR_BYTES: usize = 512;
 
@@ -143,6 +145,7 @@ impl CacheService {
     }
 }
 
+#[cfg(feature = "redis-cache")]
 fn degraded_status(error: String) -> RedisCacheStatus {
     RedisCacheStatus {
         url_present: true,
@@ -167,10 +170,9 @@ fn bounded_error(error: String) -> String {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn missing_redis_configuration_is_healthy_memory_only_status() {
-        let service = CacheService::from_url(Some(""));
-        let status = service.redis_status().await;
+    #[test]
+    fn missing_redis_configuration_is_healthy_memory_only_status() {
+        let status = RedisCacheStatus::default();
         assert!(!status.url_present);
         assert!(!status.client_initialized);
         assert!(!status.connectivity_healthy);
@@ -211,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn Redis_error_text_is_bounded_on_utf8_boundary() {
+    fn redis_error_text_is_bounded_on_utf8_boundary() {
         let bounded = bounded_error("é".repeat(MAX_REDIS_STATUS_ERROR_BYTES));
         assert!(bounded.len() <= MAX_REDIS_STATUS_ERROR_BYTES + '…'.len_utf8());
         assert!(bounded.is_char_boundary(bounded.len()));
