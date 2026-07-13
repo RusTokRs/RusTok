@@ -77,13 +77,30 @@ static RBAC_ENGINE_DECISIONS_POLICY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_SAMPLES: AtomicU64 = AtomicU64::new(0);
 
+const RBAC_PERMISSION_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
+
 static USER_PERMISSION_CACHE: Lazy<Cache<(uuid::Uuid, uuid::Uuid), Vec<Permission>>> =
     Lazy::new(|| {
         Cache::builder()
-            .max_capacity(20_000)
+            .weigher(permission_cache_entry_weight)
+            .max_capacity(RBAC_PERMISSION_CACHE_MAX_WEIGHT_BYTES)
             .time_to_live(Duration::from_secs(60))
             .build()
     });
+
+fn permission_cache_entry_weight(
+    _key: &(uuid::Uuid, uuid::Uuid),
+    permissions: &Vec<Permission>,
+) -> u32 {
+    let weight = std::mem::size_of::<(uuid::Uuid, uuid::Uuid)>()
+        .saturating_add(std::mem::size_of::<Vec<Permission>>())
+        .saturating_add(
+            permissions
+                .len()
+                .saturating_mul(std::mem::size_of::<Permission>()),
+        );
+    weight.clamp(1, u32::MAX as usize) as u32
+}
 
 pub(crate) async fn invalidate_user_permissions_cache(
     tenant_id: &uuid::Uuid,
@@ -385,5 +402,26 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
         role: UserRole,
     ) -> Result<()> {
         remove_user_role_assignment_via_store(&self.db, user_id, tenant_id, role).await
+    }
+}
+
+#[cfg(test)]
+mod cache_weight_tests {
+    use super::*;
+
+    #[test]
+    fn permission_cache_weight_grows_with_permission_count() {
+        let key = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+        let one = permission_cache_entry_weight(
+            &key,
+            &vec![Permission::new(Resource::Users, Action::Read)],
+        );
+        let many = permission_cache_entry_weight(
+            &key,
+            &vec![Permission::new(Resource::Users, Action::Read); 32],
+        );
+
+        assert!(many > one);
+        assert!(one as usize >= std::mem::size_of::<(uuid::Uuid, uuid::Uuid)>());
     }
 }
