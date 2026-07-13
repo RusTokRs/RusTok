@@ -1,8 +1,10 @@
 use rust_decimal::Decimal;
 use rustok_payment::dto::CreatePaymentCollectionInput;
+use rustok_payment::entities::payment_collection;
 use rustok_payment::error::PaymentError;
 use rustok_payment::services::PaymentService;
 use rustok_test_utils::db::setup_test_db;
+use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -108,5 +110,48 @@ async fn duplicate_active_cart_insert_rejects_incompatible_amount() {
     assert!(
         matches!(error, PaymentError::Validation(ref message) if message.contains("has amount")),
         "expected amount validation error, got {error:?}"
+    );
+}
+
+#[tokio::test]
+async fn database_rejects_rebinding_collection_to_another_order() {
+    let db = setup_test_db().await;
+    support::ensure_payment_schema(&db).await;
+    let service = PaymentService::new(db.clone());
+    let tenant_id = Uuid::new_v4();
+    let cart_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    let first_order_id = Uuid::new_v4();
+    let second_order_id = Uuid::new_v4();
+
+    let collection = service
+        .create_collection(
+            tenant_id,
+            collection_input(
+                cart_id,
+                customer_id,
+                Some(first_order_id),
+                "49.99",
+            ),
+        )
+        .await
+        .expect("collection should be created with an order binding");
+    let model = payment_collection::Entity::find_by_id(collection.id)
+        .one(&db)
+        .await
+        .expect("collection query should succeed")
+        .expect("collection should exist");
+    let mut active: payment_collection::ActiveModel = model.into();
+    active.order_id = Set(Some(second_order_id));
+
+    let error = active
+        .update(&db)
+        .await
+        .expect_err("database must reject order rebinding");
+    assert!(
+        error
+            .to_string()
+            .contains("payment collection order binding is immutable"),
+        "unexpected database error: {error}"
     );
 }
