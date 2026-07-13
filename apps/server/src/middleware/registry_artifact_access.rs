@@ -24,8 +24,9 @@ const ARTIFACT_DISPOSITION: &str = "attachment";
 /// A user may download an unpublished artifact only when they created/publish
 /// the request, own its module slug, or hold request-effective
 /// `modules:manage`. Remote runners retain their separate host-token path.
-/// Upload content type is normalized so an artifact can never be served as
-/// active same-origin HTML/SVG content.
+/// Downloads are streamed through this boundary instead of redirecting to
+/// storage, so even legacy objects with unsafe metadata are delivered only as
+/// an opaque attachment.
 pub async fn enforce(
     State(ctx): State<ServerRuntimeContext>,
     mut request: Request<Body>,
@@ -49,6 +50,18 @@ pub async fn enforce(
         return next.run(request).await;
     }
 
+    let publish_request = match registry_publish_request::Entity::find_by_id(request_id)
+        .one(ctx.db())
+        .await
+    {
+        Ok(Some(request)) => request,
+        Ok(None) => return not_found("Registry publish request was not found"),
+        Err(error) => {
+            tracing::error!(%error, "Failed to load registry publish request for artifact authorization");
+            return internal_error("Failed to authorize registry artifact download");
+        }
+    };
+
     if !runner_token_is_valid(&ctx, &request) {
         let auth = match request.extensions().get::<AuthContextExtension>() {
             Some(extension) => &extension.0,
@@ -58,17 +71,6 @@ pub async fn enforce(
             return forbidden("Registry artifact download requires a user session");
         }
 
-        let publish_request = match registry_publish_request::Entity::find_by_id(request_id)
-            .one(ctx.db())
-            .await
-        {
-            Ok(Some(request)) => request,
-            Ok(None) => return not_found("Registry publish request was not found"),
-            Err(error) => {
-                tracing::error!(%error, "Failed to load registry publish request for artifact authorization");
-                return internal_error("Failed to authorize registry artifact download");
-            }
-        };
         let owner = match registry_module_owner::Entity::find_by_id(publish_request.slug.clone())
             .one(ctx.db())
             .await
@@ -99,24 +101,34 @@ pub async fn enforce(
         }
     }
 
-    let mut response = next.run(request).await;
-    if response.status().is_success() || response.status().is_redirection() {
-        response.headers_mut().insert(
-            header::CONTENT_DISPOSITION,
-            HeaderValue::from_static(ARTIFACT_DISPOSITION),
-        );
-        response.headers_mut().insert(
-            header::X_CONTENT_TYPE_OPTIONS,
-            HeaderValue::from_static("nosniff"),
-        );
-        if response.status().is_success() {
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(ARTIFACT_CONTENT_TYPE),
-            );
+    let Some(storage_key) = publish_request.artifact_storage_key.as_deref() else {
+        return not_found("Registry publish artifact was not uploaded");
+    };
+    let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() else {
+        return internal_error("Registry artifact storage is unavailable");
+    };
+    let bytes = match storage.read(storage_key).await {
+        Ok(bytes) => bytes,
+        Err(rustok_storage::StorageError::NotFound(_)) => {
+            return not_found("Registry publish artifact was not found")
         }
-    }
-    response
+        Err(error) => {
+            tracing::error!(%error, request_id = %publish_request.id, "Failed to read registry artifact");
+            return internal_error("Failed to read registry publish artifact");
+        }
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, ARTIFACT_CONTENT_TYPE)
+        .header(header::CONTENT_DISPOSITION, ARTIFACT_DISPOSITION)
+        .header(header::CACHE_CONTROL, "private, no-store")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .body(Body::from(bytes))
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, "Failed to build registry artifact response");
+            internal_error("Failed to build registry artifact response")
+        })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
