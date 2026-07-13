@@ -76,8 +76,8 @@ impl AtomicCartCheckoutHandle {
     }
 
     /// Prepares the cart once for this request. A retry may adopt an existing
-    /// `checking_out` lock only when the durable operation has already executed
-    /// at least once.
+    /// `checking_out` or `completed` state only when the durable operation has
+    /// already executed at least once.
     pub async fn prepare(
         &self,
         tenant_id: Uuid,
@@ -94,7 +94,12 @@ impl AtomicCartCheckoutHandle {
         {
             Ok(cart) => cart,
             Err(CartError::InvalidTransition { from, .. })
-                if allow_existing_lock && from == CartStatus::CheckingOut.as_str() =>
+                if allow_existing_lock
+                    && matches!(
+                        from.as_str(),
+                        status if status == CartStatus::CheckingOut.as_str()
+                            || status == CartStatus::Completed.as_str()
+                    ) =>
             {
                 self.service
                     .get_cart(tenant_id, self.prepare_request.cart_id)
@@ -104,7 +109,11 @@ impl AtomicCartCheckoutHandle {
             Err(error) => return Err(cart_error_to_port_error(error)),
         };
 
-        if cart.status != CartStatus::CheckingOut.as_str() {
+        if !matches!(
+            cart.status.as_str(),
+            status if status == CartStatus::CheckingOut.as_str()
+                || status == CartStatus::Completed.as_str()
+        ) {
             return Err(PortError::conflict(
                 "cart.checkout_not_locked",
                 format!(
@@ -121,7 +130,9 @@ impl AtomicCartCheckoutHandle {
                 self.prepare_request.clone(),
             )
             .await?;
-        store_snapshot(&self.prepared_state, snapshot.clone())?;
+        if cart.status == CartStatus::CheckingOut.as_str() {
+            store_snapshot(&self.prepared_state, snapshot.clone())?;
+        }
         Ok(snapshot)
     }
 }
