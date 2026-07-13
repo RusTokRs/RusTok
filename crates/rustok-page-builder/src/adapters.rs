@@ -21,6 +21,11 @@ use async_trait::async_trait;
 #[cfg(feature = "server")]
 use rustok_api::PortContext;
 
+#[cfg(feature = "server")]
+pub mod fly_service;
+#[cfg(feature = "server")]
+pub use fly_service::FlyAdapterBackedPageBuilderService;
+
 /// Decoded Fly view of a canonical `grapesjs_v1` project.
 ///
 /// The inspection keeps the original lossless Fly document and its validation report together so
