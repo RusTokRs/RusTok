@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::entities::provider_operation;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use crate::providers::FulfillmentProviderOperationResult;
 
 use super::provider_operation::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
@@ -154,6 +155,53 @@ impl FulfillmentProviderOperationRecovery {
                 "provider_result must be a JSON object".to_string(),
             ));
         }
+        let existing = self.get(tenant_id, operation_id).await?;
+        if existing.status != PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            || existing.provider_result.is_some()
+        {
+            return Err(FulfillmentError::Validation(format!(
+                "fulfillment provider operation {operation_id} is not an unresolved unknown execution for tenant {tenant_id}"
+            )));
+        }
+        let typed_result: FulfillmentProviderOperationResult =
+            serde_json::from_value(provider_result).map_err(|error| {
+                FulfillmentError::Validation(format!(
+                    "provider_result does not match the fulfillment provider contract: {error}"
+                ))
+            })?;
+        if typed_result.provider_id != existing.provider_id {
+            return Err(FulfillmentError::Validation(format!(
+                "provider_result provider_id `{}` does not match journal provider `{}`",
+                typed_result.provider_id, existing.provider_id
+            )));
+        }
+        validate_optional_boundary_text(
+            "external_reference",
+            typed_result.external_reference.as_deref(),
+            191,
+        )?;
+        validate_optional_boundary_text(
+            "tracking_number",
+            typed_result.tracking_number.as_deref(),
+            191,
+        )?;
+        let result_reference = normalize_optional(typed_result.external_reference.clone());
+        let supplied_reference = normalize_optional(provider_reference);
+        if let (Some(supplied), Some(result)) = (&supplied_reference, &result_reference) {
+            if supplied != result {
+                return Err(FulfillmentError::Validation(
+                    "provider_reference does not match provider_result.external_reference"
+                        .to_string(),
+                ));
+            }
+        }
+        let provider_reference = supplied_reference.or(result_reference);
+        let canonical_result = serde_json::to_value(typed_result).map_err(|error| {
+            FulfillmentError::Validation(format!(
+                "failed to canonicalize fulfillment provider result: {error}"
+            ))
+        })?;
+
         let result = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -161,11 +209,11 @@ impl FulfillmentProviderOperationRecovery {
             )
             .col_expr(
                 provider_operation::Column::ProviderReference,
-                Expr::value(normalize_optional(provider_reference)),
+                Expr::value(provider_reference),
             )
             .col_expr(
                 provider_operation::Column::ProviderResult,
-                Expr::value(provider_result),
+                Expr::value(canonical_result),
             )
             .col_expr(
                 provider_operation::Column::ErrorMessage,
@@ -190,7 +238,7 @@ impl FulfillmentProviderOperationRecovery {
             .await?;
         if result.rows_affected != 1 {
             return Err(FulfillmentError::Validation(format!(
-                "fulfillment provider operation {operation_id} is not an unresolved unknown execution for tenant {tenant_id}"
+                "fulfillment provider operation {operation_id} changed while it was being reconciled"
             )));
         }
         self.get(tenant_id, operation_id).await
@@ -211,6 +259,21 @@ impl FulfillmentProviderOperationRecovery {
                 ))
             })
     }
+}
+
+fn validate_optional_boundary_text(
+    field: &str,
+    value: Option<&str>,
+    max: usize,
+) -> FulfillmentResult<()> {
+    if let Some(value) = value {
+        if value.trim().is_empty() || value.len() > max {
+            return Err(FulfillmentError::Validation(format!(
+                "{field} must be non-empty and at most {max} characters when provided"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
