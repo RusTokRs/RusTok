@@ -1,5 +1,5 @@
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
-use fly::ProjectHash;
+use fly::{ProjectHash, TraitSchemaRegistry};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -13,6 +13,7 @@ pub struct AdminEditorRuntime {
     pub controller: RwSignal<AdminCanvasController>,
     pub last_error: RwSignal<Option<String>>,
     pub last_announcement: RwSignal<Option<String>>,
+    pub trait_schemas: Arc<TraitSchemaRegistry>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
@@ -31,11 +32,17 @@ impl AdminEditorRuntime {
             controller: RwSignal::new(controller),
             last_error: RwSignal::new(None),
             last_announcement: RwSignal::new(None),
+            trait_schemas: Arc::new(TraitSchemaRegistry::with_builtins()),
             facade,
             on_request,
             facade_missing: facade_missing.into(),
             save_succeeded: save_succeeded.into(),
         }
+    }
+
+    pub fn with_trait_schemas(mut self, trait_schemas: Arc<TraitSchemaRegistry>) -> Self {
+        self.trait_schemas = trait_schemas;
+        self
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
