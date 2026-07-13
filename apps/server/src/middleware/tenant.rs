@@ -5,9 +5,10 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-#[cfg(feature = "redis-cache")]
-use redis::AsyncCommands;
-use rustok_cache::{CacheInvalidationMessage, CacheLoadSource, CacheService};
+use rustok_cache::{
+    CacheEnvelope, CacheInvalidationMessage, CacheKeyBuilder as CanonicalCacheKeyBuilder,
+    CacheLoadPolicy, CacheLoadSource, CacheService, CacheTtlPolicy, NegativeCachePolicy,
+};
 use rustok_core::tenant_validation::TenantIdentifierValidator;
 #[cfg(feature = "redis-cache")]
 use rustok_core::EventConsumerRuntime;
@@ -18,7 +19,7 @@ use rustok_tenant::{
 };
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -30,11 +31,20 @@ use crate::common::{
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-const TENANT_CACHE_VERSION: &str = "v1";
+const TENANT_CACHE_VERSION: &str = "v2";
+const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 1;
+const TENANT_NEGATIVE_SCHEMA_VERSION: u32 = 1;
 const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
-const TENANT_CACHE_MAX_CAPACITY: u64 = 1_000;
+const TENANT_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
+const TENANT_NEGATIVE_CACHE_MAX_WEIGHT_BYTES: u64 = 1024 * 1024;
+const TENANT_CACHE_MAX_ENCODED_BYTES: usize = 1024 * 1024;
+const TENANT_NEGATIVE_MAX_ENCODED_BYTES: usize = 64 * 1024;
+const TENANT_CACHE_LOADER_TIMEOUT: Duration = Duration::from_secs(10);
+const TENANT_CACHE_JITTER_PERCENT: u8 = 10;
+#[cfg(feature = "redis-cache")]
+const TENANT_CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(feature = "redis-cache")]
 const TENANT_INVALIDATION_RETRY_DELAY: Duration = Duration::from_secs(5);
 
@@ -114,7 +124,7 @@ fn tenant_read_context(identifier: &ResolvedTenantIdentifier) -> PortContext {
             identifier.value
         ),
     )
-    .with_deadline(TENANT_CACHE_TTL)
+    .with_deadline(TENANT_CACHE_LOADER_TIMEOUT)
 }
 
 fn tenant_port_error_to_core_error(error: PortError) -> CoreError {
@@ -137,6 +147,8 @@ pub struct TenantCacheInfrastructure {
     tenant_negative_cache: Arc<dyn CacheBackend>,
     metrics: Arc<TenantCacheMetricsStore>,
     key_builder: TenantCacheKeyBuilder,
+    load_policy: CacheLoadPolicy,
+    negative_policy: NegativeCachePolicy,
     invalidation_publisher: Arc<TenantInvalidationPublisher>,
     invalidation_listener_state: Arc<TenantInvalidationListenerState>,
     cache_service: CacheService,
@@ -153,30 +165,43 @@ impl TenantCacheKeyBuilder {
     }
 
     fn tenant_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        format!("tenant:{}:{}:{}", self.version, kind.as_str(), value)
+        self.build("resolution", kind, value)
     }
 
     fn negative_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        format!(
-            "tenant_negative:{}:{}:{}",
-            self.version,
-            kind.as_str(),
-            value
-        )
+        self.build("negative", kind, value)
     }
 
     fn kind_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        match kind {
-            TenantIdentifierKind::Host => self.tenant_key(kind, &value.to_lowercase()),
-            _ => self.tenant_key(kind, value),
-        }
+        self.tenant_key(kind, normalize_identifier_value(kind, value).as_str())
     }
 
     fn kind_negative_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        match kind {
-            TenantIdentifierKind::Host => self.negative_key(kind, &value.to_lowercase()),
-            _ => self.negative_key(kind, value),
-        }
+        self.negative_key(kind, normalize_identifier_value(kind, value).as_str())
+    }
+
+    fn build(&self, resource: &str, kind: TenantIdentifierKind, value: &str) -> String {
+        CanonicalCacheKeyBuilder::new(
+            "rustok-server",
+            "runtime",
+            "global",
+            "tenant",
+            self.version,
+            resource,
+        )
+        .expect("tenant cache fixed key components are valid")
+        .named_identity("kind", kind.as_str())
+        .expect("tenant identifier kind is non-empty")
+        .named_identity("value", value)
+        .expect("validated tenant identifier is non-empty")
+        .build()
+    }
+}
+
+fn normalize_identifier_value(kind: TenantIdentifierKind, value: &str) -> String {
+    match kind {
+        TenantIdentifierKind::Host => value.to_lowercase(),
+        _ => value.to_string(),
     }
 }
 
@@ -196,20 +221,26 @@ struct TenantInvalidationPublisher {
 }
 
 impl TenantInvalidationPublisher {
-    fn new(_cache_service: &CacheService) -> Self {
+    fn new(cache_service: &CacheService) -> Self {
         Self {
-            cache_service: _cache_service.clone(),
+            cache_service: cache_service.clone(),
         }
     }
 
-    async fn publish(&self, _cache_key: &str) {
-        let _ = self
+    async fn publish(&self, cache_key: &str) {
+        let outcome = self
             .cache_service
             .publish_invalidation(CacheInvalidationMessage::new(
                 TENANT_INVALIDATION_CHANNEL,
-                _cache_key,
+                cache_key,
             ))
             .await;
+        if self.cache_service.has_redis() && !outcome.redis_published {
+            tracing::warn!(
+                channel = TENANT_INVALIDATION_CHANNEL,
+                "Tenant cache invalidation was not published to Redis"
+            );
+        }
     }
 }
 
@@ -321,7 +352,7 @@ impl TenantInvalidationListenerState {
 }
 
 impl TenantCacheMetricsStore {
-    fn new(_cache_service: &CacheService) -> Self {
+    fn new(cache_service: &CacheService) -> Self {
         Self {
             local_hits: Arc::new(AtomicU64::new(0)),
             local_misses: Arc::new(AtomicU64::new(0)),
@@ -330,18 +361,29 @@ impl TenantCacheMetricsStore {
             local_negative_inserts: Arc::new(AtomicU64::new(0)),
             coalesced_requests: Arc::new(AtomicU64::new(0)),
             #[cfg(feature = "redis-cache")]
-            redis_client: _cache_service.redis_client().cloned(),
+            redis_client: cache_service.redis_client().cloned(),
         }
     }
 
-    async fn incr(&self, _key: &str, local: &AtomicU64) {
+    async fn incr(&self, key: &str, local: &AtomicU64) {
         local.fetch_add(1, Ordering::Relaxed);
 
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
-            if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                let redis_key = format!("tenant_metrics:{}:{_key}", TENANT_CACHE_VERSION);
-                let _: redis::RedisResult<u64> = conn.incr(redis_key, 1).await;
+            let result = tenant_cache_redis_timeout(
+                "metrics connection",
+                client.get_multiplexed_async_connection(),
+            )
+            .await;
+            if let Ok(mut conn) = result {
+                let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
+                let _ = tenant_cache_redis_timeout(
+                    "metrics INCR",
+                    redis::cmd("INCR")
+                        .arg(redis_key)
+                        .query_async::<u64>(&mut conn),
+                )
+                .await;
             }
         }
     }
@@ -374,13 +416,24 @@ impl TenantCacheMetricsStore {
         }
     }
 
-    async fn read_metric(&self, _key: &str, local: &AtomicU64) -> u64 {
+    async fn read_metric(&self, key: &str, local: &AtomicU64) -> u64 {
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
-            if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                let redis_key = format!("tenant_metrics:{}:{_key}", TENANT_CACHE_VERSION);
-                let value: redis::RedisResult<Option<u64>> = conn.get(redis_key).await;
-                if let Ok(Some(metric)) = value {
+            if let Ok(mut conn) = tenant_cache_redis_timeout(
+                "metrics connection",
+                client.get_multiplexed_async_connection(),
+            )
+            .await
+            {
+                let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
+                if let Ok(Some(metric)) = tenant_cache_redis_timeout(
+                    "metrics GET",
+                    redis::cmd("GET")
+                        .arg(redis_key)
+                        .query_async::<Option<u64>>(&mut conn),
+                )
+                .await
+                {
                     return metric;
                 }
             }
@@ -390,56 +443,66 @@ impl TenantCacheMetricsStore {
     }
 }
 
+#[cfg(feature = "redis-cache")]
+async fn tenant_cache_redis_timeout<T, E, F>(operation: &str, future: F) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    tokio::time::timeout(TENANT_CACHE_REDIS_OPERATION_TIMEOUT, future)
+        .await
+        .map_err(|_| {
+            format!(
+                "tenant cache {operation} timed out after {} ms",
+                TENANT_CACHE_REDIS_OPERATION_TIMEOUT.as_millis()
+            )
+        })?
+        .map_err(|error| format!("tenant cache {operation} failed: {error}"))
+}
+
 impl TenantCacheInfrastructure {
     async fn new(cache_service: &CacheService) -> Self {
+        let ttl = CacheTtlPolicy::deterministic_jitter(
+            TENANT_CACHE_TTL,
+            TENANT_CACHE_JITTER_PERCENT,
+            "tenant-resolution-v2",
+        )
+        .expect("tenant cache jitter policy is valid");
+        let load_policy = CacheLoadPolicy::new(ttl)
+            .with_loader_timeout(TENANT_CACHE_LOADER_TIMEOUT)
+            .expect("tenant loader timeout is positive");
+        let negative_policy = NegativeCachePolicy::deterministic_jittered(
+            TENANT_NEGATIVE_SCHEMA_VERSION,
+            TENANT_NEGATIVE_CACHE_TTL,
+            TENANT_CACHE_JITTER_PERCENT,
+            "tenant-negative-v2",
+        )
+        .expect("tenant negative cache policy is valid")
+        .with_max_encoded_bytes(TENANT_NEGATIVE_MAX_ENCODED_BYTES)
+        .expect("tenant negative cache size limit is positive");
+
         Self {
             tenant_cache: cache_service
-                .backend(
+                .backend_weighted(
                     &format!("tenant-cache:{}:data", TENANT_CACHE_VERSION),
                     TENANT_CACHE_TTL,
-                    TENANT_CACHE_MAX_CAPACITY,
+                    TENANT_CACHE_MAX_WEIGHT_BYTES,
                 )
                 .await,
             tenant_negative_cache: cache_service
-                .backend(
+                .backend_weighted(
                     &format!("tenant-cache:{}:negative", TENANT_CACHE_VERSION),
                     TENANT_NEGATIVE_CACHE_TTL,
-                    TENANT_CACHE_MAX_CAPACITY,
+                    TENANT_NEGATIVE_CACHE_MAX_WEIGHT_BYTES,
                 )
                 .await,
             metrics: Arc::new(TenantCacheMetricsStore::new(cache_service)),
             key_builder: TenantCacheKeyBuilder::new(TENANT_CACHE_VERSION),
+            load_policy,
+            negative_policy,
             invalidation_publisher: Arc::new(TenantInvalidationPublisher::new(cache_service)),
             invalidation_listener_state: Arc::new(TenantInvalidationListenerState::new()),
             cache_service: cache_service.clone(),
-        }
-    }
-
-    async fn get_cached_tenant(
-        &self,
-        cache_key: &str,
-    ) -> Result<Option<TenantContext>, StatusCode> {
-        let cached = self
-            .tenant_cache
-            .get(cache_key)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        let Some(bytes) = cached else {
-            self.metrics
-                .incr("misses", &self.metrics.local_misses)
-                .await;
-            return Ok(None);
-        };
-
-        self.metrics.incr("hits", &self.metrics.local_hits).await;
-        match serde_json::from_slice::<TenantContext>(&bytes) {
-            Ok(context) => Ok(Some(context)),
-            Err(e) => {
-                tracing::warn!("Tenant cache deserialization error: {}", e);
-                let _ = self.tenant_cache.invalidate(cache_key).await;
-                Ok(None)
-            }
         }
     }
 
@@ -448,19 +511,20 @@ impl TenantCacheInfrastructure {
         cache_key: &str,
     ) -> Result<Option<CachedTenantMiss>, StatusCode> {
         let cached = self
-            .tenant_negative_cache
-            .get(cache_key)
+            .cache_service
+            .get_negative::<CachedTenantMiss>(
+                Arc::clone(&self.tenant_negative_cache),
+                cache_key,
+                &self.negative_policy,
+            )
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        if let Some(bytes) = cached {
+
+        if let Some(hit) = cached {
             self.metrics
                 .incr("negative_hits", &self.metrics.local_negative_hits)
                 .await;
-            let miss = serde_json::from_slice::<CachedTenantMiss>(&bytes).map_err(|error| {
-                tracing::warn!(%error, "Tenant negative cache deserialization error");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            return Ok(Some(miss));
+            return Ok(Some(hit.reason));
         }
 
         self.metrics
@@ -474,12 +538,15 @@ impl TenantCacheInfrastructure {
         cache_key: String,
         reason: CachedTenantMiss,
     ) -> Result<(), StatusCode> {
-        let payload = serde_json::to_vec(&reason).map_err(|error| {
-            tracing::error!(%error, "Tenant negative cache serialization error");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        self.tenant_negative_cache
-            .set(cache_key, payload)
+        self.cache_service
+            .store_negative(
+                Arc::clone(&self.tenant_negative_cache),
+                cache_key,
+                reason,
+                current_unix_ms(),
+                None,
+                &self.negative_policy,
+            )
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         self.metrics
@@ -489,8 +556,12 @@ impl TenantCacheInfrastructure {
     }
 
     async fn invalidate_pair(&self, cache_key: &str, negative_key: &str) {
-        let _ = self.tenant_cache.invalidate(cache_key).await;
-        let _ = self.tenant_negative_cache.invalidate(negative_key).await;
+        if let Err(error) = self.tenant_cache.invalidate(cache_key).await {
+            tracing::warn!(%error, cache_key, "Tenant data cache invalidation failed");
+        }
+        if let Err(error) = self.tenant_negative_cache.invalidate(negative_key).await {
+            tracing::warn!(%error, negative_key, "Tenant negative cache invalidation failed");
+        }
     }
 
     async fn get_or_load_with_coalescing<F, Fut>(
@@ -502,30 +573,54 @@ impl TenantCacheInfrastructure {
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = rustok_core::Result<TenantContext>>,
     {
+        let cache_ttl = self
+            .load_policy
+            .ttl
+            .ttl_for(cache_key)
+            .unwrap_or(TENANT_CACHE_TTL);
         let result = self
             .cache_service
-            .load_or_fill(
+            .load_enveloped_or_fill(
                 Arc::clone(&self.tenant_cache),
                 cache_key,
-                Some(TENANT_CACHE_TTL),
+                TENANT_CONTEXT_SCHEMA_VERSION,
+                self.load_policy.clone(),
                 || async move {
                     let context = loader().await?;
-                    serde_json::to_vec(&context).map_err(CoreError::Serialization)
+                    let generated_at = current_unix_ms();
+                    CacheEnvelope::new(TENANT_CONTEXT_SCHEMA_VERSION, generated_at, context)
+                        .and_then(|envelope| {
+                            envelope.with_expirations(
+                                None,
+                                Some(
+                                    generated_at
+                                        .saturating_add(duration_millis_ceil(cache_ttl)),
+                                ),
+                            )
+                        })
+                        .map_err(cache_envelope_error_to_core)
                 },
             )
             .await
             .map_err(cache_load_error_to_status)?;
 
+        match result.source {
+            CacheLoadSource::Hit => {
+                self.metrics.incr("hits", &self.metrics.local_hits).await;
+            }
+            CacheLoadSource::Filled | CacheLoadSource::Coalesced => {
+                self.metrics
+                    .incr("misses", &self.metrics.local_misses)
+                    .await;
+            }
+        }
         if result.source == CacheLoadSource::Coalesced {
             self.metrics
                 .incr("coalesced_requests", &self.metrics.coalesced_requests)
                 .await;
         }
 
-        serde_json::from_slice::<TenantContext>(&result.value).map_err(|error| {
-            tracing::warn!(%error, "Tenant cache load_or_fill deserialization error");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+        Ok(result.value)
     }
 }
 
@@ -551,16 +646,16 @@ pub async fn init_tenant_cache_infrastructure(
 }
 
 async fn spawn_invalidation_listener(
-    _infra: Arc<TenantCacheInfrastructure>,
-    _cache_service: &CacheService,
+    infra: Arc<TenantCacheInfrastructure>,
+    cache_service: &CacheService,
 ) -> Option<JoinHandle<()>> {
     #[cfg(feature = "redis-cache")]
     {
-        if !_cache_service.has_redis() {
+        if !cache_service.has_redis() {
             return None;
         }
-        let invalidations = _cache_service.invalidations();
-        let listener_state = _infra.invalidation_listener_state.clone();
+        let invalidations = cache_service.invalidations();
+        let listener_state = infra.invalidation_listener_state.clone();
         let task = tokio::spawn(async move {
             let runtime = EventConsumerRuntime::new("tenant_invalidation_listener");
             let mut reason = "startup";
@@ -571,7 +666,7 @@ async fn spawn_invalidation_listener(
 
                 if let Err(error) = consume_tenant_invalidation_messages(
                     invalidations.clone(),
-                    _infra.clone(),
+                    infra.clone(),
                     listener_state.clone(),
                 )
                 .await
@@ -647,7 +742,7 @@ fn parse_invalidation_payload(payload: &str) -> Option<(&str, &str)> {
     let mut parts = payload.split('|');
     let cache_key = parts.next()?;
     let negative_key = parts.next()?;
-    if cache_key.is_empty() || negative_key.is_empty() {
+    if cache_key.is_empty() || negative_key.is_empty() || parts.next().is_some() {
         return None;
     }
     Some((cache_key, negative_key))
@@ -682,12 +777,6 @@ pub async fn resolve(
 
     if let Some(reason) = infra.check_negative(&negative_key).await? {
         return Err(reason.status_code());
-    }
-
-    if let Some(cached_context) = infra.get_cached_tenant(&cache_key).await? {
-        req.extensions_mut()
-            .insert(TenantContextExtension(cached_context));
-        return Ok(next.run(req).await);
     }
 
     let tenant_service = TenantService::new(ctx.db_clone());
@@ -789,10 +878,7 @@ pub fn resolve_identifier(
                 None if matches!(
                     settings.tenant.fallback_mode,
                     TenantFallbackMode::DefaultTenant
-                ) =>
-                {
-                    settings.tenant.default_id.to_string()
-                }
+                ) => settings.tenant.default_id.to_string(),
                 None => {
                     tracing::warn!(
                         header_name = %settings.tenant.header_name,
@@ -802,11 +888,10 @@ pub fn resolve_identifier(
                 }
             };
 
-            // Validate and classify the identifier
-            classify_and_validate_identifier(&identifier).map_err(|e| {
+            classify_and_validate_identifier(&identifier).map_err(|error| {
                 tracing::warn!(
                     identifier = %identifier,
-                    error = %e,
+                    error = %error,
                     "Invalid tenant identifier from header"
                 );
                 StatusCode::BAD_REQUEST
@@ -820,10 +905,10 @@ pub fn resolve_identifier(
             let host_without_port = host.split(':').next().unwrap_or(host.as_str());
 
             let validated_host = TenantIdentifierValidator::validate_host(host_without_port)
-                .map_err(|e| {
+                .map_err(|error| {
                     tracing::warn!(
                         host = %host_without_port,
-                        error = %e,
+                        error = %error,
                         "Invalid tenant hostname"
                     );
                     StatusCode::BAD_REQUEST
@@ -842,10 +927,10 @@ pub fn resolve_identifier(
                     .ok_or(StatusCode::BAD_REQUEST)?;
             let host_without_port = host.split(':').next().unwrap_or(host.as_str());
             let validated_host = TenantIdentifierValidator::validate_host(host_without_port)
-                .map_err(|e| {
+                .map_err(|error| {
                     tracing::warn!(
                         host = %host_without_port,
-                        error = %e,
+                        error = %error,
                         "Invalid tenant hostname"
                     );
                     StatusCode::BAD_REQUEST
@@ -903,11 +988,9 @@ fn subdomain_identifier(host: &str, base_domains: &[String]) -> Result<String, S
     Err(StatusCode::NOT_FOUND)
 }
 
-/// Classifies and validates a tenant identifier with security checks
 fn classify_and_validate_identifier(
     value: &str,
 ) -> Result<ResolvedTenantIdentifier, rustok_core::tenant_validation::TenantValidationError> {
-    // Try UUID first (most specific)
     if let Ok(uuid) = TenantIdentifierValidator::validate_uuid(value) {
         return Ok(ResolvedTenantIdentifier {
             value: uuid.to_string(),
@@ -916,7 +999,6 @@ fn classify_and_validate_identifier(
         });
     }
 
-    // Try slug (with security validation)
     let validated_slug = TenantIdentifierValidator::validate_slug(value)?;
 
     Ok(ResolvedTenantIdentifier {
@@ -926,8 +1008,6 @@ fn classify_and_validate_identifier(
     })
 }
 
-/// Classifies a tenant identifier without returning errors (best-effort).
-/// Falls back to UUID kind if the identifier doesn't match slug/UUID patterns.
 fn classify_identifier(value: String) -> ResolvedTenantIdentifier {
     match classify_and_validate_identifier(&value) {
         Ok(resolved) => resolved,
@@ -992,7 +1072,6 @@ pub async fn tenant_invalidation_listener_snapshot(
     infra.invalidation_listener_state.snapshot().await
 }
 
-/// Invalidate cached tenant (call after tenant or domain update)
 pub async fn invalidate_tenant_cache(ctx: &ServerRuntimeContext, identifier: &str) {
     let resolved = classify_identifier(identifier.to_string());
     invalidate_cache_keys(ctx, resolved.kind, &resolved.value).await;
@@ -1036,155 +1115,30 @@ fn cache_load_error_to_status(error: CoreError) -> StatusCode {
     }
 }
 
-#[cfg(test)]
-mod invalidation_tests {
-    #[cfg(feature = "redis-cache")]
-    use super::{
-        parse_invalidation_payload, TenantInvalidationListenerState,
-        TenantInvalidationListenerStatus,
-    };
-    use super::{
-        resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
-        tenant_context_from_projection, CachedTenantMiss,
-    };
-    use crate::common::{RustokSettings, TenantFallbackMode};
-    use axum::{body::Body, http::Request};
-    use rustok_tenant::TenantReadProjection;
-    use uuid::Uuid;
-
-    fn sample_tenant_projection(is_active: bool) -> TenantReadProjection {
-        TenantReadProjection {
-            id: Uuid::new_v4(),
-            name: "Demo tenant".to_string(),
-            slug: "demo".to_string(),
-            domain: Some("demo.example.test".to_string()),
-            is_active,
-            default_locale: "en".to_string(),
-            settings: serde_json::json!({}),
-        }
-    }
-
-    #[cfg(feature = "redis-cache")]
-    #[test]
-    fn parse_invalidation_payload_returns_both_keys() {
-        let payload = "tenant:v1:slug:demo|tenant_negative:v1:slug:demo";
-        let parsed = parse_invalidation_payload(payload);
-
-        assert_eq!(
-            parsed,
-            Some(("tenant:v1:slug:demo", "tenant_negative:v1:slug:demo"))
-        );
-    }
-
-    #[cfg(feature = "redis-cache")]
-    #[test]
-    fn parse_invalidation_payload_rejects_malformed_payload() {
-        assert_eq!(parse_invalidation_payload("tenant:v1:slug:demo"), None);
-        assert_eq!(
-            parse_invalidation_payload("|tenant_negative:v1:slug:demo"),
-            None
-        );
-        assert_eq!(parse_invalidation_payload("tenant:v1:slug:demo|"), None);
-    }
-
-    #[cfg(feature = "redis-cache")]
-    #[tokio::test]
-    async fn listener_state_snapshot_reflects_degraded_status() {
-        let state = TenantInvalidationListenerState::new();
-        state.mark_degraded("redis unavailable").await;
-
-        let snapshot = state.snapshot().await;
-
-        assert_eq!(snapshot.status, TenantInvalidationListenerStatus::Degraded);
-        assert_eq!(snapshot.last_error.as_deref(), Some("redis unavailable"));
-    }
-
-    #[test]
-    fn bypasses_operator_endpoints_from_tenant_resolution() {
-        assert!(should_bypass_tenant_resolution("/health/live"));
-        assert!(should_bypass_tenant_resolution("/health/runtime"));
-        assert!(should_bypass_tenant_resolution("/metrics"));
-        assert!(should_bypass_tenant_resolution("/api/openapi.json"));
-        assert!(should_bypass_tenant_resolution(
-            "/api/graphql/schema.graphql"
-        ));
-        assert!(should_bypass_tenant_resolution("/api/graphql/ws"));
-        assert!(should_bypass_tenant_resolution("/api/install/status"));
-        assert!(should_bypass_tenant_resolution(
-            "/api/install/jobs/018f2b7a-9d07-7f0a-9f71-0c9960e9168a"
-        ));
-        assert!(!should_bypass_tenant_resolution("/api/blog/posts"));
-        assert!(!should_bypass_tenant_resolution("/api/installer/status"));
-    }
-
-    #[test]
-    fn strict_header_resolution_requires_tenant_header() {
-        let mut settings = RustokSettings::default();
-        settings.tenant.enabled = true;
-        settings.tenant.resolution = "header".to_string();
-        settings.tenant.fallback_mode = TenantFallbackMode::Disabled;
-
-        let request = Request::builder()
-            .uri("/api/users")
-            .body(Body::empty())
-            .expect("request");
-
-        let result = resolve_identifier(&request, &settings);
-        assert!(matches!(result, Err(axum::http::StatusCode::BAD_REQUEST)));
-    }
-
-    #[test]
-    fn header_resolution_can_fallback_to_default_tenant() {
-        let mut settings = RustokSettings::default();
-        settings.tenant.enabled = true;
-        settings.tenant.resolution = "header".to_string();
-        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
-
-        let request = Request::builder()
-            .uri("/api/users")
-            .body(Body::empty())
-            .expect("request");
-
-        let result = resolve_identifier(&request, &settings).expect("identifier");
-        assert_eq!(result.kind.as_str(), "uuid");
-        assert_eq!(result.uuid, settings.tenant.default_id);
-    }
-
-    #[test]
-    fn tenant_context_from_projection_maps_active_tenant() {
-        let tenant = sample_tenant_projection(true);
-
-        let context = tenant_context_from_projection(tenant.clone()).expect("active tenant");
-
-        assert_eq!(context.id, tenant.id);
-        assert_eq!(context.slug, tenant.slug);
-        assert_eq!(context.default_locale, tenant.default_locale);
-        assert!(context.is_active);
-    }
-
-    #[test]
-    fn tenant_context_from_projection_rejects_disabled_tenant_as_forbidden() {
-        let result = tenant_context_from_projection(sample_tenant_projection(false));
-
-        assert!(matches!(result, Err(CachedTenantMiss::Disabled)));
-        assert_eq!(
-            CachedTenantMiss::Disabled.status_code(),
-            axum::http::StatusCode::FORBIDDEN
-        );
-    }
-
-    #[test]
-    fn subdomain_resolution_extracts_single_label_slug() {
-        let slug = subdomain_identifier("store.example.test", &[String::from("example.test")])
-            .expect("slug");
-        assert_eq!(slug, "store");
-        assert_eq!(
-            subdomain_identifier("example.test", &[String::from("example.test")]),
-            Err(axum::http::StatusCode::BAD_REQUEST)
-        );
-        assert_eq!(
-            subdomain_identifier("a.b.example.test", &[String::from("example.test")]),
-            Err(axum::http::StatusCode::BAD_REQUEST)
-        );
-    }
+fn cache_envelope_error_to_core(error: rustok_cache::CacheEnvelopeError) -> CoreError {
+    CoreError::Cache(format!("tenant cache envelope error: {error}"))
 }
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
+}
+
+fn duration_millis_ceil(duration: Duration) -> u64 {
+    if duration.is_zero() {
+        return 0;
+    }
+    duration
+        .as_nanos()
+        .saturating_add(999_999)
+        .checked_div(1_000_000)
+        .unwrap_or(u128::MAX)
+        .min(u128::from(u64::MAX)) as u64
+}
+
+#[cfg(test)]
+#[path = "tenant_tests.rs"]
+mod invalidation_tests;

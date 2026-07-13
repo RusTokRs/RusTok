@@ -402,6 +402,9 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
         PostOrderOrchestrationError::Payment(other) => {
             HttpError::bad_request("commerce_admin_invalid", other.to_string())
         }
+        PostOrderOrchestrationError::PaymentOrchestration(error) => {
+            map_payment_orchestration_error(error)
+        }
         PostOrderOrchestrationError::Validation(message) => {
             HttpError::bad_request("commerce_admin_invalid", message)
         }

@@ -1,0 +1,128 @@
+name: Cache hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/rustok-cache/**"
+      - "crates/rustok-core/src/cache.rs"
+      - "crates/rustok-core/src/cache_tests.rs"
+      - "crates/rustok-core/src/context.rs"
+      - "apps/server/src/middleware/tenant.rs"
+      - "apps/server/src/middleware/tenant_tests.rs"
+      - "apps/server/src/middleware/channel.rs"
+      - "apps/server/src/middleware/channel_tests.rs"
+      - "apps/server/src/middleware/locale.rs"
+      - "apps/server/src/middleware/rate_limit.rs"
+      - "apps/server/src/middleware/rate_limit_tests.rs"
+      - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/rbac_runtime.rs"
+      - "apps/server/tests/cache_architecture_guard.rs"
+      - "apps/server/tests/tenant_cache_architecture_guard.rs"
+      - "crates/rustok-seo/src/services/mod.rs"
+      - "crates/rustok-seo/src/services/redirects.rs"
+      - ".github/workflows/cache-hardening.yml"
+  pull_request:
+    paths:
+      - "crates/rustok-cache/**"
+      - "crates/rustok-core/src/cache.rs"
+      - "crates/rustok-core/src/cache_tests.rs"
+      - "crates/rustok-core/src/context.rs"
+      - "apps/server/src/middleware/tenant.rs"
+      - "apps/server/src/middleware/tenant_tests.rs"
+      - "apps/server/src/middleware/channel.rs"
+      - "apps/server/src/middleware/channel_tests.rs"
+      - "apps/server/src/middleware/locale.rs"
+      - "apps/server/src/middleware/rate_limit.rs"
+      - "apps/server/src/middleware/rate_limit_tests.rs"
+      - "apps/server/src/services/field_definition_cache.rs"
+      - "apps/server/src/services/rbac_runtime.rs"
+      - "apps/server/tests/cache_architecture_guard.rs"
+      - "apps/server/tests/tenant_cache_architecture_guard.rs"
+      - "crates/rustok-seo/src/services/mod.rs"
+      - "crates/rustok-seo/src/services/redirects.rs"
+      - ".github/workflows/cache-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-hardening-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiled-contract:
+    name: Compiled cache contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Compile cache and server
+        run: |
+          cargo check -p rustok-core --lib
+          cargo check -p rustok-cache --lib
+          cargo check -p rustok-server --lib
+      - name: Cache unit and architecture tests
+        run: |
+          cargo test -p rustok-core cache --lib
+          cargo test -p rustok-cache --lib
+          cargo test -p rustok-server --test cache_architecture_guard --test tenant_cache_architecture_guard
+          cargo test -p rustok-server tenant_cache --lib
+          cargo test -p rustok-server channel_cache --lib
+          cargo test -p rustok-server rate_limit --lib
+          cargo test -p rustok-server tenant_locale_cache --lib
+          cargo test -p rustok-server permission_cache_weight --lib
+          cargo test -p rustok-seo redirect_cache --lib
+      - name: Clippy
+        run: |
+          cargo clippy -p rustok-core --lib -- -D warnings
+          cargo clippy -p rustok-cache --lib -- -D warnings
+          cargo clippy -p rustok-server --lib -- -D warnings
+      - name: Module contract
+        run: |
+          cargo xtask module validate cache
+          cargo xtask module test cache
+
+  live-redis:
+    name: Live Redis cache contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      RUSTOK_CACHE_REAL_REDIS_URL: redis://127.0.0.1:6379/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: Redis ping
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-tools
+          redis-cli -h 127.0.0.1 -p 6379 ping
+      - name: Cache live Redis tests
+        run: cargo test -p rustok-cache -- --ignored --nocapture
+      - name: Core live Redis tests
+        run: cargo test -p rustok-core cache -- --ignored --nocapture

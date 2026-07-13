@@ -22,7 +22,8 @@ use crate::{
         CancelOrderReturnInput, CompleteRefundInput, CreateOrderReturnInput, CreateRefundInput,
         ListOrderReturnsInput, OrderReturnResponse,
     },
-    CreateReturnDecisionInput, PostOrderOrchestrationService, ReturnDecisionResponse,
+    CreateReturnDecisionInput, PaymentOrchestrationService, PostOrderOrchestrationService,
+    ReturnDecisionResponse,
 };
 
 /// Create admin order return
@@ -96,7 +97,8 @@ pub async fn create_order_return_decision(
         )?;
     }
 
-    let service = PostOrderOrchestrationService::new(runtime.db_clone(), runtime.event_bus());
+    let service = PostOrderOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
+        .with_payment_provider_registry(runtime.payment_provider_registry());
     let decision = service
         .create_return_decision(tenant.id, auth.user_id, id, input)
         .await
@@ -246,6 +248,7 @@ pub async fn complete_order_return(
 
     let db = runtime.db_clone();
     let event_bus = runtime.event_bus();
+    let payment_provider_registry = runtime.payment_provider_registry();
     let order_service = OrderService::new(db.clone(), event_bus);
     let mut complete_input = rustok_order::dto::CompleteOrderReturnInput {
         resolution_type: input.resolution_type,
@@ -290,7 +293,10 @@ pub async fn complete_order_return(
             refund_input.payment_collection_id,
         )
         .await?;
-        let refund = payment_service
+        let should_complete = refund_input.complete;
+        let payment_orchestration = PaymentOrchestrationService::new(db.clone())
+            .with_provider_registry(payment_provider_registry.clone());
+        let refund = payment_orchestration
             .create_refund(
                 tenant.id,
                 collection_id,
@@ -301,9 +307,9 @@ pub async fn complete_order_return(
                 },
             )
             .await
-            .map_err(super::map_payment_error)?;
-        let refund = if refund_input.complete {
-            payment_service
+            .map_err(super::map_payment_orchestration_error)?;
+        let refund = if should_complete {
+            payment_orchestration
                 .complete_refund(
                     tenant.id,
                     refund.id,
@@ -315,7 +321,7 @@ pub async fn complete_order_return(
                     },
                 )
                 .await
-                .map_err(super::map_payment_error)?
+                .map_err(super::map_payment_orchestration_error)?
         } else {
             refund
         };
@@ -330,7 +336,8 @@ pub async fn complete_order_return(
             || has_refund_helper
             || has_claim_helper
         {
-            return Err(HttpError::bad_request("commerce_operation_failed",
+            return Err(HttpError::bad_request(
+                "commerce_operation_failed",
                 "exchange helper cannot be combined with explicit refund_id, order_change_id, refund helper, or claim helper"
                     .to_string(),
             ));
@@ -353,7 +360,8 @@ pub async fn complete_order_return(
             .map_err(super::map_order_error)?;
 
         let preview = attach_return_order_change_context(exchange_input.preview, id, "exchange")?;
-        let metadata = attach_return_order_change_context(exchange_input.metadata, id, "exchange")?;
+        let metadata =
+            attach_return_order_change_context(exchange_input.metadata, id, "exchange")?;
 
         let order_change = order_service
             .create_order_change(
@@ -380,7 +388,8 @@ pub async fn complete_order_return(
             || has_refund_helper
             || has_exchange_helper
         {
-            return Err(HttpError::bad_request("commerce_operation_failed",
+            return Err(HttpError::bad_request(
+                "commerce_operation_failed",
                 "claim helper cannot be combined with explicit refund_id, order_change_id, refund helper, or exchange helper"
                     .to_string(),
             ));

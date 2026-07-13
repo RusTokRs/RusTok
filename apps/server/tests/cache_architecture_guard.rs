@@ -70,6 +70,31 @@ fn channel_cache_bounds_request_keys_and_negative_results() {
 }
 
 #[test]
+fn redis_rate_limit_operations_are_bounded_and_redacted() {
+    let rate_limit = source("apps/server/src/middleware/rate_limit.rs");
+    assert!(
+        rate_limit.contains("RATE_LIMIT_REDIS_OPERATION_TIMEOUT"),
+        "Redis rate-limit connection, Lua and health operations must retain a deadline"
+    );
+    assert!(
+        rate_limit.contains("redis_with_timeout("),
+        "Redis rate-limit operations must use the shared timeout wrapper"
+    );
+    assert!(
+        rate_limit.contains("redis_rate_limit_key"),
+        "Redis rate-limit identities must use a bounded canonical key helper"
+    );
+    assert!(
+        rate_limit.contains("Sha256::digest(identity.as_bytes())"),
+        "Redis rate-limit keys must not contain raw IP, tenant or OAuth identity"
+    );
+    assert!(
+        rate_limit.contains("bounded_redis_window_seconds"),
+        "Redis EXPIRE arguments must not overflow when converting to i64"
+    );
+}
+
+#[test]
 fn weighted_backend_uses_cache_service_owned_redis_client() {
     let weighted = source("crates/rustok-cache/src/weighted.rs");
     assert!(

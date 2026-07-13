@@ -5,6 +5,7 @@ use rustok_order::dto::{
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::dto::{CreateRefundInput, ListPaymentCollectionsInput, RefundResponse};
+use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -16,12 +17,16 @@ use validator::Validate;
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
 
+use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationService};
+
 #[derive(Debug, Error)]
 pub enum PostOrderOrchestrationError {
     #[error("order error: {0}")]
     Order(#[from] rustok_order::error::OrderError),
     #[error("payment error: {0}")]
     Payment(#[from] rustok_payment::error::PaymentError),
+    #[error("payment orchestration error: {0}")]
+    PaymentOrchestration(#[from] PaymentOrchestrationError),
     #[error("validation error: {0}")]
     Validation(String),
 }
@@ -82,11 +87,24 @@ pub struct ReturnDecisionResponse {
 pub struct PostOrderOrchestrationService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    payment_provider_registry: PaymentProviderRegistry,
 }
 
 impl PostOrderOrchestrationService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
+        }
+    }
+
+    pub fn with_payment_provider_registry(
+        mut self,
+        payment_provider_registry: PaymentProviderRegistry,
+    ) -> Self {
+        self.payment_provider_registry = payment_provider_registry;
+        self
     }
 
     pub async fn create_return_decision(
@@ -256,16 +274,18 @@ impl PostOrderOrchestrationService {
             }
         };
 
-        let amount = input
-            .amount
-            .unwrap_or_else(|| return_items_amount(order_return));
+        let amount = match input.amount {
+            Some(amount) => amount,
+            None => return_items_amount(order_return)?,
+        };
         if amount <= Decimal::ZERO {
             return Err(PostOrderOrchestrationError::Validation(
                 "refund decision requires a positive amount or priced return items".to_string(),
             ));
         }
 
-        payment_service
+        PaymentOrchestrationService::new(self.db.clone())
+            .with_provider_registry(self.payment_provider_registry.clone())
             .create_refund(
                 tenant_id,
                 collection_id,
@@ -312,42 +332,7 @@ impl PostOrderOrchestrationService {
 
         let refund_input = match difference_refund {
             Some(input) => Some(input),
-            None => {
-                let amount_val = order_change
-                    .preview
-                    .get("difference_refund_amount")
-                    .or_else(|| order_change.metadata.get("difference_refund_amount"))
-                    .or_else(|| order_change.preview.get("refund_amount"))
-                    .or_else(|| order_change.metadata.get("refund_amount"));
-                if let Some(val) = amount_val {
-                    let amount = if let Some(s) = val.as_str() {
-                        std::str::FromStr::from_str(s).ok()
-                    } else if let Some(n) = val.as_f64() {
-                        Decimal::from_f64_retain(n)
-                    } else {
-                        val.as_i64().map(Decimal::from)
-                    };
-                    if let Some(amount) = amount {
-                        let reason = order_change
-                            .preview
-                            .get("difference_refund_reason")
-                            .or_else(|| order_change.metadata.get("difference_refund_reason"))
-                            .or_else(|| order_change.preview.get("refund_reason"))
-                            .or_else(|| order_change.metadata.get("refund_reason"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
-                        Some(ExchangeDifferenceRefundInput {
-                            amount,
-                            reason,
-                            metadata: serde_json::Value::Null,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
+            None => difference_refund_from_order_change(&order_change)?,
         };
 
         let refund = if let Some(refund_input) = refund_input {
@@ -355,7 +340,8 @@ impl PostOrderOrchestrationService {
                 let payment_service = PaymentService::new(self.db.clone());
                 let collection_id =
                     resolve_order_payment_collection(&payment_service, tenant_id, order_id).await?;
-                let refund = payment_service
+                let refund = PaymentOrchestrationService::new(self.db.clone())
+                    .with_provider_registry(self.payment_provider_registry.clone())
                     .create_refund(
                         tenant_id,
                         collection_id,
@@ -538,17 +524,74 @@ fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestratio
     }
 }
 
-fn return_items_amount(order_return: &OrderReturnResponse) -> Decimal {
+fn return_items_amount(order_return: &OrderReturnResponse) -> PostOrderOrchestrationResult<Decimal> {
     order_return
         .items
         .iter()
-        .filter_map(|item| {
-            item.metadata
-                .get("refund_amount")
-                .and_then(|value| value.as_str())
-                .and_then(|value| value.parse::<Decimal>().ok())
+        .filter_map(|item| item.metadata.get("refund_amount"))
+        .try_fold(Decimal::ZERO, |total, value| {
+            let amount = decimal_from_json_value(value, "refund_amount")?;
+            if amount < Decimal::ZERO {
+                return Err(PostOrderOrchestrationError::Validation(
+                    "refund_amount must not be negative".to_string(),
+                ));
+            }
+            total.checked_add(amount).ok_or_else(|| {
+                PostOrderOrchestrationError::Validation(
+                    "return item refund amount total overflowed Decimal".to_string(),
+                )
+            })
         })
-        .fold(Decimal::ZERO, |acc, amount| acc + amount)
+}
+
+fn difference_refund_from_order_change(
+    order_change: &OrderChangeResponse,
+) -> PostOrderOrchestrationResult<Option<ExchangeDifferenceRefundInput>> {
+    let amount_value = order_change
+        .preview
+        .get("difference_refund_amount")
+        .or_else(|| order_change.metadata.get("difference_refund_amount"))
+        .or_else(|| order_change.preview.get("refund_amount"))
+        .or_else(|| order_change.metadata.get("refund_amount"));
+    let Some(amount_value) = amount_value else {
+        return Ok(None);
+    };
+
+    let amount = decimal_from_json_value(amount_value, "difference_refund_amount")?;
+    let reason = order_change
+        .preview
+        .get("difference_refund_reason")
+        .or_else(|| order_change.metadata.get("difference_refund_reason"))
+        .or_else(|| order_change.preview.get("refund_reason"))
+        .or_else(|| order_change.metadata.get("refund_reason"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    Ok(Some(ExchangeDifferenceRefundInput {
+        amount,
+        reason,
+        metadata: Value::Null,
+    }))
+}
+
+fn decimal_from_json_value(
+    value: &Value,
+    field: &str,
+) -> PostOrderOrchestrationResult<Decimal> {
+    let text = match value {
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        _ => {
+            return Err(PostOrderOrchestrationError::Validation(format!(
+                "{field} must be a decimal string or JSON number"
+            )))
+        }
+    };
+    text.parse::<Decimal>().map_err(|error| {
+        PostOrderOrchestrationError::Validation(format!(
+            "{field} contains an invalid decimal value: {error}"
+        ))
+    })
 }
 
 /// Input for an optional difference refund when applying an exchange order change.
@@ -614,4 +657,30 @@ fn attach_order_change_context(
         Value::String(apply_action.to_string()),
     );
     Ok(Value::Object(object))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_difference_refund_is_rejected() {
+        let order_change = OrderChangeResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            order_id: Uuid::new_v4(),
+            created_by: Uuid::new_v4(),
+            change_type: "exchange".to_string(),
+            status: "applied".to_string(),
+            description: None,
+            preview: serde_json::json!({ "difference_refund_amount": "not-a-decimal" }),
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            applied_at: Some(chrono::Utc::now()),
+            cancelled_at: None,
+        };
+
+        assert!(difference_refund_from_order_change(&order_change).is_err());
+    }
 }

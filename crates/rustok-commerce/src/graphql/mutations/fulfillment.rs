@@ -6,10 +6,12 @@ use rustok_order::OrderService;
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::{ExchangeDifferenceRefundInput, PostOrderOrchestrationService};
+use crate::graphql_runtime::post_order_orchestration_from_context;
+use crate::ExchangeDifferenceRefundInput;
 
 use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;
+use super::provider_return_helpers::build_provider_refund_resolution_return_completion;
 
 #[derive(Default)]
 pub struct CommerceFulfillmentMutation;
@@ -190,9 +192,8 @@ impl CommerceFulfillmentMutation {
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let order_service = OrderService::new(db.clone(), event_bus.clone());
         let orchestration_service =
-            PostOrderOrchestrationService::new(db.clone(), event_bus.clone());
+            post_order_orchestration_from_context(ctx, db.clone(), event_bus.clone());
 
-        // Fetch the order change to inspect its change_type
         let order_change = order_service.get_order_change(tenant_id, id).await?;
 
         let result = match order_change.change_type.as_str() {
@@ -327,7 +328,7 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let decision = PostOrderOrchestrationService::new(db.clone(), event_bus.clone())
+        let decision = post_order_orchestration_from_context(ctx, db.clone(), event_bus.clone())
             .create_return_decision(
                 tenant_id,
                 auth.user_id,
@@ -373,7 +374,8 @@ impl CommerceFulfillmentMutation {
         };
 
         if let Some(refund_input) = input.refund {
-            complete_input = build_refund_resolution_return_completion(
+            complete_input = build_provider_refund_resolution_return_completion(
+                ctx,
                 db,
                 &order_service,
                 tenant_id,
