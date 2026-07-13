@@ -78,9 +78,9 @@ impl TenantCacheGenerationTransport {
             return Ok(());
         };
 
-        // Probe first but commit the event ID only after INCR and invalidation publication succeed.
-        // A failed invalidation must be retried; a failed downstream transport after successful
-        // invalidation can safely retry delivery without rotating the namespace again.
+        // Hold the bounded per-event stripe across probe, rotation, publication, and commit. This
+        // closes the concurrent false-negative window without precommitting failed work.
+        let _event_guard = self.successful_rotations.serialize_event(envelope.id).await;
         if self.successful_rotations.is_duplicate(envelope.id) {
             tracing::debug!(
                 event_id = %envelope.id,
