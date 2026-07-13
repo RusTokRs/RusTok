@@ -26,7 +26,7 @@ pub async fn resolve_optional(
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return (
                     StatusCode::FORBIDDEN,
-                    "User self-service endpoints do not accept service credentials",
+                    "Human-user and storefront endpoints do not accept service credentials",
                 )
                     .into_response();
             }
@@ -67,6 +67,8 @@ fn is_human_user_self_service_path(path: &str) -> bool {
             | "/api/auth/profile"
             | "/api/auth/history"
     ) || path.starts_with("/api/auth/sessions/")
+        || path == "/store"
+        || path.starts_with("/store/")
 }
 
 #[cfg(test)]
@@ -83,12 +85,16 @@ mod tests {
     }
 
     #[test]
-    fn only_user_self_service_routes_reject_service_credentials() {
+    fn user_self_service_and_storefront_reject_service_credentials() {
         assert!(is_human_user_self_service_path("/api/auth/me"));
         assert!(is_human_user_self_service_path(
             "/api/auth/sessions/00000000-0000-0000-0000-000000000001"
         ));
         assert!(is_human_user_self_service_path("/api/auth/profile"));
+        assert!(is_human_user_self_service_path("/store"));
+        assert!(is_human_user_self_service_path("/store/customers/me"));
+        assert!(is_human_user_self_service_path("/store/carts"));
+        assert!(!is_human_user_self_service_path("/admin/products"));
         assert!(!is_human_user_self_service_path("/api/auth/reset/request"));
         assert!(!is_human_user_self_service_path("/api/oauth/token"));
     }
