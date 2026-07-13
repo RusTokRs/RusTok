@@ -5,15 +5,13 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand,
     UserAdminMutationRuntime,
 };
-use rustok_core::UserRole;
+use rustok_core::{ModuleRuntimeExtensions, UserRole};
 use rustok_rbac::graphql::{
     RbacGraphqlRoleWriteError, RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle,
 };
 use uuid::Uuid;
 
-use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::user_admin_guard::GuardedUserAdminMutationProvider;
 
 struct ServerRbacGraphqlRoleWriter {
     runtime: UserAdminMutationRuntime,
@@ -80,9 +78,13 @@ fn map_auth_admin_error(error: AuthAdminMutationError) -> RbacGraphqlRoleWriteEr
 pub fn rbac_graphql_role_writer_from_context(
     ctx: &ServerRuntimeContext,
 ) -> RbacGraphqlRoleWriterHandle {
-    let base = Arc::new(ServerAuthAdminMutationProvider::new(ctx.db_clone()));
-    let guarded = Arc::new(GuardedUserAdminMutationProvider::new(base));
-    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter {
-        runtime: UserAdminMutationRuntime::new(guarded),
-    }))
+    let extensions = ctx
+        .shared_get::<Arc<ModuleRuntimeExtensions>>()
+        .expect("ModuleRuntimeExtensions must be initialized before GraphQL schema construction");
+    let runtime = extensions
+        .get::<UserAdminMutationRuntime>()
+        .cloned()
+        .expect("UserAdminMutationRuntime must be registered before GraphQL schema construction");
+
+    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter { runtime }))
 }
