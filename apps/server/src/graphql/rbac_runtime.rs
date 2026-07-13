@@ -1,17 +1,22 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_auth::{
+    AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand,
+    UserAdminMutationRuntime,
+};
 use rustok_core::UserRole;
-use rustok_rbac::graphql::{RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use rustok_rbac::graphql::{
+    RbacGraphqlRoleWriteError, RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle,
+};
 use uuid::Uuid;
 
-use crate::models::users;
-use crate::services::rbac_service::RbacService;
+use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::user_admin_guard::GuardedUserAdminMutationProvider;
 
 struct ServerRbacGraphqlRoleWriter {
-    db: DatabaseConnection,
+    runtime: UserAdminMutationRuntime,
 }
 
 #[async_trait]
@@ -19,28 +24,65 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
     async fn replace_user_role(
         &self,
         tenant_id: &Uuid,
+        actor_id: &Uuid,
         user_id: &Uuid,
         role: UserRole,
-    ) -> Result<(), String> {
-        let target_exists = users::Entity::find_by_id(*user_id)
-            .filter(users::Column::TenantId.eq(*tenant_id))
-            .one(&self.db)
+    ) -> Result<(), RbacGraphqlRoleWriteError> {
+        self.runtime
+            .port()
+            .update_user(
+                &AuthAdminMutationContext {
+                    actor_id: *actor_id,
+                    tenant_id: *tenant_id,
+                    request_id: None,
+                    locale: None,
+                },
+                UpdateUserCommand {
+                    id: *user_id,
+                    email: None,
+                    password: None,
+                    name: None,
+                    role: Some(role.to_string()),
+                    status: None,
+                    custom_fields: None,
+                },
+            )
             .await
-            .map_err(|err| err.to_string())?
-            .is_some();
+            .map(|_| ())
+            .map_err(map_auth_admin_error)
+    }
+}
 
-        if !target_exists {
-            return Err("target user not found in tenant".to_string());
+fn map_auth_admin_error(error: AuthAdminMutationError) -> RbacGraphqlRoleWriteError {
+    match error {
+        AuthAdminMutationError::Unauthorized => RbacGraphqlRoleWriteError::Forbidden(
+            "authentication context is unavailable".to_string(),
+        ),
+        AuthAdminMutationError::Forbidden(message) => {
+            RbacGraphqlRoleWriteError::Forbidden(message)
         }
-
-        RbacService::replace_user_role_committed(&self.db, user_id, tenant_id, role)
-            .await
-            .map_err(|err| err.to_string())
+        AuthAdminMutationError::NotFound(message) => {
+            RbacGraphqlRoleWriteError::NotFound(message)
+        }
+        AuthAdminMutationError::Validation(message)
+        | AuthAdminMutationError::Conflict(message) => {
+            RbacGraphqlRoleWriteError::Conflict(message)
+        }
+        AuthAdminMutationError::CustomFieldsValidation(fields) => {
+            RbacGraphqlRoleWriteError::Conflict(fields.to_string())
+        }
+        AuthAdminMutationError::Internal(message) => {
+            RbacGraphqlRoleWriteError::Internal(message)
+        }
     }
 }
 
 pub fn rbac_graphql_role_writer_from_context(
     ctx: &ServerRuntimeContext,
 ) -> RbacGraphqlRoleWriterHandle {
-    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter { db: ctx.db_clone() }))
+    let base = Arc::new(ServerAuthAdminMutationProvider::new(ctx.db_clone()));
+    let guarded = Arc::new(GuardedUserAdminMutationProvider::new(base));
+    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter {
+        runtime: UserAdminMutationRuntime::new(guarded),
+    }))
 }
