@@ -5,6 +5,7 @@ mod envelope;
 mod fallback;
 mod generation;
 mod invalidation;
+mod invalidation_consumer;
 mod key;
 mod key_generation;
 mod lease;
@@ -41,6 +42,9 @@ pub use generation::{
 pub use invalidation::{
     CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
     VersionedCacheInvalidation,
+};
+pub use invalidation_consumer::{
+    DurableCacheInvalidationConsumer, DurableInvalidationDecision,
 };
 pub use key::{
     CacheKeyBuilder, CacheKeyError, MAX_CACHE_IDENTITY_BYTES, MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
