@@ -43,6 +43,41 @@ pub struct ModuleCommandContext {
     pub idempotency_key: String,
 }
 
+/// Versioned owner command envelope used by mutable control-plane services.
+///
+/// The envelope separates request evidence from the aggregate CAS precondition
+/// and leaves the payload owned by the concrete catalog, installation,
+/// composition, governance, or build command.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RevisionedModuleCommand<T> {
+    pub context: ModuleCommandContext,
+    pub aggregate_kind: ModuleSnapshotKind,
+    pub aggregate_id: String,
+    pub expected_revision: ControlPlaneRevision,
+    pub payload: T,
+}
+
+impl<T> RevisionedModuleCommand<T> {
+    pub fn validate(&self) -> Result<(), ModuleControlPlaneError> {
+        self.context.validate()?;
+        if self.aggregate_id.trim().is_empty() {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::Validation,
+                "`aggregate_id` must not be empty.",
+                serde_json::json!({ "field": "aggregate_id" }),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn advance(
+        &self,
+        actual_revision: ControlPlaneRevision,
+    ) -> Result<ControlPlaneRevision, ModuleControlPlaneError> {
+        actual_revision.require(self.expected_revision)
+    }
+}
+
 impl ModuleCommandContext {
     pub fn validate(&self) -> Result<(), ModuleControlPlaneError> {
         for (name, value) in [
@@ -254,6 +289,29 @@ mod tests {
             invalid.validate(),
             Err(ModuleControlPlaneError {
                 code: ModuleErrorCode::InvalidCommandContext,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn revisioned_command_rejects_stale_writes() {
+        let command = RevisionedModuleCommand {
+            context: context(),
+            aggregate_kind: ModuleSnapshotKind::Installation,
+            aggregate_id: "installation:1".into(),
+            expected_revision: ControlPlaneRevision(2),
+            payload: serde_json::json!({ "action": "install" }),
+        };
+        command.validate().expect("valid command");
+        assert_eq!(
+            command.advance(ControlPlaneRevision(2)).expect("advance"),
+            ControlPlaneRevision(3)
+        );
+        assert!(matches!(
+            command.advance(ControlPlaneRevision(3)),
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::RevisionConflict,
                 ..
             })
         ));

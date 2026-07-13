@@ -60,13 +60,12 @@ Remaining:
 - Run untrusted production Rhai in the supervised isolated worker without
   giving it infrastructure clients; keep in-process Rhai an explicit
   local/reviewed profile only.
-- Bound or replace synchronous host-call bridging so guest calls cannot exhaust
-  native threads.
+- [x] Bound synchronous host-call bridging to one native thread per execution.
 
 ### S3 - Stable Language/ABI Contracts
 
 - Freeze the Rhai input/output binding used by drafts and artifacts.
-- Freeze WIT v1 package/world/entrypoint and JSON/error encoding.
+- [x] Freeze WIT v1 package/world/entrypoint and JSON/error encoding.
 - Define runtime ABI compatibility and cache invalidation.
 - Add malformed/untrusted input and component fuzz targets.
 
@@ -83,7 +82,8 @@ Remaining:
 - [x] Emit redacted capability denial evidence through an observer contract.
 - [x] Exclude untrusted error text, inputs, outputs, headers, and credentials
   from neutral observer records.
-- Ensure adapters receive scoped handles without raw credentials.
+- [x] Ensure adapters receive scoped `SandboxHost` handles without raw
+  credentials or platform-global clients.
 
 ### S5 - Sidecar Executor
 

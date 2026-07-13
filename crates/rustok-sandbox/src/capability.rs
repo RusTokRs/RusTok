@@ -275,7 +275,16 @@ pub struct SandboxHost {
 #[derive(Debug, Default)]
 struct CapabilityBudget {
     calls: AtomicU32,
+    blocking_bridges: AtomicU32,
     rate_window: Mutex<VecDeque<Instant>>,
+}
+
+struct BlockingBridgePermit<'a>(&'a AtomicU32);
+
+impl Drop for BlockingBridgePermit<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Release);
+    }
 }
 
 impl SandboxHost {
@@ -430,17 +439,30 @@ impl SandboxHost {
         Ok(())
     }
 
+    fn admit_blocking_bridge(&self) -> SandboxResult<BlockingBridgePermit<'_>> {
+        self.budget
+            .blocking_bridges
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| BlockingBridgePermit(&self.budget.blocking_bridges))
+            .map_err(|_| SandboxError::LimitExceeded {
+                resource: "blocking_capability_bridges".to_string(),
+                limit: 1,
+            })
+    }
+
     /// Calls an async broker from a synchronous language binding.
     ///
     /// Rhai and synchronous Component Model imports use this bridge instead of
-    /// opening their own network or storage clients. It requires an active
-    /// Tokio runtime because the broker may perform async host I/O.
+    /// opening their own network or storage clients. At most one native bridge
+    /// thread may be active per execution. It requires an active Tokio runtime
+    /// because the broker may perform async host I/O.
     pub fn invoke_blocking(&self, call: &CapabilityCall) -> SandboxResult<CapabilityResponse> {
         let handle = tokio::runtime::Handle::try_current().map_err(|error| {
             SandboxError::Internal(format!(
                 "sandbox host capability requires an active Tokio runtime: {error}"
             ))
         })?;
+        let _permit = self.admit_blocking_bridge()?;
         let host = self.clone();
         std::thread::scope(|scope| {
             scope

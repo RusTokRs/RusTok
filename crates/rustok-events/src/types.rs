@@ -493,6 +493,12 @@ pub enum DomainEvent {
         module_slug: String,
         enabled: bool,
     },
+    ModuleArtifactAdmitted {
+        installation_id: Uuid,
+        artifact_digest: String,
+        media_type: String,
+        size_bytes: u64,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -672,6 +678,7 @@ impl DomainEvent {
             Self::TenantCreated { .. } => "tenant.created",
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::TenantModuleToggled { .. } => "tenant.module.toggled",
+            Self::ModuleArtifactAdmitted { .. } => "module.artifact.admitted",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -806,6 +813,7 @@ impl DomainEvent {
             Self::TenantCreated { .. } => 1,
             Self::TenantUpdated { .. } => 1,
             Self::TenantModuleToggled { .. } => 1,
+            Self::ModuleArtifactAdmitted { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -1670,6 +1678,19 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 validators::validate_not_empty("module_slug", module_slug)?;
                 validators::validate_max_length("module_slug", module_slug, 128)?;
+                Ok(())
+            }
+            Self::ModuleArtifactAdmitted {
+                installation_id,
+                artifact_digest,
+                media_type,
+                size_bytes,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_empty("artifact_digest", artifact_digest)?;
+                validators::validate_max_length("artifact_digest", artifact_digest, 128)?;
+                validators::validate_not_empty("media_type", media_type)?;
+                validators::validate_max_length("media_type", media_type, 255)?;
                 Ok(())
             }
             Self::LocaleEnabled { tenant_id, locale }
