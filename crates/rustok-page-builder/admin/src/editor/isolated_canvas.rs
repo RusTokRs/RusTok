@@ -2,7 +2,7 @@ use crate::editor::{
     decode_canvas_message, render_canvas_srcdoc, AdminEditorRuntime, CanvasBridgeMessage,
     CanvasComponentGeometry,
 };
-use fly_leptos::{BrowserPoint, CoordinateTransform};
+use fly_leptos::BrowserPoint;
 use fly_ui::{CanvasRect, UiIntent, ViewportState};
 use leptos::prelude::*;
 use std::collections::BTreeMap;
@@ -74,6 +74,12 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         }
     };
 
+    let frame_runtime = runtime.clone();
+    let iframe_runtime = runtime.clone();
+    let hovered_runtime = runtime.clone();
+    let selected_runtime = runtime.clone();
+    let insertion_runtime = runtime;
+
     view! {
         <main class="relative min-w-0 overflow-auto rounded-xl border border-border bg-muted/40 p-4" aria-label="Isolated page canvas">
             <div class="mb-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -82,7 +88,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
             </div>
             <div
                 class="relative mx-auto origin-top overflow-hidden bg-white shadow-lg"
-                style=move || runtime.controller.with(|controller| {
+                style=move || frame_runtime.controller.with(|controller| {
                     let viewport = controller.ui().state.viewport;
                     format!(
                         "width:{}px;height:{}px",
@@ -98,7 +104,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     srcdoc=move || canvas_srcdoc.get()
                     data-fly-iframe-canvas="true"
                     on:load=on_iframe_load
-                    style=move || runtime.controller.with(|controller| {
+                    style=move || iframe_runtime.controller.with(|controller| {
                         let viewport = controller.ui().state.viewport;
                         format!(
                             "display:block;width:{}px;height:{}px;border:0;background:#fff;transform:scale({});transform-origin:0 0",
@@ -108,9 +114,9 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                         )
                     })
                 ></iframe>
-                <OverlayLayer runtime=runtime.clone() kind=OverlayKind::Hovered />
-                <OverlayLayer runtime=runtime.clone() kind=OverlayKind::Selected />
-                <OverlayLayer runtime=runtime.clone() kind=OverlayKind::Insertion />
+                <OverlayLayer runtime=hovered_runtime kind=OverlayKind::Hovered />
+                <OverlayLayer runtime=selected_runtime kind=OverlayKind::Selected />
+                <OverlayLayer runtime=insertion_runtime kind=OverlayKind::Insertion />
             </div>
         </main>
     }
@@ -127,7 +133,9 @@ enum OverlayKind {
 fn OverlayLayer(runtime: AdminEditorRuntime, kind: OverlayKind) -> impl IntoView {
     let class = match kind {
         OverlayKind::Hovered => "border border-dashed border-blue-400",
-        OverlayKind::Selected => "border-2 border-blue-600 shadow-[0_0_0_1px_rgba(255,255,255,.8)]",
+        OverlayKind::Selected => {
+            "border-2 border-blue-600 shadow-[0_0_0_1px_rgba(255,255,255,.8)]"
+        }
         OverlayKind::Insertion => "border-[3px] border-green-600 bg-green-600/10",
     };
     view! {
@@ -156,19 +164,19 @@ fn handle_canvas_message(
     match message {
         CanvasBridgeMessage::Ready => ready.set(true),
         CanvasBridgeMessage::ViewportChanged {
-            width,
-            height,
+            width: _,
+            height: _,
             scroll_x,
             scroll_y,
-            zoom,
+            zoom: _,
         } => {
             let current = runtime
                 .controller
                 .with(|controller| controller.ui().state.viewport);
             runtime.dispatch(UiIntent::SetViewport(ViewportState {
-                width: if current.width == 0 { width } else { current.width },
-                height: if current.height == 0 { height } else { current.height },
-                zoom: current.zoom.max(zoom as f32),
+                width: current.width,
+                height: current.height,
+                zoom: current.zoom,
                 scroll_x,
                 scroll_y,
             }));
@@ -260,37 +268,33 @@ fn synchronize_overlays(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
 ) {
-    let (selected, hovered, viewport) = runtime.controller.with(|controller| {
+    let (selected, hovered) = runtime.controller.with(|controller| {
         (
             controller.ui().state.selection.component_id.clone(),
             controller.ui().state.selection.hovered_component_id.clone(),
-            controller.ui().state.viewport,
         )
     });
     let selected = selected.and_then(|id| {
         geometry
             .with(|geometry| geometry.get(&id).map(|item| item.rect))
-            .map(|rect| canvas_rect(rect, viewport))
+            .map(canvas_rect)
     });
     let hovered = hovered.and_then(|id| {
         geometry
             .with(|geometry| geometry.get(&id).map(|item| item.rect))
-            .map(|rect| canvas_rect(rect, viewport))
+            .map(canvas_rect)
     });
     runtime.dispatch(UiIntent::SetSelectedOverlay(selected));
     runtime.dispatch(UiIntent::SetHoveredOverlay(hovered));
 }
 
-fn canvas_rect(
-    rect: fly_leptos::BrowserRect,
-    viewport: ViewportState,
-) -> CanvasRect {
-    rect.to_canvas_rect(CoordinateTransform {
-        scroll_x: viewport.scroll_x,
-        scroll_y: viewport.scroll_y,
-        zoom: f64::from(viewport.zoom),
-        ..CoordinateTransform::default()
-    })
+fn canvas_rect(rect: fly_leptos::BrowserRect) -> CanvasRect {
+    CanvasRect {
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height,
+    }
 }
 
 fn overlay_style(rect: Option<CanvasRect>, viewport: ViewportState) -> String {
@@ -300,8 +304,8 @@ fn overlay_style(rect: Option<CanvasRect>, viewport: ViewportState) -> String {
     let zoom = f64::from(viewport.zoom.max(0.01));
     format!(
         "display:block;left:{}px;top:{}px;width:{}px;height:{}px",
-        rect.x * zoom - viewport.scroll_x,
-        rect.y * zoom - viewport.scroll_y,
+        rect.x * zoom,
+        rect.y * zoom,
         rect.width * zoom,
         rect.height * zoom,
     )
