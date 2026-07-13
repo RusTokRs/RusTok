@@ -42,12 +42,13 @@ impl FulfillmentProviderOperationRecovery {
             .map_err(Into::into)
     }
 
-    /// Move stale executions into a fail-closed reconciliation state.
+    /// Move stale executions for one tenant into a fail-closed reconciliation state.
     ///
     /// The provider may have completed the side effect before the process crashed,
     /// so stale executions are never made retryable automatically.
     pub async fn quarantine_stale_executing(
         &self,
+        tenant_id: Uuid,
         stale_before: DateTime<Utc>,
         limit: u64,
     ) -> FulfillmentResult<u64> {
@@ -55,6 +56,7 @@ impl FulfillmentProviderOperationRecovery {
         let ids = provider_operation::Entity::find()
             .select_only()
             .column(provider_operation::Column::Id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
             .filter(provider_operation::Column::UpdatedAt.lt(stale_before))
             .order_by_asc(provider_operation::Column::UpdatedAt)
@@ -86,6 +88,7 @@ impl FulfillmentProviderOperationRecovery {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::current_timestamp(),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.is_in(ids))
             .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
             .filter(provider_operation::Column::UpdatedAt.lt(stale_before))
@@ -98,6 +101,7 @@ impl FulfillmentProviderOperationRecovery {
     /// operation retryable under the same idempotency key.
     pub async fn resolve_unknown_as_failed(
         &self,
+        tenant_id: Uuid,
         operation_id: Uuid,
         reason: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
@@ -118,6 +122,7 @@ impl FulfillmentProviderOperationRecovery {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status
@@ -128,10 +133,10 @@ impl FulfillmentProviderOperationRecovery {
             .await?;
         if result.rows_affected != 1 {
             return Err(FulfillmentError::Validation(format!(
-                "fulfillment provider operation {operation_id} is not an unresolved unknown execution"
+                "fulfillment provider operation {operation_id} is not an unresolved unknown execution for tenant {tenant_id}"
             )));
         }
-        self.get(operation_id).await
+        self.get(tenant_id, operation_id).await
     }
 
     /// Confirm provider success for an unknown execution. A subsequent retry of
@@ -139,6 +144,7 @@ impl FulfillmentProviderOperationRecovery {
     /// local fulfillment transition.
     pub async fn resolve_unknown_as_succeeded(
         &self,
+        tenant_id: Uuid,
         operation_id: Uuid,
         provider_reference: Option<String>,
         provider_result: Value,
@@ -173,6 +179,7 @@ impl FulfillmentProviderOperationRecovery {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::current_timestamp(),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status
@@ -183,19 +190,24 @@ impl FulfillmentProviderOperationRecovery {
             .await?;
         if result.rows_affected != 1 {
             return Err(FulfillmentError::Validation(format!(
-                "fulfillment provider operation {operation_id} is not an unresolved unknown execution"
+                "fulfillment provider operation {operation_id} is not an unresolved unknown execution for tenant {tenant_id}"
             )));
         }
-        self.get(operation_id).await
+        self.get(tenant_id, operation_id).await
     }
 
-    async fn get(&self, operation_id: Uuid) -> FulfillmentResult<provider_operation::Model> {
+    async fn get(
+        &self,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<provider_operation::Model> {
         provider_operation::Entity::find_by_id(operation_id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or_else(|| {
                 FulfillmentError::Validation(format!(
-                    "fulfillment provider operation {operation_id} not found"
+                    "fulfillment provider operation {operation_id} not found for tenant {tenant_id}"
                 ))
             })
     }
