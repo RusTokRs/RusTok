@@ -13,17 +13,25 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, OptionalTenant};
+        use rustok_api::{
+            has_effective_permission, AuthContext, HostRuntimeContext, OptionalTenant, Permission,
+        };
         use rustok_core::{HealthStatus, RusToKModule};
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
-        let _auth = leptos_axum::extract::<AuthContext>()
+        let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<OptionalTenant>()
             .await
             .ok()
             .and_then(|value| value.0);
+
+        if !has_effective_permission(&auth.permissions, &Permission::LOGS_READ) {
+            return Err(ServerFnError::new(
+                "logs:read required to inspect outbox operational state",
+            ));
+        }
 
         let db = runtime_ctx.db_clone();
         let backend = sea_orm::ConnectionTrait::get_database_backend(&db);
