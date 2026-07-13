@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::sync::{Arc, Mutex};
+
 use rustok_api::PortContext;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -10,6 +13,69 @@ pub const GUEST_CART_TOKEN_COOKIE: &str = "rustok-cart-access-token";
 const GUEST_CART_TOKEN_HASH_METADATA_KEY: &str = "__rustok_guest_cart_token_sha256";
 const GUEST_CART_TRANSIENT_TOKEN_METADATA_KEY: &str = "__rustok_guest_cart_access_token";
 const GUEST_CART_CLAIM_PREFIX: &str = "cart:guest:";
+
+#[derive(Clone, Default)]
+struct GuestCartRequestScope {
+    presented_token: Option<String>,
+    issued_token: Arc<Mutex<Option<String>>>,
+}
+
+tokio::task_local! {
+    static CURRENT_GUEST_CART_SCOPE: GuestCartRequestScope;
+}
+
+pub async fn with_guest_cart_request_scope<F>(
+    presented_token: Option<String>,
+    future: F,
+) -> F::Output
+where
+    F: Future,
+{
+    let presented_token = presented_token
+        .as_deref()
+        .and_then(normalize_guest_cart_token)
+        .map(str::to_string);
+    CURRENT_GUEST_CART_SCOPE
+        .scope(
+            GuestCartRequestScope {
+                presented_token,
+                issued_token: Arc::new(Mutex::new(None)),
+            },
+            future,
+        )
+        .await
+}
+
+pub fn current_guest_cart_token() -> Option<String> {
+    CURRENT_GUEST_CART_SCOPE
+        .try_with(|scope| scope.presented_token.clone())
+        .ok()
+        .flatten()
+}
+
+pub fn record_issued_guest_cart_token(token: &str) {
+    let Some(token) = normalize_guest_cart_token(token).map(str::to_string) else {
+        return;
+    };
+    let _ = CURRENT_GUEST_CART_SCOPE.try_with(|scope| {
+        if let Ok(mut issued) = scope.issued_token.lock() {
+            *issued = Some(token);
+        }
+    });
+}
+
+pub fn issued_guest_cart_token() -> Option<String> {
+    CURRENT_GUEST_CART_SCOPE
+        .try_with(|scope| {
+            scope
+                .issued_token
+                .lock()
+                .ok()
+                .and_then(|issued| issued.clone())
+        })
+        .ok()
+        .flatten()
+}
 
 pub fn prepare_guest_cart_metadata(
     customer_id: Option<Uuid>,
@@ -62,12 +128,14 @@ pub fn guest_cart_claim(token: &str) -> Option<String> {
     normalize_guest_cart_token(token).map(|token| format!("{GUEST_CART_CLAIM_PREFIX}{token}"))
 }
 
-pub fn guest_cart_token_from_context(context: &PortContext) -> Option<&str> {
+pub fn guest_cart_token_from_context(context: &PortContext) -> Option<String> {
     context
         .claims
         .iter()
         .find_map(|claim| claim.strip_prefix(GUEST_CART_CLAIM_PREFIX))
         .and_then(normalize_guest_cart_token)
+        .map(str::to_string)
+        .or_else(current_guest_cart_token)
 }
 
 pub fn verify_guest_cart_token(metadata: &Value, presented_token: Option<&str>) -> bool {
@@ -86,6 +154,10 @@ pub fn verify_guest_cart_token(metadata: &Value, presented_token: Option<&str>) 
 
 pub fn hash_guest_cart_token(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
+}
+
+pub fn normalize_presented_guest_cart_token(token: &str) -> Option<String> {
+    normalize_guest_cart_token(token).map(str::to_string)
 }
 
 fn normalize_guest_cart_token(token: &str) -> Option<&str> {
@@ -124,7 +196,10 @@ mod tests {
         assert!(metadata.get(GUEST_CART_TOKEN_HASH_METADATA_KEY).is_some());
         assert!(!metadata.to_string().contains(&token));
         assert!(verify_guest_cart_token(&metadata, Some(&token)));
-        assert!(!verify_guest_cart_token(&metadata, Some("wrong-token-value-12345678901234567890")));
+        assert!(!verify_guest_cart_token(
+            &metadata,
+            Some("wrong-token-value-12345678901234567890")
+        ));
     }
 
     #[test]
@@ -143,5 +218,18 @@ mod tests {
             "public": true
         }));
         assert_eq!(sanitized, json!({"public": true}));
+    }
+
+    #[tokio::test]
+    async fn request_scope_carries_presented_and_issued_tokens() {
+        let presented = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+        with_guest_cart_request_scope(Some(presented.clone()), async {
+            assert_eq!(current_guest_cart_token(), Some(presented));
+            let issued = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+            record_issued_guest_cart_token(&issued);
+            assert_eq!(issued_guest_cart_token(), Some(issued));
+        })
+        .await;
+        assert!(current_guest_cart_token().is_none());
     }
 }
