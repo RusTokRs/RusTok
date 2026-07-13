@@ -1,4 +1,4 @@
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
@@ -19,10 +19,12 @@ const MAX_CLAIM_CANDIDATES: u64 = 128;
 /// Claim the first eligible remote validation stage with a database
 /// compare-and-swap.
 ///
-/// Candidate discovery is intentionally advisory. The conditional update is
-/// the serialization point: only one runner can move a stage from `queued`
-/// with an expired/no lease to `running`. The claim and its governance event
-/// are committed in the same transaction.
+/// Candidate discovery is advisory. The conditional update is the
+/// serialization point: only one runner can claim a queued stage or reclaim a
+/// remote `running` stage whose lease has expired. Reclaiming the same attempt
+/// avoids dependence on the background reaper in registry-only profiles while
+/// still invalidating the previous claim id immediately. The claim and its
+/// governance event are committed in one transaction.
 pub async fn claim_remote_validation_stage_atomic(
     db: &DatabaseConnection,
     runner_id: &str,
@@ -42,18 +44,8 @@ pub async fn claim_remote_validation_stage_atomic(
     let candidates = registry_validation_stage::Entity::find()
         .filter(
             Condition::all()
-                .add(
-                    registry_validation_stage::Column::Status
-                        .eq(registry_validation_stage::RegistryValidationStageStatus::Queued),
-                )
                 .add(registry_validation_stage::Column::StageKey.is_in(supported_stages))
-                .add(
-                    Condition::any()
-                        .add(registry_validation_stage::Column::ClaimExpiresAt.is_null())
-                        .add(
-                            registry_validation_stage::Column::ClaimExpiresAt.lte(discovery_now),
-                        ),
-                ),
+                .add(claimable_condition(discovery_now)),
         )
         .order_by_asc(registry_validation_stage::Column::CreatedAt)
         .limit(MAX_CLAIM_CANDIDATES)
@@ -87,12 +79,25 @@ pub async fn claim_remote_validation_stage_atomic(
         };
 
         let now = Utc::now();
+        let reclaimed = candidate.status
+            == registry_validation_stage::RegistryValidationStageStatus::Running;
+        let previous_claim_id = candidate.claim_id.clone();
+        let previous_runner_id = candidate.claimed_by.clone();
         let claim_id = format!("rvc_{}", uuid::Uuid::new_v4().simple());
         let claim_expires_at = now + remote_validation_lease_ttl(lease_ttl_ms);
-        let detail = format!(
-            "Remote runner '{}' claimed validation stage '{}'.",
-            runner_id, candidate.stage_key
-        );
+        let detail = if reclaimed {
+            format!(
+                "Remote runner '{}' reclaimed expired validation stage '{}' from runner '{}'.",
+                runner_id,
+                candidate.stage_key,
+                previous_runner_id.as_deref().unwrap_or("unknown")
+            )
+        } else {
+            format!(
+                "Remote runner '{}' claimed validation stage '{}'.",
+                runner_id, candidate.stage_key
+            )
+        };
 
         let claimed = registry_validation_stage::Entity::update_many()
             .col_expr(
@@ -109,7 +114,7 @@ pub async fn claim_remote_validation_stage_atomic(
             )
             .col_expr(
                 registry_validation_stage::Column::FinishedAt,
-                Expr::value(Option::<chrono::DateTime<Utc>>::None),
+                Expr::value(Option::<DateTime<Utc>>::None),
             )
             .col_expr(
                 registry_validation_stage::Column::ClaimId,
@@ -136,15 +141,7 @@ pub async fn claim_remote_validation_stage_atomic(
                 Expr::value(now),
             )
             .filter(registry_validation_stage::Column::Id.eq(&candidate.id))
-            .filter(
-                registry_validation_stage::Column::Status
-                    .eq(registry_validation_stage::RegistryValidationStageStatus::Queued),
-            )
-            .filter(
-                Condition::any()
-                    .add(registry_validation_stage::Column::ClaimExpiresAt.is_null())
-                    .add(registry_validation_stage::Column::ClaimExpiresAt.lte(now)),
-            )
+            .filter(claimable_condition(now))
             .exec(&tx)
             .await?;
 
@@ -181,6 +178,9 @@ pub async fn claim_remote_validation_stage_atomic(
                 "runner_id": runner_id,
                 "runner_kind": "remote",
                 "execution_mode": "local_workspace",
+                "reclaimed_expired_lease": reclaimed,
+                "previous_claim_id": previous_claim_id,
+                "previous_runner_id": previous_runner_id,
             })),
             created_at: Set(now),
         }
@@ -214,6 +214,31 @@ pub async fn claim_remote_validation_stage_atomic(
     }
 
     Ok(None)
+}
+
+fn claimable_condition(now: DateTime<Utc>) -> Condition {
+    Condition::any()
+        .add(
+            Condition::all()
+                .add(
+                    registry_validation_stage::Column::Status
+                        .eq(registry_validation_stage::RegistryValidationStageStatus::Queued),
+                )
+                .add(
+                    Condition::any()
+                        .add(registry_validation_stage::Column::ClaimExpiresAt.is_null())
+                        .add(registry_validation_stage::Column::ClaimExpiresAt.lte(now)),
+                ),
+        )
+        .add(
+            Condition::all()
+                .add(
+                    registry_validation_stage::Column::Status
+                        .eq(registry_validation_stage::RegistryValidationStageStatus::Running),
+                )
+                .add(registry_validation_stage::Column::RunnerKind.eq("remote"))
+                .add(registry_validation_stage::Column::ClaimExpiresAt.lt(now)),
+        )
 }
 
 fn normalize_supported_stages(values: &[String]) -> anyhow::Result<Vec<String>> {
@@ -267,7 +292,8 @@ fn blocked_reason_code(stage_key: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_supported_stages;
+    use super::{claimable_condition, normalize_supported_stages};
+    use chrono::Utc;
 
     #[test]
     fn supported_stages_are_canonicalized_and_deduplicated() {
@@ -285,5 +311,10 @@ mod tests {
     #[test]
     fn unknown_stage_is_rejected() {
         assert!(normalize_supported_stages(&["arbitrary".to_string()]).is_err());
+    }
+
+    #[test]
+    fn claimable_condition_accepts_queued_or_expired_remote_running_stages() {
+        let _ = claimable_condition(Utc::now());
     }
 }
