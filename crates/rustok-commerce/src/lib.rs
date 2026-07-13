@@ -40,9 +40,10 @@ pub use services::{
     ApplyOrderChangeResult, CheckoutError, CheckoutResult, CheckoutService,
     CreateReturnDecisionInput, ExchangeDifferenceRefundInput, PaymentOrchestrationError,
     PaymentOrchestrationResult, PaymentOrchestrationService, PostOrderOrchestrationError,
-    PostOrderOrchestrationService, ReturnClaimDecisionInput, ReturnDecisionInput,
-    ReturnDecisionResponse, ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
-    ShippingProfileService, StoreContextError, StoreContextResult, StoreContextService,
+    PostOrderOrchestrationService, RefundReconciliationService, ReturnClaimDecisionInput,
+    ReturnDecisionInput, ReturnDecisionResponse, ReturnExchangeDecisionInput,
+    ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
+    StoreContextService,
 };
 pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
 
@@ -82,56 +83,48 @@ impl RusToKModule for CommerceModule {
 
     fn permissions(&self) -> Vec<Permission> {
         vec![
-            // Products
             Permission::new(Resource::Products, Action::Create),
             Permission::new(Resource::Products, Action::Read),
             Permission::new(Resource::Products, Action::Update),
             Permission::new(Resource::Products, Action::Delete),
             Permission::new(Resource::Products, Action::List),
             Permission::new(Resource::Products, Action::Manage),
-            // Orders
             Permission::new(Resource::Orders, Action::Create),
             Permission::new(Resource::Orders, Action::Read),
             Permission::new(Resource::Orders, Action::Update),
             Permission::new(Resource::Orders, Action::Delete),
             Permission::new(Resource::Orders, Action::List),
             Permission::new(Resource::Orders, Action::Manage),
-            // Customers
             Permission::new(Resource::Customers, Action::Create),
             Permission::new(Resource::Customers, Action::Read),
             Permission::new(Resource::Customers, Action::Update),
             Permission::new(Resource::Customers, Action::Delete),
             Permission::new(Resource::Customers, Action::List),
             Permission::new(Resource::Customers, Action::Manage),
-            // Regions
             Permission::new(Resource::Regions, Action::Create),
             Permission::new(Resource::Regions, Action::Read),
             Permission::new(Resource::Regions, Action::Update),
             Permission::new(Resource::Regions, Action::Delete),
             Permission::new(Resource::Regions, Action::List),
             Permission::new(Resource::Regions, Action::Manage),
-            // Payments
             Permission::new(Resource::Payments, Action::Create),
             Permission::new(Resource::Payments, Action::Read),
             Permission::new(Resource::Payments, Action::Update),
             Permission::new(Resource::Payments, Action::Delete),
             Permission::new(Resource::Payments, Action::List),
             Permission::new(Resource::Payments, Action::Manage),
-            // Fulfillments
             Permission::new(Resource::Fulfillments, Action::Create),
             Permission::new(Resource::Fulfillments, Action::Read),
             Permission::new(Resource::Fulfillments, Action::Update),
             Permission::new(Resource::Fulfillments, Action::Delete),
             Permission::new(Resource::Fulfillments, Action::List),
             Permission::new(Resource::Fulfillments, Action::Manage),
-            // Inventory
             Permission::new(Resource::Inventory, Action::Create),
             Permission::new(Resource::Inventory, Action::Read),
             Permission::new(Resource::Inventory, Action::Update),
             Permission::new(Resource::Inventory, Action::Delete),
             Permission::new(Resource::Inventory, Action::List),
             Permission::new(Resource::Inventory, Action::Manage),
-            // Discounts
             Permission::new(Resource::Discounts, Action::Create),
             Permission::new(Resource::Discounts, Action::Read),
             Permission::new(Resource::Discounts, Action::Update),

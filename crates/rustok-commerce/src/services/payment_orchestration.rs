@@ -28,16 +28,6 @@ pub enum PaymentOrchestrationError {
         #[source]
         source: PaymentError,
     },
-    #[error(
-        "payment provider `{operation}` succeeded for operation {operation_id}, but local reconciliation state failed for refund {refund_id:?}: {source}"
-    )]
-    PersistenceAfterProvider {
-        operation_id: Uuid,
-        operation: &'static str,
-        refund_id: Option<Uuid>,
-        #[source]
-        source: PaymentError,
-    },
     #[error("payment error: {0}")]
     Payment(#[from] PaymentError),
 }
@@ -390,11 +380,9 @@ impl PaymentOrchestrationService {
             )
             .await
         {
-            return Err(PaymentOrchestrationError::PersistenceAfterProvider {
-                operation_id: operation.id,
-                operation: "refund",
-                refund_id: Some(refund.id),
-                source,
+            return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                refund_id: refund.id,
+                source: reconciliation_error(operation.id, "record provider success", source),
             });
         }
 
@@ -407,11 +395,9 @@ impl PaymentOrchestrationService {
                 .provider_operation_journal
                 .mark_reconciliation_required(operation.id, source.to_string())
                 .await;
-            return Err(PaymentOrchestrationError::PersistenceAfterProvider {
-                operation_id: operation.id,
-                operation: "refund",
-                refund_id: Some(refund.id),
-                source,
+            return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                refund_id: refund.id,
+                source: reconciliation_error(operation.id, "commit journal", source),
             });
         }
 
@@ -441,6 +427,16 @@ impl PaymentOrchestrationService {
             .cancel_refund(tenant_id, refund_id, input)
             .await?)
     }
+}
+
+fn reconciliation_error(
+    operation_id: Uuid,
+    stage: &str,
+    source: PaymentError,
+) -> PaymentError {
+    PaymentError::Validation(format!(
+        "provider side effect succeeded, but failed to {stage} for operation {operation_id}: {source}"
+    ))
 }
 
 fn provider_id_for_collection(collection: &PaymentCollectionResponse) -> String {
