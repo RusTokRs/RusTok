@@ -220,7 +220,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             CREATE TRIGGER reservation_metadata_size_insert_guard
             BEFORE INSERT ON reservation_items
             FOR EACH ROW
-            WHEN length(CAST(NEW.metadata AS TEXT)) > {MAX_RESERVATION_METADATA_BYTES}
+            WHEN length(CAST(NEW.metadata AS BLOB)) > {MAX_RESERVATION_METADATA_BYTES}
             BEGIN
                 SELECT RAISE(ABORT, 'reservation metadata exceeds the supported size');
             END;
@@ -228,7 +228,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             CREATE TRIGGER reservation_metadata_size_update_guard
             BEFORE UPDATE OF metadata ON reservation_items
             FOR EACH ROW
-            WHEN length(CAST(NEW.metadata AS TEXT)) > {MAX_RESERVATION_METADATA_BYTES}
+            WHEN length(CAST(NEW.metadata AS BLOB)) > {MAX_RESERVATION_METADATA_BYTES}
             BEGIN
                 SELECT RAISE(ABORT, 'reservation metadata exceeds the supported size');
             END;
