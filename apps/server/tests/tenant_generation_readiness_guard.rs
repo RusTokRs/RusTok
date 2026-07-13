@@ -33,12 +33,25 @@ fn tenant_readiness_and_metrics_use_canonical_generation_listener() {
         "super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await",
         "shared_map::<tokio::task::JoinHandle<()>, _>",
         "task.abort()",
+        "pub async fn invalidate_tenant_cache_by_host",
+        "pub async fn invalidate_tenant_cache_by_slug",
+        "pub async fn invalidate_tenant_cache_by_uuid",
+        "bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)",
+        ".publish_durable(&record)",
     ] {
         assert!(
             middleware.contains(required),
             "tenant readiness wrapper must retain {required}"
         );
     }
+
+    let bump = middleware
+        .find("bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)")
+        .expect("manual invalidation must advance the canonical generation");
+    let publish = middleware
+        .find(".publish_durable(&record)")
+        .expect("manual invalidation must publish the durable generation");
+    assert!(bump < publish);
 
     assert!(
         health.contains("tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus")
