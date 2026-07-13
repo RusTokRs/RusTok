@@ -8,7 +8,9 @@ use crate::model::RbacAdminBootstrap;
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{AuthContext, TenantContext};
+        use rustok_api::{
+            has_effective_permission, AuthContext, Permission, TenantContext,
+        };
         use rustok_core::{infer_user_role_from_permissions, ModuleRegistry, Rbac, UserRole};
 
         let registry = expect_context::<ModuleRegistry>();
@@ -18,6 +20,12 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+            return Err(ServerFnError::new(
+                "settings:read required to load RBAC administration bootstrap",
+            ));
+        }
 
         let mut module_permissions = registry
             .list()
