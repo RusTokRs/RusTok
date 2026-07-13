@@ -10,6 +10,7 @@ mod journaled_create_label_provider;
 mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
 mod paid_order_create_label;
+mod paid_order_create_label_sweep;
 mod payment_orchestration;
 mod post_order;
 mod refund_reconciliation;
@@ -31,6 +32,9 @@ pub use journaled_checkout::{
 };
 pub(crate) use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
+pub use paid_order_create_label_sweep::{
+    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
+};
 pub use payment_orchestration::{
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
 };
