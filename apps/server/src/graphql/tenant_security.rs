@@ -1,14 +1,15 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
-use regex::Regex;
 use rustok_api::TenantContext;
 use uuid::Uuid;
 
 use rustok_api::graphql::GraphQLError;
+
+const TENANT_ARGUMENT_NAMES: [&str; 2] = ["tenantId", "tenant_id"];
 
 #[derive(Clone, Debug, Default)]
 struct GraphqlTenantArgumentPolicy {
@@ -27,23 +28,6 @@ impl ExtensionFactory for GraphqlTenantPolicy {
 
 struct GraphqlTenantPolicyExtension;
 
-fn tenant_argument_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(
-            r#"(?x)
-                \b(?:tenantId|tenant_id)\s*:\s*
-                (?:
-                    \"(?P<literal>[0-9a-fA-F-]{36})\"
-                    |
-                    \$(?P<variable>[_A-Za-z][_0-9A-Za-z]*)
-                )
-            "#,
-        )
-        .expect("GraphQL tenant argument regex must compile")
-    })
-}
-
 fn classify_tenant_arguments(request: &mut Request) {
     if request.query.trim().is_empty() {
         return;
@@ -52,43 +36,192 @@ fn classify_tenant_arguments(request: &mut Request) {
     let variables = serde_json::to_value(&request.variables).unwrap_or_default();
     let mut policy = GraphqlTenantArgumentPolicy::default();
 
-    for captures in tenant_argument_regex().captures_iter(&request.query) {
-        let raw = if let Some(literal) = captures.name("literal") {
-            Some(literal.as_str().to_string())
-        } else if let Some(variable) = captures.name("variable") {
-            match variables.get(variable.as_str()) {
-                Some(serde_json::Value::String(value)) => Some(value.clone()),
-                Some(serde_json::Value::Null) | None => None,
-                Some(_) => {
-                    policy.invalid_argument = Some(format!(
-                        "GraphQL tenant variable `${}` must be a UUID string",
-                        variable.as_str()
-                    ));
-                    break;
-                }
-            }
-        } else {
-            None
-        };
-
-        let Some(raw) = raw else {
-            continue;
-        };
-        match Uuid::parse_str(raw.trim()) {
-            Ok(tenant_id) => policy.requested_tenant_ids.push(tenant_id),
-            Err(_) => {
-                policy.invalid_argument = Some(format!(
-                    "GraphQL tenant argument `{raw}` is not a valid UUID"
-                ));
-                break;
-            }
-        }
+    collect_query_tenant_arguments(&request.query, &variables, &mut policy);
+    if policy.invalid_argument.is_none() {
+        collect_nested_tenant_variables(&variables, "$variables", &mut policy);
     }
 
     policy.requested_tenant_ids.sort_unstable();
     policy.requested_tenant_ids.dedup();
     if policy.invalid_argument.is_some() || !policy.requested_tenant_ids.is_empty() {
         request.data.insert(policy);
+    }
+}
+
+fn collect_query_tenant_arguments(
+    query: &str,
+    variables: &serde_json::Value,
+    policy: &mut GraphqlTenantArgumentPolicy,
+) {
+    let bytes = query.as_bytes();
+    let mut cursor = 0;
+
+    while cursor < bytes.len() && policy.invalid_argument.is_none() {
+        let Some((name_start, name)) = find_next_tenant_argument_name(query, cursor) else {
+            break;
+        };
+        let mut value_start = name_start + name.len();
+        value_start = skip_ascii_whitespace(bytes, value_start);
+        if bytes.get(value_start) != Some(&b':') {
+            cursor = name_start + name.len();
+            continue;
+        }
+        value_start = skip_ascii_whitespace(bytes, value_start + 1);
+
+        match bytes.get(value_start).copied() {
+            Some(b'"') => {
+                let content_start = value_start + 1;
+                let Some(relative_end) = query[content_start..].find('"') else {
+                    policy.invalid_argument = Some(format!(
+                        "GraphQL tenant argument `{name}` contains an unterminated string"
+                    ));
+                    break;
+                };
+                let content_end = content_start + relative_end;
+                add_tenant_id(
+                    &query[content_start..content_end],
+                    &format!("GraphQL argument `{name}`"),
+                    policy,
+                );
+                cursor = content_end + 1;
+            }
+            Some(b'$') => {
+                let variable_start = value_start + 1;
+                let variable_end = read_graphql_identifier_end(bytes, variable_start);
+                if variable_end == variable_start {
+                    policy.invalid_argument = Some(format!(
+                        "GraphQL tenant argument `{name}` references an invalid variable"
+                    ));
+                    break;
+                }
+                let variable_name = &query[variable_start..variable_end];
+                match variables.get(variable_name) {
+                    Some(serde_json::Value::String(value)) => add_tenant_id(
+                        value,
+                        &format!("GraphQL tenant variable `${variable_name}`"),
+                        policy,
+                    ),
+                    Some(serde_json::Value::Null) | None => {}
+                    Some(_) => {
+                        policy.invalid_argument = Some(format!(
+                            "GraphQL tenant variable `${variable_name}` must be a UUID string"
+                        ));
+                    }
+                }
+                cursor = variable_end;
+            }
+            _ if query[value_start..].starts_with("null") => {
+                cursor = value_start + 4;
+            }
+            _ => {
+                policy.invalid_argument = Some(format!(
+                    "GraphQL tenant argument `{name}` must be a UUID string or variable"
+                ));
+            }
+        }
+    }
+}
+
+fn find_next_tenant_argument_name(query: &str, from: usize) -> Option<(usize, &'static str)> {
+    TENANT_ARGUMENT_NAMES
+        .iter()
+        .filter_map(|name| {
+            query[from..]
+                .find(name)
+                .map(|relative| (from + relative, *name))
+        })
+        .filter(|(start, name)| is_identifier_boundary(query.as_bytes(), *start, name.len()))
+        .min_by_key(|(start, _)| *start)
+}
+
+fn is_identifier_boundary(bytes: &[u8], start: usize, len: usize) -> bool {
+    let before_ok = start == 0 || !is_graphql_identifier_byte(bytes[start - 1]);
+    let end = start + len;
+    let after_ok = end >= bytes.len() || !is_graphql_identifier_byte(bytes[end]);
+    before_ok && after_ok
+}
+
+fn skip_ascii_whitespace(bytes: &[u8], mut cursor: usize) -> usize {
+    while bytes
+        .get(cursor)
+        .is_some_and(|value| value.is_ascii_whitespace())
+    {
+        cursor += 1;
+    }
+    cursor
+}
+
+fn read_graphql_identifier_end(bytes: &[u8], mut cursor: usize) -> usize {
+    while bytes
+        .get(cursor)
+        .is_some_and(|value| is_graphql_identifier_byte(*value))
+    {
+        cursor += 1;
+    }
+    cursor
+}
+
+fn is_graphql_identifier_byte(value: u8) -> bool {
+    value == b'_' || value.is_ascii_alphanumeric()
+}
+
+fn collect_nested_tenant_variables(
+    value: &serde_json::Value,
+    path: &str,
+    policy: &mut GraphqlTenantArgumentPolicy,
+) {
+    if policy.invalid_argument.is_some() {
+        return;
+    }
+
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, child) in object {
+                let child_path = format!("{path}.{key}");
+                if TENANT_ARGUMENT_NAMES.contains(&key.as_str()) {
+                    match child {
+                        serde_json::Value::String(raw) => {
+                            add_tenant_id(raw, &child_path, policy)
+                        }
+                        serde_json::Value::Null => {}
+                        _ => {
+                            policy.invalid_argument = Some(format!(
+                                "GraphQL tenant variable `{child_path}` must be a UUID string"
+                            ));
+                        }
+                    }
+                } else {
+                    collect_nested_tenant_variables(child, &child_path, policy);
+                }
+                if policy.invalid_argument.is_some() {
+                    return;
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (index, child) in items.iter().enumerate() {
+                collect_nested_tenant_variables(
+                    child,
+                    &format!("{path}[{index}]"),
+                    policy,
+                );
+                if policy.invalid_argument.is_some() {
+                    return;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn add_tenant_id(raw: &str, source: &str, policy: &mut GraphqlTenantArgumentPolicy) {
+    match Uuid::parse_str(raw.trim()) {
+        Ok(tenant_id) => policy.requested_tenant_ids.push(tenant_id),
+        Err(_) => {
+            policy.invalid_argument = Some(format!(
+                "{source} value `{raw}` is not a valid UUID"
+            ));
+        }
     }
 }
 
@@ -149,10 +282,17 @@ impl Extension for GraphqlTenantPolicyExtension {
 #[cfg(test)]
 mod tests {
     use super::GraphqlTenantPolicy;
-    use async_graphql::{EmptyMutation, EmptySubscription, Object, Request, Schema, Variables};
+    use async_graphql::{
+        EmptyMutation, EmptySubscription, InputObject, Object, Request, Schema, Variables,
+    };
     use rustok_api::TenantContext;
     use serde_json::json;
     use uuid::Uuid;
+
+    #[derive(InputObject)]
+    struct TenantInput {
+        tenant_id: Option<Uuid>,
+    }
 
     struct Query;
 
@@ -160,6 +300,10 @@ mod tests {
     impl Query {
         async fn echo_tenant(&self, tenant_id: Option<Uuid>) -> Option<Uuid> {
             tenant_id
+        }
+
+        async fn echo_input(&self, input: TenantInput) -> Option<Uuid> {
+            input.tenant_id
         }
     }
 
@@ -207,6 +351,28 @@ mod tests {
                     "query Tenant($target: UUID) { echoTenant(tenantId: $target) }",
                 )
                 .variables(Variables::from_json(json!({ "target": other })))
+                .data(tenant(tenant_id)),
+            )
+            .await;
+
+        assert_eq!(response.errors.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn rejects_nested_input_variable_cross_tenant_argument() {
+        let tenant_id = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .extension(GraphqlTenantPolicy)
+            .finish();
+        let response = schema
+            .execute(
+                Request::new(
+                    "query Tenant($input: TenantInput!) { echoInput(input: $input) }",
+                )
+                .variables(Variables::from_json(json!({
+                    "input": { "tenantId": other }
+                })))
                 .data(tenant(tenant_id)),
             )
             .await;
