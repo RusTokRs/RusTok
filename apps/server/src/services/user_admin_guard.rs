@@ -79,6 +79,15 @@ mod tests {
     use rustok_auth::{AuthAdminMutationContext, UpdateUserCommand};
     use uuid::Uuid;
 
+    fn context(actor_id: Uuid) -> AuthAdminMutationContext {
+        AuthAdminMutationContext {
+            actor_id,
+            tenant_id: Uuid::new_v4(),
+            request_id: None,
+            locale: None,
+        }
+    }
+
     fn command(id: Uuid) -> UpdateUserCommand {
         UpdateUserCommand {
             id,
@@ -94,7 +103,7 @@ mod tests {
     #[test]
     fn self_role_change_is_rejected() {
         let actor_id = Uuid::new_v4();
-        let context = AuthAdminMutationContext::new(actor_id, Uuid::new_v4());
+        let context = context(actor_id);
         let mut command = command(actor_id);
         command.role = Some("customer".to_string());
 
@@ -104,7 +113,7 @@ mod tests {
     #[test]
     fn self_disable_is_rejected_but_profile_update_is_allowed() {
         let actor_id = Uuid::new_v4();
-        let context = AuthAdminMutationContext::new(actor_id, Uuid::new_v4());
+        let context = context(actor_id);
         let mut disabled = command(actor_id);
         disabled.status = Some("inactive".to_string());
         assert!(self_lifecycle_change_requested(&context, &disabled));
@@ -118,7 +127,7 @@ mod tests {
     #[test]
     fn another_user_lifecycle_change_is_delegated() {
         let actor_id = Uuid::new_v4();
-        let context = AuthAdminMutationContext::new(actor_id, Uuid::new_v4());
+        let context = context(actor_id);
         let mut command = command(Uuid::new_v4());
         command.role = Some("manager".to_string());
         command.status = Some("inactive".to_string());
