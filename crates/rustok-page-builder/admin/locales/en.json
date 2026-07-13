@@ -40,6 +40,7 @@
       "pages": "Pages",
       "palette": "Blocks",
       "layers": "Layers",
+      "traits": "Traits",
       "properties": "Properties",
       "styles": "Styles",
       "responsiveStyles": "Responsive styles",
@@ -74,6 +75,9 @@
       "openGraphImage": "Open Graph image",
       "noIndex": "Prevent search indexing",
       "projectHash": "Project hash"
+    },
+    "traits": {
+      "empty": "Select a component to edit its traits."
     },
     "bridge": {
       "ready": "Canvas connected",
