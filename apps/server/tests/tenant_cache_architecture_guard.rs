@@ -83,12 +83,11 @@ fn tenant_generation_matches_and_aliases_both_physical_backend_prefixes() {
 
     assert!(tenant.contains("tenant-cache:{}:data"));
     assert!(tenant.contains("tenant-cache:{}:negative"));
-    assert!(generation.contains(
-        "TENANT_CACHE_DATA_BACKEND_PREFIX: &str = \"tenant-cache:v2:data\""
-    ));
-    assert!(generation.contains(
-        "TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = \"tenant-cache:v2:negative\""
-    ));
+    assert!(
+        generation.contains("TENANT_CACHE_DATA_BACKEND_PREFIX: &str = \"tenant-cache:v2:data\"")
+    );
+    assert!(generation
+        .contains("TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = \"tenant-cache:v2:negative\""));
     assert!(generation.contains("bind_cache_backend_generation_aliases("));
     assert!(generation.contains("bind_tenant_backend_generations()?"));
     assert!(backend_generation.contains("pub fn bind_cache_backend_generation_aliases"));
@@ -99,12 +98,8 @@ fn tenant_generation_matches_and_aliases_both_physical_backend_prefixes() {
 fn outbox_keeps_transactional_transport_and_rotates_relay_target() {
     let factory = source("apps/server/src/services/event_transport_factory.rs");
     assert!(factory.contains("transport: outbox_transport"));
-    assert!(factory.contains(
-        "TenantCacheGenerationTransport::new(relay_target, cache.clone())"
-    ));
-    assert!(factory.contains(
-        "start_tenant_cache_generation_listener(ctx, cache.clone()).await?"
-    ));
+    assert!(factory.contains("TenantCacheGenerationTransport::new(relay_target, cache.clone())"));
+    assert!(factory.contains("start_tenant_cache_generation_listener(ctx, cache.clone()).await?"));
 }
 
 #[test]
@@ -136,7 +131,10 @@ fn tenant_generation_dedupe_is_bounded_two_phase_and_retry_safe() {
         "capacity_eviction_total",
         "probe_does_not_precommit_failed_work",
     ] {
-        assert!(dedupe.contains(required), "event dedupe must retain {required}");
+        assert!(
+            dedupe.contains(required),
+            "event dedupe must retain {required}"
+        );
     }
 
     let probe = generation
@@ -156,9 +154,7 @@ fn tenant_generation_dedupe_is_bounded_two_phase_and_retry_safe() {
         .expect("event retry must continue to downstream delivery");
 
     assert!(probe < bump && bump < publish && publish < commit && commit < downstream);
-    assert!(generation.contains(
-        "retry_delivers_downstream_without_rotating_generation_twice"
-    ));
+    assert!(generation.contains("retry_delivers_downstream_without_rotating_generation_twice"));
 }
 
 #[test]

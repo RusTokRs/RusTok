@@ -48,8 +48,7 @@ impl TenantGenerationCollector {
     fn update(&self, metrics: TenantGenerationListenerMetrics) {
         self.status.set(metrics.status);
         self.local_ready.set(metrics.local_ready as i64);
-        self.subscriber_ready
-            .set(metrics.subscriber_ready as i64);
+        self.subscriber_ready.set(metrics.subscriber_ready as i64);
         self.reconciliation_healthy
             .set(metrics.reconciliation_healthy as i64);
     }
@@ -118,21 +117,18 @@ mod tests {
 
     #[test]
     fn metrics_are_label_free_and_component_specific() {
-        let payload = format_tenant_generation_listener_prometheus_metrics(
-            TenantGenerationListenerMetrics {
+        let payload =
+            format_tenant_generation_listener_prometheus_metrics(TenantGenerationListenerMetrics {
                 status: 3,
                 local_ready: true,
                 subscriber_ready: false,
                 reconciliation_healthy: true,
-            },
-        );
+            });
 
         assert!(payload.contains("rustok_cache_tenant_generation_listener_status 3"));
         assert!(payload.contains("rustok_cache_tenant_generation_local_ready 1"));
         assert!(payload.contains("rustok_cache_tenant_generation_subscriber_ready 0"));
-        assert!(payload.contains(
-            "rustok_cache_tenant_generation_reconciliation_healthy 1"
-        ));
+        assert!(payload.contains("rustok_cache_tenant_generation_reconciliation_healthy 1"));
         assert!(!payload.contains('{'));
     }
 }

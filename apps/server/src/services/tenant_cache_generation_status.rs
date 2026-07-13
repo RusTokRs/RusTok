@@ -1,9 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use rustok_cache::{
-    record_tenant_generation_listener_metrics, TenantGenerationListenerMetrics,
-};
+use rustok_cache::{record_tenant_generation_listener_metrics, TenantGenerationListenerMetrics};
 use tokio::sync::RwLock;
 
 const MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES: usize = 512;
@@ -256,7 +254,10 @@ mod tests {
         state.mark_subscriber_activity_healthy().await;
 
         let snapshot = state.snapshot().await;
-        assert_eq!(snapshot.status, TenantCacheGenerationListenerStatus::Degraded);
+        assert_eq!(
+            snapshot.status,
+            TenantCacheGenerationListenerStatus::Degraded
+        );
         assert!(!snapshot.reconciliation_healthy);
         assert_eq!(
             snapshot.last_error.as_deref(),
@@ -272,7 +273,10 @@ mod tests {
         state.mark_reconciliation_healthy().await;
 
         let snapshot = state.snapshot().await;
-        assert_eq!(snapshot.status, TenantCacheGenerationListenerStatus::Degraded);
+        assert_eq!(
+            snapshot.status,
+            TenantCacheGenerationListenerStatus::Degraded
+        );
         assert!(!snapshot.subscriber_ready);
         assert_eq!(snapshot.last_error.as_deref(), Some("subscriber closed"));
     }
@@ -296,7 +300,10 @@ mod tests {
         let state = TenantCacheGenerationListenerState::new(true);
         state.mark_subscriber_degraded("é".repeat(1_024)).await;
         let degraded = state.snapshot().await;
-        assert_eq!(degraded.status, TenantCacheGenerationListenerStatus::Degraded);
+        assert_eq!(
+            degraded.status,
+            TenantCacheGenerationListenerStatus::Degraded
+        );
         assert!(degraded
             .last_error
             .as_deref()
@@ -323,9 +330,21 @@ mod tests {
 
     #[test]
     fn status_metric_values_are_stable() {
-        assert_eq!(TenantCacheGenerationListenerStatus::Disabled.metric_value(), 0);
-        assert_eq!(TenantCacheGenerationListenerStatus::Starting.metric_value(), 1);
-        assert_eq!(TenantCacheGenerationListenerStatus::Healthy.metric_value(), 2);
-        assert_eq!(TenantCacheGenerationListenerStatus::Degraded.metric_value(), 3);
+        assert_eq!(
+            TenantCacheGenerationListenerStatus::Disabled.metric_value(),
+            0
+        );
+        assert_eq!(
+            TenantCacheGenerationListenerStatus::Starting.metric_value(),
+            1
+        );
+        assert_eq!(
+            TenantCacheGenerationListenerStatus::Healthy.metric_value(),
+            2
+        );
+        assert_eq!(
+            TenantCacheGenerationListenerStatus::Degraded.metric_value(),
+            3
+        );
     }
 }

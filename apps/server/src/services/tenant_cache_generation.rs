@@ -5,11 +5,10 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use rustok_cache::{
     bind_cache_backend_generation_aliases, cache_backend_generation_snapshot,
-    observe_cache_backend_generation, BoundedCacheEventDedupe,
-    BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
-    CacheBackendGenerationError, CacheInvalidationMessage, CacheInvalidationObservation,
-    CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
-    VersionedCacheInvalidation,
+    observe_cache_backend_generation, BoundedCacheEventDedupe, BoundedCacheInvalidationGapTracker,
+    BoundedInvalidationTrackerError, CacheBackendGenerationError, CacheInvalidationMessage,
+    CacheInvalidationObservation, CacheInvalidationPayloadError, CacheService,
+    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
 };
 use rustok_core::events::{
     DomainEvent, EventConsumerRuntime, EventEnvelope, EventTransport, ReliabilityLevel,
@@ -96,9 +95,12 @@ impl TenantCacheGenerationTransport {
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
             .map_err(|error| Error::Cache(error.to_string()))?;
-        let emitted_at_unix_ms = u64::try_from(envelope.timestamp.timestamp_millis()).map_err(|_| {
-            Error::Validation("tenant cache invalidation timestamp precedes Unix epoch".to_string())
-        })?;
+        let emitted_at_unix_ms =
+            u64::try_from(envelope.timestamp.timestamp_millis()).map_err(|_| {
+                Error::Validation(
+                    "tenant cache invalidation timestamp precedes Unix epoch".to_string(),
+                )
+            })?;
         let record = DurableCacheInvalidationRecord::new(
             envelope.id,
             Some(tenant_id),
@@ -303,9 +305,7 @@ pub async fn start_tenant_cache_generation_listener(
         Ok(_) if !redis_required => state.mark_local_healthy().await,
         Ok(_) => state.mark_reconciliation_healthy().await,
         Err(error) if redis_required => {
-            state
-                .mark_reconciliation_degraded(error.to_string())
-                .await;
+            state.mark_reconciliation_degraded(error.to_string()).await;
             tracing::warn!(%error, "Tenant cache generation startup recovery failed; isolated boot namespace remains active");
             rustok_telemetry::metrics::record_event_error(
                 "tenant.cache.generation",
@@ -450,8 +450,7 @@ pub async fn start_tenant_cache_generation_listener(
         let reconcile_state = Arc::clone(&state);
         tokio::spawn(async move {
             let start = tokio::time::Instant::now() + GENERATION_RECONCILE_INTERVAL;
-            let mut interval =
-                tokio::time::interval_at(start, GENERATION_RECONCILE_INTERVAL);
+            let mut interval = tokio::time::interval_at(start, GENERATION_RECONCILE_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
@@ -608,9 +607,11 @@ mod tests {
                 .generation,
             first_event.generation
         );
-        assert!(tokio::time::timeout(Duration::from_millis(10), invalidations.recv())
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), invalidations.recv())
+                .await
+                .is_err()
+        );
     }
 
     #[test]
@@ -673,14 +674,19 @@ mod tests {
         )
         .unwrap();
 
-        listener.handle_message(event.to_message().unwrap()).await.unwrap();
+        listener
+            .handle_message(event.to_message().unwrap())
+            .await
+            .unwrap();
         for prefix in [
             TENANT_CACHE_BACKEND_PREFIX,
             TENANT_CACHE_DATA_BACKEND_PREFIX,
             TENANT_CACHE_NEGATIVE_BACKEND_PREFIX,
         ] {
             assert_eq!(
-                cache_backend_generation_snapshot(prefix).unwrap().generation,
+                cache_backend_generation_snapshot(prefix)
+                    .unwrap()
+                    .generation,
                 second.generation
             );
         }
@@ -688,9 +694,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_listener_handle_reports_disabled_snapshot() {
-        let db = sea_orm::Database::connect("sqlite::memory:")
-            .await
-            .unwrap();
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let ctx = ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default());
         let snapshot = tenant_cache_generation_listener_snapshot(&ctx).await;
         assert_eq!(

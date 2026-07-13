@@ -171,8 +171,7 @@ impl BoundedCacheEventDedupe {
             };
             if state.entries.get(&oldest_id).copied() == Some(inserted_at) {
                 state.entries.remove(&oldest_id);
-                self.capacity_eviction_total
-                    .fetch_add(1, Ordering::Relaxed);
+                self.capacity_eviction_total.fetch_add(1, Ordering::Relaxed);
             }
         }
 
@@ -257,7 +256,10 @@ mod tests {
         let third = Uuid::new_v4();
         let now = Instant::now();
 
-        assert_eq!(dedupe.observe_at(first, now), CacheEventDedupeDecision::FirstSeen);
+        assert_eq!(
+            dedupe.observe_at(first, now),
+            CacheEventDedupeDecision::FirstSeen
+        );
         assert_eq!(
             dedupe.observe_at(second, now + Duration::from_millis(1)),
             CacheEventDedupeDecision::FirstSeen

@@ -53,8 +53,7 @@ pub use envelope::{
 };
 pub use event_dedupe::{
     BoundedCacheEventDedupe, CacheEventDedupeDecision, CacheEventDedupeError,
-    CacheEventDedupeStats, DEFAULT_CACHE_EVENT_DEDUPE_TTL,
-    DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES,
+    CacheEventDedupeStats, DEFAULT_CACHE_EVENT_DEDUPE_TTL, DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES,
 };
 pub use generation::{
     CacheGenerationError, CacheGenerationSource, CacheGenerationStats, CacheNamespaceGeneration,
@@ -75,9 +74,7 @@ pub use key::{
     CacheKeyBuilder, CacheKeyError, MAX_CACHE_IDENTITY_BYTES, MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
     MAX_CACHE_KEY_INPUT_BYTES,
 };
-pub use lease::{
-    CacheLeaseError, CacheLeaseOptions, CacheLeaseOutcome, DistributedCacheLease,
-};
+pub use lease::{CacheLeaseError, CacheLeaseOptions, CacheLeaseOutcome, DistributedCacheLease};
 pub use negative::{
     NegativeCacheEntry, NegativeCacheHit, NegativeCachePolicy, NegativeCachePolicyError,
     DEFAULT_MAX_NEGATIVE_CACHE_BYTES,
@@ -88,8 +85,8 @@ pub use observability::{
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use redis_status::{format_redis_cache_status_prometheus_metrics, RedisCacheStatus};
 pub use refresh::{
-    CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
-    CacheRefreshStats, StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
+    CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule, CacheRefreshStats,
+    StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
 };
 pub use rustok_core::CacheCompareAndSetOutcome;
 pub use service::{
@@ -127,9 +124,9 @@ impl CacheModule {
         ) {
             (false, _) => tracing::info!("CacheModule: running with in-memory cache only"),
             (true, true) => tracing::info!("CacheModule: Redis client initialized"),
-            (true, false) => tracing::error!(
-                "CacheModule: Redis is configured but client initialization failed"
-            ),
+            (true, false) => {
+                tracing::error!("CacheModule: Redis is configured but client initialization failed")
+            }
         }
         Self { service }
     }

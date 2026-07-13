@@ -36,9 +36,9 @@ fn tenant_readiness_and_metrics_use_canonical_generation_listener() {
         );
     }
 
-    assert!(health.contains(
-        "tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus"
-    ));
+    assert!(
+        health.contains("tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus")
+    );
     assert!(health.contains("check_tenant_invalidation_listener"));
     assert!(metrics.contains("tenant_cache_stats, TenantCacheStats"));
     assert!(metrics.contains("rustok_tenant_invalidation_listener_status"));
