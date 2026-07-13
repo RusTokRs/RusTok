@@ -17,6 +17,7 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
+use super::legacy_disable_user::LegacyDisableUserPolicy;
 use super::loaders::TenantNameLoader;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
@@ -130,6 +131,7 @@ pub fn build_schema(
     .extension(GraphqlPrincipalTenantPolicy)
     .extension(GraphqlTenantPolicy)
     .extension(GraphqlSecurityPolicy)
+    .extension(LegacyDisableUserPolicy)
     .extension(GraphqlObservability)
     // DataLoaders for efficient batched queries
     .data(DataLoader::new(
