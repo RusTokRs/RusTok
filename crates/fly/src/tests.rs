@@ -138,12 +138,12 @@ proptest! {
     #[test]
     fn opaque_top_level_fields_round_trip(key in "[a-zA-Z][a-zA-Z0-9_]{0,16}", value in any::<i64>()) {
         prop_assume!(!matches!(key.as_str(), "assets" | "styles" | "pages"));
-        let input = json!({
-            "assets": [],
-            "styles": [],
-            "pages": [],
-            key.clone(): value,
-        });
+        let mut object = serde_json::Map::new();
+        object.insert("assets".to_string(), json!([]));
+        object.insert("styles".to_string(), json!([]));
+        object.insert("pages".to_string(), json!([]));
+        object.insert(key.clone(), json!(value));
+        let input = Value::Object(object);
         let document = GrapesJsV1Codec::decode_value(input.clone()).expect("decode");
         let output = GrapesJsV1Codec::encode_value(&document).expect("encode");
         prop_assert_eq!(output, input);
