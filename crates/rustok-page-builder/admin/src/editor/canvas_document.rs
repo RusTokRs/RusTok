@@ -1,4 +1,6 @@
-use fly::{ComponentNode, ComponentObject, ProjectDocument};
+use fly::{
+    ComponentNode, ComponentObject, ProjectDocument, StyleRuleCatalog, StyleRuleScope,
+};
 use fly_leptos::FLY_IFRAME_PROTOCOL_V1;
 use serde_json::Value;
 
@@ -23,10 +25,11 @@ pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> St
     let script = CANVAS_SCRIPT
         .replace("__FLY_PROTOCOL__", &protocol)
         .replace("__FLY_INSTANCE__", &instance);
+    let project_styles = render_project_styles(document);
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{}</style></head><body><main id=\"fly-canvas-root\">{}</main><script>{}</script></body></html>",
-        canvas_styles(), canvas, script
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{}{}</style></head><body><main id=\"fly-canvas-root\">{}</main><script>{}</script></body></html>",
+        canvas_styles(), project_styles, canvas, script
     )
 }
 
@@ -94,6 +97,51 @@ fn render_component(
     output.push_str("</");
     output.push_str(tag);
     output.push('>');
+}
+
+fn render_project_styles(document: &ProjectDocument) -> String {
+    let catalog = StyleRuleCatalog::from_document(document);
+    let mut css = String::new();
+    for rule in catalog.rules {
+        let Some(component_id) = rule.component_id else {
+            continue;
+        };
+        if !document.contains_component(&component_id) {
+            continue;
+        }
+        let declarations = rule
+            .declarations
+            .iter()
+            .filter_map(|(name, value)| safe_style(name, value))
+            .collect::<Vec<_>>()
+            .join(";");
+        if declarations.is_empty() {
+            continue;
+        }
+        let selector = format!(
+            "[data-fly-component-id=\"{}\"]",
+            escape_css_attribute(&component_id)
+        );
+        match rule.scope {
+            StyleRuleScope::Base => {
+                css.push_str(&selector);
+                css.push('{');
+                css.push_str(&declarations);
+                css.push('}');
+            }
+            StyleRuleScope::Media { query } if safe_media_query(&query) => {
+                css.push_str("@media ");
+                css.push_str(query.trim());
+                css.push('{');
+                css.push_str(&selector);
+                css.push('{');
+                css.push_str(&declarations);
+                css.push_str("}}");
+            }
+            StyleRuleScope::Media { .. } => {}
+        }
+    }
+    css
 }
 
 fn write_attribute(output: &mut String, name: &str, value: &str) {
@@ -225,10 +273,33 @@ fn safe_style(name: &str, value: &Value) -> Option<String> {
         || normalized.contains("url(")
         || value.contains('<')
         || value.contains('>')
+        || value.contains(';')
     {
         return None;
     }
     Some(format!("{name}:{value}"))
+}
+
+fn safe_media_query(query: &str) -> bool {
+    let normalized = query.trim().to_ascii_lowercase();
+    !normalized.is_empty()
+        && normalized.len() <= 256
+        && !normalized.contains('{')
+        && !normalized.contains('}')
+        && !normalized.contains(';')
+        && !normalized.contains("url(")
+        && !normalized.contains("expression(")
+        && normalized
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "() :.-_%/,".contains(character))
+}
+
+fn escape_css_attribute(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\a ")
+        .replace('\r', "\\d ")
 }
 
 fn strip_tags(value: &str) -> String {
@@ -335,5 +406,29 @@ mod tests {
         assert!(html.contains("<form"));
         assert!(html.contains("<input"));
         assert!(html.contains("<video"));
+    }
+
+    #[test]
+    fn renderer_applies_component_media_rules() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "styles": [{
+                "selectors": [{ "name": "hero", "type": 2 }],
+                "style": { "padding": "24px" },
+                "atRuleType": "media",
+                "mediaText": "(max-width: 767px)",
+                "flyComponentId": "hero"
+            }],
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+        let html = render_canvas_srcdoc(&document, "canvas-home");
+        assert!(html.contains("@media (max-width: 767px)"));
+        assert!(html.contains("[data-fly-component-id=\"hero\"]{padding:24px}"));
     }
 }
