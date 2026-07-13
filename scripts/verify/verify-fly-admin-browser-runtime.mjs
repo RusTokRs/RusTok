@@ -11,6 +11,7 @@ const files = {
   adminUi: 'crates/rustok-page-builder/admin/src/ui/leptos.rs',
   adminCanvas: 'crates/rustok-page-builder/admin/src/editor/admin_canvas.rs',
   canvasDocument: 'crates/rustok-page-builder/admin/src/editor/canvas_document.rs',
+  canvasRuntime: 'crates/rustok-page-builder/admin/src/editor/canvas_runtime.js',
   canvasProtocol: 'crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs',
   facade: 'crates/rustok-page-builder/admin/src/transport/mod.rs',
   controller: 'crates/rustok-page-builder/admin/src/model.rs',
@@ -100,6 +101,7 @@ for (const marker of [
   'pub fn PageBuilderAdmin()',
   'PageBuilderAdminWithController',
   'PageBuilderAdminFacade',
+  'Arc<dyn PageBuilderAdminFacade>',
   'UiRouteContext',
   'crate::i18n::t',
 ]) {
@@ -124,16 +126,26 @@ forbidMarker('adminCanvas', 'allow-same-origin', 'default admin iframe must not 
 
 for (const marker of [
   'Content-Security-Policy',
+  'include_str!("canvas_runtime.js")',
   'data-fly-component-id',
-  'getBoundingClientRect',
-  'ResizeObserver',
-  'geometry_snapshot',
   'safe_attribute_name',
   'safe_style',
   'javascript:',
   'strip_tags',
 ]) {
   requireMarker('canvasDocument', marker, `instrumented canvas renderer is missing ${marker}`);
+}
+for (const marker of [
+  'getBoundingClientRect',
+  'ResizeObserver',
+  'geometry_snapshot',
+  'focus_requested',
+  'hover_requested',
+  'setTimeout(announce, 0)',
+  'setTimeout(announce, 100)',
+  'zoom: 1',
+]) {
+  requireMarker('canvasRuntime', marker, `iframe canvas runtime is missing ${marker}`);
 }
 for (const marker of [
   'CanvasComponentGeometry',
@@ -146,8 +158,14 @@ for (const marker of [
   requireMarker('canvasProtocol', marker, `canvas protocol is missing ${marker}`);
 }
 
-requireMarker('facade', 'PageBuilderCapabilityRequest', 'admin facade must consume the canonical capability request envelope');
-requireMarker('facade', 'PageBuilderCapabilityResponse', 'admin facade must return the canonical capability response envelope');
+for (const marker of [
+  'pub trait PageBuilderAdminFacade: Send + Sync',
+  'impl<T> PageBuilderAdminFacade for Arc<T>',
+  'PageBuilderCapabilityRequest',
+  'PageBuilderCapabilityResponse',
+]) {
+  requireMarker('facade', marker, `admin facade boundary is missing ${marker}`);
+}
 requireMarker('controller', 'FlyUiStateMachine', 'admin controller must use the framework-neutral Fly UI state machine');
 requireMarker('controller', 'FlyEditor', 'admin controller must use the Fly engine');
 requireMarker('controller', 'PageBuilderCapabilityRequest::Publish', 'admin controller must emit canonical publish requests');
@@ -168,12 +186,14 @@ for (const marker of [
   'REVISION_CONFLICT',
   'canonicalize_builder_project',
   'take_frame_component',
+  'Arc<dyn Fn() -> PagesBuilderSaveSnapshot + Send + Sync>',
 ]) {
   requireMarker('pagesBuilder', marker, `Pages consumer facade is missing ${marker}`);
 }
 for (const marker of [
   'PageBuilderAdminWithController',
   'PagesBuilderFacade',
+  'Arc<dyn PageBuilderAdminFacade>',
   'use_route_query_value',
   'crate::ui::leptos::PagesAdmin',
 ]) {
