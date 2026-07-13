@@ -63,9 +63,7 @@ impl FulfillmentCreateLabelRecoveryService {
                     .map_err(Into::into);
             }
             PROVIDER_OPERATION_SUCCEEDED => {
-                return self
-                    .commit_provider_result(&journal, operation)
-                    .await;
+                return self.commit_provider_result(&journal, operation).await;
             }
             PROVIDER_OPERATION_RECONCILIATION_REQUIRED => {
                 if operation.provider_result.is_none() {
@@ -73,9 +71,7 @@ impl FulfillmentCreateLabelRecoveryService {
                         "create_label operation {operation_id} has an unknown provider outcome; resolve it before retrying"
                     )));
                 }
-                return self
-                    .commit_provider_result(&journal, operation)
-                    .await;
+                return self.commit_provider_result(&journal, operation).await;
             }
             PROVIDER_OPERATION_EXECUTING => {
                 return Err(FulfillmentOrchestrationError::Validation(format!(
@@ -134,11 +130,7 @@ impl FulfillmentCreateLabelRecoveryService {
             ))
         })?;
         let operation = journal
-            .mark_provider_succeeded(
-                operation_id,
-                result.external_reference.clone(),
-                payload,
-            )
+            .mark_provider_succeeded(operation_id, result.external_reference.clone(), payload)
             .await?;
         self.commit_provider_result(&journal, operation).await
     }
@@ -210,6 +202,11 @@ impl FulfillmentCreateLabelRecoveryService {
             ))?;
 
         if label_operation_id(&current.metadata) != Some(operation.id) {
+            let carrier_missing = current
+                .carrier
+                .as_deref()
+                .map(|carrier| carrier.trim().is_empty())
+                .unwrap_or(true);
             let mut active: fulfillment::ActiveModel = current.into();
             let current_metadata = active.metadata.clone().take().unwrap_or_default();
             active.metadata = Set(label_result_metadata(
@@ -217,13 +214,7 @@ impl FulfillmentCreateLabelRecoveryService {
                 result,
                 operation.id,
             ));
-            if active
-                .carrier
-                .clone()
-                .take()
-                .as_deref()
-                .is_none_or(str::is_empty)
-            {
+            if carrier_missing {
                 active.carrier = Set(Some(result.provider_id.clone()));
             }
             if let Some(tracking_number) = result
