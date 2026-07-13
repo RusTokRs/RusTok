@@ -30,6 +30,7 @@ const REQUIRED_LIFECYCLE_CONSTRAINTS: &[&str] = &[
     "chk_forum_topics_status",
     "chk_forum_replies_status",
     "chk_forum_replies_position_positive",
+    "chk_forum_topics_next_reply_position_positive",
     "chk_forum_topic_revisions_reason",
     "chk_forum_reply_revisions_reason",
 ];
@@ -51,6 +52,12 @@ const REQUIRED_TENANT_INDEXES: &[&str] = &[
 const REQUIRED_REVISION_TABLES: &[&str] = &[
     "forum_topic_revisions",
     "forum_reply_revisions",
+];
+
+const REQUIRED_RUNTIME_TRIGGERS: &[&str] = &[
+    "forum_00_reject_nonempty_category_delete",
+    "forum_01_reply_creation_guard",
+    "forum_00_replies_publication_lock",
 ];
 
 #[tokio::test]
@@ -150,6 +157,59 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
             "forum runtime baseline is missing revision tables: {}",
             missing_tables.join(", ")
         )));
+    }
+
+    let trigger_rows = context
+        .db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT trigger_name
+             FROM information_schema.triggers
+             WHERE trigger_schema = current_schema()"
+                .to_string(),
+        ))
+        .await?;
+    let triggers = trigger_rows
+        .into_iter()
+        .map(|row| row.try_get("", "trigger_name"))
+        .collect::<Result<BTreeSet<String>, _>>()?;
+    let missing_triggers = REQUIRED_RUNTIME_TRIGGERS
+        .iter()
+        .filter(|name| !triggers.contains(*name))
+        .copied()
+        .collect::<Vec<_>>();
+    if !missing_triggers.is_empty() {
+        return Err(test_error(format!(
+            "forum runtime baseline is missing triggers: {}",
+            missing_triggers.join(", ")
+        )));
+    }
+
+    let locale_rows = context
+        .db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT table_name, character_maximum_length
+             FROM information_schema.columns
+             WHERE table_schema = current_schema()
+               AND column_name = 'locale'
+               AND table_name IN ('forum_topic_revisions', 'forum_reply_revisions')"
+                .to_string(),
+        ))
+        .await?;
+    if locale_rows.len() != 2 {
+        return Err(test_error(
+            "forum runtime baseline could not resolve both revision locale columns",
+        ));
+    }
+    for row in locale_rows {
+        let table_name: String = row.try_get("", "table_name")?;
+        let length: i32 = row.try_get("", "character_maximum_length")?;
+        if length != 32 {
+            return Err(test_error(format!(
+                "forum revision locale width mismatch for {table_name}: expected 32, got {length}"
+            )));
+        }
     }
 
     Ok(())
