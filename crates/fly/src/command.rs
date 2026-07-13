@@ -1,7 +1,7 @@
 use crate::{
-    validate_project, AssetDescriptor, ComponentNode, ComponentObject, FlyError, FlyResult,
-    GrapesJsV1Codec, ProjectDocument, RegistrySet, SequentialIdGenerator, ValidationDiagnostic,
-    ValidationLimits, ValidationReport,
+    apply_style_rule_command, validate_project, AssetDescriptor, ComponentNode, ComponentObject,
+    FlyError, FlyResult, GrapesJsV1Codec, ProjectDocument, RegistrySet, SequentialIdGenerator,
+    StyleRuleCommand, ValidationDiagnostic, ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -117,6 +117,9 @@ pub enum EditorCommand {
     },
     Asset {
         command: AssetCommand,
+    },
+    StyleRule {
+        command: StyleRuleCommand,
     },
 }
 
@@ -451,6 +454,7 @@ impl FlyEditor {
                 Ok(())
             }
             EditorCommand::Asset { command } => apply_asset_command(document, command),
+            EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),
         }
     }
 }
@@ -495,12 +499,13 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, RegistrySet};
+    use crate::{GrapesJsV1Codec, RegistrySet, StyleRuleCatalog, StyleRuleScope};
     use serde_json::json;
 
     fn editor() -> FlyEditor {
         let document = GrapesJsV1Codec::decode_value(json!({
             "assets": [],
+            "styles": [],
             "pages": [{
                 "component": {
                     "id": "root",
@@ -593,5 +598,37 @@ mod tests {
         }
         assert_eq!(editor.document().project.assets.len(), 1);
         assert_eq!(editor.document().project.assets[0]["src"], "/media/two.webp");
+    }
+
+    #[test]
+    fn responsive_style_rules_participate_in_history() {
+        let mut editor = editor();
+        let scope = StyleRuleScope::Media {
+            query: "(max-width: 767px)".to_string(),
+        };
+        editor
+            .apply(EditorCommand::StyleRule {
+                command: StyleRuleCommand::UpsertComponentRule {
+                    component_id: "hero".to_string(),
+                    scope: scope.clone(),
+                    declarations: Map::from_iter([(
+                        "padding".to_string(),
+                        Value::String("24px".to_string()),
+                    )]),
+                    remove_properties: Vec::new(),
+                },
+            })
+            .expect("responsive style rule");
+        assert!(StyleRuleCatalog::from_document(editor.document())
+            .component_rule("hero", &scope)
+            .is_some());
+        editor.undo().expect("undo responsive style rule");
+        assert!(StyleRuleCatalog::from_document(editor.document())
+            .component_rule("hero", &scope)
+            .is_none());
+        editor.redo().expect("redo responsive style rule");
+        assert!(StyleRuleCatalog::from_document(editor.document())
+            .component_rule("hero", &scope)
+            .is_some());
     }
 }
