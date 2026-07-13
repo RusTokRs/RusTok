@@ -112,6 +112,26 @@ fn weighted_backend_uses_cache_service_owned_redis_client() {
 }
 
 #[test]
+fn shared_fallback_health_does_not_mask_primary_degradation() {
+    let fallback = source("crates/rustok-cache/src/fallback.rs");
+    let weighted = source("crates/rustok-cache/src/weighted.rs");
+    let shared = source("crates/rustok-cache/src/shared_backend.rs");
+
+    assert!(
+        fallback.contains("self.primary.health().await"),
+        "fallback health must report the shared primary state"
+    );
+    assert!(
+        weighted.contains("DegradationAwareFallbackBackend::new"),
+        "weighted Redis backends must use degradation-aware fallback"
+    );
+    assert!(
+        shared.contains("DegradationAwareFallbackBackend::new"),
+        "entry-count shared Redis backends must use degradation-aware fallback"
+    );
+}
+
+#[test]
 fn stale_refresh_does_not_duplicate_a_foreground_fill() {
     let refresh = source("crates/rustok-cache/src/refresh.rs");
     assert!(
@@ -193,10 +213,19 @@ fn cache_values_and_keys_have_bounded_versioned_contracts() {
     let key = source("crates/rustok-cache/src/key.rs");
     let envelope = source("crates/rustok-cache/src/envelope.rs");
 
-    assert!(
-        key.contains("MAX_CACHE_KEY_BYTES"),
-        "canonical cache keys must retain an explicit maximum length"
-    );
+    for required in [
+        "MAX_CACHE_KEY_BYTES",
+        "MAX_CACHE_IDENTITY_BYTES",
+        "MAX_CACHE_KEY_INPUT_BYTES",
+        "MAX_CACHE_KEY_DYNAMIC_COMPONENTS",
+        "IdentityTooLong",
+        "TooManyDynamicComponents",
+    ] {
+        assert!(
+            key.contains(required),
+            "canonical cache key contract must retain {required}"
+        );
+    }
     assert!(
         envelope.contains("DEFAULT_MAX_CACHE_ENVELOPE_BYTES"),
         "typed cache envelopes must retain an explicit maximum encoded size"
@@ -204,5 +233,17 @@ fn cache_values_and_keys_have_bounded_versioned_contracts() {
     assert!(
         envelope.contains("CACHE_ENVELOPE_FORMAT_VERSION"),
         "typed cache envelopes must remain wire-format versioned"
+    );
+    assert!(
+        envelope.contains("ser_flavors::Size::default()"),
+        "cache envelopes must be measured before output allocation"
+    );
+    assert!(
+        envelope.contains("BoundedEnvelopeWriter"),
+        "cache envelope output must remain physically bounded during serialization"
+    );
+    assert!(
+        !envelope.contains("postcard::to_stdvec(self)"),
+        "cache envelope limits must not be checked only after allocating the complete output"
     );
 }
