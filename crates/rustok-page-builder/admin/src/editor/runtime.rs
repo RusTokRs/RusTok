@@ -6,14 +6,14 @@ use leptos::task::spawn_local;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
 };
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AdminEditorRuntime {
     pub controller: RwSignal<AdminCanvasController>,
     pub last_error: RwSignal<Option<String>>,
     pub last_announcement: RwSignal<Option<String>>,
-    facade: Option<Rc<dyn PageBuilderAdminFacade>>,
+    facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
     save_succeeded: String,
@@ -22,7 +22,7 @@ pub struct AdminEditorRuntime {
 impl AdminEditorRuntime {
     pub fn new(
         controller: AdminCanvasController,
-        facade: Option<Rc<dyn PageBuilderAdminFacade>>,
+        facade: Option<Arc<dyn PageBuilderAdminFacade>>,
         on_request: Option<Callback<PageBuilderCapabilityRequest>>,
         facade_missing: impl Into<String>,
         save_succeeded: impl Into<String>,
@@ -88,7 +88,7 @@ impl AdminEditorRuntime {
         expected_hash: Option<ProjectHash>,
     ) {
         if let Some(facade) = self.facade.as_ref() {
-            let facade = Rc::clone(facade);
+            let facade = Arc::clone(facade);
             let runtime = self.clone();
             let expected_hash = expected_hash.or_else(|| {
                 runtime
