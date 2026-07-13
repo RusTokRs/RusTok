@@ -25,7 +25,7 @@ pub use invalidation::{
     CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
     VersionedCacheInvalidation,
 };
-pub use key::{CacheKeyBuilder, CacheKeyError};
+pub use key::{CacheKeyBuilder, CacheKeyError, MAX_CACHE_IDENTITY_BYTES};
 pub use lease::{
     CacheLeaseError, CacheLeaseOptions, CacheLeaseOutcome, DistributedCacheLease,
 };
