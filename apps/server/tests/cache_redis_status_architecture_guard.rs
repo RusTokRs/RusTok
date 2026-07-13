@@ -31,6 +31,19 @@ fn redis_status_separates_configuration_client_and_connectivity() {
 }
 
 #[test]
+fn legacy_health_report_is_derived_from_exact_redis_status() {
+    let service = source("crates/rustok-cache/src/service.rs");
+    let regression = source("crates/rustok-cache/tests/redis_health_regression.rs");
+
+    assert!(service.contains("let status = self.redis_status().await;"));
+    assert!(service.contains("redis_configured: status.url_present"));
+    assert!(service.contains("redis_healthy: status.connectivity_healthy"));
+    assert!(service.contains("redis_error: status.last_error"));
+    assert!(!service.contains("redis_configured: self.has_redis()"));
+    assert!(regression.contains("configured_invalid_redis_url_is_degraded_in_legacy_health_report"));
+}
+
+#[test]
 fn exact_redis_gauges_use_the_shared_telemetry_registry() {
     let status = source("crates/rustok-cache/src/redis_status.rs");
     let telemetry = source("crates/rustok-telemetry/src/lib.rs");
