@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -11,6 +12,7 @@ use crate::entities::provider_operation;
 use crate::error::{PaymentError, PaymentResult};
 
 pub const PROVIDER_OPERATION_PENDING: &str = "pending";
+pub const PROVIDER_OPERATION_EXECUTING: &str = "executing";
 pub const PROVIDER_OPERATION_SUCCEEDED: &str = "provider_succeeded";
 pub const PROVIDER_OPERATION_ERROR: &str = "provider_error";
 pub const PROVIDER_OPERATION_RECONCILIATION_REQUIRED: &str = "reconciliation_required";
@@ -117,6 +119,38 @@ impl PaymentProviderOperationJournal {
             .one(&self.db)
             .await
             .map_err(Into::into)
+    }
+
+    /// Atomically claim the right to execute a provider side effect.
+    ///
+    /// Only one caller can move a pending or retryable provider-error row into
+    /// `executing`. A losing concurrent caller receives `None` and must not call
+    /// the provider.
+    pub async fn claim_execution(
+        &self,
+        id: Uuid,
+    ) -> PaymentResult<Option<provider_operation::Model>> {
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_EXECUTING),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status
+                    .is_in([PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_ERROR]),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get(id).await.map(Some)
     }
 
     pub async fn mark_provider_succeeded(
@@ -254,11 +288,12 @@ fn ensure_same_request(
 
 fn ensure_transition(from: &str, to: &str) -> PaymentResult<()> {
     let allowed = match to {
-        PROVIDER_OPERATION_SUCCEEDED => {
+        PROVIDER_OPERATION_EXECUTING => {
             matches!(from, PROVIDER_OPERATION_PENDING | PROVIDER_OPERATION_ERROR)
         }
+        PROVIDER_OPERATION_SUCCEEDED => from == PROVIDER_OPERATION_EXECUTING,
         PROVIDER_OPERATION_ERROR => {
-            matches!(from, PROVIDER_OPERATION_PENDING | PROVIDER_OPERATION_ERROR)
+            matches!(from, PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_ERROR)
         }
         PROVIDER_OPERATION_RECONCILIATION_REQUIRED => from == PROVIDER_OPERATION_SUCCEEDED,
         PROVIDER_OPERATION_COMMITTED => matches!(
@@ -298,11 +333,14 @@ mod tests {
 
     #[test]
     fn provider_operation_transition_matrix_is_fail_closed() {
-        assert!(ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_ERROR).is_ok());
-        assert!(ensure_transition(PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_SUCCEEDED).is_ok());
+        assert!(ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_EXECUTING).is_ok());
+        assert!(ensure_transition(PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING).is_ok());
+        assert!(ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_ERROR).is_ok());
+        assert!(ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED).is_ok());
         assert!(ensure_transition(PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED).is_ok());
         assert!(ensure_transition(PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED).is_ok());
         assert!(ensure_transition(PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_PENDING).is_err());
+        assert!(ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_SUCCEEDED).is_err());
         assert!(ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_COMMITTED).is_err());
     }
 
