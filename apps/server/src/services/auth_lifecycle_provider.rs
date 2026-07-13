@@ -7,9 +7,10 @@ use rustok_auth::{
     AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
-use crate::auth::{decode_invite_token, encode_password_reset_token, AuthConfig};
+use crate::auth::{encode_password_reset_token, AuthConfig};
 use crate::context::infer_user_role_from_permissions;
 use crate::models::users;
+use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{email_service_from_ctx, password_reset_url, PasswordResetEmail};
 use crate::services::rbac_service::RbacService;
@@ -349,28 +350,21 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AcceptInviteRecord, AuthLifecycleMutationError> {
-        let claims = decode_invite_token(&self.auth_config, &token)
-            .map_err(|_| AuthLifecycleMutationError::InvalidInviteToken)?;
-
-        if claims.tenant_id != context.tenant_id {
-            return Err(AuthLifecycleMutationError::InvalidInviteToken);
-        }
-
-        let email = claims.sub.clone();
-        let role = claims.role.clone();
-        AuthLifecycleService::create_user_runtime(
+        let accepted = AuthLifecycleService::accept_invite_once_runtime(
             &self.runtime_ctx,
+            &self.auth_config,
             context.tenant_id,
-            &email,
+            &token,
             &password,
             name,
-            role.clone(),
-            Some(rustok_core::UserStatus::Active),
         )
         .await
-        .map_err(map_lifecycle_error)?;
+        .map_err(map_invite_error)?;
 
-        Ok(AcceptInviteRecord { email, role })
+        Ok(AcceptInviteRecord {
+            email: accepted.email,
+            role: accepted.role,
+        })
     }
 }
 
@@ -395,6 +389,16 @@ fn permission_strings_from_context(context: &AuthLifecycleContext) -> Vec<String
     values.sort();
     values.dedup();
     values
+}
+
+fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError {
+    match error {
+        InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
+        InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
+        InviteAcceptanceError::Internal(error) => {
+            AuthLifecycleMutationError::Internal(error.to_string())
+        }
+    }
 }
 
 fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError {
