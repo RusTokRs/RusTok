@@ -6,7 +6,8 @@
 
 ## Responsibilities
 
-- Hold product-scoped AI vertical contracts (`product_copy`, `product_attributes`) and generated payload validators.
+- Hold product-scoped AI vertical contracts (`product_copy`, `product_attributes`),
+  product-agent/workflow declarations, and generated payload validators.
 - Keep product AI logic owned by product/ecommerce domain instead of `rustok-ai` core runtime.
 - Provide registration and validation seams for product AI handlers.
 
@@ -18,6 +19,7 @@
 ## Entry points
 
 - `register_product_ai_verticals`
+- `product_ai_agents`, `product_ai_workflows`, `validate_product_agent_stage_input`
 - `GeneratedProductCopy`, `GeneratedProductAttributes`, `GeneratedFlexAttribute`
 - `validate_product_copy_payload`, `validate_product_attributes_payload`
 

@@ -11,7 +11,7 @@ remain parallel transports; the owner packages have core/transport/UI splits.
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
-- FBA status: `in_progress` (`core_transport_ui`).
+- FBA status: `boundary_ready` (`core_transport_ui`).
 - Structural shape: `core_transport_ui`
 - The comments consumer contract is `CommentsThreadPort` /
   `comments.thread.v1`. Its declared degraded behavior remains source-locked,

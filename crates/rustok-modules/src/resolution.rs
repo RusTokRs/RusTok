@@ -64,14 +64,25 @@ pub struct ModuleResolutionConflict {
 pub enum ModuleResolutionError {
     #[error("module resolution provider failed: {0}")]
     Provider(String),
-    #[error("module dependency resolution conflict: {0}")]
-    Conflict(String),
+    #[error("module dependency resolution conflict: {conflict:?}")]
+    Conflict { conflict: ModuleResolutionConflict },
     #[error("module resolution received an invalid candidate: {0}")]
     InvalidCandidate(String),
     #[error("module resolution does not support prerelease versions in v1: {0}")]
     UnsupportedPrerelease(String),
     #[error("module resolution cannot represent version requirement `{0}")]
     UnsupportedRequirement(String),
+}
+
+impl ModuleResolutionError {
+    /// Stable transport-neutral conflict data. Solver diagnostics intentionally
+    /// remain private implementation detail and must not become an API.
+    pub fn conflict(&self) -> Option<&ModuleResolutionConflict> {
+        match self {
+            Self::Conflict { conflict } => Some(conflict),
+            _ => None,
+        }
+    }
 }
 
 /// Immutable result returned by the solver adapter after selecting every
@@ -96,8 +107,11 @@ where
     P: ModuleResolutionProvider,
 {
     let snapshot = ResolutionSnapshot::collect(provider, &request).await?;
-    let selected = resolve(&snapshot, ROOT_PACKAGE.to_string(), ROOT_VERSION)
-        .map_err(|error| ModuleResolutionError::Conflict(format!("{error:?}")))?;
+    let selected = resolve(&snapshot, ROOT_PACKAGE.to_string(), ROOT_VERSION).map_err(|_| {
+        ModuleResolutionError::Conflict {
+            conflict: conflict_for_request(&request),
+        }
+    })?;
     let mut nodes = Vec::new();
     for (slug, version) in selected {
         if slug == ROOT_PACKAGE {
@@ -114,6 +128,22 @@ where
         lock_graph,
         conflicts: Vec::new(),
     })
+}
+
+fn conflict_for_request(request: &ModuleResolutionRequest) -> ModuleResolutionConflict {
+    let involved_slugs = request
+        .root_dependencies
+        .iter()
+        .map(|dependency| dependency.slug.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    ModuleResolutionConflict {
+        code: "DEPENDENCY_CONFLICT".to_string(),
+        message: "No compatible set of admitted module releases satisfies the requested dependency constraints."
+            .to_string(),
+        involved_slugs,
+    }
 }
 
 #[derive(Debug)]
@@ -529,6 +559,27 @@ mod tests {
             .nodes
             .iter()
             .any(|node| node.version == "2.1.0"));
+    }
+
+    #[tokio::test]
+    async fn resolution_conflict_has_a_stable_transport_contract() {
+        let error = resolve_module_dependencies(
+            &Catalog::default(),
+            ModuleResolutionRequest {
+                graph_revision: 1,
+                runtime_abi: "v1".into(),
+                root_dependencies: vec![ModuleDependencyConstraint {
+                    slug: "missing".into(),
+                    version_requirement: "^1".into(),
+                }],
+            },
+        )
+        .await
+        .expect_err("missing release must conflict");
+        let conflict = error.conflict().expect("stable conflict data");
+        assert_eq!(conflict.code, "DEPENDENCY_CONFLICT");
+        assert_eq!(conflict.involved_slugs, vec!["missing"]);
+        assert!(!conflict.message.contains("pubgrub"));
     }
 
     #[test]

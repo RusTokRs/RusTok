@@ -39,6 +39,33 @@ pub use mapping::*;
 pub use mcp::*;
 pub use types::*;
 
+/// Identifies why a task job may select an explicit provider, model, or
+/// execution mode. Only a previously validated agent model assignment can
+/// bypass the caller's router-override permission; this type is private so a
+/// transport caller cannot assert that authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TaskJobExecutionAuthority {
+    OperatorOverride,
+    RegisteredAgentAssignment,
+}
+
+fn ensure_agent_provider_capabilities(
+    provider: &ai_provider_profiles::Model,
+    descriptor: &crate::AgentDescriptor,
+) -> AiResult<()> {
+    let provider_capabilities = capability_list(&provider.capabilities)?;
+    if descriptor
+        .required_capabilities
+        .iter()
+        .any(|capability| !provider_capabilities.contains(capability))
+    {
+        return Err(AiError::Validation(
+            "provider profile does not satisfy the agent descriptor capabilities".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub struct AiManagementService;
 
 impl AiManagementService {
@@ -51,6 +78,30 @@ impl AiManagementService {
         lease_token: Uuid,
         lease_expires_at: chrono::DateTime<Utc>,
     ) -> AiResult<bool> {
+        let stage = ai_agent_workflow_stages::Entity::find_by_id(stage_id)
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+            .filter(ai_agent_workflow_stages::Column::Status.eq("ready"))
+            .one(db)
+            .await
+            .map_err(db_err)?;
+        let Some(stage) = stage else {
+            return Ok(false);
+        };
+        let executable_workflow = ai_agent_workflow_runs::Entity::find_by_id(stage.workflow_run_id)
+            .filter(ai_agent_workflow_runs::Column::TenantId.eq(tenant_id))
+            .filter(
+                Condition::any()
+                    .add(ai_agent_workflow_runs::Column::Status.eq("queued"))
+                    .add(ai_agent_workflow_runs::Column::Status.eq("running"))
+                    .add(ai_agent_workflow_runs::Column::Status.eq("waiting_approval")),
+            )
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .is_some();
+        if !executable_workflow {
+            return Ok(false);
+        }
         let claimed = ai_agent_workflow_stages::Entity::update_many()
             .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
             .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
@@ -78,7 +129,11 @@ impl AiManagementService {
             .exec(db)
             .await
             .map_err(db_err)?;
-        Ok(claimed.rows_affected == 1)
+        if claimed.rows_affected != 1 {
+            return Ok(false);
+        }
+        Self::sync_agent_workflow_run_status(db, tenant_id, stage.workflow_run_id).await?;
+        Ok(true)
     }
 
     /// Requeues abandoned stage claims. A caller should invoke this from the
@@ -122,6 +177,16 @@ impl AiManagementService {
         lease_token: Uuid,
         output_payload: serde_json::Value,
     ) -> AiResult<bool> {
+        let stage = ai_agent_workflow_stages::Entity::find_by_id(stage_id)
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+            .filter(ai_agent_workflow_stages::Column::Status.eq("running"))
+            .filter(ai_agent_workflow_stages::Column::LeaseToken.eq(lease_token))
+            .one(db)
+            .await
+            .map_err(db_err)?;
+        let Some(stage) = stage else {
+            return Ok(false);
+        };
         let result = ai_agent_workflow_stages::Entity::update_many()
             .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
             .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
@@ -154,7 +219,12 @@ impl AiManagementService {
             .exec(db)
             .await
             .map_err(db_err)?;
-        Ok(result.rows_affected == 1)
+        if result.rows_affected != 1 {
+            return Ok(false);
+        }
+        Self::promote_agent_workflow_stages(db, tenant_id, stage.workflow_run_id).await?;
+        Self::sync_agent_workflow_run_status(db, tenant_id, stage.workflow_run_id).await?;
+        Ok(true)
     }
 
     /// Promotes persisted pending stages after dependency completion. Approval
@@ -199,7 +269,177 @@ impl AiManagementService {
                 promoted += 1;
             }
         }
+        Self::sync_agent_workflow_run_status(db, tenant_id, workflow_run_id).await?;
         Ok(promoted)
+    }
+
+    /// Derives the durable workflow status from canonical persisted stages.
+    /// Scheduler loops and approval transports must not maintain their own
+    /// competing aggregate state machine.
+    async fn sync_agent_workflow_run_status(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        workflow_run_id: Uuid,
+    ) -> AiResult<()> {
+        let stages = ai_agent_workflow_stages::Entity::find()
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(tenant_id))
+            .filter(ai_agent_workflow_stages::Column::WorkflowRunId.eq(workflow_run_id))
+            .all(db)
+            .await
+            .map_err(db_err)?;
+        let Some(run) = ai_agent_workflow_runs::Entity::find_by_id(workflow_run_id)
+            .filter(ai_agent_workflow_runs::Column::TenantId.eq(tenant_id))
+            .one(db)
+            .await
+            .map_err(db_err)?
+        else {
+            return Ok(());
+        };
+        if matches!(run.status.as_str(), "failed" | "cancelled" | "completed") {
+            return Ok(());
+        }
+        let status = if stages
+            .iter()
+            .any(|stage| matches!(stage.status.as_str(), "failed" | "cancelled"))
+        {
+            "failed"
+        } else if !stages.is_empty() && stages.iter().all(|stage| stage.status == "completed") {
+            "completed"
+        } else if stages
+            .iter()
+            .any(|stage| stage.status == "waiting_approval")
+        {
+            "waiting_approval"
+        } else if stages.iter().any(|stage| stage.status == "running") {
+            "running"
+        } else {
+            "queued"
+        };
+        if run.status == status {
+            return Ok(());
+        }
+        let now = Utc::now();
+        let set_started_at = status == "running" && run.started_at.is_none();
+        let set_completed_at = matches!(status, "completed" | "failed");
+        let mut active: ai_agent_workflow_runs::ActiveModel = run.into();
+        active.status = Set(status.to_string());
+        if set_started_at {
+            active.started_at = Set(Some(now.clone().into()));
+        }
+        if set_completed_at {
+            active.completed_at = Set(Some(now.clone().into()));
+        }
+        active.updated_at = Set(now.into());
+        active.update(db).await.map_err(db_err)?;
+        Ok(())
+    }
+
+    /// Resolves an owner-declared stage admission gate. The compare-and-set on
+    /// `waiting_approval` prevents two operators from approving or rejecting
+    /// the same stage, and model-tool approvals remain a separate lifecycle.
+    pub async fn resolve_agent_workflow_stage_approval(
+        db: &DatabaseConnection,
+        operator: &AiOperatorContext,
+        stage_id: Uuid,
+        input: ResolveAiAgentWorkflowStageApprovalInput,
+    ) -> AiResult<bool> {
+        ensure_permission(operator, Permission::AI_APPROVALS_RESOLVE)?;
+        let stage = ai_agent_workflow_stages::Entity::find_by_id(stage_id)
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+            .filter(ai_agent_workflow_stages::Column::RequiresApproval.eq(true))
+            .filter(ai_agent_workflow_stages::Column::RunId.is_null())
+            .one(db)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| {
+                AiError::Validation(
+                    "workflow stage is not awaiting an admission approval".to_string(),
+                )
+            })?;
+        let now = Utc::now();
+        let approval_reason = input.reason.clone();
+        let mut metadata = normalize_metadata(stage.metadata.clone());
+        metadata["stage_approval"] = json!({
+            "approved": input.approved,
+            "reason": approval_reason.clone(),
+            "resolved_by": operator.user_id,
+            "resolved_at": now.clone(),
+        });
+        let status = if input.approved { "ready" } else { "failed" };
+        let result = ai_agent_workflow_stages::Entity::update_many()
+            .filter(ai_agent_workflow_stages::Column::TenantId.eq(operator.tenant_id))
+            .filter(ai_agent_workflow_stages::Column::Id.eq(stage_id))
+            .filter(ai_agent_workflow_stages::Column::Status.eq("waiting_approval"))
+            .filter(ai_agent_workflow_stages::Column::RunId.is_null())
+            .col_expr(
+                ai_agent_workflow_stages::Column::Status,
+                Expr::value(status),
+            )
+            .col_expr(
+                ai_agent_workflow_stages::Column::Metadata,
+                Expr::value(metadata),
+            )
+            .col_expr(
+                ai_agent_workflow_stages::Column::ErrorMessage,
+                Expr::value((!input.approved).then(|| {
+                    approval_reason
+                        .clone()
+                        .unwrap_or_else(|| "workflow stage approval was rejected".to_string())
+                })),
+            )
+            .col_expr(
+                ai_agent_workflow_stages::Column::CompletedAt,
+                if input.approved {
+                    Expr::cust("NULL")
+                } else {
+                    Expr::value(now.clone())
+                },
+            )
+            .col_expr(
+                ai_agent_workflow_stages::Column::UpdatedAt,
+                Expr::value(now.clone()),
+            )
+            .exec(db)
+            .await
+            .map_err(db_err)?;
+        if result.rows_affected != 1 {
+            return Ok(false);
+        }
+        if !input.approved {
+            ai_agent_workflow_runs::Entity::update_many()
+                .filter(ai_agent_workflow_runs::Column::TenantId.eq(operator.tenant_id))
+                .filter(ai_agent_workflow_runs::Column::Id.eq(stage.workflow_run_id))
+                .filter(
+                    Condition::any()
+                        .add(ai_agent_workflow_runs::Column::Status.eq("queued"))
+                        .add(ai_agent_workflow_runs::Column::Status.eq("running"))
+                        .add(ai_agent_workflow_runs::Column::Status.eq("waiting_approval")),
+                )
+                .col_expr(
+                    ai_agent_workflow_runs::Column::Status,
+                    Expr::value("failed"),
+                )
+                .col_expr(
+                    ai_agent_workflow_runs::Column::OutputPayload,
+                    Expr::value(json!({
+                        "rejected_stage_id": stage.stage_id,
+                        "reason": approval_reason.clone(),
+                    })),
+                )
+                .col_expr(
+                    ai_agent_workflow_runs::Column::CompletedAt,
+                    Expr::value(now.clone()),
+                )
+                .col_expr(
+                    ai_agent_workflow_runs::Column::UpdatedAt,
+                    Expr::value(now),
+                )
+                .exec(db)
+                .await
+                .map_err(db_err)?;
+        }
+        Ok(true)
     }
 
     /// Executes a claimed Alloy workflow stage through the canonical task-run
@@ -226,7 +466,7 @@ impl AiManagementService {
             .await
             .map_err(db_err)?
             .ok_or_else(|| AiError::Validation("workflow stage agent principal is unavailable".to_string()))?;
-        let catalog = crate::alloy_agent_catalog()?;
+        let catalog = crate::agent_catalog()?;
         let principal_contract = crate::AgentPrincipal {
             id: principal.id,
             tenant_id: principal.tenant_id,
@@ -240,11 +480,15 @@ impl AiManagementService {
             .map(ToString::to_string)
             .collect::<std::collections::BTreeSet<_>>();
         catalog.effective_permissions(&initiator_permissions, &principal_contract)?;
-        let execution = rustok_ai_alloy::validate_stage_execution_input(
+        let descriptor = catalog
+            .descriptor(&principal.descriptor_slug)
+            .filter(|descriptor| descriptor.owner == principal.descriptor_owner)
+            .cloned()
+            .ok_or_else(|| AiError::Validation("agent descriptor is no longer available".to_string()))?;
+        let execution = catalog.validate_stage_execution(
             &principal.descriptor_slug,
             &stage.input_payload,
-        )
-        .map_err(AiError::Validation)?;
+        )?;
         let assignment_id = stage.model_assignment_id.ok_or_else(|| {
             AiError::Validation("workflow stage has no model assignment".to_string())
         })?;
@@ -256,9 +500,17 @@ impl AiManagementService {
             .await
             .map_err(db_err)?
             .ok_or_else(|| AiError::Validation("workflow stage model assignment is unavailable".to_string()))?;
+        let provider =
+            require_provider_profile(db, operator.tenant_id, assignment.provider_profile_id).await?;
+        if !provider.is_active {
+            return Err(AiError::Validation(
+                "workflow stage provider profile is inactive".to_string(),
+            ));
+        }
+        ensure_agent_provider_capabilities(&provider, &descriptor)?;
         let task_profile = ai_task_profiles::Entity::find()
             .filter(ai_task_profiles::Column::TenantId.eq(operator.tenant_id))
-            .filter(ai_task_profiles::Column::Slug.eq(execution.task_slug))
+            .filter(ai_task_profiles::Column::Slug.eq(execution.task_slug.as_str()))
             .filter(ai_task_profiles::Column::IsActive.eq(true))
             .one(db)
             .await
@@ -270,7 +522,7 @@ impl AiManagementService {
                 ))
             })?;
 
-        let result = Self::run_task_job(
+        let result = Self::run_task_job_with_authority(
             runtime,
             operator,
             RunAiTaskJobInput {
@@ -287,6 +539,7 @@ impl AiManagementService {
                     "agent_principal_id": principal.id,
                 }),
             },
+            TaskJobExecutionAuthority::RegisteredAgentAssignment,
         )
         .await;
 
@@ -330,6 +583,7 @@ impl AiManagementService {
                 Ok(run)
             }
             Err(error) => {
+                let workflow_run_id = stage.workflow_run_id;
                 let mut active: ai_agent_workflow_stages::ActiveModel = stage.into();
                 active.status = Set("failed".to_string());
                 active.error_message = Set(Some(error.to_string()));
@@ -338,6 +592,12 @@ impl AiManagementService {
                 active.completed_at = Set(Some(Utc::now().into()));
                 active.updated_at = Set(Utc::now().into());
                 active.update(db).await.map_err(db_err)?;
+                Self::sync_agent_workflow_run_status(
+                    db,
+                    operator.tenant_id,
+                    workflow_run_id,
+                )
+                .await?;
                 Err(error)
             }
         }
@@ -362,27 +622,21 @@ impl AiManagementService {
         input: CreateAiAgentPrincipalInput,
     ) -> AiResult<AiAgentPrincipalRecord> {
         validate_slug(&input.slug)?;
-        let descriptor = crate::alloy_agent_catalog()?
+        let descriptor = crate::agent_catalog()?
             .descriptor(&input.descriptor_slug)
             .filter(|descriptor| descriptor.owner == input.descriptor_owner)
             .ok_or_else(|| AiError::Validation("unknown owner-owned agent descriptor".to_string()))?;
-        if descriptor
-            .required_permissions
-            .iter()
-            .any(|permission| !input.permission_slugs.contains(permission))
-        {
-            return Err(AiError::Validation(
-                "agent principal must include every descriptor-required permission".to_string(),
-            ));
-        }
         let saved = ai_agent_principals::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(operator.tenant_id),
             slug: Set(input.slug),
             descriptor_owner: Set(input.descriptor_owner),
             descriptor_slug: Set(input.descriptor_slug),
-            role_slugs: Set(json!(input.role_slugs)),
-            permission_slugs: Set(json!(input.permission_slugs)),
+            // Agent roles are assigned only through the platform-owned tenant
+            // RBAC catalog. Until it is available, persist the owner-required
+            // permission floor and accept no tenant-supplied RBAC vocabulary.
+            role_slugs: Set(json!([])),
+            permission_slugs: Set(json!(descriptor.required_permissions)),
             is_active: Set(true),
             metadata: Set(normalize_metadata(input.metadata)),
             created_by: Set(Some(operator.user_id)),
@@ -408,22 +662,13 @@ impl AiManagementService {
             .await
             .map_err(db_err)?
             .ok_or_else(|| AiError::NotFound("AI agent principal not found".to_string()))?;
-        let descriptor = crate::alloy_agent_catalog()?
+        let descriptor = crate::agent_catalog()?
             .descriptor(&existing.descriptor_slug)
             .filter(|descriptor| descriptor.owner == existing.descriptor_owner)
             .ok_or_else(|| AiError::Validation("agent descriptor is no longer available".to_string()))?;
-        if descriptor
-            .required_permissions
-            .iter()
-            .any(|permission| !input.permission_slugs.contains(permission))
-        {
-            return Err(AiError::Validation(
-                "agent principal must include every descriptor-required permission".to_string(),
-            ));
-        }
         let mut active: ai_agent_principals::ActiveModel = existing.into();
-        active.role_slugs = Set(json!(input.role_slugs));
-        active.permission_slugs = Set(json!(input.permission_slugs));
+        active.role_slugs = Set(json!([]));
+        active.permission_slugs = Set(json!(descriptor.required_permissions));
         active.metadata = Set(normalize_metadata(input.metadata));
         active.is_active = Set(input.is_active);
         active.updated_by = Set(Some(operator.user_id));
@@ -468,20 +713,11 @@ impl AiManagementService {
         if !provider.is_active {
             return Err(AiError::Validation("AI provider profile is inactive".to_string()));
         }
-        let descriptor = crate::alloy_agent_catalog()?
+        let descriptor = crate::agent_catalog()?
             .descriptor(&principal.descriptor_slug)
             .filter(|descriptor| descriptor.owner == principal.descriptor_owner)
             .ok_or_else(|| AiError::Validation("agent descriptor is no longer available".to_string()))?;
-        let provider_capabilities = capability_list(&provider.capabilities)?;
-        if descriptor
-            .required_capabilities
-            .iter()
-            .any(|capability| !provider_capabilities.contains(capability))
-        {
-            return Err(AiError::Validation(
-                "provider profile does not satisfy the agent descriptor capabilities".to_string(),
-            ));
-        }
+        ensure_agent_provider_capabilities(&provider, descriptor)?;
         let saved = ai_agent_model_assignments::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(operator.tenant_id),
@@ -530,7 +766,7 @@ impl AiManagementService {
         operator: &AiOperatorContext,
         input: CreateAiAgentWorkflowRunInput,
     ) -> AiResult<Uuid> {
-        let catalog = crate::alloy_agent_catalog()?;
+        let catalog = crate::agent_catalog()?;
         let workflow = catalog
             .workflows()
             .iter()
@@ -612,8 +848,7 @@ impl AiManagementService {
                 .ok_or_else(|| {
                     AiError::Validation(format!("agent workflow stage `{}` has no task input", stage.id))
                 })?;
-            rustok_ai_alloy::validate_stage_execution_input(&stage.agent_slug, &stage_input_payload)
-                .map_err(AiError::Validation)?;
+            catalog.validate_stage_execution(&stage.agent_slug, &stage_input_payload)?;
             let status = if stage.depends_on.is_empty() {
                 if stage.requires_approval {
                     "waiting_approval"
@@ -1668,6 +1903,21 @@ impl AiManagementService {
         operator: &AiOperatorContext,
         input: RunAiTaskJobInput,
     ) -> AiResult<AiSendMessageResult> {
+        Self::run_task_job_with_authority(
+            runtime,
+            operator,
+            input,
+            TaskJobExecutionAuthority::OperatorOverride,
+        )
+        .await
+    }
+
+    async fn run_task_job_with_authority(
+        runtime: &AiHostRuntime,
+        operator: &AiOperatorContext,
+        input: RunAiTaskJobInput,
+        authority: TaskJobExecutionAuthority,
+    ) -> AiResult<AiSendMessageResult> {
         let db = runtime.db();
         let task_profile =
             require_task_profile(db, operator.tenant_id, input.task_profile_id).await?;
@@ -1675,9 +1925,10 @@ impl AiManagementService {
             return Err(AiError::Validation("task profile is inactive".to_string()));
         }
         enforce_task_permissions(operator, Some(&task_profile))?;
-        if input.provider_profile_id.is_some()
+        if authority == TaskJobExecutionAuthority::OperatorOverride
+            && (input.provider_profile_id.is_some()
             || input.model_override.is_some()
-            || input.execution_mode.is_some()
+            || input.execution_mode.is_some())
         {
             ensure_permission(operator, Permission::AI_ROUTER_OVERRIDE)?;
         }
@@ -2182,6 +2433,7 @@ impl AiManagementService {
             .await
             .map_err(db_err)?;
         for stage in stages {
+            let workflow_run_id = stage.workflow_run_id;
             let mut active: ai_agent_workflow_stages::ActiveModel = stage.clone().into();
             match run.status.as_str() {
                 "completed" => {
@@ -2201,7 +2453,9 @@ impl AiManagementService {
             active.updated_at = Set(Utc::now().into());
             active.update(db).await.map_err(db_err)?;
             if run.status == "completed" {
-                Self::promote_agent_workflow_stages(db, tenant_id, stage.workflow_run_id).await?;
+                Self::promote_agent_workflow_stages(db, tenant_id, workflow_run_id).await?;
+            } else {
+                Self::sync_agent_workflow_run_status(db, tenant_id, workflow_run_id).await?;
             }
         }
         Ok(())

@@ -13,7 +13,7 @@ already handed to payment-owned storefront transport.
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
-- FBA status: `in_progress` (`core_transport_ui`); consumer metadata and
+- FBA status: `boundary_ready` (`core_transport_ui`); consumer metadata and
   source-smoke evidence do not promote the boundary without live execution.
 - Structural shape: `core_transport_ui`
 - The commerce consumer registry is

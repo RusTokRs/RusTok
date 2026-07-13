@@ -15,7 +15,8 @@ use super::{
         AiToolProfileGql, CreateAiAgentModelAssignmentInputGql, CreateAiAgentPrincipalInputGql,
         CreateAiAgentWorkflowRunInputGql, CreateAiProviderProfileInputGql,
         CreateAiTaskProfileInputGql, CreateAiToolProfileInputGql,
-        ResumeAiApprovalInputGql, RunAiTaskJobInputGql, StartAiChatSessionInputGql,
+        ResolveAiAgentWorkflowStageApprovalInputGql, ResumeAiApprovalInputGql,
+        RunAiTaskJobInputGql, StartAiChatSessionInputGql,
         UpdateAiProviderProfileInputGql, UpdateAiTaskProfileInputGql, UpdateAiToolProfileInputGql,
         UpdateAiAgentModelAssignmentInputGql, UpdateAiAgentPrincipalInputGql,
     },
@@ -68,8 +69,6 @@ impl AiMutation {
                 slug: input.slug,
                 descriptor_owner: input.descriptor_owner,
                 descriptor_slug: input.descriptor_slug,
-                role_slugs: input.role_slugs,
-                permission_slugs: input.permission_slugs,
                 metadata: parse_metadata(input.metadata)?,
             },
         )
@@ -118,8 +117,6 @@ impl AiMutation {
             &operator,
             id,
             crate::UpdateAiAgentPrincipalInput {
-                role_slugs: input.role_slugs,
-                permission_slugs: input.permission_slugs,
                 metadata: parse_metadata(input.metadata)?,
                 is_active: input.is_active,
             },
@@ -540,6 +537,29 @@ impl AiMutation {
             session: item.session.try_into()?,
             run: item.run.into(),
         })
+    }
+
+    async fn resolve_ai_agent_workflow_stage_approval(
+        &self,
+        ctx: &Context<'_>,
+        stage_id: Uuid,
+        input: ResolveAiAgentWorkflowStageApprovalInputGql,
+    ) -> Result<bool> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_approval_resolve(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        crate::AiManagementService::resolve_agent_workflow_stage_approval(
+            db,
+            &operator,
+            stage_id,
+            crate::ResolveAiAgentWorkflowStageApprovalInput {
+                approved: input.approved,
+                reason: input.reason,
+            },
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))
     }
 
     async fn cancel_ai_run(&self, ctx: &Context<'_>, run_id: Uuid) -> Result<AiChatRunGql> {

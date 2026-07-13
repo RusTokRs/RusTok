@@ -30,7 +30,7 @@ impl AiQuery {
     async fn ai_agent_catalog(&self, ctx: &Context<'_>) -> Result<Vec<AiAgentDescriptorGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_overview_read(auth)?;
-        Ok(crate::alloy_agent_catalog()
+        Ok(crate::agent_catalog()
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .descriptors()
             .iter()
@@ -41,7 +41,7 @@ impl AiQuery {
     async fn ai_agent_workflows(&self, ctx: &Context<'_>) -> Result<Vec<AiAgentWorkflowGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_overview_read(auth)?;
-        Ok(crate::alloy_agent_catalog()
+        Ok(crate::agent_catalog()
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .workflows()
             .iter()

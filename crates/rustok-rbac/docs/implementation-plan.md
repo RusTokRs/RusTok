@@ -21,7 +21,7 @@ they do not duplicate RBAC relation writes.
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `RbacPermissionDecisionPort` /
   `rbac.permission_decision.v1` in

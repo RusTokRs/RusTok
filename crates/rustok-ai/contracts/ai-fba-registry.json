@@ -3,7 +3,7 @@
   "module": "ai",
   "crate": "rustok-ai",
   "role": "capability_orchestrator",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "capability_profile": "ai_runtime_direct_execution",
   "support_adapters": [
     {

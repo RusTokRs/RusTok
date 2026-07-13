@@ -20,7 +20,7 @@ transfer to this package.
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `WorkflowReadPort` / `workflow.read_projection.v1` in
   `crates/rustok-workflow/contracts/workflow-fba-registry.json`.

@@ -23,7 +23,7 @@ Local documentation is synchronized.
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CustomerReadPort` / `customer.read_projection.v1` in
   `crates/rustok-customer/contracts/customer-fba-registry.json`.

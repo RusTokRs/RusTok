@@ -1092,8 +1092,6 @@ pub struct CreateAiAgentPrincipalInputGql {
     pub slug: String,
     pub descriptor_owner: String,
     pub descriptor_slug: String,
-    pub role_slugs: Vec<String>,
-    pub permission_slugs: Vec<String>,
     pub metadata: Option<String>,
 }
 
@@ -1108,8 +1106,6 @@ pub struct CreateAiAgentModelAssignmentInputGql {
 
 #[derive(Debug, Clone, InputObject)]
 pub struct UpdateAiAgentPrincipalInputGql {
-    pub role_slugs: Vec<String>,
-    pub permission_slugs: Vec<String>,
     pub metadata: Option<String>,
     pub is_active: bool,
 }
@@ -1216,6 +1212,12 @@ pub struct UpdateAiTaskProfileInputGql {
 
 #[derive(Debug, Clone, InputObject)]
 pub struct ResumeAiApprovalInputGql {
+    pub approved: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct ResolveAiAgentWorkflowStageApprovalInputGql {
     pub approved: bool,
     pub reason: Option<String>,
 }

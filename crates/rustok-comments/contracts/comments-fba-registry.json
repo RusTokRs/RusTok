@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "comments",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "comments.thread.v1",
   "ports": [
     {

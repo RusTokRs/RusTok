@@ -19,7 +19,7 @@ storage handle. `MediaImageDescriptor` is the cross-module SEO image boundary;
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `MediaAssetReadPort` / `media.asset_read.v1` in
   `crates/rustok-media/contracts/media-fba-registry.json`.

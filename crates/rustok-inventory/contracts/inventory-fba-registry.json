@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "inventory",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "inventory.reservation.v1",
   "ports": [
     {

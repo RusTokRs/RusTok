@@ -46,6 +46,18 @@
       "validate_product_attributes_payload"
     ]
   },
+  "agent_catalog": {
+    "owner": "rustok-ai-product",
+    "catalog_api": "product_ai_agents",
+    "workflow_api": "product_ai_workflows",
+    "stage_input_validation_api": "validate_product_agent_stage_input",
+    "roles": [
+      "product_copywriter",
+      "product_attribute_enricher"
+    ],
+    "workflow": "product_enrichment",
+    "all_stages_require_approval": true
+  },
   "evidence": {
     "local_plan": "crates/rustok-ai-product/docs/implementation-plan.md",
     "central_registry": "docs/modules/registry.md",

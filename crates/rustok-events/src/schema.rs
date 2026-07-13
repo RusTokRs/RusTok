@@ -302,6 +302,11 @@ const MODULE_ARTIFACT_ADMITTED_FIELDS: &[FieldSchema] = &[
     field!("media_type", "string"),
     field!("size_bytes", "uint64"),
 ];
+const MODULE_ARTIFACT_REVERIFIED_FIELDS: &[FieldSchema] = &[
+    field!("installation_id", "uuid"),
+    field!("status", "string"),
+    field!("revision", "uint64"),
+];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
 
 pub const EVENT_SCHEMAS: &[EventSchema] = &[
@@ -712,6 +717,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "An admitted module artifact was committed with its control-plane metadata.",
         fields: MODULE_ARTIFACT_ADMITTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.reverified",
+        version: 1,
+        description: "Module artifact trust evidence was reverified.",
+        fields: MODULE_ARTIFACT_REVERIFIED_FIELDS,
     },
     EventSchema {
         event_type: "locale.enabled",

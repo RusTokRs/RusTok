@@ -1,3 +1,4 @@
+pub mod agent_panel;
 pub mod chat_session_panel;
 pub mod diagnostics_panel;
 pub mod jobs_panel;

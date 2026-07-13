@@ -8,6 +8,7 @@
   "degraded_modes": ["use_checkout_customer_snapshot", "show_customer_refresh_required", "use_order_customer_snapshot"],
   "cases": [
     { "operation": "read_customer_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_customer(", ".map_err(customer_error_to_port_error)"] },
-    { "operation": "list_customer_projections", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".list_customers(", ".map_err(customer_error_to_port_error)"] }
+    { "operation": "list_customer_projections", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".list_customers(", ".map_err(customer_error_to_port_error)"] },
+    { "operation": "list_profile_enrichment", "source_order": ["context.require_policy(PortCallPolicy::read())?", "CustomerService::list_profile_enrichment", ".map_err(customer_error_to_port_error)"] }
   ]
 }

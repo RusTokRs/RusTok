@@ -15,7 +15,7 @@ The cross-component sequence and completion rules are defined by the
 ## FFA/FBA status
 
 - FFA status: `not_started`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
 
 Implemented:

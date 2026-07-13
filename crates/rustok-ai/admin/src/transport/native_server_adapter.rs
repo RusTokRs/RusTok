@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
-    AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiCredentialRefPayload,
-    AiProviderProfilePayload, AiProviderSettingPayload, AiProviderTargetPayload,
-    AiProviderTestResultPayload, AiSendMessageResultPayload, AiTaskProfilePayload,
-    AiToolProfilePayload,
+    AiAdminBootstrap, AiAgentDescriptorPayload, AiAgentPrincipalPayload,
+    AiAgentWorkflowPayload, AiAgentWorkflowStagePayload, AiChatRunPayload,
+    AiChatSessionDetailPayload, AiCredentialRefPayload, AiProviderProfilePayload,
+    AiProviderSettingPayload, AiProviderTargetPayload, AiProviderTestResultPayload,
+    AiSendMessageResultPayload, AiTaskProfilePayload, AiToolProfilePayload,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -275,6 +276,19 @@ pub async fn resume_approval(
         .map_err(Into::into)
 }
 
+/// Resolves an owner-declared workflow admission gate. It intentionally does
+/// not share the model-tool approval endpoint because the persisted state
+/// machines are distinct.
+pub async fn resolve_agent_workflow_stage_approval(
+    stage_id: String,
+    approved: bool,
+    reason: Option<String>,
+) -> Result<bool, ApiError> {
+    ai_resolve_agent_workflow_stage_approval_native(stage_id, approved, reason)
+        .await
+        .map_err(Into::into)
+}
+
 #[allow(dead_code)]
 pub async fn cancel_run(run_id: String) -> Result<AiChatRunPayload, ApiError> {
     ai_cancel_run_native(run_id).await.map_err(Into::into)
@@ -301,6 +315,27 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
                 .entries()
                 .map(map_provider_target)
                 .collect(),
+            agent_catalog: rustok_ai::agent_catalog()
+                .map_err(server_error)?
+                .descriptors()
+                .iter()
+                .map(map_agent_descriptor)
+                .collect(),
+            agent_workflows: rustok_ai::agent_catalog()
+                .map_err(server_error)?
+                .workflows()
+                .iter()
+                .map(map_agent_workflow)
+                .collect(),
+            agent_principals: rustok_ai::AiManagementService::list_agent_principals(
+                &db,
+                auth.tenant_id,
+            )
+            .await
+            .map_err(server_error)?
+            .into_iter()
+            .map(map_agent_principal)
+            .collect(),
             providers: rustok_ai::AiManagementService::list_provider_profiles(&db, auth.tenant_id)
                 .await
                 .map_err(server_error)?
@@ -995,6 +1030,36 @@ async fn ai_resume_approval_native(
     }
 }
 
+#[server(prefix = "/api/fn", endpoint = "ai/resolve-agent-workflow-stage-approval")]
+async fn ai_resolve_agent_workflow_stage_approval_native(
+    stage_id: String,
+    approved: bool,
+    reason: Option<String>,
+) -> Result<bool, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_approval_resolve_permission(&auth.permissions)?;
+        let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        rustok_ai::AiManagementService::resolve_agent_workflow_stage_approval(
+            &db,
+            &operator(&auth, &db).await?,
+            parse_uuid(&stage_id, "stage_id")?,
+            rustok_ai::ResolveAiAgentWorkflowStageApprovalInput { approved, reason },
+        )
+        .await
+        .map_err(server_error)
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (stage_id, approved, reason);
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
 #[server(prefix = "/api/fn", endpoint = "ai/cancel-run")]
 async fn ai_cancel_run_native(run_id: String) -> Result<AiChatRunPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -1347,6 +1412,57 @@ fn map_tool_profile(value: rustok_ai::AiToolProfileRecord) -> AiToolProfilePaylo
         sensitive_tools: value.sensitive_tools,
         is_active: value.is_active,
         metadata: value.metadata.to_string(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_agent_descriptor(value: &rustok_ai::AgentDescriptor) -> AiAgentDescriptorPayload {
+    AiAgentDescriptorPayload {
+        slug: value.slug.clone(),
+        display_name: value.display_name.clone(),
+        owner: value.owner.clone(),
+        kind: format!("{:?}", value.kind).to_lowercase(),
+        responsibility: value.responsibility.clone(),
+        required_permissions: value.required_permissions.iter().cloned().collect(),
+        allowed_operations: value.allowed_operations.iter().cloned().collect(),
+        required_capabilities: value
+            .required_capabilities
+            .iter()
+            .map(|value| value.slug().to_string())
+            .collect(),
+        can_orchestrate: value.can_orchestrate,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_agent_workflow(value: &rustok_ai::AgentWorkflowDescriptor) -> AiAgentWorkflowPayload {
+    AiAgentWorkflowPayload {
+        slug: value.slug.clone(),
+        display_name: value.display_name.clone(),
+        owner: value.owner.clone(),
+        stages: value
+            .stages
+            .iter()
+            .map(|stage| AiAgentWorkflowStagePayload {
+                id: stage.id.clone(),
+                agent_slug: stage.agent_slug.clone(),
+                depends_on: stage.depends_on.clone(),
+                requires_approval: stage.requires_approval,
+            })
+            .collect(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_agent_principal(value: rustok_ai::AiAgentPrincipalRecord) -> AiAgentPrincipalPayload {
+    AiAgentPrincipalPayload {
+        id: value.id.to_string(),
+        slug: value.slug,
+        descriptor_owner: value.descriptor_owner,
+        descriptor_slug: value.descriptor_slug,
+        role_slugs: value.role_slugs,
+        permission_slugs: value.permission_slugs,
+        is_active: value.is_active,
     }
 }
 

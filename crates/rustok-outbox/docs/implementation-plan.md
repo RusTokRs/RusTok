@@ -19,7 +19,7 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
 ## FFA/FBA status block
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `OutboxRelayPort` / `outbox.relay_control.v1` in
   `crates/rustok-outbox/contracts/outbox-fba-registry.json`.

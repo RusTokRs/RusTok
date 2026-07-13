@@ -617,27 +617,30 @@ rollback without relying on workspace source composition.
   trust policy, and active-release constraints in the provider.
 - [x] Persist the complete selected graph with exact semantic versions,
   manifest/payload digests, and a graph revision/hash.
-- [ ] Produce stable human/machine conflict explanations from solver derivation
-  evidence without exposing library-specific types as the public API.
+- [x] Produce stable human/machine conflict explanations without exposing
+  library-specific types as the public API. The owner error returns a canonical
+  `DEPENDENCY_CONFLICT` code, stable message, and sorted involved root slugs;
+  PubGrub derivation diagnostics remain internal.
 - [ ] Resolve upgrades and rollbacks against a snapshot, then atomically switch
   the full graph revision; never partially upgrade dependencies.
-- [~] Detect cycles and self-dependencies in the durable lock graph. The
-  current graph validator also rejects duplicate and missing nodes. Scope
-  violations and attempts to replace Core/static-only providers remain part of
-  the resolution/selection service slice.
+- [x] Detect cycles and self-dependencies in the durable lock graph. The
+  current graph validator also rejects duplicate and missing nodes.
+- [ ] Detect scope violations and attempts to replace Core/static-only
+  providers in the resolution/selection service.
 
 ### 3.3 Platform Content-Addressed Artifact Store
 
-The current `ArtifactRuntime` re-fetches the external OCI package for every
-execution. Digest verification prevents identity substitution, but this path is
-not the production target because it couples execution latency/availability to
-the external registry.
+`ArtifactRuntime` reads the verified digest-pinned payload from platform CAS
+for every execution. The external OCI registry is an admission-time
+distribution source only, so registry availability does not affect execution
+of an admitted blob.
 
-- [ ] Introduce an `ArtifactBlobStore` port addressed only by verified digest.
-- [ ] Use `stage -> durable CAS publish -> DB transaction + outbox ->
+- [x] Introduce an `ArtifactBlobStore` port addressed only by verified digest.
+- [x] Use `stage -> durable CAS publish -> DB transaction + outbox ->
   reconciler` for admission. PostgreSQL does not claim atomicity with external
-  object storage; reconciliation completes/fails interrupted admission and
-  removes orphan blobs only after reference and retention-policy checks.
+  object storage; `StorageArtifactBlobStore` publishes digest-derived durable
+  keys and `ArtifactAdmissionReconciler` removes orphans only after reference
+  and retention-policy checks.
 - [x] Commit admission metadata, dependency lock, installation/composition
   revision, and the existing transactional-outbox envelope in one database
   transaction; do not introduce a module-specific second event journal.
@@ -660,10 +663,13 @@ the external registry.
   corruption detection, and safe eviction.
 - [ ] Define reference counting/retention for active, rollback, quarantined,
   audit-retained, and unreferenced blobs.
-- [ ] Support execution during an external registry outage when the admitted blob
-  is present; fail closed with an availability error when it is not.
-- [ ] Re-verification after trust-policy/root changes updates admission state
-  without changing the immutable blob.
+- [x] Support execution during an external registry outage when the admitted
+  blob is present; fail closed with `BlobNotFound` before sandbox execution
+  when it is not. `ArtifactRuntime` has no registry client or fallback path.
+- [x] Re-verification after trust-policy/root changes updates admission evidence
+  and status through an expected-revision CAS without changing the immutable
+  blob, descriptor, or CAS identity. Incomplete evidence moves the admission to
+  `failed`.
 
 ### 3.4 Installation State
 

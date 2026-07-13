@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "in_progress",
+  "status": "boundary_ready",
   "provider": {
     "module_slug": "page_builder",
     "manifest_module": "page-builder",

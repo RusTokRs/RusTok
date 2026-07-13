@@ -5,12 +5,65 @@ pub struct AiAdminBootstrap {
     pub metrics: AiRuntimeMetricsPayload,
     pub provider_catalog: Vec<AiProviderCatalogEntryPayload>,
     pub provider_targets: Vec<AiProviderTargetPayload>,
+    pub agent_catalog: Vec<AiAgentDescriptorPayload>,
+    pub agent_workflows: Vec<AiAgentWorkflowPayload>,
+    pub agent_principals: Vec<AiAgentPrincipalPayload>,
     pub providers: Vec<AiProviderProfilePayload>,
     pub task_profiles: Vec<AiTaskProfilePayload>,
     pub tool_profiles: Vec<AiToolProfilePayload>,
     pub sessions: Vec<AiChatSessionSummaryPayload>,
     pub recent_runs: Vec<AiRecentRunPayload>,
     pub recent_stream_events: Vec<AiRunStreamEventPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiAgentDescriptorPayload {
+    pub slug: String,
+    pub display_name: String,
+    pub owner: String,
+    pub kind: String,
+    pub responsibility: String,
+    pub required_permissions: Vec<String>,
+    pub allowed_operations: Vec<String>,
+    pub required_capabilities: Vec<String>,
+    pub can_orchestrate: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiAgentWorkflowStagePayload {
+    pub id: String,
+    pub agent_slug: String,
+    pub depends_on: Vec<String>,
+    pub requires_approval: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiAgentWorkflowPayload {
+    pub slug: String,
+    pub display_name: String,
+    pub owner: String,
+    pub stages: Vec<AiAgentWorkflowStagePayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiAgentPrincipalPayload {
+    pub id: String,
+    pub slug: String,
+    pub descriptor_owner: String,
+    pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiAgentModelAssignmentPayload {
+    pub id: String,
+    pub agent_principal_id: String,
+    pub provider_profile_id: String,
+    pub model_override: Option<String>,
+    pub execution_mode: String,
+    pub is_active: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

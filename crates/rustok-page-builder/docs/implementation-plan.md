@@ -22,7 +22,7 @@ and waiver policy before a tenant can be promoted.
 ## FFA/FBA status
 
 - FFA status: `not_started` — this provider has no module-owned UI surface.
-- FBA status: `in_progress` — the provider contract, endpoint adapter seam,
+- FBA status: `boundary_ready` — the provider contract, endpoint adapter seam,
   and no-compile evidence are ready; runtime integration and live evidence are
   still open.
 - Evidence: `contracts/page-builder-fba-registry.json`,

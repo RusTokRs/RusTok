@@ -43,7 +43,7 @@ export function verifyCustomerFbaNoCompile() {
   if (!portSource.includes('trait CustomerReadPort')) fail('CustomerReadPort trait missing');
   if (!portSource.includes('require_policy(PortCallPolicy::read())?')) fail('CustomerReadPort must enforce read policy');
 
-  for (const operation of ['read_customer_projection', 'list_customer_projections']) {
+  for (const operation of ['read_customer_projection', 'list_customer_projections', 'list_profile_enrichment']) {
     if (!portSource.includes(`${operation}(`)) fail(`CustomerReadPort missing ${operation}`);
     if (!registry.ports?.[0]?.operations?.includes(operation)) fail(`registry missing ${operation}`);
     if (!staticEvidence.cases?.some((entry) => entry.operation === operation)) fail(`static evidence missing ${operation}`);

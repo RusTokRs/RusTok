@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "blog",
   "role": "consumer",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "consumer_profile": "blog_post_comments",
   "provider_dependencies": [
     {

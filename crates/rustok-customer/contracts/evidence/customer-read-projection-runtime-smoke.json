@@ -13,7 +13,8 @@
   ],
   "covered_operations": [
     "read_customer_projection",
-    "list_customer_projections"
+    "list_customer_projections",
+    "list_profile_enrichment"
   ],
   "typed_error_matrix": [
     {

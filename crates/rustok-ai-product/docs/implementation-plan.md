@@ -8,6 +8,12 @@ API and composes execution. Product context remains owned by `rustok-product`
 through `ProductCatalogReadPort`; this support crate must not own catalog
 persistence or provider routing.
 
+The crate also owns the `product_copywriter` and
+`product_attribute_enricher` agent declarations plus the sequential,
+approval-gated `product_enrichment` workflow. It validates the owner-level
+`product_id` admission shape; the product direct handler remains responsible
+for complete tenant, locale, and persistence validation.
+
 ## FFA/FBA readiness
 
 - FFA status: `in_progress`.
@@ -36,6 +42,10 @@ persistence or provider routing.
    core/transport/UI package to admin routes and verify native server functions
    with parallel GraphQL/headless parity. Done when host-level evidence covers
    both paths.
+4. **Exercise the composed product-agent workflow.** Cover principal/model
+   assignment, stage admission approval, canonical direct task execution, and
+   product-owner validation without introducing a product-specific executor in
+   `rustok-ai`.
 
 ## Verification
 

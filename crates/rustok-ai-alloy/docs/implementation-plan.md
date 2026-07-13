@@ -18,22 +18,23 @@ the role name.
 ## FFA/FBA readiness
 
 - FFA status: `not_started` — this support adapter owns no UI surface.
-- FBA status: `in_progress` (`domain_support_adapter`).
+- FBA status: `boundary_ready` (`domain_support_adapter`).
 - `alloy_script_execution_policy` records `allowed_operations`,
   `runtime_operation`, and the current remote transport status. It must remain
   domain-owned; provider routing and execution transport remain in
   `rustok-ai`.
 - Evidence: `crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json`,
   `crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json`,
-  and `scripts/verify/verify-ai-alloy-policy.mjs`.
+  and `scripts/verify/verify-ai-alloy-policy.mjs`. The verifier also locks the
+  Alloy stage binding to the canonical `rustok-ai` task-run and approval flow.
 
 ## Next results
 
-1. **Exercise the policy through the composed direct-execution path.** Add a
-   targeted integration test that proves `rustok-ai` consumes the registered
-   descriptor, rejects invalid payloads, and admits only policy operations.
-   Done when the test covers the composed boundary rather than source markers
-   alone.
+1. **Exercise the policy through the composed direct-execution path.** The
+   `rustok-ai::agent` regression now proves owner validation resolves to a
+   registered canonical direct handler and rejects an invalid Alloy operation
+   before execution. Add a DB-backed execution test when long Rust verification
+   is enabled; it must cover the same boundary with tenant/runtime effects.
 2. **Specify the remote Alloy transport only when its product owner selects
    it.** Define authentication, operation mapping, failures, and evidence
    before changing `remote_transport` from `not_started`. Done when the
@@ -42,9 +43,9 @@ the role name.
 3. **Persist and execute the owner-owned code workflow.** Add tenant-scoped
    agent principals, model assignments, workflow-run state, and an Alloy
    operation executor that checks the initiator/agent RBAC intersection before
-   each stage. The control-plane schema and canonical AI task-run executor are
-   now available in `rustok-ai`; complete workflow-stage approval resolution,
-   scheduler hosting, and operator forms next. Applying a generated change
+   each stage. The control-plane schema, canonical AI task-run executor, and
+   atomic workflow-stage approval transition are now available in `rustok-ai`;
+   complete scheduler hosting and operator forms next. Applying a generated change
    remains approval-gated.
 
 ## Verification

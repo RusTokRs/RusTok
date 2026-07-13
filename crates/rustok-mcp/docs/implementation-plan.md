@@ -12,7 +12,7 @@ protocol surface is stdio only.
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
-- FBA status: `in_progress` (`core_transport_ui`).
+- FBA status: `boundary_ready` (`core_transport_ui`).
 - Structural shape: `core_transport_ui`
 - `McpManagementPort` is the owner contract. The Leptos package uses
   `HostRuntimeContext` for native `#[server]` functions while retaining the

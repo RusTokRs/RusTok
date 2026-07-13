@@ -21,7 +21,7 @@ adapters bind and render prepared state.
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `RegionReadPort` / `region.read_projection.v1` in
   `crates/rustok-region/contracts/region-fba-registry.json`.

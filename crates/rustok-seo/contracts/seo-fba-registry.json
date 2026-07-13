@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "seo",
   "role": "consumer",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "consumer_profile": "seo_image_descriptor",
   "provider_dependencies": [
     {

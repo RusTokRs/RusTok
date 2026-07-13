@@ -40,8 +40,38 @@ hasAll(source, [
   'PRODUCT_ATTRIBUTES_TOOL_NAME: &str = "direct.commerce.product_attributes"',
   'register_product_ai_vertical_handlers',
   'validate_product_copy_payload',
-  'validate_product_attributes_payload'
+  'validate_product_attributes_payload',
+  'ProductAiAgentDescriptor',
+  'ProductAiWorkflowDescriptor',
+  'PRODUCT_AI_AGENTS',
+  'PRODUCT_AI_WORKFLOWS',
+  'product_ai_agents',
+  'product_ai_workflows',
+  'validate_product_agent_stage_input',
+  'slug: "product_enrichment"'
 ], 'support adapter source');
+
+const agentCatalog = registry.agent_catalog;
+if (!agentCatalog || agentCatalog.owner !== 'rustok-ai-product') fail('product agent catalog owner drift');
+if (agentCatalog.catalog_api !== 'product_ai_agents' || agentCatalog.workflow_api !== 'product_ai_workflows' || agentCatalog.stage_input_validation_api !== 'validate_product_agent_stage_input') fail('product agent catalog API drift');
+sameSet(agentCatalog.roles ?? [], ['product_copywriter', 'product_attribute_enricher'], 'product agent roles');
+if (agentCatalog.workflow !== 'product_enrichment' || agentCatalog.all_stages_require_approval !== true) fail('product agent workflow policy drift');
+
+const aiAgentCatalog = read('crates/rustok-ai/src/agent.rs');
+hasAll(aiAgentCatalog, [
+  'rustok_ai_product::product_ai_agents()',
+  'rustok_ai_product::product_ai_workflows()',
+  'rustok_ai_product::validate_product_agent_stage_input',
+  'AgentStageValidator::Product',
+  'with_stage_validators',
+  'owner: "rustok-ai-product"'
+], 'AI owner catalog composition');
+const aiService = read('crates/rustok-ai/src/service.rs');
+hasAll(aiService, [
+  'catalog.validate_stage_execution(',
+  'Self::run_task_job_with_authority(',
+  'TaskJobExecutionAuthority::RegisteredAgentAssignment'
+], 'product agent canonical task-run composition');
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');

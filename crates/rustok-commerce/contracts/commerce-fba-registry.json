@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "commerce",
   "role": "orchestrator_consumer",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "commerce.checkout_orchestration.fba.v1",
   "providers": [
     {

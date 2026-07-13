@@ -30,6 +30,7 @@ use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
 use super::components::chat_session_panel::AiChatSessionPanel;
+use super::components::agent_panel::AiAgentPanel;
 use super::components::diagnostics_panel::AiDiagnosticsPanel;
 use super::components::jobs_panel::AiJobsPanel;
 use super::components::provider_panel::AiProviderPanel;
@@ -1634,6 +1635,13 @@ pub fn AiAdmin() -> impl IntoView {
                                             on_deactivate_provider=Callback::new(on_deactivate_provider.clone())
                                             on_reset=reset_provider_form.clone()
                                             select_provider_query_writer=select_provider_query_writer.clone()
+                                        />
+
+                                        <AiAgentPanel
+                                            ui_locale=ui_locale_left.clone()
+                                            catalog=bootstrap_left.agent_catalog.clone()
+                                            workflows=bootstrap_left.agent_workflows.clone()
+                                            principals=bootstrap_left.agent_principals.clone()
                                         />
 
                                         <AiToolPanel

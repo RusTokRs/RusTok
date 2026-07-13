@@ -49,7 +49,7 @@ pub use agent::{
     AgentWorkflowDescriptor, AgentWorkflowStage, AgentWorkflowStatus,
 };
 #[cfg(feature = "server")]
-pub use agent::alloy_agent_catalog;
+pub use agent::agent_catalog;
 #[cfg(all(feature = "graphql", feature = "server"))]
 pub use graphql_runtime::{
     attach_schema_data, AiGraphqlRuntimeData, SeaOrmAiGraphqlRoleSlugProvider,
@@ -82,7 +82,8 @@ pub use service::{
     AiHostRuntime, AiManagementService, AiOperatorContext, AiProviderProfileRecord,
     AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
     CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput, CreateAiProviderProfileInput,
-    CreateAiAgentWorkflowRunInput, CreateAiTaskProfileInput, CreateAiToolProfileInput, ResumeAiApprovalInput,
+    CreateAiAgentWorkflowRunInput, CreateAiTaskProfileInput, CreateAiToolProfileInput,
+    ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput,
     RunAiTaskJobInput, SendAiChatMessageInput,
     SharedAiEgressPolicy, SharedAiModuleRegistry, SharedAiProviderTargetCatalog,
     SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiProviderProfileInput,

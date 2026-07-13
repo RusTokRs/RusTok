@@ -53,11 +53,13 @@ pub use executor::{
 };
 pub use installation::{
     ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord,
-    ArtifactAdmissionService, ArtifactAdmissionStage, ArtifactAdmissionStatus,
-    ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore, ArtifactRegistry,
-    DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
-    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
-    OciArtifactReference, SeaOrmArtifactInstallationStore, StagedArtifactBlob,
+    ArtifactAdmissionReverification, ArtifactAdmissionService, ArtifactAdmissionStage,
+    ArtifactAdmissionStatus, ArtifactAdmissionStore, ArtifactBlobRetentionPolicy,
+    ArtifactBlobStore, ArtifactRegistry, ArtifactRollbackRequest, ArtifactRollbackResult,
+    ArtifactVerificationEvidence, DurableArtifactBlobStore, InMemoryArtifactBlobStore,
+    InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError,
+    ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
+    SeaOrmArtifactInstallationStore, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{

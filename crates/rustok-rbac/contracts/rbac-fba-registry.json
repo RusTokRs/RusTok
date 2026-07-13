@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "rbac",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "rbac.permission_decision.v1",
   "ports": [
     {

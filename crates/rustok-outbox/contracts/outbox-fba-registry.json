@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "outbox",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "outbox.relay_control.v1",
   "ports": [
     {

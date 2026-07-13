@@ -14,7 +14,7 @@ idempotency.
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
 - FBA provider contract: `TaxCalculationPort` / `tax.calculation.v1` in
   `crates/rustok-tax/contracts/tax-fba-registry.json`.

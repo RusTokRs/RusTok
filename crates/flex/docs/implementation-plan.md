@@ -16,7 +16,7 @@ canonical runtime fallback.
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
 - Capability runtime is manifest-composed through `FlexModule` and
   `[provides.graphql]`; it has no module-owned UI or FBA provider port.

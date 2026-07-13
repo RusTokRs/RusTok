@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "customer",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "customer.read_projection.v1",
   "ports": [
     {
@@ -10,7 +10,8 @@
       "owner": "customer",
       "operations": [
         "read_customer_projection",
-        "list_customer_projections"
+        "list_customer_projections",
+        "list_profile_enrichment"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
@@ -85,6 +86,17 @@
           "typed_port_error_mapping",
           "context_deadline_preserved"
         ]
+      },
+      {
+        "operation": "list_profile_enrichment",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
       }
     ],
     "fallback_smoke": {
@@ -106,7 +118,8 @@
       "promotion_allowed": false,
       "covered_operations": [
         "read_customer_projection",
-        "list_customer_projections"
+        "list_customer_projections",
+        "list_profile_enrichment"
       ],
       "assertions": [
         "tenant_scope_preserved",

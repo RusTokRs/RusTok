@@ -405,6 +405,42 @@ impl ArtifactVerificationEvidence {
             verified_at,
         }
     }
+
+    fn admitted(&self) -> bool {
+        self.signature_verified && self.provenance_verified && self.sbom_verified
+    }
+}
+
+/// A revision-guarded replacement of redacted trust evidence after a policy or
+/// trust-root change. It never changes the admitted CAS digest or descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactAdmissionReverification {
+    pub installation_id: Uuid,
+    pub scope: ModuleInstallationScope,
+    pub expected_revision: u64,
+    pub evidence: ArtifactVerificationEvidence,
+}
+
+/// Immutable command envelope for a rollback selection. The caller supplies
+/// the capability-grant revision produced by owner policy evaluation for the
+/// predecessor release; the command never reopens an OCI registry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactRollbackRequest {
+    pub installation_id: Uuid,
+    pub scope: ModuleInstallationScope,
+    pub expected_revision: u64,
+    pub actor_id: Uuid,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+    pub target_capability_grant_revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactRollbackResult {
+    pub operation_id: Uuid,
+    pub target_installation_id: Uuid,
+    pub source_revision: u64,
+    pub target_revision: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -619,6 +655,249 @@ pub struct SeaOrmArtifactInstallationStore {
 impl SeaOrmArtifactInstallationStore {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    /// Applies the durable selection half of a rollback. Runtime activation is
+    /// deliberately downstream of this transaction.
+    pub async fn rollback_artifact(
+        &self,
+        request: ArtifactRollbackRequest,
+    ) -> Result<ArtifactRollbackResult, ModuleInstallationError> {
+        if request.expected_revision == 0
+            || request.target_capability_grant_revision == 0
+            || request.reason.trim().is_empty()
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback requires positive revisions and a non-empty reason".into(),
+            ));
+        }
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(&transaction, &request.scope).await?;
+        let backend = transaction.get_database_backend();
+        let placeholders = match backend {
+            DbBackend::Postgres => ("$1", "$2"),
+            _ => ("?1", "?2"),
+        };
+        let row = transaction.query_one(Statement::from_sql_and_values(
+            backend,
+            format!("SELECT previous_installation_id FROM module_artifact_installations WHERE installation_id = {}", placeholders.0),
+            vec![uuid_value(request.installation_id, backend)],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("rollback predecessor is unavailable".into()))?;
+        let target_installation_id = match backend {
+            DbBackend::Postgres => row
+                .try_get("", "previous_installation_id")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            _ => row
+                .try_get::<String>("", "previous_installation_id")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                .parse::<Uuid>()
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+        };
+        let target_revision_row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT revision FROM module_artifact_admissions WHERE installation_id = {}",
+                    placeholders.0
+                ),
+                vec![uuid_value(target_installation_id, backend)],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("rollback predecessor admission is unavailable".into()))?;
+        let target_expected_revision: i64 = target_revision_row
+            .try_get("", "revision")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let source = transaction.execute(Statement::from_sql_and_values(
+            backend,
+            format!("UPDATE module_artifact_admissions SET status = 'rolled_back', revision = revision + 1 WHERE installation_id = {} AND revision = {}", placeholders.0, placeholders.1),
+            vec![uuid_value(request.installation_id, backend), i64::try_from(request.expected_revision).map_err(|_| ModuleInstallationError::AdmissionRevisionConflict("rollback revision exceeds database range".into()))?.into()],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if source.rows_affected() != 1 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback source is missing or stale".into(),
+            ));
+        }
+        let target = transaction.execute(Statement::from_sql_and_values(
+            backend,
+            format!("UPDATE module_artifact_admissions SET status = 'active', revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status IN ('admitted', 'installed', 'inactive', 'rolled_back')", placeholders.0, placeholders.1),
+            vec![uuid_value(target_installation_id, backend), target_expected_revision.into()],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if target.rows_affected() != 1 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback predecessor is not activatable".into(),
+            ));
+        }
+        let target_revision = target_expected_revision + 1;
+        transaction.execute(Statement::from_sql_and_values(
+            backend,
+            format!("UPDATE module_artifact_installations SET capability_grant_revision = {} WHERE installation_id = {}", placeholders.0, placeholders.1),
+            vec![i64::try_from(request.target_capability_grant_revision).map_err(|_| ModuleInstallationError::AdmissionRevisionConflict("capability grant revision exceeds database range".into()))?.into(), uuid_value(target_installation_id, backend)],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let operation_id = Uuid::new_v4();
+        transaction.execute(Statement::from_sql_and_values(
+            backend,
+            match backend { DbBackend::Postgres => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())", _ => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,datetime('now'))" }.to_string(),
+            vec![uuid_value(operation_id, backend), uuid_value(request.installation_id, backend), uuid_value(target_installation_id, backend), i64::try_from(request.expected_revision).map_err(|_| ModuleInstallationError::AdmissionRevisionConflict("rollback revision exceeds database range".into()))?.into(), uuid_value(request.actor_id, backend), request.reason.into(), uuid_value(request.idempotency_key, backend)],
+        )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let tenant_id = match &request.scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+        };
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    tenant_id,
+                    DomainEvent::ModuleArtifactRolledBack {
+                        installation_id: request.installation_id,
+                        target_installation_id,
+                    },
+                ),
+            )
+            .await
+            .map_err(|error| ModuleInstallationError::Outbox(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(ArtifactRollbackResult {
+            operation_id,
+            target_installation_id,
+            source_revision: request.expected_revision + 1,
+            target_revision: u64::try_from(target_revision).map_err(|_| {
+                ModuleInstallationError::Store("rollback target revision is negative".into())
+            })?,
+        })
+    }
+
+    /// Replaces admission evidence only when the caller holds the current
+    /// revision. Incomplete evidence marks the admission as `failed`;
+    /// the immutable CAS blob remains untouched for audit and retention.
+    pub async fn reverify_admission(
+        &self,
+        request: ArtifactAdmissionReverification,
+    ) -> Result<u64, ModuleInstallationError> {
+        let expected_revision = i64::try_from(request.expected_revision).map_err(|_| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "expected revision exceeds database integer range".into(),
+            )
+        })?;
+        if expected_revision <= 0 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "expected revision must be positive".into(),
+            ));
+        }
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(&transaction, &request.scope).await?;
+        let backend = transaction.get_database_backend();
+        let evidence = serde_json::to_value(&request.evidence)
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let status = if request.evidence.admitted() {
+            ArtifactAdmissionStatus::Admitted
+        } else {
+            ArtifactAdmissionStatus::Failed
+        };
+        let placeholders = match backend {
+            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
+            _ => ("?1", "?2", "?3", "?4", "?5", "?6"),
+        };
+        let (scope_predicate, scope_values) = admission_scope_predicate(&request.scope, backend);
+        let sql = format!(
+            "UPDATE module_artifact_admissions \
+             SET verification_evidence = {}, status = {}, revision = revision + 1 \
+             WHERE installation_id = {} AND revision = {} \
+               AND payload_digest = {} AND media_type = {}",
+            placeholders.0,
+            placeholders.1,
+            placeholders.2,
+            placeholders.3,
+            placeholders.4,
+            placeholders.5,
+        ) + &scope_predicate;
+        let mut values = vec![
+            SqlValue::Json(Some(Box::new(evidence))),
+            status.as_str().into(),
+            uuid_value(request.installation_id, backend),
+            expected_revision.into(),
+            request.evidence.payload_digest.into(),
+            request.evidence.media_type.into(),
+        ];
+        values.extend(scope_values);
+        let updated = transaction
+            .execute(Statement::from_sql_and_values(backend, sql, values))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if updated.rows_affected() != 1 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "admission is missing, stale, or evidence does not match its immutable CAS identity"
+                    .into(),
+            ));
+        }
+        let tenant_id = match &request.scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+        };
+        OutboxTransport::new(self.db.clone())
+            .write_to_outbox(
+                &transaction,
+                EventEnvelope::new(
+                    Uuid::new_v4(),
+                    tenant_id,
+                    DomainEvent::ModuleArtifactReverified {
+                        installation_id: request.installation_id,
+                        status: status.as_str().to_string(),
+                        revision: request.expected_revision + 1,
+                    },
+                ),
+            )
+            .await
+            .map_err(|error| ModuleInstallationError::Outbox(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(request.expected_revision + 1)
+    }
+}
+
+fn admission_scope_predicate(
+    scope: &ModuleInstallationScope,
+    backend: DbBackend,
+) -> (String, Vec<SqlValue>) {
+    let (scope_kind_placeholder, tenant_placeholder) = match backend {
+        DbBackend::Postgres => ("$7", "$8"),
+        _ => ("?7", "?8"),
+    };
+    match scope {
+        ModuleInstallationScope::Platform => (
+            format!(
+                " AND EXISTS (SELECT 1 FROM module_artifact_installations installation \
+                 WHERE installation.installation_id = module_artifact_admissions.installation_id \
+                 AND installation.scope_kind = {scope_kind_placeholder} \
+                 AND installation.tenant_id IS NULL)"
+            ),
+            vec!["platform".into()],
+        ),
+        ModuleInstallationScope::Tenant { tenant_id } => (
+            format!(
+                " AND EXISTS (SELECT 1 FROM module_artifact_installations installation \
+                 WHERE installation.installation_id = module_artifact_admissions.installation_id \
+                 AND installation.scope_kind = {scope_kind_placeholder} \
+                 AND installation.tenant_id = {tenant_placeholder})"
+            ),
+            vec!["tenant".into(), uuid_value(*tenant_id, backend)],
+        ),
     }
 }
 
@@ -1076,6 +1355,8 @@ pub enum ModuleInstallationError {
     Blob(String),
     #[error("artifact admission outbox error: {0}")]
     Outbox(String),
+    #[error("artifact admission revision conflict: {0}")]
+    AdmissionRevisionConflict(String),
     #[error("admitted artifact blob `{0}` is unavailable")]
     BlobNotFound(String),
     #[error("artifact dependency lock is invalid: {0}")]
@@ -1481,9 +1762,10 @@ mod tests {
         let package = package(ArtifactPayloadKind::Rhai);
         let reference = package.reference.clone();
         let tenant_id = Uuid::new_v4();
+        let store = SeaOrmArtifactInstallationStore::new(database.clone());
         let installer = ModuleInstaller::new(
             FixtureRegistry(package),
-            SeaOrmArtifactInstallationStore::new(database.clone()),
+            store.clone(),
             InMemoryArtifactBlobStore::default(),
             trust_verifier(),
             trust_policy(),
@@ -1567,5 +1849,59 @@ mod tests {
             i64::try_get(&outbox_count, "", "count").expect("outbox count"),
             1
         );
+
+        let evidence = ArtifactVerificationEvidence {
+            manifest_digest: installed.reference.digest.clone(),
+            payload_digest: installed.descriptor.artifact_digest.clone(),
+            media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
+            signer_identity: "test.signer.example".to_string(),
+            trust_policy_revision: 2,
+            capability_policy_revision: 2,
+            signature_verified: true,
+            provenance_verified: true,
+            sbom_verified: true,
+            evidence_references: vec!["test://verification/reverified".to_string()],
+            verified_at: Utc::now(),
+        };
+        assert_eq!(
+            store
+                .reverify_admission(ArtifactAdmissionReverification {
+                    installation_id: installed.installation_id,
+                    scope: ModuleInstallationScope::Tenant { tenant_id },
+                    expected_revision: 1,
+                    evidence: evidence.clone(),
+                })
+                .await
+                .expect("reverification"),
+            2
+        );
+        let reverification_outbox_count = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events \
+                 WHERE event_type = 'module.artifact.reverified'"
+                    .to_string(),
+            ))
+            .await
+            .expect("reverification outbox query")
+            .expect("reverification outbox count");
+        assert_eq!(
+            i64::try_get(&reverification_outbox_count, "", "count")
+                .expect("reverification outbox count"),
+            1
+        );
+        assert!(matches!(
+            store
+                .reverify_admission(ArtifactAdmissionReverification {
+                    installation_id: installed.installation_id,
+                    scope: ModuleInstallationScope::Tenant {
+                        tenant_id: Uuid::new_v4(),
+                    },
+                    expected_revision: 2,
+                    evidence,
+                })
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
     }
 }

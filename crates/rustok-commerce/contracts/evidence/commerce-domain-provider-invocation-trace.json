@@ -51,7 +51,7 @@
       "runtime_contract_smoke": "crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json",
       "contract_version": "customer.read_projection.v1",
       "ports": ["CustomerReadPort"],
-      "operations": ["read_customer_projection", "list_customer_projections"],
+      "operations": ["read_customer_projection", "list_customer_projections", "list_profile_enrichment"],
       "fallback_profiles": ["embedded_native", "graphql_checkout_compat"],
       "degraded_modes": ["use_checkout_customer_snapshot", "show_customer_refresh_required", "use_order_customer_snapshot"],
       "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat"],

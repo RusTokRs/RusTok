@@ -38,6 +38,17 @@ query AiBootstrap {
     defaultSettings { key value }
   }
   aiProviderTargets { id providerSlug displayName }
+  aiAgentCatalog {
+    slug displayName owner kind responsibility requiredPermissions allowedOperations
+    requiredCapabilities canOrchestrate
+  }
+  aiAgentWorkflows {
+    slug displayName owner
+    stages { id agentSlug dependsOn requiresApproval }
+  }
+  aiAgentPrincipals {
+    id slug descriptorOwner descriptorSlug roleSlugs permissionSlugs isActive
+  }
   aiProviderProfiles {
     id
     slug

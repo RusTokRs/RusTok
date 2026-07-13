@@ -12,9 +12,9 @@ use crate::{
 };
 
 /// Executes an installed immutable artifact without involving the server's
-/// source tree or Cargo dependency graph. The registry is resolved on each
-/// invocation by the digest-pinned installation reference, then identity is
-/// verified again before the payload crosses the sandbox boundary.
+/// source tree, Cargo dependency graph, or an external registry. The payload
+/// is read and verified by digest from platform CAS before it crosses the
+/// sandbox boundary.
 pub struct ArtifactRuntime<B> {
     blobs: B,
     sandbox: SandboxRuntime,
@@ -155,14 +155,6 @@ pub enum ArtifactRuntimeError {
     Installation(#[from] ModuleInstallationError),
     #[error(transparent)]
     Sandbox(#[from] rustok_sandbox::SandboxError),
-    #[error(
-        "registry returned `{received}` for installed artifact reference `{installed}` during execution"
-    )]
-    RegistryIdentityMismatch { installed: String, received: String },
-    #[error("registry descriptor does not match installation `{installation_id}`")]
-    DescriptorMismatch { installation_id: uuid::Uuid },
-    #[error("registry release does not match installation `{installation_id}`")]
-    ReleaseMismatch { installation_id: uuid::Uuid },
 }
 
 #[cfg(test)]

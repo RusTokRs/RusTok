@@ -53,7 +53,7 @@ Remaining:
 ## FFA/FBA Boundary
 
 - FFA status: `not_started`.
-- FBA status: `in_progress`.
+- FBA status: `boundary_ready`.
 - Structural shape: `no_ui_boundary`.
 - Capability runtime contract:
   `crates/alloy/contracts/alloy-runtime-contract.json` and

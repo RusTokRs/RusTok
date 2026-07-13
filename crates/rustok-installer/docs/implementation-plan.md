@@ -21,7 +21,7 @@ that distributed installation is implemented.
 ## FFA/FBA boundary
 
 - FFA status: `not_applicable`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `no_module_owned_ui`
 - This crate owns policy and typed orchestration contracts only. `rustok-cli`
   owns terminal parsing and output; `apps/server` owns HTTP request handling;

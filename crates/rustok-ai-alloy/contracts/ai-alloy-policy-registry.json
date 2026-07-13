@@ -96,6 +96,15 @@
           "implement_and_verify_require_approval",
           "no_unreviewed_apply_operation"
         ]
+      },
+      {
+        "operation": "alloy_workflow_runtime_binding",
+        "assertions": [
+          "stage_input_is_validated_by_owner_binding",
+          "execution_uses_canonical_task_run",
+          "lease_recovery_is_present",
+          "approval_completion_synchronizes_stage"
+        ]
       }
     ]
   }

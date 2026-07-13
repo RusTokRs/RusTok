@@ -19,7 +19,7 @@ writes.
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CommentsThreadPort` / `comments.thread.v1` in
   `crates/rustok-comments/contracts/comments-fba-registry.json`.

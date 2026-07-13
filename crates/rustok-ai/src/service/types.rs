@@ -287,20 +287,25 @@ pub struct ResumeAiApprovalInput {
     pub reason: Option<String>,
 }
 
+/// Resolves an owner-declared workflow stage gate before it may be claimed by
+/// the scheduler. This is distinct from an approval request emitted by an
+/// already running model tool call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolveAiAgentWorkflowStageApprovalInput {
+    pub approved: bool,
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateAiAgentPrincipalInput {
     pub slug: String,
     pub descriptor_owner: String,
     pub descriptor_slug: String,
-    pub role_slugs: Vec<String>,
-    pub permission_slugs: Vec<String>,
     pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAiAgentPrincipalInput {
-    pub role_slugs: Vec<String>,
-    pub permission_slugs: Vec<String>,
     pub metadata: serde_json::Value,
     pub is_active: bool,
 }

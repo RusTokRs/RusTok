@@ -22,7 +22,7 @@ and reservation contracts remain inventory-owned.
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `InventoryReservationPort` /
   `inventory.reservation.v1` in

@@ -21,7 +21,7 @@ surface. `verify-page-builder-pages-legacy-bridge.mjs` locks that behaviour.
 
 - FFA status: `in_progress` — module-owned admin and storefront surfaces are
   present and must keep the core/transport/UI boundary.
-- FBA status: `in_progress` — Pages has the reference consumer metadata and
+- FBA status: `boundary_ready` — Pages has the reference consumer metadata and
   static fallback coverage, but no observed tenant control-plane evidence.
 - Structural shape: `core_transport_ui`
 - Evidence: `scripts/verify/verify-pages-ui-boundary.mjs`,

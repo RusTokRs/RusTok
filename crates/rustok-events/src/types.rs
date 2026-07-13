@@ -499,6 +499,15 @@ pub enum DomainEvent {
         media_type: String,
         size_bytes: u64,
     },
+    ModuleArtifactReverified {
+        installation_id: Uuid,
+        status: String,
+        revision: u64,
+    },
+    ModuleArtifactRolledBack {
+        installation_id: Uuid,
+        target_installation_id: Uuid,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -679,6 +688,8 @@ impl DomainEvent {
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::TenantModuleToggled { .. } => "tenant.module.toggled",
             Self::ModuleArtifactAdmitted { .. } => "module.artifact.admitted",
+            Self::ModuleArtifactReverified { .. } => "module.artifact.reverified",
+            Self::ModuleArtifactRolledBack { .. } => "module.artifact.rolled_back",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -814,6 +825,8 @@ impl DomainEvent {
             Self::TenantUpdated { .. } => 1,
             Self::TenantModuleToggled { .. } => 1,
             Self::ModuleArtifactAdmitted { .. } => 1,
+            Self::ModuleArtifactReverified { .. } => 1,
+            Self::ModuleArtifactRolledBack { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -1692,6 +1705,29 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_empty("media_type", media_type)?;
                 validators::validate_max_length("media_type", media_type, 255)?;
                 Ok(())
+            }
+            Self::ModuleArtifactReverified {
+                installation_id,
+                status,
+                revision,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_empty("status", status)?;
+                validators::validate_max_length("status", status, 32)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactRolledBack {
+                installation_id,
+                target_installation_id,
+            } => {
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_nil_uuid("target_installation_id", target_installation_id)
             }
             Self::LocaleEnabled { tenant_id, locale }
             | Self::LocaleDisabled { tenant_id, locale } => {

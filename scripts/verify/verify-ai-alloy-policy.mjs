@@ -59,6 +59,31 @@ hasAll(source, [
   '!parsed.is_object()'
 ], 'support adapter source');
 
+const runtimeSource = read('crates/rustok-ai/src/service.rs');
+hasAll(runtimeSource, [
+  'pub async fn execute_agent_workflow_stage',
+  'catalog.validate_stage_execution(',
+  'Self::run_task_job_with_authority(',
+  'TaskJobExecutionAuthority::RegisteredAgentAssignment',
+  'pub async fn resolve_agent_workflow_stage_approval',
+  'pub async fn claim_agent_workflow_stage',
+  'let executable_workflow = ai_agent_workflow_runs::Entity::find_by_id',
+  'pub async fn requeue_expired_agent_stage_leases',
+  'async fn sync_agent_workflow_run_status',
+  'Self::promote_agent_workflow_stages(db, tenant_id, stage.workflow_run_id)',
+  'async fn sync_workflow_stage_after_run',
+  'Self::promote_agent_workflow_stages'
+], 'AI workflow runtime source');
+
+const agentInputs = read('crates/rustok-ai/src/graphql/types.rs');
+for (const inputName of ['CreateAiAgentPrincipalInputGql', 'UpdateAiAgentPrincipalInputGql']) {
+  const start = agentInputs.indexOf(`pub struct ${inputName}`);
+  const end = agentInputs.indexOf('\n}', start);
+  if (start < 0 || end < 0) fail(`agent principal input ${inputName} is missing`);
+  const body = agentInputs.slice(start, end);
+  if (body.includes('role_slugs') || body.includes('permission_slugs')) fail(`agent principal input ${inputName} must not accept raw RBAC vocabulary`);
+}
+
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
 for (const evidenceCase of evidence.cases) {
@@ -67,7 +92,7 @@ for (const evidenceCase of evidence.cases) {
 }
 
 const plan = read('crates/rustok-ai-alloy/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'ai-alloy-policy-registry.json', 'ai-alloy-policy-static-matrix.json', 'alloy_script_execution_policy', 'allowed_operations', 'runtime_operation', 'alloy_change_review'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'ai-alloy-policy-registry.json', 'ai-alloy-policy-static-matrix.json', 'alloy_script_execution_policy', 'allowed_operations', 'runtime_operation', 'alloy_change_review'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `rustok-ai-alloy` |', 'crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json', 'scripts/verify/verify-ai-alloy-policy.mjs', 'allowed operations'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
