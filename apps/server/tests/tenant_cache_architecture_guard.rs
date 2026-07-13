@@ -121,15 +121,17 @@ fn tenant_generation_closes_subscribe_gap_and_rotates_before_delivery() {
 }
 
 #[test]
-fn tenant_generation_dedupe_is_bounded_two_phase_and_retry_safe() {
+fn tenant_generation_dedupe_is_bounded_serialized_two_phase_and_retry_safe() {
     let generation = source("apps/server/src/services/tenant_cache_generation.rs");
     let dedupe = source("crates/rustok-cache/src/event_dedupe.rs");
 
     for required in [
         "DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES",
         "DEFAULT_CACHE_EVENT_DEDUPE_TTL",
+        "CACHE_EVENT_DEDUPE_LOCK_STRIPES",
         "capacity_eviction_total",
         "probe_does_not_precommit_failed_work",
+        "same_event_serialization_closes_the_concurrent_probe_race",
     ] {
         assert!(
             dedupe.contains(required),
@@ -137,6 +139,9 @@ fn tenant_generation_dedupe_is_bounded_two_phase_and_retry_safe() {
         );
     }
 
+    let serialize = generation
+        .find("successful_rotations.serialize_event(envelope.id)")
+        .expect("tenant rotation must serialize concurrent retries for a stable event ID");
     let probe = generation
         .find("successful_rotations.is_duplicate(envelope.id)")
         .expect("tenant rotation must probe stable event IDs before work");
@@ -153,7 +158,13 @@ fn tenant_generation_dedupe_is_bounded_two_phase_and_retry_safe() {
         .find("self.inner.publish(envelope).await")
         .expect("event retry must continue to downstream delivery");
 
-    assert!(probe < bump && bump < publish && publish < commit && commit < downstream);
+    assert!(
+        serialize < probe
+            && probe < bump
+            && bump < publish
+            && publish < commit
+            && commit < downstream
+    );
     assert!(generation.contains("retry_delivers_downstream_without_rotating_generation_twice"));
 }
 
