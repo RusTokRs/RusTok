@@ -43,7 +43,7 @@ pub use observability::{
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use refresh::{
     CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
-    CacheRefreshStats, StaleWhileRevalidateResult,
+    CacheRefreshStats, StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
 };
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
