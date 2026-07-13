@@ -273,13 +273,14 @@ fn label_result_metadata(
     operation_id: Uuid,
 ) -> Value {
     merge_metadata(
-        merge_metadata(current, result.metadata.clone()),
+        current,
         serde_json::json!({
             "label": {
                 "provider_operation_id": operation_id,
                 "provider_id": result.provider_id,
                 "external_reference": result.external_reference,
                 "tracking_number": result.tracking_number,
+                "provider_metadata": result.metadata,
             }
         }),
     )
@@ -318,8 +319,28 @@ mod tests {
         );
 
         assert_eq!(label_operation_id(&metadata), Some(operation_id));
-        assert_eq!(metadata["provider_fact"], true);
         assert_eq!(metadata["delivery_group"]["seller_id"], "seller-1");
         assert_eq!(metadata["label"]["tracking_number"], "track-1");
+        assert_eq!(metadata["label"]["provider_metadata"]["provider_fact"], true);
+    }
+
+    #[test]
+    fn non_object_provider_metadata_cannot_replace_owner_metadata() {
+        let operation_id = Uuid::new_v4();
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            tracking_number: None,
+            metadata: serde_json::json!(["opaque", "facts"]),
+        };
+
+        let metadata = label_result_metadata(
+            serde_json::json!({"delivery_group": {"seller_id": "seller-1"}}),
+            &result,
+            operation_id,
+        );
+
+        assert_eq!(metadata["delivery_group"]["seller_id"], "seller-1");
+        assert_eq!(metadata["label"]["provider_metadata"][0], "opaque");
     }
 }
