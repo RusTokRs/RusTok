@@ -1,4 +1,5 @@
 pub mod checkout;
+mod checkout_fulfillment_stages;
 mod checkout_inventory_order_adoption;
 mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
@@ -25,6 +26,10 @@ mod refund_reconciliation;
 mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
+pub use checkout_fulfillment_stages::{
+    CheckoutFulfillmentCreatedState, CheckoutFulfillmentStageError,
+    CheckoutFulfillmentStageExecutor, CheckoutFulfillmentStageResult,
+};
 pub use checkout_inventory_order_adoption::{
     CheckoutInventoryOrderAdoption, CheckoutInventoryOrderAdoptionError,
     CheckoutInventoryOrderAdoptionResult, CheckoutInventoryOrderAdoptionService,
@@ -51,8 +56,9 @@ pub use checkout_order_creation::{
     CheckoutOrderCreationError, CheckoutOrderCreationExecutor, CheckoutOrderCreationResult,
 };
 pub use checkout_order_plan::{
-    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
-    CheckoutOrderPlanRecord, CheckoutOrderPlanResult,
+    CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem, CheckoutOrderPlanError,
+    CheckoutOrderPlanJournal, CheckoutOrderPlanPayload, CheckoutOrderPlanRecord,
+    CheckoutOrderPlanResult,
 };
 pub use checkout_order_stages::{
     CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutOrderStageResult,
