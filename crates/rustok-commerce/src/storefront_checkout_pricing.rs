@@ -20,7 +20,12 @@ pub(crate) struct StorefrontCheckoutPricingResolver {
 }
 
 impl StorefrontCheckoutPricingResolver {
-    pub(crate) fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub(crate) fn new(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        _request_channel_id: Option<Uuid>,
+        _request_channel_slug: Option<String>,
+    ) -> Self {
         Self { db, event_bus }
     }
 }
