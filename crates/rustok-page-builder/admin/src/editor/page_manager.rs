@@ -1,7 +1,7 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{
-    blank_page, normalize_slug, EditorCommand, PageCommand, PageLocator, PageMetadata, PagePatch,
+    blank_page, normalize_slug, EditorCommand, PageCommand, PageMetadata, PagePatch,
 };
 use fly_ui::UiIntent;
 use leptos::prelude::*;
@@ -113,9 +113,12 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     let add_runtime = runtime.clone();
     let identity_runtime = runtime.clone();
     let metadata_runtime = runtime.clone();
-    let move_up_runtime = runtime.clone();
-    let move_down_runtime = runtime.clone();
-    let remove_runtime = runtime;
+    let move_up_disabled_runtime = runtime.clone();
+    let move_up_action_runtime = runtime.clone();
+    let move_down_disabled_runtime = runtime.clone();
+    let move_down_action_runtime = runtime.clone();
+    let remove_disabled_runtime = runtime.clone();
+    let remove_action_runtime = runtime;
 
     view! {
         <section class="space-y-3 rounded-xl border border-border bg-card p-3">
@@ -265,15 +268,15 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <button
                     type="button"
                     class="rounded border border-border px-2 py-1 text-xs"
-                    disabled=move || move_up_runtime.controller.with(|controller| controller.active_page_index() == 0)
+                    disabled=move || move_up_disabled_runtime.controller.with(|controller| controller.active_page_index() == 0)
                     on:click=move |_| {
-                        let index = move_up_runtime.controller.with(|controller| controller.active_page_index());
+                        let index = move_up_action_runtime.controller.with(|controller| controller.active_page_index());
                         if index == 0 {
                             return;
                         }
-                        move_up_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                        move_up_action_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
                             command: PageCommand::Move {
-                                locator: move_up_runtime.controller.with(|controller| controller.active_page_locator()),
+                                locator: move_up_action_runtime.controller.with(|controller| controller.active_page_locator()),
                                 index: index - 1,
                             },
                         }));
@@ -282,19 +285,19 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <button
                     type="button"
                     class="rounded border border-border px-2 py-1 text-xs"
-                    disabled=move || move_down_runtime.controller.with(|controller| {
+                    disabled=move || move_down_disabled_runtime.controller.with(|controller| {
                         controller.active_page_index() + 1 >= controller.page_summaries().len()
                     })
                     on:click=move |_| {
-                        let (index, len) = move_down_runtime.controller.with(|controller| {
+                        let (index, len) = move_down_action_runtime.controller.with(|controller| {
                             (controller.active_page_index(), controller.page_summaries().len())
                         });
                         if index + 1 >= len {
                             return;
                         }
-                        move_down_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                        move_down_action_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
                             command: PageCommand::Move {
-                                locator: move_down_runtime.controller.with(|controller| controller.active_page_locator()),
+                                locator: move_down_action_runtime.controller.with(|controller| controller.active_page_locator()),
                                 index: index + 2,
                             },
                         }));
@@ -303,10 +306,10 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <button
                     type="button"
                     class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive"
-                    disabled=move || remove_runtime.controller.with(|controller| controller.page_summaries().len() <= 1)
-                    on:click=move |_| remove_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
+                    disabled=move || remove_disabled_runtime.controller.with(|controller| controller.page_summaries().len() <= 1)
+                    on:click=move |_| remove_action_runtime.dispatch(UiIntent::Execute(EditorCommand::Page {
                         command: PageCommand::Remove {
-                            locator: remove_runtime.controller.with(|controller| controller.active_page_locator()),
+                            locator: remove_action_runtime.controller.with(|controller| controller.active_page_locator()),
                         },
                     }))
                 >{remove_label}</button>
