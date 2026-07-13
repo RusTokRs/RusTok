@@ -9,7 +9,7 @@ use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id status template channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } blocks { id blockType position } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } blocks { id blockType position } } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id status updatedAt translation { locale title slug } } }";
 const UPDATE_PAGE_MUTATION: &str = "mutation UpdatePage($id: UUID!, $input: UpdateGqlPageInput!) { updatePage(id: $id, input: $input) { id status updatedAt translation { locale title slug } } }";
 const PUBLISH_PAGE_MUTATION: &str =
