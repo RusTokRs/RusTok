@@ -231,7 +231,7 @@ pub fn compose_application_router(
     .layer(Extension(runtime.registry))
     .layer(Extension(runtime.graphql_schema))
     // Axum executes layers from the bottom of this chain outward. Runtime order:
-    // security -> tenant -> locale -> auth -> OAuth token validation ->
+    // security -> tenant -> locale -> auth -> OAuth token service ->
     // channel -> rate limit -> handler.
     .layer(axum_middleware::from_fn_with_state(
         runtime.rate_limit_state,
@@ -242,7 +242,7 @@ pub fn compose_application_router(
         middleware::channel::resolve,
     ))
     .layer(axum_middleware::from_fn_with_state(
-        middleware_runtime_ctx.clone(),
+        auth_runtime.clone(),
         middleware::oauth_token_guard::validate,
     ))
     .layer(axum_middleware::from_fn_with_state(
