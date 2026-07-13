@@ -8,7 +8,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
 use rustok_page_builder_admin::{PageBuilderAdminFacade, PageBuilderAdminWithController};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[component]
 pub fn PagesAdmin() -> impl IntoView {
@@ -100,7 +100,7 @@ fn PagesFlyBuilder(
         Ok(controller) => {
             let page_id = page.id.clone();
             let snapshot_default_locale = default_locale.clone();
-            let facade: Rc<dyn PageBuilderAdminFacade> = Rc::new(PagesBuilderFacade::new(
+            let facade: Arc<dyn PageBuilderAdminFacade> = Arc::new(PagesBuilderFacade::new(
                 move || PagesBuilderSaveSnapshot {
                     token: token.get_untracked(),
                     tenant_slug: tenant.get_untracked(),
