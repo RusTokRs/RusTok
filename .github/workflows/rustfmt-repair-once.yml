@@ -1,0 +1,34 @@
+name: One-shot rustfmt repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rustfmt-repair-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - name: Apply workspace formatting and remove one-shot workflow
+        shell: bash
+        run: |
+          cargo fmt --all
+          rm .github/workflows/rustfmt-repair-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "chore(cache): apply rustfmt repairs"
+          git push origin HEAD:main
