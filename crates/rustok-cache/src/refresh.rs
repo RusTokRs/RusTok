@@ -261,6 +261,12 @@ impl CacheService {
     }
 
     /// Deterministic-clock SWR variant for tests and hosts with an injected clock.
+    ///
+    /// A stale hit carries the exact encoded bytes observed by the request. Before the
+    /// background loader writes, it verifies that the key still contains those bytes. A
+    /// concurrent replacement or invalidation therefore wins and the refresh becomes a no-op.
+    /// This is an optimistic lost-update guard; a backend-level atomic compare-and-set remains
+    /// necessary to eliminate the final read/write race across processes.
     pub async fn load_enveloped_stale_while_revalidate_with_limit_at<T, F, Fut>(
         &self,
         coordinator: &CacheRefreshCoordinator,
@@ -278,51 +284,93 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
     {
         let key = key.into();
+
+        // Probe the typed hit directly so the background refresh can retain the exact bytes
+        // observed by this request. Passing only decoded metadata cannot distinguish two values
+        // with identical timestamps or source revisions.
+        if let Some(observed_bytes) = backend.get(&key).await? {
+            match CacheEnvelope::<T>::decode_with_limit(
+                &observed_bytes,
+                expected_schema_version,
+                max_encoded_bytes,
+            ) {
+                Ok(envelope) if !envelope.is_hard_expired(now_unix_ms) => {
+                    let freshness = envelope.freshness(now_unix_ms);
+                    let cache = typed_hit_result(envelope, freshness);
+                    let refresh = if freshness == CacheEnvelopeFreshness::Stale {
+                        let refresh_backend = Arc::clone(&backend);
+                        let refresh_key = key.clone();
+                        let refresh_policy = policy.clone();
+                        let refresh_loader = loader.clone();
+                        coordinator.schedule(&backend, key, move || async move {
+                            refresh_envelope(
+                                refresh_backend,
+                                refresh_key,
+                                observed_bytes,
+                                expected_schema_version,
+                                refresh_policy,
+                                max_encoded_bytes,
+                                refresh_loader,
+                            )
+                            .await
+                        })
+                    } else {
+                        CacheRefreshSchedule::NotNeeded
+                    };
+                    return Ok(StaleWhileRevalidateResult { cache, refresh });
+                }
+                Ok(_) => {
+                    tracing::debug!(key, "Invalidating hard-expired cache envelope");
+                    backend.invalidate(&key).await?;
+                }
+                Err(error) => {
+                    tracing::warn!(%error, key, "Invalidating incompatible cache envelope");
+                    backend.invalidate(&key).await?;
+                }
+            }
+        }
+
         let foreground_loader = loader.clone();
         let cache = self
             .load_enveloped_or_fill_with_limit_at(
-                Arc::clone(&backend),
-                key.clone(),
+                backend,
+                key,
                 expected_schema_version,
-                policy.clone(),
+                policy,
                 max_encoded_bytes,
                 now_unix_ms,
                 move || foreground_loader(),
             )
             .await?;
 
-        // Only an existing stale hit should trigger background work. A loader that just filled
-        // or coalesced an already-stale envelope has already paid the foreground load cost and
-        // must not immediately execute the same source query a second time.
-        let refresh = if cache.source == CacheLoadSource::Hit
-            && cache.freshness == CacheEnvelopeFreshness::Stale
-        {
-            let refresh_backend = Arc::clone(&backend);
-            let refresh_key = key.clone();
-            let refresh_policy = policy.clone();
-            let refresh_loader = loader.clone();
-            coordinator.schedule(&backend, key, move || async move {
-                refresh_envelope(
-                    refresh_backend,
-                    refresh_key,
-                    expected_schema_version,
-                    refresh_policy,
-                    max_encoded_bytes,
-                    refresh_loader,
-                )
-                .await
-            })
-        } else {
-            CacheRefreshSchedule::NotNeeded
-        };
+        // A foreground fill or a value that appeared after the exact-byte probe has already
+        // resolved the request. Do not immediately run the source loader a second time.
+        Ok(StaleWhileRevalidateResult {
+            cache,
+            refresh: CacheRefreshSchedule::NotNeeded,
+        })
+    }
+}
 
-        Ok(StaleWhileRevalidateResult { cache, refresh })
+fn typed_hit_result<T>(
+    envelope: CacheEnvelope<T>,
+    freshness: CacheEnvelopeFreshness,
+) -> TypedCacheLoadResult<T> {
+    let generated_at_unix_ms = envelope.generated_at_unix_ms();
+    let source_revision = envelope.source_revision().map(ToOwned::to_owned);
+    TypedCacheLoadResult {
+        value: envelope.into_payload(),
+        source: CacheLoadSource::Hit,
+        freshness,
+        generated_at_unix_ms,
+        source_revision,
     }
 }
 
 async fn refresh_envelope<T, F, Fut>(
     backend: Arc<dyn CacheBackend>,
     key: String,
+    observed_bytes: Vec<u8>,
     expected_schema_version: u32,
     policy: CacheLoadPolicy,
     max_encoded_bytes: usize,
@@ -361,6 +409,12 @@ where
     let bytes = envelope.encode_with_limit(max_encoded_bytes).map_err(|error| {
         rustok_core::Error::Cache(format!("cache refresh envelope error: {error}"))
     })?;
+
+    if backend.get(&key).await?.as_deref() != Some(observed_bytes.as_slice()) {
+        tracing::debug!(key, "Skipping stale cache refresh because the entry changed");
+        return Ok(());
+    }
+
     match policy.ttl.ttl_for(&key) {
         Some(ttl) if ttl.is_zero() => Err(rustok_core::Error::Cache(
             "cache refresh TTL must be greater than zero".to_string(),
@@ -502,6 +556,75 @@ mod tests {
         let refreshed = CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024).unwrap();
         assert_eq!(refreshed.payload(), "fresh");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn concurrent_replacement_wins_over_slow_stale_refresh() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let stale = CacheEnvelope::new(1, 1_000, "stale".to_string())
+            .unwrap()
+            .with_expirations(Some(1_500), Some(10_000))
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend.set("document".to_string(), stale).await.unwrap();
+
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let loader_started = Arc::clone(&started);
+        let loader_release = Arc::clone(&release);
+        let result = service
+            .load_enveloped_stale_while_revalidate_with_limit_at(
+                &coordinator,
+                backend.clone(),
+                "document",
+                1,
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                1024,
+                2_000,
+                move || {
+                    let loader_started = Arc::clone(&loader_started);
+                    let loader_release = Arc::clone(&loader_release);
+                    async move {
+                        loader_started.notify_one();
+                        loader_release.notified().await;
+                        CacheEnvelope::new(1, current_unix_ms(), "refresh".to_string())
+                            .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                    }
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
+        started.notified().await;
+
+        let replacement = CacheEnvelope::new(1, current_unix_ms(), "replacement".to_string())
+            .unwrap()
+            .with_source_revision("external-2")
+            .unwrap()
+            .encode()
+            .unwrap();
+        backend
+            .set("document".to_string(), replacement)
+            .await
+            .unwrap();
+        release.notify_one();
+
+        for _ in 0..100 {
+            if coordinator.in_flight() == 0 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        let bytes = backend.get("document").await.unwrap().unwrap();
+        let current = CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024).unwrap();
+        assert_eq!(current.payload(), "replacement");
+        assert_eq!(current.source_revision(), Some("external-2"));
+        assert_eq!(coordinator.stats().failed, 0);
     }
 
     #[tokio::test]
