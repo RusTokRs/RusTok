@@ -1,5 +1,6 @@
 mod envelope;
 mod key;
+mod lease;
 mod policy;
 mod service;
 mod typed;
@@ -10,6 +11,9 @@ pub use envelope::{
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
 pub use key::{CacheKeyBuilder, CacheKeyError};
+pub use lease::{
+    CacheLeaseError, CacheLeaseOptions, CacheLeaseOutcome, DistributedCacheLease,
+};
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
