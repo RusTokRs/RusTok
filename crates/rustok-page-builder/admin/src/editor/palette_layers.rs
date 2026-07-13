@@ -13,6 +13,8 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     let layers_label = t(locale.as_deref(), "page_builder.panel.layers", "Layers");
     let add_label = t(locale.as_deref(), "page_builder.action.add", "Add");
     let drag_label = t(locale.as_deref(), "page_builder.action.drag", "Drag");
+    let palette_runtime = runtime.clone();
+    let layers_runtime = runtime;
 
     view! {
         <aside class="space-y-4 overflow-auto rounded-xl border border-border bg-card p-3">
@@ -20,21 +22,22 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <h2 class="font-semibold">{palette_label}</h2>
                 {move || {
                     let mut groups = BTreeMap::<String, Vec<_>>::new();
-                    for block in runtime.controller.with(|controller| controller.palette_blocks()) {
+                    for block in palette_runtime.controller.with(|controller| controller.palette_blocks()) {
                         groups.entry(block.category.clone()).or_default().push(block);
                     }
                     groups.into_iter().map(|(category, blocks)| {
+                        let category_open = category == "landing";
                         view! {
-                            <details open=category == "landing" class="rounded-lg border border-border">
+                            <details open=category_open class="rounded-lg border border-border">
                                 <summary class="cursor-pointer px-3 py-2 text-sm font-medium">{category}</summary>
                                 <div class="grid gap-2 border-t border-border p-2">
                                     {blocks.into_iter().map(|block| {
                                         let insert_id = block.id.clone();
                                         let drag_id = block.id.clone();
                                         let html_drag_id = block.id.clone();
-                                        let insert_runtime = runtime.clone();
-                                        let drag_runtime = runtime.clone();
-                                        let html_drag_runtime = runtime.clone();
+                                        let insert_runtime = palette_runtime.clone();
+                                        let drag_runtime = palette_runtime.clone();
+                                        let html_drag_runtime = palette_runtime.clone();
                                         let add_label = add_label.clone();
                                         let drag_label = drag_label.clone();
                                         view! {
@@ -85,13 +88,13 @@ pub fn PaletteLayersPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <h2 class="font-semibold">{layers_label}</h2>
                 <div class="space-y-1">
                     {move || {
-                        let selected = runtime.controller.with(|controller| {
+                        let selected = layers_runtime.controller.with(|controller| {
                             controller.ui().state.selection.component_id.clone()
                         });
-                        runtime.controller.with(|controller| controller.layer_items()).into_iter().map(|layer| {
+                        layers_runtime.controller.with(|controller| controller.layer_items()).into_iter().map(|layer| {
                             let component_id = layer.id.clone();
                             let active = selected.as_deref() == Some(layer.id.as_str());
-                            let select_runtime = runtime.clone();
+                            let select_runtime = layers_runtime.clone();
                             view! {
                                 <button
                                     type="button"
