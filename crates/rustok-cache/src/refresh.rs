@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-use rustok_core::CacheBackend;
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome};
 
 use crate::{
     CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy, CacheLoadSource, CacheService,
@@ -276,11 +276,9 @@ impl CacheService {
 
     /// Deterministic-clock SWR variant for tests and hosts with an injected clock.
     ///
-    /// A stale hit carries the exact encoded bytes observed by the request. Before the
-    /// background loader writes, it verifies that the key still contains those bytes. A
-    /// concurrent replacement or invalidation therefore wins and the refresh becomes a no-op.
-    /// This is an optimistic lost-update guard; a backend-level atomic compare-and-set remains
-    /// necessary to eliminate the final read/write race across processes.
+    /// A stale hit carries the exact encoded bytes observed by the request. The background
+    /// loader uses the backend's atomic compare-and-set primitive, so a concurrent replacement
+    /// or invalidation wins without any read/write time-of-check gap.
     pub async fn load_enveloped_stale_while_revalidate_with_limit_at<T, F, Fut>(
         &self,
         coordinator: &CacheRefreshCoordinator,
@@ -300,9 +298,6 @@ impl CacheService {
         let key = key.into();
         validate_refresh_key(&key)?;
 
-        // Probe the typed hit directly so the background refresh can retain the exact bytes
-        // observed by this request. Passing only decoded metadata cannot distinguish two values
-        // with identical timestamps or source revisions.
         if let Some(observed_bytes) = backend.get(&key).await? {
             match CacheEnvelope::<T>::decode_with_limit(
                 &observed_bytes,
@@ -358,8 +353,6 @@ impl CacheService {
             )
             .await?;
 
-        // A foreground fill or a value that appeared after the exact-byte probe has already
-        // resolved the request. Do not immediately run the source loader a second time.
         Ok(StaleWhileRevalidateResult {
             cache,
             refresh: CacheRefreshSchedule::NotNeeded,
@@ -434,14 +427,15 @@ where
         rustok_core::Error::Cache(format!("cache refresh envelope error: {error}"))
     })?;
 
-    if backend.get(&key).await?.as_deref() != Some(observed_bytes.as_slice()) {
-        tracing::debug!(key, "Skipping stale cache refresh because the entry changed");
-        return Ok(());
-    }
-
-    match ttl {
-        Some(ttl) => backend.set_with_ttl(key, bytes, ttl).await,
-        None => backend.set(key, bytes).await,
+    match backend
+        .compare_and_set(&key, &observed_bytes, bytes, ttl)
+        .await?
+    {
+        CacheCompareAndSetOutcome::Applied => Ok(()),
+        CacheCompareAndSetOutcome::Mismatch => {
+            tracing::debug!(key, "Skipping stale cache refresh because the entry changed");
+            Ok(())
+        }
     }
 }
 
@@ -480,7 +474,7 @@ mod tests {
     #[tokio::test]
     async fn coordinator_deduplicates_and_releases_refresh_keys() {
         let service = CacheService::from_url(None);
-        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let backend = service.backend_shared_client("refresh-test", Duration::from_secs(60), 16).await;
         let coordinator = CacheRefreshCoordinator::new(2).unwrap();
         let (started_tx, started_rx) = oneshot::channel();
         let (release_tx, release_rx) = oneshot::channel();
@@ -517,7 +511,7 @@ mod tests {
     #[tokio::test]
     async fn coordinator_rejects_new_key_when_global_capacity_is_full() {
         let service = CacheService::from_url(None);
-        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let backend = service.backend_shared_client("refresh-capacity", Duration::from_secs(60), 16).await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let (started_tx, started_rx) = oneshot::channel();
         let (_release_tx, release_rx) = oneshot::channel::<()>();
@@ -541,7 +535,7 @@ mod tests {
     #[tokio::test]
     async fn coordinator_rejects_invalid_keys_without_running_refresh() {
         let service = CacheService::from_url(None);
-        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let backend = service.backend_shared_client("refresh-invalid", Duration::from_secs(60), 16).await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
 
@@ -568,7 +562,7 @@ mod tests {
     #[tokio::test]
     async fn swr_rejects_invalid_key_before_backend_or_loader_work() {
         let service = CacheService::from_url(None);
-        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let backend = service.backend_shared_client("refresh-invalid-swr", Duration::from_secs(60), 16).await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         let loader_calls = Arc::clone(&calls);
@@ -602,7 +596,7 @@ mod tests {
     #[tokio::test]
     async fn stale_value_is_served_while_one_background_refresh_replaces_it() {
         let service = CacheService::from_url(None);
-        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let backend = service.backend_shared_client("refresh-stale", Duration::from_secs(60), 16).await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let stale = CacheEnvelope::new(1, 1_000, "stale".to_string())
             .unwrap()
@@ -659,7 +653,7 @@ mod tests {
     #[tokio::test]
     async fn concurrent_replacement_wins_over_slow_stale_refresh() {
         let service = CacheService::from_url(None);
-        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let backend = service.backend_shared_client("refresh-race", Duration::from_secs(60), 16).await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let stale = CacheEnvelope::new(1, 1_000, "stale".to_string())
             .unwrap()
@@ -697,7 +691,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
-        tokio::time::timeout(Duration::from_secs(1), started.notified())
+        tokio::time::timeout(std::time::Duration::from_secs(1), started.notified())
             .await
             .expect("refresh loader did not start");
 
@@ -713,7 +707,7 @@ mod tests {
             .unwrap();
         release.notify_one();
 
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
             while coordinator.in_flight() != 0 {
                 tokio::task::yield_now().await;
             }
@@ -731,7 +725,7 @@ mod tests {
     #[tokio::test]
     async fn foreground_stale_fill_does_not_run_loader_twice() {
         let service = CacheService::from_url(None);
-        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let backend = service.backend_shared_client("refresh-foreground", Duration::from_secs(60), 16).await;
         let coordinator = CacheRefreshCoordinator::new(1).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         let loader_calls = Arc::clone(&calls);
