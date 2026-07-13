@@ -77,6 +77,36 @@ impl RefundReconciliationService {
             .into());
         }
 
+        match refund.status.as_str() {
+            "pending" => {}
+            "refunded"
+                if matches!(
+                    operation.status.as_str(),
+                    PROVIDER_OPERATION_COMMITTED
+                        | PROVIDER_OPERATION_SUCCEEDED
+                        | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                ) => {}
+            "refunded" => {
+                return Err(PaymentError::Validation(format!(
+                    "refund {refund_id} is already refunded, but provider operation {} has no recorded success; automatic retry is unsafe",
+                    operation.id
+                ))
+                .into())
+            }
+            "cancelled" => {
+                return Err(PaymentError::Validation(format!(
+                    "refund {refund_id} is cancelled; provider retry is forbidden"
+                ))
+                .into())
+            }
+            status => {
+                return Err(PaymentError::Validation(format!(
+                    "refund {refund_id} has unsupported reconciliation status `{status}`"
+                ))
+                .into())
+            }
+        }
+
         if operation.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(refund);
         }
