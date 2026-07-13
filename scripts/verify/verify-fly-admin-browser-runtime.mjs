@@ -5,6 +5,7 @@ const files = {
   leptosCargo: 'crates/fly-leptos/Cargo.toml',
   leptosRoot: 'crates/fly-leptos/src/root.rs',
   browser: 'crates/fly-leptos/src/browser_runtime.rs',
+  manifest: 'crates/rustok-page-builder/rustok-module.toml',
   adminCargo: 'crates/rustok-page-builder/admin/Cargo.toml',
   facade: 'crates/rustok-page-builder/admin/src/transport/mod.rs',
   controller: 'crates/rustok-page-builder/admin/src/model.rs',
@@ -68,6 +69,15 @@ requireMarker(
   'envelope.is_accepted',
   'browser runtime must apply protocol/instance/replay validation',
 );
+
+for (const marker of [
+  'ui_classification = "admin_only"',
+  '[provides.admin_ui]',
+  'leptos_crate = "rustok-page-builder-admin"',
+  'route_segment = "page-builder"',
+]) {
+  requireMarker('manifest', marker, `Page Builder manifest is missing ${marker}`);
+}
 
 for (const dependency of ['fly =', 'fly-ui =', 'fly-leptos =', 'rustok-page-builder =']) {
   requireMarker('adminCargo', dependency, `admin package is missing ${dependency}`);
