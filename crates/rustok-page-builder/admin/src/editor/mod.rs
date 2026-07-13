@@ -13,6 +13,7 @@ mod runtime;
 mod selection_commands;
 mod shortcut_dispatch;
 mod toolbar;
+mod trait_panel;
 
 pub use admin_shell::AdminShell;
 pub use authoring::{LayerItemView, PaletteBlockView, SelectedComponentView};
@@ -30,3 +31,4 @@ pub(crate) use responsive_styles::ResponsiveStylePanel;
 pub(crate) use runtime::AdminEditorRuntime;
 pub(crate) use shortcut_dispatch::dispatch_shortcut;
 pub(crate) use toolbar::AuthoringToolbar;
+pub(crate) use trait_panel::TraitPanel;
