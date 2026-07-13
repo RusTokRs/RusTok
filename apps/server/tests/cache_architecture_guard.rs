@@ -184,11 +184,21 @@ fn shared_fallback_health_does_not_mask_primary_degradation() {
 }
 
 #[test]
-fn stale_refresh_does_not_duplicate_a_foreground_fill() {
+fn stale_refresh_is_deduplicated_and_skips_superseded_writes() {
     let refresh = source("crates/rustok-cache/src/refresh.rs");
     assert!(
-        refresh.contains("cache.source == CacheLoadSource::Hit"),
-        "background refresh must only follow an existing stale cache hit"
+        refresh.contains("observed_bytes"),
+        "background refresh must retain the exact stale envelope observed by the request"
+    );
+    assert!(
+        refresh.contains(
+            "backend.get(&key).await?.as_deref() != Some(observed_bytes.as_slice())"
+        ),
+        "background refresh must skip writes after replacement or invalidation"
+    );
+    assert!(
+        refresh.contains("concurrent_replacement_wins_over_slow_stale_refresh"),
+        "SWR must retain regression coverage for superseded refresh writes"
     );
     assert!(
         refresh.contains("foreground_stale_fill_does_not_run_loader_twice"),
