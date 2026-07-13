@@ -7,6 +7,7 @@ use sea_orm::DatabaseConnection;
 
 pub mod categories;
 pub mod replies;
+pub mod subscriptions;
 pub mod topics;
 pub mod users;
 pub mod widgets;
@@ -54,7 +55,9 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         )
         .route(
             "/api/forum/categories/{id}/subscription",
-            axum::routing::post(categories::subscribe_category)
+            get(subscriptions::get_category_subscription_settings)
+                .put(subscriptions::update_category_subscription_settings)
+                .post(categories::subscribe_category)
                 .delete(categories::unsubscribe_category),
         )
         .route(
@@ -85,7 +88,15 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         )
         .route(
             "/api/forum/topics/{topic_id}/subscription",
-            axum::routing::post(topics::subscribe_topic).delete(topics::unsubscribe_topic),
+            get(subscriptions::get_topic_subscription_settings)
+                .put(subscriptions::update_topic_subscription_settings)
+                .post(topics::subscribe_topic)
+                .delete(topics::unsubscribe_topic),
+        )
+        .route(
+            "/api/forum/subscription-policy",
+            get(subscriptions::get_subscription_policy)
+                .put(subscriptions::update_subscription_policy),
         )
         .route(
             "/api/forum/topics/{id}/replies",

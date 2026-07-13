@@ -2,6 +2,8 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::subscription::{ForumDigestMode, ForumSubscriptionLevel};
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "forum_topic_subscriptions")]
 pub struct Model {
@@ -11,7 +13,15 @@ pub struct Model {
     pub user_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub tenant_id: Uuid,
+    pub level: ForumSubscriptionLevel,
+    pub notify_mentions: bool,
+    pub notify_replies: bool,
+    pub notify_new_topics: bool,
+    pub digest_mode: ForumDigestMode,
+    pub last_notified_at: Option<DateTimeWithTimeZone>,
+    pub revision: i64,
     pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

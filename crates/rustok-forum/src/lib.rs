@@ -16,6 +16,7 @@ pub mod openapi;
 mod seo_targets;
 pub mod services;
 pub mod state_machine;
+pub mod subscription;
 
 pub use constants::*;
 pub use dto::*;
@@ -28,6 +29,7 @@ pub use services::{
     UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
+pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
 
 pub struct ForumModule;
 
