@@ -16,6 +16,7 @@ use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSetting
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 static OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL: AtomicU64 = AtomicU64::new(0);
+static EVENT_LOCAL_DELIVERY_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct EventRuntime {
@@ -39,9 +40,20 @@ pub struct OutboxRelaySupervisorMetricsSnapshot {
     pub restart_total: u64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EventLocalDeliveryMetricsSnapshot {
+    pub failure_total: u64,
+}
+
 pub fn outbox_relay_supervisor_metrics_snapshot() -> OutboxRelaySupervisorMetricsSnapshot {
     OutboxRelaySupervisorMetricsSnapshot {
         restart_total: OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.load(Ordering::Relaxed),
+    }
+}
+
+pub fn event_local_delivery_metrics_snapshot() -> EventLocalDeliveryMetricsSnapshot {
+    EventLocalDeliveryMetricsSnapshot {
+        failure_total: EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.load(Ordering::Relaxed),
     }
 }
 
@@ -244,10 +256,22 @@ struct LocalDeliveryFanoutTransport {
 #[async_trait]
 impl EventTransport for LocalDeliveryFanoutTransport {
     async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
-        // Deliver remotely first. Local consumers must not observe an event that the configured
-        // primary transport rejected. Redelivery remains safe because consumers are idempotent.
+        // The primary delivery is irreversible. Once it succeeds, returning a local fan-out error
+        // would make the outbox relay publish the same remote event again. Record the local failure
+        // separately and let durable/idempotent consumers recover through their transport path.
         self.primary.publish(envelope.clone()).await?;
-        self.local.publish(envelope).await
+        let event_id = envelope.id;
+        let event_type = envelope.event.event_type();
+        if let Err(error) = self.local.publish(envelope).await {
+            EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            tracing::error!(
+                event_id = %event_id,
+                event_type,
+                error = %error,
+                "Remote event was accepted but local module delivery failed"
+            );
+        }
+        Ok(())
     }
 
     async fn acknowledge(&self, event_id: uuid::Uuid) -> rustok_core::Result<()> {
@@ -307,5 +331,25 @@ mod tests {
         assert!(tokio::time::timeout(Duration::from_millis(10), listener.recv())
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn accepted_remote_delivery_is_not_retried_when_local_bus_has_no_receivers() {
+        let primary = MemoryTransport::with_capacity(8);
+        let mut primary_receiver = primary.subscribe();
+        let (transport, _listener_bus) =
+            transport_with_local_delivery(Arc::new(primary), 8);
+        let before = event_local_delivery_metrics_snapshot().failure_total;
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(3),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(3),
+            },
+        );
+
+        transport.publish(envelope.clone()).await.unwrap();
+        assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
+        assert!(event_local_delivery_metrics_snapshot().failure_total >= before + 1);
     }
 }
