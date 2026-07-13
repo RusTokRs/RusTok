@@ -136,6 +136,34 @@ fn default_backend_factory_uses_the_service_owned_redis_client() {
 }
 
 #[test]
+fn generic_invalidation_and_loader_inputs_are_bounded() {
+    let service = source("crates/rustok-cache/src/service.rs");
+
+    for required in [
+        "MAX_CACHE_INVALIDATION_CHANNEL_BYTES",
+        "MAX_CACHE_INVALIDATION_KEY_BYTES",
+        "MAX_CACHE_LOAD_KEY_BYTES",
+        "DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS",
+        "ChannelTooLong",
+        "KeyTooLong",
+        "cache load coordinator saturated",
+    ] {
+        assert!(
+            service.contains(required),
+            "generic cache resource contract must retain {required}"
+        );
+    }
+    assert!(
+        service.contains("load_or_fill_rejects_empty_and_oversized_keys_before_loader"),
+        "load-key bounds must retain regression coverage"
+    );
+    assert!(
+        service.contains("unique_in_flight_loads_are_bounded_without_breaking_same_key_coalescing"),
+        "unique-flight capacity must retain regression coverage"
+    );
+}
+
+#[test]
 fn shared_fallback_health_does_not_mask_primary_degradation() {
     let fallback = source("crates/rustok-cache/src/fallback.rs");
     let weighted = source("crates/rustok-cache/src/weighted.rs");
@@ -209,7 +237,9 @@ fn generation_fallback_is_trusted_monotonic_and_bounded() {
         "new generation namespaces must fail closed after snapshot capacity is reached"
     );
     assert!(
-        generation.contains("trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces"),
+        generation.contains(
+            "trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces"
+        ),
         "generation capacity must retain regression coverage without evicting trusted state"
     );
 }
