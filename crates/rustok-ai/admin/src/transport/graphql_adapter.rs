@@ -49,6 +49,9 @@ query AiBootstrap {
   aiAgentPrincipals {
     id slug descriptorOwner descriptorSlug roleSlugs permissionSlugs isActive
   }
+  aiAgentModelAssignments {
+    id agentPrincipalId providerProfileId modelOverride executionMode isActive
+  }
   aiProviderProfiles {
     id
     slug

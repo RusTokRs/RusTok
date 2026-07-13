@@ -1642,6 +1642,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             catalog=bootstrap_left.agent_catalog.clone()
                                             workflows=bootstrap_left.agent_workflows.clone()
                                             principals=bootstrap_left.agent_principals.clone()
+                                            assignments=bootstrap_left.agent_model_assignments.clone()
                                         />
 
                                         <AiToolPanel

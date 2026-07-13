@@ -64,17 +64,25 @@ impl AiQuery {
     async fn ai_agent_model_assignments(
         &self,
         ctx: &Context<'_>,
-        agent_principal_id: Uuid,
+        agent_principal_id: Option<Uuid>,
     ) -> Result<Vec<AiAgentModelAssignmentGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_overview_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        Ok(crate::AiManagementService::list_agent_model_assignments(
-            db,
-            auth.tenant_id,
-            agent_principal_id,
-        )
-        .await
+        let assignments = match agent_principal_id {
+            Some(agent_principal_id) => crate::AiManagementService::list_agent_model_assignments(
+                db,
+                auth.tenant_id,
+                agent_principal_id,
+            )
+            .await,
+            None => crate::AiManagementService::list_tenant_agent_model_assignments(
+                db,
+                auth.tenant_id,
+            )
+            .await,
+        };
+        Ok(assignments
         .map_err(|error| async_graphql::Error::new(error.to_string()))?
         .into_iter()
         .map(Into::into)

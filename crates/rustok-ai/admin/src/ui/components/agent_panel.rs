@@ -1,9 +1,11 @@
 use crate::i18n::t;
 use crate::model::{
-    AiAgentDescriptorPayload, AiAgentPrincipalPayload, AiAgentWorkflowPayload,
+    AiAgentDescriptorPayload, AiAgentModelAssignmentPayload, AiAgentPrincipalPayload,
+    AiAgentWorkflowPayload,
 };
 use crate::ui::leptos::Card;
 use leptos::prelude::*;
+use std::collections::BTreeMap;
 
 /// Read-only owner catalog. Configuration controls are added only when the
 /// platform supplies the shared tenant RBAC catalog; this panel never accepts
@@ -14,10 +16,29 @@ pub fn AiAgentPanel(
     catalog: Vec<AiAgentDescriptorPayload>,
     workflows: Vec<AiAgentWorkflowPayload>,
     principals: Vec<AiAgentPrincipalPayload>,
+    assignments: Vec<AiAgentModelAssignmentPayload>,
 ) -> impl IntoView {
     let catalog_locale = ui_locale.clone();
     let workflows_locale = ui_locale.clone();
     let principals_locale = ui_locale.clone();
+    let assignment_summaries = assignments.into_iter().fold(BTreeMap::new(), |mut items, assignment| {
+        let summary = format!(
+            "{} / {} / {}{}",
+            assignment.provider_profile_id,
+            assignment.execution_mode,
+            if assignment.is_active { "active" } else { "inactive" },
+            assignment
+                .model_override
+                .as_deref()
+                .map(|model| format!(" / {model}"))
+                .unwrap_or_default(),
+        );
+        items
+            .entry(assignment.agent_principal_id)
+            .or_insert_with(Vec::new)
+            .push(summary);
+        items
+    });
 
     view! {
         <Card title=t(ui_locale.as_deref(), "ai.card.agents", "Agents")>
@@ -43,6 +64,15 @@ pub fn AiAgentPanel(
                 </div>
                 <div class="text-xs text-muted-foreground">
                     {format!("{}: {}", t(principals_locale.as_deref(), "ai.agents.configuredPrincipals", "Configured principals"), principals.len())}
+                </div>
+                <div class="space-y-2">
+                    <div class="font-medium text-foreground">{t(ui_locale.as_deref(), "ai.agents.modelAssignments", "Model assignments")}</div>
+                    <For each=move || principals.clone() key=|principal| principal.id.clone() let:principal>
+                        <div class="rounded border border-border p-3 text-xs text-muted-foreground">
+                            <div class="font-medium text-foreground">{principal.slug}</div>
+                            <div>{assignment_summaries.get(&principal.id).map(|items| items.join(", ")).unwrap_or_else(|| "No configured model assignment".to_string())}</div>
+                        </div>
+                    </For>
                 </div>
             </div>
         </Card>

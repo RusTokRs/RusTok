@@ -22,6 +22,8 @@
 - Prepare a stable handoff point for later checkout and order placement flows.
 - Publish an owner-managed in-process `CartCheckoutPort` factory for explicit
   checkout and cart-read consumers.
+- Publish an owner-managed `CartStorefrontPort` for storefront cart reads,
+  mutations, and repricing without exposing `CartService` to consumers.
 - Publish a module-owned storefront cart workspace for cart inspection.
 
 ## Interactions

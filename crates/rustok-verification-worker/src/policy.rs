@@ -8,4 +8,8 @@ pub struct VerificationPolicy {
     pub allowed_signer_identities: Vec<String>,
     pub allowed_oidc_issuers: Vec<String>,
     pub require_transparency_bundle: bool,
+    pub allowed_builders: Vec<String>,
+    pub allowed_source_repositories: Vec<String>,
+    pub allowed_build_types: Vec<String>,
+    pub allowed_licenses: Vec<String>,
 }

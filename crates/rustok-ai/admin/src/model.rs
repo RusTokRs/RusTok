@@ -8,6 +8,7 @@ pub struct AiAdminBootstrap {
     pub agent_catalog: Vec<AiAgentDescriptorPayload>,
     pub agent_workflows: Vec<AiAgentWorkflowPayload>,
     pub agent_principals: Vec<AiAgentPrincipalPayload>,
+    pub agent_model_assignments: Vec<AiAgentModelAssignmentPayload>,
     pub providers: Vec<AiProviderProfilePayload>,
     pub task_profiles: Vec<AiTaskProfilePayload>,
     pub tool_profiles: Vec<AiToolProfilePayload>,

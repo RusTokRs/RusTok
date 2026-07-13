@@ -14,8 +14,10 @@ mod tests;
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, RequestContext};
-use rustok_cart::CartError;
-use rustok_cart::CartService;
+use rustok_cart::{
+    CartError, CartStorefrontContextUpdateRequest, CartStorefrontPort,
+    CartStorefrontRepriceRequest, in_process_cart_storefront_port,
+};
 use rustok_customer::{
     CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
 };
@@ -341,28 +343,37 @@ pub(crate) async fn apply_cart_context_patch_for_db(
     )
     .await?;
 
-    let cart_service = CartService::new(db.clone());
-    let updated_cart = cart_service
-        .update_context(
-            tenant_id,
-            cart.id,
-            UpdateCartContextInput {
-                email: requested.email,
-                region_id: context.region.as_ref().map(|region| region.id),
-                country_code: requested.country_code,
-                locale_code: Some(context.locale.clone()),
-                selected_shipping_option_id: requested.selected_shipping_option_id,
-                shipping_selections: Some(requested.shipping_selections.clone()),
+    let storefront_port = in_process_cart_storefront_port(db.clone());
+    let updated_cart = storefront_port
+        .update_storefront_context(
+            storefront_cart_port_context(
+                tenant_id,
+                request_context,
+                None,
+                cart.id,
+                "update-context",
+                true,
+            ),
+            CartStorefrontContextUpdateRequest {
+                cart_id: cart.id,
+                input: UpdateCartContextInput {
+                    email: requested.email,
+                    region_id: context.region.as_ref().map(|region| region.id),
+                    country_code: requested.country_code,
+                    locale_code: Some(context.locale.clone()),
+                    selected_shipping_option_id: requested.selected_shipping_option_id,
+                    shipping_selections: Some(requested.shipping_selections.clone()),
+                },
             },
         )
         .await
-        .map_err(map_cart_error)?;
+        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
     let updated_cart = reprice_storefront_cart_line_items_for_db(
         db,
         event_bus,
         tenant_id,
         request_context,
-        &cart_service,
+        storefront_port.as_ref(),
         updated_cart,
     )
     .await?;
@@ -386,7 +397,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
     event_bus: rustok_outbox::TransactionalEventBus,
     tenant_id: Uuid,
     request_context: &RequestContext,
-    cart_service: &CartService,
+    storefront_port: &dyn CartStorefrontPort,
     cart: CartResponse,
 ) -> HttpResult<CartResponse> {
     if cart.line_items.is_empty() {
@@ -424,10 +435,23 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
     if updates.is_empty() {
         Ok(cart)
     } else {
-        cart_service
-            .reprice_line_items(tenant_id, cart.id, updates)
+        storefront_port
+            .reprice_storefront_line_items(
+                storefront_cart_port_context(
+                    tenant_id,
+                    request_context,
+                    None,
+                    cart.id,
+                    "reprice",
+                    true,
+                ),
+                CartStorefrontRepriceRequest {
+                    cart_id: cart.id,
+                    updates,
+                },
+            )
             .await
-            .map_err(map_cart_error)
+            .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))
     }
 }
 

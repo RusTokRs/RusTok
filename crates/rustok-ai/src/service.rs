@@ -911,6 +911,22 @@ impl AiManagementService {
         items.into_iter().map(map_agent_model_assignment).collect()
     }
 
+    /// Lists the tenant-owned assignment catalog for owner-admin bootstrap
+    /// surfaces, avoiding one query per principal.
+    pub async fn list_tenant_agent_model_assignments(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+    ) -> AiResult<Vec<AiAgentModelAssignmentRecord>> {
+        let items = ai_agent_model_assignments::Entity::find()
+            .filter(ai_agent_model_assignments::Column::TenantId.eq(tenant_id))
+            .order_by_asc(ai_agent_model_assignments::Column::AgentPrincipalId)
+            .order_by_asc(ai_agent_model_assignments::Column::CreatedAt)
+            .all(db)
+            .await
+            .map_err(db_err)?;
+        items.into_iter().map(map_agent_model_assignment).collect()
+    }
+
     pub async fn create_agent_model_assignment(
         db: &DatabaseConnection,
         operator: &AiOperatorContext,

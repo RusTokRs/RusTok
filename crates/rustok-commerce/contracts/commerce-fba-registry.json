@@ -154,10 +154,12 @@
       "contract_version": "cart.checkout.v2",
       "registry": "crates/rustok-cart/contracts/cart-fba-registry.json",
       "ports": [
-        "CartCheckoutPort"
+        "CartCheckoutPort",
+        "CartStorefrontPort"
       ],
       "profiles": [
-        "checkout_cart_snapshot"
+        "checkout_cart_snapshot",
+        "storefront_cart_rest"
       ],
       "fallback_profiles": [
         "embedded_native",

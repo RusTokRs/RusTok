@@ -13,10 +13,10 @@ use super::{
 };
 use crate::dto::CartResponse;
 use rustok_cart::{
-    CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
-    CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
-    CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
-    CartStorefrontRemoveLineItemRequest, in_process_cart_storefront_port,
+    CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
+    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    in_process_cart_storefront_port,
 };
 use rustok_pricing::PricingService;
 
@@ -363,7 +363,7 @@ pub async fn update_cart_line_item(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(super::map_cart_error)?;
+        .map_err(map_cart_port_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
     let event_bus = runtime.event_bus();
     if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id) {

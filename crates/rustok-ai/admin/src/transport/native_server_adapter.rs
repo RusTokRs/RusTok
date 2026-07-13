@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
-    AiAdminBootstrap, AiAgentDescriptorPayload, AiAgentPrincipalPayload,
+    AiAdminBootstrap, AiAgentDescriptorPayload, AiAgentModelAssignmentPayload,
+    AiAgentPrincipalPayload,
     AiAgentWorkflowPayload, AiAgentWorkflowStagePayload, AiChatRunPayload,
     AiChatSessionDetailPayload, AiCredentialRefPayload, AiProviderProfilePayload,
     AiProviderSettingPayload, AiProviderTargetPayload, AiProviderTestResultPayload,
@@ -336,6 +337,16 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
             .into_iter()
             .map(map_agent_principal)
             .collect(),
+            agent_model_assignments:
+                rustok_ai::AiManagementService::list_tenant_agent_model_assignments(
+                    &db,
+                    auth.tenant_id,
+                )
+                .await
+                .map_err(server_error)?
+                .into_iter()
+                .map(map_agent_model_assignment)
+                .collect(),
             providers: rustok_ai::AiManagementService::list_provider_profiles(&db, auth.tenant_id)
                 .await
                 .map_err(server_error)?
@@ -1462,6 +1473,20 @@ fn map_agent_principal(value: rustok_ai::AiAgentPrincipalRecord) -> AiAgentPrinc
         descriptor_slug: value.descriptor_slug,
         role_slugs: value.role_slugs,
         permission_slugs: value.permission_slugs,
+        is_active: value.is_active,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_agent_model_assignment(
+    value: rustok_ai::AiAgentModelAssignmentRecord,
+) -> AiAgentModelAssignmentPayload {
+    AiAgentModelAssignmentPayload {
+        id: value.id.to_string(),
+        agent_principal_id: value.agent_principal_id.to_string(),
+        provider_profile_id: value.provider_profile_id.to_string(),
+        model_override: value.model_override,
+        execution_mode: value.execution_mode.slug().to_string(),
         is_active: value.is_active,
     }
 }

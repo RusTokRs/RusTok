@@ -47,6 +47,9 @@ identity.
   `checkout_service_test` against the in-process provider.
 - Storefront payment-collection reads use the owner-managed
   `CartCheckoutPort` factory rather than constructing `CartService` directly.
+- Storefront REST cart reads and line-item mutations consume
+  `CartStorefrontPort`; the port preserves tenant, actor, channel, locale,
+  deadline, and write-idempotency context at the owner boundary.
 
 ## Open results
 
@@ -66,7 +69,14 @@ identity.
    proven for the published `cart.checkout.v2` contract, including write
    idempotency, context update, lifecycle recovery, and degraded behavior.
 
-3. **Document operational changes with checkout changes.** Add diagnostics only
+3. **Migrate remaining commerce GraphQL and checkout consumers to cart ports.**
+   The REST storefront cart seam uses `CartStorefrontPort`, while GraphQL and
+   checkout composition still contain direct owner-service construction.
+   **Depends on:** equivalent typed context mapping for those adapters.
+   **Done when:** commerce has no direct `CartService` construction outside
+   explicit owner-side composition.
+
+4. **Document operational changes with checkout changes.** Add diagnostics only
    where runtime pressure identifies a concrete cart or snapshot failure mode,
    and update module and commerce documentation in the same change.
    **Depends on:** observed runtime signals or a changed checkout contract.
