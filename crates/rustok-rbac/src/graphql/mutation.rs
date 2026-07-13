@@ -6,7 +6,7 @@ use rustok_core::UserRole;
 use uuid::Uuid;
 
 use super::types::{AssignUserRolePayload, RbacGraphqlUserRole};
-use super::RbacGraphqlRoleWriterHandle;
+use super::{RbacGraphqlRoleWriteError, RbacGraphqlRoleWriterHandle};
 
 #[derive(InputObject)]
 pub struct AssignUserRoleInput {
@@ -16,6 +16,23 @@ pub struct AssignUserRoleInput {
 
 #[derive(Default)]
 pub struct RbacMutation;
+
+fn map_role_write_error(error: RbacGraphqlRoleWriteError) -> FieldError {
+    match error {
+        RbacGraphqlRoleWriteError::Forbidden(message) => {
+            <FieldError as GraphQLError>::permission_denied(&message)
+        }
+        RbacGraphqlRoleWriteError::NotFound(message) => {
+            <FieldError as GraphQLError>::not_found(&message)
+        }
+        RbacGraphqlRoleWriteError::Conflict(message) => {
+            <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        RbacGraphqlRoleWriteError::Internal(message) => {
+            <FieldError as GraphQLError>::internal_error(&message)
+        }
+    }
+}
 
 #[Object]
 impl RbacMutation {
@@ -46,7 +63,7 @@ impl RbacMutation {
             .0
             .replace_user_role(&tenant.id, &auth.user_id, &input.user_id, user_role)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::permission_denied(&err))?;
+            .map_err(map_role_write_error)?;
 
         Ok(AssignUserRolePayload {
             success: true,
