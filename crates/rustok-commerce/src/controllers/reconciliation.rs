@@ -73,7 +73,7 @@ async fn list_reconciliation_required(
 
 async fn quarantine_stale_executing(
     State(runtime): State<CommerceHttpRuntime>,
-    _tenant: TenantContext,
+    tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<QuarantineStaleInput>,
 ) -> HttpResult<Json<QuarantineStaleResponse>> {
@@ -81,7 +81,7 @@ async fn quarantine_stale_executing(
     let stale_after_seconds = input.stale_after_seconds.clamp(60, 7 * 24 * 60 * 60);
     let stale_before = Utc::now() - Duration::seconds(stale_after_seconds as i64);
     let quarantined = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
-        .quarantine_stale_executing(stale_before, input.limit.unwrap_or(100))
+        .quarantine_stale_executing(tenant.id, stale_before, input.limit.unwrap_or(100))
         .await
         .map_err(super::admin::map_fulfillment_error)?;
     Ok(Json(QuarantineStaleResponse { quarantined }))
@@ -95,9 +95,8 @@ async fn resolve_unknown_as_failed(
     Json(input): Json<ResolveUnknownFailedInput>,
 ) -> HttpResult<Json<provider_operation::Model>> {
     require_manage_permission(&auth)?;
-    ensure_operation_tenant(&runtime, tenant.id, operation_id).await?;
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
-        .resolve_unknown_as_failed(operation_id, input.reason)
+        .resolve_unknown_as_failed(tenant.id, operation_id, input.reason)
         .await
         .map_err(super::admin::map_fulfillment_error)?;
     Ok(Json(operation))
@@ -111,7 +110,6 @@ async fn resolve_unknown_as_succeeded(
     Json(input): Json<ResolveUnknownSucceededInput>,
 ) -> HttpResult<Json<provider_operation::Model>> {
     require_manage_permission(&auth)?;
-    ensure_operation_tenant(&runtime, tenant.id, operation_id).await?;
     let provider_reference = input.provider_result.external_reference.clone();
     let provider_result = serde_json::to_value(input.provider_result).map_err(|error| {
         HttpError::bad_request(
@@ -120,7 +118,12 @@ async fn resolve_unknown_as_succeeded(
         )
     })?;
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
-        .resolve_unknown_as_succeeded(operation_id, provider_reference, provider_result)
+        .resolve_unknown_as_succeeded(
+            tenant.id,
+            operation_id,
+            provider_reference,
+            provider_result,
+        )
         .await
         .map_err(super::admin::map_fulfillment_error)?;
     Ok(Json(operation))
@@ -153,24 +156,6 @@ async fn retry_create_label(
         .await
         .map_err(map_fulfillment_orchestration_error)?;
     Ok(Json(fulfillment))
-}
-
-async fn ensure_operation_tenant(
-    runtime: &CommerceHttpRuntime,
-    tenant_id: Uuid,
-    operation_id: Uuid,
-) -> HttpResult<()> {
-    let operation = rustok_fulfillment::FulfillmentProviderOperationJournal::new(runtime.db_clone())
-        .get(operation_id)
-        .await
-        .map_err(super::admin::map_fulfillment_error)?;
-    if operation.tenant_id != tenant_id {
-        return Err(HttpError::not_found(
-            "commerce_admin_not_found",
-            "Fulfillment provider operation not found",
-        ));
-    }
-    Ok(())
 }
 
 fn require_manage_permission(auth: &AuthContext) -> HttpResult<()> {
