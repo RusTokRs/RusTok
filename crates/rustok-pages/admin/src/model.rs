@@ -49,8 +49,6 @@ pub struct PageDetail {
     pub id: String,
     pub status: String,
     pub template: String,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: String,
     #[serde(rename = "channelSlugs", default)]
     pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
