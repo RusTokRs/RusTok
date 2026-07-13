@@ -251,11 +251,9 @@ impl CircuitBreaker {
                 if state.failure_count >= self.config.failure_threshold.max(1) {
                     let failure_count = state.failure_count;
                     Self::set_open(&mut state);
+                    state.failure_count = failure_count;
                     self.state_transitions.fetch_add(1, Ordering::Relaxed);
-                    tracing::error!(
-                        failure_count,
-                        "Circuit breaker: Closed -> Open"
-                    );
+                    tracing::error!(failure_count, "Circuit breaker: Closed -> Open");
                 }
             }
             CircuitAdmission::HalfOpen { epoch } => {
@@ -420,13 +418,20 @@ mod tests {
             ..CircuitBreakerConfig::default()
         });
 
-        assert_eq!(breaker.call(|| async { Ok::<_, String>(42) }).await.unwrap(), 42);
+        assert_eq!(
+            breaker
+                .call(|| async { Ok::<_, String>(42) })
+                .await
+                .unwrap(),
+            42
+        );
         for _ in 0..2 {
             let _ = breaker.call(|| async { Err::<(), _>("failure") }).await;
             assert_eq!(breaker.get_state().await, CircuitState::Closed);
         }
         let _ = breaker.call(|| async { Err::<(), _>("failure") }).await;
         assert_eq!(breaker.get_state().await, CircuitState::Open);
+        assert_eq!(breaker.stats().await.failure_count, 3);
     }
 
     #[tokio::test]
