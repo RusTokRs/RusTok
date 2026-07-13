@@ -2,6 +2,7 @@ pub mod checkout;
 pub mod context;
 mod fulfillment_orchestration;
 mod fulfillment_orchestration_facade;
+mod fulfillment_reconciliation;
 mod journaled_create_label_provider;
 mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
@@ -14,6 +15,7 @@ pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub(crate) use fulfillment_orchestration::FulfillmentOrchestrationError;
 pub(crate) use fulfillment_orchestration_facade::FulfillmentOrchestrationService;
+pub use fulfillment_reconciliation::FulfillmentReconciliationService;
 pub(crate) use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 pub use payment_orchestration::{
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
