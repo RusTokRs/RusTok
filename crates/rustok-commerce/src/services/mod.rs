@@ -1,4 +1,5 @@
 pub mod checkout;
+mod checkout_operation;
 pub mod context;
 mod fulfillment_create_label_recovery;
 mod fulfillment_orchestration;
@@ -13,6 +14,11 @@ mod refund_reconciliation;
 mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
+pub use checkout_operation::{
+    BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationResult, CheckoutOperationStage,
+    CheckoutOperationStatus, DEFAULT_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_LEASE_SECONDS,
+};
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService;
 pub(crate) use fulfillment_orchestration::FulfillmentOrchestrationError;
