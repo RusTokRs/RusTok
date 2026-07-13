@@ -159,15 +159,35 @@ impl FulfillmentProviderOperationJournal {
         }
         ensure_transition(&model.status, PROVIDER_OPERATION_SUCCEEDED)?;
 
+        let provider_reference = normalize_optional(provider_reference);
         let now = Utc::now();
         let mut active: provider_operation::ActiveModel = model.into();
         active.status = Set(PROVIDER_OPERATION_SUCCEEDED.to_string());
-        active.provider_reference = Set(normalize_optional(provider_reference));
-        active.provider_result = Set(Some(provider_result));
+        active.provider_reference = Set(provider_reference.clone());
+        active.provider_result = Set(Some(provider_result.clone()));
         active.error_message = Set(None);
         active.updated_at = Set(now.into());
         active.provider_completed_at = Set(Some(now.into()));
-        active.update(&self.db).await.map_err(Into::into)
+        match active.update(&self.db).await {
+            Ok(model) => Ok(model),
+            Err(source) => {
+                let message = format!(
+                    "provider succeeded, but the journal could not persist the success state: {source}"
+                );
+                self.mark_execution_reconciliation_required(
+                    id,
+                    provider_reference,
+                    Some(provider_result),
+                    message,
+                )
+                .await
+                .map_err(|fallback| {
+                    FulfillmentError::Validation(format!(
+                        "failed to persist provider success for operation {id}: {source}; fallback reconciliation write also failed: {fallback}"
+                    ))
+                })
+            }
+        }
     }
 
     pub async fn mark_provider_error(
@@ -175,12 +195,22 @@ impl FulfillmentProviderOperationJournal {
         id: Uuid,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
+        let message = normalize_error(error_message.into());
         let model = self.get(id).await?;
-        ensure_transition(&model.status, PROVIDER_OPERATION_ERROR)?;
+        if model.status == PROVIDER_OPERATION_EXECUTING {
+            return self
+                .mark_execution_reconciliation_required(id, None, None, message)
+                .await;
+        }
+        if model.status != PROVIDER_OPERATION_ERROR {
+            return Err(FulfillmentError::InvalidTransition {
+                from: model.status,
+                to: PROVIDER_OPERATION_ERROR.to_string(),
+            });
+        }
 
         let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_ERROR.to_string());
-        active.error_message = Set(Some(normalize_error(error_message.into())));
+        active.error_message = Set(Some(message));
         active.updated_at = Set(Utc::now().into());
         active.update(&self.db).await.map_err(Into::into)
     }
