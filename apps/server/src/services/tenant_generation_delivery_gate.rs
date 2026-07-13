@@ -13,10 +13,10 @@ use crate::services::tenant_cache_generation_status::TenantCacheGenerationListen
 /// Prevent local-only event delivery from treating an unrelated cache invalidation subscriber as
 /// the canonical tenant generation listener.
 ///
-/// `CacheInvalidationOutcome::local_subscribers` is intentionally a transport-level count and may
-/// include receivers for other channels. This gate uses the context-owned generation listener state
-/// immediately before downstream event delivery. A retry can therefore resume after the listener
-/// recovers without rotating the same event generation again.
+/// The invalidation transport exposes a transport-wide receiver count that may include receivers
+/// for other channels. This gate uses the context-owned generation listener state immediately
+/// before downstream event delivery. A retry can therefore resume after the listener recovers
+/// without rotating the same event generation again.
 #[derive(Clone)]
 pub struct TenantGenerationDeliveryGate {
     inner: Arc<dyn EventTransport>,
