@@ -28,14 +28,18 @@ Implemented:
   source digest, sandbox phase, tenant, actor, input, grants, and limits;
 - v1 data-only `AlloyDraftInput`/`AlloyDraftOutput` bindings for parameters,
   entity snapshots, returned values, and entity changes;
+- request-scoped `AlloyDraftScopeExtension` that reconstructs `params`,
+  `entity`, and `entity_before` for the neutral Rhai executor and emits typed
+  entity changes;
 - immutable Rhai descriptor/source lineage staging, packaging, and forking
   helpers.
 
 Remaining:
 
 - production draft/manual/hook/scheduled execution still needs atomic cutover
-  from the direct `ScriptEngine` path to `SandboxRuntime`; the request builder
-  exists but entity/parameter scope extensions are required before callers move;
+  from the direct `ScriptEngine` path to `SandboxRuntime`; the request binding
+  and scope extension exist, but callers and execution-log adaptation still
+  need to move atomically;
 - entity/parameter semantics must become request-scoped Alloy extensions;
 - draft revision/CAS, review, and publication orchestration need owner contracts;
 - marketplace release import/fork needs a complete persisted workflow;

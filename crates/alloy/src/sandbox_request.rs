@@ -9,15 +9,16 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use rustok_sandbox::{
-    ExecutionPhase as SandboxExecutionPhase, SandboxContext, SandboxExecutorKind, SandboxPayload,
-    SandboxError, SandboxPolicy, SandboxRequest, SandboxResult, SandboxSubject,
-};
 use rustok_sandbox::rhai::RhaiHostExtension;
+use rustok_sandbox::{
+    ExecutionPhase as SandboxExecutionPhase, SandboxContext, SandboxError, SandboxExecutorKind,
+    SandboxPayload, SandboxPolicy, SandboxRequest, SandboxResult, SandboxSubject,
+};
 
 use crate::{
-    register_entity_proxy, EntityProxy, ExecutionContext, ExecutionPhase, Script,
+    register_entity_proxy,
     utils::{dynamic_to_json, json_to_dynamic},
+    EntityProxy, ExecutionContext, ExecutionPhase, Script,
 };
 
 /// Stable media type for Alloy-authored Rhai source before it becomes a module
@@ -298,8 +299,9 @@ fn empty_object() -> serde_json::Value {
 }
 
 fn alloy_input(request: &SandboxRequest) -> SandboxResult<AlloyDraftInput> {
-    let input = serde_json::from_value(request.input.clone())
-        .map_err(|error| SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}")))?;
+    let input = serde_json::from_value(request.input.clone()).map_err(|error| {
+        SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}"))
+    })?;
     input
         .validate()
         .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
