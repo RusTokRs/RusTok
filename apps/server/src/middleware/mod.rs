@@ -27,6 +27,19 @@ pub mod tenant {
     };
 
     use crate::services::server_runtime_context::ServerRuntimeContext;
+    use rustok_cache::CacheService;
+
+    /// Initialize the tenant resolver caches without leaving the superseded per-key Redis
+    /// subscriber running. Durable namespace generations are the only cross-instance invalidation
+    /// authority; the historical listener used a raw `JoinHandle<()>` in the type-indexed shared
+    /// store and could also collide with another unwrapped background task.
+    pub async fn init_tenant_cache_infrastructure(
+        ctx: &ServerRuntimeContext,
+        cache_service: &CacheService,
+    ) {
+        super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await;
+        ctx.shared_map::<tokio::task::JoinHandle<()>, _>(|task| task.abort());
+    }
 
     pub async fn tenant_invalidation_listener_snapshot(
         ctx: &ServerRuntimeContext,
