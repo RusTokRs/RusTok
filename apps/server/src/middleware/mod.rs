@@ -5,6 +5,7 @@ pub mod guest_cart_access;
 pub mod invite_accept;
 pub mod locale;
 pub mod mcp_scaffold_workspace;
+pub mod metrics_auth;
 pub mod oauth_token_guard;
 pub mod rate_limit;
 pub mod security_headers;
