@@ -9,6 +9,7 @@ pub mod metrics_auth;
 pub mod oauth_token_guard;
 pub mod rate_limit;
 pub mod registry_artifact_access;
+pub mod registry_remote_claim;
 pub mod security_headers;
 
 #[path = "tenant.rs"]
