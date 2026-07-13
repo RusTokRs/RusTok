@@ -28,8 +28,7 @@ jobs:
           from pathlib import Path
 
           owner = Path("crates/rustok-forum/src/services/category_owner.rs")
-          source = owner.read_text()
-          source = source.replace(
+          source = owner.read_text().replace(
               "use sea_orm::DatabaseConnection;",
               "use sea_orm::{DatabaseConnection, DatabaseTransaction};",
               1,
@@ -43,8 +42,7 @@ jobs:
                   "        category_id: Uuid,\n"
                   "    ) -> ForumResult<crate::entities::forum_category::Model> {\n"
                   "        category::CategoryService::find_category_in_tx(txn, tenant_id, category_id).await\n"
-                  "    }\n"
-                  "\n"
+                  "    }\n\n"
                   "    pub(crate) async fn adjust_counters_in_tx(\n"
                   "        txn: &DatabaseTransaction,\n"
                   "        tenant_id: Uuid,\n"
@@ -53,11 +51,7 @@ jobs:
                   "        reply_delta: i32,\n"
                   "    ) -> ForumResult<()> {\n"
                   "        category::CategoryService::adjust_counters_in_tx(\n"
-                  "            txn,\n"
-                  "            tenant_id,\n"
-                  "            category_id,\n"
-                  "            topic_delta,\n"
-                  "            reply_delta,\n"
+                  "            txn, tenant_id, category_id, topic_delta, reply_delta,\n"
                   "        )\n"
                   "        .await\n"
                   "    }\n"
@@ -76,35 +70,52 @@ jobs:
           query.write_text(source.replace(old, new, 1))
 
           read_model = Path("crates/rustok-forum/src/services/read_model.rs")
-          source = read_model.read_text()
-          source = source.replace("cursor.updated_at.clone()", "cursor.updated_at")
-          read_model.write_text(source)
+          read_model.write_text(read_model.read_text().replace(
+              "cursor.updated_at.clone()", "cursor.updated_at"
+          ))
 
           state_machine = Path("crates/rustok-forum/src/state_machine.rs")
           source = state_machine.read_text()
           source = source.replace("from: self.clone(),", "from: *self,")
           source = source.replace("to: target.clone(),", "to: *target,")
           state_machine.write_text(source)
+
+          support = Path("crates/rustok-forum/tests/support/mod.rs")
+          source = support.read_text()
+          if not source.startswith("#![allow(dead_code)]"):
+              support.write_text("#![allow(dead_code)]\n\n" + source)
+
+          tenant_test = Path("crates/rustok-forum/tests/tenant_child_integrity_sqlite.rs")
+          tenant_test.write_text(tenant_test.read_text().replace(
+              "use sea_orm_migration::{MigrationTrait, SchemaManager};",
+              "use sea_orm_migration::SchemaManager;",
+              1,
+          ))
+
+          position_test = Path("crates/rustok-forum/tests/reply_position_integrity_sqlite.rs")
+          position_test.write_text(position_test.read_text().replace("    TryGetable,\n", "", 1))
           PY
 
           targets=(
-            crates/rustok-forum/src/services/category_owner.rs
             crates/rustok-forum/src/graphql/query.rs
+            crates/rustok-forum/src/services/category_owner.rs
             crates/rustok-forum/src/services/read_model.rs
-            crates/rustok-forum/src/state_machine.rs
             crates/rustok-forum/src/services/subscription/category.rs
             crates/rustok-forum/src/services/subscription/helpers.rs
             crates/rustok-forum/src/services/subscription/policy.rs
             crates/rustok-forum/src/services/subscription/topic.rs
+            crates/rustok-forum/src/state_machine.rs
+            crates/rustok-forum/tests/reply_position_integrity_sqlite.rs
             crates/rustok-forum/tests/subscription_levels_contract.rs
             crates/rustok-forum/tests/subscription_levels_sqlite.rs
+            crates/rustok-forum/tests/support/mod.rs
+            crates/rustok-forum/tests/tenant_child_integrity_sqlite.rs
           )
           rustfmt --edition 2021 "${targets[@]}"
           fmt_status=$?
 
           python - <<'PY'
           from pathlib import Path
-
           media = Path("crates/rustok-media/src/ports.rs")
           source = media.read_text()
           needle = "        MediaError::UnsupportedMimeType(content_type) => PortError::validation(\n"
@@ -112,8 +123,7 @@ jobs:
               "        MediaError::InvalidMediaContent { declared, reason } => PortError::validation(\n"
               "            \"media.invalid_content\",\n"
               "            format!(\"invalid media content declared as {declared}: {reason}\"),\n"
-              "        ),\n"
-              + needle
+              "        ),\n" + needle
           )
           if needle not in source:
               raise SystemExit("media diagnostic patch anchor missing")
@@ -146,12 +156,9 @@ jobs:
             pushed=$?
           fi
 
-          {
-            echo "rustfmt_status=${fmt_status}"
-            echo "cargo_check_status=${check_status}"
-            echo "clippy_status=${clippy_status}"
-            echo "push_status=${pushed}"
-          } > diagnostics/status.txt
+          printf 'rustfmt_status=%s\ncargo_check_status=%s\nclippy_status=%s\npush_status=%s\n' \
+            "${fmt_status}" "${check_status}" "${clippy_status}" "${pushed}" \
+            > diagnostics/status.txt
           exit 0
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
