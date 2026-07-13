@@ -110,7 +110,7 @@ async fn validate_create_client(
 
     validate_grants(
         &input.granted_permissions,
-        &authority.permissions,
+        authority.permissions,
         "current MCP manager",
     )?;
     if let Some(delegated) = delegated.as_deref() {
@@ -143,7 +143,7 @@ async fn validate_update_policy(
 
     validate_grants(
         &input.granted_permissions,
-        &authority.permissions,
+        authority.permissions,
         "current MCP manager",
     )?;
     if let Some(delegated) = delegated.as_deref() {
@@ -179,7 +179,7 @@ async fn validate_rotate_token(
             return Err(forbidden("MCP policy belongs to another tenant"));
         }
         let grants = policy.granted_permissions_list();
-        validate_grants(&grants, &authority.permissions, "current MCP manager")?;
+        validate_grants(&grants, authority.permissions, "current MCP manager")?;
         if let Some(delegated) = delegated.as_deref() {
             validate_grants(&grants, delegated, "delegated MCP user")?;
         }
@@ -340,10 +340,12 @@ fn request_mode(method: &Method, path: &str) -> Option<RequestMode> {
         return None;
     }
     let client_id = Uuid::parse_str(segments[3]).ok()?;
-    match (method, segments[4]) {
-        (&Method::PUT, "policy") => Some(RequestMode::UpdatePolicy(client_id)),
-        (&Method::POST, "rotate-token") => Some(RequestMode::RotateToken(client_id)),
-        _ => None,
+    if method == Method::PUT && segments[4] == "policy" {
+        Some(RequestMode::UpdatePolicy(client_id))
+    } else if method == Method::POST && segments[4] == "rotate-token" {
+        Some(RequestMode::RotateToken(client_id))
+    } else {
+        None
     }
 }
 
