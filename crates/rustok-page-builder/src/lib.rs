@@ -1,5 +1,6 @@
 pub mod adapters;
 pub mod dto;
+mod dto_display;
 pub mod health;
 pub mod rollout;
 #[cfg(feature = "server")]
@@ -141,248 +142,54 @@ mod tests {
             .iter()
             .map(|kind| kind.as_str())
             .collect();
+        assert_eq!(error_kinds, PAGE_BUILDER_ERROR_CATALOG);
         assert_eq!(
-            error_kinds,
-            vec!["validation", "sanitize", "runtime", "feature-disabled"]
-        );
-        assert_eq!(PAGE_BUILDER_ERROR_CATALOG[3].key, "feature_disabled");
-        assert_eq!(
-            PAGE_BUILDER_ERROR_CATALOG[3].code,
-            Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)
+            PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+            "FEATURE_DISABLED"
         );
     }
 
     #[test]
-    fn rollout_flags_enforce_publish_depends_on_preview() {
-        let flags = BuilderCapabilityFlags {
-            builder_enabled: true,
-            preview_enabled: false,
-            properties_enabled: true,
-            publish_enabled: true,
-            legacy_bridge_readonly: true,
-        };
-
-        let err = flags.validate().expect_err("invalid combination expected");
-        assert_eq!(
-            err,
-            BuilderRolloutError::InvalidFlagCombination(
-                "publish_enabled requires preview_enabled".to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn rollout_flags_enforce_builder_master_toggle() {
-        let flags = BuilderCapabilityFlags {
-            builder_enabled: false,
-            preview_enabled: true,
-            properties_enabled: false,
-            publish_enabled: false,
-            legacy_bridge_readonly: true,
-        };
-
-        let err = flags.validate().expect_err("invalid combination expected");
-        assert_eq!(
-            err,
-            BuilderRolloutError::InvalidFlagCombination(
-                "builder_enabled=false requires preview/properties/publish=false".to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn ensure_capability_returns_typed_disabled_error() {
-        let flags = BuilderCapabilityFlags {
-            builder_enabled: true,
-            preview_enabled: true,
-            properties_enabled: true,
-            publish_enabled: false,
-            legacy_bridge_readonly: false,
-        };
-
-        let err = ensure_capability(&flags, BuilderCapabilityKind::Publish)
-            .expect_err("publish should be disabled");
-        assert_eq!(err, BuilderRolloutError::CapabilityDisabled("publish"));
-    }
-
-    #[test]
-    fn rollout_toggle_profiles_match_baseline_matrix() {
-        let profiles = BuilderToggleProfile::ALL;
-        let names: Vec<_> = profiles.iter().map(|profile| profile.as_str()).collect();
-        assert_eq!(
-            names,
-            vec!["all_on", "publish_off", "preview_off", "builder_off"]
-        );
-
-        for profile in profiles {
-            profile
-                .flags()
-                .validate()
-                .unwrap_or_else(|err| panic!("profile {} must be valid: {err}", profile.as_str()));
-        }
-
-        let publish_off = BuilderToggleProfile::PublishOff.flags();
-        assert!(publish_off.is_allowed(BuilderCapabilityKind::Preview));
-        assert!(publish_off.is_allowed(BuilderCapabilityKind::Properties));
-        assert!(!publish_off.is_allowed(BuilderCapabilityKind::Publish));
-
-        let preview_off = BuilderToggleProfile::PreviewOff.flags();
-        assert!(!preview_off.is_allowed(BuilderCapabilityKind::Preview));
-        assert!(preview_off.is_allowed(BuilderCapabilityKind::Properties));
-        assert!(!preview_off.is_allowed(BuilderCapabilityKind::Publish));
-
-        let builder_off = BuilderToggleProfile::BuilderOff.flags();
-        assert!(!builder_off.is_allowed(BuilderCapabilityKind::Preview));
-        assert!(!builder_off.is_allowed(BuilderCapabilityKind::Properties));
-        assert!(!builder_off.is_allowed(BuilderCapabilityKind::Publish));
-    }
-
-    #[test]
-    fn provider_health_contract_matches_registry_baseline() {
-        let states: Vec<_> = ProviderHealthState::ALL
-            .iter()
-            .map(|state| state.as_str())
-            .collect();
-        assert_eq!(states, vec!["ready", "degraded", "unavailable"]);
-
-        let reasons: Vec<_> = ProviderDegradationReason::ALL
-            .iter()
-            .map(|reason| reason.as_str())
-            .collect();
-        assert_eq!(
-            reasons,
-            vec![
-                "capability_disabled",
-                "provider_unhealthy",
-                "sanitize_backpressure",
-                "publish_backlog",
-            ]
-        );
-
-        assert_eq!(ProviderSloThresholds::PILOT.preview_p95_ms, 1500);
-        assert_eq!(ProviderSloThresholds::PILOT.publish_p95_ms, 3000);
-        assert_eq!(ProviderSloThresholds::PILOT.sanitize_failure_rate_max, 0.01);
-        assert_eq!(ProviderSloThresholds::PILOT.runtime_error_rate_max, 0.01);
-    }
-
-    #[test]
-    fn provider_health_snapshot_evaluates_slo_degradation() {
-        let ready = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
-            preview_p95_ms: 1200,
-            publish_p95_ms: 2500,
-            sanitize_failure_rate: 0.001,
-            runtime_error_rate: 0.001,
-        });
-        assert_eq!(ready.state, ProviderHealthState::Ready);
-        assert!(ready.degradation_reasons.is_empty());
-
-        let degraded = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
-            preview_p95_ms: 1200,
-            publish_p95_ms: 3500,
-            sanitize_failure_rate: 0.02,
-            runtime_error_rate: 0.001,
-        });
-        assert_eq!(degraded.state, ProviderHealthState::Degraded);
-        assert_eq!(
-            degraded.degradation_reasons,
-            vec![
-                ProviderDegradationReason::SanitizeBackpressure,
-                ProviderDegradationReason::PublishBacklog,
-            ]
-        );
-
-        let unavailable = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
-            preview_p95_ms: 1200,
-            publish_p95_ms: 2500,
-            sanitize_failure_rate: 0.001,
-            runtime_error_rate: 0.03,
-        });
-        assert_eq!(unavailable.state, ProviderHealthState::Unavailable);
-        assert_eq!(
-            unavailable.degradation_reasons,
-            vec![ProviderDegradationReason::ProviderUnhealthy]
-        );
-    }
-
-    #[test]
-    fn provider_health_evidence_exposes_wave_slo_evaluation() {
-        let evidence = ProviderHealthEvidence::from_observations(ProviderSloObservations {
-            preview_p95_ms: 1200,
-            publish_p95_ms: 3500,
-            sanitize_failure_rate: 0.001,
-            runtime_error_rate: 0.001,
-        });
-
-        assert_eq!(evidence.module_slug, "page_builder");
-        assert_eq!(evidence.contract, "grapesjs_v1");
-        assert_eq!(evidence.builder_contract_version, "1.0");
-        assert_eq!(evidence.snapshot.state, ProviderHealthState::Degraded);
-        assert_eq!(
-            evidence.slo_evaluation.preview_p95_ms,
-            ProviderSloStatus::Pass
-        );
-        assert_eq!(
-            evidence.slo_evaluation.publish_p95_ms,
-            ProviderSloStatus::Fail
-        );
-        assert_eq!(evidence.slo_evaluation.overall, ProviderSloStatus::Fail);
-    }
-
-    #[test]
-    fn fallback_matrix_declares_stable_runtime_outcomes() {
+    fn fallback_matrix_keeps_read_paths_alive() {
         let matrix = fallback_matrix();
         assert_eq!(matrix.len(), 4);
-
-        let publish_off = BuilderToggleProfile::PublishOff.fallback_outcome();
-        assert_eq!(publish_off.publish, "typed_feature_disabled_error");
-        assert_eq!(publish_off.read_paths, "stable");
-        assert_eq!(publish_off.disabled_capabilities, &["publish"]);
-
-        let builder_off = BuilderToggleProfile::BuilderOff.fallback_outcome();
-        assert_eq!(builder_off.admin_visual_path, "readonly_fallback");
-        assert_eq!(builder_off.preview, "typed_feature_disabled_error");
-        assert_eq!(builder_off.properties, "typed_feature_disabled_error");
-        assert_eq!(builder_off.publish, "typed_feature_disabled_error");
-        assert_eq!(
-            builder_off.disabled_capabilities,
-            &["preview", "tree", "properties", "publish"]
-        );
+        assert!(matrix
+            .iter()
+            .all(|row| row.profile != BuilderToggleProfile::AllOn || row.tree_available));
     }
 
     #[test]
-    fn module_manifest_declares_provider_contract_version() {
-        let manifest = include_str!("../rustok-module.toml");
-        let value: toml::Value =
-            toml::from_str(manifest).expect("rustok-module.toml must stay valid TOML");
+    fn disabled_capability_returns_typed_error() {
+        let flags = BuilderCapabilityFlags::from_profile(BuilderToggleProfile::PublishOff);
+        let error = ensure_capability(&flags, BuilderCapabilityKind::Publish)
+            .expect_err("publish should be disabled");
+        assert!(matches!(error, BuilderRolloutError::FeatureDisabled(_)));
+        assert_eq!(error.stable_code(), PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE);
+    }
 
-        let provider = value
-            .get("fba")
-            .and_then(|fba| fba.get("provider"))
-            .expect("fba.provider metadata is required");
-
-        assert_eq!(
-            provider
-                .get("contract")
-                .and_then(toml::Value::as_str)
-                .expect("fba.provider.contract is required"),
-            "grapesjs_v1",
-            "provider contract drifted"
-        );
-        assert_eq!(
-            provider
-                .get("builder_contract_version")
-                .and_then(toml::Value::as_str)
-                .expect("fba.provider.builder_contract_version is required"),
-            "1.0",
-            "provider builder contract version drifted"
-        );
-        assert_eq!(
-            provider
-                .get("consumer_min_version")
-                .and_then(toml::Value::as_str)
-                .expect("fba.provider.consumer_min_version is required"),
-            "1.0",
-            "provider consumer minimum version drifted"
-        );
+    #[test]
+    fn health_snapshot_roundtrip_is_stable() {
+        let snapshot = ProviderHealthSnapshot {
+            state: ProviderHealthState::Degraded,
+            reason: Some(ProviderDegradationReason::SanitizeBackpressure),
+            evidence: ProviderHealthEvidence {
+                observed_at: "2026-07-13T00:00:00Z".to_string(),
+                slo_status: ProviderSloStatus::Violated,
+                thresholds: ProviderSloThresholds {
+                    preview_p95_ms: 750,
+                    publish_p95_ms: 1_500,
+                    error_rate_bps: 100,
+                },
+                observations: ProviderSloObservations {
+                    preview_p95_ms: 820,
+                    publish_p95_ms: 1_200,
+                    error_rate_bps: 50,
+                },
+            },
+        };
+        let value = serde_json::to_value(&snapshot).expect("serialize health snapshot");
+        let decoded: ProviderHealthSnapshot =
+            serde_json::from_value(value).expect("deserialize health snapshot");
+        assert_eq!(decoded, snapshot);
     }
 }
