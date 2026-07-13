@@ -34,7 +34,7 @@ impl BlogMutation {
             "Permission denied: blog_posts:create required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let post_id = service
@@ -67,7 +67,7 @@ impl BlogMutation {
             "Permission denied: blog_posts:publish required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let domain_input = DomainUpdatePostInput {
@@ -118,7 +118,7 @@ impl BlogMutation {
             "Permission denied: blog_posts:delete required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
@@ -150,7 +150,7 @@ impl BlogMutation {
             "Permission denied: blog_posts:publish required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
@@ -182,7 +182,7 @@ impl BlogMutation {
             "Permission denied: blog_posts:publish required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
@@ -215,7 +215,7 @@ impl BlogMutation {
             "Permission denied: blog_posts:update required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
@@ -234,6 +234,24 @@ impl BlogMutation {
     }
 }
 
+fn mutation_tenant_id(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    requested: Option<Uuid>,
+) -> Result<Uuid> {
+    if auth.tenant_id != tenant.id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Authenticated actor is not bound to the current tenant",
+        ));
+    }
+    if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Blog mutations must use the current tenant",
+        ));
+    }
+    Ok(tenant.id)
+}
+
 fn require_blog_permission(
     ctx: &Context<'_>,
     permissions: &[Permission],
@@ -249,4 +267,51 @@ fn require_blog_permission(
     }
 
     Ok(auth)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mutation_tenant_id;
+    use rustok_api::{AuthContext, TenantContext};
+    use uuid::Uuid;
+
+    fn tenant(id: Uuid) -> TenantContext {
+        TenantContext {
+            id,
+            name: "Tenant".to_string(),
+            slug: "tenant".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn auth(tenant_id: Uuid) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: Vec::new(),
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    #[test]
+    fn blog_mutation_tenant_override_fails_closed() {
+        let current = Uuid::new_v4();
+        assert_eq!(
+            mutation_tenant_id(&tenant(current), &auth(current), None).unwrap(),
+            current
+        );
+        assert!(mutation_tenant_id(
+            &tenant(current),
+            &auth(current),
+            Some(Uuid::new_v4())
+        )
+        .is_err());
+        assert!(mutation_tenant_id(&tenant(current), &auth(Uuid::new_v4()), None).is_err());
+    }
 }
