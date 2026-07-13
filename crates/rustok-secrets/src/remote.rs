@@ -66,9 +66,10 @@ impl VaultResolver {
         auth: VaultAuth,
     ) -> Result<Self, SecretError> {
         let endpoint = Url::parse(endpoint.into().trim_end_matches('/')).map_err(vault_error)?;
+        let kv_mount = kv_mount.into();
         require_secure_remote_endpoint(&endpoint, "Vault")?;
         validate_optional_header_value(namespace.as_deref(), "Vault namespace")?;
-        validate_path(&kv_mount.into(), "Vault KV mount")?;
+        validate_path(&kv_mount, "Vault KV mount")?;
         if let VaultAuth::Kubernetes {
             role,
             auth_mount,
@@ -82,7 +83,7 @@ impl VaultResolver {
             client,
             endpoint,
             namespace,
-            kv_mount: kv_mount.into(),
+            kv_mount,
             auth,
         })
     }
@@ -143,13 +144,14 @@ struct VaultReadData {
 #[async_trait]
 impl SecretResolver for VaultResolver {
     async fn resolve(&self, key: &str) -> Result<SecretString, SecretError> {
-        let (path, field) = key.split_once('#').unwrap_or((key, "value"));
-        let path = validate_path(path, "Vault secret path")?;
-        validate_plain_value(field, "Vault secret field")?;
+        let (secret_path, field) = key.split_once('#').unwrap_or((key, "value"));
+        let secret_path = validate_path(secret_path, "Vault secret path")?;
         let mount = validate_path(&self.kv_mount, "Vault KV mount")?;
+        validate_plain_value(field, "Vault secret field")?;
+
         let token = self.token().await?;
-        let url = append_url_path(&self.endpoint, &["v1"], mount, &["data"])?;
-        let url = append_url_path(&url, &[], path, &[])?;
+        let base = append_url_path(&self.endpoint, &["v1"], mount, &["data"])?;
+        let url = append_url_path(&base, &[], secret_path, &[])?;
         let mut request = self
             .client
             .get(url)
@@ -235,11 +237,12 @@ impl SecretResolver for KubernetesSecretResolver {
         validate_dns_name(&self.namespace, "Kubernetes namespace")?;
         validate_dns_name(name, "Kubernetes secret name")?;
         validate_plain_value(field, "Kubernetes secret field")?;
+
         let api_server = Url::parse(&self.api_server).map_err(kubernetes_error)?;
         require_secure_remote_endpoint(&api_server, "Kubernetes API")?;
         let url = append_url_path(
             &api_server,
-            &["api", "v1", "namespaces", self.namespace.as_str(), "secrets", name],
+            &["api", "v1", "namespaces", &self.namespace, "secrets", name],
             Vec::new(),
             &[],
         )?;
@@ -281,8 +284,9 @@ fn validate_path<'a>(value: &'a str, label: &str) -> Result<Vec<&'a str>, Secret
     if segments.iter().any(|segment| {
         segment.is_empty()
             || matches!(*segment, "." | "..")
-            || segment.contains(['\\', '?', '#', '%'])
-            || segment.chars().any(char::is_control)
+            || segment
+                .chars()
+                .any(|character| matches!(character, '\\' | '?' | '#' | '%' ) || character.is_control())
     }) {
         return Err(remote_policy_error(
             label,
@@ -294,8 +298,10 @@ fn validate_path<'a>(value: &'a str, label: &str) -> Result<Vec<&'a str>, Secret
 
 fn validate_plain_value(value: &str, label: &str) -> Result<(), SecretError> {
     if value.trim().is_empty()
-        || value.contains(['/', '\\', '#', '%', '\r', '\n'])
-        || value.chars().any(char::is_control)
+        || value.chars().any(|character| {
+            matches!(character, '/' | '\\' | '#' | '%' | '\r' | '\n')
+                || character.is_control()
+        })
     {
         return Err(remote_policy_error(label, "contains unsupported characters"));
     }
@@ -303,10 +309,8 @@ fn validate_plain_value(value: &str, label: &str) -> Result<(), SecretError> {
 }
 
 fn validate_optional_header_value(value: Option<&str>, label: &str) -> Result<(), SecretError> {
-    if let Some(value) = value {
-        if value.contains(['\r', '\n']) || value.chars().any(char::is_control) {
-            return Err(remote_policy_error(label, "contains control characters"));
-        }
+    if value.is_some_and(|value| value.chars().any(char::is_control)) {
+        return Err(remote_policy_error(label, "contains control characters"));
     }
     Ok(())
 }
@@ -320,9 +324,11 @@ fn validate_dns_name(value: &str, label: &str) -> Result<(), SecretError> {
                 && part.len() <= 63
                 && !part.starts_with('-')
                 && !part.ends_with('-')
-                && part
-                    .chars()
-                    .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-')
+                && part.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || character == '-'
+                })
         });
     if valid {
         Ok(())
@@ -332,7 +338,11 @@ fn validate_dns_name(value: &str, label: &str) -> Result<(), SecretError> {
 }
 
 fn require_secure_remote_endpoint(url: &Url, label: &str) -> Result<(), SecretError> {
-    if url.username() != "" || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
         return Err(remote_policy_error(
             label,
             "endpoint must not contain userinfo, query, or fragment",
