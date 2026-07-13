@@ -21,6 +21,7 @@ pub mod mcp_management_mutation_provider;
 pub mod mcp_runtime;
 pub mod module_event_dispatcher;
 pub mod module_lifecycle;
+pub mod oauth_admin_guard;
 pub mod oauth_app;
 pub mod oauth_consent_service;
 pub mod oauth_token_service;
