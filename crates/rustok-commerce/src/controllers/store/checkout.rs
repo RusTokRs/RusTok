@@ -19,6 +19,7 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollect
 
 const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+const CHECKOUT_PRICING_CHANGED_CODE: &str = "cart.checkout_pricing_changed";
 
 /// Create payment collection from storefront cart
 #[utoipa::path(
@@ -120,7 +121,7 @@ pub async fn create_payment_collection(
         (status = 400, description = "Checkout request is invalid"),
         (status = 401, description = "Authentication required for customer-owned carts"),
         (status = 404, description = "Cart not found"),
-        (status = 409, description = "Checkout key, pricing or active-operation conflict")
+        (status = 409, description = "Checkout key, pricing or domain conflict")
     )
 )]
 pub async fn complete_cart_checkout(
@@ -154,16 +155,6 @@ pub async fn complete_cart_checkout(
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     let actor_id = super::checkout_actor_id(auth.0.as_ref());
-
-    let _ = super::reprice_storefront_cart_line_items_for_db(
-        runtime.db(),
-        runtime.event_bus(),
-        tenant.id,
-        &request_context,
-        cart_storefront_port.as_ref(),
-        cart,
-    )
-    .await?;
 
     let checkout_input = CompleteCheckoutInput {
         cart_id,
@@ -226,31 +217,7 @@ pub async fn complete_cart_checkout(
     let service = crate::JournaledCheckoutService::new(checkout, runtime.db_clone())
         .with_atomic_cart_checkout_handle(atomic_cart.handle);
     let response = service
-        .complete_checkout(
-            tenant.id,
-            actor_id,
-            idempotency_key,
-            CompleteCheckoutInput {
-                cart_id,
-                shipping_option_id: input.shipping_option_id,
-                shipping_selections: input.shipping_selections.map(|items| {
-                    items
-                        .into_iter()
-                        .map(|item| crate::dto::CartShippingSelectionInput {
-                            shipping_profile_slug: item.shipping_profile_slug,
-                            seller_id: item.seller_id,
-                            seller_scope: None,
-                            selected_shipping_option_id: item.selected_shipping_option_id,
-                        })
-                        .collect()
-                }),
-                region_id: input.region_id,
-                country_code: input.country_code,
-                locale: input.locale,
-                create_fulfillment: input.create_fulfillment,
-                metadata: input.metadata,
-            },
-        )
+        .complete_checkout(tenant.id, actor_id, idempotency_key, checkout_input)
         .await
         .map_err(journaled_checkout_http_error)?;
 
@@ -312,10 +279,19 @@ fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpEr
             kind: rustok_api::PortErrorKind::Conflict,
             code,
             ..
-        }) => HttpError::new(
+        }) if code == CHECKOUT_PRICING_CHANGED_CODE => HttpError::new(
             StatusCode::CONFLICT,
             code,
             "Checkout pricing or cart state changed; retry with the same Idempotency-Key",
+        ),
+        crate::JournaledCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
+            kind: rustok_api::PortErrorKind::Conflict,
+            code,
+            ..
+        }) => HttpError::new(
+            StatusCode::CONFLICT,
+            code,
+            "Checkout could not proceed because a domain constraint changed",
         ),
         crate::JournaledCheckoutError::Checkout(checkout) => {
             HttpError::bad_request("commerce_operation_failed", checkout.to_string())
