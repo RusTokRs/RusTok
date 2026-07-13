@@ -4,9 +4,15 @@ use std::time::Duration;
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 
-use crate::cache::{CacheCompareAndSetOutcome, CacheStats};
+use crate::cache::CacheStats;
 use crate::events::EventTransport;
 use crate::{Error, Result};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheCompareAndSetOutcome {
+    Applied,
+    Mismatch,
+}
 
 #[async_trait]
 pub trait CacheBackend: Send + Sync {
