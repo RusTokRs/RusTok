@@ -25,6 +25,7 @@ use super::principal_tenant_security::GraphqlPrincipalTenantPolicy;
 use super::queries::RootQuery;
 use super::security::GraphqlSecurityPolicy;
 use super::settings::{SettingsMutation, SettingsQuery};
+use super::storefront_principal_security::StorefrontPrincipalPolicy;
 use super::subscriptions::BuildSubscription;
 use super::system::SystemQuery;
 use super::tenant_security::GraphqlTenantPolicy;
@@ -132,6 +133,7 @@ pub fn build_schema(
     .extension(GraphqlTenantPolicy)
     .extension(GraphqlSecurityPolicy)
     .extension(LegacyDisableUserPolicy)
+    .extension(StorefrontPrincipalPolicy)
     .extension(GraphqlObservability)
     // DataLoaders for efficient batched queries
     .data(DataLoader::new(
