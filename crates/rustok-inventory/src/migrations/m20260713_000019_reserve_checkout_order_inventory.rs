@@ -306,20 +306,6 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                   WHERE ii.variant_id = NEW.variant_id
               )
             BEGIN
-                UPDATE inventory_levels
-                SET reserved_quantity = reserved_quantity + NEW.quantity,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = (
-                    SELECT il.id
-                    FROM inventory_items ii
-                    JOIN inventory_levels il ON il.inventory_item_id = ii.id
-                    JOIN stock_locations sl ON sl.id = il.location_id AND sl.deleted_at IS NULL
-                    JOIN orders o ON o.id = NEW.order_id AND o.tenant_id = sl.tenant_id
-                    WHERE ii.variant_id = NEW.variant_id
-                    ORDER BY (il.stocked_quantity - il.reserved_quantity) DESC, il.id
-                    LIMIT 1
-                );
-
                 INSERT INTO reservation_items (
                     id,
                     inventory_item_id,
@@ -355,6 +341,16 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 WHERE ii.variant_id = NEW.variant_id
                 ORDER BY (il.stocked_quantity - il.reserved_quantity) DESC, il.id
                 LIMIT 1;
+
+                UPDATE inventory_levels
+                SET reserved_quantity = reserved_quantity + NEW.quantity,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE inventory_item_id = (
+                    SELECT inventory_item_id FROM reservation_items WHERE id = NEW.id
+                )
+                  AND location_id = (
+                    SELECT location_id FROM reservation_items WHERE id = NEW.id
+                );
             END;
 
             CREATE TRIGGER checkout_order_inventory_commit
