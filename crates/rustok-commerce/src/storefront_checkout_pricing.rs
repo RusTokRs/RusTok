@@ -17,23 +17,11 @@ use uuid::Uuid;
 pub(crate) struct StorefrontCheckoutPricingResolver {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
-    request_channel_id: Option<Uuid>,
-    request_channel_slug: Option<String>,
 }
 
 impl StorefrontCheckoutPricingResolver {
-    pub(crate) fn new(
-        db: DatabaseConnection,
-        event_bus: TransactionalEventBus,
-        request_channel_id: Option<Uuid>,
-        request_channel_slug: Option<String>,
-    ) -> Self {
-        Self {
-            db,
-            event_bus,
-            request_channel_id,
-            request_channel_slug: normalize_channel_slug(request_channel_slug.as_deref()),
-        }
+    pub(crate) fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
     }
 }
 
@@ -48,11 +36,7 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
         let pricing_service =
             rustok_pricing::PricingService::new(self.db.clone(), self.event_bus.clone());
         let effective_region_id = cart.region_id.or(request.region_id);
-        let resolved_channel_id = cart.channel_id.or(self.request_channel_id);
         let cart_channel_slug = normalize_channel_slug(cart.channel_slug.as_deref());
-        let resolved_channel_slug = cart_channel_slug
-            .clone()
-            .or_else(|| self.request_channel_slug.clone());
         let currency_code = cart.currency_code.trim().to_ascii_uppercase();
         let mut line_items = Vec::new();
 
@@ -68,8 +52,8 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
                         currency_code: currency_code.clone(),
                         region_id: effective_region_id,
                         price_list_id: None,
-                        channel_id: resolved_channel_id,
-                        channel_slug: resolved_channel_slug.clone(),
+                        channel_id: cart.channel_id,
+                        channel_slug: cart_channel_slug.clone(),
                         quantity: Some(line_item.quantity),
                     },
                 )
