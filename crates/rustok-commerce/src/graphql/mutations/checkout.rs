@@ -145,6 +145,15 @@ impl CommerceCheckoutMutation {
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        let _ = reprice_storefront_cart_line_items(
+            db,
+            tenant_id,
+            request_context,
+            event_bus,
+            cart_storefront_port.as_ref(),
+            cart,
+        )
+        .await?;
         let actor_id = ctx
             .data_opt::<AuthContext>()
             .map(|auth| auth.user_id)

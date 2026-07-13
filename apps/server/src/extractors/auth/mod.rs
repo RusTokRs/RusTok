@@ -2,6 +2,7 @@ use crate::auth::decode_access_token;
 use crate::context::{infer_user_role_from_permissions, TenantContextExt};
 use crate::models::{
     oauth_apps::{self, Entity as OAuthApps},
+    oauth_consents::Entity as OAuthConsents,
     sessions::Entity as Sessions,
     users::{self, Entity as Users},
 };
@@ -14,7 +15,10 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
-use rustok_api::{context::scope_matches, Permission};
+use rustok_api::{
+    context::{restrict_permissions_to_scopes, scope_matches},
+    Permission,
+};
 use rustok_core::{SecurityActorKind, UserRole};
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tracing::warn;
@@ -101,6 +105,36 @@ fn validate_oauth_token_scopes(
     ))
 }
 
+async fn validate_active_user_consent(
+    db: &DatabaseConnection,
+    app: &oauth_apps::Model,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    token_scopes: &[String],
+) -> Result<(), (StatusCode, &'static str)> {
+    if !app.requires_user_consent() {
+        return Ok(());
+    }
+
+    let consent = OAuthConsents::find_active_consent(db, app.id, user_id)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .filter(|consent| consent.tenant_id == tenant_id)
+        .ok_or((StatusCode::UNAUTHORIZED, "OAuth consent revoked or missing"))?;
+    let consent_scopes = consent.scopes_list();
+    if token_scopes
+        .iter()
+        .all(|scope| scope_matches(&consent_scopes, scope))
+    {
+        return Ok(());
+    }
+
+    Err((
+        StatusCode::UNAUTHORIZED,
+        "OAuth consent no longer covers token scopes",
+    ))
+}
+
 async fn resolve_active_oauth_app(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
@@ -153,13 +187,13 @@ async fn resolve_service_token_permissions(
         ));
     }
 
-    let permissions = app.parsed_granted_permissions().map_err(|_| {
+    let granted_permissions = app.parsed_granted_permissions().map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "OAuth app permissions are invalid",
         )
     })?;
-    let inferred_role = infer_user_role_from_permissions(&permissions);
+    let inferred_role = infer_user_role_from_permissions(&granted_permissions);
     if claimed_role != inferred_role {
         RbacService::record_claim_role_mismatch();
         warn!(
@@ -171,7 +205,9 @@ async fn resolve_service_token_permissions(
         );
     }
 
-    Ok((permissions, inferred_role))
+    let effective_permissions =
+        restrict_permissions_to_scopes(&granted_permissions, token_scopes);
+    Ok((effective_permissions, inferred_role))
 }
 
 pub(crate) async fn resolve_current_user<S>(
@@ -236,7 +272,7 @@ pub async fn resolve_current_user_from_access_token(
             StatusCode::UNAUTHORIZED,
             "OAuth user token is missing client_id",
         ))?;
-        resolve_active_oauth_app(
+        let app = resolve_active_oauth_app(
             db,
             tenant_id,
             client_id,
@@ -244,6 +280,7 @@ pub async fn resolve_current_user_from_access_token(
             &claims.scopes,
         )
         .await?;
+        validate_active_user_consent(db, &app, tenant_id, claims.sub, &claims.scopes).await?;
     }
 
     let (user, permissions, inferred_role, session_id, actor_kind) = match subject_kind {
@@ -262,11 +299,15 @@ pub async fn resolve_current_user_from_access_token(
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
 
-            let permissions = RbacService::get_user_permissions(db, &tenant_id, &user.id)
-                .await
-                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+            let granted_permissions = RbacService::get_user_permissions_authoritative(
+                db,
+                &tenant_id,
+                &user.id,
+            )
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-            let inferred_role = infer_user_role_from_permissions(&permissions);
+            let inferred_role = infer_user_role_from_permissions(&granted_permissions);
             if claims.role != inferred_role {
                 RbacService::record_claim_role_mismatch();
                 warn!(
@@ -278,9 +319,15 @@ pub async fn resolve_current_user_from_access_token(
                 );
             }
 
+            let effective_permissions = if claims.client_id.is_some() {
+                restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)
+            } else {
+                granted_permissions
+            };
+
             (
                 user,
-                permissions,
+                effective_permissions,
                 inferred_role,
                 claims.session_id,
                 SecurityActorKind::User,

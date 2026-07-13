@@ -182,7 +182,7 @@ fn service_current_user_builds_service_security_context() {
 }
 
 #[tokio::test]
-async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
+async fn oauth_service_token_intersects_app_permissions_with_scopes() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
     let tenant = tenants::ActiveModel::new(
@@ -192,7 +192,7 @@ async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
     .insert(&db)
     .await
     .expect("create tenant");
-    let created = insert_oauth_app(
+    let app = insert_oauth_app(
         &db,
         tenant.id,
         "service",
@@ -201,26 +201,56 @@ async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
     )
     .await;
 
-    let expected_permissions = vec![
-        Permission::from_str("forum_topics:list").expect("forum permission"),
-        Permission::from_str("modules:list").expect("modules permission"),
-    ];
     let (permissions, inferred_role) = resolve_service_token_permissions(
         &db,
         tenant.id,
-        created.id,
-        created.client_id,
-        rustok_core::UserRole::Customer,
+        app.id,
+        app.client_id,
+        UserRole::Customer,
+        &["forum:*".to_string()],
+    )
+    .await
+    .expect("resolve service token permissions");
+
+    assert_eq!(
+        permissions,
+        vec![Permission::from_str("forum_topics:list").expect("forum permission")]
+    );
+    assert_eq!(inferred_role, UserRole::Customer);
+}
+
+#[tokio::test]
+async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let tenant = tenants::ActiveModel::new(
+        "Empty OAuth scope tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let app = insert_oauth_app(
+        &db,
+        tenant.id,
+        "service",
+        &["client_credentials"],
+        true,
+    )
+    .await;
+
+    let (permissions, _) = resolve_service_token_permissions(
+        &db,
+        tenant.id,
+        app.id,
+        app.client_id,
+        UserRole::Customer,
         &[],
     )
     .await
     .expect("resolve service token permissions");
 
-    assert_eq!(permissions, expected_permissions);
-    assert_eq!(
-        inferred_role,
-        crate::context::infer_user_role_from_permissions(&permissions)
-    );
+    assert!(permissions.is_empty());
 }
 
 #[tokio::test]
@@ -249,7 +279,7 @@ async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
         Uuid::new_v4(),
         app.client_id,
         UserRole::Customer,
-        &[],
+        &["forum:*".to_string()],
     )
     .await
     .expect_err("service token subject must equal app id");
@@ -403,9 +433,8 @@ async fn access_token_resolver_returns_forbidden_for_inactive_user() {
     .expect("create tenant");
     let (user, session_id) =
         insert_user_with_session(&db, tenant.id, UserStatus::Inactive).await;
-    let auth_config = test_auth_config();
     let token = encode_access_token(
-        &auth_config,
+        &test_auth_config(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -435,9 +464,8 @@ async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_fai
     .await
     .expect("create tenant");
     let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
-    let auth_config = test_auth_config();
     let token = encode_access_token(
-        &auth_config,
+        &test_auth_config(),
         user.id,
         tenant.id,
         UserRole::Customer,

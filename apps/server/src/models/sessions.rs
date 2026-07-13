@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use sea_orm::prelude::*;
+use sea_orm::{
+    prelude::*, sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter,
+};
 
 use rustok_core::generate_id;
 
@@ -38,15 +40,42 @@ impl ActiveModel {
 }
 
 impl Entity {
+    /// Atomically reserve an active session refresh token for rotation.
+    ///
+    /// The persisted row is marked revoked before it is returned, so only one
+    /// concurrent caller can consume a refresh token. The returned in-memory
+    /// lease clears `revoked_at`; the lifecycle service then replaces the hash
+    /// and writes the row back as the next active rotation. If processing fails
+    /// after reservation, the old token remains revoked (fail closed).
     pub async fn find_by_token_hash(
         db: &DatabaseConnection,
         tenant_id: Uuid,
         token_hash: &str,
     ) -> Result<Option<Model>, DbErr> {
-        Self::find()
+        let now = Utc::now();
+        let reserved = Self::update_many()
+            .col_expr(sessions::Column::RevokedAt, Expr::value(now))
+            .col_expr(sessions::Column::LastUsedAt, Expr::value(now))
+            .col_expr(sessions::Column::UpdatedAt, Expr::value(now))
+            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::TokenHash.eq(token_hash))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .filter(sessions::Column::ExpiresAt.gt(now))
+            .exec(db)
+            .await?;
+
+        if reserved.rows_affected != 1 {
+            return Ok(None);
+        }
+
+        let mut session = Self::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::TokenHash.eq(token_hash))
             .one(db)
-            .await
+            .await?;
+        if let Some(session) = session.as_mut() {
+            session.revoked_at = None;
+        }
+        Ok(session)
     }
 }

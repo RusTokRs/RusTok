@@ -3,10 +3,9 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::context::{AuthContext, TenantContext};
-use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::{SettingsService, ValidatorRegistry};
-use rustok_api::graphql::GraphQLError;
+use rustok_api::{graphql::GraphQLError, has_effective_permission, Permission};
 
 use super::types::{UpdatePlatformSettingsInput, UpdatePlatformSettingsPayload};
 
@@ -16,7 +15,7 @@ pub struct SettingsMutation;
 #[Object]
 impl SettingsMutation {
     /// Update platform settings for a single category.
-    /// Requires `settings:manage` permission.
+    /// Requires `settings:manage` permission from the authenticated snapshot.
     async fn update_platform_settings(
         &self,
         ctx: &Context<'_>,
@@ -28,16 +27,7 @@ impl SettingsMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let can_manage = RbacService::has_permission(
-            runtime_ctx.db(),
-            &tenant.id,
-            &auth.user_id,
-            &rustok_api::Permission::SETTINGS_MANAGE,
-        )
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
-
-        if !can_manage {
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE) {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "settings:manage required",
             ));
@@ -67,7 +57,6 @@ impl SettingsMutation {
             other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
         })?;
 
-        // Emit audit event through outbox (best-effort: don't fail the mutation on event error)
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         if let Err(e) = event_bus
             .publish(

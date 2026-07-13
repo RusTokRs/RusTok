@@ -155,6 +155,16 @@ pub async fn complete_cart_checkout(
     super::ensure_store_cart_access(&cart, customer_id)?;
     let actor_id = super::checkout_actor_id(auth.0.as_ref());
 
+    let _ = super::reprice_storefront_cart_line_items_for_db(
+        runtime.db(),
+        runtime.event_bus(),
+        tenant.id,
+        &request_context,
+        cart_storefront_port.as_ref(),
+        cart,
+    )
+    .await?;
+
     let checkout_input = CompleteCheckoutInput {
         cart_id,
         shipping_option_id: input.shipping_option_id,
@@ -216,7 +226,31 @@ pub async fn complete_cart_checkout(
     let service = crate::JournaledCheckoutService::new(checkout, runtime.db_clone())
         .with_atomic_cart_checkout_handle(atomic_cart.handle);
     let response = service
-        .complete_checkout(tenant.id, actor_id, idempotency_key, checkout_input)
+        .complete_checkout(
+            tenant.id,
+            actor_id,
+            idempotency_key,
+            CompleteCheckoutInput {
+                cart_id,
+                shipping_option_id: input.shipping_option_id,
+                shipping_selections: input.shipping_selections.map(|items| {
+                    items
+                        .into_iter()
+                        .map(|item| crate::dto::CartShippingSelectionInput {
+                            shipping_profile_slug: item.shipping_profile_slug,
+                            seller_id: item.seller_id,
+                            seller_scope: None,
+                            selected_shipping_option_id: item.selected_shipping_option_id,
+                        })
+                        .collect()
+                }),
+                region_id: input.region_id,
+                country_code: input.country_code,
+                locale: input.locale,
+                create_fulfillment: input.create_fulfillment,
+                metadata: input.metadata,
+            },
+        )
         .await
         .map_err(journaled_checkout_http_error)?;
 

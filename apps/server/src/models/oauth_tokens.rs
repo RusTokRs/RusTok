@@ -1,25 +1,52 @@
 //! Business logic wrapper for OAuth tokens
 
-use sea_orm::{entity::prelude::*, Condition, QueryFilter};
+use sea_orm::{
+    entity::prelude::*, sea_query::Expr, ColumnTrait, Condition, EntityTrait, QueryFilter,
+};
 use uuid::Uuid;
 
 pub use super::_entities::oauth_tokens::{ActiveModel, Column, Entity, Model, Relation};
 
 impl Entity {
+    /// Atomically reserve an active token for one-shot refresh or revocation.
+    ///
+    /// A conditional UPDATE guarantees that concurrent refresh attempts cannot
+    /// both observe the same token as active and mint multiple replacement
+    /// token families. The returned model is an in-memory lease; the database
+    /// row remains revoked before the caller issues a replacement.
     pub async fn find_active_by_hash(
         db: &DatabaseConnection,
         token_hash: &str,
         app_id: Uuid,
     ) -> Result<Option<Model>, DbErr> {
-        Entity::find()
+        let now = chrono::Utc::now();
+        let reserved = Entity::update_many()
+            .col_expr(Column::RevokedAt, Expr::value(now))
+            .col_expr(Column::LastUsedAt, Expr::value(now))
+            .col_expr(Column::UpdatedAt, Expr::value(now))
             .filter(
                 Condition::all()
                     .add(Column::TokenHash.eq(token_hash))
                     .add(Column::AppId.eq(app_id))
-                    .add(Column::RevokedAt.is_null()),
+                    .add(Column::RevokedAt.is_null())
+                    .add(Column::ExpiresAt.gt(now)),
             )
+            .exec(db)
+            .await?;
+
+        if reserved.rows_affected != 1 {
+            return Ok(None);
+        }
+
+        let mut token = Entity::find()
+            .filter(Column::TokenHash.eq(token_hash))
+            .filter(Column::AppId.eq(app_id))
             .one(db)
-            .await
+            .await?;
+        if let Some(token) = token.as_mut() {
+            token.revoked_at = None;
+        }
+        Ok(token)
     }
 
     pub async fn find_active_by_app(
@@ -32,7 +59,8 @@ impl Entity {
                 Condition::all()
                     .add(Column::AppId.eq(app_id))
                     .add(Column::TenantId.eq(tenant_id))
-                    .add(Column::RevokedAt.is_null()),
+                    .add(Column::RevokedAt.is_null())
+                    .add(Column::ExpiresAt.gt(chrono::Utc::now())),
             )
             .all(db)
             .await
@@ -43,7 +71,8 @@ impl Entity {
             .filter(
                 Condition::all()
                     .add(Column::AppId.eq(app_id))
-                    .add(Column::RevokedAt.is_null()),
+                    .add(Column::RevokedAt.is_null())
+                    .add(Column::ExpiresAt.gt(chrono::Utc::now())),
             )
             .count(db)
             .await
@@ -52,7 +81,7 @@ impl Entity {
 
 impl Model {
     pub fn is_active(&self) -> bool {
-        self.revoked_at.is_none()
+        self.revoked_at.is_none() && self.expires_at.with_timezone(&chrono::Utc) > chrono::Utc::now()
     }
 
     pub fn scopes_list(&self) -> Vec<String> {

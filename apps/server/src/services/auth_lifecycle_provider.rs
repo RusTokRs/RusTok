@@ -207,14 +207,15 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             .await
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
 
-        if user.is_none() {
+        let Some(user) = user else {
             return Ok(());
-        }
+        };
 
         let reset_token = encode_password_reset_token(
             &self.auth_config,
             context.tenant_id,
-            &email,
+            &user.email,
+            &user.password_hash,
             DEFAULT_RESET_TOKEN_TTL_SECS,
         )
         .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
@@ -222,11 +223,12 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
         let reset_url = password_reset_url(&self.runtime_ctx, &reset_token)
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+        let recipient = user.email;
 
         tokio::spawn(async move {
             if let Err(error) = email_service
                 .send_password_reset(PasswordResetEmail {
-                    to: email,
+                    to: recipient,
                     reset_url,
                 })
                 .await
@@ -287,7 +289,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         token: String,
         new_password: String,
     ) -> Result<(), AuthLifecycleMutationError> {
-        AuthLifecycleService::confirm_password_reset_runtime(
+        AuthLifecycleService::confirm_bound_password_reset_runtime(
             &self.runtime_ctx,
             &self.auth_config,
             context.tenant_id,

@@ -1,4 +1,6 @@
-use sea_orm::prelude::*;
+use sea_orm::{
+    prelude::*, sea_query::Expr, ColumnTrait, EntityTrait, QueryFilter,
+};
 
 use super::_entities::oauth_authorization_codes::{self};
 pub use super::_entities::oauth_authorization_codes::{ActiveModel, Column, Entity, Model};
@@ -24,13 +26,39 @@ impl Model {
 }
 
 impl Entity {
+    /// Atomically reserve an unused, unexpired authorization code for exchange.
+    ///
+    /// Only one concurrent caller can move `used_at` from NULL. The returned
+    /// model is a one-shot exchange lease: `used_at` is cleared in-memory so the
+    /// existing validation path can continue, while the persisted row remains
+    /// consumed and all competing exchanges fail closed.
     pub async fn find_by_hash(
         db: &DatabaseConnection,
         code_hash: &str,
     ) -> Result<Option<Model>, DbErr> {
-        Self::find()
+        let now = chrono::Utc::now();
+        let reserved = Self::update_many()
+            .col_expr(
+                oauth_authorization_codes::Column::UsedAt,
+                Expr::value(now),
+            )
+            .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
+            .filter(oauth_authorization_codes::Column::UsedAt.is_null())
+            .filter(oauth_authorization_codes::Column::ExpiresAt.gt(now))
+            .exec(db)
+            .await?;
+
+        if reserved.rows_affected != 1 {
+            return Ok(None);
+        }
+
+        let mut code = Self::find()
             .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
             .one(db)
-            .await
+            .await?;
+        if let Some(code) = code.as_mut() {
+            code.used_at = None;
+        }
+        Ok(code)
     }
 }

@@ -259,24 +259,24 @@ async fn request_reset(
         .cloned()
         .ok_or(Error::InternalServerError)?;
 
-    let user_exists = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &params.email)
-        .await?
-        .is_some();
+    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &params.email).await?;
 
     let expose_token = std::env::var("RUSTOK_DEMO_MODE")
         .map(|value| value == "1")
         .unwrap_or(false);
 
-    let reset_token = if user_exists {
-        Some(encode_password_reset_token(
-            &config,
-            tenant.id,
-            &params.email,
-            DEFAULT_RESET_TOKEN_TTL_SECS,
-        )?)
-    } else {
-        None
-    };
+    let reset_token = user
+        .as_ref()
+        .map(|record| {
+            encode_password_reset_token(
+                &config,
+                tenant.id,
+                &record.email,
+                &record.password_hash,
+                DEFAULT_RESET_TOKEN_TTL_SECS,
+            )
+        })
+        .transpose()?;
 
     if let Some(reset_token_value) = reset_token.as_ref() {
         let runtime_ctx = ctx.runtime_ctx();
@@ -284,7 +284,10 @@ async fn request_reset(
             .map_err(|_| Error::InternalServerError)?;
         let reset_url = password_reset_url(runtime_ctx, reset_token_value)
             .map_err(|_| Error::InternalServerError)?;
-        let recipient = params.email.clone();
+        let recipient = user
+            .as_ref()
+            .map(|record| record.email.clone())
+            .unwrap_or_else(|| params.email.clone());
 
         tokio::spawn(async move {
             if let Err(error) = email_service
@@ -317,7 +320,7 @@ async fn confirm_reset(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    AuthLifecycleService::confirm_password_reset_runtime(
+    AuthLifecycleService::confirm_bound_password_reset_runtime(
         runtime_ctx,
         &config,
         tenant.id,
@@ -356,6 +359,7 @@ async fn request_verification(
                 encode_email_verification_token(
                     &config,
                     tenant.id,
+                    record.id,
                     &record.email,
                     DEFAULT_VERIFY_TOKEN_TTL_SECS,
                 )
@@ -412,8 +416,11 @@ async fn confirm_verification(
         return Err(Error::Unauthorized("Invalid verification token".into()));
     }
 
-    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &claims.sub)
+    let user = Users::find_by_id(claims.user_id)
+        .filter(users::Column::TenantId.eq(tenant.id))
+        .one(ctx.runtime_ctx().db())
         .await?
+        .filter(|record| record.email.eq_ignore_ascii_case(&claims.sub))
         .ok_or_else(|| Error::Unauthorized("Invalid verification token".into()))?;
 
     if user.email_verified_at.is_none() {

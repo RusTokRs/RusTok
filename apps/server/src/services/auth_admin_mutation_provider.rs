@@ -1,309 +1,26 @@
 use async_trait::async_trait;
-use rustok_api::Permission;
+use rustok_api::{has_effective_permission, Permission};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
-    CreateOAuthAppCommand, CreateUserCommand, OAuthAdminPort, OAuthAppMutationRecord,
-    OAuthAppSecretResult, UpdateOAuthAppCommand, UpdateUserCommand, UserAdminMutationPort,
-    UserMutationRecord,
+    CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
+    UpdateOAuthAppCommand, UserMutationRecord,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::auth::hash_password;
 use crate::models::{oauth_apps, oauth_consents, oauth_tokens, tenants, users};
-use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
-use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::oauth_app::{self, OAuthAppService};
 use crate::services::rbac_service::RbacService;
+
+mod super_admin_guard;
+mod user_admin;
 
 #[derive(Clone)]
 pub struct ServerAuthAdminMutationProvider {
     db: DatabaseConnection,
-}
-
-fn parse_user_status(value: &str) -> Result<rustok_core::UserStatus, AuthAdminMutationError> {
-    let normalized = value.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "active" => Ok(rustok_core::UserStatus::Active),
-        "inactive" => Ok(rustok_core::UserStatus::Inactive),
-        "banned" => Ok(rustok_core::UserStatus::Banned),
-        _ => Err(AuthAdminMutationError::Validation(format!(
-            "unsupported user status: {value}"
-        ))),
-    }
-}
-
-fn parse_user_role(value: &str) -> Result<rustok_core::UserRole, AuthAdminMutationError> {
-    rustok_core::UserRole::from_str(&value.trim().to_ascii_lowercase())
-        .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))
-}
-
-fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
-    match error {
-        AuthLifecycleError::EmailAlreadyExists => {
-            AuthAdminMutationError::Conflict("user email already exists".to_string())
-        }
-        other => AuthAdminMutationError::Internal(crate::error::Error::from(other).to_string()),
-    }
-}
-
-fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> AuthAdminMutationError {
-    match error {
-        rustok_core::field_schema::FlexError::ValidationFailed(errors) => {
-            AuthAdminMutationError::CustomFieldsValidation(
-                serde_json::to_value(errors).unwrap_or_else(|_| serde_json::json!([])),
-            )
-        }
-        other => AuthAdminMutationError::Internal(other.to_string()),
-    }
-}
-
-#[async_trait]
-impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
-    async fn create_user(
-        &self,
-        context: &AuthAdminMutationContext,
-        command: CreateUserCommand,
-    ) -> Result<UserMutationRecord, AuthAdminMutationError> {
-        self.authorize_user(
-            context,
-            &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
-            "users:create or users:manage required",
-        )
-        .await?;
-        let role = parse_user_role(command.role.as_deref().unwrap_or("customer"))?;
-        let status = command
-            .status
-            .as_deref()
-            .map(parse_user_status)
-            .transpose()?;
-        let locale = context
-            .locale
-            .as_deref()
-            .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
-        let prepared = FlexAttachedValuesService::prepare_create(
-            &self.db,
-            context.tenant_id,
-            "user",
-            locale,
-            command.custom_fields,
-        )
-        .await
-        .map_err(map_custom_field_error)?;
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        let mut user = AuthLifecycleService::create_user_in_tx(
-            &tx,
-            context.tenant_id,
-            &command.email,
-            &command.password,
-            command.name,
-            role,
-            status,
-        )
-        .await
-        .map_err(map_lifecycle_error)?;
-
-        if let Some(metadata) = prepared.metadata {
-            let mut active: users::ActiveModel = user.into();
-            active.metadata = Set(metadata);
-            user = active
-                .update(&tx)
-                .await
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        }
-        if let (Some(locale), Some(values)) = (
-            prepared.locale.as_deref(),
-            prepared.localized_values.as_ref(),
-        ) {
-            FlexAttachedValuesService::persist_localized_values(
-                &tx,
-                context.tenant_id,
-                "user",
-                user.id,
-                locale,
-                values,
-            )
-            .await
-            .map_err(map_custom_field_error)?;
-        }
-        tx.commit()
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        self.user_record(user).await
-    }
-
-    async fn update_user(
-        &self,
-        context: &AuthAdminMutationContext,
-        command: UpdateUserCommand,
-    ) -> Result<UserMutationRecord, AuthAdminMutationError> {
-        self.authorize_user(
-            context,
-            &[Permission::USERS_UPDATE, Permission::USERS_MANAGE],
-            "users:update or users:manage required",
-        )
-        .await?;
-        let user = users::Entity::find_by_id(command.id)
-            .filter(users::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
-
-        if let Some(email) = command.email.as_deref() {
-            let existing = users::Entity::find_by_email(&self.db, context.tenant_id, email)
-                .await
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-            if existing
-                .as_ref()
-                .is_some_and(|existing| existing.id != user.id)
-            {
-                return Err(AuthAdminMutationError::Conflict(
-                    "user email already exists".to_string(),
-                ));
-            }
-        }
-
-        let locale = context
-            .locale
-            .as_deref()
-            .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
-        let prepared = FlexAttachedValuesService::prepare_update(
-            &self.db,
-            context.tenant_id,
-            "user",
-            user.id,
-            locale,
-            &user.metadata,
-            command.custom_fields,
-        )
-        .await
-        .map_err(map_custom_field_error)?;
-        let user_id = user.id;
-        let mut active: users::ActiveModel = user.into();
-        if let Some(email) = command.email {
-            active.email = Set(email.to_lowercase());
-        }
-        if let Some(name) = command.name {
-            active.name = Set(Some(name));
-        }
-        if let Some(status) = command.status.as_deref() {
-            active.status = Set(parse_user_status(status)?);
-        }
-        if let Some(password) = command.password {
-            active.password_hash = Set(hash_password(&password)
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?);
-        }
-        if let Some(metadata) = prepared.metadata {
-            active.metadata = Set(metadata);
-        }
-        let requested_role = command.role.as_deref().map(parse_user_role).transpose()?;
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        let user = active
-            .update(&tx)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        if let Some(role) = requested_role {
-            RbacService::replace_user_role(&tx, &user.id, &context.tenant_id, role)
-                .await
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        }
-        if let (Some(locale), Some(values)) = (
-            prepared.locale.as_deref(),
-            prepared.localized_values.as_ref(),
-        ) {
-            FlexAttachedValuesService::persist_localized_values(
-                &tx,
-                context.tenant_id,
-                "user",
-                user_id,
-                locale,
-                values,
-            )
-            .await
-            .map_err(map_custom_field_error)?;
-        }
-        tx.commit()
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        self.user_record(user).await
-    }
-
-    async fn delete_user(
-        &self,
-        context: &AuthAdminMutationContext,
-        user_id: Uuid,
-    ) -> Result<(), AuthAdminMutationError> {
-        self.authorize_user(
-            context,
-            &[Permission::USERS_MANAGE],
-            "users:manage required",
-        )
-        .await?;
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        let user = users::Entity::find_by_id(user_id)
-            .filter(users::Column::TenantId.eq(context.tenant_id))
-            .one(&tx)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
-        FlexAttachedValuesService::delete_localized_values(&tx, context.tenant_id, "user", user_id)
-            .await
-            .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
-        let active: users::ActiveModel = user.into();
-        active
-            .delete(&tx)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        tx.commit()
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_user_role, parse_user_status};
-
-    #[test]
-    fn parses_admin_user_enums_case_insensitively() {
-        assert_eq!(
-            parse_user_role("MANAGER").expect("uppercase role"),
-            rustok_core::UserRole::Manager
-        );
-        assert_eq!(
-            parse_user_status("ACTIVE").expect("uppercase status"),
-            rustok_core::UserStatus::Active
-        );
-    }
-
-    #[test]
-    fn trims_admin_user_enums_at_server_boundary() {
-        assert_eq!(
-            parse_user_role(" admin ").expect("trimmed role"),
-            rustok_core::UserRole::Admin
-        );
-        assert_eq!(
-            parse_user_status(" banned ").expect("trimmed status"),
-            rustok_core::UserStatus::Banned
-        );
-    }
 }
 
 impl ServerAuthAdminMutationProvider {
@@ -360,11 +77,11 @@ impl ServerAuthAdminMutationProvider {
         &self,
         context: &AuthAdminMutationContext,
     ) -> Result<(), AuthAdminMutationError> {
-        let allowed = RbacService::has_any_permission(
+        let allowed = RbacService::has_permission(
             &self.db,
             &context.tenant_id,
             &context.actor_id,
-            &[Permission::SETTINGS_MANAGE, Permission::USERS_MANAGE],
+            &Permission::SETTINGS_MANAGE,
         )
         .await
         .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
@@ -373,9 +90,38 @@ impl ServerAuthAdminMutationProvider {
             Ok(())
         } else {
             Err(AuthAdminMutationError::Forbidden(
-                "settings:manage or users:manage required".to_string(),
+                "settings:manage required for OAuth application administration".to_string(),
             ))
         }
+    }
+
+    async fn authorize_delegated_permissions(
+        &self,
+        context: &AuthAdminMutationContext,
+        requested_permissions: &[String],
+    ) -> Result<(), AuthAdminMutationError> {
+        let actor_permissions = RbacService::get_user_permissions(
+            &self.db,
+            &context.tenant_id,
+            &context.actor_id,
+        )
+        .await
+        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+
+        for value in requested_permissions {
+            let permission = Permission::from_str(value).map_err(|error| {
+                AuthAdminMutationError::Validation(format!(
+                    "invalid delegated permission `{value}`: {error}"
+                ))
+            })?;
+            if !has_effective_permission(&actor_permissions, &permission) {
+                return Err(AuthAdminMutationError::Forbidden(format!(
+                    "cannot delegate permission not held by the actor: {permission}"
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     async fn record(
@@ -510,6 +256,8 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         command: CreateOAuthAppCommand,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
         self.authorize(context).await?;
+        self.authorize_delegated_permissions(context, &command.granted_permissions)
+            .await?;
         let result = OAuthAppService::create_app(
             &self.db,
             context.tenant_id,
@@ -540,6 +288,8 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         command: UpdateOAuthAppCommand,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
         self.authorize(context).await?;
+        self.authorize_delegated_permissions(context, &command.granted_permissions)
+            .await?;
         let app = OAuthAppService::update_app(
             &self.db,
             context.tenant_id,

@@ -1,10 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result};
 
 use crate::context::{AuthContext, TenantContext};
-use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::SettingsService;
-use rustok_api::graphql::GraphQLError;
+use rustok_api::{graphql::GraphQLError, has_effective_permission, Permission};
 
 use super::types::PlatformSettingsPayload;
 
@@ -14,7 +13,7 @@ pub struct SettingsQuery;
 #[Object]
 impl SettingsQuery {
     /// Retrieve settings for a single category.
-    /// Requires `settings:read` permission.
+    /// Requires `settings:read` permission from the authenticated snapshot.
     async fn platform_settings(
         &self,
         ctx: &Context<'_>,
@@ -26,16 +25,7 @@ impl SettingsQuery {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let can_read = RbacService::has_permission(
-            runtime_ctx.db(),
-            &tenant.id,
-            &auth.user_id,
-            &rustok_api::Permission::SETTINGS_READ,
-        )
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
-
-        if !can_read {
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "settings:read required",
             ));
@@ -52,7 +42,7 @@ impl SettingsQuery {
     }
 
     /// Retrieve all platform setting categories for the current tenant.
-    /// Requires `settings:read` permission.
+    /// Requires `settings:read` permission from the authenticated snapshot.
     async fn all_platform_settings(
         &self,
         ctx: &Context<'_>,
@@ -63,16 +53,7 @@ impl SettingsQuery {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let can_read = RbacService::has_permission(
-            runtime_ctx.db(),
-            &tenant.id,
-            &auth.user_id,
-            &rustok_api::Permission::SETTINGS_READ,
-        )
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
-
-        if !can_read {
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "settings:read required",
             ));

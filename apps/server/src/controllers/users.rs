@@ -4,6 +4,7 @@ use axum::{
     extract::{Path, Query},
     routing::get,
 };
+use rustok_api::{has_effective_permission, Permission};
 use rustok_auth::{UserItem, UsersListParams, UsersResponse};
 use rustok_web::json_response;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
@@ -11,7 +12,6 @@ use uuid::Uuid;
 
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::users::{self, Column as UserColumn};
-use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 fn map_user(m: users::Model) -> UserItem {
@@ -37,25 +37,7 @@ async fn list_users(
     current: CurrentUser,
     Query(params): Query<UsersListParams>,
 ) -> Result<Response> {
-    let can_list = RbacService::has_permission(
-        ctx.db(),
-        &tenant.id,
-        &current.user.id,
-        &rustok_api::Permission::USERS_LIST,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(
-            tenant_id = %tenant.id,
-            user_id = %current.user.id,
-            permission = %rustok_api::Permission::USERS_LIST,
-            %error,
-            "Failed to evaluate RBAC permission for list_users"
-        );
-        Error::InternalServerError
-    })?;
-
-    if !can_list {
+    if !has_effective_permission(&current.permissions, &Permission::USERS_LIST) {
         return Err(forbidden_error("Permission denied: users:list required"));
     }
 
@@ -76,7 +58,6 @@ async fn list_users(
     }
 
     if let Some(status) = &params.status {
-        // Filter by status string value (e.g. "active", "inactive", "banned")
         query = query.filter(UserColumn::Status.eq(status.as_str()));
     }
 
@@ -106,25 +87,7 @@ async fn get_user(
     current: CurrentUser,
     Path(user_id): Path<Uuid>,
 ) -> Result<Response> {
-    let can_read = RbacService::has_permission(
-        ctx.db(),
-        &tenant.id,
-        &current.user.id,
-        &rustok_api::Permission::USERS_READ,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(
-            tenant_id = %tenant.id,
-            user_id = %current.user.id,
-            permission = %rustok_api::Permission::USERS_READ,
-            %error,
-            "Failed to evaluate RBAC permission for get_user"
-        );
-        Error::InternalServerError
-    })?;
-
-    if !can_read {
+    if !has_effective_permission(&current.permissions, &Permission::USERS_READ) {
         return Err(forbidden_error("Permission denied: users:read required"));
     }
 
