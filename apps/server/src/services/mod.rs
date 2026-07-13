@@ -21,6 +21,7 @@ pub mod mcp_runtime;
 pub mod module_event_dispatcher;
 pub mod module_lifecycle;
 pub mod oauth_app;
+pub mod oauth_token_service;
 pub mod platform_composition;
 
 pub mod event_transport_factory;
