@@ -76,9 +76,10 @@ fn weighted_factories_apply_generation_before_instrumentation() {
 }
 
 #[test]
-fn tenant_generation_matches_both_physical_backend_prefixes() {
+fn tenant_generation_matches_and_aliases_both_physical_backend_prefixes() {
     let tenant = source("apps/server/src/middleware/tenant.rs");
     let generation = source("apps/server/src/services/tenant_cache_generation.rs");
+    let backend_generation = source("crates/rustok-cache/src/backend_generation.rs");
 
     assert!(tenant.contains("tenant-cache:{}:data"));
     assert!(tenant.contains("tenant-cache:{}:negative"));
@@ -88,7 +89,10 @@ fn tenant_generation_matches_both_physical_backend_prefixes() {
     assert!(generation.contains(
         "TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = \"tenant-cache:v2:negative\""
     ));
-    assert!(generation.contains("observe_tenant_backend_generation(generation.generation)?"));
+    assert!(generation.contains("bind_cache_backend_generation_aliases("));
+    assert!(generation.contains("bind_tenant_backend_generations()?"));
+    assert!(backend_generation.contains("pub fn bind_cache_backend_generation_aliases"));
+    assert!(backend_generation.contains("AliasAlreadyBound"));
 }
 
 #[test]
@@ -98,7 +102,9 @@ fn outbox_keeps_transactional_transport_and_rotates_relay_target() {
     assert!(factory.contains(
         "TenantCacheGenerationTransport::new(relay_target, cache.clone())"
     ));
-    assert!(factory.contains("start_tenant_cache_generation_listener(ctx, cache.clone()).await"));
+    assert!(factory.contains(
+        "start_tenant_cache_generation_listener(ctx, cache.clone()).await?"
+    ));
 }
 
 #[test]
