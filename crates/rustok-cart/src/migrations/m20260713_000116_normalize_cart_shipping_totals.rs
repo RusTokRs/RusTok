@@ -82,10 +82,25 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 expected_shipping NUMERIC;
                 adjusted_total NUMERIC;
             BEGIN
-                SELECT expected_shipping_total
-                INTO expected_shipping
-                FROM cart_expected_shipping_totals
-                WHERE cart_id = NEW.id;
+                IF EXISTS (
+                    SELECT 1
+                    FROM cart_shipping_selections css
+                    WHERE css.cart_id = NEW.id
+                ) THEN
+                    SELECT COALESCE(SUM(so.amount), 0)
+                    INTO expected_shipping
+                    FROM cart_shipping_selections css
+                    JOIN shipping_options so ON so.id = css.selected_shipping_option_id
+                    WHERE css.cart_id = NEW.id
+                      AND css.selected_shipping_option_id IS NOT NULL;
+                ELSE
+                    SELECT COALESCE((
+                        SELECT so.amount
+                        FROM shipping_options so
+                        WHERE so.id = NEW.selected_shipping_option_id
+                    ), 0)
+                    INTO expected_shipping;
+                END IF;
 
                 expected_shipping := COALESCE(expected_shipping, 0);
                 adjusted_total := NEW.total_amount + expected_shipping - NEW.shipping_total;
