@@ -24,6 +24,8 @@ const paths = {
   dto: "crates/rustok-forum/src/dto/read_model.rs",
   service: "crates/rustok-forum/src/services/read_model.rs",
   compatibility: "crates/rustok-forum/src/services/bounded_compat.rs",
+  categoryOwner: "crates/rustok-forum/src/services/category_owner.rs",
+  servicesRegistry: "crates/rustok-forum/src/services/mod.rs",
   topicDto: "crates/rustok-forum/src/dto/topic.rs",
   replyDto: "crates/rustok-forum/src/dto/reply.rs",
   sqliteTest: "crates/rustok-forum/tests/read_model_cursor_sqlite.rs",
@@ -47,6 +49,8 @@ function verifyStatic() {
   const dto = text(paths.dto);
   const service = text(paths.service);
   const compatibility = text(paths.compatibility);
+  const categoryOwner = text(paths.categoryOwner);
+  const servicesRegistry = text(paths.servicesRegistry);
   const topicDto = text(paths.topicDto);
   const replyDto = text(paths.replyDto);
   const migration = text(paths.migration);
@@ -96,8 +100,27 @@ function verifyStatic() {
   }
 
   if (!compatibility.includes("bounded_forum_read_limit")) {
-    fail(`${paths.compatibility}: public compatibility APIs are not capped`);
+    fail(`${paths.compatibility}: topic/reply compatibility APIs are not capped`);
   }
+  for (const token of [
+    "MAX_FORUM_READ_LIMIT",
+    "bounded_forum_read_limit(Some(per_page))",
+    "list_paginated_with_locale_fallback",
+  ]) {
+    if (!categoryOwner.includes(token)) {
+      fail(`${paths.categoryOwner}: missing bounded category token ${token}`);
+    }
+  }
+  if (!servicesRegistry.includes("mod category;")) {
+    fail(`${paths.servicesRegistry}: raw category persistence module must stay private`);
+  }
+  if (!servicesRegistry.includes("pub use category_owner::CategoryService;")) {
+    fail(`${paths.servicesRegistry}: bounded category owner is not the public export`);
+  }
+  if (servicesRegistry.includes("pub mod category;")) {
+    fail(`${paths.servicesRegistry}: raw category persistence module is publicly reachable`);
+  }
+
   for (const [path, source] of [
     [paths.topicDto, topicDto],
     [paths.replyDto, replyDto],

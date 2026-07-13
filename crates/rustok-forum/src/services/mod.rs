@@ -1,5 +1,6 @@
 mod bounded_compat;
-pub mod category;
+mod category;
+mod category_owner;
 pub mod event;
 pub mod moderation;
 mod rbac;
@@ -16,7 +17,7 @@ pub mod user_stats;
 pub mod vote;
 pub mod widget_contract;
 
-pub use category::CategoryService;
+pub use category_owner::CategoryService;
 pub use event::ForumEventService;
 pub use moderation::ModerationService;
 pub use read_model::ForumReadModelService;
