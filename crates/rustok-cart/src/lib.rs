@@ -17,6 +17,7 @@ pub use dto::*;
 pub use entities::*;
 pub use error::{CartError, CartResult};
 pub use ports::*;
+pub use services::cart::{CartLineItemPricingUpdate, CartPricingAdjustmentUpdate};
 pub use services::CartService;
 
 pub struct CartModule;
