@@ -33,6 +33,15 @@ impl ViewportPreset {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ResponsiveBreakpoint {
+    pub id: String,
+    pub label: String,
+    pub device_class: DeviceClass,
+    pub media_query: String,
+    pub preview_preset_id: String,
+}
+
 pub fn builtin_viewport_presets() -> Vec<ViewportPreset> {
     vec![
         ViewportPreset {
@@ -86,10 +95,42 @@ pub fn builtin_viewport_presets() -> Vec<ViewportPreset> {
     ]
 }
 
+pub fn builtin_responsive_breakpoints() -> Vec<ResponsiveBreakpoint> {
+    vec![
+        ResponsiveBreakpoint {
+            id: "laptop-down".to_string(),
+            label: "Laptop and below".to_string(),
+            device_class: DeviceClass::Laptop,
+            media_query: "(max-width: 1199px)".to_string(),
+            preview_preset_id: "laptop".to_string(),
+        },
+        ResponsiveBreakpoint {
+            id: "tablet-down".to_string(),
+            label: "Tablet and below".to_string(),
+            device_class: DeviceClass::Tablet,
+            media_query: "(max-width: 991px)".to_string(),
+            preview_preset_id: "tablet".to_string(),
+        },
+        ResponsiveBreakpoint {
+            id: "mobile-down".to_string(),
+            label: "Mobile and below".to_string(),
+            device_class: DeviceClass::Mobile,
+            media_query: "(max-width: 767px)".to_string(),
+            preview_preset_id: "mobile".to_string(),
+        },
+    ]
+}
+
 pub fn viewport_preset(id: &str) -> Option<ViewportPreset> {
     builtin_viewport_presets()
         .into_iter()
         .find(|preset| preset.id == id)
+}
+
+pub fn responsive_breakpoint(id: &str) -> Option<ResponsiveBreakpoint> {
+    builtin_responsive_breakpoints()
+        .into_iter()
+        .find(|breakpoint| breakpoint.id == id)
 }
 
 pub fn custom_viewport(width: u32, height: u32, zoom: f32) -> ViewportPreset {
@@ -100,6 +141,21 @@ pub fn custom_viewport(width: u32, height: u32, zoom: f32) -> ViewportPreset {
         width: width.clamp(240, 7680),
         height: height.clamp(240, 4320),
         default_zoom: normalize_zoom(zoom),
+    }
+}
+
+pub fn custom_breakpoint(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    media_query: impl Into<String>,
+    preview_preset_id: impl Into<String>,
+) -> ResponsiveBreakpoint {
+    ResponsiveBreakpoint {
+        id: id.into(),
+        label: label.into(),
+        device_class: DeviceClass::Custom,
+        media_query: media_query.into(),
+        preview_preset_id: preview_preset_id.into(),
     }
 }
 
@@ -118,9 +174,23 @@ mod tests {
     #[test]
     fn presets_cover_desktop_tablet_and_mobile() {
         let presets = builtin_viewport_presets();
-        assert!(presets.iter().any(|preset| preset.device_class == DeviceClass::Desktop));
-        assert!(presets.iter().any(|preset| preset.device_class == DeviceClass::Tablet));
-        assert!(presets.iter().any(|preset| preset.device_class == DeviceClass::Mobile));
+        assert!(presets
+            .iter()
+            .any(|preset| preset.device_class == DeviceClass::Desktop));
+        assert!(presets
+            .iter()
+            .any(|preset| preset.device_class == DeviceClass::Tablet));
+        assert!(presets
+            .iter()
+            .any(|preset| preset.device_class == DeviceClass::Mobile));
+    }
+
+    #[test]
+    fn breakpoints_link_to_existing_preview_presets() {
+        for breakpoint in builtin_responsive_breakpoints() {
+            assert!(viewport_preset(&breakpoint.preview_preset_id).is_some());
+            assert!(breakpoint.media_query.starts_with("(max-width:"));
+        }
     }
 
     #[test]
