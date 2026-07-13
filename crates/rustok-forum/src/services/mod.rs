@@ -1,10 +1,12 @@
 pub mod category;
 pub mod moderation;
 mod rbac;
+/// Raw persistence service retained temporarily for compatibility.
 pub mod reply;
 mod reply_owner;
 pub mod revision;
 pub mod subscription;
+/// Raw persistence service retained temporarily for compatibility.
 pub mod topic;
 mod topic_owner;
 pub mod user_stats;
