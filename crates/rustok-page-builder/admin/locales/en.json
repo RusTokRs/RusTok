@@ -13,8 +13,15 @@
       "save": "Save",
       "add": "Add",
       "drag": "Drag",
+      "copy": "Copy",
+      "cut": "Cut",
+      "paste": "Paste",
+      "duplicate": "Duplicate",
+      "select": "Use",
       "move": "Move selected",
-      "remove": "Remove selected",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "remove": "Remove",
       "cancelDrag": "Cancel drag",
       "apply": "Apply",
       "clear": "Clear"
@@ -32,6 +39,7 @@
       "layers": "Layers",
       "properties": "Properties",
       "styles": "Styles",
+      "assets": "Assets",
       "diagnostics": "Diagnostics"
     },
     "field": {
@@ -40,11 +48,16 @@
       "selectedComponent": "Selected component",
       "none": "None",
       "type": "Type",
+      "device": "Device",
       "tagName": "Tag name",
       "content": "Content",
       "attributeName": "Attribute name",
       "attributeValue": "Attribute value or JSON",
       "styleJson": "Style JSON",
+      "styleProperty": "Style property",
+      "styleValue": "Style value",
+      "assetId": "Asset id",
+      "assetUrl": "Asset URL",
       "projectHash": "Project hash"
     },
     "bridge": {
