@@ -1,4 +1,5 @@
 pub mod checkout;
+mod checkout_finalization;
 mod checkout_fulfillment_stages;
 mod checkout_inventory_order_adoption;
 mod checkout_inventory_reservation_executor;
@@ -26,6 +27,10 @@ mod refund_reconciliation;
 mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
+pub use checkout_finalization::{
+    CheckoutCompletedState, CheckoutFinalizationError, CheckoutFinalizationExecutor,
+    CheckoutFinalizationResult,
+};
 pub use checkout_fulfillment_stages::{
     CheckoutFulfillmentCreatedState, CheckoutFulfillmentStageError,
     CheckoutFulfillmentStageExecutor, CheckoutFulfillmentStageResult,
