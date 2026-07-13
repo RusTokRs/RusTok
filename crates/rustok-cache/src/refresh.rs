@@ -15,6 +15,8 @@ use crate::{
     TypedCacheLoadResult, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
 
+pub const MAX_CACHE_REFRESH_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct CacheRefreshKey {
     backend_id: usize,
@@ -37,6 +39,7 @@ struct CacheRefreshMetrics {
     failed: AtomicU64,
     deduplicated: AtomicU64,
     saturated: AtomicU64,
+    rejected: AtomicU64,
     runtime_unavailable: AtomicU64,
 }
 
@@ -81,6 +84,15 @@ impl CacheRefreshCoordinator {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = rustok_core::Result<()>> + Send + 'static,
     {
+        let key = key.into();
+        if validate_refresh_key(&key).is_err() {
+            self.inner
+                .metrics
+                .rejected
+                .fetch_add(1, Ordering::Relaxed);
+            return CacheRefreshSchedule::InvalidKey;
+        }
+
         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
             self.inner
                 .metrics
@@ -89,7 +101,6 @@ impl CacheRefreshCoordinator {
             return CacheRefreshSchedule::RuntimeUnavailable;
         };
 
-        let key = key.into();
         let refresh_key = CacheRefreshKey::new(backend, &key);
         {
             let mut in_flight = self
@@ -155,6 +166,7 @@ impl CacheRefreshCoordinator {
             failed: self.inner.metrics.failed.load(Ordering::Relaxed),
             deduplicated: self.inner.metrics.deduplicated.load(Ordering::Relaxed),
             saturated: self.inner.metrics.saturated.load(Ordering::Relaxed),
+            rejected: self.inner.metrics.rejected.load(Ordering::Relaxed),
             runtime_unavailable: self
                 .inner
                 .metrics
@@ -194,6 +206,7 @@ pub enum CacheRefreshSchedule {
     Spawned,
     AlreadyRunning,
     AtCapacity,
+    InvalidKey,
     RuntimeUnavailable,
 }
 
@@ -204,6 +217,7 @@ pub struct CacheRefreshStats {
     pub failed: u64,
     pub deduplicated: u64,
     pub saturated: u64,
+    pub rejected: u64,
     pub runtime_unavailable: u64,
     pub in_flight: u64,
 }
@@ -284,6 +298,7 @@ impl CacheService {
         Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
     {
         let key = key.into();
+        validate_refresh_key(&key)?;
 
         // Probe the typed hit directly so the background refresh can retain the exact bytes
         // observed by this request. Passing only decoded metadata cannot distinguish two values
@@ -430,6 +445,22 @@ where
     }
 }
 
+fn validate_refresh_key(key: &str) -> rustok_core::Result<()> {
+    if key.trim().is_empty() {
+        return Err(rustok_core::Error::Cache(
+            "cache refresh key must not be empty".to_string(),
+        ));
+    }
+    if key.len() > MAX_CACHE_REFRESH_KEY_BYTES {
+        return Err(rustok_core::Error::Cache(format!(
+            "cache refresh key is {} bytes; maximum is {}",
+            key.len(),
+            MAX_CACHE_REFRESH_KEY_BYTES
+        )));
+    }
+    Ok(())
+}
+
 fn current_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -505,6 +536,67 @@ mod tests {
             CacheRefreshSchedule::AtCapacity
         );
         assert_eq!(coordinator.stats().saturated, 1);
+    }
+
+    #[tokio::test]
+    async fn coordinator_rejects_invalid_keys_without_running_refresh() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for key in [
+            "".to_string(),
+            "x".repeat(MAX_CACHE_REFRESH_KEY_BYTES + 1),
+        ] {
+            let calls = Arc::clone(&calls);
+            assert_eq!(
+                coordinator.schedule(&backend, key, move || async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+                CacheRefreshSchedule::InvalidKey
+            );
+        }
+
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(coordinator.in_flight(), 0);
+        assert_eq!(coordinator.stats().rejected, 2);
+    }
+
+    #[tokio::test]
+    async fn swr_rejects_invalid_key_before_backend_or_loader_work() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let loader_calls = Arc::clone(&calls);
+
+        let error = service
+            .load_enveloped_stale_while_revalidate_with_limit_at(
+                &coordinator,
+                backend,
+                "x".repeat(MAX_CACHE_REFRESH_KEY_BYTES + 1),
+                1,
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                1024,
+                2_000,
+                move || {
+                    let loader_calls = Arc::clone(&loader_calls);
+                    async move {
+                        loader_calls.fetch_add(1, Ordering::SeqCst);
+                        CacheEnvelope::new(1, 2_000, "unexpected".to_string())
+                            .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                    }
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("maximum"));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(coordinator.in_flight(), 0);
     }
 
     #[tokio::test]
