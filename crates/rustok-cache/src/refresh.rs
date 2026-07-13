@@ -381,6 +381,15 @@ where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future<Output = rustok_core::Result<CacheEnvelope<T>>> + Send + 'static,
 {
+    let ttl = match policy.ttl.ttl_for(&key) {
+        Some(ttl) if ttl.is_zero() => {
+            return Err(rustok_core::Error::Cache(
+                "cache refresh TTL must be greater than zero".to_string(),
+            ));
+        }
+        ttl => ttl,
+    };
+
     let envelope = match policy.loader_timeout {
         Some(timeout) => tokio::time::timeout(timeout, loader())
             .await
@@ -415,10 +424,7 @@ where
         return Ok(());
     }
 
-    match policy.ttl.ttl_for(&key) {
-        Some(ttl) if ttl.is_zero() => Err(rustok_core::Error::Cache(
-            "cache refresh TTL must be greater than zero".to_string(),
-        )),
+    match ttl {
         Some(ttl) => backend.set_with_ttl(key, bytes, ttl).await,
         None => backend.set(key, bytes).await,
     }
@@ -599,7 +605,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
-        started.notified().await;
+        tokio::time::timeout(Duration::from_secs(1), started.notified())
+            .await
+            .expect("refresh loader did not start");
 
         let replacement = CacheEnvelope::new(1, current_unix_ms(), "replacement".to_string())
             .unwrap()
@@ -613,12 +621,13 @@ mod tests {
             .unwrap();
         release.notify_one();
 
-        for _ in 0..100 {
-            if coordinator.in_flight() == 0 {
-                break;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while coordinator.in_flight() != 0 {
+                tokio::task::yield_now().await;
             }
-            tokio::task::yield_now().await;
-        }
+        })
+        .await
+        .expect("refresh task did not finish");
 
         let bytes = backend.get("document").await.unwrap().unwrap();
         let current = CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024).unwrap();
