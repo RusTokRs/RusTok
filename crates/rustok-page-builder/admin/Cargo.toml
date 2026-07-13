@@ -1,0 +1,24 @@
+[package]
+name = "rustok-page-builder-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos full-authoring surface for the RusTok Page Builder module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = ["leptos/ssr"]
+
+[dependencies]
+fly = { path = "../../fly" }
+fly-ui = { path = "../../fly-ui" }
+fly-leptos = { path = "../../fly-leptos" }
+rustok-page-builder = { path = "..", default-features = false }
+leptos.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
