@@ -50,7 +50,7 @@ impl ProfilesQuery {
         locale: Option<String>,
     ) -> Result<Option<GqlProfile>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_auth(ctx)?;
+        let auth = require_human_user(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -128,10 +128,17 @@ fn current_tenant_id(tenant: &TenantContext, requested: Option<Uuid>) -> Result<
     Ok(tenant.id)
 }
 
-fn require_auth(ctx: &Context<'_>) -> Result<AuthContext> {
-    ctx.data::<AuthContext>()
+fn require_human_user(ctx: &Context<'_>) -> Result<AuthContext> {
+    let auth = ctx
+        .data::<AuthContext>()
         .cloned()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    if auth.is_service_principal() {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "meProfile requires human-user credentials",
+        ));
+    }
+    Ok(auth)
 }
 
 fn map_profile_error(err: ProfileError) -> async_graphql::Error {
