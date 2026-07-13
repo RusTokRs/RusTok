@@ -9,7 +9,7 @@ use rustok_page_builder_admin::{
     PageBuilderAdminFacadeFuture,
 };
 use serde_json::{json, Map, Value};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PagesBuilderSaveSnapshot {
@@ -19,8 +19,8 @@ pub struct PagesBuilderSaveSnapshot {
     pub default_locale: String,
 }
 
-type SnapshotProvider = Rc<dyn Fn() -> PagesBuilderSaveSnapshot>;
-type SavedHandler = Rc<dyn Fn(PageMutationResult, Value)>;
+type SnapshotProvider = Arc<dyn Fn() -> PagesBuilderSaveSnapshot + Send + Sync>;
+type SavedHandler = Arc<dyn Fn(PageMutationResult, Value) + Send + Sync>;
 
 #[derive(Clone)]
 pub struct PagesBuilderFacade {
@@ -30,12 +30,12 @@ pub struct PagesBuilderFacade {
 
 impl PagesBuilderFacade {
     pub fn new(
-        snapshot: impl Fn() -> PagesBuilderSaveSnapshot + 'static,
-        on_saved: impl Fn(PageMutationResult, Value) + 'static,
+        snapshot: impl Fn() -> PagesBuilderSaveSnapshot + Send + Sync + 'static,
+        on_saved: impl Fn(PageMutationResult, Value) + Send + Sync + 'static,
     ) -> Self {
         Self {
-            snapshot: Rc::new(snapshot),
-            on_saved: Rc::new(on_saved),
+            snapshot: Arc::new(snapshot),
+            on_saved: Arc::new(on_saved),
         }
     }
 }
@@ -43,7 +43,7 @@ impl PagesBuilderFacade {
 impl PageBuilderAdminFacade for PagesBuilderFacade {
     fn execute(&self, request: PageBuilderCapabilityRequest) -> PageBuilderAdminFacadeFuture {
         let snapshot = (self.snapshot)();
-        let on_saved = Rc::clone(&self.on_saved);
+        let on_saved = Arc::clone(&self.on_saved);
         Box::pin(async move {
             let PageBuilderCapabilityRequest::Publish(input) = request else {
                 return Err(PageBuilderAdminFacadeError::new(
