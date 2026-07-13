@@ -6,6 +6,7 @@ mod error;
 mod machine;
 mod resize;
 mod state;
+mod viewport;
 
 pub use contribution::*;
 pub use dnd::*;
@@ -13,6 +14,7 @@ pub use error::*;
 pub use machine::*;
 pub use resize::*;
 pub use state::*;
+pub use viewport::*;
 
 pub type UiResult<T> = Result<T, UiError>;
 
