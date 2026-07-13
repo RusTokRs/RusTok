@@ -7,4 +7,6 @@ pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 pub use transport::{
     PageBuilderAdminFacade, PageBuilderAdminFacadeError, PageBuilderAdminFacadeFuture,
 };
-pub use ui::leptos::PageBuilderAdmin;
+pub use ui::leptos::{
+    PageBuilderAdmin, PageBuilderAdminHostContext, PageBuilderAdminWithController,
+};
