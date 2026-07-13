@@ -15,6 +15,7 @@
     "status": {
       "saving": "Saving",
       "saveFailed": "Save failed",
+      "saveSucceeded": "Project saved",
       "dirty": "Unsaved changes",
       "saved": "Saved"
     },
@@ -28,6 +29,11 @@
       "selectedComponent": "Selected component",
       "none": "None",
       "projectHash": "Project hash"
+    },
+    "bridge": {
+      "ready": "Canvas connected",
+      "waiting": "Connecting canvas",
+      "pointer": "Pointer"
     },
     "diagnosticCount": "diagnostic(s)",
     "facadeMissing": "Page Builder admin facade is not mounted for this canvas"
