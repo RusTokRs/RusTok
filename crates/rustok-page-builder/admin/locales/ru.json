@@ -10,17 +10,28 @@
     "action": {
       "undo": "Отменить",
       "redo": "Повторить",
-      "save": "Сохранить"
+      "save": "Сохранить",
+      "add": "Добавить",
+      "drag": "Перетащить",
+      "move": "Переместить выбранное",
+      "remove": "Удалить выбранное",
+      "cancelDrag": "Отменить перенос",
+      "apply": "Применить",
+      "clear": "Очистить"
     },
     "status": {
       "saving": "Сохранение",
       "saveFailed": "Ошибка сохранения",
       "saveSucceeded": "Проект сохранён",
       "dirty": "Есть несохранённые изменения",
-      "saved": "Сохранено"
+      "saved": "Сохранено",
+      "dragging": "Выберите позицию вставки на холсте"
     },
     "panel": {
-      "layers": "Слои и выделение",
+      "palette": "Блоки",
+      "layers": "Слои",
+      "properties": "Свойства",
+      "styles": "Стили",
       "diagnostics": "Диагностика"
     },
     "field": {
@@ -28,6 +39,12 @@
       "revision": "Ревизия",
       "selectedComponent": "Выбранный компонент",
       "none": "Нет",
+      "type": "Тип",
+      "tagName": "HTML-тег",
+      "content": "Содержимое",
+      "attributeName": "Имя атрибута",
+      "attributeValue": "Значение атрибута или JSON",
+      "styleJson": "JSON стилей",
       "projectHash": "Хеш проекта"
     },
     "bridge": {
