@@ -4,11 +4,12 @@ use tracing::{debug, warn};
 
 use rustok_core::UserRole;
 
-use rustok_api::Permission;
+use rustok_api::{has_effective_permission, Permission};
 use rustok_rbac::PermissionResolver;
 use rustok_telemetry::metrics;
 
 use super::rbac_persistence::replace_user_role_via_store;
+use super::rbac_request_scope::{permissions_for as scoped_permissions_for, role_for as scoped_role_for};
 pub use super::rbac_runtime::RbacResolverMetricsSnapshot;
 use super::rbac_runtime::{
     authorize_request as authorize_rbac_request,
@@ -51,6 +52,20 @@ impl RbacService {
         required_permission: &Permission,
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_permission", "library");
+
+        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+            let allowed = has_effective_permission(&permissions, required_permission);
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permission = %required_permission,
+                permissions_count = permissions.len(),
+                allowed,
+                "rbac request-scoped decision (single permission check)"
+            );
+            return Ok(allowed);
+        }
+
         let outcome = authorize_rbac_request(
             db,
             tenant_id,
@@ -100,6 +115,22 @@ impl RbacService {
         required_permissions: &[Permission],
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_any_permission", "library");
+
+        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+            let allowed = required_permissions
+                .iter()
+                .any(|required| has_effective_permission(&permissions, required));
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                permissions_count = permissions.len(),
+                allowed,
+                "rbac request-scoped decision (any-permission check)"
+            );
+            return Ok(allowed);
+        }
+
         let outcome = authorize_rbac_request(
             db,
             tenant_id,
@@ -149,6 +180,22 @@ impl RbacService {
         required_permissions: &[Permission],
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_all_permissions", "library");
+
+        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+            let allowed = required_permissions
+                .iter()
+                .all(|required| has_effective_permission(&permissions, required));
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                permissions_count = permissions.len(),
+                allowed,
+                "rbac request-scoped decision (all-permissions check)"
+            );
+            return Ok(allowed);
+        }
+
         let outcome = authorize_rbac_request(
             db,
             tenant_id,
@@ -200,6 +247,17 @@ impl RbacService {
         user_id: &uuid::Uuid,
     ) -> Result<Vec<Permission>> {
         Self::record_authz_entrypoint_call("get_user_permissions", "library");
+
+        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                permissions_count = permissions.len(),
+                "rbac request-scoped permission lookup"
+            );
+            return Ok(permissions);
+        }
+
         let resolver = Self::resolver(db);
         let started_at = std::time::Instant::now();
         let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
@@ -226,6 +284,11 @@ impl RbacService {
         user_id: &uuid::Uuid,
     ) -> Result<UserRole> {
         Self::record_authz_entrypoint_call("get_user_role", "library");
+
+        if let Some(role) = scoped_role_for(tenant_id, user_id) {
+            return Ok(role);
+        }
+
         let permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
         Ok(crate::context::infer_user_role_from_permissions(
             &permissions,
@@ -322,6 +385,7 @@ impl RbacService {
 mod tests {
     use super::RbacService;
     use crate::models::{tenants, users};
+    use crate::services::rbac_request_scope::{with_rbac_request_scope, RbacRequestScope};
     use crate::services::rbac_runtime::reset_metrics_for_tests as reset_rbac_metrics_for_tests;
     use chrono::Utc;
     use rustok_api::Permission;
@@ -414,6 +478,58 @@ mod tests {
         let after_second = RbacService::metrics_snapshot();
         assert_eq!(after_second.permission_cache_misses, 1);
         assert_eq!(after_second.permission_cache_hits, 1);
+    }
+
+    #[tokio::test]
+    async fn request_scope_prevents_database_permission_restoration() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "test-request-scope",
+            "request-scope@example.com",
+        )
+        .await;
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Admin)
+            .await
+            .expect("admin role assignment should succeed");
+
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            user_id,
+            vec![Permission::USERS_READ],
+            UserRole::Admin,
+        );
+        with_rbac_request_scope(Some(scope), async {
+            assert!(RbacService::has_permission(
+                &db,
+                &tenant_id,
+                &user_id,
+                &Permission::USERS_READ
+            )
+            .await
+            .expect("scoped read check"));
+            assert!(!RbacService::has_permission(
+                &db,
+                &tenant_id,
+                &user_id,
+                &Permission::SETTINGS_MANAGE
+            )
+            .await
+            .expect("scoped manage check"));
+            assert_eq!(
+                RbacService::get_user_permissions(&db, &tenant_id, &user_id)
+                    .await
+                    .expect("scoped permission lookup"),
+                vec![Permission::USERS_READ]
+            );
+            assert_eq!(
+                RbacService::get_user_role(&db, &tenant_id, &user_id)
+                    .await
+                    .expect("scoped role lookup"),
+                UserRole::Admin
+            );
+        })
+        .await;
     }
 
     #[test]
