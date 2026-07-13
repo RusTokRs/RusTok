@@ -29,6 +29,7 @@ entry_type = "CommerceModule"
 [provides.graphql]
 query = "graphql::CommerceQuery"
 mutation = "graphql::CommerceMutation"
+runtime_data_factory = "graphql_runtime::attach_schema_data"
 
 [provides.http]
 axum_router = "controllers::axum_router"

@@ -62,6 +62,16 @@ impl FieldDefinitionCache {
             .invalidate(&(tenant_id, entity_type.to_string()))
             .await;
     }
+
+    /// Invalidate every cached schema after the event consumer reports lag.
+    ///
+    /// A lagged broadcast receiver has permanently skipped an unknown subset of
+    /// field-definition changes. Keeping any entry at that point can serve an
+    /// obsolete schema until TTL expiry, so the only safe recovery is a bounded
+    /// full-cache invalidation.
+    pub fn invalidate_all(&self) {
+        self.inner.invalidate_all();
+    }
 }
 
 pub fn field_definition_cache_from_context(
@@ -90,6 +100,11 @@ pub fn field_definition_cache_from_context(
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     consumer_runtime.lagged(skipped);
+                    cache_for_task.invalidate_all();
+                    tracing::warn!(
+                        skipped,
+                        "Field definition cache invalidation consumer lagged; cleared all cached schemas"
+                    );
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     consumer_runtime.closed();
@@ -168,6 +183,25 @@ mod tests {
 
         cache.invalidate(tenant_id, entity_type).await;
         assert!(cache.get(tenant_id, entity_type).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn invalidate_all_clears_every_tenant_schema() {
+        let cache = FieldDefinitionCache::new();
+        let first_tenant = Uuid::new_v4();
+        let second_tenant = Uuid::new_v4();
+
+        cache
+            .set(first_tenant, "user", vec![mock_view("nickname")])
+            .await;
+        cache
+            .set(second_tenant, "order", vec![mock_view("reference")])
+            .await;
+
+        cache.invalidate_all();
+
+        assert!(cache.get(first_tenant, "user").await.is_none());
+        assert!(cache.get(second_tenant, "order").await.is_none());
     }
 
     async fn assert_event_bus_invalidation_drops_cached_field_definitions(event: DomainEvent) {

@@ -1,14 +1,33 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex as AsyncMutex};
 
 use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
 #[cfg(feature = "redis-cache")]
 use rustok_core::{CircuitBreakerConfig, RedisCacheBackend};
-use tokio::sync::Mutex;
+
+#[cfg(feature = "redis-cache")]
+const CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[cfg(feature = "redis-cache")]
+async fn redis_with_timeout<T, F, E>(operation: &str, future: F) -> Result<T, String>
+where
+    F: Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    tokio::time::timeout(CACHE_REDIS_OPERATION_TIMEOUT, future)
+        .await
+        .map_err(|_| {
+            format!(
+                "{operation} timed out after {} ms",
+                CACHE_REDIS_OPERATION_TIMEOUT.as_millis()
+            )
+        })?
+        .map_err(|error| format!("{operation} failed: {error}"))
+}
 
 /// Shared cache service providing backend creation from a centralized Redis connection.
 ///
@@ -205,8 +224,8 @@ impl CacheService {
     /// Load a cache entry with per-key request coalescing.
     ///
     /// The first caller for a missing key runs `loader`; concurrent callers for the same key
-    /// wait for that fill and then read the populated backend. This keeps anti-stampede logic
-    /// at the cache capability boundary instead of duplicating it in host modules.
+    /// and backend wait for that fill and then read the populated backend. Different backend
+    /// instances are deliberately isolated even when their user-facing keys are identical.
     pub async fn load_or_fill<F, Fut>(
         &self,
         backend: Arc<dyn CacheBackend>,
@@ -245,9 +264,9 @@ impl CacheService {
     /// Returns currently tracked in-flight loader keys.
     ///
     /// This is primarily an operability/debugging signal; entries are removed once a fill
-    /// completes and waiters have re-read the backend.
+    /// completes, errors, or is cancelled and all waiters release their gate leases.
     pub async fn in_flight_loads(&self) -> usize {
-        self.loaders.in_flight().await
+        self.loaders.in_flight()
     }
 
     /// Render capability-level Prometheus metrics for the cache runtime.
@@ -280,24 +299,33 @@ impl CacheService {
 
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
-            match client.get_multiplexed_async_connection().await {
+            match redis_with_timeout(
+                "Redis cache health connection",
+                client.get_multiplexed_async_connection(),
+            )
+            .await
+            {
                 Ok(mut conn) => {
-                    let pong: redis::RedisResult<String> =
-                        redis::cmd("PING").query_async(&mut conn).await;
-                    match pong {
-                        Ok(ref s) if s == "PONG" => {
+                    match redis_with_timeout(
+                        "Redis cache health PING",
+                        redis::cmd("PING").query_async::<String>(&mut conn),
+                    )
+                    .await
+                    {
+                        Ok(ref pong) if pong == "PONG" => {
                             report.redis_healthy = true;
                         }
-                        Ok(s) => {
-                            report.redis_error = Some(format!("unexpected PING response: {s}"));
+                        Ok(pong) => {
+                            report.redis_error =
+                                Some(format!("unexpected PING response: {pong}"));
                         }
-                        Err(e) => {
-                            report.redis_error = Some(e.to_string());
+                        Err(error) => {
+                            report.redis_error = Some(error);
                         }
                     }
                 }
-                Err(e) => {
-                    report.redis_error = Some(e.to_string());
+                Err(error) => {
+                    report.redis_error = Some(error);
                 }
             }
         }
@@ -484,15 +512,17 @@ impl CacheInvalidationService {
             return Err("redis invalidation subscription is not configured".to_string());
         };
 
-        let mut pubsub = client
-            .get_async_pubsub()
-            .await
-            .map_err(|error| format!("pubsub connection failed: {error}"))?;
+        let mut pubsub = redis_with_timeout(
+            "Redis invalidation pub/sub connection",
+            client.get_async_pubsub(),
+        )
+        .await?;
 
-        pubsub
-            .subscribe(channel)
-            .await
-            .map_err(|error| format!("pubsub subscribe failed: {error}"))?;
+        redis_with_timeout(
+            "Redis invalidation subscribe",
+            pubsub.subscribe(channel),
+        )
+        .await?;
 
         ready().await;
 
@@ -548,26 +578,41 @@ impl CacheInvalidationService {
         #[cfg(feature = "redis-cache")]
         {
             if let Some(client) = &self.redis_client {
-                if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                    let published: redis::RedisResult<i64> = redis::cmd("PUBLISH")
-                        .arg(&message.channel)
-                        .arg(&message.key)
-                        .query_async(&mut conn)
+                match redis_with_timeout(
+                    "Redis invalidation publish connection",
+                    client.get_multiplexed_async_connection(),
+                )
+                .await
+                {
+                    Ok(mut conn) => {
+                        let published = redis_with_timeout(
+                            "Redis invalidation PUBLISH",
+                            redis::cmd("PUBLISH")
+                                .arg(&message.channel)
+                                .arg(&message.key)
+                                .query_async::<i64>(&mut conn),
+                        )
                         .await;
-                    outcome.redis_published = published.is_ok();
-                    if outcome.redis_published {
-                        self.stats
-                            .redis_publish_success_total
-                            .fetch_add(1, Ordering::Relaxed);
-                    } else {
+                        outcome.redis_published = published.is_ok();
+                        if outcome.redis_published {
+                            self.stats
+                                .redis_publish_success_total
+                                .fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            if let Err(error) = published {
+                                tracing::warn!(%error, "Redis invalidation publish failed");
+                            }
+                            self.stats
+                                .redis_publish_failure_total
+                                .fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "Redis invalidation connection failed");
                         self.stats
                             .redis_publish_failure_total
                             .fetch_add(1, Ordering::Relaxed);
                     }
-                } else {
-                    self.stats
-                        .redis_publish_failure_total
-                        .fetch_add(1, Ordering::Relaxed);
                 }
             }
         }
@@ -613,9 +658,46 @@ pub struct CacheLoadResult {
     pub source: CacheLoadSource,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CacheLoadKey {
+    backend_id: usize,
+    key: String,
+}
+
+impl CacheLoadKey {
+    fn new(backend: &Arc<dyn CacheBackend>, key: &str) -> Self {
+        Self {
+            backend_id: Arc::as_ptr(backend) as *const () as usize,
+            key: key.to_string(),
+        }
+    }
+}
+
+type CacheLoadGateMap = HashMap<CacheLoadKey, Arc<AsyncMutex<()>>>;
+
 #[derive(Default)]
 struct CacheLoadCoordinator {
-    locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    locks: Arc<StdMutex<CacheLoadGateMap>>,
+}
+
+struct CacheLoadGateLease {
+    key: CacheLoadKey,
+    gate: Arc<AsyncMutex<()>>,
+    locks: Arc<StdMutex<CacheLoadGateMap>>,
+}
+
+impl Drop for CacheLoadGateLease {
+    fn drop(&mut self) {
+        let mut locks = self
+            .locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if locks.get(&self.key).is_some_and(|current| {
+            Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2
+        }) {
+            locks.remove(&self.key);
+        }
+    }
 }
 
 impl CacheLoadCoordinator {
@@ -637,62 +719,54 @@ impl CacheLoadCoordinator {
             });
         }
 
-        let gate = self.gate_for(&key).await;
-        let _guard = gate.lock().await;
+        let lease = self.gate_for(CacheLoadKey::new(&backend, &key));
+        let _guard = lease.gate.lock().await;
 
         if let Some(value) = backend.get(&key).await? {
-            self.remove_gate(&key, &gate).await;
             return Ok(CacheLoadResult {
                 value,
                 source: CacheLoadSource::Coalesced,
             });
         }
 
-        let value = match loader().await {
-            Ok(value) => value,
-            Err(err) => {
-                self.remove_gate(&key, &gate).await;
-                return Err(err);
+        let value = loader().await?;
+        match ttl {
+            Some(ttl) => {
+                backend
+                    .set_with_ttl(key.clone(), value.clone(), ttl)
+                    .await?
             }
-        };
-
-        let store_result = match ttl {
-            Some(ttl) => backend.set_with_ttl(key.clone(), value.clone(), ttl).await,
-            None => backend.set(key.clone(), value.clone()).await,
-        };
-        if let Err(err) = store_result {
-            self.remove_gate(&key, &gate).await;
-            return Err(err);
+            None => backend.set(key, value.clone()).await?,
         }
 
-        self.remove_gate(&key, &gate).await;
         Ok(CacheLoadResult {
             value,
             source: CacheLoadSource::Filled,
         })
     }
 
-    async fn gate_for(&self, key: &str) -> Arc<Mutex<()>> {
-        let mut locks = self.locks.lock().await;
-        Arc::clone(
+    fn gate_for(&self, key: CacheLoadKey) -> CacheLoadGateLease {
+        let mut locks = self
+            .locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let gate = Arc::clone(
             locks
-                .entry(key.to_string())
-                .or_insert_with(|| Arc::new(Mutex::new(()))),
-        )
-    }
-
-    async fn remove_gate(&self, key: &str, gate: &Arc<Mutex<()>>) {
-        let mut locks = self.locks.lock().await;
-        if locks
-            .get(key)
-            .is_some_and(|current| Arc::ptr_eq(current, gate) && Arc::strong_count(current) <= 2)
-        {
-            locks.remove(key);
+                .entry(key.clone())
+                .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
+        );
+        CacheLoadGateLease {
+            key,
+            gate,
+            locks: Arc::clone(&self.locks),
         }
     }
 
-    async fn in_flight(&self) -> usize {
-        self.locks.lock().await.len()
+    fn in_flight(&self) -> usize {
+        self.locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
     }
 }
 
@@ -825,6 +899,7 @@ fn resolve_redis_url() -> Option<String> {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+    use tokio::sync::{oneshot, Barrier};
 
     #[tokio::test]
     async fn instrumented_backend_tracks_hits_misses_and_invalidations() {
@@ -896,6 +971,78 @@ mod tests {
         assert_eq!(first.source, CacheLoadSource::Filled);
         assert_eq!(second.source, CacheLoadSource::Coalesced);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(service.in_flight_loads().await, 0);
+    }
+
+    #[tokio::test]
+    async fn identical_keys_on_different_backends_do_not_block_each_other() {
+        let service = CacheService::from_url(None);
+        let first_backend = service.memory_backend(Duration::from_secs(60), 16);
+        let second_backend = service.memory_backend(Duration::from_secs(60), 16);
+        let barrier = Arc::new(Barrier::new(2));
+
+        let first = {
+            let service = service.clone();
+            let barrier = Arc::clone(&barrier);
+            tokio::spawn(async move {
+                service
+                    .load_or_fill(first_backend, "shared", None, move || async move {
+                        barrier.wait().await;
+                        Ok(b"first".to_vec())
+                    })
+                    .await
+                    .unwrap()
+            })
+        };
+        let second = {
+            let service = service.clone();
+            let barrier = Arc::clone(&barrier);
+            tokio::spawn(async move {
+                service
+                    .load_or_fill(second_backend, "shared", None, move || async move {
+                        barrier.wait().await;
+                        Ok(b"second".to_vec())
+                    })
+                    .await
+                    .unwrap()
+            })
+        };
+
+        let (first, second) = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(first, second)
+        })
+        .await
+        .expect("different cache backends should load concurrently");
+
+        assert_eq!(first.unwrap().value, b"first".to_vec());
+        assert_eq!(second.unwrap().value, b"second".to_vec());
+        assert_eq!(service.in_flight_loads().await, 0);
+    }
+
+    #[tokio::test]
+    async fn cancelled_loader_releases_its_gate() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let (started_tx, started_rx) = oneshot::channel();
+
+        let task = {
+            let service = service.clone();
+            tokio::spawn(async move {
+                let _ = service
+                    .load_or_fill(backend, "cancelled", None, move || async move {
+                        let _ = started_tx.send(());
+                        std::future::pending::<rustok_core::Result<Vec<u8>>>().await
+                    })
+                    .await;
+            })
+        };
+
+        started_rx.await.unwrap();
+        assert_eq!(service.in_flight_loads().await, 1);
+        task.abort();
+        let _ = task.await;
+        tokio::task::yield_now().await;
+
         assert_eq!(service.in_flight_loads().await, 0);
     }
 
@@ -1030,6 +1177,19 @@ mod tests {
         assert_eq!(tenant_subscriber.channel(), "tenant.cache.invalidate");
         assert_eq!(tenant_message.key, "tenant-a");
         assert_eq!(rbac_message.key, "role:admin");
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    async fn service_redis_timeout_bounds_stalled_operations() {
+        let error = redis_with_timeout(
+            "test Redis operation",
+            std::future::pending::<Result<(), std::io::Error>>(),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.contains("timed out"));
     }
 
     #[cfg(feature = "redis-cache")]

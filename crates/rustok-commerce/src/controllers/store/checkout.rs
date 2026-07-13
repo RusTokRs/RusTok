@@ -175,6 +175,10 @@ pub async fn complete_cart_checkout(
             runtime.db_clone(),
             event_bus,
         )),
+    )
+    .with_provider_registries(
+        runtime.payment_provider_registry(),
+        runtime.fulfillment_provider_registry(),
     );
     let response = service
         .complete_checkout(

@@ -3,11 +3,19 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
+use validator::Validate;
 
+use rustok_fulfillment::providers::{
+    FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
+    MANUAL_FULFILLMENT_PROVIDER_ID,
+};
 use rustok_fulfillment::FulfillmentService;
 
 use crate::{
-    dto::{CreateFulfillmentInput, FulfillmentResponse, ShippingOptionResponse},
+    dto::{
+        CancelFulfillmentInput, CreateFulfillmentInput, FulfillmentResponse,
+        ReshipFulfillmentInput, ShipFulfillmentInput, ShippingOptionResponse,
+    },
     storefront_shipping::{
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
@@ -26,17 +34,49 @@ pub enum FulfillmentOrchestrationError {
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error(
+        "fulfillment provider `{operation}` failed after fulfillment {fulfillment_id} was persisted: {source}"
+    )]
+    ProviderAfterPersistence {
+        fulfillment_id: Uuid,
+        operation: &'static str,
+        #[source]
+        source: rustok_fulfillment::error::FulfillmentError,
+    },
+
+    #[error(
+        "fulfillment provider `{operation}` succeeded for fulfillment {fulfillment_id}, but local persistence failed: {source}"
+    )]
+    PersistenceAfterProvider {
+        fulfillment_id: Uuid,
+        operation: &'static str,
+        #[source]
+        source: rustok_fulfillment::error::FulfillmentError,
+    },
 }
 
 pub type FulfillmentOrchestrationResult<T> = Result<T, FulfillmentOrchestrationError>;
 
 pub struct FulfillmentOrchestrationService {
     db: DatabaseConnection,
+    fulfillment_provider_registry: FulfillmentProviderRegistry,
 }
 
 impl FulfillmentOrchestrationService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            fulfillment_provider_registry: FulfillmentProviderRegistry::with_manual_provider(),
+        }
+    }
+
+    pub fn with_provider_registry(
+        mut self,
+        fulfillment_provider_registry: FulfillmentProviderRegistry,
+    ) -> Self {
+        self.fulfillment_provider_registry = fulfillment_provider_registry;
+        self
     }
 
     pub async fn create_manual_fulfillment(
@@ -44,6 +84,10 @@ impl FulfillmentOrchestrationService {
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        input
+            .validate()
+            .map_err(|error| FulfillmentOrchestrationError::Validation(error.to_string()))?;
+
         let order = rustok_order::entities::order::Entity::find_by_id(input.order_id)
             .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -79,7 +123,8 @@ impl FulfillmentOrchestrationService {
             .map(|item| (item.id, item))
             .collect::<BTreeMap<_, _>>();
 
-        let existing_fulfillments = FulfillmentService::new(self.db.clone())
+        let fulfillment_service = FulfillmentService::new(self.db.clone());
+        let existing_fulfillments = fulfillment_service
             .list_by_order(tenant_id, order.id)
             .await?;
         let mut fulfilled_quantities = BTreeMap::<Uuid, i32>::new();
@@ -94,9 +139,14 @@ impl FulfillmentOrchestrationService {
                 )));
             }
             for item in fulfillment.items {
-                *fulfilled_quantities
+                let entry = fulfilled_quantities
                     .entry(item.order_line_item_id)
-                    .or_insert(0) += item.quantity;
+                    .or_insert(0);
+                *entry = entry.checked_add(item.quantity).ok_or_else(|| {
+                    FulfillmentOrchestrationError::Validation(
+                        "fulfilled quantity aggregation overflowed".to_string(),
+                    )
+                })?;
             }
         }
 
@@ -143,7 +193,7 @@ impl FulfillmentOrchestrationService {
 
         let shipping_option = match input.shipping_option_id {
             Some(shipping_option_id) => Some(
-                FulfillmentService::new(self.db.clone())
+                fulfillment_service
                     .get_shipping_option(tenant_id, shipping_option_id, None, None)
                     .await?,
             ),
@@ -156,6 +206,7 @@ impl FulfillmentOrchestrationService {
                 canonical_group.shipping_profile_slug.as_str(),
             )?;
         }
+        let provider_id = provider_id_for_shipping_option(shipping_option.as_ref());
 
         let mut items = Vec::with_capacity(requested_items.len());
         for item in requested_items {
@@ -171,7 +222,14 @@ impl FulfillmentOrchestrationService {
                 .get(&item.order_line_item_id)
                 .copied()
                 .unwrap_or_default();
-            let remaining_quantity = line_item.quantity - already_fulfilled;
+            let remaining_quantity = line_item
+                .quantity
+                .checked_sub(already_fulfilled)
+                .ok_or_else(|| {
+                    FulfillmentOrchestrationError::Validation(
+                        "remaining fulfillment quantity overflowed".to_string(),
+                    )
+                })?;
             if remaining_quantity <= 0 {
                 return Err(FulfillmentOrchestrationError::Validation(format!(
                     "order line item {} has no remaining quantity to fulfill",
@@ -218,7 +276,7 @@ impl FulfillmentOrchestrationService {
             }),
         );
 
-        Ok(FulfillmentService::new(self.db.clone())
+        let fulfillment = fulfillment_service
             .create_fulfillment(
                 tenant_id,
                 CreateFulfillmentInput {
@@ -231,7 +289,260 @@ impl FulfillmentOrchestrationService {
                     metadata,
                 },
             )
-            .await?)
+            .await?;
+
+        self.fulfillment_provider_registry
+            .execute_create_label(
+                provider_id.as_str(),
+                FulfillmentProviderOperationRequest {
+                    tenant_id,
+                    fulfillment_id: fulfillment.id,
+                    idempotency_key: Some(format!("fulfillment:{}:create_label", fulfillment.id)),
+                    metadata: merge_metadata(
+                        fulfillment.metadata.clone(),
+                        serde_json::json!({
+                            "commerce_orchestration": {
+                                "operation": "create_label"
+                            }
+                        }),
+                    ),
+                },
+            )
+            .await
+            .map_err(|source| FulfillmentOrchestrationError::ProviderAfterPersistence {
+                fulfillment_id: fulfillment.id,
+                operation: "create_label",
+                source,
+            })?;
+
+        Ok(fulfillment)
+    }
+
+    pub async fn ship_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: ShipFulfillmentInput,
+    ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        input
+            .validate()
+            .map_err(|error| FulfillmentOrchestrationError::Validation(error.to_string()))?;
+        let fulfillment_service = FulfillmentService::new(self.db.clone());
+        let current = fulfillment_service
+            .get_fulfillment(tenant_id, fulfillment_id)
+            .await?;
+        if !matches!(current.status.as_str(), "pending" | "shipped") {
+            return Err(rustok_fulfillment::error::FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: "shipped".to_string(),
+            }
+            .into());
+        }
+        let provider_id = self
+            .provider_id_for_fulfillment(tenant_id, &current)
+            .await?;
+        let shipped_before = current.items.iter().try_fold(0_i64, |sum, item| {
+            sum.checked_add(i64::from(item.shipped_quantity))
+        }).ok_or_else(|| {
+            FulfillmentOrchestrationError::Validation(
+                "fulfillment shipped quantity aggregation overflowed".to_string(),
+            )
+        })?;
+        let provider_result = self
+            .fulfillment_provider_registry
+            .execute_ship(
+                provider_id.as_str(),
+                FulfillmentProviderOperationRequest {
+                    tenant_id,
+                    fulfillment_id,
+                    idempotency_key: Some(format!(
+                        "fulfillment:{fulfillment_id}:ship:{shipped_before}"
+                    )),
+                    metadata: merge_metadata(
+                        input.metadata.clone(),
+                        serde_json::json!({
+                            "commerce_orchestration": {
+                                "operation": "ship",
+                                "carrier": input.carrier,
+                                "tracking_number": input.tracking_number,
+                                "items": input.items
+                            }
+                        }),
+                    ),
+                },
+            )
+            .await?;
+
+        fulfillment_service
+            .ship_fulfillment(
+                tenant_id,
+                fulfillment_id,
+                ShipFulfillmentInput {
+                    carrier: input.carrier,
+                    tracking_number: provider_result
+                        .tracking_number
+                        .unwrap_or(input.tracking_number),
+                    items: input.items,
+                    metadata: merge_metadata(input.metadata, provider_result.metadata),
+                },
+            )
+            .await
+            .map_err(|source| FulfillmentOrchestrationError::PersistenceAfterProvider {
+                fulfillment_id,
+                operation: "ship",
+                source,
+            })
+    }
+
+    pub async fn reship_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: ReshipFulfillmentInput,
+    ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        input
+            .validate()
+            .map_err(|error| FulfillmentOrchestrationError::Validation(error.to_string()))?;
+        let fulfillment_service = FulfillmentService::new(self.db.clone());
+        let current = fulfillment_service
+            .get_fulfillment(tenant_id, fulfillment_id)
+            .await?;
+        if current.status != "delivered" {
+            return Err(rustok_fulfillment::error::FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: "shipped".to_string(),
+            }
+            .into());
+        }
+        let provider_id = self
+            .provider_id_for_fulfillment(tenant_id, &current)
+            .await?;
+        let delivered_before = current.items.iter().try_fold(0_i64, |sum, item| {
+            sum.checked_add(i64::from(item.delivered_quantity))
+        }).ok_or_else(|| {
+            FulfillmentOrchestrationError::Validation(
+                "fulfillment delivered quantity aggregation overflowed".to_string(),
+            )
+        })?;
+        let provider_result = self
+            .fulfillment_provider_registry
+            .execute_ship(
+                provider_id.as_str(),
+                FulfillmentProviderOperationRequest {
+                    tenant_id,
+                    fulfillment_id,
+                    idempotency_key: Some(format!(
+                        "fulfillment:{fulfillment_id}:reship:{delivered_before}"
+                    )),
+                    metadata: merge_metadata(
+                        input.metadata.clone(),
+                        serde_json::json!({
+                            "commerce_orchestration": {
+                                "operation": "reship",
+                                "carrier": input.carrier,
+                                "tracking_number": input.tracking_number,
+                                "items": input.items
+                            }
+                        }),
+                    ),
+                },
+            )
+            .await?;
+
+        fulfillment_service
+            .reship_fulfillment(
+                tenant_id,
+                fulfillment_id,
+                ReshipFulfillmentInput {
+                    carrier: input.carrier,
+                    tracking_number: provider_result
+                        .tracking_number
+                        .unwrap_or(input.tracking_number),
+                    items: input.items,
+                    metadata: merge_metadata(input.metadata, provider_result.metadata),
+                },
+            )
+            .await
+            .map_err(|source| FulfillmentOrchestrationError::PersistenceAfterProvider {
+                fulfillment_id,
+                operation: "reship",
+                source,
+            })
+    }
+
+    pub async fn cancel_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: CancelFulfillmentInput,
+    ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        let fulfillment_service = FulfillmentService::new(self.db.clone());
+        let current = fulfillment_service
+            .get_fulfillment(tenant_id, fulfillment_id)
+            .await?;
+        if current.status == "cancelled" {
+            return Ok(current);
+        }
+        if current.status == "delivered" {
+            return Err(rustok_fulfillment::error::FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: "cancelled".to_string(),
+            }
+            .into());
+        }
+        let provider_id = self
+            .provider_id_for_fulfillment(tenant_id, &current)
+            .await?;
+        let provider_result = self
+            .fulfillment_provider_registry
+            .execute_cancel(
+                provider_id.as_str(),
+                FulfillmentProviderOperationRequest {
+                    tenant_id,
+                    fulfillment_id,
+                    idempotency_key: Some(format!("fulfillment:{fulfillment_id}:cancel")),
+                    metadata: merge_metadata(
+                        input.metadata.clone(),
+                        serde_json::json!({
+                            "commerce_orchestration": {
+                                "operation": "cancel",
+                                "reason": input.reason
+                            }
+                        }),
+                    ),
+                },
+            )
+            .await?;
+
+        fulfillment_service
+            .cancel_fulfillment(
+                tenant_id,
+                fulfillment_id,
+                CancelFulfillmentInput {
+                    reason: input.reason,
+                    metadata: merge_metadata(input.metadata, provider_result.metadata),
+                },
+            )
+            .await
+            .map_err(|source| FulfillmentOrchestrationError::PersistenceAfterProvider {
+                fulfillment_id,
+                operation: "cancel",
+                source,
+            })
+    }
+
+    async fn provider_id_for_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment: &FulfillmentResponse,
+    ) -> FulfillmentOrchestrationResult<String> {
+        match fulfillment.shipping_option_id {
+            Some(shipping_option_id) => Ok(FulfillmentService::new(self.db.clone())
+                .get_shipping_option(tenant_id, shipping_option_id, None, None)
+                .await?
+                .provider_id),
+            None => Ok(MANUAL_FULFILLMENT_PROVIDER_ID.to_string()),
+        }
     }
 }
 
@@ -239,6 +550,12 @@ impl FulfillmentOrchestrationService {
 struct DeliveryGroupKey {
     shipping_profile_slug: String,
     seller_id: Option<String>,
+}
+
+fn provider_id_for_shipping_option(option: Option<&ShippingOptionResponse>) -> String {
+    option
+        .map(|option| option.provider_id.clone())
+        .unwrap_or_else(|| MANUAL_FULFILLMENT_PROVIDER_ID.to_string())
 }
 
 fn validate_shipping_option_against_order(

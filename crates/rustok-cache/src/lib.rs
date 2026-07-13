@@ -1,11 +1,32 @@
+mod envelope;
+mod invalidation;
+mod key;
+mod lease;
+mod policy;
 mod service;
+mod typed;
+mod weighted;
 
+pub use envelope::{
+    CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
+    DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+};
+pub use invalidation::{
+    CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
+    VersionedCacheInvalidation,
+};
+pub use key::{CacheKeyBuilder, CacheKeyError};
+pub use lease::{
+    CacheLeaseError, CacheLeaseOptions, CacheLeaseOutcome, DistributedCacheLease,
+};
+pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
     CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,
     CacheInvalidationService, CacheInvalidationStats, CacheLoadResult, CacheLoadSource,
     CacheService, LocalCacheInvalidationSubscription,
 };
+pub use typed::TypedCacheLoadResult;
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};

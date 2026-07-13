@@ -2,15 +2,34 @@
 
 ## Current state
 
-`rustok-cache` is the capability-only core owner of backend selection,
-in-memory fallback, Redis integration, invalidation, and anti-stampede loading.
-The host consumes the cache contract; it must not distribute backend-specific
-wiring or invalidation policy across unrelated modules.
+`rustok-cache` is the capability-only core owner of backend selection, in-memory fallback,
+Redis integration, invalidation and anti-stampede loading. The host consumes the cache
+contract; it must not distribute backend-specific wiring or invalidation policy across
+unrelated modules.
 
-The module provides `CacheService::load_or_fill`, Redis circuit-breaker options,
-validated Redis pub/sub invalidation, channel-scoped local fan-out, and
-service-level health, configuration, loader, and invalidation metrics. Invalid
-channels and payloads are rejected before they reach local handlers.
+The source contract now includes:
+
+- Redis millisecond TTL with zero-TTL invalidation and positive sub-millisecond rounding;
+- bounded Redis connection and command latency in both core backends and service-level
+  health/invalidation paths;
+- circuit-breaker accounting for command timeouts;
+- bounded degraded-write markers that distinguish outage writes from ordinary Redis misses;
+- shared invalidation error propagation instead of silent success;
+- fallback statistics that include local entries;
+- backend-scoped, cancellation-safe `load_or_fill` gates;
+- count-limited and byte-weighted Moka backends exposed through `CacheService`;
+- deterministic TTL jitter and leader loader deadlines;
+- tenant-aware/versioned bounded key construction;
+- typed Postcard envelopes with schema/source/freshness metadata and decode size limits;
+- typed loading that invalidates corrupted, incompatible and hard-expired entries;
+- token-owned Redis leases with compare-and-release/extend scripts;
+- versioned invalidation payloads and process-local generation-gap detection;
+- fail-safe full invalidation of field-definition cache state after event-consumer lag;
+- synchronized crate and architecture documentation.
+
+Redis pub/sub remains a best-effort at-most-once fast path. The capability can detect gaps
+when callers supply a durable monotonic generation, but the durable outbox/stream itself is
+still domain/platform work.
 
 ## FFA/FBA boundary
 
@@ -19,40 +38,127 @@ channels and payloads are rejected before they reach local handlers.
 - Structural shape: `no_ui_boundary`
 - This capability has no module-owned UI or published FBA provider contract.
 
+## Completed source phases
+
+1. **TTL correctness**
+   - Redis uses `PX` millisecond expiration;
+   - zero TTL invalidates immediately;
+   - positive sub-millisecond TTL rounds up to 1 ms.
+
+2. **Fallback consistency**
+   - writes made during Redis failure are tracked by a same-TTL marker;
+   - ordinary Redis misses do not return stale mirrored local data;
+   - shared invalidation failures are returned to callers;
+   - fallback statistics include local state.
+
+3. **Invalidation gap safety**
+   - field-definition event lag clears the complete local schema cache;
+   - versioned invalidation payloads carry caller-owned durable generations;
+   - a gap tracker distinguishes in-order, duplicate, stale and missing generations.
+
+4. **Anti-stampede lifecycle**
+   - gate identity includes backend instance and key;
+   - different backends do not block on equal keys;
+   - RAII cleanup covers success, errors and task cancellation;
+   - policy loading supports bounded leader deadlines.
+
+5. **Resource bounds**
+   - Redis backend and cache-service operations have deadlines;
+   - local caches support byte-weighted capacity;
+   - weighted factories remain centralized in `CacheService`;
+   - envelope encoding/decoding and cache keys have explicit maximum sizes.
+
+6. **Key and value compatibility**
+   - `CacheKeyBuilder` includes service, environment, tenant/global scope, domain, schema and
+     resource components;
+   - unsafe or overlong identities are SHA-256 hashed;
+   - `CacheEnvelope<T>` rejects unsupported format/schema versions and invalid freshness
+     metadata;
+   - typed loading removes corrupted, mismatched and hard-expired entries before reload.
+
+7. **Avalanche and hot-key controls**
+   - deterministic per-key TTL jitter is available through `CacheLoadPolicy`;
+   - token-safe Redis leases use `SET NX PX` and ownership-checking Lua scripts;
+   - soft/hard freshness is represented and returned by typed cache loading.
+
 ## Open results
 
-1. **Run compiled cache contract coverage.** Execute the targeted unit suite
-   for backend selection, fallback, `load_or_fill`, invalidation validation,
-   metrics, and health semantics.
+1. **Run compiled cache contract coverage.** Execute the targeted unit suite for backend
+   selection, count/weighted capacity, fallback, TTL boundaries, Redis timeout helpers,
+   key/envelope policy, typed loading, leases, `load_or_fill`, invalidation validation,
+   generation tracking, metrics and health semantics.
+
    **Depends on:** an environment where compilation is available.
-   **Done when:** `cargo test -p rustok-cache --lib` validates the source-locked
-   cache contract without skipped relevant coverage.
 
-2. **Collect real Redis pub/sub evidence.** Run the ignored publisher/
-   subscription scenario against a configured Redis instance and confirm the
-   validated channel contract across instances.
-   **Depends on:** `RUSTOK_CACHE_REAL_REDIS_URL` and an isolated Redis service.
-   **Done when:** `real_redis_publish_and_subscription_share_validated_channel_contract`
-   passes with observable publish, rejection, and local-fan-out behavior.
+   **Done when:**
 
-3. **Keep cache operational guidance synchronized.** Update the cache README
-   and local documentation whenever backend modes, invalidation, reconnect, or
-   metrics behavior changes.
-   **Depends on:** the change-owning cache contract.
-   **Done when:** callers can determine fallback behavior, observability
-   signals, and recovery expectations from the module documentation.
+   ```bash
+   cargo xtask module validate cache
+   cargo xtask module test cache
+   cargo test -p rustok-cache --lib
+   ```
+
+   pass without skipped relevant coverage.
+
+2. **Collect real Redis evidence.** Run publisher/subscription, backend TTL/timeout and lease
+   ownership scenarios against an isolated Redis service.
+
+   **Depends on:** `RUSTOK_CACHE_REAL_REDIS_URL`, isolated Redis and preferably a fault proxy.
+
+   **Done when:** validated publish/subscription, PX expiry, reconnect, delayed-operation,
+   lease contention/expiry and compare-and-release scenarios pass with observable metrics.
+
+3. **Eliminate duplicate Redis backend construction.** Build all Redis backends from the
+   `CacheService`-owned client rather than reopening a client from the URL for each namespace.
+
+   **Done when:** count and weighted factories share the central client constructor and no
+   backend factory needs the raw URL after service initialization.
+
+4. **Adopt key/envelope/policy APIs in host caches.** Migrate tenant, RBAC and other critical
+   callers from hand-built keys and unversioned JSON to `CacheKeyBuilder`, `CacheEnvelope` and
+   `CacheLoadPolicy`.
+
+   **Done when:** no correctness-sensitive host cache silently accepts incompatible payloads
+   or synchronized fixed TTLs.
+
+5. **Add durable recoverable invalidation.** Supply `VersionedCacheInvalidation` generations
+   from transactional outbox/event offsets and add domain recovery actions on `Gap`.
+
+   **Done when:** a disconnected instance can clear/rebuild and resume from a durable offset
+   rather than relying only on TTL.
+
+6. **Complete stale-while-revalidate.** Add a refresh-only coalescing path so stale envelopes
+   can be returned while one process-local leader refreshes, then optionally combine it with
+   the distributed lease for multi-instance hot keys.
+
+   **Done when:** soft/hard expiration, refresh cancellation, leader failure and lease
+   ownership are tested without turning stale values into permanent hits.
+
+7. **Add generic negative-cache policy.** Separate positive and negative schema namespaces,
+   enforce shorter negative TTLs and ensure both keys invalidate together.
+
+   **Done when:** stable not-found/disabled outcomes can be cached without caching transient
+   dependency errors or using the positive TTL.
+
+8. **Operational proof.** Add load and chaos gates for synchronized expiry, oversized
+   payloads, Redis latency/restart, lease expiry and invalidation listener lag.
 
 ## Verification
 
-- `cargo xtask module validate cache`
-- `cargo xtask module test cache`
-- `cargo test -p rustok-cache --lib`
-- `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture`
+```bash
+cargo xtask module validate cache
+cargo xtask module test cache
+cargo test -p rustok-cache --lib
+RUSTOK_CACHE_REAL_REDIS_URL=redis://... \
+  cargo test -p rustok-cache \
+  real_redis_publish_and_subscription_share_validated_channel_contract \
+  -- --ignored --nocapture
+```
 
 ## Change rules
 
-1. Keep backend wiring, invalidation, and fallback policy in this module.
-2. Update the root README, local docs, and `rustok-module.toml` with a cache
-   contract change.
-3. Update `docs/modules/registry.md` if module ownership or capability status
-   changes.
+1. Keep backend wiring, invalidation and fallback policy in this module.
+2. Update the crate README, local docs and `rustok-module.toml` with a cache contract change.
+3. Update `docs/modules/registry.md` if module ownership or capability status changes.
+4. Do not claim cache hardening complete until compiled and live Redis evidence is recorded.
+5. Prefer correctness-preserving misses over serving unversioned stale values.

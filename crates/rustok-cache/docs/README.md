@@ -1,54 +1,142 @@
 # `rustok-cache` Documentation
 
-`rustok-cache` is the core caching module of the platform. It holds Redis lifecycle,
-fallback/in-memory cache semantics and cache health contract for the host runtime.
+`rustok-cache` is the core caching capability of the platform. It owns Redis lifecycle,
+in-memory capacity policy, degraded fallback semantics, anti-stampede coordination,
+invalidation transport and cache health for the host runtime.
 
 ## Purpose
 
 - publish the canonical runtime entry type `CacheModule`;
 - centralize cache backend selection and lifecycle outside `apps/server`;
-- provide the platform with a unified cache service contract for runtime modules.
+- provide one failure and consistency contract for runtime modules;
+- prevent cache infrastructure from becoming an unbounded latency or memory dependency.
 
 ## Scope
 
 - `CacheService`, `CacheBackendOptions` and backend selection logic;
-- Redis lifecycle, configurable circuit breaker settings, fallback semantics and cache health reporting;
-- lightweight backend instrumentation via `CacheBackend::stats()` for hits/misses/invalidations/entries;
-- service-level Prometheus gauges via `CacheService::prometheus_metrics()` for Redis configuration/health, metrics toggle, in-flight `load_or_fill` loaders and invalidation publish/rejection counters;
-- generic anti-stampede helper `CacheService::load_or_fill`, which coalesces concurrent misses by cache key and returns the result source (`Hit`, `Filled`, `Coalesced`);
-- generic invalidation publisher/subscriber `CacheService::publish_invalidation` / `CacheInvalidationService`, which validates non-empty channel/key, counts local publish / Redis success/failure / rejected counters, publishes namespaced invalidation messages to Redis pub/sub when backend is enabled, always fan-outs the message to local subscribers in the current process, supports channel-scoped local subscriptions via `subscribe_local_channel()` and gives host/runtime listeners a unified `consume_subscription` adapter for Redis pub/sub without direct Redis wiring;
-- tenant-aware cache namespace and invalidation contract;
-- absence of its own RBAC vocabulary and UI surface.
+- count-limited and byte-weighted in-memory backends;
+- Redis lifecycle, operation timeouts and configurable circuit breaker settings;
+- bounded fallback semantics and shared-invalidation error propagation;
+- lightweight backend instrumentation through `CacheBackend::stats()`;
+- service-level Prometheus gauges for Redis configuration/health, instrumentation state,
+  in-flight loaders and invalidation publish/rejection counters;
+- backend-scoped, cancellation-safe `CacheService::load_or_fill` request coalescing;
+- validated invalidation publishing/subscription through Redis pub/sub and local fan-out;
+- absence of module-owned RBAC vocabulary or UI surface.
 
-## Integration
+## Factory contract
 
-- depends on `rustok-core`, `moka`, `tokio`, optional `redis` and shared infra;
-- used by `apps/server` as the platform cache capability for tenant/RBAC/runtime caches;
-- remains `ui_classification = "capability_only"` and does not publish module-owned UI;
-- access to admin-facing cache operations is authorized by the host layer or owning module.
+Use the factory matching the payload profile:
+
+| Factory | Capacity unit | Intended use |
+| --- | --- | --- |
+| `backend` | entries | small, predictable values with Redis/fallback selection |
+| `memory_backend` | entries | local small-value caches |
+| `backend_weighted` | bytes | variable-size serialized values with Redis/fallback selection |
+| `memory_backend_weighted` | bytes | local variable-size values |
+
+Weighted entries account for key bytes, payload bytes and per-entry metadata. Modules should
+not construct Redis clients or fallback stacks themselves.
+
+## Read/write and fallback semantics
+
+The Redis backend is the shared source of cache truth when healthy. The in-memory layer is a
+bounded degraded-mode store, not a general stale secondary source.
+
+1. A write is placed in memory and then attempted in Redis.
+2. A failed Redis write creates a bounded local degraded-write marker with the same TTL.
+3. During a Redis error, reads fall back to the local value.
+4. After reconnect, a Redis miss may use local data only while the matching marker is alive.
+5. A normal Redis miss does not return a mirrored local value.
+6. A successful Redis hit/write removes the degraded marker.
+7. Invalidation clears local state first and returns the Redis deletion error when shared
+   invalidation fails.
+
+This prevents stale local shadow values from surviving ordinary Redis eviction while still
+allowing values written during an outage to remain available for their bounded TTL.
+
+## Redis latency and TTL contract
+
+Connection manager creation and Redis GET/SET/DEL/PING operations are bounded by an
+operation timeout. Cache service health, invalidation PUBLISH and pub/sub connection/
+subscription setup are bounded independently at the service boundary. Timeouts are errors
+and therefore contribute to circuit-breaker failure accounting.
+
+Redis expiration uses `PX` millisecond precision. A positive duration below one millisecond
+is rounded up to one millisecond. A zero duration invalidates the key immediately.
+
+## Anti-stampede contract
+
+`CacheService::load_or_fill` performs a first read, obtains a gate for `(backend instance,
+key)`, performs a second read and invokes the loader only when the second read still misses.
+
+The gate is scoped to the concrete backend instance so equal textual keys in different
+namespaces can load concurrently. A lease owns cleanup and removes the gate after all
+participants release it, including when the leading task errors or is cancelled.
+
+This coordination is process-local. Multi-process stampede prevention for exceptionally
+expensive loaders still requires a distributed lease or a durable refresh workflow.
+
+## Invalidation and reconnect guarantees
+
+`CacheInvalidationService::consume_subscription(channel, handler)` holds one Redis pub/sub
+stream until closure/error and delivers validated `CacheInvalidationMessage` values.
+Subscription setup is bounded, while the long-running receive loop intentionally remains
+open until disconnect.
+
+Redis pub/sub does not replay messages. A disconnected listener can miss invalidations even
+when publishing succeeded. Domain listeners therefore own retry/backoff, health telemetry
+and a fail-safe recovery action. A consumer that detects event lag or an unknown gap should
+clear the affected namespace, bump a generation/version key, or rebuild from the source of
+truth rather than trusting existing local entries.
+
+In a non-Redis build, `subscribe_local()` is the baseline single-instance fan-out contract;
+`subscribe_local_channel(channel)` filters one namespace. Local broadcast lag must be
+handled using the same fail-safe principle.
+
+## Observability
+
+`CacheBackend::stats()` reports hits, misses, invalidations and current entries for
+instrumented backends. Fallback statistics include the local layer instead of returning only
+primary metrics.
+
+`CacheService::prometheus_metrics()` includes:
+
+- Redis configured and healthy gauges;
+- instrumentation enabled gauge;
+- active `load_or_fill` gate count;
+- local invalidation publish count;
+- Redis invalidation publish success/failure counts;
+- invalidation validation rejection count.
+
+A healthy local fallback does not make Redis healthy. Use `CacheService::health()` for the
+shared backend signal and domain listener health for invalidation connectivity.
 
 ## Verification
 
-- `cargo xtask module validate cache`
-- `cargo xtask module test cache`
-- targeted runtime tests for cache backend selection, stats instrumentation, load coalescing, invalidation message validation, invalidation publishing/local fan-out, channel-scoped local subscriptions, circuit breaker options and health semantics when changing wiring
+Required source/compiled gates:
+
+```bash
+cargo xtask module validate cache
+cargo xtask module test cache
+cargo test -p rustok-cache --lib
+```
+
+Live Redis gate:
+
+```bash
+RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379 \
+  cargo test -p rustok-cache \
+  real_redis_publish_and_subscription_share_validated_channel_contract \
+  -- --ignored --nocapture
+```
+
+The live gate verifies validated publish/subscription parity. Additional operational tests
+should inject delayed Redis responses, disconnect listeners and force local broadcast lag.
 
 ## Related documents
 
-- [README crate](../README.md)
-- [Implementation Plan](./implementation-plan.md)
-- [Manifest Layer Contract](../../../docs/modules/manifest.md)
-
-## Listener/reconnect guarantees
-
-`CacheInvalidationService::consume_subscription(channel, handler)` holds a single Redis pub/sub stream until closure or error and delivers each message to the domain handler as a `CacheInvalidationMessage`. `CacheInvalidationMessage::try_new()` provides a validated constructor for call sites that want to fail-fast before publish; `publish()` additionally drops empty channel/key without local/Redis fan-out and increments the rejected counter. The Redis subscription adapter also rejects an empty channel before connecting and ignores invalid pub/sub payloads before calling the domain handler. Retry/backoff remain with the host/runtime listener so that each domain can publish its own health status and reconnect telemetry; `apps/server` tenant listener uses this adapter inside the existing retry-loop. `CacheInvalidationService::stats()` and `CacheService::prometheus_metrics()` publish counters for local fan-out, Redis publish success/failure and rejected messages. In a non-Redis build the subscription adapter is unavailable, full local fan-out via `subscribe_local()` remains the baseline contract for single-instance runtime and tests, and `subscribe_local_channel(channel)` provides a namespace-filtered receiver for multi-listener scenarios without Redis.
-
-## Optional real-Redis gate
-
-When compilation and external Redis are enabled, the current ignored gate for multi-instance/pub-sub parity is run as:
-
-```bash
-RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379 cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture
-```
-
-The gate verifies that `publish_invalidation` and `consume_subscription_with_ready` work through a single validated channel contract and deliver the key payload via Redis pub/sub.
+- [Crate README](../README.md)
+- [Caching architecture](./CACHING_ARCHITECTURE.md)
+- [Implementation plan](./implementation-plan.md)
+- [Manifest layer contract](../../../docs/modules/manifest.md)

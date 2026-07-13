@@ -19,6 +19,7 @@ pub mod entities;
 pub mod error;
 pub mod fba;
 pub mod graphql;
+pub mod graphql_runtime;
 pub mod migrations;
 pub mod openapi;
 mod search;

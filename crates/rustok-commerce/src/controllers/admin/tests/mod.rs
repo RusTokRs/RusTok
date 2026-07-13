@@ -38,6 +38,10 @@ pub(crate) fn test_app_context(
     crate::controllers::CommerceHttpRuntime {
         db,
         event_bus: mock_transactional_event_bus(),
+        payment_provider_registry:
+            rustok_payment::providers::PaymentProviderRegistry::with_manual_provider(),
+        fulfillment_provider_registry:
+            rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider(),
     }
 }
 
