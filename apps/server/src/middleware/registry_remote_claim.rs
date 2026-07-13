@@ -1,0 +1,167 @@
+use axum::{
+    body::{to_bytes, Body},
+    extract::State,
+    http::{Method, Request, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+    Json,
+};
+use subtle::ConstantTimeEq;
+
+use crate::services::marketplace_catalog::{
+    RegistryRunnerClaimPayload, RegistryRunnerClaimRequest, RegistryRunnerClaimResponse,
+    REGISTRY_MUTATION_SCHEMA_VERSION,
+};
+use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
+use crate::services::server_runtime_context::ServerRuntimeContext;
+
+const CLAIM_PATH: &str = "/v2/catalog/runner/claim";
+const MAX_CLAIM_BODY_BYTES: usize = 64 * 1024;
+
+/// Replace the legacy read-then-update runner claim path with a database CAS.
+/// Other registry runner routes continue through the normal controller.
+pub async fn claim_atomic(
+    State(ctx): State<ServerRuntimeContext>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    if request.method() != Method::POST || request.uri().path() != CLAIM_PATH {
+        return next.run(request).await;
+    }
+
+    let executor = &ctx.settings().registry.remote_executor;
+    if !executor.enabled {
+        return response(StatusCode::NOT_FOUND, "not_found", "Remote executor is disabled");
+    }
+    let Some(expected) = executor.shared_token.as_deref() else {
+        return response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "configuration_error",
+            "Remote executor shared token is not configured",
+        );
+    };
+    let supplied = request
+        .headers()
+        .get("x-rustok-runner-token")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if !supplied.is_some_and(|value| {
+        bool::from(value.as_bytes().ct_eq(expected.as_bytes()))
+    }) {
+        return response(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "Missing or invalid registry runner token",
+        );
+    }
+
+    let (_parts, body) = request.into_parts();
+    let bytes = match to_bytes(body, MAX_CLAIM_BODY_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return response(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Runner claim body is invalid or too large",
+            )
+        }
+    };
+    let input = match serde_json::from_slice::<RegistryRunnerClaimRequest>(&bytes) {
+        Ok(input) => input,
+        Err(_) => {
+            return response(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Runner claim body must be valid JSON",
+            )
+        }
+    };
+    if input.schema_version != REGISTRY_MUTATION_SCHEMA_VERSION {
+        return response(
+            StatusCode::BAD_REQUEST,
+            "invalid_schema_version",
+            "Runner claim schema_version is not supported",
+        );
+    }
+    if input.runner_id.trim().is_empty() {
+        return response(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Runner claim requires a non-empty runner_id",
+        );
+    }
+    if input.supported_stages.is_empty() {
+        return response(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Runner claim requires at least one supported stage",
+        );
+    }
+
+    let claim = match claim_remote_validation_stage_atomic(
+        ctx.db(),
+        &input.runner_id,
+        &input.supported_stages,
+        executor.lease_ttl_ms,
+    )
+    .await
+    {
+        Ok(claim) => claim,
+        Err(error) if error.to_string().starts_with("Unsupported validation stage") => {
+            return response(StatusCode::BAD_REQUEST, "invalid_request", &error.to_string())
+        }
+        Err(error) => {
+            tracing::error!(%error, runner_id = %input.runner_id, "Atomic registry runner claim failed");
+            return response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Failed to claim registry validation stage",
+            );
+        }
+    };
+
+    Json(RegistryRunnerClaimResponse {
+        accepted: true,
+        claim: claim.map(|claim| RegistryRunnerClaimPayload {
+            claim_id: claim.claim_id,
+            request_id: claim.request_id,
+            slug: claim.slug,
+            version: claim.version,
+            stage_key: claim.stage_key,
+            execution_mode: claim.execution_mode,
+            runnable: claim.runnable,
+            requires_manual_confirmation: claim.requires_manual_confirmation,
+            allowed_terminal_reason_codes: claim.allowed_terminal_reason_codes,
+            suggested_pass_reason_code: claim.suggested_pass_reason_code,
+            suggested_failure_reason_code: claim.suggested_failure_reason_code,
+            suggested_blocked_reason_code: claim.suggested_blocked_reason_code,
+            artifact_download_url: claim.artifact_download_url,
+            artifact_checksum_sha256: claim.artifact_checksum_sha256,
+            crate_name: claim.crate_name,
+        }),
+    })
+    .into_response()
+}
+
+fn response(status: StatusCode, code: &str, message: &str) -> Response {
+    (
+        status,
+        Json(serde_json::json!({
+            "error": code,
+            "message": message,
+        })),
+    )
+        .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CLAIM_PATH, MAX_CLAIM_BODY_BYTES};
+
+    #[test]
+    fn claim_boundary_is_narrow_and_bounded() {
+        assert_eq!(CLAIM_PATH, "/v2/catalog/runner/claim");
+        assert_eq!(MAX_CLAIM_BODY_BYTES, 64 * 1024);
+    }
+}
