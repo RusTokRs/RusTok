@@ -42,6 +42,7 @@ pub use services::{
     CheckoutOperationStage, CheckoutOperationStatus, CheckoutResult, CheckoutService,
     CreateReturnDecisionInput, DEFAULT_CHECKOUT_LEASE_SECONDS, ExchangeDifferenceRefundInput,
     FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
+    JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
     MAX_CHECKOUT_LEASE_SECONDS, PaymentOrchestrationError, PaymentOrchestrationResult,
     PaymentOrchestrationService, PostOrderOrchestrationError, PostOrderOrchestrationService,
     RefundReconciliationService, ReturnClaimDecisionInput, ReturnDecisionInput,
