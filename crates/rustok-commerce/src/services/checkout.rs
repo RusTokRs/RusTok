@@ -11,9 +11,7 @@ use rustok_cart::{
     CartCheckoutSnapshotRequest,
 };
 use rustok_fulfillment::error::FulfillmentError;
-use rustok_fulfillment::providers::{
-    FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
-};
+use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
@@ -84,7 +82,6 @@ pub struct CheckoutService {
     payment_service: PaymentService,
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_service: FulfillmentService,
-    fulfillment_provider_registry: FulfillmentProviderRegistry,
     context_service: StoreContextService,
 }
 
@@ -106,24 +103,21 @@ impl CheckoutService {
             payment_service: PaymentService::new(db.clone()),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
             fulfillment_service: FulfillmentService::new(db.clone()),
-            fulfillment_provider_registry: FulfillmentProviderRegistry::with_manual_provider(),
             context_service: StoreContextService::new(db, region_read_port),
         }
     }
 
-    /// Override payment and fulfillment provider registries assembled by runtime composition.
+    /// Override provider registries assembled by runtime composition.
     ///
-    /// Checkout keeps lifecycle persistence in owner services, but adapter side effects
-    /// are routed through owner registry `execute_*` seams so unavailable providers are
-    /// blocked before external calls and degraded registration metadata remains visible
-    /// to orchestration.
+    /// Payment side effects remain synchronous checkout dependencies. Fulfillment
+    /// providers are accepted for API compatibility, but label execution is owned by
+    /// the durable paid-order listener and recovery worker after payment is committed.
     pub fn with_provider_registries(
         mut self,
         payment_provider_registry: PaymentProviderRegistry,
-        fulfillment_provider_registry: FulfillmentProviderRegistry,
+        _fulfillment_provider_registry: FulfillmentProviderRegistry,
     ) -> Self {
         self.payment_provider_registry = payment_provider_registry;
-        self.fulfillment_provider_registry = fulfillment_provider_registry;
         self
     }
 
@@ -954,27 +948,11 @@ impl CheckoutService {
                         carrier: None,
                         tracking_number: None,
                         items: Some(items),
-                        metadata: group_metadata.clone(),
-                    },
-                )
-                .await
-                .map_err(stage_error("create_fulfillment"))?;
-
-            self.fulfillment_provider_registry
-                .execute_create_label(
-                    MANUAL_PROVIDER_ID,
-                    FulfillmentProviderOperationRequest {
-                        tenant_id,
-                        fulfillment_id: fulfillment.id,
-                        idempotency_key: Some(format!(
-                            "checkout:{}:fulfillment_label:{}",
-                            cart.id, fulfillment.id
-                        )),
                         metadata: group_metadata,
                     },
                 )
                 .await
-                .map_err(stage_error("execute_fulfillment_label_provider"))?;
+                .map_err(stage_error("create_fulfillment"))?;
 
             fulfillments.push(fulfillment);
         }
