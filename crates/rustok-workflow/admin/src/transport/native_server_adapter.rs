@@ -107,7 +107,7 @@ pub async fn create_from_template_native(
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
-            .create_from_template(tenant.id, Some(auth.user_id), &template_id, name)
+            .create_from_template(tenant.id, auth.human_user_id(), &template_id, name)
             .await
             .map(|id| id.to_string())
             .map_err(|err| ServerFnError::new(err.to_string()))
