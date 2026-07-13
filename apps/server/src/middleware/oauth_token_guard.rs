@@ -6,11 +6,22 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rustok_api::context::scope_matches;
 use rustok_auth::{TokenErrorResponse, TokenRequest};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
+use crate::auth::hash_refresh_token;
 use crate::context::TenantContextExt;
+use crate::models::{
+    oauth_authorization_codes as oauth_codes,
+    oauth_consents::Entity as OAuthConsents,
+    oauth_tokens,
+    users::{self, Entity as Users},
+};
 use crate::services::oauth_app::OAuthAppService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -74,11 +85,8 @@ async fn validate_request(
         "authorization_code" => {
             let app = resolve_client(ctx, tenant_id, request).await?;
             require_grant(&app, "authorization_code")?;
-            // The existing exchange service performs redirect URI, PKCE and
-            // authorization-code binding checks. Client authentication is
-            // repeated here so every confidential token exchange has one
-            // consistent precondition.
             authenticate_confidential_client(&app, request)?;
+            validate_authorization_code(ctx, tenant_id, &app, request).await?;
         }
         "client_credentials" => {
             let app = resolve_client(ctx, tenant_id, request).await?;
@@ -90,22 +98,217 @@ async fn validate_request(
             let app = resolve_client(ctx, tenant_id, request).await?;
             require_grant(&app, "refresh_token")?;
             authenticate_confidential_client(&app, request)?;
-            if request
-                .refresh_token
-                .as_deref()
-                .is_none_or(|token| token.trim().is_empty())
-            {
-                return Err(token_error(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_request",
-                    "refresh_token is required",
-                ));
-            }
+            validate_refresh_token(ctx, tenant_id, &app, request).await?;
         }
         _ => {}
     }
 
     Ok(())
+}
+
+async fn validate_authorization_code(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+    app: &crate::models::oauth_apps::Model,
+    request: &TokenRequest,
+) -> Result<(), Response> {
+    let code = required_value(request.code.as_deref(), "code is required")?;
+    let redirect_uri = required_value(
+        request.redirect_uri.as_deref(),
+        "redirect_uri is required",
+    )?;
+    let verifier = required_value(
+        request.code_verifier.as_deref(),
+        "code_verifier is required",
+    )?;
+
+    let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
+    let code_model = oauth_codes::Entity::find()
+        .filter(oauth_codes::Column::CodeHash.eq(code_hash))
+        .filter(oauth_codes::Column::UsedAt.is_null())
+        .filter(oauth_codes::Column::ExpiresAt.gt(chrono::Utc::now()))
+        .one(ctx.db())
+        .await
+        .map_err(|_| {
+            token_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "server_error",
+                "Failed to validate authorization code",
+            )
+        })?
+        .ok_or_else(|| {
+            token_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_grant",
+                "Authorization code is invalid, expired, or already used",
+            )
+        })?;
+
+    if code_model.app_id != app.id || code_model.tenant_id != tenant_id {
+        return Err(token_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_grant",
+            "Authorization code is not bound to this client or tenant",
+        ));
+    }
+    if code_model.redirect_uri != redirect_uri {
+        return Err(token_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_grant",
+            "redirect_uri does not match the authorization request",
+        ));
+    }
+    if code_model.code_challenge_method != "S256" {
+        return Err(token_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_grant",
+            "Unsupported PKCE challenge method",
+        ));
+    }
+
+    let expected_challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    if !bool::from(
+        expected_challenge
+            .as_bytes()
+            .ct_eq(code_model.code_challenge.as_bytes()),
+    ) {
+        return Err(token_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_grant",
+            "PKCE verification failed",
+        ));
+    }
+
+    let scopes = code_model.scopes_list();
+    validate_scope_subset(&app.scopes_list(), &scopes)?;
+    validate_active_consent(ctx, app, tenant_id, code_model.user_id, &scopes).await?;
+
+    let user = Users::find_by_id(code_model.user_id)
+        .filter(users::Column::TenantId.eq(tenant_id))
+        .one(ctx.db())
+        .await
+        .map_err(|_| {
+            token_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "server_error",
+                "Failed to validate authorization subject",
+            )
+        })?
+        .filter(|user| user.is_active())
+        .ok_or_else(|| {
+            token_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_grant",
+                "Authorization subject is missing or inactive",
+            )
+        })?;
+
+    if user.id != code_model.user_id {
+        return Err(token_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_grant",
+            "Authorization subject mismatch",
+        ));
+    }
+
+    Ok(())
+}
+
+async fn validate_refresh_token(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+    app: &crate::models::oauth_apps::Model,
+    request: &TokenRequest,
+) -> Result<(), Response> {
+    let refresh_token = required_value(
+        request.refresh_token.as_deref(),
+        "refresh_token is required",
+    )?;
+    let token_hash = hash_refresh_token(refresh_token);
+    let token = oauth_tokens::Entity::find()
+        .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
+        .filter(oauth_tokens::Column::AppId.eq(app.id))
+        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::TokenType.eq("refresh"))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .filter(oauth_tokens::Column::ExpiresAt.gt(chrono::Utc::now()))
+        .one(ctx.db())
+        .await
+        .map_err(|_| {
+            token_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "server_error",
+                "Failed to validate refresh token",
+            )
+        })?
+        .ok_or_else(|| {
+            token_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_grant",
+                "Refresh token is invalid, expired, or already used",
+            )
+        })?;
+
+    let scopes = token.scopes_list();
+    validate_scope_subset(&app.scopes_list(), &scopes)?;
+
+    if let Some(user_id) = token.user_id {
+        let user = Users::find_by_id(user_id)
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .one(ctx.db())
+            .await
+            .map_err(|_| {
+                token_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "server_error",
+                    "Failed to validate refresh token subject",
+                )
+            })?
+            .filter(|user| user.is_active())
+            .ok_or_else(|| {
+                token_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_grant",
+                    "Refresh token subject is missing or inactive",
+                )
+            })?;
+
+        validate_active_consent(ctx, app, tenant_id, user.id, &scopes).await?;
+    }
+
+    Ok(())
+}
+
+async fn validate_active_consent(
+    ctx: &ServerRuntimeContext,
+    app: &crate::models::oauth_apps::Model,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    scopes: &[String],
+) -> Result<(), Response> {
+    if !app.requires_user_consent() {
+        return Ok(());
+    }
+
+    let consent = OAuthConsents::find_active_consent(ctx.db(), app.id, user_id)
+        .await
+        .map_err(|_| {
+            token_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "server_error",
+                "Failed to validate OAuth consent",
+            )
+        })?
+        .filter(|consent| consent.tenant_id == tenant_id)
+        .ok_or_else(|| {
+            token_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_grant",
+                "OAuth consent is missing or revoked",
+            )
+        })?;
+
+    validate_scope_subset(&consent.scopes_list(), scopes)
 }
 
 async fn resolve_client(
@@ -221,8 +424,13 @@ fn validate_requested_scopes(
         .unwrap_or_default()
         .split_whitespace()
         .filter(|scope| !scope.is_empty())
+        .map(str::to_string)
         .collect::<Vec<_>>();
 
+    validate_scope_subset(allowed_scopes, &requested)
+}
+
+fn validate_scope_subset(allowed_scopes: &[String], requested: &[String]) -> Result<(), Response> {
     if requested
         .iter()
         .all(|scope| scope_matches(allowed_scopes, scope))
@@ -233,8 +441,14 @@ fn validate_requested_scopes(
     Err(token_error(
         StatusCode::BAD_REQUEST,
         "invalid_scope",
-        "One or more requested scopes are not allowed for this client",
+        "One or more requested scopes are not allowed",
     ))
+}
+
+fn required_value<'a>(value: Option<&'a str>, description: &'static str) -> Result<&'a str, Response> {
+    value.filter(|value| !value.trim().is_empty()).ok_or_else(|| {
+        token_error(StatusCode::BAD_REQUEST, "invalid_request", description)
+    })
 }
 
 fn token_error(status: StatusCode, error: &str, description: &str) -> Response {
@@ -250,13 +464,20 @@ fn token_error(status: StatusCode, error: &str, description: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_requested_scopes;
+    use super::{validate_requested_scopes, validate_scope_subset};
 
     #[test]
     fn requested_scope_must_be_subset_of_app_scopes() {
         let allowed = vec!["catalog:*".to_string(), "profile".to_string()];
         assert!(validate_requested_scopes(&allowed, Some("catalog:read profile")).is_ok());
         assert!(validate_requested_scopes(&allowed, Some("catalog:read admin:users")).is_err());
+    }
+
+    #[test]
+    fn code_and_refresh_scopes_use_the_same_subset_policy() {
+        let allowed = vec!["forum:*".to_string()];
+        assert!(validate_scope_subset(&allowed, &["forum:read".to_string()]).is_ok());
+        assert!(validate_scope_subset(&allowed, &["admin:users".to_string()]).is_err());
     }
 
     #[test]
