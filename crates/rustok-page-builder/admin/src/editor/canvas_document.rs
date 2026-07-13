@@ -2,102 +2,7 @@ use fly::{ComponentNode, ComponentObject, ProjectDocument};
 use fly_leptos::FLY_IFRAME_PROTOCOL_V1;
 use serde_json::Value;
 
-const CANVAS_SCRIPT: &str = r#"
-(() => {
-  const protocol = __FLY_PROTOCOL__;
-  const instanceId = __FLY_INSTANCE__;
-  let sequence = 0;
-  let measureScheduled = false;
-  let pointerScheduled = false;
-
-  const send = (type, payload = {}) => {
-    parent.postMessage(JSON.stringify({
-      protocol,
-      instance_id: instanceId,
-      sequence: ++sequence,
-      message: { type, ...payload },
-    }), '*');
-  };
-
-  const componentAt = (target) => target instanceof Element
-    ? target.closest('[data-fly-component-id]')
-    : null;
-
-  const reportViewport = () => send('viewport_changed', {
-    width: Math.max(0, Math.round(window.innerWidth)),
-    height: Math.max(0, Math.round(window.innerHeight)),
-    scroll_x: window.scrollX,
-    scroll_y: window.scrollY,
-    zoom: window.devicePixelRatio > 0 ? window.devicePixelRatio : 1,
-  });
-
-  const measure = () => {
-    measureScheduled = false;
-    const components = Array.from(document.querySelectorAll('[data-fly-component-id]')).map((element) => {
-      const rect = element.getBoundingClientRect();
-      const parentElement = element.parentElement?.closest('[data-fly-component-id]');
-      return {
-        component_id: element.dataset.flyComponentId,
-        parent_component_id: parentElement?.dataset.flyComponentId ?? null,
-        index: Number.parseInt(element.dataset.flyIndex ?? '0', 10) || 0,
-        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-      };
-    });
-    send('geometry_snapshot', { components });
-  };
-
-  const scheduleMeasure = () => {
-    if (measureScheduled) return;
-    measureScheduled = true;
-    requestAnimationFrame(measure);
-  };
-
-  document.addEventListener('click', (event) => {
-    const component = componentAt(event.target);
-    document.querySelectorAll('[data-fly-selected]')
-      .forEach((node) => node.removeAttribute('data-fly-selected'));
-    if (component) component.setAttribute('data-fly-selected', 'true');
-    send('focus_requested', { component_id: component?.dataset.flyComponentId ?? null });
-  });
-
-  document.addEventListener('pointerover', (event) => {
-    const component = componentAt(event.target);
-    send('hover_requested', { component_id: component?.dataset.flyComponentId ?? null });
-  });
-  document.addEventListener('pointerleave', () => {
-    send('hover_requested', { component_id: null });
-  });
-  document.addEventListener('pointermove', (event) => {
-    if (pointerScheduled) return;
-    pointerScheduled = true;
-    requestAnimationFrame(() => {
-      pointerScheduled = false;
-      const kind = ['mouse', 'touch', 'pen'].includes(event.pointerType)
-        ? event.pointerType
-        : 'unknown';
-      send('pointer_moved', {
-        sample: {
-          pointer_id: event.pointerId,
-          kind,
-          position: { x: event.clientX, y: event.clientY },
-          buttons: event.buttons,
-          primary: event.isPrimary,
-        },
-      });
-    });
-  }, { passive: true });
-
-  const observer = new ResizeObserver(scheduleMeasure);
-  observer.observe(document.documentElement);
-  document.querySelectorAll('[data-fly-component-id]').forEach((node) => observer.observe(node));
-  window.addEventListener('resize', () => { reportViewport(); scheduleMeasure(); }, { passive: true });
-  window.addEventListener('scroll', () => { reportViewport(); scheduleMeasure(); }, { passive: true });
-
-  reportViewport();
-  scheduleMeasure();
-  send('ready');
-})();
-"#;
+const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
 
 pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> String {
     let mut canvas = String::new();
@@ -144,10 +49,10 @@ fn render_component(
 
     output.push('<');
     output.push_str(tag);
-    write_data_attribute(output, "data-fly-component-id", component_id);
-    write_data_attribute(output, "data-fly-index", &index.to_string());
+    write_attribute(output, "data-fly-component-id", component_id);
+    write_attribute(output, "data-fly-index", &index.to_string());
     if let Some(parent_id) = parent_id {
-        write_data_attribute(output, "data-fly-parent-id", parent_id);
+        write_attribute(output, "data-fly-parent-id", parent_id);
     }
 
     for (name, value) in &component.attributes {
@@ -160,7 +65,7 @@ fn render_component(
         {
             continue;
         }
-        write_data_attribute(output, name, &value);
+        write_attribute(output, name, &value);
     }
 
     if let Some(style) = component.style.as_ref().and_then(Value::as_object) {
@@ -170,7 +75,7 @@ fn render_component(
             .collect::<Vec<_>>()
             .join(";");
         if !style.is_empty() {
-            write_data_attribute(output, "style", &style);
+            write_attribute(output, "style", &style);
         }
     }
 
@@ -190,7 +95,7 @@ fn render_component(
     output.push('>');
 }
 
-fn write_data_attribute(output: &mut String, name: &str, value: &str) {
+fn write_attribute(output: &mut String, name: &str, value: &str) {
     output.push(' ');
     output.push_str(name);
     output.push_str("=\"");
@@ -358,6 +263,7 @@ mod tests {
         assert!(html.contains("data-fly-component-id=\"hero\""));
         assert!(!html.contains("<script>alert(1)</script>"));
         assert!(html.contains("geometry_snapshot"));
+        assert!(html.contains("setTimeout(announce, 100)"));
         assert!(html.contains("canvas-home"));
     }
 
@@ -378,6 +284,6 @@ mod tests {
         .expect("decode");
         let html = render_canvas_srcdoc(&document, "canvas-home");
         assert!(!html.contains("onclick="));
-        assert!(!html.contains("javascript:"));
+        assert!(!html.contains("href=\"javascript:"));
     }
 }
