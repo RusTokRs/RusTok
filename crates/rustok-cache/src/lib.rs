@@ -1,6 +1,8 @@
+mod policy;
 mod service;
 mod weighted;
 
+pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
     CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,
