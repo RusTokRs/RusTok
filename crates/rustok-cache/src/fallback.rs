@@ -235,8 +235,9 @@ mod tests {
             .set("key".to_string(), b"stale".to_vec())
             .await
             .unwrap();
+        let primary_backend: Arc<dyn CacheBackend> = primary.clone();
         let backend = DegradationAwareFallbackBackend::new(
-            Arc::clone(&primary) as Arc<dyn CacheBackend>,
+            primary_backend,
             Arc::clone(&fallback),
         );
 
