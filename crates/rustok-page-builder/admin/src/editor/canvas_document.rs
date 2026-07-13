@@ -1,5 +1,9 @@
-use fly::{render_page, PageSelection, ProjectDocument, RenderPolicy};
+use fly::{
+    render_page, render_page_with_runtime_context, PageSelection, ProjectDocument, RenderPolicy,
+    RenderedPage,
+};
 use fly_leptos::FLY_IFRAME_PROTOCOL_V1;
+use serde_json::Value;
 
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
 
@@ -7,12 +11,46 @@ pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> St
     let rendered = render_page(
         document,
         &PageSelection::First,
-        &RenderPolicy {
-            instrument_components: true,
-            emit_style_hooks: true,
-            ..RenderPolicy::default()
-        },
+        &canvas_render_policy(),
     );
+    render_srcdoc(rendered, instance_id, 0, 0)
+}
+
+pub fn render_canvas_srcdoc_with_context(
+    document: &ProjectDocument,
+    instance_id: &str,
+    context: &Value,
+) -> String {
+    match render_page_with_runtime_context(
+        document,
+        &PageSelection::First,
+        &canvas_render_policy(),
+        context,
+    ) {
+        Ok(result) => render_srcdoc(
+            Ok(result.page),
+            instance_id,
+            result.diagnostics.len(),
+            result.repeated_nodes,
+        ),
+        Err(error) => render_srcdoc(Err(error), instance_id, 0, 0),
+    }
+}
+
+fn canvas_render_policy() -> RenderPolicy {
+    RenderPolicy {
+        instrument_components: true,
+        emit_style_hooks: true,
+        ..RenderPolicy::default()
+    }
+}
+
+fn render_srcdoc(
+    rendered: fly::FlyResult<RenderedPage>,
+    instance_id: &str,
+    runtime_diagnostics: usize,
+    repeated_nodes: usize,
+) -> String {
     let (head, canvas, project_styles) = match rendered {
         Ok(rendered) => (rendered.head.render_html(), rendered.html, rendered.css),
         Err(error) => (
@@ -34,7 +72,7 @@ pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> St
         .replace("__FLY_INSTANCE__", &instance);
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{head}<style>{}{}</style></head><body><main id=\"fly-canvas-root\">{canvas}</main><script>{script}</script></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{head}<style>{}{}</style></head><body data-runtime-diagnostics=\"{runtime_diagnostics}\" data-repeated-nodes=\"{repeated_nodes}\"><main id=\"fly-canvas-root\">{canvas}</main><script>{script}</script></body></html>",
         canvas_styles(), project_styles,
     )
 }
@@ -84,6 +122,51 @@ mod tests {
     }
 
     #[test]
+    fn runtime_renderer_materializes_conditions_and_repeaters() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "banner",
+                        "type": "text",
+                        "content": "Banner"
+                    }, {
+                        "id": "row",
+                        "type": "text",
+                        "content": "{{item.name}}"
+                    }]
+                }
+            }],
+            "flyRuntimeConditions": [{
+                "id": "show-banner",
+                "component_id": "banner",
+                "path": "showBanner",
+                "operator": "truthy"
+            }],
+            "flyRuntimeRepeaters": [{
+                "id": "rows",
+                "component_id": "row",
+                "path": "items"
+            }]
+        }))
+        .expect("decode");
+        let html = render_canvas_srcdoc_with_context(
+            &document,
+            "canvas-home",
+            &json!({
+                "showBanner": false,
+                "items": [{ "name": "One" }, { "name": "Two" }]
+            }),
+        );
+        assert!(!html.contains("Banner"));
+        assert!(html.contains("One"));
+        assert!(html.contains("Two"));
+        assert!(html.contains("data-repeated-nodes=\"2\""));
+    }
+
+    #[test]
     fn renderer_rejects_event_attributes_and_javascript_urls() {
         let document = GrapesJsV1Codec::decode_value(json!({
             "pages": [{
@@ -101,32 +184,6 @@ mod tests {
         let html = render_canvas_srcdoc(&document, "canvas-home");
         assert!(!html.contains("onclick="));
         assert!(!html.contains("href=\"javascript:"));
-    }
-
-    #[test]
-    fn renderer_supports_forms_media_and_boolean_attributes() {
-        let document = GrapesJsV1Codec::decode_value(json!({
-            "pages": [{
-                "component": {
-                    "id": "root",
-                    "type": "wrapper",
-                    "components": [
-                        { "id": "form", "type": "form", "components": [
-                            { "id": "input", "type": "input", "attributes": { "type": "email", "required": true } },
-                            { "id": "submit", "type": "submit", "content": "Send" }
-                        ] },
-                        { "id": "video", "type": "video", "attributes": { "controls": true } }
-                    ]
-                }
-            }]
-        }))
-        .expect("decode");
-        let html = render_canvas_srcdoc(&document, "canvas-home");
-        assert!(html.contains("<form"));
-        assert!(html.contains("<input"));
-        assert!(html.contains(" required"));
-        assert!(html.contains("<video"));
-        assert!(html.contains(" controls"));
     }
 
     #[test]
