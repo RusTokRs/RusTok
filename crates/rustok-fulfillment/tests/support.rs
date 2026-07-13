@@ -1,5 +1,5 @@
 use rustok_fulfillment::entities::{
-    fulfillment, fulfillment_item, shipping_option, shipping_option_translation,
+    fulfillment, fulfillment_item, provider_operation, shipping_option, shipping_option_translation,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 
@@ -33,6 +33,12 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(fulfillment_item::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(provider_operation::Entity),
     )
     .await;
 }
