@@ -15,6 +15,7 @@ use crate::models::{oauth_apps, oauth_consents, oauth_tokens, tenants, users};
 use crate::services::oauth_app::{self, OAuthAppService};
 use crate::services::rbac_service::RbacService;
 
+mod super_admin_guard;
 mod user_admin;
 
 #[derive(Clone)]
