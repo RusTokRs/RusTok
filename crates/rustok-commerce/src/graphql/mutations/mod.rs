@@ -8,6 +8,7 @@ pub mod helpers;
 pub mod pricing;
 pub mod provider_operations;
 pub mod provider_return_helpers;
+pub mod reconciliation;
 
 #[derive(MergedObject, Default)]
 pub struct CommerceMutation(
@@ -17,6 +18,7 @@ pub struct CommerceMutation(
     pub fulfillment::CommerceFulfillmentMutation,
     pub pricing::CommercePricingMutation,
     pub provider_operations::CommerceProviderMutation,
+    pub reconciliation::CommerceReconciliationMutation,
 );
 
 #[cfg(test)]
@@ -43,6 +45,7 @@ mod tests {
             "createRefund",
             "completeRefund",
             "cancelRefund",
+            "retryRefundProvider",
             "createFulfillment",
             "shipFulfillment",
             "deliverFulfillment",
