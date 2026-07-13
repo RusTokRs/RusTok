@@ -62,6 +62,24 @@ impl BackendGenerationState {
         Ok(())
     }
 
+    fn bump_local(&self) -> Result<u64, CacheBackendGenerationError> {
+        let _guard = self
+            .update_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let current = if self.trusted.load(Ordering::Acquire) {
+            self.generation.load(Ordering::Acquire)
+        } else {
+            0
+        };
+        let next = current
+            .checked_add(1)
+            .ok_or(CacheBackendGenerationError::GenerationExhausted)?;
+        self.generation.store(next, Ordering::Release);
+        self.trusted.store(true, Ordering::Release);
+        Ok(next)
+    }
+
     fn physical_key(&self, logical_key: &str) -> String {
         if self.trusted.load(Ordering::Acquire) {
             format!(
@@ -86,6 +104,7 @@ pub enum CacheBackendGenerationError {
     PrefixTooLarge { length: usize, maximum: usize },
     RegistryCapacityExceeded { count: usize, maximum: usize },
     GenerationRegressed { current: u64, proposed: u64 },
+    GenerationExhausted,
     SharedGeneration(String),
 }
 
@@ -105,6 +124,7 @@ impl std::fmt::Display for CacheBackendGenerationError {
                 formatter,
                 "cache backend generation cannot regress from {current} to {proposed}"
             ),
+            Self::GenerationExhausted => write!(formatter, "cache backend generation is exhausted"),
             Self::SharedGeneration(message) => {
                 write!(formatter, "shared cache backend generation failed: {message}")
             }
@@ -187,8 +207,14 @@ impl CacheService {
         prefix: &str,
     ) -> Result<CacheBackendGenerationSnapshot, CacheBackendGenerationError> {
         validate_prefix(prefix)?;
-        let generation = self.namespace_generations().bump(prefix).await?;
-        observe_cache_backend_generation(prefix, generation.value())
+        if self.has_redis() {
+            let generation = self.namespace_generations().bump(prefix).await?;
+            return observe_cache_backend_generation(prefix, generation.value());
+        }
+
+        let state = generation_state(prefix)?;
+        state.bump_local()?;
+        Ok(state.snapshot())
     }
 
     pub(crate) async fn wrap_generation_aware_backend(
@@ -324,6 +350,16 @@ mod tests {
         assert_eq!(backend.get("key").await.unwrap(), None);
         backend.set("key".to_string(), b"new".to_vec()).await.unwrap();
         assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn local_generation_bumps_are_persistent_and_monotonic() {
+        let service = CacheService::from_url(None);
+        let prefix = unique_prefix("local-bump");
+        let first = service.bump_cache_backend_generation(&prefix).await.unwrap();
+        let second = service.bump_cache_backend_generation(&prefix).await.unwrap();
+        assert_eq!(second.generation, first.generation + 1);
+        assert!(second.trusted);
     }
 
     #[tokio::test]
