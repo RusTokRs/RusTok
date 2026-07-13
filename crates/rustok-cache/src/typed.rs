@@ -101,26 +101,40 @@ impl CacheService {
                         expected_schema_version
                     )));
                 }
+                if envelope.is_hard_expired(now_unix_ms) {
+                    return Err(rustok_core::Error::Cache(
+                        "cache loader produced an already hard-expired envelope".to_string(),
+                    ));
+                }
                 envelope
                     .encode_with_limit(max_encoded_bytes)
                     .map_err(envelope_error_to_core)
             })
             .await?;
 
-        let envelope = CacheEnvelope::<T>::decode_with_limit(
+        let envelope = match CacheEnvelope::<T>::decode_with_limit(
             &result.value,
             expected_schema_version,
             max_encoded_bytes,
-        )
-        .map_err(|error| {
-            tracing::error!(%error, key, "Newly loaded cache envelope failed validation");
-            envelope_error_to_core(error)
-        })?;
+        ) {
+            Ok(envelope) => envelope,
+            Err(error) => {
+                // Another writer may have populated the key after the initial typed probe and
+                // before the generic coalescing probe. Never leave that incompatible value in
+                // place, otherwise every caller repeats the same decode failure indefinitely.
+                tracing::error!(%error, key, "Coalesced cache value failed typed validation");
+                backend.invalidate(&key).await?;
+                return Err(envelope_error_to_core(error));
+            }
+        };
 
         if envelope.is_hard_expired(now_unix_ms) {
-            let _ = backend.invalidate(&key).await;
+            // A value returned by another concurrent writer can still cross hard expiry between
+            // the generic load and typed validation. Propagate invalidation failure because a
+            // stale shared value may otherwise remain visible to other instances.
+            backend.invalidate(&key).await?;
             return Err(rustok_core::Error::Cache(
-                "cache loader produced an already hard-expired envelope".to_string(),
+                "coalesced cache value is already hard-expired".to_string(),
             ));
         }
 
@@ -161,7 +175,9 @@ fn current_unix_ms() -> u64 {
 mod tests {
     use super::*;
     use crate::CacheTtlPolicy;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
     fn policy() -> CacheLoadPolicy {
         CacheLoadPolicy::new(CacheTtlPolicy::fixed(std::time::Duration::from_secs(60)))
@@ -301,5 +317,110 @@ mod tests {
         assert_eq!(stale_result.value, "stale");
         assert_eq!(stale_result.freshness, CacheEnvelopeFreshness::Stale);
         assert_eq!(stale_result.source, CacheLoadSource::Hit);
+    }
+
+    #[derive(Default)]
+    struct RacedBackend {
+        gets: AtomicUsize,
+        invalidated: AtomicBool,
+        value: Mutex<Option<Vec<u8>>>,
+    }
+
+    #[async_trait]
+    impl CacheBackend for RacedBackend {
+        async fn health(&self) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, _key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            if self.gets.fetch_add(1, Ordering::SeqCst) == 0 {
+                Ok(None)
+            } else {
+                Ok(self.value.lock().unwrap().clone())
+            }
+        }
+
+        async fn set(&self, _key: String, value: Vec<u8>) -> rustok_core::Result<()> {
+            *self.value.lock().unwrap() = Some(value);
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            key: String,
+            value: Vec<u8>,
+            _ttl: std::time::Duration,
+        ) -> rustok_core::Result<()> {
+            self.set(key, value).await
+        }
+
+        async fn invalidate(&self, _key: &str) -> rustok_core::Result<()> {
+            self.invalidated.store(true, Ordering::SeqCst);
+            *self.value.lock().unwrap() = None;
+            Ok(())
+        }
+
+        fn stats(&self) -> rustok_core::CacheStats {
+            rustok_core::CacheStats::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn incompatible_value_racing_after_initial_probe_is_invalidated() {
+        let service = CacheService::from_url(None);
+        let incompatible = CacheEnvelope::new(1, 1_000, "old".to_string())
+            .unwrap()
+            .encode()
+            .unwrap();
+        let backend = Arc::new(RacedBackend {
+            value: Mutex::new(Some(incompatible)),
+            ..RacedBackend::default()
+        });
+        let trait_backend: Arc<dyn CacheBackend> = backend.clone();
+
+        let result = service
+            .load_enveloped_or_fill_with_limit_at(
+                trait_backend,
+                "raced",
+                2,
+                policy(),
+                1024,
+                1_500,
+                || async {
+                    CacheEnvelope::new(2, 1_400, "new".to_string())
+                        .map_err(envelope_error_to_core)
+                },
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(backend.invalidated.load(Ordering::SeqCst));
+        assert!(backend.value.lock().unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn hard_expired_loader_is_rejected_before_store() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(std::time::Duration::from_secs(60), 16);
+
+        let result = service
+            .load_enveloped_or_fill_with_limit_at(
+                backend.clone(),
+                "expired-loader",
+                1,
+                policy(),
+                1024,
+                2_000,
+                || async {
+                    CacheEnvelope::new(1, 1_000, "expired".to_string())
+                        .unwrap()
+                        .with_expirations(Some(1_100), Some(1_200))
+                        .map_err(envelope_error_to_core)
+                },
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(backend.get("expired-loader").await.unwrap().is_none());
     }
 }
