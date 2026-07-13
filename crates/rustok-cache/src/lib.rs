@@ -2,6 +2,7 @@ mod envelope;
 mod generation;
 mod invalidation;
 mod key;
+mod key_generation;
 mod lease;
 mod negative;
 mod policy;
