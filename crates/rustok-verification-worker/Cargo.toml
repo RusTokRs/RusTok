@@ -9,7 +9,9 @@ description = "Isolated trust verification worker for RusToK artifact admission"
 [dependencies]
 async-trait.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tonic.workspace = true
 rustok-modules.workspace = true
 rustok-verification-transport = { path = "../rustok-verification-transport" }

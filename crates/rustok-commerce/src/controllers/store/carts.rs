@@ -20,6 +20,10 @@ use rustok_cart::{
 };
 use rustok_pricing::PricingService;
 
+fn map_cart_port_error(error: rustok_api::PortError) -> HttpError {
+    HttpError::bad_request("commerce_operation_failed", error.message)
+}
+
 /// Create a storefront cart
 #[utoipa::path(
     post,
@@ -194,7 +198,7 @@ pub async fn update_cart_context(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(super::map_cart_error)?;
+        .map_err(map_cart_port_error)?;
     super::ensure_store_cart_access(&cart, customer_id)?;
 
     let updated = super::apply_cart_context_patch_for_db(
@@ -255,7 +259,7 @@ pub async fn add_cart_line_item(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(super::map_cart_error)?;
+        .map_err(map_cart_port_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
     let event_bus = runtime.event_bus();
     let pricing_service = PricingService::new(runtime.db_clone(), event_bus.clone());
@@ -286,7 +290,7 @@ pub async fn add_cart_line_item(
             CartStorefrontAddLineItemRequest { cart_id: id, input: resolved_input.add_line_item, pricing_adjustment: resolved_input.pricing_adjustment },
         )
         .await
-        .map_err(super::map_cart_error)?;
+        .map_err(map_cart_port_error)?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
             runtime.db(),
@@ -382,7 +386,7 @@ pub async fn update_cart_line_item(
                 CartStorefrontLineItemPricingRequest { cart_id: id, line_item_id: line_id, quantity: input.quantity, unit_price: pricing_update.unit_price, pricing_adjustment: pricing_update.pricing_adjustment },
             )
             .await
-            .map_err(super::map_cart_error)?
+            .map_err(map_cart_port_error)?
     } else {
         storefront_port
             .update_storefront_line_item_quantity(
@@ -390,7 +394,7 @@ pub async fn update_cart_line_item(
                 CartStorefrontLineItemQuantityRequest { cart_id: id, line_item_id: line_id, quantity: input.quantity },
             )
             .await
-            .map_err(super::map_cart_error)?
+            .map_err(map_cart_port_error)?
     };
     Ok(Json(
         super::enrich_storefront_cart_for_db(
@@ -437,7 +441,7 @@ pub async fn remove_cart_line_item(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(super::map_cart_error)?;
+        .map_err(map_cart_port_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
 
     let cart = storefront_port
@@ -446,7 +450,7 @@ pub async fn remove_cart_line_item(
             CartStorefrontRemoveLineItemRequest { cart_id: id, line_item_id: line_id },
         )
         .await
-        .map_err(super::map_cart_error)?;
+        .map_err(map_cart_port_error)?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
             runtime.db(),
