@@ -26,6 +26,8 @@ Implemented:
 - broker-backed HTTP capability bridge with no direct HTTP client;
 - versioned `AlloyDraftRequestBuilder` that pins draft ID, source revision,
   source digest, sandbox phase, tenant, actor, input, grants, and limits;
+- v1 data-only `AlloyDraftInput`/`AlloyDraftOutput` bindings for parameters,
+  entity snapshots, returned values, and entity changes;
 - immutable Rhai descriptor/source lineage staging, packaging, and forking
   helpers.
 

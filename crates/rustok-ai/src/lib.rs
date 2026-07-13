@@ -46,7 +46,9 @@ pub use error::{AiError, AiResult};
 #[cfg(all(feature = "graphql", feature = "server"))]
 pub use graphql_runtime::SeaOrmAiGraphqlRoleSlugProvider;
 #[cfg(feature = "graphql")]
-pub use graphql_runtime::{AiGraphqlRoleSlugProvider, AiGraphqlRoleSlugProviderHandle};
+pub use graphql_runtime::{
+    AiGraphqlRoleSlugProvider, AiGraphqlRoleSlugProviderHandle, AI_GRAPHQL_CONTRIBUTION,
+};
 pub use mcp::{McpClientAdapter, ToolExecutionResult};
 #[cfg(feature = "server")]
 pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};

@@ -41,6 +41,29 @@ pub struct RhaiExecutor {
 /// access from script code.
 pub trait RhaiHostExtension: Send + Sync {
     fn register(&self, engine: &mut Engine, request: &SandboxRequest, host: SandboxHost);
+
+    /// Adds request-scoped data to the Rhai scope after the neutral baseline
+    /// context has been populated. Extensions must not keep data in a shared
+    /// engine because a sandbox request may execute concurrently with another.
+    fn populate_scope(
+        &self,
+        _scope: &mut Scope<'static>,
+        _request: &SandboxRequest,
+    ) -> SandboxResult<()> {
+        Ok(())
+    }
+
+    /// Converts a successful Rhai value into the extension's public output
+    /// binding. The scope is still available so adapters can extract bounded
+    /// request-scoped state such as brokered entity changes.
+    fn map_output(
+        &self,
+        _scope: &mut Scope<'static>,
+        _request: &SandboxRequest,
+        output: Value,
+    ) -> SandboxResult<Value> {
+        Ok(output)
+    }
 }
 
 impl RhaiExecutor {
@@ -136,13 +159,19 @@ impl SandboxExecutor for RhaiExecutor {
             extension.register(&mut engine, request, host.clone());
         }
         let mut scope = Self::build_scope(request);
+        for extension in &self.extensions {
+            extension.populate_scope(&mut scope, request)?;
+        }
         let ast = engine
             .compile_with_scope(&scope, source)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let output = engine
             .eval_ast_with_scope::<Dynamic>(&mut scope, &ast)
             .map_err(|error| Self::map_error(error, request))?;
-        let output = dynamic_to_json(output);
+        let mut output = dynamic_to_json(output);
+        for extension in &self.extensions {
+            output = extension.map_output(&mut scope, request, output)?;
+        }
         let output_bytes = serde_json::to_vec(&output)
             .map_err(|error| SandboxError::Internal(error.to_string()))?
             .len() as u64;

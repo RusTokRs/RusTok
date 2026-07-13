@@ -3,6 +3,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+pub const AI_GRAPHQL_CONTRIBUTION: rustok_api::graphql::GraphqlContributionDescriptor =
+    rustok_api::graphql::GraphqlContributionDescriptor::new(
+        Some("graphql::AiQuery"),
+        Some("graphql::AiMutation"),
+        Some("graphql::AiSubscription"),
+        Some("graphql_runtime::attach_schema_data"),
+    );
+
 #[cfg(feature = "server")]
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 

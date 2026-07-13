@@ -23,9 +23,7 @@ use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProvider
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
 };
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use crate::StoreContextService;
