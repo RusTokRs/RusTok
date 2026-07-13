@@ -49,6 +49,17 @@ pub(crate) fn payment_orchestration_from_context(
     }
 }
 
+pub(crate) fn refund_reconciliation_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+) -> crate::RefundReconciliationService {
+    let service = crate::RefundReconciliationService::new(db);
+    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => service.with_provider_registry(runtime.payment_provider_registry()),
+        None => service,
+    }
+}
+
 pub(crate) fn fulfillment_orchestration_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
