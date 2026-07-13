@@ -1,4 +1,4 @@
-use crate::{FlyError, FlyResult, IdGenerator, GRAPESJS_V1};
+use crate::{FlyError, FlyResult, IdGenerator, ProjectHash, GRAPESJS_V1};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
