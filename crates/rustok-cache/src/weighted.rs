@@ -3,8 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
+use rustok_core::{CacheBackend, CacheStats, InMemoryCacheBackend};
 
+use crate::fallback::DegradationAwareFallbackBackend;
 use crate::{CacheBackendOptions, CacheService};
 #[cfg(feature = "redis-cache")]
 use crate::shared_backend::SharedClientRedisCacheBackend;
@@ -85,7 +86,7 @@ impl CacheService {
                 Ok(redis_backend) => {
                     let memory =
                         Arc::new(InMemoryCacheBackend::new_weighted(ttl, max_weight_bytes));
-                    return Arc::new(FallbackCacheBackend::new(
+                    return Arc::new(DegradationAwareFallbackBackend::new(
                         Arc::new(redis_backend),
                         memory,
                     ));
