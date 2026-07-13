@@ -136,9 +136,9 @@ pub fn compose_application_router(
     runtime: AppRuntimeBootstrap,
     rustok_settings: &RustokSettings,
 ) -> Result<AxumRouter> {
-    // Observability and global registry publish boundaries are not tied to a
-    // particular deployment profile. Install them before profile-specific
-    // middleware diverges so registry-only cannot bypass the same guards.
+    // Observability and global registry boundaries are not tied to a particular
+    // deployment profile. Install them before profile-specific middleware
+    // diverges so registry-only cannot bypass the same guards.
     let router = router
         .layer(axum_middleware::from_fn(
             middleware::metrics_auth::require_bearer,
@@ -146,19 +146,19 @@ pub fn compose_application_router(
         .layer(axum_middleware::from_fn_with_state(
             middleware_runtime_ctx.clone(),
             middleware::registry_artifact_access::enforce,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            middleware_runtime_ctx.clone(),
+            middleware::registry_remote_claim::claim_atomic,
         ));
 
     if rustok_settings.runtime.is_registry_only() || rustok_settings.runtime.is_worker_only() {
         return Ok(router
             .layer(Extension(runtime.registry))
-            // Rate limiting must be present to prevent resource exhaustion even
-            // in registry-only mode.
             .layer(axum_middleware::from_fn_with_state(
                 runtime.rate_limit_state,
                 rate_limit_for_paths,
             ))
-            // Registry handlers require optional authentication, while worker
-            // health/metrics endpoints retain the same bounded middleware.
             .layer(axum_middleware::from_fn_with_state(
                 auth_runtime,
                 middleware::auth_context::resolve_optional,
@@ -242,10 +242,6 @@ pub fn compose_application_router(
     )
     .layer(Extension(runtime.registry))
     .layer(Extension(runtime.graphql_schema))
-    // Axum executes layers from the bottom of this chain outward. Runtime order:
-    // security -> tenant -> locale -> auth -> invite acceptance -> OAuth token
-    // service -> channel -> rate limit -> MCP scaffold workspace -> guest cart
-    // capability -> registry publish guard -> observability bearer -> handler.
     .layer(axum_middleware::from_fn(
         middleware::guest_cart_access::resolve,
     ))
