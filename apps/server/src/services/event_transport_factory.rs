@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use crate::error::{Error, Result};
+use rustok_cache::CacheService;
 use rustok_core::events::{
     EventBus, EventEnvelope, EventTransport, MemoryTransport, ReliabilityLevel,
 };
@@ -14,6 +15,9 @@ use tokio::task::JoinHandle;
 
 use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::tenant_cache_generation::{
+    start_tenant_cache_generation_listener, TenantCacheGenerationTransport,
+};
 
 static OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL: AtomicU64 = AtomicU64::new(0);
 static EVENT_LOCAL_DELIVERY_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -60,13 +64,25 @@ pub fn event_local_delivery_metrics_snapshot() -> EventLocalDeliveryMetricsSnaps
 pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRuntime> {
     let settings = ctx.settings();
     let channel_capacity = settings.events.channel_capacity;
+    let cache = ctx.shared_get::<CacheService>().ok_or_else(|| {
+        Error::BadRequest(
+            "CacheService must be initialized before the event runtime".to_string(),
+        )
+    })?;
+
+    // Subscribe before any transport can publish a tenant generation. This also restores the
+    // shared generation before tenant middleware constructs its backend later in bootstrap.
+    start_tenant_cache_generation_listener(ctx, cache.clone()).await;
 
     let runtime = match settings.events.transport {
         EventTransportKind::Memory => {
             let transport = MemoryTransport::with_capacity(channel_capacity);
             let listener_bus = transport.event_bus();
+            let transport: Arc<dyn EventTransport> = Arc::new(
+                TenantCacheGenerationTransport::new(Arc::new(transport), cache.clone()),
+            );
             EventRuntime {
-                transport: Arc::new(transport),
+                transport,
                 listener_bus,
                 relay_config: None,
                 channel_capacity,
@@ -74,9 +90,16 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             }
         }
         EventTransportKind::Outbox => {
+            // Keep the application-facing transport concrete so TransactionalEventBus can
+            // downcast to OutboxTransport and write into the caller's database transaction.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
             let (relay_target, listener_bus, relay_fallback_active) =
                 resolve_relay_target(&settings, channel_capacity).await?;
+            // The relay target performs generation rotation synchronously. OutboxRelay therefore
+            // cannot mark a tenant mutation dispatched until cache invalidation has been published.
+            let relay_target: Arc<dyn EventTransport> = Arc::new(
+                TenantCacheGenerationTransport::new(relay_target, cache.clone()),
+            );
             let relay_policy = &settings.events.relay_retry_policy;
             let max_attempts = if settings.events.dlq.enabled {
                 settings.events.dlq.max_attempts
@@ -111,6 +134,9 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     .map_err(|error| {
                         Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
                     })?,
+            );
+            let primary: Arc<dyn EventTransport> = Arc::new(
+                TenantCacheGenerationTransport::new(primary, cache.clone()),
             );
             let (transport, listener_bus) =
                 transport_with_local_delivery(primary, channel_capacity);
@@ -264,6 +290,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         let event_type = envelope.event.event_type();
         if let Err(error) = self.local.publish(envelope).await {
             EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
             tracing::error!(
                 event_id = %event_id,
                 event_type,
