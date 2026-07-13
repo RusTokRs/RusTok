@@ -35,15 +35,30 @@ pub struct UpdateTopicInput {
     pub channel_slugs: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListTopicsFilter {
     pub category_id: Option<Uuid>,
     pub status: Option<TopicStatus>,
     pub locale: Option<String>,
     #[serde(default = "default_page")]
     pub page: u64,
-    #[serde(default = "default_per_page")]
+    #[serde(
+        default = "default_per_page",
+        deserialize_with = "crate::dto::deserialize_forum_read_limit"
+    )]
     pub per_page: u64,
+}
+
+impl Default for ListTopicsFilter {
+    fn default() -> Self {
+        Self {
+            category_id: None,
+            status: None,
+            locale: None,
+            page: default_page(),
+            per_page: default_per_page(),
+        }
+    }
 }
 
 fn default_page() -> u64 {
@@ -51,7 +66,7 @@ fn default_page() -> u64 {
 }
 
 fn default_per_page() -> u64 {
-    20
+    crate::dto::DEFAULT_FORUM_READ_LIMIT
 }
 
 fn default_content_format() -> String {
@@ -161,6 +176,13 @@ mod tests {
             serde_json::to_value(&filter).expect("serialize filter")["status"],
             "closed"
         );
+    }
+
+    #[test]
+    fn list_topics_filter_caps_external_page_size() {
+        let filter: ListTopicsFilter =
+            serde_json::from_value(json!({"per_page": 50_000})).expect("deserialize page size");
+        assert_eq!(filter.per_page, crate::dto::MAX_FORUM_READ_LIMIT);
     }
 
     #[test]

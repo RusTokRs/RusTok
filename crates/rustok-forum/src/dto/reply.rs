@@ -23,13 +23,26 @@ pub struct UpdateReplyInput {
     pub content_json: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListRepliesFilter {
     pub locale: Option<String>,
     #[serde(default = "default_page")]
     pub page: u64,
-    #[serde(default = "default_per_page")]
+    #[serde(
+        default = "default_per_page",
+        deserialize_with = "crate::dto::deserialize_forum_read_limit"
+    )]
     pub per_page: u64,
+}
+
+impl Default for ListRepliesFilter {
+    fn default() -> Self {
+        Self {
+            locale: None,
+            page: default_page(),
+            per_page: default_per_page(),
+        }
+    }
 }
 
 fn default_page() -> u64 {
@@ -37,7 +50,7 @@ fn default_page() -> u64 {
 }
 
 fn default_per_page() -> u64 {
-    20
+    crate::dto::DEFAULT_FORUM_READ_LIMIT
 }
 
 fn default_content_format() -> String {
@@ -82,7 +95,7 @@ pub struct ReplyListItem {
 
 #[cfg(test)]
 mod tests {
-    use super::ReplyResponse;
+    use super::{ListRepliesFilter, ReplyResponse};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -109,6 +122,13 @@ mod tests {
             created_at: "2024-01-01T00:00:00Z".into(),
             updated_at: "2024-01-01T00:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn list_replies_filter_caps_external_page_size() {
+        let filter: ListRepliesFilter =
+            serde_json::from_value(json!({"per_page": 50_000})).expect("deserialize page size");
+        assert_eq!(filter.per_page, crate::dto::MAX_FORUM_READ_LIMIT);
     }
 
     #[test]

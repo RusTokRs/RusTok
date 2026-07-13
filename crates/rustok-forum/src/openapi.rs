@@ -35,6 +35,15 @@ use utoipa::OpenApi;
             crate::ListRepliesFilter,
             crate::ReplyResponse,
             crate::ReplyListItem,
+            crate::CategoryCursorQuery,
+            crate::TopicCursorQuery,
+            crate::ReplyCursorQuery,
+            crate::CategoryReadModel,
+            crate::TopicReadModel,
+            crate::ReplyReadModel,
+            crate::CategoryCursorPage,
+            crate::TopicCursorPage,
+            crate::ReplyCursorPage,
         )
     ),
     tags((name = "forum", description = "Forum endpoints"))
