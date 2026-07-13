@@ -110,7 +110,7 @@ fn service_forum_boundary_violation(
     }
 
     if path.contains("/solution")
-        && matches!(*method, Method::POST | Method::DELETE)
+        && (method == Method::POST || method == Method::DELETE)
         && !has_effective_permission(permissions, &Permission::FORUM_TOPICS_MODERATE)
     {
         return Some("Service credentials require forum_topics:moderate for solution changes");
@@ -120,7 +120,7 @@ fn service_forum_boundary_violation(
         && segments[0] == "api"
         && segments[1] == "forum"
         && uuid::Uuid::parse_str(segments[3]).is_ok()
-        && matches!(*method, Method::PUT | Method::DELETE)
+        && (method == Method::PUT || method == Method::DELETE)
     {
         let required = match segments[2] {
             "topics" => Some(Permission::FORUM_TOPICS_MODERATE),
