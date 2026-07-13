@@ -238,10 +238,14 @@ pub fn compose_application_router(
     .layer(Extension(runtime.graphql_schema))
     // Axum executes layers from the bottom of this chain outward. Runtime order:
     // security -> tenant -> locale -> auth -> invite acceptance -> OAuth token
-    // service -> channel -> rate limit -> MCP scaffold workspace -> guest cart
-    // capability -> metrics bearer -> handler.
+    // service -> channel -> rate limit -> MCP scaffold workspace -> registry
+    // artifact access -> guest cart capability -> metrics bearer -> handler.
     .layer(axum_middleware::from_fn(
         middleware::guest_cart_access::resolve,
+    ))
+    .layer(axum_middleware::from_fn_with_state(
+        middleware_runtime_ctx.clone(),
+        middleware::registry_artifact_access::enforce,
     ))
     .layer(axum_middleware::from_fn_with_state(
         middleware_runtime_ctx.clone(),
