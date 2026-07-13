@@ -1,4 +1,5 @@
 pub mod checkout;
+mod checkout_inventory_reservation_journal;
 mod checkout_operation;
 pub mod context;
 mod fulfillment_create_label_recovery;
@@ -17,6 +18,11 @@ mod refund_reconciliation;
 mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
+pub use checkout_inventory_reservation_journal::{
+    CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
+    CheckoutInventoryReservationResult, CheckoutInventoryReservationStatus,
+    PlanCheckoutInventoryReservation,
+};
 pub use checkout_operation::{
     BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationResult, CheckoutOperationStage,

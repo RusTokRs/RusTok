@@ -46,6 +46,15 @@ already handed to payment-owned storefront transport.
   updates, and `begin/release/complete` lifecycle transitions. Every write has
   a checkout-derived idempotency key and deadline; direct `CartService` use is
   removed from checkout orchestration. Runtime evidence remains required.
+- `CheckoutOperationJournal` persists the operation identity, request and cart
+  snapshot hashes, execution lease, recovery status, and owner aggregate ids.
+  `CheckoutInventoryReservationJournal` now adds one immutable reservation
+  identity per checkout/cart-line pair before inventory provider execution. It
+  enforces tenant, cart, variant, quantity, location, status-transition, and
+  timestamp integrity in PostgreSQL and SQLite. This journal is deliberately
+  not wired to stock mutation yet: the next cutover must invoke inventory-owned
+  identity reservations and remove the old order-confirmation double-reserve
+  path in the same staged migration.
 - REST storefront cart handlers plus GraphQL cart reads and mutations call
   cart-owned `CartStorefrontPort` for cart reads, creation, line-item
   mutations, context updates, and repricing. Checkout adapter constructions
@@ -68,20 +77,29 @@ already handed to payment-owned storefront transport.
 
 ## Next results
 
-1. **Complete checkout owner handoff with live boundary evidence.** Reduce the
+1. **Execute checkout as persisted stages instead of wrapping one monolithic call.**
+   Plan every cart-line reservation in `CheckoutInventoryReservationJournal`,
+   invoke `InventoryReservationIdentityPort` with the persisted identity, and
+   checkpoint `inventory_reserved` only after every line is confirmed. Continue
+   order, payment, fulfillment, and cart completion as individually replayable
+   stages. Remove the order-confirmation inventory trigger when the checkout
+   reservation cutover is complete so the same demand cannot be reserved twice.
+   Done when kill-point tests resume from every stage without duplicate stock,
+   order, payment, or provider side effects.
+2. **Complete checkout owner handoff with live boundary evidence.** Reduce the
    aggregate cart projection only as a whole owner-handoff package, preserve
    checkout orchestration, and execute product/pricing/inventory/customer/cart
    provider fallbacks under real runtime conditions. Done when an end-to-end
    checkout verifies request context, degraded behavior, recovery, and
    native/GraphQL parity without owner service or DTO re-exports returning to
    commerce.
-2. **Productionize payment and fulfillment providers.** Wire approved payment
+3. **Productionize payment and fulfillment providers.** Wire approved payment
    gateways and carrier adapters through owner `PaymentProviderRegistry` and
    `FulfillmentProviderRegistry`, then prove authorize/capture/cancel/refund,
    quote/label/cancel, webhooks, retries, and recovery. Done when the manual
    default is no longer the only executable provider and lifecycle persistence
    remains in owner services.
-3. **Deliver the next ecommerce domain increments by owner.** Extend the
+4. **Deliver the next ecommerce domain increments by owner.** Extend the
    seller foundation only through stable seller/catalog/grouping contracts;
    deliver channel-aware Pricing 2.0, separate tax calculation, and the
    remaining exchange/claim/order-change post-order surface in their owning

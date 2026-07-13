@@ -42,18 +42,21 @@ mod state_machine_proptest;
 
 pub use error::{CommerceError, CommerceResult};
 pub use services::{
-    ApplyOrderChangeResult, BeginCheckoutOperation, CheckoutError, CheckoutOperationCheckpoint,
-    CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationResult,
-    CheckoutOperationStage, CheckoutOperationStatus, CheckoutResult, CheckoutService,
-    CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
+    ApplyOrderChangeResult, BeginCheckoutOperation, CheckoutError,
+    CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
+    CheckoutInventoryReservationResult, CheckoutInventoryReservationStatus,
+    CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
+    CheckoutOperationResult, CheckoutOperationStage, CheckoutOperationStatus, CheckoutResult,
+    CheckoutService, CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
     FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
-    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService, PaymentOrchestrationError,
-    PaymentOrchestrationResult, PaymentOrchestrationService, PostOrderOrchestrationError,
-    PostOrderOrchestrationService, RefundReconciliationService, ReturnClaimDecisionInput,
-    ReturnDecisionInput, ReturnDecisionResponse, ReturnExchangeDecisionInput,
-    ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
-    StoreContextService, DEFAULT_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_LEASE_SECONDS,
+    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
+    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
+    PlanCheckoutInventoryReservation, PostOrderOrchestrationError, PostOrderOrchestrationService,
+    RefundReconciliationService, ReturnClaimDecisionInput, ReturnDecisionInput,
+    ReturnDecisionResponse, ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
+    ShippingProfileService, StoreContextError, StoreContextResult, StoreContextService,
+    DEFAULT_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_LEASE_SECONDS,
 };
 pub(crate) use services::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
