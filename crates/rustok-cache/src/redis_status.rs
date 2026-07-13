@@ -189,12 +189,12 @@ impl RedisStatusCollector {
     }
 
     fn update(&self, status: &RedisCacheStatus) {
-        self.url_present.set(i64::from(status.url_present));
+        self.url_present.set(status.url_present as i64);
         self.client_initialized
-            .set(i64::from(status.client_initialized));
+            .set(status.client_initialized as i64);
         self.connectivity_healthy
-            .set(i64::from(status.connectivity_healthy));
-        self.degraded.set(i64::from(status.is_degraded()));
+            .set(status.connectivity_healthy as i64);
+        self.degraded.set(status.is_degraded() as i64);
     }
 }
 
