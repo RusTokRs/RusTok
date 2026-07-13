@@ -45,6 +45,7 @@ pub use refresh::{
     CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
     CacheRefreshStats, StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
 };
+pub use rustok_core::CacheCompareAndSetOutcome;
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
     CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,

@@ -2,7 +2,7 @@
 slug = "cache"
 name = "Cache"
 version = "0.1.0"
-description = "Centralised bounded cache capability — Redis lifecycle/timeouts, weighted memory fallback, invalidation and anti-stampede loading."
+description = "Centralised bounded cache capability — Redis lifecycle/timeouts, weighted fallback, atomic compare-and-set, invalidation and anti-stampede loading."
 ownership = "first_party"
 trust_level = "core"
 ui_classification = "capability_only"

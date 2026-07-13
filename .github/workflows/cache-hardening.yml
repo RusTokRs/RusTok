@@ -8,6 +8,8 @@ on:
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
+      - "crates/rustok-core/src/lib.rs"
+      - "crates/rustok-core/tests/**"
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
       - "apps/server/src/middleware/channel.rs"
@@ -28,6 +30,8 @@ on:
       - "crates/rustok-core/src/cache.rs"
       - "crates/rustok-core/src/cache_tests.rs"
       - "crates/rustok-core/src/context.rs"
+      - "crates/rustok-core/src/lib.rs"
+      - "crates/rustok-core/tests/**"
       - "apps/server/src/middleware/tenant.rs"
       - "apps/server/src/middleware/tenant_tests.rs"
       - "apps/server/src/middleware/channel.rs"
@@ -69,13 +73,14 @@ jobs:
         run: cargo fmt --all --check
       - name: Compile cache and server
         run: |
-          cargo check -p rustok-core --lib
+          cargo check -p rustok-core --lib --features redis-cache
           cargo check -p rustok-cache --lib
           cargo check -p rustok-server --lib
       - name: Cache unit and architecture tests
         run: |
-          cargo test -p rustok-core cache --lib
+          cargo test -p rustok-core cache --lib --features redis-cache
           cargo test -p rustok-cache --lib
+          cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
           cargo test -p rustok-server --test cache_architecture_guard --test tenant_cache_architecture_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server channel_cache --lib
@@ -85,7 +90,7 @@ jobs:
           cargo test -p rustok-seo redirect_cache --lib
       - name: Clippy
         run: |
-          cargo clippy -p rustok-core --lib -- -D warnings
+          cargo clippy -p rustok-core --lib --features redis-cache -- -D warnings
           cargo clippy -p rustok-cache --lib -- -D warnings
           cargo clippy -p rustok-server --lib -- -D warnings
       - name: Module contract
@@ -125,4 +130,4 @@ jobs:
       - name: Cache live Redis tests
         run: cargo test -p rustok-cache -- --ignored --nocapture
       - name: Core live Redis tests
-        run: cargo test -p rustok-core cache -- --ignored --nocapture
+        run: cargo test -p rustok-core cache --features redis-cache -- --ignored --nocapture
