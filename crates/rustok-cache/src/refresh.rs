@@ -11,8 +11,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use rustok_core::CacheBackend;
 
 use crate::{
-    CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy, CacheService, TypedCacheLoadResult,
-    DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+    CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy, CacheLoadSource, CacheService,
+    TypedCacheLoadResult, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -232,7 +232,7 @@ pub struct StaleWhileRevalidateResult<T> {
 }
 
 impl CacheService {
-    /// Serve a typed envelope and asynchronously refresh stale values.
+    /// Serve a typed envelope and asynchronously refresh stale cache hits.
     pub async fn load_enveloped_stale_while_revalidate<T, F, Fut>(
         &self,
         coordinator: &CacheRefreshCoordinator,
@@ -291,7 +291,12 @@ impl CacheService {
             )
             .await?;
 
-        let refresh = if cache.freshness == CacheEnvelopeFreshness::Stale {
+        // Only an existing stale hit should trigger background work. A loader that just filled
+        // or coalesced an already-stale envelope has already paid the foreground load cost and
+        // must not immediately execute the same source query a second time.
+        let refresh = if cache.source == CacheLoadSource::Hit
+            && cache.freshness == CacheEnvelopeFreshness::Stale
+        {
             let refresh_backend = Arc::clone(&backend);
             let refresh_key = key.clone();
             let refresh_policy = policy.clone();
@@ -376,7 +381,7 @@ fn current_unix_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CacheTtlPolicy, CacheLoadSource};
+    use crate::CacheTtlPolicy;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use tokio::sync::oneshot;
@@ -497,5 +502,43 @@ mod tests {
         let refreshed = CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024).unwrap();
         assert_eq!(refreshed.payload(), "fresh");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn foreground_stale_fill_does_not_run_loader_twice() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let loader_calls = Arc::clone(&calls);
+
+        let result = service
+            .load_enveloped_stale_while_revalidate_with_limit_at(
+                &coordinator,
+                backend,
+                "foreground-stale",
+                1,
+                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                1024,
+                2_000,
+                move || {
+                    let loader_calls = Arc::clone(&loader_calls);
+                    async move {
+                        loader_calls.fetch_add(1, Ordering::SeqCst);
+                        CacheEnvelope::new(1, 1_000, "stale".to_string())
+                            .unwrap()
+                            .with_expirations(Some(1_500), Some(10_000))
+                            .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                    }
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.cache.source, CacheLoadSource::Filled);
+        assert_eq!(result.cache.freshness, CacheEnvelopeFreshness::Stale);
+        assert_eq!(result.refresh, CacheRefreshSchedule::NotNeeded);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(coordinator.stats().started, 0);
     }
 }
