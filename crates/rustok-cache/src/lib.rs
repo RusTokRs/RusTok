@@ -50,7 +50,8 @@ pub use invalidation::{
     VersionedCacheInvalidation,
 };
 pub use invalidation_consumer::{
-    DurableCacheInvalidationConsumer, DurableInvalidationDecision,
+    format_durable_invalidation_prometheus_metrics, DurableCacheInvalidationConsumer,
+    DurableInvalidationConsumerStats, DurableInvalidationDecision,
 };
 pub use invalidation_processor::{
     DurableInvalidationProcessError, DurableInvalidationProcessOutcome,
