@@ -26,6 +26,8 @@ struct ModuleSpec {
     #[serde(default)]
     graphql_subscription_type: Option<String>,
     #[serde(default)]
+    graphql_runtime_data_factory: Option<String>,
+    #[serde(default)]
     http_axum_router_fn: Option<String>,
     #[serde(default)]
     http_axum_webhook_router_fn: Option<String>,
@@ -38,6 +40,7 @@ struct OptionalModuleEntry {
     graphql_query_expr: Option<String>,
     graphql_mutation_expr: Option<String>,
     graphql_subscription_expr: Option<String>,
+    graphql_runtime_data_factory_expr: Option<String>,
     axum_router_expr: Option<String>,
     axum_webhook_router_expr: Option<String>,
 }
@@ -72,6 +75,8 @@ struct ModulePackageGraphqlProvides {
     mutation: Option<String>,
     #[serde(default)]
     subscription: Option<String>,
+    #[serde(default)]
+    runtime_data_factory: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -193,6 +198,7 @@ fn build_optional_module_entry(
             .map(|_| format!("{crate_ident}::graphql::{type_stem}Mutation"))
     });
     let graphql_subscription_expr = spec.graphql_subscription_type.clone();
+    let graphql_runtime_data_factory_expr = spec.graphql_runtime_data_factory.clone();
 
     let axum_router_expr = spec
         .http_axum_router_fn
@@ -209,6 +215,7 @@ fn build_optional_module_entry(
         graphql_query_expr,
         graphql_mutation_expr,
         graphql_subscription_expr,
+        graphql_runtime_data_factory_expr,
         axum_router_expr,
         axum_webhook_router_expr,
     }))
@@ -251,6 +258,11 @@ fn apply_module_package_manifest(
             qualify_package_type_path(&spec.crate_name, graphql.subscription.as_deref())
         {
             spec.graphql_subscription_type = Some(subscription_type);
+        }
+        if let Some(factory) =
+            qualify_package_type_path(&spec.crate_name, graphql.runtime_data_factory.as_deref())
+        {
+            spec.graphql_runtime_data_factory = Some(factory);
         }
     }
     if let Some(http) = package_manifest.provides.http {
@@ -340,6 +352,10 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
                 .map(|expr| (&entry.feature, expr))
         })
         .collect::<Vec<_>>();
+    let runtime_data_factories = entries
+        .iter()
+        .filter_map(|entry| entry.graphql_runtime_data_factory_expr.as_ref())
+        .collect::<Vec<_>>();
     let mut out = String::new();
     out.push_str("use async_graphql::{MergedObject, MergedSubscription};\n\n");
 
@@ -387,6 +403,12 @@ fn render_graphql_codegen(entries: &[OptionalModuleEntry]) -> String {
         }
         out.push_str(");\n");
     }
+    out.push_str("\n/// Runtime-data factories declared by installed capability manifests.\n");
+    out.push_str("pub const MODULE_GRAPHQL_RUNTIME_DATA_FACTORIES: &[&str] = &[\n");
+    for factory in runtime_data_factories {
+        out.push_str(&format!("    \"{factory}\",\n"));
+    }
+    out.push_str("];\n");
     out
 }
 

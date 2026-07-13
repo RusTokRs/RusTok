@@ -1,6 +1,9 @@
 //! Versioned request construction for executing an Alloy source revision in
 //! the neutral sandbox runtime.
 
+use std::collections::HashMap;
+
+use rhai::{Engine, Scope};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -8,10 +11,14 @@ use uuid::Uuid;
 
 use rustok_sandbox::{
     ExecutionPhase as SandboxExecutionPhase, SandboxContext, SandboxExecutorKind, SandboxPayload,
-    SandboxPolicy, SandboxRequest, SandboxSubject,
+    SandboxError, SandboxPolicy, SandboxRequest, SandboxResult, SandboxSubject,
 };
+use rustok_sandbox::rhai::RhaiHostExtension;
 
-use crate::{ExecutionContext, ExecutionPhase, Script};
+use crate::{
+    register_entity_proxy, EntityProxy, ExecutionContext, ExecutionPhase, Script,
+    utils::{dynamic_to_json, json_to_dynamic},
+};
 
 /// Stable media type for Alloy-authored Rhai source before it becomes a module
 /// artifact. Published artifacts use their separately admitted descriptor.
@@ -114,6 +121,75 @@ impl AlloyDraftOutput {
 #[derive(Clone, Debug)]
 pub struct AlloyDraftRequestBuilder {
     policy: SandboxPolicy,
+}
+
+/// Reconstructs Alloy's request-scoped script values inside the neutral Rhai
+/// executor and wraps successful values in the v1 Alloy output binding.
+///
+/// No state is retained on this extension: `EntityProxy` lives in the supplied
+/// `Scope` for exactly one sandbox request.
+#[derive(Debug, Default)]
+pub struct AlloyDraftScopeExtension;
+
+impl RhaiHostExtension for AlloyDraftScopeExtension {
+    fn register(
+        &self,
+        engine: &mut Engine,
+        request: &SandboxRequest,
+        _host: rustok_sandbox::SandboxHost,
+    ) {
+        if matches!(request.subject, SandboxSubject::AlloyDraft { .. }) {
+            register_entity_proxy(engine);
+        }
+    }
+
+    fn populate_scope(
+        &self,
+        scope: &mut Scope<'static>,
+        request: &SandboxRequest,
+    ) -> SandboxResult<()> {
+        if !matches!(request.subject, SandboxSubject::AlloyDraft { .. }) {
+            return Ok(());
+        }
+        let input = alloy_input(request)?;
+        scope.push_constant("params", json_to_dynamic(&input.params));
+        if let Some(snapshot) = input.entity {
+            let entity = entity_proxy(snapshot)?;
+            if request.context.phase == SandboxExecutionPhase::BeforeHook {
+                scope.push("entity", entity);
+            } else {
+                scope.push_constant("entity", entity);
+            }
+        }
+        if let Some(snapshot) = input.entity_before {
+            scope.push_constant("entity_before", entity_proxy(snapshot)?);
+        }
+        Ok(())
+    }
+
+    fn map_output(
+        &self,
+        scope: &mut Scope<'static>,
+        request: &SandboxRequest,
+        output: serde_json::Value,
+    ) -> SandboxResult<serde_json::Value> {
+        if !matches!(request.subject, SandboxSubject::AlloyDraft { .. }) {
+            return Ok(output);
+        }
+        let entity_changes = scope
+            .get_value::<EntityProxy>("entity")
+            .map(entity_changes)
+            .unwrap_or_else(empty_object);
+        let result = AlloyDraftOutput {
+            binding_version: 1,
+            return_value: output,
+            entity_changes,
+        };
+        result
+            .validate()
+            .map_err(|error| SandboxError::Internal(error.to_string()))?;
+        serde_json::to_value(result).map_err(|error| SandboxError::Internal(error.to_string()))
+    }
 }
 
 impl AlloyDraftRequestBuilder {
@@ -219,6 +295,39 @@ pub enum AlloyDraftBindingError {
 
 fn empty_object() -> serde_json::Value {
     serde_json::Value::Object(serde_json::Map::new())
+}
+
+fn alloy_input(request: &SandboxRequest) -> SandboxResult<AlloyDraftInput> {
+    let input = serde_json::from_value(request.input.clone())
+        .map_err(|error| SandboxError::InvalidRequest(format!("invalid Alloy draft input: {error}")))?;
+    input
+        .validate()
+        .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+    Ok(input)
+}
+
+fn entity_proxy(snapshot: AlloyDraftEntitySnapshot) -> SandboxResult<EntityProxy> {
+    snapshot
+        .validate()
+        .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+    let fields = snapshot
+        .fields
+        .as_object()
+        .expect("validated Alloy draft entity fields are an object")
+        .iter()
+        .map(|(key, value)| (key.clone(), json_to_dynamic(value)))
+        .collect::<HashMap<_, _>>();
+    Ok(EntityProxy::new(snapshot.id, snapshot.entity_type, fields))
+}
+
+fn entity_changes(entity: EntityProxy) -> serde_json::Value {
+    serde_json::Value::Object(
+        entity
+            .changes()
+            .into_iter()
+            .map(|(key, value)| (key, dynamic_to_json(value)))
+            .collect(),
+    )
 }
 
 #[cfg(test)]

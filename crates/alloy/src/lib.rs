@@ -51,7 +51,8 @@ pub use runner::{
 pub use runtime::{build_alloy_runtime, AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime};
 pub use sandbox_request::{
     AlloyDraftBindingError, AlloyDraftEntitySnapshot, AlloyDraftInput, AlloyDraftOutput,
-    AlloyDraftRequestBuilder, AlloyDraftRequestError, ALLOY_DRAFT_RHAI_MEDIA_TYPE,
+    AlloyDraftRequestBuilder, AlloyDraftRequestError, AlloyDraftScopeExtension,
+    ALLOY_DRAFT_RHAI_MEDIA_TYPE,
 };
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
@@ -86,6 +87,7 @@ pub fn create_engine_for_phase(phase: context::ExecutionPhase) -> ScriptEngine {
 /// artifacts. HTTP is available only through `SandboxHost` capability grants.
 pub fn create_sandbox_rhai_executor() -> rustok_sandbox::rhai::RhaiExecutor {
     rustok_sandbox::rhai::RhaiExecutor::new()
+        .with_extension(std::sync::Arc::new(AlloyDraftScopeExtension))
         .with_extension(std::sync::Arc::new(HttpCapabilityBridge))
 }
 

@@ -11805,6 +11805,7 @@ dependencies = [
 name = "rustok-pricing-storefront"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "leptos 0.8.20",
  "leptos-ui-routing",
  "leptos_axum",
