@@ -12,6 +12,7 @@ mod ids;
 mod model;
 mod placement;
 mod registry;
+mod style_rule;
 mod validation;
 
 pub use asset::*;
@@ -23,6 +24,7 @@ pub use ids::*;
 pub use model::*;
 pub use placement::*;
 pub use registry::*;
+pub use style_rule::*;
 pub use validation::*;
 
 pub const GRAPESJS_V1: &str = "grapesjs_v1";
