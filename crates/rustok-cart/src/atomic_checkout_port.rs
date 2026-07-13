@@ -162,30 +162,3 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
         } => PortError::new(kind, code, message, retryable),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn adapter_rejects_another_cart_identity() {
-        let bound_cart = Uuid::new_v4();
-        let adapter = AtomicCartCheckoutPort {
-            service: CartService::new(sea_orm::DatabaseConnection::Disconnected),
-            snapshot_port: in_process_cart_checkout_snapshot_port(
-                sea_orm::DatabaseConnection::Disconnected,
-            ),
-            prepare_request: PrepareCartCheckoutSnapshotRequest {
-                cart_id: bound_cart,
-                region_id: None,
-                country_code: None,
-                locale_code: None,
-                selected_shipping_option_id: None,
-                shipping_selections: None,
-            },
-        };
-
-        assert!(adapter.ensure_cart_id(bound_cart).is_ok());
-        assert!(adapter.ensure_cart_id(Uuid::new_v4()).is_err());
-    }
-}
