@@ -24,8 +24,9 @@ use super::user_stats::UserStatsService;
 
 /// Public owner service for topic commands.
 ///
-/// Explicit lifecycle writes happen here. Database triggers remain a final
-/// consistency barrier for direct SQL and older deployments.
+/// Explicit root-service lifecycle writes happen here. The wrapped persistence
+/// service remains a compatibility path, while database triggers provide the
+/// final consistency barrier for direct SQL and older deployments.
 pub struct TopicService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
