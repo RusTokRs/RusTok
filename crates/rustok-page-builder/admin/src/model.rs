@@ -1,6 +1,4 @@
-use fly::{
-    FlyEditor, GrapesJsV1Codec, ProjectHash, RegistrySet, ValidationReport,
-};
+use fly::{FlyEditor, GrapesJsV1Codec, ProjectHash, RegistrySet, ValidationReport};
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderContractMetadata, PublishPageBuilderInput,
@@ -152,15 +150,23 @@ impl AdminCanvasController {
         &mut self,
         revision_id: impl Into<String>,
     ) -> Result<(), AdminCanvasError> {
-        let revision_id = revision_id.into();
         let project_hash = self.editor.revision().project_hash;
+        self.acknowledge_save_for_hash(project_hash, revision_id)
+    }
+
+    pub fn acknowledge_save_for_hash(
+        &mut self,
+        expected_hash: ProjectHash,
+        revision_id: impl Into<String>,
+    ) -> Result<(), AdminCanvasError> {
+        let revision_id = revision_id.into();
         self.editor
             .revision_mut()
-            .acknowledge(project_hash, revision_id.clone())?;
+            .acknowledge(expected_hash, revision_id.clone())?;
         self.revision_id = revision_id.clone();
         self.ui.dispatch(UiIntent::SaveSucceeded {
             revision: revision_id,
-            project_hash,
+            project_hash: expected_hash,
         })?;
         self.synchronize_revision();
         Ok(())
@@ -289,5 +295,35 @@ mod tests {
         controller.acknowledge_save("rev-2").expect("acknowledge");
         assert_eq!(controller.revision_id(), "rev-2");
         assert!(!controller.ui().state.dirty.dirty);
+    }
+
+    #[test]
+    fn stale_save_acknowledgement_keeps_newer_changes_dirty() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::Execute(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    attributes: Map::from_iter([("data-version".to_string(), json!("one"))]),
+                    ..ComponentPatch::default()
+                },
+            }))
+            .expect("first patch");
+        let expected_hash = controller.editor().revision().project_hash;
+        controller
+            .dispatch(UiIntent::Execute(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    attributes: Map::from_iter([("data-version".to_string(), json!("two"))]),
+                    ..ComponentPatch::default()
+                },
+            }))
+            .expect("second patch");
+
+        assert!(controller
+            .acknowledge_save_for_hash(expected_hash, "rev-stale")
+            .is_err());
+        assert!(controller.ui().state.dirty.dirty);
+        assert_eq!(controller.revision_id(), "rev-1");
     }
 }
