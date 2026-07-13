@@ -26,6 +26,10 @@ pub fn spawn_module_event_dispatcher(
         .clone();
     let db = ctx.db_clone();
     let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
+
+    #[cfg(feature = "mod-commerce")]
+    spawn_paid_order_label_worker_if_enabled(ctx);
+
     let handler_count = dispatcher.handler_count();
     if handler_count == 0 {
         tracing::info!("No module-owned event listeners registered in ModuleRegistry");
@@ -40,6 +44,32 @@ pub fn spawn_module_event_dispatcher(
     });
 
     tracing::info!(handler_count, "Module event dispatcher initialized");
+}
+
+#[cfg(feature = "mod-commerce")]
+fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    if !ctx.settings().runtime.runs_background_workers()
+        || ctx.shared_contains::<
+            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+        >()
+    {
+        return;
+    }
+
+    if !ctx.shared_contains::<crate::services::app_lifecycle::StopHandle>() {
+        let (stop_handle, _stop_rx) = crate::services::app_lifecycle::StopHandle::new();
+        ctx.shared_insert(stop_handle);
+    }
+    let stop_rx = ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .expect("StopHandle must exist before paid-order label worker startup")
+        .subscribe();
+    ctx.shared_insert(
+        crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
+            ctx.clone(),
+            stop_rx,
+        ),
+    );
 }
 
 pub fn build_shared_runtime_extensions(
