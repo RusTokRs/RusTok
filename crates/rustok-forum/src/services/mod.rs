@@ -1,4 +1,5 @@
 pub mod category;
+pub mod event;
 pub mod moderation;
 mod rbac;
 /// Raw persistence service retained temporarily for compatibility.
@@ -14,6 +15,7 @@ pub mod vote;
 pub mod widget_contract;
 
 pub use category::CategoryService;
+pub use event::ForumEventService;
 pub use moderation::ModerationService;
 pub use reply_owner::ReplyService;
 pub use revision::RevisionService;

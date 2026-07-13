@@ -3,6 +3,7 @@
 pub mod forum_category;
 pub mod forum_category_subscription;
 pub mod forum_category_translation;
+pub mod forum_domain_event;
 pub mod forum_reply;
 pub mod forum_reply_body;
 pub mod forum_reply_revision;
@@ -18,6 +19,7 @@ pub mod forum_topic_vote;
 pub mod forum_user_stat;
 
 pub use forum_category::Entity as ForumCategory;
+pub use forum_domain_event::Entity as ForumDomainEvent;
 pub use forum_reply::Entity as ForumReply;
 pub use forum_reply_revision::Entity as ForumReplyRevision;
 pub use forum_topic::Entity as ForumTopic;
