@@ -160,3 +160,35 @@ fn tenant_generation_dedupe_is_bounded_two_phase_and_retry_safe() {
         "retry_delivers_downstream_without_rotating_generation_twice"
     ));
 }
+
+#[test]
+fn tenant_generation_health_requires_subscriber_and_periodic_reconciliation() {
+    let generation = source("apps/server/src/services/tenant_cache_generation.rs");
+    let status = source("apps/server/src/services/tenant_cache_generation_status.rs");
+
+    for required in [
+        "GENERATION_RECONCILE_INTERVAL",
+        "MissedTickBehavior::Skip",
+        "periodic_reconciliation",
+        "mark_tenant_cache_generation_subscriber_healthy",
+        "mark_tenant_cache_generation_reconciliation_healthy",
+        "mark_tenant_cache_generation_subscriber_degraded",
+        "mark_tenant_cache_generation_reconciliation_degraded",
+    ] {
+        assert!(
+            generation.contains(required),
+            "tenant generation runtime must retain {required}"
+        );
+    }
+
+    for required in [
+        "subscriber_ready && reconciliation_healthy",
+        "MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES",
+        "redis_health_requires_subscriber_and_reconciliation",
+    ] {
+        assert!(
+            status.contains(required),
+            "tenant generation status must retain {required}"
+        );
+    }
+}
