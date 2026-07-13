@@ -39,6 +39,7 @@ impl DegradedWriteTracker {
     async fn remove(&self, key: &str) {
         let mut state = self.state.lock().await;
         state.keys.remove(key);
+        state.insertion_order.retain(|candidate| candidate != key);
     }
 
     async fn insert(
@@ -486,6 +487,30 @@ mod tests {
         fallback: Arc<InMemoryCacheBackend>,
     ) -> DegradationAwareFallbackBackend {
         DegradationAwareFallbackBackend::new(primary, fallback)
+    }
+
+    #[tokio::test]
+    async fn degraded_tracker_never_evicts_a_live_key_at_capacity() {
+        let tracker = DegradedWriteTracker::new(1);
+        let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 4);
+        fallback
+            .set("first".to_string(), b"one".to_vec())
+            .await
+            .unwrap();
+        fallback
+            .set("second".to_string(), b"two".to_vec())
+            .await
+            .unwrap();
+
+        tracker.insert("first", &fallback).await.unwrap();
+        assert!(tracker.insert("second", &fallback).await.is_err());
+        assert!(tracker.contains("first").await);
+
+        tracker.remove("first").await;
+        tracker.insert("second", &fallback).await.unwrap();
+        assert!(!tracker.contains("first").await);
+        assert!(tracker.contains("second").await);
+        assert_eq!(tracker.state.lock().await.insertion_order.len(), 1);
     }
 
     #[tokio::test]
