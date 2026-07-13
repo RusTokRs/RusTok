@@ -15,8 +15,10 @@ pub type PageBuilderAdminFacadeFuture = Pin<
 /// FFA boundary owned by the Page Builder admin package.
 ///
 /// Implementations may use a native Leptos server function or GraphQL, but the editor and its
-/// controller only see the canonical capability envelope and never branch on transport.
-pub trait PageBuilderAdminFacade {
+/// controller only see the canonical capability envelope and never branch on transport. The facade
+/// itself is `Send + Sync` so it can live in Leptos owner context; individual browser futures remain
+/// local and are executed through `spawn_local`.
+pub trait PageBuilderAdminFacade: Send + Sync {
     fn execute(&self, request: PageBuilderCapabilityRequest) -> PageBuilderAdminFacadeFuture;
 }
 
