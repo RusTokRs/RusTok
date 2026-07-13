@@ -118,8 +118,9 @@ pub fn normalize_release_environment(value: &str) -> String {
             'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '.' | '-' => character,
             _ => '-',
         })
-        .collect::<String>()
-        .trim_matches(['.', '-'])
+        .collect::<String>();
+    let normalized = normalized
+        .trim_matches(|character| character == '.' || character == '-')
         .to_string();
 
     if normalized.is_empty() {
