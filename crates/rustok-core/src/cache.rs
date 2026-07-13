@@ -21,10 +21,16 @@ pub struct CacheStats {
     pub entries: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum InMemoryCacheCapacity {
+    Entries(u64),
+    WeightBytes(u64),
+}
+
 pub struct InMemoryCacheBackend {
     cache: Cache<String, InMemoryCacheValue>,
     default_ttl: Duration,
-    max_capacity: u64,
+    capacity: InMemoryCacheCapacity,
 }
 
 #[derive(Clone)]
@@ -56,17 +62,46 @@ impl Expiry<String, InMemoryCacheValue> for InMemoryCacheExpiry {
     }
 }
 
+fn in_memory_entry_weight(key: &String, value: &InMemoryCacheValue) -> u32 {
+    let weight = key
+        .len()
+        .saturating_add(value.payload.len())
+        .saturating_add(std::mem::size_of::<InMemoryCacheValue>());
+    weight.clamp(1, u32::MAX as usize) as u32
+}
+
 impl InMemoryCacheBackend {
+    /// Construct a cache whose capacity is measured in entry count.
     pub fn new(ttl: Duration, max_capacity: u64) -> Self {
-        let cache = Cache::builder()
-            .expire_after(InMemoryCacheExpiry)
-            .max_capacity(max_capacity)
-            .build();
+        Self::with_capacity(ttl, InMemoryCacheCapacity::Entries(max_capacity))
+    }
+
+    /// Construct a cache whose capacity is measured by key and payload bytes.
+    ///
+    /// This should be preferred for caches containing serialized documents or other
+    /// variable-size payloads, where a count-only limit allows a small number of very
+    /// large values to exhaust process memory.
+    pub fn new_weighted(ttl: Duration, max_weight_bytes: u64) -> Self {
+        Self::with_capacity(ttl, InMemoryCacheCapacity::WeightBytes(max_weight_bytes))
+    }
+
+    fn with_capacity(ttl: Duration, capacity: InMemoryCacheCapacity) -> Self {
+        let cache = match capacity {
+            InMemoryCacheCapacity::Entries(max_capacity) => Cache::builder()
+                .expire_after(InMemoryCacheExpiry)
+                .max_capacity(max_capacity)
+                .build(),
+            InMemoryCacheCapacity::WeightBytes(max_weight_bytes) => Cache::builder()
+                .expire_after(InMemoryCacheExpiry)
+                .weigher(in_memory_entry_weight)
+                .max_capacity(max_weight_bytes)
+                .build(),
+        };
 
         Self {
             cache,
             default_ttl: ttl,
-            max_capacity,
+            capacity,
         }
     }
 }
@@ -373,7 +408,7 @@ pub struct FallbackCacheBackend {
 impl FallbackCacheBackend {
     pub fn new(primary: Arc<dyn CacheBackend>, fallback: Arc<InMemoryCacheBackend>) -> Self {
         let degraded_writes =
-            InMemoryCacheBackend::new(fallback.default_ttl, fallback.max_capacity);
+            InMemoryCacheBackend::with_capacity(fallback.default_ttl, fallback.capacity);
         Self {
             primary,
             fallback,
@@ -485,6 +520,34 @@ impl CacheBackend for FallbackCacheBackend {
             evictions: primary.evictions.saturating_add(fallback.evictions),
             entries: primary.entries.max(fallback.entries),
         }
+    }
+}
+
+#[cfg(test)]
+mod in_memory_capacity_tests {
+    use super::*;
+
+    #[test]
+    fn entry_weight_accounts_for_key_payload_and_value_metadata() {
+        let key = "tenant:key".to_string();
+        let value = InMemoryCacheValue {
+            payload: vec![0; 128],
+            ttl: Duration::from_secs(1),
+        };
+
+        assert!(in_memory_entry_weight(&key, &value) >= (key.len() + 128) as u32);
+    }
+
+    #[tokio::test]
+    async fn weighted_cache_does_not_retain_entry_larger_than_its_budget() {
+        let cache = InMemoryCacheBackend::new_weighted(Duration::from_secs(60), 64);
+        cache
+            .set("large".to_string(), vec![0; 256])
+            .await
+            .unwrap();
+        cache.cache.run_pending_tasks().await;
+
+        assert_eq!(cache.get("large").await.unwrap(), None);
     }
 }
 
