@@ -269,12 +269,12 @@ async fn probe_storage(
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::{has_effective_permission, Permission};
+    use rustok_api::{has_effective_permission, Action, Permission, Resource};
 
     #[test]
     fn manage_permissions_satisfy_diagnostic_read_requirements() {
         assert!(has_effective_permission(
-            &[Permission::LOGS_MANAGE],
+            &[Permission::new(Resource::Logs, Action::Manage)],
             &Permission::LOGS_READ,
         ));
         assert!(has_effective_permission(
