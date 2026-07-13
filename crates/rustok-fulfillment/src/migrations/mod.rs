@@ -7,6 +7,7 @@ mod m20260713_000110_serialize_fulfillment_progress;
 mod m20260713_000111_create_provider_operation_journal;
 mod m20260713_000112_commit_provider_operations_with_fulfillment;
 mod m20260713_000113_allow_provider_execution_reconciliation;
+mod m20260713_000114_defer_checkout_create_label_until_paid;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -22,12 +23,22 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000111_create_provider_operation_journal::Migration),
         Box::new(m20260713_000112_commit_provider_operations_with_fulfillment::Migration),
         Box::new(m20260713_000113_allow_provider_execution_reconciliation::Migration),
+        Box::new(m20260713_000114_defer_checkout_create_label_until_paid::Migration),
     ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
-    vec![MigrationDependencyDescriptor::new(
-        "m20260713_000109_enforce_fulfillment_integrity",
-        vec!["m20260325_000101_create_order_tables"],
-    )]
+    vec![
+        MigrationDependencyDescriptor::new(
+            "m20260713_000109_enforce_fulfillment_integrity",
+            vec!["m20260325_000101_create_order_tables"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000114_defer_checkout_create_label_until_paid",
+            vec![
+                "m20260713_000113_allow_provider_execution_reconciliation",
+                "m20260713_000115_serialize_order_lifecycle",
+            ],
+        ),
+    ]
 }
