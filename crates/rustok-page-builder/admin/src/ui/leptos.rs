@@ -1,17 +1,19 @@
 use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
-use crate::AdminCanvasController;
+use crate::{AdminCanvasController, PageBuilderAdminFacade};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
+use std::rc::Rc;
 
 /// Host-provided composition context for a concrete consumer document.
 ///
 /// Generated module composition mounts [`PageBuilderAdmin`] without props. Consumer routes such as
-/// Pages may provide this context to activate a concrete document and its FFA request callback.
+/// Pages may provide this context to activate a concrete document and its FFA persistence facade.
 #[derive(Clone)]
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
+    pub facade: Option<Rc<dyn PageBuilderAdminFacade>>,
     pub on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 }
 
@@ -19,10 +21,18 @@ impl PageBuilderAdminHostContext {
     pub fn new(controller: AdminCanvasController) -> Self {
         Self {
             controller,
+            facade: None,
             on_request: None,
         }
     }
 
+    pub fn with_facade(mut self, facade: Rc<dyn PageBuilderAdminFacade>) -> Self {
+        self.facade = Some(facade);
+        self
+    }
+
+    /// Low-level escape hatch for hosts that intentionally own request lifecycle handling.
+    /// Prefer [`Self::with_facade`] so save start/failure/acknowledgement remains inside the editor.
     pub fn with_request_callback(
         mut self,
         callback: Callback<PageBuilderCapabilityRequest>,
@@ -46,6 +56,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
         Some(context) => view! {
             <PageBuilderAdminWithController
                 controller=context.controller
+                facade=context.facade
                 on_request=context.on_request
             />
         }
@@ -84,6 +95,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
 #[component]
 pub fn PageBuilderAdminWithController(
     controller: AdminCanvasController,
+    #[prop(optional)] facade: Option<Rc<dyn PageBuilderAdminFacade>>,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -98,7 +110,7 @@ pub fn PageBuilderAdminWithController(
 
     view! {
         <AdminShell title subtitle>
-            <AdminCanvas controller on_request />
+            <AdminCanvas controller facade on_request />
         </AdminShell>
     }
 }
