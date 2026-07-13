@@ -1,10 +1,11 @@
 use axum::{
     extract::State,
-    http::{header::AUTHORIZATION, Request, StatusCode},
+    http::{header::AUTHORIZATION, Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use rustok_api::context::{AuthContext, AuthContextExtension};
+use rustok_api::{has_effective_permission, Permission};
 use rustok_core::SecurityActorKind;
 
 use crate::extractors::auth::resolve_current_user;
@@ -19,6 +20,8 @@ pub async fn resolve_optional(
     let (mut parts, body) = req.into_parts();
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let human_user_only = is_human_user_self_service_path(parts.uri.path());
+    let request_method = parts.method.clone();
+    let request_path = parts.uri.path().to_string();
     let mut rbac_scope = None;
 
     match resolve_current_user(&mut parts, &ctx).await {
@@ -29,6 +32,15 @@ pub async fn resolve_optional(
                     "Human-user and storefront endpoints do not accept service credentials",
                 )
                     .into_response();
+            }
+            if current_user.actor_kind == SecurityActorKind::Service {
+                if let Some(message) = service_forum_boundary_violation(
+                    &request_method,
+                    &request_path,
+                    &current_user.permissions,
+                ) {
+                    return (StatusCode::FORBIDDEN, message).into_response();
+                }
             }
 
             rbac_scope = Some(RbacRequestScope::new(
@@ -71,10 +83,66 @@ fn is_human_user_self_service_path(path: &str) -> bool {
         || path.starts_with("/store/")
 }
 
+fn service_forum_boundary_violation(
+    method: &Method,
+    path: &str,
+    permissions: &[Permission],
+) -> Option<&'static str> {
+    if !path.starts_with("/api/forum/") {
+        return None;
+    }
+
+    let segments = path.trim_matches('/').split('/').collect::<Vec<_>>();
+    let personal_interaction = path.contains("/vote")
+        || path.ends_with("/subscription")
+        || (method == Method::POST && path == "/api/forum/topics")
+        || (method == Method::POST
+            && segments.len() == 5
+            && segments[0] == "api"
+            && segments[1] == "forum"
+            && segments[2] == "topics"
+            && uuid::Uuid::parse_str(segments[3]).is_ok()
+            && segments[4] == "replies");
+    if personal_interaction {
+        return Some(
+            "Forum authorship, voting, and personal subscriptions require human-user credentials",
+        );
+    }
+
+    if path.contains("/solution")
+        && matches!(*method, Method::POST | Method::DELETE)
+        && !has_effective_permission(permissions, &Permission::FORUM_TOPICS_MODERATE)
+    {
+        return Some("Service credentials require forum_topics:moderate for solution changes");
+    }
+
+    if segments.len() == 4
+        && segments[0] == "api"
+        && segments[1] == "forum"
+        && uuid::Uuid::parse_str(segments[3]).is_ok()
+        && matches!(*method, Method::PUT | Method::DELETE)
+    {
+        let required = match segments[2] {
+            "topics" => Some(Permission::FORUM_TOPICS_MODERATE),
+            "replies" => Some(Permission::FORUM_REPLIES_MODERATE),
+            _ => None,
+        };
+        if required.is_some_and(|required| !has_effective_permission(permissions, &required)) {
+            return Some(
+                "Service credentials require explicit forum moderation authority for update/delete",
+            );
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::is_human_user_self_service_path;
-    use axum::http::{header::AUTHORIZATION, HeaderMap};
+    use super::{is_human_user_self_service_path, service_forum_boundary_violation};
+    use axum::http::{header::AUTHORIZATION, HeaderMap, Method};
+    use rustok_api::Permission;
+    use uuid::Uuid;
 
     #[test]
     fn authorization_presence_distinguishes_anonymous_from_invalid_credentials() {
@@ -97,5 +165,52 @@ mod tests {
         assert!(!is_human_user_self_service_path("/admin/products"));
         assert!(!is_human_user_self_service_path("/api/auth/reset/request"));
         assert!(!is_human_user_self_service_path("/api/oauth/token"));
+    }
+
+    #[test]
+    fn forum_personal_interactions_are_human_only() {
+        let topic_id = Uuid::new_v4();
+        assert!(service_forum_boundary_violation(
+            &Method::POST,
+            "/api/forum/topics",
+            &[Permission::FORUM_TOPICS_CREATE],
+        )
+        .is_some());
+        assert!(service_forum_boundary_violation(
+            &Method::POST,
+            &format!("/api/forum/topics/{topic_id}/replies"),
+            &[Permission::FORUM_REPLIES_CREATE],
+        )
+        .is_some());
+        assert!(service_forum_boundary_violation(
+            &Method::POST,
+            &format!("/api/forum/topics/{topic_id}/vote/1"),
+            &[Permission::FORUM_TOPICS_UPDATE],
+        )
+        .is_some());
+        assert!(service_forum_boundary_violation(
+            &Method::GET,
+            &format!("/api/forum/topics/{topic_id}/subscription"),
+            &[Permission::FORUM_TOPICS_READ],
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn forum_service_updates_require_moderation_authority() {
+        let topic_id = Uuid::new_v4();
+        let path = format!("/api/forum/topics/{topic_id}");
+        assert!(service_forum_boundary_violation(
+            &Method::PUT,
+            &path,
+            &[Permission::FORUM_TOPICS_UPDATE],
+        )
+        .is_some());
+        assert!(service_forum_boundary_violation(
+            &Method::PUT,
+            &path,
+            &[Permission::FORUM_TOPICS_MODERATE],
+        )
+        .is_none());
     }
 }
