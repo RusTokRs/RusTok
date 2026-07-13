@@ -5,6 +5,7 @@ mod checkout_inventory_reservation_journal;
 mod checkout_operation;
 mod checkout_order_confirmation;
 mod checkout_order_creation;
+mod checkout_order_plan;
 pub mod context;
 mod fulfillment_create_label_recovery;
 mod fulfillment_orchestration;
@@ -46,6 +47,10 @@ pub use checkout_order_confirmation::{
 };
 pub use checkout_order_creation::{
     CheckoutOrderCreationError, CheckoutOrderCreationExecutor, CheckoutOrderCreationResult,
+};
+pub use checkout_order_plan::{
+    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
+    CheckoutOrderPlanRecord, CheckoutOrderPlanResult,
 };
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService;

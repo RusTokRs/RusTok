@@ -15,6 +15,7 @@ mod m20260713_000010_create_checkout_inventory_reservations;
 mod m20260713_000011_enforce_checkout_inventory_reservation_quantity;
 mod m20260713_000012_adopt_checkout_inventory_into_order_lines;
 mod m20260713_000013_cutover_checkout_inventory_lifecycle;
+mod m20260713_000014_create_checkout_order_plans;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -36,6 +37,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000011_enforce_checkout_inventory_reservation_quantity::Migration),
         Box::new(m20260713_000012_adopt_checkout_inventory_into_order_lines::Migration),
         Box::new(m20260713_000013_cutover_checkout_inventory_lifecycle::Migration),
+        Box::new(m20260713_000014_create_checkout_order_plans::Migration),
     ]
 }
 
@@ -108,6 +110,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20260713_000116_enforce_checkout_operation_identity",
                 "m20260713_000110_serialize_fulfillment_progress",
             ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000014_create_checkout_order_plans",
+            vec!["m20260713_000013_cutover_checkout_inventory_lifecycle"],
         ),
     ]
 }
