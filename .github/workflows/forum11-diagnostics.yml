@@ -36,41 +36,40 @@ jobs:
           )
           if "pub(crate) async fn find_category_in_tx" not in source:
               anchor = "\n}\n\nimpl Deref for CategoryService"
-              methods = r'''
-
-    pub(crate) async fn ensure_exists_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        category_id: Uuid,
-    ) -> ForumResult<()> {
-        category::CategoryService::ensure_exists_in_tx(txn, tenant_id, category_id).await
-    }
-
-    pub(crate) async fn find_category_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        category_id: Uuid,
-    ) -> ForumResult<crate::entities::forum_category::Model> {
-        category::CategoryService::find_category_in_tx(txn, tenant_id, category_id).await
-    }
-
-    pub(crate) async fn adjust_counters_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        topic_delta: i32,
-        reply_delta: i32,
-    ) -> ForumResult<()> {
-        category::CategoryService::adjust_counters_in_tx(
-            txn,
-            tenant_id,
-            category_id,
-            topic_delta,
-            reply_delta,
-        )
-        .await
-    }
-'''
+              methods = (
+                  "\n\n    pub(crate) async fn ensure_exists_in_tx(\n"
+                  "        txn: &DatabaseTransaction,\n"
+                  "        tenant_id: Uuid,\n"
+                  "        category_id: Uuid,\n"
+                  "    ) -> ForumResult<()> {\n"
+                  "        category::CategoryService::ensure_exists_in_tx(txn, tenant_id, category_id).await\n"
+                  "    }\n"
+                  "\n"
+                  "    pub(crate) async fn find_category_in_tx(\n"
+                  "        txn: &DatabaseTransaction,\n"
+                  "        tenant_id: Uuid,\n"
+                  "        category_id: Uuid,\n"
+                  "    ) -> ForumResult<crate::entities::forum_category::Model> {\n"
+                  "        category::CategoryService::find_category_in_tx(txn, tenant_id, category_id).await\n"
+                  "    }\n"
+                  "\n"
+                  "    pub(crate) async fn adjust_counters_in_tx(\n"
+                  "        txn: &DatabaseTransaction,\n"
+                  "        tenant_id: Uuid,\n"
+                  "        category_id: Uuid,\n"
+                  "        topic_delta: i32,\n"
+                  "        reply_delta: i32,\n"
+                  "    ) -> ForumResult<()> {\n"
+                  "        category::CategoryService::adjust_counters_in_tx(\n"
+                  "            txn,\n"
+                  "            tenant_id,\n"
+                  "            category_id,\n"
+                  "            topic_delta,\n"
+                  "            reply_delta,\n"
+                  "        )\n"
+                  "        .await\n"
+                  "    }\n"
+              )
               if anchor not in source:
                   raise SystemExit("category owner insertion anchor missing")
               source = source.replace(anchor, methods + anchor, 1)
@@ -98,7 +97,6 @@ jobs:
           rustfmt --edition 2021 "${targets[@]}"
           fmt_status=$?
 
-          # Diagnostic-only edits for unrelated blockers in the current main.
           python - <<'PY'
           from pathlib import Path
 
