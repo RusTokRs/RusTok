@@ -39,6 +39,9 @@ pub use style_rule::*;
 pub use trait_model::*;
 pub use validation::*;
 
+impl Copy for ConditionOperator {}
+impl Copy for EmptyRepeaterBehavior {}
+
 pub const GRAPESJS_V1: &str = "grapesjs_v1";
 pub const FLY_FRAGMENT_V1: &str = "fly_fragment_v1";
 pub const RICH_TEXT_PAYLOAD_V1: &str = "fly_rich_text_payload_v1";
