@@ -6,7 +6,7 @@ use axum::{
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpResult;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -21,8 +21,7 @@ use crate::{
         ApplyOrderChangeInput, CancelOrderChangeInput, CreateOrderChangeInput,
         ListOrderChangesInput, OrderChangeResponse,
     },
-    ApplyOrderChangeResult, ExchangeDifferenceRefundInput, PostOrderOrchestrationError,
-    PostOrderOrchestrationService,
+    ApplyOrderChangeResult, ExchangeDifferenceRefundInput, PostOrderOrchestrationService,
 };
 
 /// Create admin order change preview
@@ -172,7 +171,8 @@ pub async fn apply_order_change(
     let db = runtime.db_clone();
     let event_bus = runtime.event_bus();
     let order_service = OrderService::new(db.clone(), event_bus.clone());
-    let orchestration_service = PostOrderOrchestrationService::new(db.clone(), event_bus.clone());
+    let orchestration_service = PostOrderOrchestrationService::new(db.clone(), event_bus)
+        .with_payment_provider_registry(runtime.payment_provider_registry());
 
     let order_change = order_service
         .get_order_change(tenant.id, id)
@@ -189,23 +189,11 @@ pub async fn apply_order_change(
                 input.metadata,
             )
             .await
-            .map_err(|err| match err {
-                PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
-                PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
-                PostOrderOrchestrationError::Validation(msg) => {
-                    HttpError::bad_request("commerce_operation_failed", msg)
-                }
-            })?,
+            .map_err(super::map_post_order_orchestration_error)?,
         "claim" => orchestration_service
             .apply_claim_order_change(tenant.id, id, input.metadata)
             .await
-            .map_err(|err| match err {
-                PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
-                PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
-                PostOrderOrchestrationError::Validation(msg) => {
-                    HttpError::bad_request("commerce_operation_failed", msg)
-                }
-            })?,
+            .map_err(super::map_post_order_orchestration_error)?,
         _ => {
             let item = order_service
                 .apply_order_change(
