@@ -1,4 +1,7 @@
-use fly::{render_page, FlyResult, GrapesJsV1Codec, PageSelection, RenderPolicy, RenderedPage};
+use fly::{
+    render_page, render_page_with_runtime_context, FlyResult, GrapesJsV1Codec, PageSelection,
+    RenderPolicy, RenderedPage, RuntimeRenderResult,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -21,6 +24,31 @@ impl PageBuilderRenderResponse {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimeRenderRequest {
+    pub project_data: Value,
+    pub selection: PageSelection,
+    #[serde(default)]
+    pub policy: RenderPolicy,
+    #[serde(default)]
+    pub context: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimeRenderResponse {
+    pub result: RuntimeRenderResult,
+}
+
+impl PageBuilderRuntimeRenderResponse {
+    pub fn page(&self) -> &RenderedPage {
+        &self.result.page
+    }
+
+    pub fn document_html(&self) -> String {
+        self.result.document_html()
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PageBuilderRenderer;
 
@@ -32,6 +60,20 @@ impl PageBuilderRenderer {
         let document = GrapesJsV1Codec::decode_value(request.project_data)?;
         let page = render_page(&document, &request.selection, &request.policy)?;
         Ok(PageBuilderRenderResponse { page })
+    }
+
+    pub fn render_runtime(
+        &self,
+        request: PageBuilderRuntimeRenderRequest,
+    ) -> FlyResult<PageBuilderRuntimeRenderResponse> {
+        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        let result = render_page_with_runtime_context(
+            &document,
+            &request.selection,
+            &request.policy,
+            &request.context,
+        )?;
+        Ok(PageBuilderRuntimeRenderResponse { result })
     }
 
     pub fn render_document_html(
@@ -47,12 +89,34 @@ impl PageBuilderRenderer {
         })
         .map(|response| response.document_html())
     }
+
+    pub fn render_runtime_document_html(
+        &self,
+        project_data: Value,
+        selection: PageSelection,
+        policy: RenderPolicy,
+        context: Value,
+    ) -> FlyResult<String> {
+        self.render_runtime(PageBuilderRuntimeRenderRequest {
+            project_data,
+            selection,
+            policy,
+            context,
+        })
+        .map(|response| response.document_html())
+    }
 }
 
 pub fn render_page_builder_project(
     request: PageBuilderRenderRequest,
 ) -> FlyResult<PageBuilderRenderResponse> {
     PageBuilderRenderer.render(request)
+}
+
+pub fn render_page_builder_runtime(
+    request: PageBuilderRuntimeRenderRequest,
+) -> FlyResult<PageBuilderRuntimeRenderResponse> {
+    PageBuilderRenderer.render_runtime(request)
 }
 
 #[cfg(test)]
@@ -86,6 +150,53 @@ mod tests {
         assert_eq!(response.page.page_id.as_deref(), Some("home"));
         assert!(response.page.html.contains("<h1"));
         assert!(response.document_html().contains("<title>Home</title>"));
+    }
+
+    #[test]
+    fn runtime_api_materializes_conditions_and_repeaters() {
+        let response = render_page_builder_runtime(PageBuilderRuntimeRenderRequest {
+            project_data: json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{
+                            "id": "banner",
+                            "type": "text",
+                            "content": "Banner"
+                        }, {
+                            "id": "row",
+                            "type": "text",
+                            "content": "{{item.name}}"
+                        }]
+                    }
+                }],
+                "flyRuntimeConditions": [{
+                    "id": "show-banner",
+                    "component_id": "banner",
+                    "path": "showBanner",
+                    "operator": "truthy"
+                }],
+                "flyRuntimeRepeaters": [{
+                    "id": "rows",
+                    "component_id": "row",
+                    "path": "items"
+                }]
+            }),
+            selection: PageSelection::First,
+            policy: RenderPolicy::default(),
+            context: json!({
+                "showBanner": false,
+                "items": [{ "name": "One" }, { "name": "Two" }]
+            }),
+        })
+        .expect("runtime response");
+        assert_eq!(response.result.hidden_components, 1);
+        assert_eq!(response.result.repeated_nodes, 2);
+        assert!(!response.result.page.html.contains("Banner"));
+        assert!(response.result.page.html.contains("One"));
+        assert!(response.result.page.html.contains("Two"));
     }
 
     #[test]
