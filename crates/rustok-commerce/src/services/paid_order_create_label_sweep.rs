@@ -5,9 +5,7 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 
-use super::fulfillment_orchestration::{
-    FulfillmentOrchestrationError, FulfillmentOrchestrationResult,
-};
+use super::fulfillment_orchestration::FulfillmentOrchestrationResult;
 use super::FulfillmentCreateLabelRecoveryService;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -108,15 +106,6 @@ impl PaidOrderCreateLabelSweepService {
     }
 }
 
-impl From<rustok_fulfillment::FulfillmentError> for PaidOrderCreateLabelSweepReport {
-    fn from(_error: rustok_fulfillment::FulfillmentError) -> Self {
-        Self {
-            failed: 1,
-            ..Self::default()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,11 +127,5 @@ mod tests {
     fn limit_is_bounded_by_service_contract() {
         assert_eq!(0_u64.clamp(1, 500), 1);
         assert_eq!(10_000_u64.clamp(1, 500), 500);
-    }
-
-    #[test]
-    fn orchestration_error_type_stays_available_for_worker_boundary() {
-        let error = FulfillmentOrchestrationError::Validation("test".to_string());
-        assert!(error.to_string().contains("test"));
     }
 }
