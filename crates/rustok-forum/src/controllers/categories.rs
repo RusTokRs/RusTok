@@ -24,6 +24,14 @@ pub struct CategoryListParams {
     pub pagination: Option<crate::controllers::topics::PaginationParams>,
 }
 
+fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
+}
+
 #[utoipa::path(
     get,
     path = "/api/forum/categories",
@@ -61,10 +69,7 @@ pub async fn list_categories(
     let (categories, _) = service
         .list_paginated_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             &locale,
             pagination.page,
             pagination.limit(),
@@ -127,10 +132,7 @@ pub async fn get_category(
     let category = service
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             id,
             &locale,
             Some(tenant.default_locale.as_str()),
@@ -166,14 +168,7 @@ pub async fn create_category(
 
     let service = CategoryService::new(runtime.db_clone());
     let category = service
-        .create(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+        .create(tenant.id, forum_security(&auth), input)
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(category)))
@@ -207,15 +202,7 @@ pub async fn update_category(
 
     let service = CategoryService::new(runtime.db_clone());
     let category = service
-        .update(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+        .update(tenant.id, id, forum_security(&auth), input)
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(category))
@@ -247,14 +234,7 @@ pub async fn delete_category(
 
     let service = CategoryService::new(runtime.db_clone());
     service
-        .delete(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .delete(tenant.id, id, forum_security(&auth))
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -285,24 +265,14 @@ pub async fn subscribe_category(
     )?;
 
     SubscriptionService::new(runtime.db_clone())
-        .set_category_subscription(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .set_category_subscription(tenant.id, id, forum_security(&auth))
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -337,24 +307,14 @@ pub async fn unsubscribe_category(
     )?;
 
     SubscriptionService::new(runtime.db_clone())
-        .clear_category_subscription(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .clear_category_subscription(tenant.id, id, forum_security(&auth))
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
     let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -370,7 +330,7 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "forum_permission_denied",
             message.to_string(),
         ));
