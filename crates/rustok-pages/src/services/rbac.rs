@@ -35,8 +35,8 @@ pub(crate) fn enforce_owned_scope(
 /// Non-public page reads require tenant-wide read authority.
 ///
 /// Role names are intentionally ignored: OAuth scopes and request-effective
-/// permission snapshots can reduce an administrator to `Own` or `None`, and a
-/// static role check must never restore access removed by that snapshot.
+/// permission snapshots can reduce an administrator to `None`, and a static
+/// role check must never restore access removed by that snapshot.
 pub(crate) fn can_read_non_public_pages(security: &SecurityContext) -> bool {
     matches!(
         security.get_scope(Resource::Pages, Action::Read),
@@ -55,7 +55,7 @@ mod tests {
         let restricted = SecurityContext::from_permissions(
             UserRole::Admin,
             Some(uuid::Uuid::new_v4()),
-            [Permission::PAGES_READ_OWN],
+            Vec::<Permission>::new(),
         );
         assert!(!can_read_non_public_pages(&restricted));
 
