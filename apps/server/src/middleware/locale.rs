@@ -24,7 +24,7 @@ use crate::context::TenantContextExt;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_LOCALE_CACHE_TTL: Duration = Duration::from_secs(60);
-const TENANT_LOCALE_CACHE_MAX_CAPACITY: u64 = 2_000;
+const TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 struct TenantLocaleRecord {
@@ -54,10 +54,15 @@ struct TenantLocaleCache {
 
 impl TenantLocaleCache {
     fn new() -> Self {
+        Self::with_max_weight(TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES)
+    }
+
+    fn with_max_weight(max_weight_bytes: u64) -> Self {
         Self {
             cache: Cache::builder()
                 .time_to_live(TENANT_LOCALE_CACHE_TTL)
-                .max_capacity(TENANT_LOCALE_CACHE_MAX_CAPACITY)
+                .weigher(tenant_locale_entry_weight)
+                .max_capacity(max_weight_bytes)
                 .build(),
             hits: Arc::new(AtomicU64::new(0)),
             misses: Arc::new(AtomicU64::new(0)),
@@ -74,6 +79,27 @@ impl TenantLocaleCache {
             self.misses.fetch_add(1, Ordering::Relaxed);
         }
         cached
+    }
+
+    async fn get_or_load(
+        &self,
+        ctx: &ServerRuntimeContext,
+        tenant_id: Uuid,
+    ) -> Result<Arc<Vec<TenantLocaleRecord>>, sea_orm::DbErr> {
+        if let Some(locales) = self.get(tenant_id).await {
+            return Ok(locales);
+        }
+
+        let cache = self.clone();
+        self.cache
+            .try_get_with(tenant_id, async move {
+                cache.record_db_query();
+                load_tenant_locales(ctx, tenant_id).await.map(Arc::new)
+            })
+            .await
+            .map_err(|error| {
+                sea_orm::DbErr::Custom(format!("tenant locale cache load failed: {error}"))
+            })
     }
 
     async fn insert(&self, tenant_id: Uuid, locales: Arc<Vec<TenantLocaleRecord>>) {
@@ -98,6 +124,19 @@ impl TenantLocaleCache {
             entries: self.cache.entry_count(),
         }
     }
+}
+
+fn tenant_locale_entry_weight(_tenant_id: &Uuid, locales: &Arc<Vec<TenantLocaleRecord>>) -> u32 {
+    let mut weight = std::mem::size_of::<Uuid>()
+        .saturating_add(std::mem::size_of::<Arc<Vec<TenantLocaleRecord>>>())
+        .saturating_add(std::mem::size_of::<Vec<TenantLocaleRecord>>());
+    for locale in locales.iter() {
+        weight = weight
+            .saturating_add(std::mem::size_of::<TenantLocaleRecord>())
+            .saturating_add(locale.locale.len())
+            .saturating_add(locale.fallback_locale.as_ref().map_or(0, String::len));
+    }
+    weight.clamp(1, u32::MAX as usize) as u32
 }
 
 fn tenant_locale_cache(ctx: &ServerRuntimeContext) -> Arc<TenantLocaleCache> {
@@ -150,15 +189,7 @@ async fn get_tenant_locales_cached(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
 ) -> Result<Arc<Vec<TenantLocaleRecord>>, sea_orm::DbErr> {
-    let cache = tenant_locale_cache(ctx);
-    if let Some(locales) = cache.get(tenant_id).await {
-        return Ok(locales);
-    }
-
-    cache.record_db_query();
-    let locales = Arc::new(load_tenant_locales(ctx, tenant_id).await?);
-    cache.insert(tenant_id, locales.clone()).await;
-    Ok(locales)
+    tenant_locale_cache(ctx).get_or_load(ctx, tenant_id).await
 }
 
 pub async fn invalidate_tenant_locale_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
@@ -258,10 +289,35 @@ fn constrain_locale_to_tenant(
 
 #[cfg(test)]
 mod tests {
-    use super::{constrain_locale_to_tenant, TenantLocaleCache, TenantLocaleRecord};
+    use super::{
+        constrain_locale_to_tenant, tenant_locale_entry_weight, TenantLocaleCache,
+        TenantLocaleRecord,
+    };
     use rustok_api::request::ResolvedRequestLocale;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn locale_cache_weight_accounts_for_dynamic_strings() {
+        let tenant_id = Uuid::new_v4();
+        let short = Arc::new(vec![TenantLocaleRecord {
+            locale: "en".to_string(),
+            is_enabled: true,
+            is_default: true,
+            fallback_locale: None,
+        }]);
+        let long = Arc::new(vec![TenantLocaleRecord {
+            locale: "x".repeat(512),
+            is_enabled: true,
+            is_default: false,
+            fallback_locale: Some("y".repeat(512)),
+        }]);
+
+        assert!(
+            tenant_locale_entry_weight(&tenant_id, &long)
+                > tenant_locale_entry_weight(&tenant_id, &short)
+        );
+    }
 
     #[tokio::test]
     async fn tenant_locale_cache_tracks_hits_misses_and_invalidations() {
