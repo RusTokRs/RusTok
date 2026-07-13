@@ -2,14 +2,20 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use rustok_api::{has_effective_permission, Permission};
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
-    CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
-    UpdateOAuthAppCommand,
+    generate_refresh_token, hash_password, AuthAdminMutationContext, AuthAdminMutationError,
+    AuthorizedOAuthAppRecord, CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord,
+    OAuthAppSecretResult, UpdateOAuthAppCommand,
 };
-use sea_orm::DatabaseConnection;
+use sea_orm::{
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+};
 use uuid::Uuid;
+
+use crate::models::oauth_apps;
 
 use super::oauth_app::OAuthAppService;
 use super::rbac_request_scope::permissions_for;
@@ -36,13 +42,13 @@ impl GuardedOAuthAdminProvider {
         })
     }
 
-    fn validate_existing_app_authority(
+    fn validate_permission_strings(
         &self,
         context: &AuthAdminMutationContext,
-        app: &OAuthAppMutationRecord,
+        granted_permissions: &[String],
     ) -> Result<(), AuthAdminMutationError> {
         let authority = self.request_permissions(context)?;
-        for raw in &app.granted_permissions {
+        for raw in granted_permissions {
             let permission = Permission::from_str(raw.trim()).map_err(|error| {
                 AuthAdminMutationError::Validation(format!(
                     "OAuth app contains invalid delegated permission `{raw}`: {error}"
@@ -56,6 +62,91 @@ impl GuardedOAuthAdminProvider {
         }
         Ok(())
     }
+
+    async fn rotate_secret_transactionally(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+        response_record: OAuthAppMutationRecord,
+    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let tx = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
+        self.validate_permission_strings(context, &app.granted_permissions_list())?;
+        if !app.can_rotate_secret() {
+            return Err(AuthAdminMutationError::Validation(
+                "This OAuth app does not support client secret rotation".to_string(),
+            ));
+        }
+
+        let client_secret = format!(
+            "sk_live_{}{}",
+            generate_refresh_token(),
+            generate_refresh_token()
+        );
+        let secret_hash = hash_password(&client_secret)
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let mut active: oauth_apps::ActiveModel = app.into();
+        active.client_secret_hash = Set(Some(secret_hash));
+        active.updated_at = Set(Utc::now().into());
+        active
+            .update(&tx)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+
+        Ok(OAuthAppSecretResult {
+            app: response_record,
+            client_secret,
+        })
+    }
+}
+
+async fn lock_oauth_app<C>(
+    db: &C,
+    tenant_id: Uuid,
+    app_id: Uuid,
+) -> Result<oauth_apps::Model, AuthAdminMutationError>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        oauth_apps::Entity::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+    };
+    let app = match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?,
+        DbBackend::Sqlite => {
+            let app = query()
+                .one(db)
+                .await
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            if let Some(app) = app.as_ref() {
+                oauth_apps::Entity::update_many()
+                    .col_expr(
+                        oauth_apps::Column::UpdatedAt,
+                        Expr::col(oauth_apps::Column::UpdatedAt),
+                    )
+                    .filter(oauth_apps::Column::Id.eq(app.id))
+                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await
+                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            }
+            app
+        }
+    };
+
+    app.ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))
 }
 
 fn validate_grant_dependencies(grant_types: &[String]) -> Result<(), AuthAdminMutationError> {
@@ -130,8 +221,8 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
             .get_oauth_app(context, app_id)
             .await?
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        self.validate_existing_app_authority(context, &app)?;
-        self.inner.rotate_oauth_app_secret(context, app_id).await
+        self.rotate_secret_transactionally(context, app_id, app)
+            .await
     }
 
     async fn revoke_oauth_app(
