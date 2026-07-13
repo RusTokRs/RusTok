@@ -31,7 +31,7 @@ fn full_and_inline_modes_can_drive_commands() {
                 patch: Default::default(),
             }))
             .expect("editable presentation");
-        assert!(matches!(effects[0], UiEffect::Command(_)));
+        assert!(matches!(&effects[0], UiEffect::Command(_)));
         assert!(machine.state.dirty.dirty);
     }
 }
