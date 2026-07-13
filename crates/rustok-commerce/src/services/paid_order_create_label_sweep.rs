@@ -5,7 +5,6 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 
-use super::fulfillment_orchestration::FulfillmentOrchestrationResult;
 use super::FulfillmentCreateLabelRecoveryService;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -39,7 +38,7 @@ impl PaidOrderCreateLabelSweepService {
     pub async fn process_pending_once(
         &self,
         limit: u64,
-    ) -> FulfillmentOrchestrationResult<PaidOrderCreateLabelSweepReport> {
+    ) -> Result<PaidOrderCreateLabelSweepReport, sea_orm::DbErr> {
         let operations = provider_operation::Entity::find()
             .filter(provider_operation::Column::Operation.eq("create_label"))
             .filter(provider_operation::Column::Status.is_in([
