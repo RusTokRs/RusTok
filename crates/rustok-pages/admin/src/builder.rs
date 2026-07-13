@@ -101,16 +101,35 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
             }
 
             let page = transport::update_page(
-                snapshot.token,
-                snapshot.tenant_slug,
-                snapshot.page_id,
+                snapshot.token.clone(),
+                snapshot.tenant_slug.clone(),
+                snapshot.page_id.clone(),
                 draft,
             )
             .await
             .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+            let persisted_page = transport::fetch_page(
+                snapshot.token,
+                snapshot.tenant_slug,
+                snapshot.page_id,
+            )
+            .await
+            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
+            .ok_or_else(|| {
+                PageBuilderAdminFacadeError::new(
+                    "Pages document disappeared after a successful builder save",
+                )
+            })?;
+            let persisted_revision = page_revision(&persisted_page);
+            if persisted_revision.starts_with("page:") {
+                return Err(PageBuilderAdminFacadeError::new(
+                    "Pages builder save succeeded but no persisted body revision was returned",
+                ));
+            }
+
             let response = PublishPageBuilderResult {
                 page_id: page.id.clone(),
-                revision_id: page.updated_at.clone(),
+                revision_id: persisted_revision,
                 published: page.status.eq_ignore_ascii_case("published"),
             };
             on_saved(page, project_data);
@@ -132,11 +151,11 @@ pub fn controller_from_project(
 }
 
 pub fn page_revision(page: &PageDetail) -> String {
-    if page.updated_at.trim().is_empty() {
-        format!("page:{}:initial", page.id)
-    } else {
-        page.updated_at.clone()
-    }
+    page.body
+        .as_ref()
+        .map(|body| body.updated_at.clone())
+        .filter(|revision| !revision.trim().is_empty())
+        .unwrap_or_else(|| format!("page:{}:initial", page.id))
 }
 
 pub fn canonicalize_builder_project(
@@ -291,19 +310,24 @@ mod tests {
     }
 
     #[test]
-    fn page_revision_uses_page_timestamp_or_stable_initial_marker() {
+    fn page_revision_uses_body_timestamp_or_stable_initial_marker() {
         let mut page = PageDetail {
             id: "home".to_string(),
             status: "draft".to_string(),
             template: "default".to_string(),
-            updated_at: String::new(),
             channel_slugs: Vec::new(),
             translation: None,
             body: None,
             blocks: Vec::new(),
         };
         assert_eq!(page_revision(&page), "page:home:initial");
-        page.updated_at = "rev-2".to_string();
+        page.body = Some(crate::model::PageBody {
+            locale: "en".to_string(),
+            content: String::new(),
+            format: GRAPESJS_FORMAT.to_string(),
+            content_json: None,
+            updated_at: "rev-2".to_string(),
+        });
         assert_eq!(page_revision(&page), "rev-2");
     }
 }
