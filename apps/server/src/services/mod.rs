@@ -45,6 +45,7 @@ pub mod rbac_service;
 pub mod redis_runtime;
 pub mod registry_governance;
 pub mod registry_principal;
+pub mod registry_remote_runner;
 pub mod release_activation_hook;
 pub mod release_backend;
 pub mod runtime_guardrails;
