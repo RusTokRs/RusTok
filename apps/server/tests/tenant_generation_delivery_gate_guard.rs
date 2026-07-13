@@ -22,7 +22,12 @@ fn every_runtime_transport_uses_the_canonical_listener_gate() {
 
     assert!(factory.contains("TenantGenerationDeliveryGate::new("));
     assert!(factory.contains("TenantCacheGenerationTransport::new(gated, cache.clone())"));
-    assert_eq!(factory.matches("tenant_generation_transport(ctx, &cache,").count(), 3);
+    assert_eq!(
+        factory
+            .matches("tenant_generation_transport(ctx, &cache,")
+            .count(),
+        3
+    );
 
     for required in [
         "tenant_cache_generation_listener_snapshot(&self.ctx)",
