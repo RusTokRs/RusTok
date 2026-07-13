@@ -77,18 +77,19 @@ impl ServerAuthAdminMutationProvider {
         })
     }
 
-    async fn user_role(
+    async fn user_role<C>(
         &self,
+        db: &C,
         tenant_id: Uuid,
         user_id: Uuid,
-    ) -> Result<UserRole, AuthAdminMutationError> {
-        let permissions = RbacService::get_user_permissions_authoritative(
-            &self.db,
-            &tenant_id,
-            &user_id,
-        )
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+    ) -> Result<UserRole, AuthAdminMutationError>
+    where
+        C: ConnectionTrait,
+    {
+        let permissions =
+            RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
+                .await
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         Ok(infer_user_role_from_permissions(&permissions))
     }
 
@@ -359,7 +360,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         let user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
-        let current_role = self.user_role(context.tenant_id, user.id).await?;
+        let current_role = self
+            .user_role(&tx, context.tenant_id, user.id)
+            .await?;
         self.ensure_target_management_allowed(context, user.id, &current_role)
             .await?;
         let user_id = user.id;
@@ -443,7 +446,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         let user = lock_user_for_mutation(&tx, context.tenant_id, user_id).await?;
-        let current_role = self.user_role(context.tenant_id, user.id).await?;
+        let current_role = self
+            .user_role(&tx, context.tenant_id, user.id)
+            .await?;
         self.ensure_target_management_allowed(context, user.id, &current_role)
             .await?;
         ensure_active_super_admin_continuity(
