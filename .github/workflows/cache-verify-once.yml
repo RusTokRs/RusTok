@@ -1,0 +1,51 @@
+name: One-shot cache hardening verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cache-verify-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-hardening
+      - name: Verify format
+        run: rustfmt --edition 2021 --check crates/rustok-cache/src/event_dedupe.rs crates/rustok-cache/src/tenant_generation_observability.rs crates/rustok-cache/src/lib.rs apps/server/src/middleware/mod.rs apps/server/src/services/tenant_cache_generation.rs apps/server/src/services/tenant_cache_generation_status.rs apps/server/src/services/mod.rs apps/server/tests/tenant_cache_architecture_guard.rs apps/server/tests/tenant_generation_concurrency_guard.rs apps/server/tests/tenant_generation_readiness_guard.rs
+      - name: Compile cache and server
+        run: |
+          cargo check -p rustok-cache --lib
+          cargo check -p rustok-server --lib
+      - name: Focused cache tests
+        run: |
+          cargo test -p rustok-cache --lib event_dedupe
+          cargo test -p rustok-cache --lib tenant_generation_observability
+          cargo test -p rustok-server tenant_cache_generation --lib
+          cargo test -p rustok-server --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_readiness_guard
+      - name: Focused clippy
+        run: |
+          cargo clippy -p rustok-cache --lib -- -D warnings
+          cargo clippy -p rustok-server --lib -- -D warnings
+      - name: Commit verification proof
+        run: |
+          printf 'verified_source=%s\n' "$(git rev-parse HEAD)" > .github/cache-compile-verified.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/cache-compile-verified.txt
+          git commit -m "chore(cache): verify tenant generation compile"
+          git push origin HEAD:main
