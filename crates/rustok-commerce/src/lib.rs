@@ -38,12 +38,12 @@ mod state_machine_proptest;
 pub use error::{CommerceError, CommerceResult};
 pub use services::{
     ApplyOrderChangeResult, CheckoutError, CheckoutResult, CheckoutService,
-    CreateReturnDecisionInput, ExchangeDifferenceRefundInput, PaymentOrchestrationError,
-    PaymentOrchestrationResult, PaymentOrchestrationService, PostOrderOrchestrationError,
-    PostOrderOrchestrationService, RefundReconciliationService, ReturnClaimDecisionInput,
-    ReturnDecisionInput, ReturnDecisionResponse, ReturnExchangeDecisionInput,
-    ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
-    StoreContextService,
+    CreateReturnDecisionInput, ExchangeDifferenceRefundInput, FulfillmentReconciliationService,
+    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
+    PostOrderOrchestrationError, PostOrderOrchestrationService, RefundReconciliationService,
+    ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
+    StoreContextError, StoreContextResult, StoreContextService,
 };
 pub(crate) use services::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
