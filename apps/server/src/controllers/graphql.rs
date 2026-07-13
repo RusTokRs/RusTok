@@ -25,6 +25,16 @@ use crate::services::rbac_request_scope::{with_rbac_request_scope, RbacRequestSc
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use rustok_core::ModuleRegistry;
 
+const WS_CLOSE_UNAUTHORIZED: u16 = 4401;
+const WS_AUTHORITY_CHANGED_REASON: &str = "authorization changed; reconnect required";
+
+#[derive(Clone)]
+struct GraphqlWsAuthLease {
+    tenant_id: uuid::Uuid,
+    access_token: String,
+    initial_scope: RbacRequestScope,
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn graphql_handler(
     State(runtime_ctx): State<ServerRuntimeContext>,
@@ -155,13 +165,13 @@ async fn handle_graphql_ws(
 ) {
     let (mut sink, mut source) = socket.split();
     let (incoming_tx, incoming_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    let rbac_scope = Arc::new(OnceLock::<RbacRequestScope>::new());
+    let auth_lease = Arc::new(OnceLock::<GraphqlWsAuthLease>::new());
 
     let schema_for_stream = schema.as_ref().clone();
     let runtime_ctx_for_init = runtime_ctx.clone();
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
-    let rbac_scope_for_init = Arc::clone(&rbac_scope);
+    let auth_lease_for_init = Arc::clone(&auth_lease);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
         schema_for_stream,
         UnboundedReceiverStream::new(incoming_rx),
@@ -172,7 +182,7 @@ async fn handle_graphql_ws(
             runtime_ctx_for_init.clone(),
             auth_runtime_for_init.clone(),
             registry_for_init.clone(),
-            Arc::clone(&rbac_scope_for_init),
+            Arc::clone(&auth_lease_for_init),
             payload,
         )
     });
@@ -200,15 +210,29 @@ async fn handle_graphql_ws(
     });
 
     loop {
-        let next_message = match rbac_scope.get().cloned() {
-            Some(scope) => {
-                with_rbac_request_scope(Some(scope), graphql_stream.next()).await
-            }
-            None => graphql_stream.next().await,
+        let scope_before_poll = match auth_lease.get() {
+            Some(lease) => match revalidate_ws_auth(&auth_runtime, lease).await {
+                Ok(scope) => Some(scope),
+                Err(()) => {
+                    let _ = close_ws_for_auth_change(&mut sink).await;
+                    break;
+                }
+            },
+            None => None,
         };
+
+        let next_message =
+            with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await;
         let Some(message) = next_message else {
             break;
         };
+
+        if let Some(lease) = auth_lease.get() {
+            if revalidate_ws_auth(&auth_runtime, lease).await.is_err() {
+                let _ = close_ws_for_auth_change(&mut sink).await;
+                break;
+            }
+        }
 
         let result = match message {
             WsMessage::Text(text) => sink.send(Message::Text(text.into())).await,
@@ -229,11 +253,47 @@ async fn handle_graphql_ws(
     forward_incoming.abort();
 }
 
+async fn revalidate_ws_auth(
+    auth_runtime: &ServerAuthRuntime,
+    lease: &GraphqlWsAuthLease,
+) -> Result<RbacRequestScope, ()> {
+    let current_user = resolve_current_user_from_access_token(
+        auth_runtime,
+        lease.tenant_id,
+        &lease.access_token,
+    )
+    .await
+    .map_err(|_| ())?;
+    let current_scope = RbacRequestScope::new(
+        current_user.user.tenant_id,
+        current_user.user.id,
+        current_user.permissions,
+        current_user.inferred_role,
+    );
+
+    if current_scope != lease.initial_scope {
+        return Err(());
+    }
+
+    Ok(current_scope)
+}
+
+async fn close_ws_for_auth_change<S>(sink: &mut S) -> Result<(), S::Error>
+where
+    S: SinkExt<Message> + Unpin,
+{
+    sink.send(Message::Close(Some(CloseFrame {
+        code: WS_CLOSE_UNAUTHORIZED,
+        reason: WS_AUTHORITY_CHANGED_REASON.into(),
+    })))
+    .await
+}
+
 async fn build_ws_connection_data(
     runtime_ctx: ServerRuntimeContext,
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
-    rbac_scope: Arc<OnceLock<RbacRequestScope>>,
+    auth_lease: Arc<OnceLock<GraphqlWsAuthLease>>,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
     let payload: GraphqlWsInitPayload = serde_json::from_value(payload)
@@ -260,9 +320,10 @@ async fn build_ws_connection_data(
         .trim()
         .strip_prefix("Bearer ")
         .or_else(|| token.trim().strip_prefix("bearer "))
-        .unwrap_or(token.trim());
+        .unwrap_or(token.trim())
+        .to_string();
     let current_user =
-        resolve_current_user_from_access_token(&auth_runtime, tenant.id, access_token)
+        resolve_current_user_from_access_token(&auth_runtime, tenant.id, &access_token)
             .await
             .map_err(|(_, message)| async_graphql::Error::new(message))?;
 
@@ -272,8 +333,12 @@ async fn build_ws_connection_data(
         current_user.permissions.clone(),
         current_user.inferred_role.clone(),
     );
-    rbac_scope
-        .set(request_scope.clone())
+    auth_lease
+        .set(GraphqlWsAuthLease {
+            tenant_id: tenant.id,
+            access_token,
+            initial_scope: request_scope.clone(),
+        })
         .map_err(|_| async_graphql::Error::new("RBAC connection scope was already initialized"))?;
 
     let locale = payload
