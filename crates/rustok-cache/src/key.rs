@@ -2,12 +2,16 @@ use sha2::{Digest, Sha256};
 
 const MAX_SAFE_COMPONENT_BYTES: usize = 96;
 const MAX_CACHE_KEY_BYTES: usize = 512;
+pub const MAX_CACHE_IDENTITY_BYTES: usize = 64 * 1024;
 
 /// Canonical builder for versioned, tenant-aware cache keys.
 ///
 /// Fixed namespace components are validated strictly. Dynamic identity components are
 /// kept readable when they are short and safe; otherwise they are replaced by a SHA-256
 /// digest so user-controlled input cannot create ambiguous or unbounded Redis keys.
+/// Dynamic identities are rejected before hashing when they exceed
+/// [`MAX_CACHE_IDENTITY_BYTES`], preventing attacker-controlled hashing work and temporary
+/// allocations from growing without bound.
 #[derive(Debug, Clone)]
 pub struct CacheKeyBuilder {
     fixed_prefix: Vec<String>,
@@ -43,8 +47,8 @@ impl CacheKeyBuilder {
 
     /// Add a dynamic identity component.
     ///
-    /// Empty identities are rejected. Safe ASCII components remain readable; all other
-    /// values are represented as `h-<sha256>`.
+    /// Empty and oversized identities are rejected. Safe ASCII components remain readable;
+    /// all other values are represented as `h-<sha256>`.
     pub fn identity(mut self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
         self.components.push(canonical_identity(value.as_ref())?);
         Ok(self)
@@ -66,9 +70,7 @@ impl CacheKeyBuilder {
     /// Always hash a dynamic component, including binary input or canonical query bytes.
     pub fn hashed(mut self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
         let value = value.as_ref();
-        if value.is_empty() {
-            return Err(CacheKeyError::EmptyIdentity);
-        }
+        validate_identity_size(value)?;
         self.components.push(format!("h-{}", sha256_hex(value)));
         Ok(self)
     }
@@ -92,14 +94,23 @@ impl CacheKeyBuilder {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheKeyError {
-    EmptyFixedComponent { name: &'static str },
-    InvalidFixedComponent { name: &'static str, value: String },
+    EmptyFixedComponent {
+        name: &'static str,
+    },
+    InvalidFixedComponent {
+        name: &'static str,
+        value: String,
+    },
     FixedComponentTooLong {
         name: &'static str,
         length: usize,
         maximum: usize,
     },
     EmptyIdentity,
+    IdentityTooLong {
+        length: usize,
+        maximum: usize,
+    },
 }
 
 impl std::fmt::Display for CacheKeyError {
@@ -121,6 +132,10 @@ impl std::fmt::Display for CacheKeyError {
                 "cache key component `{name}` is {length} bytes; maximum is {maximum}"
             ),
             Self::EmptyIdentity => write!(formatter, "cache key identity must not be empty"),
+            Self::IdentityTooLong { length, maximum } => write!(
+                formatter,
+                "cache key identity is {length} bytes; maximum is {maximum}"
+            ),
         }
     }
 }
@@ -147,10 +162,21 @@ fn validate_fixed_component(
     Ok(value)
 }
 
-fn canonical_identity(value: &[u8]) -> Result<String, CacheKeyError> {
+fn validate_identity_size(value: &[u8]) -> Result<(), CacheKeyError> {
     if value.is_empty() {
         return Err(CacheKeyError::EmptyIdentity);
     }
+    if value.len() > MAX_CACHE_IDENTITY_BYTES {
+        return Err(CacheKeyError::IdentityTooLong {
+            length: value.len(),
+            maximum: MAX_CACHE_IDENTITY_BYTES,
+        });
+    }
+    Ok(())
+}
+
+fn canonical_identity(value: &[u8]) -> Result<String, CacheKeyError> {
+    validate_identity_size(value)?;
 
     if value.len() <= MAX_SAFE_COMPONENT_BYTES && is_safe_component(value) {
         // Safety check above guarantees ASCII and therefore valid UTF-8.
@@ -203,6 +229,24 @@ mod tests {
         assert_eq!(first, second);
         assert!(first.contains(":h-"));
         assert!(!first.contains(raw));
+    }
+
+    #[test]
+    fn oversized_identity_is_rejected_before_hashing() {
+        let oversized = vec![b'x'; MAX_CACHE_IDENTITY_BYTES + 1];
+        let expected = CacheKeyError::IdentityTooLong {
+            length: oversized.len(),
+            maximum: MAX_CACHE_IDENTITY_BYTES,
+        };
+
+        assert_eq!(base().identity(&oversized).unwrap_err(), expected);
+        assert_eq!(base().hashed(&oversized).unwrap_err(), expected);
+        assert_eq!(
+            base()
+                .named_identity("query", &oversized)
+                .unwrap_err(),
+            expected
+        );
     }
 
     #[test]
