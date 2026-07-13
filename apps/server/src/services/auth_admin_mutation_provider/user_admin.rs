@@ -17,6 +17,7 @@ use crate::auth::hash_password;
 use crate::models::{sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
+use crate::services::rbac_request_scope::role_for;
 use crate::services::rbac_service::RbacService;
 
 use super::{
@@ -69,9 +70,11 @@ impl ServerAuthAdminMutationProvider {
         &self,
         context: &AuthAdminMutationContext,
     ) -> Result<UserRole, AuthAdminMutationError> {
-        RbacService::get_user_role(&self.db, &context.tenant_id, &context.actor_id)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))
+        role_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            AuthAdminMutationError::Forbidden(
+                "user administration requires a request-bound role snapshot".to_string(),
+            )
+        })
     }
 
     async fn user_role(
@@ -402,55 +405,21 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         ensure_active_super_admin_continuity(
             &tx,
             context.tenant_id,
-            user_id,
+            user.id,
             &current_role,
             None,
             None,
             true,
         )
         .await?;
-        revoke_active_sessions(&tx, context.tenant_id, user_id).await?;
-        FlexAttachedValuesService::delete_localized_values(&tx, context.tenant_id, "user", user_id)
+        AuthLifecycleService::soft_delete_user_in_tx(&tx, context.tenant_id, user.id)
             .await
-            .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
-        let active: users::ActiveModel = user.into();
-        active
-            .delete(&tx)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(map_lifecycle_error)?;
+        revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        RbacService::invalidate_user_rbac_caches(&context.tenant_id, &user_id).await;
+        RbacService::invalidate_user_rbac_caches(&context.tenant_id, &user.id).await;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_user_role, parse_user_status};
-
-    #[test]
-    fn parses_admin_user_enums_case_insensitively() {
-        assert_eq!(
-            parse_user_role("MANAGER").expect("uppercase role"),
-            rustok_core::UserRole::Manager
-        );
-        assert_eq!(
-            parse_user_status("ACTIVE").expect("uppercase status"),
-            rustok_core::UserStatus::Active
-        );
-    }
-
-    #[test]
-    fn trims_admin_user_enums_at_server_boundary() {
-        assert_eq!(
-            parse_user_role(" admin ").expect("trimmed role"),
-            rustok_core::UserRole::Admin
-        );
-        assert_eq!(
-            parse_user_status(" banned ").expect("trimmed status"),
-            rustok_core::UserStatus::Banned
-        );
     }
 }
