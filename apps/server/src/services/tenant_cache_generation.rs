@@ -18,14 +18,7 @@ use tokio::sync::broadcast;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation_status::{
-    initialize_tenant_cache_generation_listener,
-    mark_tenant_cache_generation_listener_degraded,
-    mark_tenant_cache_generation_local_healthy,
-    mark_tenant_cache_generation_reconciliation_degraded,
-    mark_tenant_cache_generation_reconciliation_healthy,
-    mark_tenant_cache_generation_subscriber_degraded,
-    mark_tenant_cache_generation_subscriber_healthy,
-    mark_tenant_cache_generation_subscriber_starting,
+    TenantCacheGenerationListenerSnapshot, TenantCacheGenerationListenerState,
 };
 
 /// Durable sequence namespace. Both physical tenant cache backends alias this generation state.
@@ -257,7 +250,20 @@ impl TenantCacheGenerationListener {
 }
 
 #[derive(Clone)]
-pub struct TenantCacheGenerationListenerHandle;
+pub struct TenantCacheGenerationListenerHandle {
+    state: Arc<TenantCacheGenerationListenerState>,
+}
+
+pub async fn tenant_cache_generation_listener_snapshot(
+    ctx: &ServerRuntimeContext,
+) -> TenantCacheGenerationListenerSnapshot {
+    match ctx.shared_get::<TenantCacheGenerationListenerHandle>() {
+        Some(handle) => handle.state.snapshot().await,
+        None => TenantCacheGenerationListenerSnapshot::disabled(
+            "tenant cache generation listener is not initialized",
+        ),
+    }
+}
 
 pub async fn start_tenant_cache_generation_listener(
     ctx: &ServerRuntimeContext,
@@ -272,14 +278,13 @@ pub async fn start_tenant_cache_generation_listener(
     }
 
     let redis_required = cache.redis_configuration_present();
-    initialize_tenant_cache_generation_listener(redis_required).await;
-
+    let state = TenantCacheGenerationListenerState::new(redis_required);
     let listener = TenantCacheGenerationListener::new(cache.clone());
     match listener.recover_shared_generation().await {
-        Ok(_) if !redis_required => mark_tenant_cache_generation_local_healthy().await,
-        Ok(_) => mark_tenant_cache_generation_reconciliation_healthy().await,
+        Ok(_) if !redis_required => state.mark_local_healthy().await,
+        Ok(_) => state.mark_reconciliation_healthy().await,
         Err(error) => {
-            mark_tenant_cache_generation_listener_degraded(error.to_string()).await;
+            state.mark_degraded(error.to_string()).await;
             tracing::warn!(%error, "Tenant cache generation startup recovery failed; isolated boot namespace remains active");
             rustok_telemetry::metrics::record_event_error(
                 "tenant.cache.generation",
@@ -292,6 +297,7 @@ pub async fn start_tenant_cache_generation_listener(
         .invalidations()
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
     let local_listener = listener.clone();
+    let local_state = Arc::clone(&state);
     let local_only = !redis_required;
     tokio::spawn(async move {
         let runtime = EventConsumerRuntime::new("tenant_cache_generation_local");
@@ -301,11 +307,11 @@ pub async fn start_tenant_cache_generation_listener(
                 Ok(message) => match local_listener.handle_message(message).await {
                     Ok(()) => {
                         if local_only {
-                            mark_tenant_cache_generation_local_healthy().await;
+                            local_state.mark_local_healthy().await;
                         }
                     }
                     Err(error) => {
-                        mark_tenant_cache_generation_listener_degraded(error.to_string()).await;
+                        local_state.mark_degraded(error.to_string()).await;
                         tracing::error!(%error, "Local tenant cache generation apply failed");
                         rustok_telemetry::metrics::record_event_error(
                             "tenant.cache.generation",
@@ -316,12 +322,10 @@ pub async fn start_tenant_cache_generation_listener(
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
                     runtime.lagged(skipped);
                     match local_listener.recover_shared_generation().await {
-                        Ok(_) if local_only => {
-                            mark_tenant_cache_generation_local_healthy().await;
-                        }
+                        Ok(_) if local_only => local_state.mark_local_healthy().await,
                         Ok(_) => {}
                         Err(error) => {
-                            mark_tenant_cache_generation_listener_degraded(error.to_string()).await;
+                            local_state.mark_degraded(error.to_string()).await;
                             tracing::error!(%error, "Tenant cache generation recovery after local lag failed");
                             rustok_telemetry::metrics::record_event_error(
                                 "tenant.cache.generation",
@@ -332,10 +336,9 @@ pub async fn start_tenant_cache_generation_listener(
                 }
                 Err(broadcast::error::RecvError::Closed) => {
                     runtime.closed();
-                    mark_tenant_cache_generation_listener_degraded(
-                        "local tenant generation subscription closed",
-                    )
-                    .await;
+                    local_state
+                        .mark_degraded("local tenant generation subscription closed")
+                        .await;
                     break;
                 }
             }
@@ -345,29 +348,30 @@ pub async fn start_tenant_cache_generation_listener(
     if cache.redis_client_initialized() {
         let redis_listener = listener.clone();
         let invalidations = cache.invalidations();
+        let redis_state = Arc::clone(&state);
         tokio::spawn(async move {
             let runtime = EventConsumerRuntime::new("tenant_cache_generation_redis");
             let mut reason = "startup";
             loop {
                 runtime.restarted(reason);
-                mark_tenant_cache_generation_subscriber_starting().await;
+                redis_state.mark_subscriber_starting();
                 let ready_listener = redis_listener.clone();
+                let ready_state = Arc::clone(&redis_state);
                 let handler_listener = redis_listener.clone();
+                let handler_state = Arc::clone(&redis_state);
                 let result = invalidations
                     .consume_subscription_with_ready(
                         TENANT_CACHE_GENERATION_CHANNEL,
                         move || {
                             let ready_listener = ready_listener.clone();
+                            let ready_state = Arc::clone(&ready_state);
                             async move {
                                 match ready_listener.recover_shared_generation().await {
-                                    Ok(_) => {
-                                        mark_tenant_cache_generation_subscriber_healthy().await;
-                                    }
+                                    Ok(_) => ready_state.mark_subscriber_healthy().await,
                                     Err(error) => {
-                                        mark_tenant_cache_generation_subscriber_degraded(
-                                            error.to_string(),
-                                        )
-                                        .await;
+                                        ready_state
+                                            .mark_subscriber_degraded(error.to_string())
+                                            .await;
                                         tracing::warn!(%error, "Tenant cache generation post-subscribe recovery failed");
                                         rustok_telemetry::metrics::record_event_error(
                                             "tenant.cache.generation",
@@ -379,16 +383,14 @@ pub async fn start_tenant_cache_generation_listener(
                         },
                         move |message| {
                             let handler_listener = handler_listener.clone();
+                            let handler_state = Arc::clone(&handler_state);
                             async move {
                                 match handler_listener.handle_message(message).await {
-                                    Ok(()) => {
-                                        mark_tenant_cache_generation_subscriber_healthy().await;
-                                    }
+                                    Ok(()) => handler_state.mark_subscriber_healthy().await,
                                     Err(error) => {
-                                        mark_tenant_cache_generation_subscriber_degraded(
-                                            error.to_string(),
-                                        )
-                                        .await;
+                                        handler_state
+                                            .mark_subscriber_degraded(error.to_string())
+                                            .await;
                                         tracing::error!(%error, "Redis tenant cache generation apply failed");
                                         rustok_telemetry::metrics::record_event_error(
                                             "tenant.cache.generation",
@@ -400,10 +402,11 @@ pub async fn start_tenant_cache_generation_listener(
                         },
                     )
                     .await;
-                mark_tenant_cache_generation_subscriber_degraded(format!(
-                    "Redis tenant generation subscriber stopped: {result:?}"
-                ))
-                .await;
+                redis_state
+                    .mark_subscriber_degraded(format!(
+                        "Redis tenant generation subscriber stopped: {result:?}"
+                    ))
+                    .await;
                 tracing::warn!(?result, "Tenant cache generation Redis subscriber stopped");
                 reason = "reconnect";
                 tokio::time::sleep(LISTENER_RESTART_DELAY).await;
@@ -411,6 +414,7 @@ pub async fn start_tenant_cache_generation_listener(
         });
 
         let reconcile_listener = listener.clone();
+        let reconcile_state = Arc::clone(&state);
         tokio::spawn(async move {
             let start = tokio::time::Instant::now() + GENERATION_RECONCILE_INTERVAL;
             let mut interval =
@@ -419,9 +423,10 @@ pub async fn start_tenant_cache_generation_listener(
             loop {
                 interval.tick().await;
                 match reconcile_listener.recover_shared_generation().await {
-                    Ok(_) => mark_tenant_cache_generation_reconciliation_healthy().await,
+                    Ok(_) => reconcile_state.mark_reconciliation_healthy().await,
                     Err(error) => {
-                        mark_tenant_cache_generation_reconciliation_degraded(error.to_string())
+                        reconcile_state
+                            .mark_reconciliation_degraded(error.to_string())
                             .await;
                         tracing::warn!(%error, "Periodic tenant cache generation reconciliation failed");
                         rustok_telemetry::metrics::record_event_error(
@@ -434,7 +439,7 @@ pub async fn start_tenant_cache_generation_listener(
         });
     }
 
-    ctx.shared_insert(TenantCacheGenerationListenerHandle);
+    ctx.shared_insert(TenantCacheGenerationListenerHandle { state });
     Ok(())
 }
 
@@ -615,6 +620,19 @@ mod tests {
                 second.generation
             );
         }
+    }
+
+    #[tokio::test]
+    async fn missing_listener_handle_reports_disabled_snapshot() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let ctx = ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default());
+        let snapshot = tenant_cache_generation_listener_snapshot(&ctx).await;
+        assert_eq!(
+            snapshot.status,
+            crate::services::tenant_cache_generation_status::TenantCacheGenerationListenerStatus::Disabled
+        );
     }
 
     #[tokio::test]
