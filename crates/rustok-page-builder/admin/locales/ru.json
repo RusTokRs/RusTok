@@ -15,6 +15,7 @@
     "status": {
       "saving": "Сохранение",
       "saveFailed": "Ошибка сохранения",
+      "saveSucceeded": "Проект сохранён",
       "dirty": "Есть несохранённые изменения",
       "saved": "Сохранено"
     },
@@ -28,6 +29,11 @@
       "selectedComponent": "Выбранный компонент",
       "none": "Нет",
       "projectHash": "Хеш проекта"
+    },
+    "bridge": {
+      "ready": "Холст подключён",
+      "waiting": "Подключение холста",
+      "pointer": "Указатель"
     },
     "diagnosticCount": "диагностик(и)",
     "facadeMissing": "Фасад Page Builder не подключён к этому холсту"
