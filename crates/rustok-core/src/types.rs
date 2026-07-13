@@ -47,12 +47,22 @@ impl UserRole {
         }
     }
 
-    /// Whether this role may grant `target` to another principal.
+    /// Whether this role may grant `target` to a principal.
     ///
     /// Super administrators may grant every role. Other roles may only grant
     /// roles strictly below their own privilege level, preventing peer creation
     /// and upward privilege escalation.
     pub const fn can_assign_role(&self, target: &Self) -> bool {
+        matches!(self, Self::SuperAdmin) || self.privilege_rank() > target.privilege_rank()
+    }
+
+    /// Whether this role may administratively modify a principal whose
+    /// effective role is `target`.
+    ///
+    /// Super administrators may manage peer super administrators so that
+    /// ownership can be transferred. Other roles may only manage principals
+    /// strictly below their own privilege level.
+    pub const fn can_manage_role(&self, target: &Self) -> bool {
         matches!(self, Self::SuperAdmin) || self.privilege_rank() > target.privilege_rank()
     }
 }
@@ -132,5 +142,18 @@ mod tests {
         assert!(!UserRole::Admin.can_assign_role(&UserRole::SuperAdmin));
         assert!(!UserRole::Manager.can_assign_role(&UserRole::Admin));
         assert!(!UserRole::Customer.can_assign_role(&UserRole::Manager));
+    }
+
+    #[test]
+    fn role_management_policy_prevents_peer_and_upward_mutations() {
+        assert!(UserRole::SuperAdmin.can_manage_role(&UserRole::SuperAdmin));
+        assert!(UserRole::SuperAdmin.can_manage_role(&UserRole::Admin));
+        assert!(UserRole::Admin.can_manage_role(&UserRole::Manager));
+        assert!(UserRole::Manager.can_manage_role(&UserRole::Customer));
+
+        assert!(!UserRole::Admin.can_manage_role(&UserRole::Admin));
+        assert!(!UserRole::Admin.can_manage_role(&UserRole::SuperAdmin));
+        assert!(!UserRole::Manager.can_manage_role(&UserRole::Admin));
+        assert!(!UserRole::Customer.can_manage_role(&UserRole::Manager));
     }
 }
