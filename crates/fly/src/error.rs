@@ -19,6 +19,8 @@ pub enum FlyError {
     OpaqueComponent(String),
     #[error("component insertion index {index} is outside 0..={len}")]
     InvalidInsertionIndex { index: usize, len: usize },
+    #[error("asset `{0}` was not found")]
+    AssetNotFound(String),
     #[error("asset reference is invalid: {0}")]
     InvalidAssetReference(String),
     #[error("registry item `{0}` is already registered")]
