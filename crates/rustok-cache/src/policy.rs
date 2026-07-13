@@ -105,15 +105,29 @@ impl Default for CacheLoadPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CachePolicyError {
-    #[error("cache jitter namespace must not be empty")]
     EmptyNamespace,
-    #[error("cache jitter percent {value} exceeds maximum {maximum}")]
     JitterPercentTooLarge { value: u8, maximum: u8 },
-    #[error("cache loader timeout must be greater than zero")]
     ZeroLoaderTimeout,
 }
+
+impl std::fmt::Display for CachePolicyError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyNamespace => write!(formatter, "cache jitter namespace must not be empty"),
+            Self::JitterPercentTooLarge { value, maximum } => write!(
+                formatter,
+                "cache jitter percent {value} exceeds maximum {maximum}"
+            ),
+            Self::ZeroLoaderTimeout => {
+                write!(formatter, "cache loader timeout must be greater than zero")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CachePolicyError {}
 
 impl CacheService {
     /// Load a cache entry with backend-scoped coalescing, deterministic TTL jitter and
