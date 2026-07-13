@@ -54,3 +54,36 @@ impl From<rustok_sandbox::rhai::RhaiError> for ScriptError {
         }
     }
 }
+
+impl From<rustok_sandbox::SandboxError> for ScriptError {
+    fn from(error: rustok_sandbox::SandboxError) -> Self {
+        match error {
+            rustok_sandbox::SandboxError::Compilation(message) => Self::Compilation(message),
+            rustok_sandbox::SandboxError::Timeout { limit_ms } => Self::Timeout { limit_ms },
+            rustok_sandbox::SandboxError::LimitExceeded { resource, limit } => {
+                if resource == "instructions" {
+                    Self::OperationLimit { limit }
+                } else {
+                    Self::ResourceLimit { resource }
+                }
+            }
+            rustok_sandbox::SandboxError::Trap(message)
+            | rustok_sandbox::SandboxError::InvalidRequest(message)
+            | rustok_sandbox::SandboxError::Internal(message) => Self::Runtime(message),
+            rustok_sandbox::SandboxError::CapabilityDenied(capability) => {
+                Self::Runtime(format!("capability `{capability}` is denied"))
+            }
+            rustok_sandbox::SandboxError::HostCapability {
+                capability,
+                message,
+            } => Self::Runtime(format!("capability `{capability}` failed: {message}")),
+            rustok_sandbox::SandboxError::Cancelled => Self::Runtime("execution cancelled".into()),
+            rustok_sandbox::SandboxError::ExecutorNotRegistered(kind) => {
+                Self::Runtime(format!("sandbox executor `{kind}` is unavailable"))
+            }
+            rustok_sandbox::SandboxError::ExecutorAlreadyRegistered(kind) => {
+                Self::Runtime(format!("sandbox executor `{kind}` is duplicated"))
+            }
+        }
+    }
+}

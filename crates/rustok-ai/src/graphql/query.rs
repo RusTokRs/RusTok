@@ -37,7 +37,7 @@ impl AiQuery {
     async fn ai_provider_targets(&self, ctx: &Context<'_>) -> Result<Vec<AiProviderTargetGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_read(auth)?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         Ok(runtime
             .provider_targets()
             .entries()

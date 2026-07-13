@@ -18,7 +18,7 @@ use rustok_sandbox::{
 use crate::{
     register_entity_proxy,
     utils::{dynamic_to_json, json_to_dynamic},
-    EntityProxy, ExecutionContext, ExecutionPhase, Script,
+    Bridge, EntityProxy, ExecutionContext, ExecutionPhase, Script, ScriptError, ScriptResult,
 };
 
 /// Stable media type for Alloy-authored Rhai source before it becomes a module
@@ -124,6 +124,45 @@ pub struct AlloyDraftRequestBuilder {
     policy: SandboxPolicy,
 }
 
+/// Alloy-owned adapter from the legacy orchestration DTOs to one neutral
+/// sandbox execution. It is intentionally the only place that translates
+/// entity/parameter snapshots and typed output back to Alloy values.
+#[derive(Clone)]
+pub struct AlloyDraftRuntime {
+    sandbox: rustok_sandbox::SandboxRuntime,
+    requests: AlloyDraftRequestBuilder,
+}
+
+impl AlloyDraftRuntime {
+    pub fn new(sandbox: rustok_sandbox::SandboxRuntime, policy: SandboxPolicy) -> Self {
+        Self {
+            sandbox,
+            requests: AlloyDraftRequestBuilder::new(policy),
+        }
+    }
+
+    pub async fn execute(
+        &self,
+        script: &Script,
+        context: &ExecutionContext,
+    ) -> ScriptResult<(rhai::Dynamic, HashMap<String, rhai::Dynamic>)> {
+        let request = self
+            .requests
+            .build(script, context, input_from_context(context))
+            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
+        let output = self.sandbox.execute(request).await.map_err(ScriptError::from)?;
+        let output: AlloyDraftOutput = serde_json::from_value(output.output)
+            .map_err(|error| ScriptError::Runtime(format!("invalid Alloy sandbox output: {error}")))?;
+        output
+            .validate()
+            .map_err(|error| ScriptError::Runtime(error.to_string()))?;
+        Ok((
+            json_to_dynamic(output.return_value),
+            changes_from_json(output.entity_changes)?,
+        ))
+    }
+}
+
 /// Reconstructs Alloy's request-scoped script values inside the neutral Rhai
 /// executor and wraps successful values in the v1 Alloy output binding.
 ///
@@ -140,6 +179,7 @@ impl RhaiHostExtension for AlloyDraftScopeExtension {
         _host: rustok_sandbox::SandboxHost,
     ) {
         if matches!(request.subject, SandboxSubject::AlloyDraft { .. }) {
+            Bridge::register_for_phase(engine, alloy_phase(request.context.phase));
             register_entity_proxy(engine);
         }
     }
@@ -264,6 +304,20 @@ fn sandbox_phase(phase: ExecutionPhase) -> SandboxExecutionPhase {
     }
 }
 
+fn alloy_phase(phase: SandboxExecutionPhase) -> ExecutionPhase {
+    match phase {
+        SandboxExecutionPhase::BeforeHook => ExecutionPhase::Before,
+        SandboxExecutionPhase::AfterHook => ExecutionPhase::After,
+        SandboxExecutionPhase::Event => ExecutionPhase::OnCommit,
+        SandboxExecutionPhase::Scheduled => ExecutionPhase::Scheduled,
+        SandboxExecutionPhase::Validate
+        | SandboxExecutionPhase::Test
+        | SandboxExecutionPhase::Manual
+        | SandboxExecutionPhase::Http
+        | SandboxExecutionPhase::Lifecycle => ExecutionPhase::Manual,
+    }
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AlloyDraftRequestError {
     #[error(transparent)]
@@ -332,16 +386,60 @@ fn entity_changes(entity: EntityProxy) -> serde_json::Value {
     )
 }
 
+fn input_from_context(context: &ExecutionContext) -> AlloyDraftInput {
+    AlloyDraftInput {
+        binding_version: 1,
+        params: serde_json::Value::Object(
+            context
+                .params
+                .iter()
+                .map(|(key, value)| (key.to_string(), dynamic_to_json(value.clone())))
+                .collect(),
+        ),
+        entity: context.entity_proxy.as_ref().map(entity_snapshot),
+        entity_before: context
+            .entity_before_proxy
+            .as_ref()
+            .map(entity_snapshot),
+    }
+}
+
+fn entity_snapshot(entity: &EntityProxy) -> AlloyDraftEntitySnapshot {
+    AlloyDraftEntitySnapshot {
+        id: entity.id().to_string(),
+        entity_type: entity.entity_type().to_string(),
+        fields: serde_json::Value::Object(
+            entity
+                .snapshot()
+                .into_iter()
+                .map(|(key, value)| (key, dynamic_to_json(value)))
+                .collect(),
+        ),
+    }
+}
+
+fn changes_from_json(
+    changes: serde_json::Value,
+) -> ScriptResult<HashMap<String, rhai::Dynamic>> {
+    let changes = changes.as_object().ok_or_else(|| {
+        ScriptError::Runtime("Alloy sandbox output entity changes must be an object".into())
+    })?;
+    Ok(changes
+        .iter()
+        .map(|(key, value)| (key.clone(), json_to_dynamic(value.clone())))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use async_trait::async_trait;
     use super::*;
     use crate::{ScriptStatus, ScriptTrigger};
+    use async_trait::async_trait;
     use rustok_sandbox::{
         CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutorRegistry,
-        SandboxRuntime,
+        SandboxError, SandboxResult, SandboxRuntime,
     };
 
     struct NoCapabilities;
@@ -433,8 +531,8 @@ mod tests {
     async fn scope_extension_returns_pre_hook_entity_changes() {
         let mut script = script();
         script.code = "entity[\"status\"] = \"approved\"; params[\"amount\"]".into();
-        let context = ExecutionContext::new(ExecutionPhase::Before)
-            .with_tenant(Uuid::new_v4().to_string());
+        let context =
+            ExecutionContext::new(ExecutionPhase::Before).with_tenant(Uuid::new_v4().to_string());
         let request = AlloyDraftRequestBuilder::default()
             .build(
                 &script,
@@ -464,6 +562,9 @@ mod tests {
         let output: AlloyDraftOutput =
             serde_json::from_value(output.output).expect("typed draft output");
         assert_eq!(output.return_value, serde_json::json!(42));
-        assert_eq!(output.entity_changes, serde_json::json!({ "status": "approved" }));
+        assert_eq!(
+            output.entity_changes,
+            serde_json::json!({ "status": "approved" })
+        );
     }
 }

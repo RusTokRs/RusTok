@@ -18,7 +18,10 @@ identity.
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready` — the in-process cart checkout provider is
+  exercised by compiled commerce checkout consumer tests for both successful
+  completion and inventory-preflight release paths. Remote/fallback,
+  context-update, and recovery execution remain open.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CartCheckoutPort` / `cart.checkout.v2`, covering the
   checkout snapshot plus context update and checkout lifecycle writes.
@@ -29,6 +32,16 @@ identity.
 - `scripts/verify/verify-cart-storefront-boundary.mjs` locks the storefront
   core/transport/UI split, native host runtime, GraphQL fallback, and removal
   of the legacy API layer.
+- The compiled commerce checkout channel-inventory regression executes the
+  in-process cart checkout provider before product and inventory preflight.
+  It is bounded provider-consumer evidence; lifecycle recovery and fallback
+  execution remain open.
+- Compiled provider-consumer evidence:
+  `basic::complete_checkout_builds_order_payment_and_fulfillment_flow` proves
+  snapshot/begin/complete lifecycle execution, while
+  `validation::complete_checkout_rejects_line_item_without_channel_visible_inventory`
+  proves snapshot/begin/release execution. Both run from
+  `checkout_service_test` against the in-process provider.
 
 ## Open results
 
@@ -40,13 +53,13 @@ identity.
    **Done when:** any new surface consumes an owner-owned public contract with
    no cart business logic or presentation duplicated in the umbrella.
 
-2. **Execute the checkout provider contract against a live adapter.**
+2. **Prove checkout provider fallback and recovery behavior against a live adapter.**
    Turn the locked in-process/remote case matrix into provider execution and
    fallback evidence before considering FBA promotion.
    **Depends on:** a commerce consumer and remote-adapter test environment.
    **Done when:** deadline, typed-error, degraded-mode, and snapshot parity are
    proven for the published `cart.checkout.v2` contract, including write
-   idempotency and lifecycle recovery.
+   idempotency, context update, lifecycle recovery, and degraded behavior.
 
 3. **Document operational changes with checkout changes.** Add diagnostics only
    where runtime pressure identifies a concrete cart or snapshot failure mode,

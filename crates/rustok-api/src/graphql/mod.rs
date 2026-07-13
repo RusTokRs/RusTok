@@ -7,4 +7,6 @@ pub use common::{
     PaginationInput,
 };
 pub use contribution::GraphqlContributionDescriptor;
+#[cfg(feature = "server")]
+pub use contribution::GraphqlRuntimeInputs;
 pub use errors::{ErrorCode, GraphQLError};

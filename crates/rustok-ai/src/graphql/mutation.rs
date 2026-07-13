@@ -3,7 +3,6 @@ use sea_orm::DatabaseConnection;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use crate::AiGraphqlRoleSlugProviderHandle;
 use rustok_api::graphql::GraphQLError;
 use rustok_api::{AuthContext, RequestContext};
 
@@ -39,7 +38,8 @@ async fn operator_context(
         user_id: auth.user_id,
         permissions: auth.permissions.clone(),
         role_slugs: ctx
-            .data::<AiGraphqlRoleSlugProviderHandle>()?
+            .data::<crate::AiGraphqlRuntimeData>()?
+            .role_slug_provider()
             .load_role_slugs(auth.tenant_id, auth.user_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?,
@@ -58,7 +58,7 @@ impl AiMutation {
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let provider_target_id = crate::ProviderTargetId::new(input.provider_target_id)
             .map_err(async_graphql::Error::new)?;
         let provider_slug = runtime
@@ -107,7 +107,7 @@ impl AiMutation {
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
         let provider_target_id = crate::ProviderTargetId::new(input.provider_target_id)
             .map_err(async_graphql::Error::new)?;
@@ -145,7 +145,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let item = crate::AiManagementService::test_provider_profile(
             db,
             runtime.provider_targets(),
@@ -307,7 +307,7 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::start_chat_session(
@@ -341,7 +341,7 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::send_chat_message(
@@ -366,7 +366,7 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_approval_resolve(auth)?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::resume_approval(
@@ -390,7 +390,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_run_cancel(auth)?;
         let operator = operator_context(ctx, auth).await?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let item = crate::AiManagementService::cancel_run(runtime, &operator, run_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
@@ -404,7 +404,7 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
-        let runtime = ctx.data::<crate::AiHostRuntime>()?;
+        let runtime = ctx.data::<crate::AiGraphqlRuntimeData>()?.runtime();
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let task_input_json = serde_json::from_str(&input.task_input_json)

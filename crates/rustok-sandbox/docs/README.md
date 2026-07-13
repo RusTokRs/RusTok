@@ -18,6 +18,11 @@ Consumers construct a `SandboxRequest` with a typed subject and admitted policy.
 started/terminal evidence and returns a typed outcome. The crate has no dependency
 on Alloy, `rustok-modules`, server hosts or domain modules.
 
+`RhaiHostExtension` may register request-scoped functions, populate the Rhai
+scope after the neutral envelope is present, and adapt a successful value into
+the consumer's typed output binding. The extension receives no global runtime
+state and must not introduce another executor or bypass the capability broker.
+
 The optional `wasm-component` feature provides `WasmComponentExecutor`. Its
 v1 ABI calls the artifact entrypoint as `(string) -> result<string, string>`
 with JSON input/output. It grants neither WASI nor ambient imports. The only

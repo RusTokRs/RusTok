@@ -20,6 +20,7 @@ Alloy drafts and installed module artifacts.
 - `SandboxPolicy`
 - `CapabilityBroker`
 - `ExecutionObserver`
+- `rhai::RhaiHostExtension` (request-scoped scope/output adaptation)
 - `wasm::WasmComponentExecutor` (feature `wasm-component`)
 
 ## Interactions
@@ -27,5 +28,9 @@ Alloy drafts and installed module artifacts.
 - Alloy uses the sandbox for draft, test, hook and manual execution.
 - `rustok-modules` uses it for installed Rhai and WebAssembly artifacts.
 - The server supplies host capability implementations through narrow ports.
+
+Rhai consumer extensions may register broker-backed functions and adapt only a
+single request's scope and successful output binding. They must not retain
+mutable request state or create a second execution API.
 
 See the [local documentation](./docs/README.md).

@@ -51,7 +51,7 @@ pub use runner::{
 pub use runtime::{build_alloy_runtime, AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime};
 pub use sandbox_request::{
     AlloyDraftBindingError, AlloyDraftEntitySnapshot, AlloyDraftInput, AlloyDraftOutput,
-    AlloyDraftRequestBuilder, AlloyDraftRequestError, AlloyDraftScopeExtension,
+    AlloyDraftRequestBuilder, AlloyDraftRequestError, AlloyDraftRuntime, AlloyDraftScopeExtension,
     ALLOY_DRAFT_RHAI_MEDIA_TYPE,
 };
 pub use scheduler::{ScheduledJob, Scheduler};

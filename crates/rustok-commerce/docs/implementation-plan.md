@@ -46,6 +46,13 @@ already handed to payment-owned storefront transport.
   updates, and `begin/release/complete` lifecycle transitions. Every write has
   a checkout-derived idempotency key and deadline; direct `CartService` use is
   removed from checkout orchestration. Runtime evidence remains required.
+- Targeted compiled provider-consumer execution is recorded by
+  `cargo test -p rustok-commerce --test checkout_service_test
+  validation::complete_checkout_rejects_line_item_without_channel_visible_inventory -- --exact`.
+  It executes the real cart, product, and inventory providers through checkout
+  and proves that channel-hidden inventory blocks checkout. It does not cover
+  the remaining checkout providers or fallback/degraded paths, so commerce
+  remains `in_progress`.
 - FFA guardrails: `scripts/verify/verify-commerce-admin-boundary.mjs` locks
   `admin/src/transport/native_server_adapter.rs`, removed root GraphQL and state-machine aliases,
   and the core/transport/UI owner boundary;
