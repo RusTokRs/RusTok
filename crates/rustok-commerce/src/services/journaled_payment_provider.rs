@@ -3,8 +3,8 @@ use rustok_payment::providers::{
 };
 use rustok_payment::{
     BeginProviderOperation, PaymentError, PaymentProviderOperationJournal,
-    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED,
+    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_EXECUTING,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use uuid::Uuid;
 
@@ -53,33 +53,27 @@ pub(crate) async fn execute_journaled_provider_operation(
         })
         .await?;
 
-    if matches!(
-        journal_operation.status.as_str(),
-        PROVIDER_OPERATION_COMMITTED
-            | PROVIDER_OPERATION_SUCCEEDED
-            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-    ) {
-        let result = journal_operation
-            .provider_result
-            .clone()
-            .ok_or_else(|| {
-                PaymentError::Validation(format!(
-                    "provider operation {} is `{}` but has no persisted provider_result",
-                    journal_operation.id, journal_operation.status
-                ))
-            })
-            .and_then(|value| {
-                serde_json::from_value(value).map_err(|error| {
-                    PaymentError::Validation(format!(
-                        "provider operation {} contains invalid provider_result: {error}",
-                        journal_operation.id
-                    ))
-                })
-            })?;
+    if let Some(result) = persisted_provider_result(&journal_operation)? {
         return Ok(JournaledProviderResult {
             operation_id: journal_operation.id,
             result,
         });
+    }
+
+    let claimed = journal.claim_execution(journal_operation.id).await?;
+    if claimed.is_none() {
+        let current = journal.get(journal_operation.id).await?;
+        if let Some(result) = persisted_provider_result(&current)? {
+            return Ok(JournaledProviderResult {
+                operation_id: current.id,
+                result,
+            });
+        }
+        return Err(PaymentError::Validation(format!(
+            "payment provider operation {} is already `{}`; retry after the active execution finishes",
+            current.id, current.status
+        ))
+        .into());
     }
 
     let provider_result = match operation {
@@ -97,9 +91,17 @@ pub(crate) async fn execute_journaled_provider_operation(
     let provider_result = match provider_result {
         Ok(result) => result,
         Err(source) => {
-            let _ = journal
+            if let Err(journal_error) = journal
                 .mark_provider_error(journal_operation.id, source.to_string())
-                .await;
+                .await
+            {
+                return Err(PaymentOrchestrationError::Provider(PaymentError::Validation(
+                    format!(
+                        "provider {operation} failed and operation {} could not record the failure: provider error: {source}; journal error: {journal_error}",
+                        journal_operation.id
+                    ),
+                )));
+            }
             return match refund_id {
                 Some(refund_id) => Err(
                     PaymentOrchestrationError::ProviderAfterRefundReservation {
@@ -144,6 +146,41 @@ pub(crate) async fn execute_journaled_provider_operation(
         operation_id: journal_operation.id,
         result: provider_result,
     })
+}
+
+fn persisted_provider_result(
+    journal_operation: &rustok_payment::entities::provider_operation::Model,
+) -> Result<Option<PaymentProviderOperationResult>, PaymentError> {
+    if !matches!(
+        journal_operation.status.as_str(),
+        PROVIDER_OPERATION_COMMITTED
+            | PROVIDER_OPERATION_SUCCEEDED
+            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+    ) {
+        if journal_operation.status == PROVIDER_OPERATION_EXECUTING {
+            return Ok(None);
+        }
+        return Ok(None);
+    }
+
+    let result = journal_operation
+        .provider_result
+        .clone()
+        .ok_or_else(|| {
+            PaymentError::Validation(format!(
+                "provider operation {} is `{}` but has no persisted provider_result",
+                journal_operation.id, journal_operation.status
+            ))
+        })
+        .and_then(|value| {
+            serde_json::from_value(value).map_err(|error| {
+                PaymentError::Validation(format!(
+                    "provider operation {} contains invalid provider_result: {error}",
+                    journal_operation.id
+                ))
+            })
+        })?;
+    Ok(Some(result))
 }
 
 pub(crate) async fn mark_journal_committed(

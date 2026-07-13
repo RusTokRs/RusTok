@@ -1,3 +1,5 @@
+use std::io::{self, Write};
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -160,20 +162,34 @@ where
         self.encode_with_limit(DEFAULT_MAX_CACHE_ENVELOPE_BYTES)
     }
 
-    pub fn encode_with_limit(&self, max_encoded_bytes: usize) -> Result<Vec<u8>, CacheEnvelopeError> {
+    pub fn encode_with_limit(
+        &self,
+        max_encoded_bytes: usize,
+    ) -> Result<Vec<u8>, CacheEnvelopeError> {
         if max_encoded_bytes == 0 {
             return Err(CacheEnvelopeError::ZeroSizeLimit);
         }
 
-        let encoded = postcard::to_stdvec(self)
-            .map_err(|error| CacheEnvelopeError::Encode(error.to_string()))?;
-        if encoded.len() > max_encoded_bytes {
+        // Measure before allocating the output buffer. Checking a fully allocated Vec after
+        // serialization defeats the size limit for large or attacker-controlled payloads.
+        let encoded_len = postcard::serialize_with_flavor(
+            self,
+            postcard::ser_flavors::Size::default(),
+        )
+        .map_err(|error| CacheEnvelopeError::Encode(error.to_string()))?;
+        if encoded_len > max_encoded_bytes {
             return Err(CacheEnvelopeError::TooLarge {
-                length: encoded.len(),
+                length: encoded_len,
                 maximum: max_encoded_bytes,
             });
         }
-        Ok(encoded)
+
+        // The writer is still bounded even after the measurement pass. This protects against a
+        // custom stateful Serialize implementation producing more bytes on its second traversal.
+        let writer = BoundedEnvelopeWriter::new(encoded_len, max_encoded_bytes);
+        postcard::to_io(self, writer)
+            .map(BoundedEnvelopeWriter::into_inner)
+            .map_err(|error| CacheEnvelopeError::Encode(error.to_string()))
     }
 }
 
@@ -217,6 +233,43 @@ where
     }
 }
 
+struct BoundedEnvelopeWriter {
+    bytes: Vec<u8>,
+    maximum: usize,
+}
+
+impl BoundedEnvelopeWriter {
+    fn new(encoded_len: usize, maximum: usize) -> Self {
+        Self {
+            bytes: Vec::with_capacity(encoded_len.min(maximum)),
+            maximum,
+        }
+    }
+
+    fn into_inner(self) -> Vec<u8> {
+        self.bytes
+    }
+}
+
+impl Write for BoundedEnvelopeWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let next_len = self
+            .bytes
+            .len()
+            .checked_add(buffer.len())
+            .ok_or_else(|| io::Error::other("cache envelope output length overflow"))?;
+        if next_len > self.maximum {
+            return Err(io::Error::other("cache envelope output exceeds size limit"));
+        }
+        self.bytes.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheEnvelopeFreshness {
     Fresh,
@@ -229,17 +282,32 @@ pub enum CacheEnvelopeError {
     ZeroSchemaVersion,
     ZeroSizeLimit,
     EmptySourceRevision,
-    SourceRevisionTooLong { length: usize, maximum: usize },
+    SourceRevisionTooLong {
+        length: usize,
+        maximum: usize,
+    },
     SoftExpiryRequiresHardExpiry,
     ExpiryBeforeGeneration {
         boundary: &'static str,
         generated_at_unix_ms: u64,
         expires_at_unix_ms: u64,
     },
-    SoftExpiryAfterHardExpiry { soft_unix_ms: u64, hard_unix_ms: u64 },
-    UnsupportedFormatVersion { found: u16, supported: u16 },
-    SchemaVersionMismatch { found: u32, expected: u32 },
-    TooLarge { length: usize, maximum: usize },
+    SoftExpiryAfterHardExpiry {
+        soft_unix_ms: u64,
+        hard_unix_ms: u64,
+    },
+    UnsupportedFormatVersion {
+        found: u16,
+        supported: u16,
+    },
+    SchemaVersionMismatch {
+        found: u32,
+        expected: u32,
+    },
+    TooLarge {
+        length: usize,
+        maximum: usize,
+    },
     Encode(String),
     Decode(String),
 }
@@ -249,7 +317,9 @@ impl std::fmt::Display for CacheEnvelopeError {
         match self {
             Self::ZeroSchemaVersion => write!(formatter, "cache schema version must be non-zero"),
             Self::ZeroSizeLimit => write!(formatter, "cache envelope size limit must be non-zero"),
-            Self::EmptySourceRevision => write!(formatter, "cache source revision must not be empty"),
+            Self::EmptySourceRevision => {
+                write!(formatter, "cache source revision must not be empty")
+            }
             Self::SourceRevisionTooLong { length, maximum } => write!(
                 formatter,
                 "cache source revision is {length} bytes; maximum is {maximum}"
@@ -367,6 +437,32 @@ mod tests {
                 expected: 3,
             }
         );
+    }
+
+    #[test]
+    fn encode_rejects_oversized_output_before_allocating_it() {
+        let envelope = CacheEnvelope::new(1, 1_000, vec![7_u8; 256]).unwrap();
+        let measured = postcard::serialize_with_flavor(
+            &envelope,
+            postcard::ser_flavors::Size::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            envelope.encode_with_limit(64).unwrap_err(),
+            CacheEnvelopeError::TooLarge {
+                length: measured,
+                maximum: 64,
+            }
+        );
+    }
+
+    #[test]
+    fn bounded_writer_never_accepts_output_past_limit() {
+        let mut writer = BoundedEnvelopeWriter::new(4, 4);
+        writer.write_all(b"1234").unwrap();
+        assert!(writer.write_all(b"5").is_err());
+        assert_eq!(writer.into_inner(), b"1234");
     }
 
     #[test]

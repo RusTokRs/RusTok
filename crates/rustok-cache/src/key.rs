@@ -3,6 +3,8 @@ use sha2::{Digest, Sha256};
 const MAX_SAFE_COMPONENT_BYTES: usize = 96;
 const MAX_CACHE_KEY_BYTES: usize = 512;
 pub const MAX_CACHE_IDENTITY_BYTES: usize = 64 * 1024;
+pub const MAX_CACHE_KEY_INPUT_BYTES: usize = 8 * 1024;
+pub const MAX_CACHE_KEY_DYNAMIC_COMPONENTS: usize = 128;
 
 /// Canonical builder for versioned, tenant-aware cache keys.
 ///
@@ -10,12 +12,14 @@ pub const MAX_CACHE_IDENTITY_BYTES: usize = 64 * 1024;
 /// kept readable when they are short and safe; otherwise they are replaced by a SHA-256
 /// digest so user-controlled input cannot create ambiguous or unbounded Redis keys.
 /// Dynamic identities are rejected before hashing when they exceed
-/// [`MAX_CACHE_IDENTITY_BYTES`], preventing attacker-controlled hashing work and temporary
-/// allocations from growing without bound.
+/// [`MAX_CACHE_IDENTITY_BYTES`]. The builder also limits the aggregate canonical input and
+/// component count, preventing an unbounded number of individually valid identities from
+/// creating excessive intermediate allocations in [`CacheKeyBuilder::build`].
 #[derive(Debug, Clone)]
 pub struct CacheKeyBuilder {
     fixed_prefix: Vec<String>,
     components: Vec<String>,
+    input_bytes: usize,
 }
 
 impl CacheKeyBuilder {
@@ -38,10 +42,12 @@ impl CacheKeyBuilder {
         .into_iter()
         .map(|(name, value)| validate_fixed_component(name, value))
         .collect::<Result<Vec<_>, _>>()?;
+        let input_bytes = joined_len(&fixed_prefix);
 
         Ok(Self {
             fixed_prefix,
             components: Vec::new(),
+            input_bytes,
         })
     }
 
@@ -49,30 +55,26 @@ impl CacheKeyBuilder {
     ///
     /// Empty and oversized identities are rejected. Safe ASCII components remain readable;
     /// all other values are represented as `h-<sha256>`.
-    pub fn identity(mut self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
-        self.components.push(canonical_identity(value.as_ref())?);
-        Ok(self)
+    pub fn identity(self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
+        self.push_components([canonical_identity(value.as_ref())?])
     }
 
     /// Add a named identity component while retaining the field name in the key.
     pub fn named_identity(
-        mut self,
+        self,
         name: impl Into<String>,
         value: impl AsRef<[u8]>,
     ) -> Result<Self, CacheKeyError> {
         let name = validate_fixed_component("identity_name", name.into())?;
         let value = canonical_identity(value.as_ref())?;
-        self.components.push(name);
-        self.components.push(value);
-        Ok(self)
+        self.push_components([name, value])
     }
 
     /// Always hash a dynamic component, including binary input or canonical query bytes.
-    pub fn hashed(mut self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
+    pub fn hashed(self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
         let value = value.as_ref();
         validate_identity_size(value)?;
-        self.components.push(format!("h-{}", sha256_hex(value)));
-        Ok(self)
+        self.push_components([format!("h-{}", sha256_hex(value))])
     }
 
     pub fn build(self) -> String {
@@ -89,6 +91,41 @@ impl CacheKeyBuilder {
             self.fixed_prefix.join(":"),
             sha256_hex(key.as_bytes())
         )
+    }
+
+    fn push_components<const N: usize>(
+        mut self,
+        additional: [String; N],
+    ) -> Result<Self, CacheKeyError> {
+        let next_count = self
+            .components
+            .len()
+            .checked_add(N)
+            .unwrap_or(usize::MAX);
+        if next_count > MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
+            return Err(CacheKeyError::TooManyDynamicComponents {
+                count: next_count,
+                maximum: MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
+            });
+        }
+
+        // Every appended component also adds one separator because the fixed prefix is non-empty.
+        let added_bytes = additional.iter().try_fold(N, |total, component| {
+            total.checked_add(component.len())
+        });
+        let next_input_bytes = added_bytes
+            .and_then(|added| self.input_bytes.checked_add(added))
+            .unwrap_or(usize::MAX);
+        if next_input_bytes > MAX_CACHE_KEY_INPUT_BYTES {
+            return Err(CacheKeyError::KeyInputTooLong {
+                length: next_input_bytes,
+                maximum: MAX_CACHE_KEY_INPUT_BYTES,
+            });
+        }
+
+        self.components.extend(additional);
+        self.input_bytes = next_input_bytes;
+        Ok(self)
     }
 }
 
@@ -108,6 +145,14 @@ pub enum CacheKeyError {
     },
     EmptyIdentity,
     IdentityTooLong {
+        length: usize,
+        maximum: usize,
+    },
+    TooManyDynamicComponents {
+        count: usize,
+        maximum: usize,
+    },
+    KeyInputTooLong {
         length: usize,
         maximum: usize,
     },
@@ -135,6 +180,14 @@ impl std::fmt::Display for CacheKeyError {
             Self::IdentityTooLong { length, maximum } => write!(
                 formatter,
                 "cache key identity is {length} bytes; maximum is {maximum}"
+            ),
+            Self::TooManyDynamicComponents { count, maximum } => write!(
+                formatter,
+                "cache key has {count} dynamic components; maximum is {maximum}"
+            ),
+            Self::KeyInputTooLong { length, maximum } => write!(
+                formatter,
+                "cache key canonical input is {length} bytes; maximum is {maximum}"
             ),
         }
     }
@@ -186,6 +239,14 @@ fn canonical_identity(value: &[u8]) -> Result<String, CacheKeyError> {
     }
 
     Ok(format!("h-{}", sha256_hex(value)))
+}
+
+fn joined_len(components: &[String]) -> usize {
+    components
+        .iter()
+        .map(String::len)
+        .sum::<usize>()
+        .saturating_add(components.len().saturating_sub(1))
 }
 
 fn is_safe_component(value: &[u8]) -> bool {
@@ -247,6 +308,42 @@ mod tests {
                 .unwrap_err(),
             expected
         );
+    }
+
+    #[test]
+    fn dynamic_component_count_is_bounded() {
+        let mut builder = base();
+        for _ in 0..MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
+            builder = builder.identity("x").unwrap();
+        }
+
+        assert_eq!(
+            builder.identity("overflow").unwrap_err(),
+            CacheKeyError::TooManyDynamicComponents {
+                count: MAX_CACHE_KEY_DYNAMIC_COMPONENTS + 1,
+                maximum: MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
+            }
+        );
+    }
+
+    #[test]
+    fn aggregate_canonical_input_is_bounded() {
+        let mut builder = base();
+        let component = "x".repeat(MAX_SAFE_COMPONENT_BYTES);
+        let error = loop {
+            match builder.clone().identity(&component) {
+                Ok(next) => builder = next,
+                Err(error) => break error,
+            }
+        };
+
+        assert!(matches!(
+            error,
+            CacheKeyError::KeyInputTooLong {
+                maximum: MAX_CACHE_KEY_INPUT_BYTES,
+                ..
+            }
+        ));
     }
 
     #[test]
