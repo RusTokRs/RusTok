@@ -2,14 +2,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
+use rustok_core::{
+    CacheBackend, CacheCompareAndSetOutcome, CacheStats, FallbackCacheBackend,
+    InMemoryCacheBackend,
+};
 
 /// Availability-preserving fallback whose health remains strict about the shared primary.
 ///
-/// Reads and writes keep the existing Redis-to-memory fallback behavior, but health checks do
-/// not convert a Redis outage into `Ok(())` merely because the in-process layer is available.
-/// This lets readiness and operator diagnostics report degraded cross-instance consistency while
-/// request paths can continue using bounded local data.
+/// Reads and ordinary writes keep the existing Redis-to-memory fallback behavior, but health
+/// checks and atomic compare-and-set remain strict about the shared primary. A Redis outage must
+/// never turn a distributed CAS into a process-local acknowledged write.
 pub(crate) struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     inner: FallbackCacheBackend,
@@ -48,6 +50,16 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         ttl: Duration,
     ) -> rustok_core::Result<()> {
         self.inner.set_with_ttl(key, value, ttl).await
+    }
+
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+        self.inner.compare_and_set(key, expected, value, ttl).await
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
@@ -101,6 +113,18 @@ mod tests {
             self.set(key, value).await
         }
 
+        async fn compare_and_set(
+            &self,
+            _key: &str,
+            _expected: &[u8],
+            _value: Vec<u8>,
+            _ttl: Option<Duration>,
+        ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+            Err(rustok_core::Error::Cache(
+                "shared primary unavailable".to_string(),
+            ))
+        }
+
         async fn invalidate(&self, _key: &str) -> rustok_core::Result<()> {
             Err(rustok_core::Error::Cache(
                 "shared primary unavailable".to_string(),
@@ -127,5 +151,24 @@ mod tests {
 
         assert!(backend.health().await.is_err());
         assert_eq!(backend.get("key").await.unwrap(), Some(b"local".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn compare_and_set_fails_closed_when_shared_primary_is_unavailable() {
+        let primary = Arc::new(HealthControlledBackend {
+            healthy: AtomicBool::new(false),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        fallback
+            .set("key".to_string(), b"local".to_vec())
+            .await
+            .unwrap();
+        let backend = DegradationAwareFallbackBackend::new(primary, Arc::clone(&fallback));
+
+        assert!(backend
+            .compare_and_set("key", b"local", b"new".to_vec(), None)
+            .await
+            .is_err());
+        assert_eq!(fallback.get("key").await.unwrap(), Some(b"local".to_vec()));
     }
 }

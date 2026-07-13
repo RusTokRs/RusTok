@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{CacheBackend, CacheStats, InMemoryCacheBackend};
+use rustok_core::{
+    CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
+};
 
 use crate::fallback::DegradationAwareFallbackBackend;
 use crate::{CacheBackendOptions, CacheService};
@@ -150,6 +152,16 @@ impl CacheBackend for InstrumentedWeightedCacheBackend {
         self.inner.set_with_ttl(key, value, ttl).await
     }
 
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+        self.inner.compare_and_set(key, expected, value, ttl).await
+    }
+
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
         self.evictions.fetch_add(1, Ordering::Relaxed);
         self.inner.invalidate(key).await
@@ -205,5 +217,23 @@ mod tests {
         assert_eq!(stats.misses, 1);
         assert_eq!(stats.hits, 1);
         assert_eq!(stats.entries, 1);
+    }
+
+    #[tokio::test]
+    async fn weighted_memory_factory_delegates_atomic_cas() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend_weighted(Duration::from_secs(60), 4096);
+        backend
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            backend
+                .compare_and_set("key", b"old", b"new".to_vec(), None)
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Applied
+        );
     }
 }

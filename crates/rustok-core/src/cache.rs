@@ -1,17 +1,36 @@
 #[cfg(feature = "redis-cache")]
 use std::future::Future;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use moka::future::Cache;
 use moka::Expiry;
+use tokio::sync::Mutex as AsyncMutex;
 
-use crate::context::CacheBackend;
+use crate::context::{CacheBackend, CacheCompareAndSetOutcome};
 #[cfg(feature = "redis-cache")]
 use crate::resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
 use crate::Result;
+
+const IN_MEMORY_WRITE_LOCK_STRIPES: usize = 64;
+
+#[cfg(feature = "redis-cache")]
+const REDIS_COMPARE_AND_SET_SCRIPT: &str = r#"
+local current = redis.call('GET', KEYS[1])
+if not current or current ~= ARGV[1] then
+    return 0
+end
+local ttl = tonumber(ARGV[3])
+if ttl <= 0 then
+    redis.call('DEL', KEYS[1])
+else
+    redis.call('PSETEX', KEYS[1], ttl, ARGV[2])
+end
+return 1
+"#;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CacheStats {
@@ -31,6 +50,7 @@ pub struct InMemoryCacheBackend {
     cache: Cache<String, InMemoryCacheValue>,
     default_ttl: Duration,
     capacity: InMemoryCacheCapacity,
+    write_locks: [AsyncMutex<()>; IN_MEMORY_WRITE_LOCK_STRIPES],
 }
 
 #[derive(Clone)]
@@ -102,6 +122,29 @@ impl InMemoryCacheBackend {
             cache,
             default_ttl: ttl,
             capacity,
+            write_locks: std::array::from_fn(|_| AsyncMutex::new(())),
+        }
+    }
+
+    fn write_lock(&self, key: &str) -> &AsyncMutex<()> {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        &self.write_locks[(hasher.finish() as usize) % IN_MEMORY_WRITE_LOCK_STRIPES]
+    }
+
+    async fn write_value_unlocked(&self, key: String, value: Vec<u8>, ttl: Duration) {
+        if ttl.is_zero() {
+            self.cache.invalidate(&key).await;
+        } else {
+            self.cache
+                .insert(
+                    key,
+                    InMemoryCacheValue {
+                        payload: value,
+                        ttl,
+                    },
+                )
+                .await;
         }
     }
 }
@@ -231,19 +274,31 @@ impl CacheBackend for InMemoryCacheBackend {
     }
 
     async fn set_with_ttl(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<()> {
-        self.cache
-            .insert(
-                key,
-                InMemoryCacheValue {
-                    payload: value,
-                    ttl,
-                },
-            )
-            .await;
+        let _guard = self.write_lock(&key).lock().await;
+        self.write_value_unlocked(key, value, ttl).await;
         Ok(())
     }
 
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<CacheCompareAndSetOutcome> {
+        let _guard = self.write_lock(key).lock().await;
+        let current = self.cache.get(key).await;
+        if current.as_ref().map(|entry| entry.payload.as_slice()) != Some(expected) {
+            return Ok(CacheCompareAndSetOutcome::Mismatch);
+        }
+
+        self.write_value_unlocked(key.to_string(), value, ttl.unwrap_or(self.default_ttl))
+            .await;
+        Ok(CacheCompareAndSetOutcome::Applied)
+    }
+
     async fn invalidate(&self, key: &str) -> Result<()> {
+        let _guard = self.write_lock(key).lock().await;
         self.cache.invalidate(key).await;
         Ok(())
     }
@@ -355,6 +410,51 @@ impl CacheBackend for RedisCacheBackend {
             })
     }
 
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<CacheCompareAndSetOutcome> {
+        let mut manager = self.manager.clone();
+        let redis_key = self.key(key);
+        let expected = expected.to_vec();
+        let ttl_millis = redis_ttl_millis(ttl.unwrap_or(self.ttl)).unwrap_or(0);
+        let operation_timeout = self.operation_timeout;
+
+        self.circuit_breaker
+            .call(|| async move {
+                redis_operation_with_timeout(operation_timeout, async move {
+                    let applied = redis::cmd("EVAL")
+                        .arg(REDIS_COMPARE_AND_SET_SCRIPT)
+                        .arg(1)
+                        .arg(redis_key)
+                        .arg(expected)
+                        .arg(value)
+                        .arg(ttl_millis)
+                        .query_async::<i64>(&mut manager)
+                        .await
+                        .map_err(|err| crate::Error::Cache(err.to_string()))?;
+                    match applied {
+                        1 => Ok(CacheCompareAndSetOutcome::Applied),
+                        0 => Ok(CacheCompareAndSetOutcome::Mismatch),
+                        other => Err(crate::Error::Cache(format!(
+                            "unexpected Redis compare-and-set response: {other}"
+                        ))),
+                    }
+                })
+                .await
+            })
+            .await
+            .map_err(|e| match e {
+                CircuitBreakerError::Open => crate::Error::Cache(
+                    "Redis unavailable (circuit breaker open)".to_string(),
+                ),
+                CircuitBreakerError::Upstream(err) => err,
+            })
+    }
+
     async fn invalidate(&self, key: &str) -> Result<()> {
         let mut manager = self.manager.clone();
         let redis_key = self.key(key);
@@ -435,6 +535,24 @@ impl FallbackCacheBackend {
             .flatten()
             .is_some()
     }
+
+    async fn mirror_primary_cas(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) {
+        let result = match ttl {
+            Some(ttl) => self
+                .fallback
+                .set_with_ttl(key.to_string(), value, ttl)
+                .await,
+            None => self.fallback.set(key.to_string(), value).await,
+        };
+        if let Err(error) = result {
+            tracing::warn!(%error, key, "Primary cache CAS applied but local mirror update failed");
+        }
+    }
 }
 
 #[async_trait]
@@ -501,6 +619,30 @@ impl CacheBackend for FallbackCacheBackend {
         }
     }
 
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<CacheCompareAndSetOutcome> {
+        let outcome = self
+            .primary
+            .compare_and_set(key, expected, value.clone(), ttl)
+            .await?;
+        match outcome {
+            CacheCompareAndSetOutcome::Applied => {
+                self.clear_degraded_write(key).await;
+                self.mirror_primary_cas(key, value, ttl).await;
+            }
+            CacheCompareAndSetOutcome::Mismatch => {
+                self.clear_degraded_write(key).await;
+                let _ = self.fallback.invalidate(key).await;
+            }
+        }
+        Ok(outcome)
+    }
+
     async fn invalidate(&self, key: &str) -> Result<()> {
         let _ = self.fallback.invalidate(key).await;
         self.clear_degraded_write(key).await;
@@ -549,11 +691,51 @@ mod in_memory_capacity_tests {
 
         assert_eq!(cache.get("large").await.unwrap(), None);
     }
+
+    #[tokio::test]
+    async fn in_memory_compare_and_set_applies_only_to_matching_bytes() {
+        let cache = InMemoryCacheBackend::new(Duration::from_secs(60), 16);
+        cache
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            cache
+                .compare_and_set("key", b"wrong", b"bad".to_vec(), None)
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Mismatch
+        );
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"old".to_vec()));
+
+        assert_eq!(
+            cache
+                .compare_and_set("key", b"old", b"new".to_vec(), None)
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Applied
+        );
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"new".to_vec()));
+
+        assert_eq!(
+            cache
+                .compare_and_set("key", b"new", Vec::new(), Some(Duration::ZERO))
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Applied
+        );
+        assert_eq!(cache.get("key").await.unwrap(), None);
+    }
 }
 
 #[cfg(all(test, feature = "redis-cache"))]
 mod redis_backend_unit_tests {
-    use super::{redis_operation_with_timeout, redis_ttl_millis};
+    use super::{
+        redis_operation_with_timeout, redis_ttl_millis, CacheCompareAndSetOutcome,
+        RedisCacheBackend, REDIS_COMPARE_AND_SET_SCRIPT,
+    };
+    use crate::CacheBackend;
     use std::time::Duration;
 
     #[test]
@@ -573,6 +755,13 @@ mod redis_backend_unit_tests {
         assert_eq!(redis_ttl_millis(Duration::ZERO), None);
     }
 
+    #[test]
+    fn compare_and_set_script_is_binary_safe_and_conditional() {
+        assert!(REDIS_COMPARE_AND_SET_SCRIPT.contains("current ~= ARGV[1]"));
+        assert!(REDIS_COMPARE_AND_SET_SCRIPT.contains("PSETEX"));
+        assert!(REDIS_COMPARE_AND_SET_SCRIPT.contains("DEL"));
+    }
+
     #[tokio::test]
     async fn operation_timeout_bounds_a_stalled_redis_future() {
         let result: crate::Result<()> = redis_operation_with_timeout(
@@ -585,6 +774,44 @@ mod redis_backend_unit_tests {
             Err(crate::Error::Cache(message)) => assert!(message.contains("timed out")),
             other => panic!("expected Redis timeout cache error, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a live Redis instance; set RUSTOK_CACHE_REAL_REDIS_URL"]
+    async fn real_redis_compare_and_set_is_atomic_and_preserves_mismatch() {
+        let Ok(redis_url) = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL") else {
+            eprintln!("skipping real Redis CAS test: RUSTOK_CACHE_REAL_REDIS_URL is not set");
+            return;
+        };
+        let prefix = format!(
+            "cache-cas-test:{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let cache = RedisCacheBackend::new(&redis_url, prefix, Duration::from_secs(60))
+            .await
+            .unwrap();
+        cache.set("key".to_string(), b"old".to_vec()).await.unwrap();
+
+        assert_eq!(
+            cache
+                .compare_and_set("key", b"wrong", b"bad".to_vec(), None)
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Mismatch
+        );
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"old".to_vec()));
+        assert_eq!(
+            cache
+                .compare_and_set("key", b"old", b"new".to_vec(), None)
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Applied
+        );
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"new".to_vec()));
+        cache.invalidate("key").await.unwrap();
     }
 }
 

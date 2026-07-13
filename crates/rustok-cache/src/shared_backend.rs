@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{CacheBackend, CacheStats, InMemoryCacheBackend};
+use rustok_core::{
+    CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
+};
 
 #[cfg(feature = "redis-cache")]
 use rustok_core::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
@@ -13,6 +15,21 @@ use crate::{CacheBackendOptions, CacheService};
 
 #[cfg(feature = "redis-cache")]
 const SHARED_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[cfg(feature = "redis-cache")]
+const SHARED_REDIS_COMPARE_AND_SET_SCRIPT: &str = r#"
+local current = redis.call('GET', KEYS[1])
+if not current or current ~= ARGV[1] then
+    return 0
+end
+local ttl = tonumber(ARGV[3])
+if ttl <= 0 then
+    redis.call('DEL', KEYS[1])
+else
+    redis.call('PSETEX', KEYS[1], ttl, ARGV[2])
+end
+return 1
+"#;
 
 /// Redis backend constructed from the client already owned by `CacheService`.
 ///
@@ -164,6 +181,45 @@ impl CacheBackend for SharedClientRedisCacheBackend {
             .map_err(shared_circuit_error)
     }
 
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+        let mut manager = self.manager.clone();
+        let redis_key = self.redis_key(key);
+        let expected = expected.to_vec();
+        let ttl_millis = ttl_millis(ttl.unwrap_or(self.ttl)).unwrap_or(0);
+        let timeout = self.operation_timeout;
+        self.circuit_breaker
+            .call(|| async move {
+                shared_redis_timeout(timeout, async move {
+                    let applied = redis::cmd("EVAL")
+                        .arg(SHARED_REDIS_COMPARE_AND_SET_SCRIPT)
+                        .arg(1)
+                        .arg(redis_key)
+                        .arg(expected)
+                        .arg(value)
+                        .arg(ttl_millis)
+                        .query_async::<i64>(&mut manager)
+                        .await
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))?;
+                    match applied {
+                        1 => Ok(CacheCompareAndSetOutcome::Applied),
+                        0 => Ok(CacheCompareAndSetOutcome::Mismatch),
+                        other => Err(rustok_core::Error::Cache(format!(
+                            "unexpected shared Redis compare-and-set response: {other}"
+                        ))),
+                    }
+                })
+                .await
+            })
+            .await
+            .map_err(shared_circuit_error)
+    }
+
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
         let mut manager = self.manager.clone();
         let redis_key = self.redis_key(key);
@@ -308,6 +364,16 @@ impl CacheBackend for SharedInstrumentedCacheBackend {
         self.inner.set_with_ttl(key, value, ttl).await
     }
 
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+        self.inner.compare_and_set(key, expected, value, ttl).await
+    }
+
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
         self.invalidations.fetch_add(1, Ordering::Relaxed);
         self.inner.invalidate(key).await
@@ -397,10 +463,39 @@ mod tests {
         assert_eq!(backend.stats().entries, 1);
     }
 
+    #[tokio::test]
+    async fn shared_client_factory_exposes_atomic_cas_without_redis() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("shared-cas", Duration::from_secs(60), 16)
+            .await;
+        backend
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            backend
+                .compare_and_set("key", b"old", b"new".to_vec(), None)
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Applied
+        );
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
     #[cfg(feature = "redis-cache")]
     #[test]
     fn shared_backend_ttl_preserves_positive_sub_millisecond_values() {
         assert_eq!(ttl_millis(Duration::from_nanos(1)), Some(1));
-        assert_eq!(ttl_millis(Duration::ZERO), None);
+        assert_eq!(ttl_millis(Duration::from_micros(999)), Some(1));
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[test]
+    fn shared_redis_cas_script_is_conditional_and_binary_safe() {
+        assert!(SHARED_REDIS_COMPARE_AND_SET_SCRIPT.contains("current ~= ARGV[1]"));
+        assert!(SHARED_REDIS_COMPARE_AND_SET_SCRIPT.contains("PSETEX"));
+        assert!(SHARED_REDIS_COMPARE_AND_SET_SCRIPT.contains("DEL"));
     }
 }
