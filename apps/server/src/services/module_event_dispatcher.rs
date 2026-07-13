@@ -155,11 +155,12 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     extensions.insert(AuthUserBackfillRuntime::new(auth_lifecycle_provider));
     let mcp_management_provider = Arc::new(
         crate::services::mcp_management_mutation_provider::ServerMcpManagementMutationProvider::new(
-            db,
+            db.clone(),
         ),
     );
     let mcp_management_provider = Arc::new(
         crate::services::mcp_management_guard::GuardedMcpManagementProvider::new(
+            db,
             mcp_management_provider,
         ),
     );
