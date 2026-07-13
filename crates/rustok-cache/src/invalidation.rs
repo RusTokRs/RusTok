@@ -144,15 +144,34 @@ impl std::error::Error for CacheInvalidationPayloadError {}
 
 /// Process-local observer for a durable monotonic invalidation generation.
 ///
-/// On `Gap`, the caller should clear/rebuild the affected cache namespace before trusting
-/// later events. The tracker advances to the received generation so the stream can continue
-/// after that recovery action.
+/// Consumers should seed the tracker from their persisted durable offset before observing
+/// live events. An unseeded first event cannot prove continuity and therefore returns
+/// `UnverifiedFirst`, which requires the same fail-safe namespace recovery as `Gap`.
 #[derive(Clone, Default)]
 pub struct CacheInvalidationGapTracker {
     last_by_channel: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl CacheInvalidationGapTracker {
+    /// Restore the last durably acknowledged generation for a channel.
+    ///
+    /// Seeding with zero is valid when the durable sequence is known to begin at one.
+    pub fn seed(
+        &self,
+        channel: impl Into<String>,
+        last_generation: u64,
+    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
+        let channel = channel.into();
+        if channel.trim().is_empty() {
+            return Err(CacheInvalidationPayloadError::EmptyChannel);
+        }
+        Ok(self
+            .last_by_channel
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(channel, last_generation))
+    }
+
     pub fn observe(
         &self,
         event: &VersionedCacheInvalidation,
@@ -164,7 +183,7 @@ impl CacheInvalidationGapTracker {
 
         let Some(previous) = generations.get(&event.channel).copied() else {
             generations.insert(event.channel.clone(), event.generation);
-            return CacheInvalidationObservation::First {
+            return CacheInvalidationObservation::UnverifiedFirst {
                 generation: event.generation,
             };
         };
@@ -221,7 +240,7 @@ impl CacheInvalidationGapTracker {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheInvalidationObservation {
-    First {
+    UnverifiedFirst {
         generation: u64,
     },
     InOrder {
@@ -243,11 +262,14 @@ pub enum CacheInvalidationObservation {
 
 impl CacheInvalidationObservation {
     pub fn requires_recovery(self) -> bool {
-        matches!(self, Self::Gap { .. })
+        matches!(self, Self::UnverifiedFirst { .. } | Self::Gap { .. })
     }
 
     pub fn should_apply(self) -> bool {
-        matches!(self, Self::First { .. } | Self::InOrder { .. } | Self::Gap { .. })
+        matches!(
+            self,
+            Self::UnverifiedFirst { .. } | Self::InOrder { .. } | Self::Gap { .. }
+        )
     }
 }
 
@@ -276,12 +298,26 @@ mod tests {
     }
 
     #[test]
-    fn tracker_detects_gap_duplicate_and_stale_events() {
+    fn unseeded_first_event_requires_recovery() {
         let tracker = CacheInvalidationGapTracker::default();
+        let observation = tracker.observe(&event(10));
+
+        assert_eq!(
+            observation,
+            CacheInvalidationObservation::UnverifiedFirst { generation: 10 }
+        );
+        assert!(observation.requires_recovery());
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(10));
+    }
+
+    #[test]
+    fn seeded_tracker_detects_gap_duplicate_and_stale_events() {
+        let tracker = CacheInvalidationGapTracker::default();
+        tracker.seed("tenant.invalidate", 9).unwrap();
 
         assert_eq!(
             tracker.observe(&event(10)),
-            CacheInvalidationObservation::First { generation: 10 }
+            CacheInvalidationObservation::InOrder { generation: 10 }
         );
         assert_eq!(
             tracker.observe(&event(11)),
