@@ -1,6 +1,7 @@
 mod bounded_invalidation;
 mod cas_observability;
 mod durable_invalidation;
+mod durable_invalidation_transport;
 mod envelope;
 mod fallback;
 mod generation;
@@ -30,6 +31,9 @@ pub use durable_invalidation::{
     DurableCacheInvalidationError, DurableCacheInvalidationRecord,
     DEFAULT_MAX_DURABLE_INVALIDATION_BYTES, DURABLE_CACHE_INVALIDATION_FORMAT_VERSION,
     MAX_DURABLE_INVALIDATION_CAUSE_BYTES, MAX_DURABLE_INVALIDATION_TRACE_ID_BYTES,
+};
+pub use durable_invalidation_transport::{
+    durable_invalidation_from_message, durable_invalidation_to_message,
 };
 pub use envelope::{
     CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
