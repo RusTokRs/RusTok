@@ -259,3 +259,26 @@ rustok-email = { path = "crates/rustok-email" }
 rustok-outbox = { path = "crates/rustok-outbox" }
 rustok-iggy = { path = "crates/rustok-iggy" }
 rustok-iggy-connector = { path = "crates/rustok-iggy-connector" }
+rustok-forum = { path = "crates/rustok-forum" }
+rustok-tenant = { path = "crates/rustok-tenant" }
+rustok-rbac = { path = "crates/rustok-rbac" }
+rustok-mcp = { path = "crates/rustok-mcp" }
+rustok-ai = { path = "crates/rustok-ai" }
+rustok-ai-content = { path = "crates/rustok-ai-content" }
+rustok-ai-order = { path = "crates/rustok-ai-order" }
+rustok-ai-product = { path = "crates/rustok-ai-product" }
+rustok-ai-media = { path = "crates/rustok-ai-media" }
+rustok-ai-alloy = { path = "crates/rustok-ai-alloy" }
+rustok-telemetry = { path = "crates/rustok-telemetry" }
+rustok-test-utils = { path = "crates/rustok-test-utils" }
+rustok-storage = { path = "crates/rustok-storage" }
+rustok-secrets = { path = "crates/rustok-secrets" }
+rustok-media = { path = "crates/rustok-media" }
+rustok-media-cli = { path = "crates/rustok-media/cli" }
+rustok-profiles-cli = { path = "crates/rustok-profiles/cli" }
+rustok-auth-cli = { path = "crates/rustok-auth/cli" }
+rustok-rbac-cli = { path = "crates/rustok-rbac/cli" }
+flex = { path = "crates/flex" }
+alloy = { path = "crates/alloy" }
+rustok-workflow = { path = "crates/rustok-workflow" }
+schemars = "1.2"
