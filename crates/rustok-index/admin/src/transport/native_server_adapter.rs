@@ -9,17 +9,25 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_api::{
+            has_effective_permission, AuthContext, HostRuntimeContext, Permission, TenantContext,
+        };
         use rustok_core::RusToKModule;
         use sea_orm::ConnectionTrait;
 
         let runtime_ctx = expect_context::<HostRuntimeContext>();
-        let _auth = leptos_axum::extract::<AuthContext>()
+        let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+            return Err(ServerFnError::new(
+                "settings:read required to inspect index administration state",
+            ));
+        }
 
         let db = runtime_ctx.db_clone();
         let backend = db.get_database_backend();
