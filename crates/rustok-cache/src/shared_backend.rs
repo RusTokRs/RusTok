@@ -3,11 +3,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
+use rustok_core::{CacheBackend, CacheStats, InMemoryCacheBackend};
 
 #[cfg(feature = "redis-cache")]
 use rustok_core::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
 
+use crate::fallback::DegradationAwareFallbackBackend;
 use crate::{CacheBackendOptions, CacheService};
 
 #[cfg(feature = "redis-cache")]
@@ -243,7 +244,10 @@ impl CacheService {
             {
                 Ok(redis) => {
                     let memory = Arc::new(InMemoryCacheBackend::new(ttl, max_capacity));
-                    return Arc::new(FallbackCacheBackend::new(Arc::new(redis), memory));
+                    return Arc::new(DegradationAwareFallbackBackend::new(
+                        Arc::new(redis),
+                        memory,
+                    ));
                 }
                 Err(error) => {
                     tracing::warn!(%error, prefix, "Redis cache backend initialization failed; using memory backend");
