@@ -4,9 +4,10 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use rustok_cache::{
-    cache_backend_generation_snapshot, observe_cache_backend_generation,
-    BoundedCacheInvalidationGapTracker, CacheInvalidationMessage, CacheInvalidationObservation,
-    CacheService, DurableCacheInvalidationRecord, VersionedCacheInvalidation,
+    bind_cache_backend_generation_aliases, cache_backend_generation_snapshot,
+    observe_cache_backend_generation, BoundedCacheInvalidationGapTracker,
+    CacheInvalidationMessage, CacheInvalidationObservation, CacheService,
+    DurableCacheInvalidationRecord, VersionedCacheInvalidation,
 };
 use rustok_core::events::{
     DomainEvent, EventConsumerRuntime, EventEnvelope, EventTransport, ReliabilityLevel,
@@ -16,7 +17,7 @@ use tokio::sync::broadcast;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Durable sequence namespace. Both physical tenant cache backends observe this generation.
+/// Durable sequence namespace. Both physical tenant cache backends alias this generation state.
 pub const TENANT_CACHE_BACKEND_PREFIX: &str = "rustok:tenant:v2";
 /// Physical prefixes used by `middleware::tenant::TenantCacheInfrastructure`.
 pub const TENANT_CACHE_DATA_BACKEND_PREFIX: &str = "tenant-cache:v2:data";
@@ -24,15 +25,23 @@ pub const TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = "tenant-cache:v2:negative
 pub const TENANT_CACHE_GENERATION_CHANNEL: &str = "tenant.cache.generation.v1";
 const LISTENER_RESTART_DELAY: Duration = Duration::from_secs(1);
 
-fn observe_tenant_backend_generation(generation: u64) -> Result<()> {
-    for prefix in [
+fn bind_tenant_backend_generations() -> Result<()> {
+    bind_cache_backend_generation_aliases(
         TENANT_CACHE_BACKEND_PREFIX,
-        TENANT_CACHE_DATA_BACKEND_PREFIX,
-        TENANT_CACHE_NEGATIVE_BACKEND_PREFIX,
-    ] {
-        observe_cache_backend_generation(prefix, generation)
-            .map_err(|error| Error::Cache(error.to_string()))?;
-    }
+        &[
+            TENANT_CACHE_DATA_BACKEND_PREFIX,
+            TENANT_CACHE_NEGATIVE_BACKEND_PREFIX,
+        ],
+    )
+    .map_err(|error| Error::Cache(error.to_string()))?;
+    Ok(())
+}
+
+fn observe_tenant_backend_generation(generation: u64) -> Result<()> {
+    // The physical prefixes are aliases of this canonical state, so one atomic store switches
+    // data and negative cache backends together.
+    observe_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX, generation)
+        .map_err(|error| Error::Cache(error.to_string()))?;
     Ok(())
 }
 
@@ -57,8 +66,6 @@ impl TenantCacheGenerationTransport {
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
             .map_err(|error| Error::Cache(error.to_string()))?;
-        observe_tenant_backend_generation(generation.generation)?;
-
         let emitted_at_unix_ms = u64::try_from(envelope.timestamp.timestamp_millis()).map_err(|_| {
             Error::Validation("tenant cache invalidation timestamp precedes Unix epoch".to_string())
         })?;
@@ -224,12 +231,13 @@ pub struct TenantCacheGenerationListenerHandle;
 pub async fn start_tenant_cache_generation_listener(
     ctx: &ServerRuntimeContext,
     cache: CacheService,
-) {
+) -> Result<()> {
+    bind_tenant_backend_generations()?;
     if ctx
         .shared_get::<TenantCacheGenerationListenerHandle>()
         .is_some()
     {
-        return;
+        return Ok(());
     }
 
     let listener = TenantCacheGenerationListener::new(cache.clone());
@@ -324,6 +332,7 @@ pub async fn start_tenant_cache_generation_listener(
     }
 
     ctx.shared_insert(TenantCacheGenerationListenerHandle);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -379,6 +388,7 @@ mod tests {
     #[tokio::test]
     async fn transport_rotates_both_physical_backends_before_local_delivery() {
         let _guard = generation_test_lock().lock().await;
+        bind_tenant_backend_generations().unwrap();
         let cache = CacheService::from_url(None);
         let data_backend = cache
             .backend_weighted(
@@ -423,11 +433,16 @@ mod tests {
         assert_eq!(receiver.recv().await.unwrap().id, envelope.id);
         assert_eq!(data_backend.get("key").await.unwrap(), None);
         assert_eq!(negative_backend.get("key").await.unwrap(), None);
+        assert_eq!(
+            cache_backend_generation_snapshot(TENANT_CACHE_DATA_BACKEND_PREFIX).unwrap(),
+            cache_backend_generation_snapshot(TENANT_CACHE_NEGATIVE_BACKEND_PREFIX).unwrap()
+        );
     }
 
     #[tokio::test]
     async fn listener_recovers_gaps_into_both_physical_backends() {
         let _guard = generation_test_lock().lock().await;
+        bind_tenant_backend_generations().unwrap();
         let cache = CacheService::from_url(None);
         let listener = TenantCacheGenerationListener::new(cache.clone());
         let base = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
@@ -466,9 +481,10 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "redis-cache")]
     #[tokio::test]
     async fn invalid_redis_configuration_does_not_seed_trusted_tenant_generation() {
+        let _guard = generation_test_lock().lock().await;
+        bind_tenant_backend_generations().unwrap();
         let cache = CacheService::from_url(Some("://invalid-redis-url"));
         let listener = TenantCacheGenerationListener::new(cache);
         assert!(listener.recover_shared_generation().await.is_err());
