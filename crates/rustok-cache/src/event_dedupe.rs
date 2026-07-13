@@ -102,6 +102,16 @@ impl BoundedCacheEventDedupe {
         })
     }
 
+    /// Check whether an event was already committed to this dedupe window.
+    ///
+    /// A false result does not reserve the identifier. Call `observe` only after the protected
+    /// operation succeeds. Concurrent false negatives can cause duplicate work, which is safe for
+    /// generation rotation; they can never suppress the first successful invalidation.
+    pub fn is_duplicate(&self, event_id: Uuid) -> bool {
+        self.is_duplicate_at(event_id, Instant::now())
+    }
+
+    /// Commit an event identifier after the protected operation succeeds.
     pub fn observe(&self, event_id: Uuid) -> CacheEventDedupeDecision {
         self.observe_at(event_id, Instant::now())
     }
@@ -128,6 +138,19 @@ impl BoundedCacheEventDedupe {
 
     pub fn ttl(&self) -> Duration {
         self.ttl
+    }
+
+    fn is_duplicate_at(&self, event_id: Uuid, now: Instant) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.prune_expired(&mut state, now);
+        let duplicate = state.entries.contains_key(&event_id);
+        if duplicate {
+            self.duplicate_total.fetch_add(1, Ordering::Relaxed);
+        }
+        duplicate
     }
 
     fn observe_at(&self, event_id: Uuid, now: Instant) -> CacheEventDedupeDecision {
@@ -187,11 +210,23 @@ mod tests {
             dedupe.observe_at(event_id, now),
             CacheEventDedupeDecision::FirstSeen
         );
-        assert_eq!(
-            dedupe.observe_at(event_id, now + Duration::from_secs(1)),
-            CacheEventDedupeDecision::Duplicate
-        );
+        assert!(dedupe.is_duplicate_at(event_id, now + Duration::from_secs(1)));
         assert_eq!(dedupe.stats().duplicate_total, 1);
+    }
+
+    #[test]
+    fn probe_does_not_precommit_failed_work() {
+        let dedupe = BoundedCacheEventDedupe::new(4, Duration::from_secs(30)).unwrap();
+        let event_id = Uuid::new_v4();
+        let now = Instant::now();
+
+        assert!(!dedupe.is_duplicate_at(event_id, now));
+        assert!(!dedupe.is_duplicate_at(event_id, now + Duration::from_secs(1)));
+        assert_eq!(dedupe.stats().entries, 0);
+        assert_eq!(
+            dedupe.observe_at(event_id, now + Duration::from_secs(2)),
+            CacheEventDedupeDecision::FirstSeen
+        );
     }
 
     #[test]
@@ -204,6 +239,7 @@ mod tests {
             dedupe.observe_at(event_id, now),
             CacheEventDedupeDecision::FirstSeen
         );
+        assert!(!dedupe.is_duplicate_at(event_id, now + Duration::from_secs(2)));
         assert_eq!(
             dedupe.observe_at(event_id, now + Duration::from_secs(2)),
             CacheEventDedupeDecision::FirstSeen
