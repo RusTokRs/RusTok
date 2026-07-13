@@ -187,6 +187,7 @@ impl ReplyService {
         )?;
 
         let txn = self.db.begin().await?;
+        claim_reply_delete_in_tx(&txn, tenant_id, reply_id).await?;
         let reply = reply::ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.status == ReplyStatus::Deleted {
             return Err(ForumError::ReplyDeleted);
@@ -326,6 +327,24 @@ async fn allocate_reply_position_in_tx(
             "Unsupported forum database backend: {backend:?}"
         ))),
     }
+}
+
+async fn claim_reply_delete_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    reply_id: Uuid,
+) -> ForumResult<()> {
+    let result = txn
+        .execute_unprepared(&format!(
+            "UPDATE forum_replies \
+             SET updated_at = updated_at \
+             WHERE tenant_id = '{tenant_id}' AND id = '{reply_id}' AND deleted_at IS NULL"
+        ))
+        .await?;
+    if result.rows_affected() != 1 {
+        return Err(ForumError::ReplyDeleted);
+    }
+    Ok(())
 }
 
 async fn redact_reply_body_in_tx(
