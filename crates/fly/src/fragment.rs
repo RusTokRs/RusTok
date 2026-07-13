@@ -90,23 +90,29 @@ impl ProjectFragment {
         mut self,
         editor: &mut FlyEditor,
         parent_id: Option<String>,
-        mut index: usize,
+        index: usize,
     ) -> FlyResult<Vec<String>> {
-        let mut staged = editor.clone();
-        self.remap_ids(&mut staged.id_generator);
+        self.remap_ids(&mut editor.id_generator);
         let mut inserted_ids = Vec::new();
-        for component in self.components {
-            if let Some(id) = component.id() {
-                inserted_ids.push(id.to_string());
-            }
-            staged.apply(EditorCommand::Insert {
-                parent_id: parent_id.clone(),
-                index,
-                component,
-            })?;
-            index += 1;
+        let commands = self
+            .components
+            .into_iter()
+            .enumerate()
+            .map(|(offset, component)| {
+                if let Some(id) = component.id() {
+                    inserted_ids.push(id.to_string());
+                }
+                EditorCommand::Insert {
+                    parent_id: parent_id.clone(),
+                    index: index + offset,
+                    component,
+                }
+            })
+            .collect::<Vec<_>>();
+        if commands.is_empty() {
+            return Ok(inserted_ids);
         }
-        *editor = staged;
+        editor.apply(EditorCommand::batch(commands))?;
         Ok(inserted_ids)
     }
 }
@@ -157,5 +163,49 @@ fn replace_value_references(value: &mut Value, mapping: &BTreeMap<String, String
         }
         Value::Object(object) => replace_map_references(object, mapping),
         Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{GrapesJsV1Codec, RegistrySet};
+    use serde_json::json;
+
+    #[test]
+    fn multi_component_fragment_uses_one_history_entry() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": []
+                }
+            }]
+        }))
+        .expect("document");
+        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        let fragment = ProjectFragment {
+            format: FLY_FRAGMENT_V1.to_string(),
+            source_project_format: ProjectFormat::GrapesJsV1,
+            components: vec![
+                serde_json::from_value(json!({ "id": "a", "type": "text" }))
+                    .expect("component a"),
+                serde_json::from_value(json!({ "id": "b", "type": "text" }))
+                    .expect("component b"),
+            ],
+            styles: Vec::new(),
+            assets: Vec::new(),
+            provider_requirements: Vec::new(),
+            migration_diagnostics: Vec::new(),
+            extensions: Map::new(),
+        };
+        let inserted = fragment
+            .insert(&mut editor, Some("root".to_string()), 0)
+            .expect("insert fragment");
+        assert_eq!(inserted.len(), 2);
+        assert_eq!(editor.history().undo_len(), 1);
+        editor.undo().expect("undo fragment");
+        assert_eq!(editor.document().component_child_count("root"), Some(0));
     }
 }
