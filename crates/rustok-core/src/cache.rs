@@ -22,6 +22,7 @@ pub struct CacheStats {
 pub struct InMemoryCacheBackend {
     cache: Cache<String, InMemoryCacheValue>,
     default_ttl: Duration,
+    max_capacity: u64,
 }
 
 #[derive(Clone)]
@@ -63,6 +64,7 @@ impl InMemoryCacheBackend {
         Self {
             cache,
             default_ttl: ttl,
+            max_capacity,
         }
     }
 }
@@ -280,10 +282,10 @@ impl CacheBackend for RedisCacheBackend {
 }
 
 /// `FallbackCacheBackend` wraps a primary `CacheBackend` (e.g. Redis) with an in-memory
-/// fallback. When the primary backend returns a `Cache` error (e.g. circuit breaker open),
-/// reads are served from the in-memory cache and writes go to both backends so the in-memory
-/// layer stays warm. This provides transparent degraded-mode operation without surfacing
-/// cache errors to callers.
+/// fallback. When the primary backend is unavailable, reads are served from the in-memory
+/// cache and writes are retained locally for the same bounded TTL. Keys whose primary write
+/// failed are tracked separately so they remain readable after Redis reconnects without
+/// making ordinary Redis misses return potentially stale local values.
 ///
 /// # Example
 /// ```rust,ignore
@@ -294,11 +296,38 @@ impl CacheBackend for RedisCacheBackend {
 pub struct FallbackCacheBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
+    degraded_writes: InMemoryCacheBackend,
 }
 
 impl FallbackCacheBackend {
     pub fn new(primary: Arc<dyn CacheBackend>, fallback: Arc<InMemoryCacheBackend>) -> Self {
-        Self { primary, fallback }
+        let degraded_writes =
+            InMemoryCacheBackend::new(fallback.default_ttl, fallback.max_capacity);
+        Self {
+            primary,
+            fallback,
+            degraded_writes,
+        }
+    }
+
+    async fn mark_degraded_write(&self, key: String, ttl: Duration) {
+        let _ = self
+            .degraded_writes
+            .set_with_ttl(key, Vec::new(), ttl)
+            .await;
+    }
+
+    async fn clear_degraded_write(&self, key: &str) {
+        let _ = self.degraded_writes.invalidate(key).await;
+    }
+
+    async fn has_degraded_write(&self, key: &str) -> bool {
+        self.degraded_writes
+            .get(key)
+            .await
+            .ok()
+            .flatten()
+            .is_some()
     }
 }
 
@@ -317,7 +346,12 @@ impl CacheBackend for FallbackCacheBackend {
 
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
         match self.primary.get(key).await {
-            Ok(value) => Ok(value),
+            Ok(Some(value)) => {
+                self.clear_degraded_write(key).await;
+                Ok(Some(value))
+            }
+            Ok(None) if self.has_degraded_write(key).await => self.fallback.get(key).await,
+            Ok(None) => Ok(None),
             Err(e) => {
                 tracing::debug!(error = %e, key, "Primary cache GET failed, falling back to in-memory");
                 self.fallback.get(key).await
@@ -326,14 +360,18 @@ impl CacheBackend for FallbackCacheBackend {
     }
 
     async fn set(&self, key: String, value: Vec<u8>) -> Result<()> {
-        // Write to fallback unconditionally to keep it warm.
         let _ = self.fallback.set(key.clone(), value.clone()).await;
 
-        match self.primary.set(key, value).await {
-            Ok(()) => Ok(()),
+        match self.primary.set(key.clone(), value).await {
+            Ok(()) => {
+                self.clear_degraded_write(&key).await;
+                Ok(())
+            }
             Err(e) => {
-                tracing::debug!(error = %e, "Primary cache SET failed, wrote to in-memory fallback only");
-                Ok(()) // Degrade gracefully — value is in memory
+                self.mark_degraded_write(key, self.fallback.default_ttl)
+                    .await;
+                tracing::debug!(error = %e, "Primary cache SET failed, retained bounded in-memory value");
+                Ok(())
             }
         }
     }
@@ -344,10 +382,14 @@ impl CacheBackend for FallbackCacheBackend {
             .set_with_ttl(key.clone(), value.clone(), ttl)
             .await;
 
-        match self.primary.set_with_ttl(key, value, ttl).await {
-            Ok(()) => Ok(()),
+        match self.primary.set_with_ttl(key.clone(), value, ttl).await {
+            Ok(()) => {
+                self.clear_degraded_write(&key).await;
+                Ok(())
+            }
             Err(e) => {
-                tracing::debug!(error = %e, "Primary cache SET_TTL failed, wrote to in-memory fallback only");
+                self.mark_degraded_write(key, ttl).await;
+                tracing::debug!(error = %e, "Primary cache SET_TTL failed, retained bounded in-memory value");
                 Ok(())
             }
         }
@@ -355,18 +397,23 @@ impl CacheBackend for FallbackCacheBackend {
 
     async fn invalidate(&self, key: &str) -> Result<()> {
         let _ = self.fallback.invalidate(key).await;
+        self.clear_degraded_write(key).await;
 
-        match self.primary.invalidate(key).await {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                tracing::debug!(error = %e, key, "Primary cache INVALIDATE failed, in-memory entry removed");
-                Ok(())
-            }
-        }
+        self.primary.invalidate(key).await.map_err(|e| {
+            tracing::warn!(error = %e, key, "Primary cache invalidation failed; stale shared data may remain");
+            e
+        })
     }
 
     fn stats(&self) -> CacheStats {
-        self.primary.stats()
+        let primary = self.primary.stats();
+        let fallback = self.fallback.stats();
+        CacheStats {
+            hits: primary.hits.saturating_add(fallback.hits),
+            misses: primary.misses.saturating_add(fallback.misses),
+            evictions: primary.evictions.saturating_add(fallback.evictions),
+            entries: primary.entries.max(fallback.entries),
+        }
     }
 }
 
@@ -384,6 +431,145 @@ mod redis_ttl_unit_tests {
     #[test]
     fn treats_zero_ttl_as_immediate_invalidation() {
         assert_eq!(redis_ttl_millis(Duration::ZERO), None);
+    }
+}
+
+#[cfg(test)]
+mod fallback_consistency_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct StubBackend {
+        values: Mutex<HashMap<String, Vec<u8>>>,
+        fail_get: AtomicBool,
+        fail_set: AtomicBool,
+        fail_invalidate: AtomicBool,
+    }
+
+    impl StubBackend {
+        fn clear_value(&self, key: &str) {
+            self.values.lock().unwrap().remove(key);
+        }
+    }
+
+    #[async_trait]
+    impl CacheBackend for StubBackend {
+        async fn health(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            if self.fail_get.load(Ordering::SeqCst) {
+                return Err(crate::Error::Cache("get failed".to_string()));
+            }
+            Ok(self.values.lock().unwrap().get(key).cloned())
+        }
+
+        async fn set(&self, key: String, value: Vec<u8>) -> Result<()> {
+            if self.fail_set.load(Ordering::SeqCst) {
+                return Err(crate::Error::Cache("set failed".to_string()));
+            }
+            self.values.lock().unwrap().insert(key, value);
+            Ok(())
+        }
+
+        async fn set_with_ttl(&self, key: String, value: Vec<u8>, _ttl: Duration) -> Result<()> {
+            self.set(key, value).await
+        }
+
+        async fn invalidate(&self, key: &str) -> Result<()> {
+            if self.fail_invalidate.load(Ordering::SeqCst) {
+                return Err(crate::Error::Cache("invalidate failed".to_string()));
+            }
+            self.values.lock().unwrap().remove(key);
+            Ok(())
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats {
+                entries: self.values.lock().unwrap().len() as u64,
+                ..CacheStats::default()
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn degraded_write_survives_primary_reconnect_but_not_ordinary_primary_miss() {
+        let primary = Arc::new(StubBackend::default());
+        primary.fail_set.store(true, Ordering::SeqCst);
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 32));
+        let cache = FallbackCacheBackend::new(primary.clone(), fallback);
+
+        cache
+            .set("key".to_string(), b"local".to_vec())
+            .await
+            .unwrap();
+        primary.fail_set.store(false, Ordering::SeqCst);
+
+        assert_eq!(cache.get("key").await.unwrap(), Some(b"local".to_vec()));
+
+        cache
+            .set("key".to_string(), b"shared".to_vec())
+            .await
+            .unwrap();
+        primary.clear_value("key");
+
+        assert_eq!(cache.get("key").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn degraded_markers_expire_with_the_cached_value() {
+        let primary = Arc::new(StubBackend::default());
+        primary.fail_set.store(true, Ordering::SeqCst);
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 32));
+        let cache = FallbackCacheBackend::new(primary, fallback);
+
+        cache
+            .set_with_ttl(
+                "short".to_string(),
+                b"value".to_vec(),
+                Duration::from_millis(30),
+            )
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(70)).await;
+
+        assert_eq!(cache.get("short").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn invalidation_failure_is_not_silently_acknowledged() {
+        let primary = Arc::new(StubBackend::default());
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 32));
+        let cache = FallbackCacheBackend::new(primary.clone(), fallback);
+
+        cache
+            .set("key".to_string(), b"value".to_vec())
+            .await
+            .unwrap();
+        primary.fail_invalidate.store(true, Ordering::SeqCst);
+
+        assert!(cache.invalidate("key").await.is_err());
+        primary.fail_get.store(true, Ordering::SeqCst);
+        assert_eq!(cache.get("key").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn fallback_stats_include_local_entries() {
+        let primary = Arc::new(StubBackend::default());
+        primary.fail_set.store(true, Ordering::SeqCst);
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 32));
+        let cache = FallbackCacheBackend::new(primary, fallback);
+
+        cache
+            .set("key".to_string(), b"value".to_vec())
+            .await
+            .unwrap();
+
+        assert_eq!(cache.stats().entries, 1);
     }
 }
 
