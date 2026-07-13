@@ -83,6 +83,17 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     let base = build_shared_runtime_extensions(registry, settings);
     let mut extensions = base.as_ref().clone();
     let db = runtime_ctx.db_clone();
+
+    #[cfg(feature = "mod-fulfillment")]
+    {
+        let fulfillment_registry = runtime_ctx
+            .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
+            .unwrap_or_else(
+                rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider,
+            );
+        extensions.insert(fulfillment_registry);
+    }
+
     let auth_admin_provider = Arc::new(
         crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
             db.clone(),
@@ -192,5 +203,8 @@ mod tests {
         assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
+        #[cfg(feature = "mod-fulfillment")]
+        assert!(extensions
+            .contains::<rustok_fulfillment::providers::FulfillmentProviderRegistry>());
     }
 }
