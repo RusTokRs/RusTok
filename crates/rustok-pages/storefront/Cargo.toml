@@ -7,9 +7,13 @@ description = "Leptos storefront UI package for the rustok-pages module"
 
 [features]
 default = []
-hydrate = ["leptos/hydrate"]
+hydrate = [
+  "leptos/hydrate",
+  "rustok-page-builder-storefront/hydrate",
+]
 ssr = [
   "leptos/ssr",
+  "rustok-page-builder-storefront/ssr",
   "dep:leptos_axum",
   "dep:rustok-channel",
   "dep:rustok-content",
@@ -31,6 +35,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n-leptos.workspace = true
+rustok-page-builder-storefront = { path = "../../rustok-page-builder-storefront" }
 rustok-channel = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
