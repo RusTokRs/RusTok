@@ -5,10 +5,10 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationPort, UserMutationRecord,
 };
-use rustok_core::{UserRole, UserStatus};
+use rustok_core::{infer_user_role_from_permissions, UserRole, UserStatus};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait,
+    QueryFilter, QuerySelect, Set, TransactionTrait,
 };
 use std::str::FromStr;
 use uuid::Uuid;
@@ -82,9 +82,14 @@ impl ServerAuthAdminMutationProvider {
         tenant_id: Uuid,
         user_id: Uuid,
     ) -> Result<UserRole, AuthAdminMutationError> {
-        RbacService::get_user_role(&self.db, &tenant_id, &user_id)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))
+        let permissions = RbacService::get_user_permissions_authoritative(
+            &self.db,
+            &tenant_id,
+            &user_id,
+        )
+        .await
+        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        Ok(infer_user_role_from_permissions(&permissions))
     }
 
     async fn ensure_role_assignment_allowed(
@@ -117,6 +122,48 @@ impl ServerAuthAdminMutationProvider {
             Err(forbidden("cannot modify a peer or higher-privileged user"))
         }
     }
+}
+
+async fn lock_user_for_mutation<C>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<users::Model, AuthAdminMutationError>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id))
+    };
+
+    let user = match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?,
+        DbBackend::Sqlite => {
+            let user = query()
+                .one(db)
+                .await
+                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            if let Some(user) = user.as_ref() {
+                users::Entity::update_many()
+                    .col_expr(
+                        users::Column::UpdatedAt,
+                        Expr::col(users::Column::UpdatedAt),
+                    )
+                    .filter(users::Column::Id.eq(user.id))
+                    .filter(users::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await
+                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            }
+            user
+        }
+    };
+
+    user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
 }
 
 async fn revoke_active_sessions<C>(
@@ -246,15 +293,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             "users:update or users:manage required",
         )
         .await?;
-        let user = users::Entity::find_by_id(command.id)
+        let initial_user = users::Entity::find_by_id(command.id)
             .filter(users::Column::TenantId.eq(context.tenant_id))
             .one(&self.db)
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
             .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
-        let current_role = self.user_role(context.tenant_id, user.id).await?;
-        self.ensure_target_management_allowed(context, user.id, &current_role)
-            .await?;
 
         if command.role.is_some() || command.status.is_some() {
             self.authorize_user(
@@ -271,7 +315,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
             if existing
                 .as_ref()
-                .is_some_and(|existing| existing.id != user.id)
+                .is_some_and(|existing| existing.id != initial_user.id)
             {
                 return Err(AuthAdminMutationError::Conflict(
                     "user email already exists".to_string(),
@@ -297,18 +341,28 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &self.db,
             context.tenant_id,
             "user",
-            user.id,
+            initial_user.id,
             locale,
-            &user.metadata,
+            &initial_user.metadata,
             command.custom_fields,
         )
         .await
         .map_err(map_custom_field_error)?;
-        let user_id = user.id;
         let password_changed = command.password.is_some();
         let status_disables_user = requested_status
             .as_ref()
             .is_some_and(|status| status != &UserStatus::Active);
+
+        let tx = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
+        let current_role = self.user_role(context.tenant_id, user.id).await?;
+        self.ensure_target_management_allowed(context, user.id, &current_role)
+            .await?;
+        let user_id = user.id;
         let mut active: users::ActiveModel = user.into();
         if let Some(email) = command.email {
             active.email = Set(email.to_lowercase());
@@ -327,11 +381,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active.metadata = Set(metadata);
         }
 
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         ensure_active_super_admin_continuity(
             &tx,
             context.tenant_id,
@@ -387,21 +436,16 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             "users:manage required",
         )
         .await?;
-        let user = users::Entity::find_by_id(user_id)
-            .filter(users::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
-        let current_role = self.user_role(context.tenant_id, user.id).await?;
-        self.ensure_target_management_allowed(context, user.id, &current_role)
-            .await?;
 
         let tx = self
             .db
             .begin()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let user = lock_user_for_mutation(&tx, context.tenant_id, user_id).await?;
+        let current_role = self.user_role(context.tenant_id, user.id).await?;
+        self.ensure_target_management_allowed(context, user.id, &current_role)
+            .await?;
         ensure_active_super_admin_continuity(
             &tx,
             context.tenant_id,
