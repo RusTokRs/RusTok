@@ -1,10 +1,10 @@
 use std::future::Future;
 
+use crate::invalidation_consumer::DurableInvalidationProcessGateError;
 use crate::{
     BoundedInvalidationTrackerError, DurableCacheInvalidationConsumer,
     DurableCacheInvalidationError, DurableCacheInvalidationRecord, DurableInvalidationDecision,
 };
-use crate::invalidation_consumer::DurableInvalidationProcessGateError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DurableInvalidationProcessOutcome {
@@ -33,39 +33,53 @@ impl DurableCacheInvalidationConsumer {
         R: FnOnce(DurableCacheInvalidationRecord) -> RFut,
         RFut: Future<Output = rustok_core::Result<()>>,
     {
-        let lease = self
-            .process_gate(record.channel())
-            .map_err(|error| match error {
-                DurableInvalidationProcessGateError::Saturated { count, maximum } => {
-                    DurableInvalidationProcessError::Saturated { count, maximum }
-                }
-            })?;
-        let _guard = lease.gate.lock().await;
+        let _in_flight = self.begin_process();
+        let result = async {
+            let lease = self
+                .process_gate(record.channel())
+                .map_err(|error| match error {
+                    DurableInvalidationProcessGateError::Saturated { count, maximum } => {
+                        DurableInvalidationProcessError::Saturated { count, maximum }
+                    }
+                })?;
+            let _guard = lease.gate.lock().await;
 
-        match self
-            .decide(&record)
-            .map_err(DurableInvalidationProcessError::Record)?
-        {
-            DurableInvalidationDecision::Apply { generation } => {
-                apply(record.clone())
-                    .await
-                    .map_err(DurableInvalidationProcessError::Handler)?;
-                self.acknowledge_applied(record.channel(), generation)
-                    .map_err(DurableInvalidationProcessError::Tracker)?;
-                Ok(DurableInvalidationProcessOutcome::Applied { generation })
-            }
-            DurableInvalidationDecision::Ignore { generation } => {
-                Ok(DurableInvalidationProcessOutcome::Ignored { generation })
-            }
-            DurableInvalidationDecision::RecoverThrough { generation } => {
-                recover(record.clone())
-                    .await
-                    .map_err(DurableInvalidationProcessError::Handler)?;
-                self.acknowledge_recovery(record.channel(), generation)
-                    .map_err(DurableInvalidationProcessError::Tracker)?;
-                Ok(DurableInvalidationProcessOutcome::Recovered { generation })
+            match self
+                .decide(&record)
+                .map_err(DurableInvalidationProcessError::Record)?
+            {
+                DurableInvalidationDecision::Apply { generation } => {
+                    apply(record.clone())
+                        .await
+                        .map_err(DurableInvalidationProcessError::Handler)?;
+                    self.acknowledge_applied(record.channel(), generation)
+                        .map_err(DurableInvalidationProcessError::Tracker)?;
+                    Ok(DurableInvalidationProcessOutcome::Applied { generation })
+                }
+                DurableInvalidationDecision::Ignore { generation } => {
+                    Ok(DurableInvalidationProcessOutcome::Ignored { generation })
+                }
+                DurableInvalidationDecision::RecoverThrough { generation } => {
+                    recover(record.clone())
+                        .await
+                        .map_err(DurableInvalidationProcessError::Handler)?;
+                    self.acknowledge_recovery(record.channel(), generation)
+                        .map_err(DurableInvalidationProcessError::Tracker)?;
+                    Ok(DurableInvalidationProcessOutcome::Recovered { generation })
+                }
             }
         }
+        .await;
+
+        match &result {
+            Ok(DurableInvalidationProcessOutcome::Applied { .. }) => self.record_applied(),
+            Ok(DurableInvalidationProcessOutcome::Ignored { .. }) => self.record_ignored(),
+            Ok(DurableInvalidationProcessOutcome::Recovered { .. }) => self.record_recovered(),
+            Err(DurableInvalidationProcessError::Saturated { .. }) => self.record_failure(true),
+            Err(_) => self.record_failure(false),
+        }
+
+        result
     }
 }
 
@@ -152,6 +166,9 @@ mod tests {
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(consumer.last_generation("tenant.invalidate"), Some(4));
+        assert_eq!(consumer.stats().attempted, 1);
+        assert_eq!(consumer.stats().applied, 1);
+        assert_eq!(consumer.stats().in_flight, 0);
     }
 
     #[tokio::test]
@@ -202,6 +219,12 @@ mod tests {
         assert!(outcomes.contains(&DurableInvalidationProcessOutcome::Ignored {
             generation: 4
         }));
+        let stats = consumer.stats();
+        assert_eq!(stats.attempted, 2);
+        assert_eq!(stats.applied, 1);
+        assert_eq!(stats.ignored, 1);
+        assert_eq!(stats.failed, 0);
+        assert_eq!(stats.in_flight, 0);
     }
 
     #[tokio::test]
@@ -228,6 +251,11 @@ mod tests {
             consumer.decide(&record(4)).unwrap(),
             DurableInvalidationDecision::Apply { generation: 4 }
         );
+        let stats = consumer.stats();
+        assert_eq!(stats.attempted, 1);
+        assert_eq!(stats.failed, 1);
+        assert_eq!(stats.applied, 0);
+        assert_eq!(stats.in_flight, 0);
     }
 
     #[tokio::test]
@@ -259,6 +287,11 @@ mod tests {
             DurableInvalidationProcessOutcome::Recovered { generation: 5 }
         );
         assert_eq!(consumer.last_generation("tenant.invalidate"), Some(5));
+        let stats = consumer.stats();
+        assert_eq!(stats.attempted, 2);
+        assert_eq!(stats.failed, 1);
+        assert_eq!(stats.recovered, 1);
+        assert_eq!(stats.in_flight, 0);
     }
 
     #[tokio::test]
@@ -301,9 +334,15 @@ mod tests {
                 maximum: 1
             }
         ));
+        let saturated_stats = consumer.stats();
+        assert_eq!(saturated_stats.attempted, 2);
+        assert_eq!(saturated_stats.failed, 1);
+        assert_eq!(saturated_stats.saturated, 1);
+        assert_eq!(saturated_stats.in_flight, 1);
 
         release.notify_one();
         first.await.unwrap().unwrap();
         assert_eq!(consumer.in_flight_process_channels(), 0);
+        assert_eq!(consumer.stats().in_flight, 0);
     }
 }
