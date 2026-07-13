@@ -4,10 +4,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
-#[cfg(feature = "redis-cache")]
-use rustok_core::RedisCacheBackend;
 
 use crate::{CacheBackendOptions, CacheService};
+#[cfg(feature = "redis-cache")]
+use crate::shared_backend::SharedClientRedisCacheBackend;
 
 impl CacheService {
     /// Create a backend whose in-process capacity is measured in bytes rather than entries.
@@ -73,17 +73,26 @@ impl CacheService {
         options: &CacheBackendOptions,
     ) -> Arc<dyn CacheBackend> {
         #[cfg(feature = "redis-cache")]
-        if let Some(url) = self.redis_url() {
-            if let Ok(redis_backend) = RedisCacheBackend::with_circuit_breaker(
-                url,
+        if let Some(client) = self.redis_client().cloned() {
+            match SharedClientRedisCacheBackend::new(
+                client,
                 prefix,
                 ttl,
                 options.redis_circuit_breaker.clone(),
             )
             .await
             {
-                let memory = Arc::new(InMemoryCacheBackend::new_weighted(ttl, max_weight_bytes));
-                return Arc::new(FallbackCacheBackend::new(Arc::new(redis_backend), memory));
+                Ok(redis_backend) => {
+                    let memory =
+                        Arc::new(InMemoryCacheBackend::new_weighted(ttl, max_weight_bytes));
+                    return Arc::new(FallbackCacheBackend::new(
+                        Arc::new(redis_backend),
+                        memory,
+                    ));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, prefix, "Weighted Redis backend initialization failed; using memory backend");
+                }
             }
         }
 
