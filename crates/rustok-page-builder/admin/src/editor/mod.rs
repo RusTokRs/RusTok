@@ -6,6 +6,7 @@ mod isolated_canvas;
 mod modular_canvas;
 mod palette_layers;
 mod properties_assets;
+mod resize_handles;
 mod runtime;
 mod selection_commands;
 mod shortcut_dispatch;
@@ -21,6 +22,7 @@ pub(crate) use canvas_protocol::{
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
 pub(crate) use palette_layers::PaletteLayersPanel;
 pub(crate) use properties_assets::PropertiesAssetsPanel;
+pub(crate) use resize_handles::ResizeHandles;
 pub(crate) use runtime::AdminEditorRuntime;
 pub(crate) use shortcut_dispatch::dispatch_shortcut;
 pub(crate) use toolbar::AuthoringToolbar;
