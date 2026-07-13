@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::error::{Error, Result};
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
 use rustok_api::{Action, Permission, Resource};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 
 use super::rbac_service::RbacService;
 
@@ -14,11 +14,16 @@ impl RbacService {
     /// Authentication must observe role revocation and demotion immediately.
     /// Authorization entry points use `get_user_permissions`, which honors the
     /// immutable request scope and may use the runtime cache outside a request.
-    pub async fn get_user_permissions_authoritative(
-        db: &DatabaseConnection,
+    /// Accepting any `ConnectionTrait` keeps hierarchy and delegation checks on
+    /// the same transaction that owns their serialization lock.
+    pub async fn get_user_permissions_authoritative<C>(
+        db: &C,
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
-    ) -> Result<Vec<Permission>> {
+    ) -> Result<Vec<Permission>>
+    where
+        C: ConnectionTrait,
+    {
         let assigned_roles = user_roles::Entity::find()
             .filter(user_roles::Column::UserId.eq(*user_id))
             .all(db)
