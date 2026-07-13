@@ -17,6 +17,8 @@ use crate::tools::{
     TOOL_QUERY_MODULES,
 };
 
+const UNKNOWN_TOOL_PERMISSION: &str = "__rustok_internal_unknown_mcp_tool__";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpActorType {
@@ -260,7 +262,7 @@ pub fn default_tool_requirement(tool_name: &str) -> McpToolRequirement {
         | TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD
         | TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => vec![Permission::MODULES_MANAGE.to_string()],
         TOOL_MCP_HEALTH | TOOL_MCP_WHOAMI => Vec::new(),
-        _ => Vec::new(),
+        _ => vec![UNKNOWN_TOOL_PERMISSION.to_string()],
     };
 
     McpToolRequirement {
@@ -378,5 +380,19 @@ mod tests {
             requirement.required_permissions,
             vec![Permission::SCRIPTS_EXECUTE.to_string()]
         );
+    }
+
+    #[test]
+    fn unknown_tools_are_denied_by_default() {
+        let context = McpAccessContext {
+            identity: None,
+            granted_permissions: vec![Permission::MODULES_MANAGE.to_string()],
+            policy: McpAccessPolicy::default(),
+        };
+
+        let decision = context.authorize_tool(&default_tool_requirement("future_unregistered_tool"));
+
+        assert!(!decision.allowed);
+        assert_eq!(decision.code.as_deref(), Some("missing_permissions"));
     }
 }
