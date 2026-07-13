@@ -1,0 +1,218 @@
+use super::FlyProjectInspection;
+use crate::dto::PageBuilderContractMetadata;
+use crate::service::{
+    NoopPageBuilderAdapterTelemetry, PageBuilderAdapterCallEvidence, PageBuilderAdapterTelemetry,
+    PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
+    PageBuilderServiceError, PageBuilderServiceResult,
+};
+use async_trait::async_trait;
+use fly::{RegistrySet, ValidationLimits};
+use rustok_api::PortContext;
+use serde_json::Value;
+
+/// Fly-backed reference provider that keeps the existing storage/rendering ports while making Fly
+/// authoritative for project decode, structural validation, layers traversal, and component lookup.
+pub struct FlyAdapterBackedPageBuilderService<S, R, T = NoopPageBuilderAdapterTelemetry> {
+    store: S,
+    renderer: R,
+    telemetry: T,
+    registries: RegistrySet,
+    limits: ValidationLimits,
+}
+
+impl<S, R> FlyAdapterBackedPageBuilderService<S, R, NoopPageBuilderAdapterTelemetry> {
+    pub fn new(store: S, renderer: R) -> Self {
+        Self {
+            store,
+            renderer,
+            telemetry: NoopPageBuilderAdapterTelemetry,
+            registries: RegistrySet::with_builtins(),
+            limits: ValidationLimits::default(),
+        }
+    }
+}
+
+impl<S, R, T> FlyAdapterBackedPageBuilderService<S, R, T> {
+    pub fn with_telemetry(store: S, renderer: R, telemetry: T) -> Self {
+        Self {
+            store,
+            renderer,
+            telemetry,
+            registries: RegistrySet::with_builtins(),
+            limits: ValidationLimits::default(),
+        }
+    }
+
+    pub fn with_policy(mut self, registries: RegistrySet, limits: ValidationLimits) -> Self {
+        self.registries = registries;
+        self.limits = limits;
+        self
+    }
+
+    fn inspect(
+        &self,
+        schema_version: &str,
+        project_data: &Value,
+    ) -> PageBuilderServiceResult<FlyProjectInspection> {
+        let inspection = FlyProjectInspection::decode_with(
+            schema_version,
+            project_data,
+            &self.registries,
+            self.limits,
+        )?;
+        inspection.require_valid()?;
+        Ok(inspection)
+    }
+}
+
+#[async_trait]
+impl<S, R, T> PageBuilderCapabilityService for FlyAdapterBackedPageBuilderService<S, R, T>
+where
+    S: PageBuilderProjectStore,
+    R: PageBuilderRenderingAdapter,
+    T: PageBuilderAdapterTelemetry,
+{
+    async fn preview(
+        &self,
+        context: &PortContext,
+        input: crate::dto::PreviewPageBuilderInput,
+    ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
+        self.inspect(&input.schema_version, &input.project_data)?;
+        let evidence = PageBuilderAdapterCallEvidence::render_preview(context, &input.page_id);
+        self.telemetry.record_adapter_call(&evidence);
+        let html = match self
+            .renderer
+            .render_preview(context, &input.project_data)
+            .await
+        {
+            Ok(html) => {
+                self.telemetry.record_adapter_call(&evidence.succeeded());
+                html
+            }
+            Err(error) => {
+                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                return Err(error);
+            }
+        };
+
+        Ok(crate::dto::PreviewPageBuilderResult {
+            page_id: input.page_id,
+            html,
+        })
+    }
+
+    async fn tree(
+        &self,
+        context: &PortContext,
+        input: crate::dto::BuilderTreeInput,
+    ) -> PageBuilderServiceResult<crate::dto::BuilderTreeResult> {
+        if input.page_id.trim().is_empty() {
+            return Err(PageBuilderServiceError::Validation(
+                "page_id must not be empty".to_string(),
+            ));
+        }
+        let evidence = PageBuilderAdapterCallEvidence::load_project(context, &input.page_id);
+        self.telemetry.record_adapter_call(&evidence);
+        let project_data = match self.store.load_project(context, &input.page_id).await {
+            Ok(project_data) => {
+                self.telemetry.record_adapter_call(&evidence.succeeded());
+                project_data
+            }
+            Err(error) => {
+                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                return Err(error);
+            }
+        };
+        let nodes = match project_data {
+            Some(project_data) => self
+                .inspect(PageBuilderContractMetadata::BASELINE.contract, &project_data)?
+                .tree_nodes(),
+            None => Vec::new(),
+        };
+
+        Ok(crate::dto::BuilderTreeResult {
+            page_id: input.page_id,
+            nodes,
+        })
+    }
+
+    async fn properties(
+        &self,
+        context: &PortContext,
+        input: crate::dto::BuilderNodePropertiesInput,
+    ) -> PageBuilderServiceResult<crate::dto::BuilderNodePropertiesResult> {
+        if input.page_id.trim().is_empty() || input.node_id.trim().is_empty() {
+            return Err(PageBuilderServiceError::Validation(
+                "page_id and node_id must not be empty".to_string(),
+            ));
+        }
+        if !input.properties.is_object() {
+            return Err(PageBuilderServiceError::Validation(
+                "properties must be a JSON object".to_string(),
+            ));
+        }
+
+        let evidence = PageBuilderAdapterCallEvidence::load_project(context, &input.page_id);
+        self.telemetry.record_adapter_call(&evidence);
+        if let Some(project_data) = match self.store.load_project(context, &input.page_id).await {
+            Ok(project_data) => {
+                self.telemetry.record_adapter_call(&evidence.succeeded());
+                project_data
+            }
+            Err(error) => {
+                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                return Err(error);
+            }
+        } {
+            self.inspect(PageBuilderContractMetadata::BASELINE.contract, &project_data)?
+                .component_properties(&input.node_id)?;
+        }
+
+        Ok(crate::dto::BuilderNodePropertiesResult {
+            page_id: input.page_id,
+            node_id: input.node_id,
+            properties: input.properties,
+        })
+    }
+
+    async fn publish(
+        &self,
+        context: &PortContext,
+        input: crate::dto::PublishPageBuilderInput,
+    ) -> PageBuilderServiceResult<crate::dto::PublishPageBuilderResult> {
+        if input.revision_id.trim().is_empty() {
+            return Err(PageBuilderServiceError::Validation(
+                "revision_id must not be empty".to_string(),
+            ));
+        }
+        self.inspect(&input.schema_version, &input.project_data)?;
+        let evidence = PageBuilderAdapterCallEvidence::save_project(
+            context,
+            &input.page_id,
+            &input.revision_id,
+        );
+        self.telemetry.record_adapter_call(&evidence);
+        match self
+            .store
+            .save_project(
+                context,
+                &input.page_id,
+                &input.revision_id,
+                input.project_data,
+            )
+            .await
+        {
+            Ok(()) => self.telemetry.record_adapter_call(&evidence.succeeded()),
+            Err(error) => {
+                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                return Err(error);
+            }
+        }
+
+        Ok(crate::dto::PublishPageBuilderResult {
+            page_id: input.page_id,
+            revision_id: input.revision_id,
+            published: true,
+        })
+    }
+}
