@@ -66,47 +66,60 @@ impl AdminCanvasController {
         &mut self,
         intent: UiIntent,
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
+        let previous_ui = self.ui.clone();
         let effects = self.ui.dispatch(intent)?;
         let mut outgoing = Vec::new();
 
         for effect in effects {
-            match effect {
-                UiEffect::None => {}
+            let result: Result<(), AdminCanvasError> = match effect {
+                UiEffect::None => Ok(()),
                 UiEffect::Announce(message) => {
                     outgoing.push(AdminCanvasEffect::Announce(message));
+                    Ok(())
                 }
-                UiEffect::Command(command) => {
-                    let report = self.editor.apply(command)?;
-                    self.synchronize(report);
-                }
-                UiEffect::Undo => {
-                    self.editor.undo()?;
-                    let report = self.editor.validate();
-                    self.synchronize(report);
-                }
-                UiEffect::Redo => {
-                    self.editor.redo()?;
-                    let report = self.editor.validate();
-                    self.synchronize(report);
-                }
+                UiEffect::Command(command) => self
+                    .editor
+                    .apply(command)
+                    .map(|report| self.synchronize(report))
+                    .map_err(AdminCanvasError::from),
+                UiEffect::Undo => self
+                    .editor
+                    .undo()
+                    .map(|_| self.editor.validate())
+                    .map(|report| self.synchronize(report))
+                    .map_err(AdminCanvasError::from),
+                UiEffect::Redo => self
+                    .editor
+                    .redo()
+                    .map(|_| self.editor.validate())
+                    .map(|report| self.synchronize(report))
+                    .map_err(AdminCanvasError::from),
                 UiEffect::Persist {
                     expected_hash,
                     command_sequence,
-                } => {
-                    let project_data = GrapesJsV1Codec::encode_value(self.editor.document())?;
-                    outgoing.push(AdminCanvasEffect::Request {
-                        request: PageBuilderCapabilityRequest::Publish(PublishPageBuilderInput {
-                            page_id: self.page_id.clone(),
-                            revision_id: self.revision_id.clone(),
-                            schema_version: PageBuilderContractMetadata::BASELINE
-                                .contract
-                                .to_string(),
-                            project_data,
-                        }),
-                        expected_hash,
-                        command_sequence,
-                    });
-                }
+                } => GrapesJsV1Codec::encode_value(self.editor.document())
+                    .map(|project_data| {
+                        outgoing.push(AdminCanvasEffect::Request {
+                            request: PageBuilderCapabilityRequest::Publish(
+                                PublishPageBuilderInput {
+                                    page_id: self.page_id.clone(),
+                                    revision_id: self.revision_id.clone(),
+                                    schema_version: PageBuilderContractMetadata::BASELINE
+                                        .contract
+                                        .to_string(),
+                                    project_data,
+                                },
+                            ),
+                            expected_hash,
+                            command_sequence,
+                        });
+                    })
+                    .map_err(AdminCanvasError::from),
+            };
+
+            if let Err(error) = result {
+                self.ui = previous_ui;
+                return Err(error);
             }
         }
 
@@ -241,6 +254,20 @@ mod tests {
         assert_eq!(input.page_id, "home");
         assert_eq!(input.schema_version, "grapesjs_v1");
         assert_eq!(input.project_data["pages"][0]["component"]["components"][0]["attributes"]["aria-label"], "Hero");
+    }
+
+    #[test]
+    fn rejected_engine_command_rolls_back_ui_dirty_state() {
+        let mut controller = controller();
+        let previous = controller.ui().clone();
+        let error = controller
+            .dispatch(UiIntent::Execute(EditorCommand::Patch {
+                component_id: "missing".to_string(),
+                patch: ComponentPatch::default(),
+            }))
+            .expect_err("missing component must fail");
+        assert!(matches!(error, AdminCanvasError::Fly(_)));
+        assert_eq!(controller.ui(), &previous);
     }
 
     #[test]
