@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{has_effective_permission, Permission};
+use rustok_api::{has_any_effective_permission, has_effective_permission, Permission};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::models::{oauth_apps, oauth_consents, oauth_tokens, tenants, users};
 use crate::services::oauth_app::{self, OAuthAppService};
+use crate::services::rbac_request_scope::permissions_for;
 use crate::services::rbac_service::RbacService;
 
 mod super_admin_guard;
@@ -26,21 +27,26 @@ impl ServerAuthAdminMutationProvider {
         Self { db }
     }
 
+    fn request_permissions(
+        &self,
+        context: &AuthAdminMutationContext,
+    ) -> Result<Vec<Permission>, AuthAdminMutationError> {
+        permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            AuthAdminMutationError::Forbidden(
+                "auth administration requires a request-bound effective permission snapshot"
+                    .to_string(),
+            )
+        })
+    }
+
     async fn authorize_user(
         &self,
         context: &AuthAdminMutationContext,
         permissions: &[Permission],
         message: &str,
     ) -> Result<(), AuthAdminMutationError> {
-        let allowed = RbacService::has_any_permission(
-            &self.db,
-            &context.tenant_id,
-            &context.actor_id,
-            permissions,
-        )
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        if allowed {
+        let actor_permissions = self.request_permissions(context)?;
+        if has_any_effective_permission(&actor_permissions, permissions) {
             Ok(())
         } else {
             Err(AuthAdminMutationError::Forbidden(message.to_string()))
@@ -75,16 +81,8 @@ impl ServerAuthAdminMutationProvider {
         &self,
         context: &AuthAdminMutationContext,
     ) -> Result<(), AuthAdminMutationError> {
-        let allowed = RbacService::has_permission(
-            &self.db,
-            &context.tenant_id,
-            &context.actor_id,
-            &Permission::SETTINGS_MANAGE,
-        )
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-
-        if allowed {
+        let actor_permissions = self.request_permissions(context)?;
+        if has_effective_permission(&actor_permissions, &Permission::SETTINGS_MANAGE) {
             Ok(())
         } else {
             Err(AuthAdminMutationError::Forbidden(
@@ -98,20 +96,17 @@ impl ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         requested_permissions: &[String],
     ) -> Result<(), AuthAdminMutationError> {
-        let actor_permissions =
-            RbacService::get_user_permissions(&self.db, &context.tenant_id, &context.actor_id)
-                .await
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let actor_permissions = self.request_permissions(context)?;
 
         for value in requested_permissions {
-            let permission = Permission::from_str(value).map_err(|error| {
+            let permission = Permission::from_str(value.trim()).map_err(|error| {
                 AuthAdminMutationError::Validation(format!(
                     "invalid delegated permission `{value}`: {error}"
                 ))
             })?;
             if !has_effective_permission(&actor_permissions, &permission) {
                 return Err(AuthAdminMutationError::Forbidden(format!(
-                    "cannot delegate permission not held by the actor: {permission}"
+                    "cannot delegate permission outside the current request authority: {permission}"
                 )));
             }
         }
@@ -360,7 +355,6 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             &self.db,
             app.id,
             context.actor_id,
-            context.tenant_id,
             scopes,
         )
         .await
@@ -372,14 +366,13 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
-        let app = oauth_apps::Entity::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        OAuthAppService::revoke_user_consent(&self.db, app.id, context.actor_id)
-            .await
-            .map_err(map_service_error)
+        OAuthAppService::revoke_consent(
+            &self.db,
+            app_id,
+            context.actor_id,
+            context.tenant_id,
+        )
+        .await
+        .map_err(map_service_error)
     }
 }
