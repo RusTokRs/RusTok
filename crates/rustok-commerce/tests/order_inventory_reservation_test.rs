@@ -1,5 +1,10 @@
 use rust_decimal::Decimal;
-use rustok_commerce::migrations;
+use rustok_commerce::migrations as commerce_migrations;
+use rustok_fulfillment::dto::{
+    CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentItemQuantityInput,
+    ShipFulfillmentInput,
+};
+use rustok_fulfillment::{migrations as fulfillment_migrations, FulfillmentService};
 use rustok_inventory::entities::{inventory_item, inventory_level, reservation_item};
 use rustok_inventory::InventoryService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
@@ -27,10 +32,13 @@ async fn setup() -> (
     support::ensure_commerce_schema(&db).await;
 
     let manager = SchemaManager::new(&db);
-    let mut registered = migrations::migrations();
-    let consumption = registered
+    let mut registered = commerce_migrations::migrations();
+    let fulfillment_shipping = registered
         .pop()
-        .expect("order delivery consumption migration should be registered last");
+        .expect("fulfillment shipping consumption migration should be registered last");
+    let order_delivery = registered
+        .pop()
+        .expect("order delivery consumption migration should precede fulfillment shipping");
     let reservation = registered
         .pop()
         .expect("order confirmation reservation migration should precede consumption");
@@ -38,10 +46,22 @@ async fn setup() -> (
         .up(&manager)
         .await
         .expect("order inventory reservation migration should install on SQLite");
-    consumption
+    order_delivery
         .up(&manager)
         .await
-        .expect("order inventory consumption migration should install on SQLite");
+        .expect("order inventory delivery consumption should install on SQLite");
+
+    let fulfillment_progress = fulfillment_migrations::migrations()
+        .pop()
+        .expect("fulfillment progress serialization migration should be registered last");
+    fulfillment_progress
+        .up(&manager)
+        .await
+        .expect("fulfillment progress serialization should install on SQLite");
+    fulfillment_shipping
+        .up(&manager)
+        .await
+        .expect("fulfillment shipping consumption should install on SQLite");
 
     let event_bus = mock_transactional_event_bus();
     (
@@ -277,4 +297,138 @@ async fn order_inventory_is_reserved_released_and_consumed_across_lifecycle() {
         .expect("consumed reservation should remain as an audit row");
     assert_eq!(consumed.quantity, 0);
     assert!(consumed.deleted_at.is_some());
+}
+
+#[tokio::test]
+async fn fulfillment_shipping_consumes_partial_reservation_without_double_delivery_charge() {
+    let (db, catalog, inventory, orders) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (product_id, variant_id) = create_product_and_variant(&catalog, tenant_id).await;
+
+    inventory
+        .set_inventory(tenant_id, actor_id, variant_id, 5)
+        .await
+        .expect("inventory should be stocked");
+    let order = create_order(
+        &orders,
+        tenant_id,
+        actor_id,
+        product_id,
+        variant_id,
+        3,
+    )
+    .await;
+    orders
+        .confirm_order(tenant_id, actor_id, order.id)
+        .await
+        .expect("order should reserve inventory");
+    orders
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order.id,
+            "fulfillment-payment".to_string(),
+            "manual".to_string(),
+        )
+        .await
+        .expect("confirmed order should become paid");
+    assert_eq!(inventory_quantities(&db, variant_id).await, (5, 3));
+
+    let fulfillment_service = FulfillmentService::new(db.clone());
+    let fulfillment = fulfillment_service
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id: order.id,
+                shipping_option_id: None,
+                customer_id: None,
+                carrier: None,
+                tracking_number: None,
+                items: Some(vec![CreateFulfillmentItemInput {
+                    order_line_item_id: order.line_items[0].id,
+                    quantity: 3,
+                    metadata: serde_json::json!({}),
+                }]),
+                metadata: serde_json::json!({"source":"shipping-consumption-test"}),
+            },
+        )
+        .await
+        .expect("fulfillment should be created");
+    let fulfillment_item_id = fulfillment.items[0].id;
+
+    let partial = fulfillment_service
+        .ship_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            ShipFulfillmentInput {
+                carrier: "manual".to_string(),
+                tracking_number: "PARTIAL-SHIP".to_string(),
+                items: Some(vec![FulfillmentItemQuantityInput {
+                    fulfillment_item_id,
+                    quantity: 1,
+                }]),
+                metadata: serde_json::json!({"step":"partial"}),
+            },
+        )
+        .await
+        .expect("partial shipment should consume one reserved unit");
+    assert_eq!(partial.status, "shipped");
+    assert_eq!(partial.items[0].shipped_quantity, 1);
+    assert_eq!(inventory_quantities(&db, variant_id).await, (4, 2));
+
+    let remaining_reservation = reservation_item::Entity::find_by_id(order.line_items[0].id)
+        .one(&db)
+        .await
+        .expect("reservation query should succeed")
+        .expect("partial shipment should leave an active reservation");
+    assert_eq!(remaining_reservation.quantity, 2);
+    assert!(remaining_reservation.deleted_at.is_none());
+
+    let fully_shipped = fulfillment_service
+        .ship_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            ShipFulfillmentInput {
+                carrier: "manual".to_string(),
+                tracking_number: "FULL-SHIP".to_string(),
+                items: Some(vec![FulfillmentItemQuantityInput {
+                    fulfillment_item_id,
+                    quantity: 2,
+                }]),
+                metadata: serde_json::json!({"step":"complete"}),
+            },
+        )
+        .await
+        .expect("remaining shipment should consume the reservation");
+    assert_eq!(fully_shipped.items[0].shipped_quantity, 3);
+    assert_eq!(inventory_quantities(&db, variant_id).await, (2, 0));
+
+    let consumed = reservation_item::Entity::find_by_id(order.line_items[0].id)
+        .one(&db)
+        .await
+        .expect("consumed reservation query should succeed")
+        .expect("consumed reservation should remain as an audit row");
+    assert_eq!(consumed.quantity, 0);
+    assert!(consumed.deleted_at.is_some());
+
+    orders
+        .ship_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            "ORDER-SHIP".to_string(),
+            "manual".to_string(),
+        )
+        .await
+        .expect("paid order should be markable as shipped");
+    orders
+        .deliver_order(tenant_id, actor_id, order.id, None)
+        .await
+        .expect("order delivery fallback should tolerate already consumed reservations");
+    assert_eq!(
+        inventory_quantities(&db, variant_id).await,
+        (2, 0),
+        "order delivery must not double-consume inventory already shipped by fulfillment"
+    );
 }
