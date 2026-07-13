@@ -5,8 +5,6 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-#[cfg(feature = "redis-cache")]
-use redis::AsyncCommands;
 use rustok_cache::{
     CacheInvalidationMessage, CacheKeyBuilder as CanonicalCacheKeyBuilder, CacheLoadPolicy,
     CacheLoadSource, CacheService, CacheTtlPolicy,
@@ -366,12 +364,18 @@ impl TenantCacheMetricsStore {
 
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
-            let result = tenant_cache_redis_timeout("metrics connection", client.get_multiplexed_async_connection()).await;
+            let result = tenant_cache_redis_timeout(
+                "metrics connection",
+                client.get_multiplexed_async_connection(),
+            )
+            .await;
             if let Ok(mut conn) = result {
                 let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
                 let _ = tenant_cache_redis_timeout(
                     "metrics INCR",
-                    conn.incr::<_, u64>(redis_key, 1),
+                    redis::cmd("INCR")
+                        .arg(redis_key)
+                        .query_async::<u64>(&mut conn),
                 )
                 .await;
             }
@@ -418,7 +422,9 @@ impl TenantCacheMetricsStore {
                 let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
                 if let Ok(Some(metric)) = tenant_cache_redis_timeout(
                     "metrics GET",
-                    conn.get::<_, Option<u64>>(redis_key),
+                    redis::cmd("GET")
+                        .arg(redis_key)
+                        .query_async::<Option<u64>>(&mut conn),
                 )
                 .await
                 {
