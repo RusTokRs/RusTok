@@ -29,10 +29,9 @@ const REQUIRED_TENANT_CONSTRAINTS: &[&str] = &[
 const REQUIRED_LIFECYCLE_CONSTRAINTS: &[&str] = &[
     "chk_forum_topics_status",
     "chk_forum_replies_status",
-];
-
-const REQUIRED_POSITION_CONSTRAINTS: &[&str] = &[
     "chk_forum_replies_position_positive",
+    "chk_forum_topic_revisions_reason",
+    "chk_forum_reply_revisions_reason",
 ];
 
 const REQUIRED_TENANT_INDEXES: &[&str] = &[
@@ -43,6 +42,15 @@ const REQUIRED_TENANT_INDEXES: &[&str] = &[
     "uq_forum_solutions_tenant_reply",
     "uq_forum_topic_tags_tenant_topic_term",
     "uq_forum_replies_tenant_topic_position",
+    "idx_forum_topics_tenant_deleted",
+    "idx_forum_replies_tenant_topic_deleted",
+    "idx_forum_topic_revisions_tenant_topic_created",
+    "idx_forum_reply_revisions_tenant_reply_created",
+];
+
+const REQUIRED_REVISION_TABLES: &[&str] = &[
+    "forum_topic_revisions",
+    "forum_reply_revisions",
 ];
 
 #[tokio::test]
@@ -77,7 +85,6 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
     for (label, required) in [
         ("tenant", REQUIRED_TENANT_CONSTRAINTS),
         ("lifecycle", REQUIRED_LIFECYCLE_CONSTRAINTS),
-        ("reply-position", REQUIRED_POSITION_CONSTRAINTS),
     ] {
         let missing_constraints = required
             .iter()
@@ -116,6 +123,32 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
         return Err(test_error(format!(
             "forum tenant baseline is missing indexes: {}",
             missing_indexes.join(", ")
+        )));
+    }
+
+    let table_rows = context
+        .db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT tablename
+             FROM pg_tables
+             WHERE schemaname = current_schema()"
+                .to_string(),
+        ))
+        .await?;
+    let tables = table_rows
+        .into_iter()
+        .map(|row| row.try_get("", "tablename"))
+        .collect::<Result<BTreeSet<String>, _>>()?;
+    let missing_tables = REQUIRED_REVISION_TABLES
+        .iter()
+        .filter(|name| !tables.contains(*name))
+        .copied()
+        .collect::<Vec<_>>();
+    if !missing_tables.is_empty() {
+        return Err(test_error(format!(
+            "forum runtime baseline is missing revision tables: {}",
+            missing_tables.join(", ")
         )));
     }
 
