@@ -49,6 +49,7 @@ pub fn prevent_editor_shortcut_default(event: &KeyboardEvent, shortcut: EditorSh
 pub struct BrowserResizeSession {
     pub pointer_id: i32,
     pub resize: ResizeSession,
+    coordinate_scale: f64,
 }
 
 impl BrowserResizeSession {
@@ -59,16 +60,29 @@ impl BrowserResizeSession {
         event: &PointerEvent,
         policy: ResizePolicy,
     ) -> Self {
+        Self::begin_scaled(component_id, handle, rect, event, policy, 1.0)
+    }
+
+    pub fn begin_scaled(
+        component_id: impl Into<String>,
+        handle: ResizeHandle,
+        rect: CanvasRect,
+        event: &PointerEvent,
+        policy: ResizePolicy,
+        coordinate_scale: f64,
+    ) -> Self {
+        let coordinate_scale = normalize_scale(coordinate_scale);
         Self {
             pointer_id: event.pointer_id(),
             resize: ResizeSession {
                 component_id: component_id.into(),
                 handle,
                 start_rect: rect,
-                start_x: f64::from(event.client_x()),
-                start_y: f64::from(event.client_y()),
+                start_x: f64::from(event.client_x()) / coordinate_scale,
+                start_y: f64::from(event.client_y()) / coordinate_scale,
                 policy,
             },
+            coordinate_scale,
         }
     }
 
@@ -79,10 +93,18 @@ impl BrowserResizeSession {
     pub fn update(&self, event: &PointerEvent) -> Option<ResizeResult> {
         self.accepts(event).then(|| {
             self.resize.update(
-                f64::from(event.client_x()),
-                f64::from(event.client_y()),
+                f64::from(event.client_x()) / self.coordinate_scale,
+                f64::from(event.client_y()) / self.coordinate_scale,
             )
         })
+    }
+}
+
+fn normalize_scale(scale: f64) -> f64 {
+    if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
     }
 }
 
@@ -103,7 +125,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resize_session_tracks_pointer_identity() {
+    fn resize_session_tracks_pointer_identity_and_scale() {
         let resize = ResizeSession {
             component_id: "hero".to_string(),
             handle: ResizeHandle::East,
@@ -120,7 +142,9 @@ mod tests {
         let session = BrowserResizeSession {
             pointer_id: 7,
             resize,
+            coordinate_scale: 0.8,
         };
         assert_eq!(session.pointer_id, 7);
+        assert_eq!(session.coordinate_scale, 0.8);
     }
 }
