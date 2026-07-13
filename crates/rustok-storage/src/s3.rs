@@ -24,11 +24,28 @@ pub struct S3Storage {
 
 impl S3Storage {
     pub async fn from_config(config: &S3StorageConfig) -> Result<Self> {
-        if config.bucket.trim().is_empty() {
+        let bucket = config.bucket.trim();
+        if bucket.is_empty() || bucket.chars().any(char::is_control) {
             return Err(StorageError::Backend(
-                "S3 storage bucket must not be empty".to_string(),
+                "S3 storage bucket must be a non-empty value without control characters"
+                    .to_string(),
             ));
         }
+
+        let key_prefix = config
+            .key_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| validate_s3_path(value, false))
+            .transpose()?;
+        let public_base_url = config
+            .public_base_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(validate_public_base_url)
+            .transpose()?;
 
         let mut loader = aws_config::defaults(BehaviorVersion::latest());
         if let Some(region) = config
@@ -49,6 +66,11 @@ impl S3Storage {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
+            if endpoint_url.chars().any(char::is_control) {
+                return Err(StorageError::Backend(
+                    "S3 endpoint_url contains control characters".to_string(),
+                ));
+            }
             builder = builder.endpoint_url(endpoint_url.to_string());
         }
 
@@ -81,30 +103,22 @@ impl S3Storage {
         let client = Client::from_conf(builder.build());
         Ok(Self {
             client,
-            bucket: config.bucket.trim().to_string(),
-            key_prefix: config
-                .key_prefix
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string),
-            public_base_url: config
-                .public_base_url
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| value.trim_end_matches('/').to_string()),
+            bucket: bucket.to_string(),
+            key_prefix,
+            public_base_url,
         })
     }
 
     fn object_key(&self, path: &str) -> Result<String> {
-        let trimmed = path.trim().trim_start_matches('/');
-        if trimmed.is_empty() || trimmed.contains("..") {
-            return Err(StorageError::InvalidPath(path.to_string()));
-        }
-        Ok(match &self.key_prefix {
-            Some(prefix) => format!("{}/{}", prefix.trim_end_matches('/'), trimmed),
-            None => trimmed.to_string(),
+        self.object_key_with_empty(path, false)
+    }
+
+    fn object_key_with_empty(&self, path: &str, allow_empty: bool) -> Result<String> {
+        let relative = validate_s3_path(path, allow_empty)?;
+        Ok(match (&self.key_prefix, relative.is_empty()) {
+            (Some(prefix), false) => format!("{prefix}/{relative}"),
+            (Some(prefix), true) => prefix.clone(),
+            (None, _) => relative,
         })
     }
 
@@ -118,12 +132,20 @@ impl S3Storage {
     }
 
     fn relative_path(&self, key: &str) -> Option<String> {
-        match &self.key_prefix {
+        let relative = match &self.key_prefix {
             Some(prefix) => key
-                .strip_prefix(prefix.trim_end_matches('/'))
-                .and_then(|suffix| suffix.strip_prefix('/'))
-                .map(ToString::to_string),
-            None => Some(key.to_string()),
+                .strip_prefix(prefix)
+                .and_then(|suffix| suffix.strip_prefix('/'))?,
+            None => key,
+        };
+        validate_s3_path(relative, false).ok()
+    }
+
+    fn invalid_public_url(&self) -> String {
+        if let Some(base) = &self.public_base_url {
+            format!("{base}/invalid-object")
+        } else {
+            format!("s3://{}/invalid-object", self.bucket)
         }
     }
 }
@@ -136,6 +158,7 @@ impl StorageBackend for S3Storage {
         data: bytes::Bytes,
         content_type: &str,
     ) -> Result<UploadedObject> {
+        validate_content_type(content_type)?;
         let key = self.object_key(path)?;
         self.client
             .put_object()
@@ -160,6 +183,7 @@ impl StorageBackend for S3Storage {
         data: bytes::Bytes,
         content_type: &str,
     ) -> Result<bool> {
+        validate_content_type(content_type)?;
         let key = self.object_key(path)?;
         match self
             .client
@@ -211,7 +235,7 @@ impl StorageBackend for S3Storage {
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<StoredObject>> {
-        let prefix = self.object_key(prefix)?;
+        let prefix = self.object_key_with_empty(prefix, true)?;
         let mut continuation_token = None;
         let mut objects = Vec::new();
         loop {
@@ -229,6 +253,7 @@ impl StorageBackend for S3Storage {
                     continue;
                 };
                 let Some(path) = self.relative_path(key) else {
+                    tracing::warn!(key, "Ignoring S3 object outside validated storage key policy");
                     continue;
                 };
                 let size = u64::try_from(object.size().unwrap_or_default()).map_err(|_| {
@@ -272,7 +297,7 @@ impl StorageBackend for S3Storage {
     fn public_url(&self, path: &str) -> String {
         let key = match self.object_key(path) {
             Ok(key) => key,
-            Err(_) => path.trim_start_matches('/').to_string(),
+            Err(_) => return self.invalid_public_url(),
         };
         if let Some(base) = &self.public_base_url {
             return format!("{base}/{key}");
@@ -283,6 +308,68 @@ impl StorageBackend for S3Storage {
     fn backend_name(&self) -> &'static str {
         "s3"
     }
+}
+
+fn validate_s3_path(path: &str, allow_empty: bool) -> Result<String> {
+    if path.starts_with('/')
+        || path.ends_with('/')
+        || path.contains('\\')
+        || path.contains('%')
+        || path.contains('?')
+        || path.contains('#')
+        || path.chars().any(char::is_control)
+    {
+        return Err(StorageError::InvalidPath(path.to_string()));
+    }
+
+    let path = path.trim();
+    if path.is_empty() {
+        return if allow_empty {
+            Ok(String::new())
+        } else {
+            Err(StorageError::InvalidPath(path.to_string()))
+        };
+    }
+
+    if path.split('/').any(|segment| {
+        segment.is_empty()
+            || matches!(segment, "." | "..")
+            || !segment.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+            })
+    }) {
+        return Err(StorageError::InvalidPath(path.to_string()));
+    }
+
+    Ok(path.to_string())
+}
+
+fn validate_content_type(content_type: &str) -> Result<()> {
+    let valid = !content_type.trim().is_empty()
+        && content_type.len() <= 255
+        && content_type
+            .chars()
+            .all(|character| character.is_ascii_graphic() && !matches!(character, '\r' | '\n'));
+    if valid {
+        Ok(())
+    } else {
+        Err(StorageError::Backend(
+            "S3 content type contains unsupported characters".to_string(),
+        ))
+    }
+}
+
+fn validate_public_base_url(value: &str) -> Result<String> {
+    let value = value.trim_end_matches('/');
+    if !(value.starts_with("https://") || value.starts_with("http://"))
+        || value.contains(['\r', '\n', '?', '#'])
+        || value.chars().any(char::is_control)
+    {
+        return Err(StorageError::Backend(
+            "S3 public_base_url must be a plain HTTP(S) URL".to_string(),
+        ));
+    }
+    Ok(value.to_string())
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
@@ -301,4 +388,28 @@ pub struct S3StorageConfig {
     pub public_base_url: Option<String>,
     #[serde(default)]
     pub key_prefix: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_public_base_url, validate_s3_path};
+
+    #[test]
+    fn s3_keys_are_relative_and_url_safe() {
+        assert_eq!(
+            validate_s3_path("tenant/2026/asset.png", false).unwrap(),
+            "tenant/2026/asset.png"
+        );
+        assert!(validate_s3_path("../secret", false).is_err());
+        assert!(validate_s3_path("tenant/%2e%2e/secret", false).is_err());
+        assert!(validate_s3_path("tenant\\secret", false).is_err());
+        assert!(validate_s3_path("/absolute", false).is_err());
+    }
+
+    #[test]
+    fn public_base_url_rejects_query_or_fragment_confusion() {
+        assert!(validate_public_base_url("https://cdn.example/media").is_ok());
+        assert!(validate_public_base_url("https://cdn.example/media?token=x").is_err());
+        assert!(validate_public_base_url("javascript:alert(1)").is_err());
+    }
 }
