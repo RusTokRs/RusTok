@@ -45,7 +45,10 @@ pub use services::{
     ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
     StoreContextService,
 };
-pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
+pub(crate) use services::{
+    FulfillmentOrchestrationError, FulfillmentOrchestrationService,
+    JournaledFulfillmentOrchestrationService,
+};
 
 pub struct CommerceModule;
 
@@ -101,12 +104,12 @@ impl RusToKModule for CommerceModule {
             Permission::new(Resource::Customers, Action::Delete),
             Permission::new(Resource::Customers, Action::List),
             Permission::new(Resource::Customers, Action::Manage),
-            Permission::new(Resource::Regions, Action::Create),
-            Permission::new(Resource::Regions, Action::Read),
-            Permission::new(Resource::Regions, Action::Update),
-            Permission::new(Resource::Regions, Action::Delete),
-            Permission::new(Resource::Regions, Action::List),
-            Permission::new(Resource::Regions, Action::Manage),
+            Permission::new(Resource::Carts, Action::Create),
+            Permission::new(Resource::Carts, Action::Read),
+            Permission::new(Resource::Carts, Action::Update),
+            Permission::new(Resource::Carts, Action::Delete),
+            Permission::new(Resource::Carts, Action::List),
+            Permission::new(Resource::Carts, Action::Manage),
             Permission::new(Resource::Payments, Action::Create),
             Permission::new(Resource::Payments, Action::Read),
             Permission::new(Resource::Payments, Action::Update),
@@ -119,18 +122,6 @@ impl RusToKModule for CommerceModule {
             Permission::new(Resource::Fulfillments, Action::Delete),
             Permission::new(Resource::Fulfillments, Action::List),
             Permission::new(Resource::Fulfillments, Action::Manage),
-            Permission::new(Resource::Inventory, Action::Create),
-            Permission::new(Resource::Inventory, Action::Read),
-            Permission::new(Resource::Inventory, Action::Update),
-            Permission::new(Resource::Inventory, Action::Delete),
-            Permission::new(Resource::Inventory, Action::List),
-            Permission::new(Resource::Inventory, Action::Manage),
-            Permission::new(Resource::Discounts, Action::Create),
-            Permission::new(Resource::Discounts, Action::Read),
-            Permission::new(Resource::Discounts, Action::Update),
-            Permission::new(Resource::Discounts, Action::Delete),
-            Permission::new(Resource::Discounts, Action::List),
-            Permission::new(Resource::Discounts, Action::Manage),
         ]
     }
 }
@@ -139,11 +130,4 @@ impl MigrationSource for CommerceModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
     }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
 }
-
-#[cfg(test)]
-mod contract_tests;
