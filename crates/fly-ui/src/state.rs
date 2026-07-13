@@ -91,6 +91,21 @@ impl Default for ViewportState {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PageNavigationState {
+    pub active_page_id: Option<String>,
+    pub active_page_index: usize,
+}
+
+impl Default for PageNavigationState {
+    fn default() -> Self {
+        Self {
+            active_page_id: None,
+            active_page_index: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SelectionState {
     pub component_id: Option<String>,
@@ -229,6 +244,7 @@ pub struct FlyUiState {
     pub presentation: Presentation,
     pub panels: PanelState,
     pub viewport: ViewportState,
+    pub page: PageNavigationState,
     pub selection: SelectionState,
     pub overlays: OverlayState,
     pub drag: Option<DragState>,
@@ -250,6 +266,7 @@ impl FlyUiState {
             presentation,
             panels: PanelState::default(),
             viewport: ViewportState::default(),
+            page: PageNavigationState::default(),
             selection: SelectionState::default(),
             overlays: OverlayState::default(),
             drag: None,
