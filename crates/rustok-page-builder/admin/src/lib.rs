@@ -1,3 +1,4 @@
+mod i18n;
 mod model;
 pub mod transport;
 pub mod editor;
