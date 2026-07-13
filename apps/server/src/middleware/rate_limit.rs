@@ -15,6 +15,7 @@ use redis::Script;
 use rustok_telemetry::metrics::{
     record_rate_limit_backend_unavailable, record_rate_limit_exceeded, update_rate_limit_runtime,
 };
+use sha2::{Digest, Sha256};
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -28,6 +29,8 @@ use crate::common::{
     extract_effective_client_ip, peer_ip_from_extensions,
     settings::{RateLimitBackendKind, RequestTrustSettings},
 };
+
+const RATE_LIMIT_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Configuration for rate limiting
 #[derive(Clone, Debug)]
@@ -251,34 +254,33 @@ return {current, ttl}
             )
         });
 
-        let redis_key = format!("{key_prefix}:{key}");
-        let window_secs = self.window_secs().max(1);
-        let mut connection = client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|error| {
-                RateLimitCheckError::BackendUnavailable(format!(
-                    "failed to connect to redis rate-limit backend: {error}"
-                ))
-            })?;
+        let redis_key = redis_rate_limit_key(key_prefix, key);
+        let window_secs = bounded_redis_window_seconds(self.config.window);
+        let mut connection = redis_with_timeout(
+            RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
+            "redis rate-limit connection",
+            client.get_multiplexed_async_connection(),
+        )
+        .await
+        .map_err(RateLimitCheckError::BackendUnavailable)?;
 
-        let (current, ttl): (i64, i64) = RATE_LIMIT_REDIS_SCRIPT
-            .key(redis_key.as_str())
-            .arg(window_secs as i64)
-            .invoke_async(&mut connection)
-            .await
-            .map_err(|error| {
-                RateLimitCheckError::BackendUnavailable(format!(
-                    "failed to execute redis rate-limit script: {error}"
-                ))
-            })?;
+        let (current, ttl): (i64, i64) = redis_with_timeout(
+            RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
+            "redis rate-limit script",
+            RATE_LIMIT_REDIS_SCRIPT
+                .key(redis_key.as_str())
+                .arg(window_secs)
+                .invoke_async(&mut connection),
+        )
+        .await
+        .map_err(RateLimitCheckError::BackendUnavailable)?;
 
         let current = current.max(0) as usize;
         let retry_after = ttl.max(1) as u64;
 
         if current > self.config.max_requests {
             warn!(
-                key = %key,
+                redis_key = %redis_key,
                 limit = self.config.max_requests,
                 current,
                 retry_after,
@@ -312,18 +314,19 @@ return {current, ttl}
         match &self.backend {
             RateLimiterBackend::Memory { .. } => Ok(()),
             RateLimiterBackend::Redis { client, .. } => {
-                let mut connection =
-                    client
-                        .get_multiplexed_async_connection()
-                        .await
-                        .map_err(|error| {
-                            format!("failed to connect to redis rate-limit backend: {error}")
-                        })?;
+                let mut connection = redis_with_timeout(
+                    RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
+                    "redis rate-limit health connection",
+                    client.get_multiplexed_async_connection(),
+                )
+                .await?;
 
-                let response: String = redis::cmd("PING")
-                    .query_async(&mut connection)
-                    .await
-                    .map_err(|error| format!("failed to ping redis rate-limit backend: {error}"))?;
+                let response: String = redis_with_timeout(
+                    RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
+                    "redis rate-limit health PING",
+                    redis::cmd("PING").query_async(&mut connection),
+                )
+                .await?;
 
                 if response.eq_ignore_ascii_case("PONG") {
                     Ok(())
@@ -514,7 +517,7 @@ struct TrustedRateLimitClaims {
 /// 3. "ip:unknown" fallback
 ///
 /// Security note: user identity MUST NOT be sourced from client-supplied headers
-/// such as X-User-ID.  Any client can set an arbitrary value, which would allow
+/// such as X-User-ID. Any client can set an arbitrary value, which would allow
 /// them to exhaust another user's rate-limit bucket or bypass their own.
 /// User-scoped rate limiting must be implemented after JWT verification using
 /// the verified claims from a trusted middleware layer.
@@ -604,6 +607,32 @@ fn build_rate_limit_key(
     }
 
     key
+}
+
+fn redis_rate_limit_key(key_prefix: &str, identity: &str) -> String {
+    format!(
+        "{key_prefix}:v1:sha256:{}",
+        hex::encode(Sha256::digest(identity.as_bytes()))
+    )
+}
+
+fn bounded_redis_window_seconds(window: Duration) -> i64 {
+    window.as_secs().clamp(1, i64::MAX as u64) as i64
+}
+
+async fn redis_with_timeout<T, E, F>(
+    timeout: Duration,
+    operation: &str,
+    future: F,
+) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    tokio::time::timeout(timeout, future)
+        .await
+        .map_err(|_| format!("{operation} timed out after {} ms", timeout.as_millis()))?
+        .map_err(|error| format!("{operation} failed: {error}"))
 }
 
 fn insert_header_if_valid(headers: &mut axum::http::HeaderMap, key: &'static str, value: String) {
@@ -743,348 +772,5 @@ pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::auth::{encode_access_token, encode_oauth_access_token, AuthConfig};
-    use crate::common::settings::ForwardedHeadersMode;
-    use axum::body::Body;
-    use rustok_core::UserRole;
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use uuid::Uuid;
-
-    fn test_auth_config() -> AuthConfig {
-        AuthConfig::new("rate-limit-test-secret-with-sufficient-length".to_string())
-            .with_expiration(3600, 3600)
-            .with_issuer("rustok")
-            .with_audience("rustok-admin")
-    }
-
-    fn trusted_request_trust() -> RequestTrustSettings {
-        RequestTrustSettings {
-            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
-            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
-        }
-    }
-
-    fn request_with_peer_ip(peer_ip: IpAddr) -> Request {
-        let mut request = Request::builder()
-            .uri("/api/test")
-            .body(Body::empty())
-            .expect("request");
-        request
-            .extensions_mut()
-            .insert(SocketAddr::from((peer_ip, 443)));
-        request
-    }
-
-    #[tokio::test]
-    async fn test_rate_limit_allows_requests_within_limit() {
-        let config = RateLimitConfig::new(5, 60);
-        let limiter = RateLimiter::new(config);
-
-        for i in 1..=5 {
-            let result = limiter.check_rate_limit("test-client").await;
-            assert!(result.is_ok(), "Request {} should be allowed", i);
-
-            let info = result.unwrap();
-            assert_eq!(info.remaining, 5 - i);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_rate_limit_blocks_excess_requests() {
-        let config = RateLimitConfig::new(3, 60);
-        let limiter = RateLimiter::new(config);
-
-        for _ in 0..3 {
-            assert!(limiter.check_rate_limit("test-client").await.is_ok());
-        }
-
-        let result = limiter.check_rate_limit("test-client").await;
-        assert!(result.is_err());
-        let RateLimitCheckError::Exceeded(exceeded) = result.unwrap_err() else {
-            panic!("expected exceeded error");
-        };
-        assert_eq!(exceeded.limit, 3);
-        assert!(exceeded.retry_after > 0);
-    }
-
-    #[tokio::test]
-    async fn test_rate_limit_resets_after_window() {
-        let config = RateLimitConfig::new(2, 1);
-        let limiter = RateLimiter::new(config);
-
-        assert!(limiter.check_rate_limit("test-client").await.is_ok());
-        assert!(limiter.check_rate_limit("test-client").await.is_ok());
-        assert!(limiter.check_rate_limit("test-client").await.is_err());
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        assert!(limiter.check_rate_limit("test-client").await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_rate_limit_separate_clients() {
-        let config = RateLimitConfig::new(2, 60);
-        let limiter = RateLimiter::new(config);
-
-        assert!(limiter.check_rate_limit("client-a").await.is_ok());
-        assert!(limiter.check_rate_limit("client-a").await.is_ok());
-        assert!(limiter.check_rate_limit("client-a").await.is_err());
-
-        assert!(limiter.check_rate_limit("client-b").await.is_ok());
-        assert!(limiter.check_rate_limit("client-b").await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_disabled_rate_limiter() {
-        let config = RateLimitConfig::disabled();
-        let limiter = RateLimiter::new(config);
-
-        for _ in 0..1000 {
-            assert!(limiter.check_rate_limit("test-client").await.is_ok());
-        }
-    }
-
-    #[tokio::test]
-    async fn test_cleanup_expired() {
-        let config = RateLimitConfig::new(10, 1);
-        let limiter = RateLimiter::new(config);
-
-        limiter.check_rate_limit("client-1").await.ok();
-        limiter.check_rate_limit("client-2").await.ok();
-        limiter.check_rate_limit("client-3").await.ok();
-
-        {
-            let RateLimiterBackend::Memory { requests } = &limiter.backend else {
-                panic!("expected in-memory limiter");
-            };
-            requests.run_pending_tasks().await;
-            assert_eq!(requests.entry_count(), 3);
-        }
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        limiter.cleanup_expired().await;
-
-        {
-            let RateLimiterBackend::Memory { requests } = &limiter.backend else {
-                panic!("expected in-memory limiter");
-            };
-            requests.run_pending_tasks().await;
-            assert_eq!(requests.entry_count(), 0);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_concurrent_requests() {
-        use tokio::task::JoinSet;
-
-        let config = RateLimitConfig::new(100, 60);
-        let limiter = Arc::new(RateLimiter::new(config));
-
-        let mut tasks = JoinSet::new();
-
-        for i in 0..50 {
-            let limiter = limiter.clone();
-            tasks.spawn(async move { limiter.check_rate_limit(&format!("client-{}", i)).await });
-        }
-
-        while let Some(result) = tasks.join_next().await {
-            assert!(result.unwrap().is_ok());
-        }
-    }
-
-    #[test]
-    fn extract_client_id_does_not_use_x_user_id() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-user-id",
-            "550e8400-e29b-41d4-a716-446655440000".parse().unwrap(),
-        );
-        headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
-
-        let id = extract_client_id(&headers);
-        assert_eq!(id, "ip:1.2.3.4", "must use IP, not x-user-id");
-    }
-
-    #[test]
-    fn extract_client_id_falls_back_to_unknown() {
-        let headers = HeaderMap::new();
-        let id = extract_client_id(&headers);
-        assert_eq!(id, "ip:unknown");
-    }
-
-    #[test]
-    fn build_rate_limit_key_uses_ip_only_without_trusted_dimensions() {
-        let headers = HeaderMap::new();
-        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)));
-
-        let key = build_rate_limit_key(
-            &headers,
-            &request,
-            Some(&test_auth_config()),
-            false,
-            &RequestTrustSettings::default(),
-        );
-        assert_eq!(key, "ip:1.2.3.4");
-    }
-
-    #[test]
-    fn build_rate_limit_key_ignores_invalid_bearer_token() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
-        headers.insert(header::AUTHORIZATION, "Bearer broken".parse().unwrap());
-        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
-
-        let key = build_rate_limit_key(
-            &headers,
-            &request,
-            Some(&test_auth_config()),
-            true,
-            &trusted_request_trust(),
-        );
-        assert_eq!(key, "ip:1.2.3.4");
-    }
-
-    #[test]
-    fn build_rate_limit_key_adds_trusted_tenant_dimension_for_direct_token() {
-        let config = test_auth_config();
-        let tenant_id = Uuid::new_v4();
-        let token = encode_access_token(
-            &config,
-            Uuid::new_v4(),
-            tenant_id,
-            UserRole::Admin,
-            Uuid::new_v4(),
-        )
-        .expect("token");
-
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
-        headers.insert(
-            header::AUTHORIZATION,
-            format!("Bearer {token}").parse().unwrap(),
-        );
-        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
-
-        let key = build_rate_limit_key(
-            &headers,
-            &request,
-            Some(&config),
-            true,
-            &trusted_request_trust(),
-        );
-        assert_eq!(key, format!("ip:1.2.3.4|tenant:{tenant_id}"));
-    }
-
-    #[test]
-    fn build_rate_limit_key_adds_oauth_app_dimension_for_oauth_token() {
-        let config = test_auth_config();
-        let tenant_id = Uuid::new_v4();
-        let client_id = Uuid::new_v4();
-        let token = encode_oauth_access_token(
-            &config,
-            Uuid::new_v4(),
-            tenant_id,
-            UserRole::Customer,
-            client_id,
-            &["catalog:read".to_string()],
-            "client_credentials",
-            3600,
-        )
-        .expect("token");
-
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
-        headers.insert(
-            header::AUTHORIZATION,
-            format!("Bearer {token}").parse().unwrap(),
-        );
-        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
-
-        let key = build_rate_limit_key(
-            &headers,
-            &request,
-            Some(&config),
-            true,
-            &trusted_request_trust(),
-        );
-        assert_eq!(
-            key,
-            format!("ip:1.2.3.4|tenant:{tenant_id}|oauth_app:{client_id}")
-        );
-    }
-
-    #[test]
-    fn build_rate_limit_key_ignores_spoofed_forwarded_ip_for_untrusted_peer() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "203.0.113.8".parse().unwrap());
-        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)));
-
-        let key = build_rate_limit_key(
-            &headers,
-            &request,
-            Some(&test_auth_config()),
-            false,
-            &trusted_request_trust(),
-        );
-
-        assert_eq!(key, "ip:192.168.1.50");
-    }
-
-    #[test]
-    fn rate_limited_response_includes_contract_headers() {
-        let response = rate_limited_response(&RateLimitExceeded::new(20, 42));
-
-        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(response.headers()["retry-after"], "42");
-        assert_eq!(response.headers()["x-ratelimit-limit"], "20");
-        assert_eq!(response.headers()["x-ratelimit-remaining"], "0");
-        assert_eq!(response.headers()["x-ratelimit-reset"], "42");
-    }
-
-    #[test]
-    fn matching_path_policy_uses_first_matching_policy_order() {
-        let oauth = PathRateLimitPolicy {
-            limiter: Arc::new(RateLimiter::new_with_namespace(
-                RateLimitConfig::new(1, 60),
-                "oauth",
-            )),
-            prefixes: Arc::new(vec!["/api/oauth", "/api/auth"]),
-        };
-        let auth = PathRateLimitPolicy {
-            limiter: Arc::new(RateLimiter::new_with_namespace(
-                RateLimitConfig::new(1, 60),
-                "auth",
-            )),
-            prefixes: Arc::new(vec!["/api/auth"]),
-        };
-        let api = PathRateLimitPolicy {
-            limiter: Arc::new(RateLimiter::new_with_namespace(
-                RateLimitConfig::new(1, 60),
-                "api",
-            )),
-            prefixes: Arc::new(vec!["/api"]),
-        };
-
-        let policies = vec![oauth, auth, api];
-
-        let selected = matching_path_policy(&policies, "/api/auth/login").expect("policy");
-
-        assert_eq!(selected.limiter.namespace(), "oauth");
-    }
-
-    #[test]
-    fn matching_path_policy_returns_none_for_unmatched_path() {
-        let policies = vec![PathRateLimitPolicy {
-            limiter: Arc::new(RateLimiter::new_with_namespace(
-                RateLimitConfig::new(1, 60),
-                "api",
-            )),
-            prefixes: Arc::new(vec!["/api"]),
-        }];
-
-        assert!(matching_path_policy(&policies, "/health/ready").is_none());
-    }
-}
+#[path = "rate_limit_tests.rs"]
+mod tests;
