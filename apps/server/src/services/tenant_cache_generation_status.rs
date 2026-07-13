@@ -121,15 +121,16 @@ impl TenantCacheGenerationListenerState {
         let subscriber_ready = self.subscriber_ready.load(Ordering::Acquire);
         let reconciliation_healthy = self.reconciliation_healthy.load(Ordering::Acquire);
         let degraded = self.degraded.load(Ordering::Acquire);
+        let ready = if redis_required {
+            subscriber_ready && reconciliation_healthy
+        } else {
+            local_ready
+        };
         let status = if !initialized {
             TenantCacheGenerationListenerStatus::Disabled
         } else if degraded {
             TenantCacheGenerationListenerStatus::Degraded
-        } else if if redis_required {
-            subscriber_ready && reconciliation_healthy
-        } else {
-            local_ready
-        } {
+        } else if ready {
             TenantCacheGenerationListenerStatus::Healthy
         } else {
             TenantCacheGenerationListenerStatus::Starting
@@ -183,8 +184,7 @@ pub async fn mark_tenant_cache_generation_listener_degraded(error: impl Into<Str
     state().mark_degraded(error).await;
 }
 
-pub async fn tenant_cache_generation_listener_snapshot(
-) -> TenantCacheGenerationListenerSnapshot {
+pub async fn tenant_cache_generation_listener_snapshot() -> TenantCacheGenerationListenerSnapshot {
     state().snapshot().await
 }
 
