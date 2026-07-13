@@ -1,9 +1,6 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use fly::{
-    builtin_trait_schemas, trait_snapshots, EditorCommand, TraitSchema, TraitSnapshot,
-    TraitValueKind,
-};
+use fly::{trait_snapshots, EditorCommand, TraitSchema, TraitSnapshot, TraitValueKind};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -23,15 +20,24 @@ pub fn TraitPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 
     view! {
         <section class="space-y-3 rounded-xl border border-border bg-card p-3">
-            <h2 class="font-semibold">{title}</h2>
+            <div class="flex items-center justify-between gap-2">
+                <h2 class="font-semibold">{title}</h2>
+                <span class="text-xs text-muted-foreground">
+                    {format!("{} schemas", panel_runtime.trait_schemas.len())}
+                </span>
+            </div>
             {move || {
                 let selection = panel_runtime.controller.with(|controller| {
                     let selected = controller.selected_component_view()?;
                     let component = controller.editor().document().component(&selected.id)?;
-                    let schemas = builtin_trait_schemas();
                     Some((
                         selected.id,
-                        trait_snapshots(component, schemas.iter()),
+                        trait_snapshots(
+                            component,
+                            panel_runtime
+                                .trait_schemas
+                                .for_component(component.component_type()),
+                        ),
                     ))
                 });
                 match selection {
