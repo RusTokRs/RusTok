@@ -56,9 +56,21 @@ Important intermediate limitations that must not be mistaken for the target:
 - artifact lifecycle dispatch requires a configured
   `ArtifactLifecycleExecutor`; production host wiring for that executor remains
   to be supplied;
-- admission now stages, verifies, and publishes payload bytes into CAS before
-  the database admission commit; production durable CAS, outbox, and reconciler
-  adapters remain to be supplied by host infrastructure;
+- admission stages, verifies, and publishes payload bytes into CAS before the
+  database admission commit; `SeaOrmArtifactInstallationStore` commits the
+  installation, admission metadata, and shared outbox envelope atomically, and
+  the owner reconciler enforces reference-plus-retention deletion. A
+  `StorageArtifactBlobStore` supplies the durable object-storage CAS adapter;
+  host infrastructure must wire it to the production object-storage driver;
+- OCI admission streams the registry layer into temporary private storage while
+  rejecting declared or received payloads above the owner bound and verifying
+  SHA-256; the post-verification storage boundary still buffers an accepted
+  payload, so streaming sink and multipart CAS publication remain the next
+  slice;
+- the committed admission row now records the complete status vocabulary with
+  initial `admitted` state and revision `1`; guarded lifecycle transitions,
+  idempotency keys, rollback pointers, and policy evidence remain separate
+  owner-service work;
 - artifact descriptors carry dependency, permission, settings, runtime binding,
   persistence metadata, and declarative UI contribution contracts; brokered
   namespaced data, localization delivery, and dynamic host composition remain
@@ -99,17 +111,19 @@ binding capabilities absent from the descriptor.
 adapter contract: installation resolution is tenant/scope-aware, effective
 grants and limits come from a separate policy resolver, and only a binding
 present in the immutable installed descriptor can replace the sandbox
-entrypoint. The production RLS/CAS adapters remain the next persistence slice.
+entrypoint. Production host wiring selects the durable object-storage driver
+for `StorageArtifactBlobStore`.
 
 CAS admission is explicitly `stage -> durable CAS publish -> database
 transaction plus outbox -> reconciler`. A publish preceding a failed database
 commit is an orphan candidate, never a runtime installation; the reconciler
 may remove it only after reference and retention-policy checks.
 
-The database transaction uses the existing `TransactionalEventBus` and
-`OutboxTransport`: admission metadata, the selected dependency graph,
-installation/composition revision, and the outbox envelope are one commit. No
-module-specific second event journal is allowed.
+`SeaOrmArtifactInstallationStore` uses the existing `OutboxTransport` in the
+same transaction as admission metadata, the selected dependency graph, and the
+installation record. `EventEnvelope` carries an optional tenant identifier, so
+platform-scoped admission emits without a synthetic tenant. No module-specific
+second event journal is allowed.
 
 Dependency resolution now uses `pubgrub` behind the transport-neutral
 `ModuleResolutionProvider`. The adapter first collects an immutable candidate
@@ -121,11 +135,10 @@ execution rejects a missing or tampered declared dependency. Scope/module-kind
 policy, persisted solver input snapshots, and stable derivation explanations
 remain owner-service work.
 
-The shared transactional outbox remains the required event boundary, but it is
-not wired into platform admission yet: its envelope currently requires a tenant
-UUID while platform commands explicitly allow no tenant. A dedicated routing
-contract must decide how platform admission events are addressed before that
-atomic metadata-plus-outbox adapter is added; no synthetic tenant is used.
+The shared transactional outbox is the required event boundary for committed
+admission. It records `module.artifact.admitted` in the same transaction as the
+installation and admission metadata; platform-scoped events use the canonical
+absence of a tenant identifier.
 
 ### M2 - Introduce the Facade
 

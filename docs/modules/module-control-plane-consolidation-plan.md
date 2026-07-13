@@ -40,9 +40,8 @@ The ownership decision is fixed by
   - immutable Rhai release lineage and canonical artifact descriptors;
   - digest-pinned OCI resolution and payload verification;
   - durable scoped artifact installation records with PostgreSQL RLS;
-  - installed artifact execution through the shared sandbox (currently with an
-    external-registry fetch per execution; Phase 3 replaces this intermediate
-    path with admitted platform CAS bytes);
+  - installed artifact execution through the shared sandbox using admitted,
+    digest-pinned CAS bytes; OCI remains the distribution source;
   - module-owned tenant toggle, journal, settings persistence, recovery plan,
     and post-hook retry operations.
 - Current critical path:
@@ -637,16 +636,20 @@ the external registry.
   reconciler` for admission. PostgreSQL does not claim atomicity with external
   object storage; reconciliation completes/fails interrupted admission and
   removes orphan blobs only after reference and retention-policy checks.
-- [ ] Commit admission metadata, dependency lock, installation/composition
+- [x] Commit admission metadata, dependency lock, installation/composition
   revision, and the existing transactional-outbox envelope in one database
   transaction; do not introduce a module-specific second event journal.
 - [ ] During admission, stream the selected payload into a platform-controlled
   CAS, verify digest/size while streaming, then atomically publish the blob and
   installation record.
-- [ ] Execute from the admitted CAS blob; external OCI is a distribution source,
+- [x] Execute from the admitted CAS blob; external OCI is a distribution source,
   not the per-request runtime store.
 - [ ] Bound descriptor/config/layer size before allocation and support streaming
-  reads rather than unbounded `Vec<u8>` downloads.
+  reads rather than unbounded `Vec<u8>` downloads. The OCI adapter now rejects
+  oversized config and declared layer sizes before `pull_blob`, then streams
+  received bytes through temporary storage with size and digest checks;
+  replacing the post-verification `Vec<u8>` boundary with a streaming sink
+  remains required.
 - [ ] Store verification evidence and blob metadata separately from executable
   bytes; do not copy large payloads into PostgreSQL.
 - [ ] Define local/node caches keyed by digest with verified reads, atomic fill,
@@ -661,7 +664,7 @@ the external registry.
 ### 3.4 Installation State
 
 - [x] Platform and tenant scope contract with RLS-backed persistence.
-- [ ] Add explicit statuses: resolved, verifying, admitted, installed, active,
+- [x] Add explicit statuses: resolved, verifying, admitted, installed, active,
   failed, inactive, and rolled_back.
 - [ ] Store verification evidence references and policy decision revision.
 - [ ] Store previous installation pointer for rollback.

@@ -23,7 +23,10 @@ and mounts owner transports.
 `OciDistributionArtifactRegistry` resolves only digest-pinned references. It
 requires the returned manifest digest to match the requested reference, reads
 the descriptor from the manifest config, and downloads exactly one payload
-layer whose digest and media type match that descriptor.
+layer whose digest and media type match that descriptor. Admission limits reject
+an oversized descriptor and the OCI-declared layer size before `pull_blob`, then
+stream the received bytes into a private temporary file while enforcing the
+same size limit and SHA-256 digest.
 
 During admission, `ModuleInstaller` verifies the OCI package and places its
 payload in an `ArtifactBlobStore` under the descriptor payload digest.
@@ -35,10 +38,21 @@ created.
 `module_artifact_installations` is the host-managed persistence boundary. Its
 PostgreSQL migration enables RLS; tenant-scoped connections must set
 `rustok.tenant_id` before querying or mutating tenant installation rows.
-`SeaOrmArtifactInstallationStore` performs that setup in the same transaction
-as its insert; it stores the reference and canonical descriptor, never artifact
-bytes. A durable production blob-store adapter, atomic blob/installation
-publication, and retention/garbage collection remain the next CAS work slice.
+`SeaOrmArtifactInstallationStore` performs that setup while atomically writing
+the installation, admission metadata, and `module.artifact.admitted` outbox
+envelope. It stores the reference and canonical descriptor, never artifact
+bytes. `StorageArtifactBlobStore` supplies the production CAS adapter over the
+platform `StorageService`: it uses private staging keys, conditional creation
+of digest-derived final keys with the admitted media type, and verified reads. CAS publication remains
+outside the database transaction; the reconciler removes an orphan only after
+it has no committed admission reference and retention policy allows deletion.
+`InMemoryArtifactBlobStore` is test/local-only. Host production configuration
+must wire `StorageArtifactBlobStore` to a durable object-storage driver, never
+a node-local cache.
+
+After verification the current storage upload API still accepts a bounded
+buffer. The next admission slice replaces that final boundary with a streaming
+sink and multipart/object-store upload; no unbounded fallback is permitted.
 
 ## Verification
 

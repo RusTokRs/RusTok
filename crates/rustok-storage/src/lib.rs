@@ -5,7 +5,7 @@ pub mod local;
 pub mod s3;
 pub mod service;
 
-pub use backend::{StorageBackend, UploadedObject};
+pub use backend::{StorageBackend, StoredObject, UploadedObject};
 pub use error::{Result, StorageError};
 pub use local::LocalStorageConfig;
 #[cfg(feature = "s3")]

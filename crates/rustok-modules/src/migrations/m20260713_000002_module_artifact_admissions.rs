@@ -18,6 +18,9 @@ impl MigrationTrait for Migration {
                     payload_digest TEXT NOT NULL,\
                     media_type TEXT NOT NULL,\
                     size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),\
+                    verification_evidence JSONB NOT NULL,\
+                    status TEXT NOT NULL CHECK (status IN ('resolved', 'verifying', 'admitted', 'installed', 'active', 'failed', 'inactive', 'rolled_back')),\
+                    revision BIGINT NOT NULL CHECK (revision > 0),\
                     committed_at TIMESTAMPTZ NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_admissions_payload_digest_idx ON module_artifact_admissions (payload_digest)",
@@ -34,6 +37,9 @@ impl MigrationTrait for Migration {
                     payload_digest TEXT NOT NULL,\
                     media_type TEXT NOT NULL,\
                     size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),\
+                    verification_evidence JSON NOT NULL,\
+                    status TEXT NOT NULL CHECK (status IN ('resolved', 'verifying', 'admitted', 'installed', 'active', 'failed', 'inactive', 'rolled_back')),\
+                    revision INTEGER NOT NULL CHECK (revision > 0),\
                     committed_at TEXT NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_admissions_payload_digest_idx ON module_artifact_admissions (payload_digest)",

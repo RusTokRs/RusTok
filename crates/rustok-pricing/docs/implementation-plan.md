@@ -37,11 +37,11 @@ adjustments; cart storefront repricing therefore no longer calls
 
 1. Execute `PricingReadPort` against live persistence for
    `resolve_product_price` and `read_price_list_projection`, including the
-   declared embedded and GraphQL fallback profiles. The owner now has a
-   targeted SQLite integration test for the two successful read operations and
-   missing-deadline rejection; it must be run successfully before it becomes
-   runtime evidence. Done when the observed calls also prove the consumer
-   degraded modes rather than only static markers.
+   declared embedded and GraphQL fallback profiles. The owner has a targeted
+   SQLite integration test for the two successful read operations and
+   missing-deadline rejection; the in-process provider test passed. Done when
+   the observed calls also prove the consumer degraded modes rather than only
+   static markers.
    Dependency: runnable commerce consumer composition for the declared
    fallback profiles. Verification: `npm run verify:ecommerce:fba` plus
    `cargo test -p rustok-pricing --test pricing_read_port_runtime`.

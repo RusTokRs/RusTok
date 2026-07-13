@@ -29,6 +29,48 @@ const WASM_COMPONENT_MEDIA_TYPE: &str = "application/wasm";
 const SIDECAR_MEDIA_TYPE: &str = "application/vnd.rustok.sidecar.v1";
 const STATIC_PROMOTION_MEDIA_TYPE: &str = "application/vnd.rustok.static-promotion.v1";
 
+/// Hard bounds applied before an artifact enters the admission pipeline. The
+/// registry adapter must use them before downloading an OCI layer; the package
+/// verification repeats them against the received bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactAdmissionLimits {
+    pub max_descriptor_bytes: u64,
+    pub max_payload_bytes: u64,
+}
+
+impl Default for ArtifactAdmissionLimits {
+    fn default() -> Self {
+        Self {
+            max_descriptor_bytes: 256 * 1024,
+            max_payload_bytes: 64 * 1024 * 1024,
+        }
+    }
+}
+
+impl ArtifactAdmissionLimits {
+    pub fn validate_descriptor_size(&self, actual: u64) -> Result<(), ModuleInstallationError> {
+        if actual > self.max_descriptor_bytes {
+            return Err(ModuleInstallationError::ArtifactTooLarge {
+                kind: "descriptor",
+                limit: self.max_descriptor_bytes,
+                actual,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn validate_payload_size(&self, actual: u64) -> Result<(), ModuleInstallationError> {
+        if actual > self.max_payload_bytes {
+            return Err(ModuleInstallationError::ArtifactTooLarge {
+                kind: "payload",
+                limit: self.max_payload_bytes,
+                actual,
+            });
+        }
+        Ok(())
+    }
+}
+
 /// A digest-pinned OCI manifest location. Tags are deliberately not part of the
 /// install contract: an installation is always reproducible from an immutable
 /// manifest digest. The executable layer digest remains in the descriptor.
@@ -85,9 +127,10 @@ pub struct ModuleArtifactPackage {
 
 impl ModuleArtifactPackage {
     /// Verifies artifact identity before it can enter a tenant or platform runtime.
-    pub fn verify(&self) -> Result<(), ModuleInstallationError> {
+    pub fn verify(&self, limits: ArtifactAdmissionLimits) -> Result<(), ModuleInstallationError> {
         self.reference.validate()?;
         self.descriptor.validate()?;
+        limits.validate_payload_size(self.payload.len() as u64)?;
         let actual_digest = sha256_digest(&self.payload);
         if actual_digest != self.descriptor.artifact_digest {
             return Err(ModuleInstallationError::PayloadDigestMismatch {
@@ -134,6 +177,37 @@ pub struct InstalledModuleArtifact {
 pub enum ModuleInstallationScope {
     Platform,
     Tenant { tenant_id: Uuid },
+}
+
+/// Durable lifecycle state of an admitted installation. The initial admission
+/// transaction persists `Admitted` at revision one; later lifecycle services
+/// own the guarded transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactAdmissionStatus {
+    Resolved,
+    Verifying,
+    Admitted,
+    Installed,
+    Active,
+    Failed,
+    Inactive,
+    RolledBack,
+}
+
+impl ArtifactAdmissionStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Resolved => "resolved",
+            Self::Verifying => "verifying",
+            Self::Admitted => "admitted",
+            Self::Installed => "installed",
+            Self::Active => "active",
+            Self::Failed => "failed",
+            Self::Inactive => "inactive",
+            Self::RolledBack => "rolled_back",
+        }
+    }
 }
 
 impl InstalledModuleArtifact {
@@ -253,6 +327,7 @@ pub trait ArtifactRegistry: Send + Sync {
     async fn fetch(
         &self,
         reference: &OciArtifactReference,
+        limits: ArtifactAdmissionLimits,
     ) -> Result<ModuleArtifactPackage, ModuleInstallationError>;
 }
 
@@ -289,6 +364,14 @@ pub struct StagedArtifactBlob {
     pub digest: String,
     pub media_type: String,
     pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactVerificationEvidence {
+    pub manifest_digest: String,
+    pub payload_digest: String,
+    pub media_type: String,
+    pub verified_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -671,12 +754,12 @@ fn installation_values(
 
 fn admission_insert_sql(backend: DbBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=6).map(|index| format!("${index}")).collect::<Vec<_>>(),
-        _ => (1..=6).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+        DbBackend::Postgres => (1..=9).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        _ => (1..=9).map(|index| format!("?{index}")).collect::<Vec<_>>(),
     };
     format!(
         "INSERT INTO module_artifact_admissions (\
-            stage_id, installation_id, payload_digest, media_type, size_bytes, committed_at\
+            stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at\
          ) VALUES ({})",
         placeholders.join(", ")
     )
@@ -688,18 +771,29 @@ fn admission_values(
     backend: DbBackend,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
     let committed_at = Utc::now();
+    let evidence = serde_json::to_value(ArtifactVerificationEvidence {
+        manifest_digest: artifact.reference.digest.clone(),
+        payload_digest: staged.digest.clone(),
+        media_type: staged.media_type.clone(),
+        verified_at: committed_at,
+    })
+    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let committed_at = match backend {
         DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(committed_at))),
         _ => committed_at.to_rfc3339().into(),
     };
-    let size_bytes = i64::try_from(staged.size_bytes)
-        .map_err(|_| ModuleInstallationError::Blob("artifact payload exceeds database size range".into()))?;
+    let size_bytes = i64::try_from(staged.size_bytes).map_err(|_| {
+        ModuleInstallationError::Blob("artifact payload exceeds database size range".into())
+    })?;
     Ok(vec![
         uuid_value(staged.stage_id, backend),
         uuid_value(artifact.installation_id, backend),
         staged.digest.clone().into(),
         staged.media_type.clone().into(),
         size_bytes.into(),
+        SqlValue::Json(Some(Box::new(evidence))),
+        ArtifactAdmissionStatus::Admitted.as_str().into(),
+        1_i64.into(),
         committed_at,
     ])
 }
@@ -724,6 +818,7 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
 pub struct ModuleInstaller<R, S, B> {
     registry: R,
     admission: ArtifactAdmissionService<S, B>,
+    limits: ArtifactAdmissionLimits,
 }
 
 /// Owner-owned admission entrypoint. Infrastructure supplies the durable CAS
@@ -771,7 +866,13 @@ where
         Self {
             registry,
             admission: ArtifactAdmissionService::new(store, blobs),
+            limits: ArtifactAdmissionLimits::default(),
         }
+    }
+
+    pub fn with_admission_limits(mut self, limits: ArtifactAdmissionLimits) -> Self {
+        self.limits = limits;
+        self
     }
 
     pub async fn install(
@@ -782,14 +883,14 @@ where
         installed_at: DateTime<Utc>,
     ) -> Result<InstalledModuleArtifact, ModuleInstallationError> {
         reference.validate()?;
-        let package = self.registry.fetch(&reference).await?;
+        let package = self.registry.fetch(&reference, self.limits).await?;
         if package.reference != reference {
             return Err(ModuleInstallationError::RegistryIdentityMismatch {
                 requested: reference.canonical(),
                 received: package.reference.canonical(),
             });
         }
-        package.verify()?;
+        package.verify(self.limits)?;
         if package.descriptor.payload_kind == ArtifactPayloadKind::StaticPromoted {
             return Err(ModuleInstallationError::StaticPromotionRequired);
         }
@@ -818,6 +919,12 @@ pub enum ModuleInstallationError {
     InvalidOciReference(String),
     #[error("artifact payload digest mismatch: expected `{expected}`, received `{actual}")]
     PayloadDigestMismatch { expected: String, actual: String },
+    #[error("artifact {kind} size `{actual}` exceeds admission limit `{limit}`")]
+    ArtifactTooLarge {
+        kind: &'static str,
+        limit: u64,
+        actual: u64,
+    },
     #[error("artifact media type must be `{expected}`, received `{actual}")]
     UnexpectedMediaType { expected: String, actual: String },
     #[error("registry returned `{received}` for requested artifact `{requested}")]
@@ -857,7 +964,7 @@ fn valid_repository_segment(value: &str) -> bool {
     })
 }
 
-fn valid_digest(value: &str) -> bool {
+pub(crate) fn valid_digest(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
         && value[7..]
@@ -865,7 +972,7 @@ fn valid_digest(value: &str) -> bool {
             .all(|character| character.is_ascii_hexdigit())
 }
 
-fn sha256_digest(bytes: &[u8]) -> String {
+pub(crate) fn sha256_digest(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
@@ -889,6 +996,7 @@ mod tests {
         async fn fetch(
             &self,
             _reference: &OciArtifactReference,
+            _limits: ArtifactAdmissionLimits,
         ) -> Result<ModuleArtifactPackage, ModuleInstallationError> {
             Ok(self.0.clone())
         }
@@ -1091,6 +1199,36 @@ mod tests {
                 )
                 .await,
             Err(ModuleInstallationError::StaticPromotionRequired)
+        ));
+    }
+
+    #[tokio::test]
+    async fn admission_rejects_payload_larger_than_the_configured_limit() {
+        let package = package(ArtifactPayloadKind::Rhai);
+        let reference = package.reference.clone();
+        let installer = ModuleInstaller::new(
+            FixtureRegistry(package),
+            CapturingStore::default(),
+            InMemoryArtifactBlobStore::default(),
+        )
+        .with_admission_limits(ArtifactAdmissionLimits {
+            max_descriptor_bytes: 1024,
+            max_payload_bytes: 1,
+        });
+
+        assert!(matches!(
+            installer
+                .install(
+                    reference,
+                    ModuleInstallationScope::Platform,
+                    empty_dependency_lock(),
+                    Utc::now(),
+                )
+                .await,
+            Err(ModuleInstallationError::ArtifactTooLarge {
+                kind: "payload",
+                ..
+            })
         ));
     }
 

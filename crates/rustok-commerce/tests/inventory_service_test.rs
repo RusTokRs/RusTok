@@ -3,14 +3,18 @@
 // low stock alerts, and availability checks.
 
 use rust_decimal::Decimal;
+use rustok_api::{PortActor, PortContext};
 use rustok_commerce::CommerceError;
 use rustok_inventory::entities;
-use rustok_inventory::InventoryService;
+use rustok_inventory::{
+    InventoryAvailabilityRequest, InventoryReservationPort, InventoryReservationReleaseRequest,
+    InventoryReservationRequest, InventoryService,
+};
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     AdjustInventoryInput, CreateProductInput, CreateVariantInput, PriceInput,
     ProductTranslationInput,
 };
-use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use std::str::FromStr;
@@ -76,6 +80,80 @@ async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid
         .unwrap();
     let variant_id = product.variants[0].id;
     (product.id, variant_id)
+}
+
+fn inventory_port_context(tenant_id: Uuid, correlation_id: &str, write: bool) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.checkout"),
+        "en",
+        correlation_id,
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+
+    if write {
+        context.with_idempotency_key(format!("inventory-port:{correlation_id}"))
+    } else {
+        context
+    }
+}
+
+#[tokio::test]
+async fn inventory_reservation_port_executes_checkout_reservation_lifecycle_against_persistence() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_inventory(tenant_id, actor_id, variant_id, 5)
+        .await
+        .expect("inventory fixture must have available stock");
+
+    let availability = service
+        .check_availability(
+            inventory_port_context(tenant_id, "inventory-port-availability", false),
+            InventoryAvailabilityRequest {
+                variant_id,
+                requested_quantity: 3,
+                channel_slug: Some("storefront".to_string()),
+            },
+        )
+        .await
+        .expect("availability port call must succeed");
+    assert!(availability.available);
+
+    let reservation = service
+        .reserve_inventory(
+            inventory_port_context(tenant_id, "inventory-port-reserve", true),
+            InventoryReservationRequest {
+                variant_id,
+                quantity: 3,
+                cart_id: Some(Uuid::new_v4()),
+                line_item_id: Some(Uuid::new_v4()),
+            },
+        )
+        .await
+        .expect("reservation port call must succeed");
+    assert_eq!(reservation.reserved_quantity, 3);
+    assert_eq!(reservation.available_quantity, 2);
+    assert!(reservation.in_stock);
+
+    let release = service
+        .release_inventory_reservation(
+            inventory_port_context(tenant_id, "inventory-port-release", true),
+            InventoryReservationReleaseRequest {
+                variant_id,
+                quantity: 3,
+                order_id: Some(Uuid::new_v4()),
+                line_item_id: Some(Uuid::new_v4()),
+            },
+        )
+        .await
+        .expect("reservation release port call must succeed");
+    assert_eq!(release.released_quantity, 3);
+    assert_eq!(release.available_quantity, 5);
+    assert!(release.in_stock);
 }
 
 // =============================================================================

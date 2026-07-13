@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use tokio::io::AsyncWriteExt;
 use tracing::instrument;
 
 use crate::{
@@ -34,6 +35,37 @@ impl LocalStorage {
         }
         Ok(self.base_dir.join(path.trim_start_matches('/')))
     }
+
+    async fn list_paths(&self, prefix: &str) -> Result<Vec<crate::StoredObject>> {
+        let root = self.resolve(prefix)?;
+        let mut pending = vec![root];
+        let mut objects = Vec::new();
+        while let Some(directory) = pending.pop() {
+            let mut entries = match tokio::fs::read_dir(&directory).await {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(StorageError::Io(error)),
+            };
+            while let Some(entry) = entries.next_entry().await? {
+                let metadata = entry.metadata().await?;
+                if metadata.is_dir() {
+                    pending.push(entry.path());
+                } else if metadata.is_file() {
+                    let relative = entry
+                        .path()
+                        .strip_prefix(&self.base_dir)
+                        .map_err(|_| StorageError::InvalidPath(prefix.to_string()))?
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    objects.push(crate::StoredObject {
+                        path: relative,
+                        size: metadata.len(),
+                    });
+                }
+            }
+        }
+        Ok(objects)
+    }
 }
 
 #[async_trait]
@@ -58,6 +90,32 @@ impl StorageBackend for LocalStorage {
         })
     }
 
+    async fn store_if_absent(
+        &self,
+        path: &str,
+        data: bytes::Bytes,
+        _content_type: &str,
+    ) -> Result<bool> {
+        let dest = self.resolve(path)?;
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&dest)
+            .await
+        {
+            Ok(mut file) => {
+                file.write_all(&data).await?;
+                file.flush().await?;
+                Ok(true)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(error) => Err(StorageError::Io(error)),
+        }
+    }
+
     #[instrument(skip(self), fields(path))]
     async fn delete(&self, path: &str) -> Result<()> {
         let dest = self.resolve(path)?;
@@ -78,6 +136,10 @@ impl StorageBackend for LocalStorage {
             }
             Err(error) => Err(StorageError::Io(error)),
         }
+    }
+
+    async fn list(&self, prefix: &str) -> Result<Vec<crate::StoredObject>> {
+        self.list_paths(prefix).await
     }
 
     async fn private_download_url(

@@ -1,6 +1,7 @@
 //! Module platform ownership: artifact identity, release lineage and lifecycle.
 
 mod artifact;
+mod artifact_cas;
 mod contracts;
 mod definition;
 mod dependency;
@@ -29,6 +30,7 @@ pub use artifact::{
     ModuleBindingIdempotency, ModuleDependencyConstraint, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind,
 };
+pub use artifact_cas::StorageArtifactBlobStore;
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
     ModuleControlPlaneSnapshot, ModuleErrorCode, ModuleSnapshotKind, RevisionedModuleCommand,
@@ -49,9 +51,10 @@ pub use executor::{
     ModuleLifecycleToggleResult,
 };
 pub use installation::{
-    ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord, ArtifactAdmissionService,
-    ArtifactAdmissionStage, ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore,
-    ArtifactRegistry, DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
+    ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord,
+    ArtifactAdmissionService, ArtifactAdmissionStage, ArtifactAdmissionStatus,
+    ArtifactAdmissionStore, ArtifactBlobRetentionPolicy, ArtifactBlobStore, ArtifactRegistry,
+    DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
     ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
     OciArtifactReference, SeaOrmArtifactInstallationStore, StagedArtifactBlob,
 };

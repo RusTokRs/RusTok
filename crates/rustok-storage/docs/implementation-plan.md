@@ -2,11 +2,13 @@
 
 ## Current state
 
-`rustok-storage` owns the shared `StorageBackend`, `UploadedObject`, and
-`StorageService` contracts, backend selection/configuration, path generation,
-public URL construction, and path-safety guarantees. The local backend is the
-current implementation. Domain modules, including `rustok-media`, must not
-bypass this boundary with backend-specific logic.
+`rustok-storage` owns the shared `StorageBackend`, `UploadedObject`,
+`StoredObject`, and `StorageService` contracts, backend selection/configuration,
+path generation, public URL construction, and path-safety guarantees. It also
+owns conditional object creation and trusted-prefix listing used by durable CAS
+adapters. The local backend is development-only; domain modules, including
+`rustok-media` and `rustok-modules`, must not bypass this boundary with
+backend-specific logic.
 
 The server is a composition layer for `StorageService`; storage does not own
 media metadata or other domain business rules.
@@ -27,12 +29,13 @@ media metadata or other domain business rules.
    **Done when:** the crate root and local docs give consumers one consistent
    storage ownership and integration map.
 
-2. **Add external backends as additive contract extensions.** Introduce
-   S3-compatible or other production backends behind `StorageBackend` without
-   breaking local-backend callers.
+2. **Harden external backend guarantees.** Keep S3-compatible or other
+   production backends behind `StorageBackend`, including conditional create
+   and trusted-prefix listing semantics required by content-addressed storage.
    **Depends on:** backend configuration, credentials, and deployment policy.
    **Done when:** backend-specific failure/configuration integration tests prove
-   compatible upload, public URL, deletion, and path-safety semantics.
+   compatible upload, conditional create, listing, deletion, and path-safety
+   semantics.
 
 3. **Publish operational storage guarantees.** Evolve health, metrics, and
    runbook guidance alongside backend support and synchronize them with media

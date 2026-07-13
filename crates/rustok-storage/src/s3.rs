@@ -3,13 +3,14 @@
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::{Builder as S3ConfigBuilder, Credentials, Region};
+use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
 
 use crate::{
-    backend::{StorageBackend, UploadedObject},
+    backend::{StorageBackend, StoredObject, UploadedObject},
     error::{Result, StorageError},
 };
 
@@ -115,6 +116,16 @@ impl S3Storage {
             .map(|aggregated| aggregated.into_bytes())
             .map_err(|error| StorageError::Backend(error.to_string()))
     }
+
+    fn relative_path(&self, key: &str) -> Option<String> {
+        match &self.key_prefix {
+            Some(prefix) => key
+                .strip_prefix(prefix.trim_end_matches('/'))
+                .and_then(|suffix| suffix.strip_prefix('/'))
+                .map(ToString::to_string),
+            None => Some(key.to_string()),
+        }
+    }
 }
 
 #[async_trait]
@@ -143,6 +154,37 @@ impl StorageBackend for S3Storage {
         })
     }
 
+    async fn store_if_absent(
+        &self,
+        path: &str,
+        data: bytes::Bytes,
+        content_type: &str,
+    ) -> Result<bool> {
+        let key = self.object_key(path)?;
+        match self
+            .client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .body(ByteStream::from(data))
+            .content_type(content_type)
+            .if_none_match("*")
+            .send()
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(error)
+                if error
+                    .as_service_error()
+                    .and_then(|service| service.code())
+                    .is_some_and(|code| code == "PreconditionFailed") =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(StorageError::Backend(error.to_string())),
+        }
+    }
+
     async fn delete(&self, path: &str) -> Result<()> {
         let key = self.object_key(path)?;
         self.client
@@ -166,6 +208,45 @@ impl StorageBackend for S3Storage {
             .await
             .map_err(|error| StorageError::Backend(error.to_string()))?;
         Self::collect_bytes(output).await
+    }
+
+    async fn list(&self, prefix: &str) -> Result<Vec<StoredObject>> {
+        let prefix = self.object_key(prefix)?;
+        let mut continuation_token = None;
+        let mut objects = Vec::new();
+        loop {
+            let response = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(&prefix)
+                .set_continuation_token(continuation_token)
+                .send()
+                .await
+                .map_err(|error| StorageError::Backend(error.to_string()))?;
+            for object in response.contents() {
+                let Some(key) = object.key() else {
+                    continue;
+                };
+                let Some(path) = self.relative_path(key) else {
+                    continue;
+                };
+                let size = u64::try_from(object.size().unwrap_or_default()).map_err(|_| {
+                    StorageError::Backend(format!("S3 object `{key}` has a negative size"))
+                })?;
+                objects.push(StoredObject { path, size });
+            }
+            if !response.is_truncated().unwrap_or(false) {
+                break;
+            }
+            continuation_token = response.next_continuation_token().map(ToString::to_string);
+            if continuation_token.is_none() {
+                return Err(StorageError::Backend(
+                    "S3 listed a truncated result without continuation token".to_string(),
+                ));
+            }
+        }
+        Ok(objects)
     }
 
     async fn private_download_url(

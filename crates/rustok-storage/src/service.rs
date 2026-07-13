@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[cfg(feature = "s3")]
 use crate::s3::{S3Storage, S3StorageConfig};
 use crate::{
-    backend::{StorageBackend, UploadedObject},
+    backend::{StorageBackend, StoredObject, UploadedObject},
     error::Result,
     local::LocalStorageConfig,
 };
@@ -57,12 +57,25 @@ impl StorageService {
         self.0.store(path, data, content_type).await
     }
 
+    pub async fn store_if_absent(
+        &self,
+        path: &str,
+        data: bytes::Bytes,
+        content_type: &str,
+    ) -> Result<bool> {
+        self.0.store_if_absent(path, data, content_type).await
+    }
+
     pub async fn delete(&self, path: &str) -> Result<()> {
         self.0.delete(path).await
     }
 
     pub async fn read(&self, path: &str) -> Result<bytes::Bytes> {
         self.0.read(path).await
+    }
+
+    pub async fn list(&self, prefix: &str) -> Result<Vec<StoredObject>> {
+        self.0.list(prefix).await
     }
 
     pub async fn private_download_url(
