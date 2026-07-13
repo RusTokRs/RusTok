@@ -5,7 +5,9 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, Mutex as AsyncMutex};
 
-use rustok_core::{CacheBackend, CacheStats, InMemoryCacheBackend};
+use rustok_core::{
+    CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
+};
 #[cfg(feature = "redis-cache")]
 use rustok_core::CircuitBreakerConfig;
 
@@ -856,6 +858,16 @@ impl CacheBackend for InstrumentedCacheBackend {
         self.inner.set_with_ttl(key, value, ttl).await
     }
 
+    async fn compare_and_set(
+        &self,
+        key: &str,
+        expected: &[u8],
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
+        self.inner.compare_and_set(key, expected, value, ttl).await
+    }
+
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
         self.evictions.fetch_add(1, Ordering::Relaxed);
         self.inner.invalidate(key).await
@@ -919,6 +931,25 @@ mod tests {
         assert_eq!(stats.hits, 1);
         assert_eq!(stats.evictions, 1);
         assert_eq!(stats.entries, 0);
+    }
+
+    #[tokio::test]
+    async fn instrumented_memory_backend_delegates_atomic_cas() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        backend
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            backend
+                .compare_and_set("key", b"old", b"new".to_vec(), None)
+                .await
+                .unwrap(),
+            CacheCompareAndSetOutcome::Applied
+        );
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
     }
 
     #[tokio::test]
