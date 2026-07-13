@@ -57,6 +57,10 @@ fn media_error(error: MediaError) -> HttpError {
             "unsupported_media_type",
             format!("Unsupported media type: {content_type}"),
         ),
+        MediaError::InvalidMediaContent { declared, reason } => HttpError::bad_request(
+            "invalid_media_content",
+            format!("Invalid {declared} upload: {reason}"),
+        ),
         MediaError::FileTooLarge { size, max } => HttpError::bad_request(
             "media_file_too_large",
             format!("File too large: {size} bytes (max {max} bytes)"),
@@ -244,7 +248,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 #[cfg(test)]
 mod tests {
     use super::require_media_permission;
-    use rustok_api::{Action, AuthContext, Permission, TenantContext};
+    use rustok_api::{Action, AuthContext, Permission, Resource, TenantContext};
     use uuid::Uuid;
 
     fn tenant(id: Uuid) -> TenantContext {
@@ -274,9 +278,10 @@ mod tests {
     #[test]
     fn media_rest_requires_effective_permission_and_matching_tenant() {
         let tenant_id = Uuid::new_v4();
+        let manage = Permission::new(Resource::Media, Action::Manage);
         assert!(require_media_permission(
             &tenant(tenant_id),
-            &auth(tenant_id, vec![Permission::MEDIA_MANAGE]),
+            &auth(tenant_id, vec![manage]),
             Action::Delete,
         )
         .is_ok());
@@ -288,7 +293,7 @@ mod tests {
         .is_err());
         assert!(require_media_permission(
             &tenant(tenant_id),
-            &auth(Uuid::new_v4(), vec![Permission::MEDIA_MANAGE]),
+            &auth(Uuid::new_v4(), vec![manage]),
             Action::Read,
         )
         .is_err());
