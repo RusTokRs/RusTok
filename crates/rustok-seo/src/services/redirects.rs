@@ -103,17 +103,20 @@ impl SeoService {
         &self,
         tenant_id: Uuid,
     ) -> SeoResult<Arc<Vec<seo_redirect::Model>>> {
-        if let Some(cached) = REDIRECT_CACHE.get(&tenant_id).await {
-            return Ok(cached);
-        }
-
-        let items = seo_redirect::Entity::find()
-            .filter(seo_redirect::Column::TenantId.eq(tenant_id))
-            .all(&self.db)
-            .await?;
-        let items = Arc::new(items);
-        REDIRECT_CACHE.insert(tenant_id, items.clone()).await;
-        Ok(items)
+        REDIRECT_CACHE
+            .try_get_with(tenant_id, async {
+                let items = seo_redirect::Entity::find()
+                    .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+                    .all(&self.db)
+                    .await?;
+                Ok::<_, sea_orm::DbErr>(Arc::new(items))
+            })
+            .await
+            .map_err(|error| {
+                SeoError::Database(sea_orm::DbErr::Custom(format!(
+                    "SEO redirect cache load failed: {error}"
+                )))
+            })
     }
 
     pub(super) async fn match_redirect(
