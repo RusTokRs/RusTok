@@ -14,6 +14,7 @@ const MAX_TIMEOUT_SECS: u64 = 60;
 const MAX_URL_LEN: usize = 2_048;
 const MAX_HEADERS: usize = 32;
 const MAX_HEADER_VALUE_LEN: usize = 8 * 1024;
+const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const ALLOW_HTTP_ENV: &str = "RUSTOK_WORKFLOW_ALLOW_INSECURE_HTTP";
 
@@ -133,6 +134,16 @@ impl WorkflowStep for HttpStep {
 
         if method != reqwest::Method::GET {
             if let Some(body) = config.get("body") {
+                let serialized = serde_json::to_vec(body).map_err(|error| {
+                    WorkflowError::InvalidStepConfig(format!(
+                        "http: failed to serialize request body: {error}"
+                    ))
+                })?;
+                if serialized.len() > MAX_REQUEST_BODY_BYTES {
+                    return Err(WorkflowError::InvalidStepConfig(
+                        "http: request body exceeds the 1 MiB size limit".to_string(),
+                    ));
+                }
                 request = request.json(body);
             }
         }
@@ -203,7 +214,7 @@ async fn validate_target(raw_url: &str) -> WorkflowResult<ValidatedTarget> {
             "http: URL exceeds the size limit".to_string(),
         ));
     }
-    let url = reqwest::Url::parse(raw_url).map_err(|error| {
+    let mut url = reqwest::Url::parse(raw_url).map_err(|error| {
         WorkflowError::InvalidStepConfig(format!("http: invalid URL: {error}"))
     })?;
     if !url.username().is_empty() || url.password().is_some() {
@@ -226,11 +237,7 @@ async fn validate_target(raw_url: &str) -> WorkflowResult<ValidatedTarget> {
         }
     }
 
-    let host = url
-        .host_str()
-        .ok_or_else(|| WorkflowError::InvalidStepConfig("http: URL host is required".into()))?
-        .trim_end_matches('.')
-        .to_ascii_lowercase();
+    let host = canonicalize_request_host(&mut url)?;
     if host.is_empty()
         || host == "localhost"
         || host.ends_with(".localhost")
@@ -268,6 +275,23 @@ async fn validate_target(raw_url: &str) -> WorkflowResult<ValidatedTarget> {
         host,
         address: addresses[0],
     })
+}
+
+fn canonicalize_request_host(url: &mut reqwest::Url) -> WorkflowResult<String> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| WorkflowError::InvalidStepConfig("http: URL host is required".into()))?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if host.is_empty() {
+        return Err(WorkflowError::InvalidStepConfig(
+            "http: URL host is required".to_string(),
+        ));
+    }
+    url.set_host(Some(&host)).map_err(|_| {
+        WorkflowError::InvalidStepConfig("http: URL host could not be canonicalized".to_string())
+    })?;
+    Ok(host)
 }
 
 fn insecure_http_allowed() -> bool {
@@ -312,17 +336,18 @@ fn is_public_ipv4(ip: Ipv4Addr) -> bool {
         || (a == 100 && (64..=127).contains(&b))
         || (a == 169 && b == 254)
         || (a == 192 && b == 0)
-        || (a == 192 && b == 0 && ip.octets()[2] == 2)
         || (a == 198 && (b == 18 || b == 19))
         || (a == 198 && b == 51 && ip.octets()[2] == 100)
         || (a == 203 && b == 0 && ip.octets()[2] == 113))
 }
 
 fn is_public_ipv6(ip: Ipv6Addr) -> bool {
-    if let Some(ipv4) = ip.to_ipv4_mapped() {
+    if let Some(ipv4) = ip.to_ipv4() {
         return is_public_ipv4(ipv4);
     }
-    let first = ip.segments()[0];
+
+    let segments = ip.segments();
+    let first = segments[0];
     !(ip.is_loopback()
         || ip.is_unspecified()
         || ip.is_multicast()
@@ -330,12 +355,16 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
         || (first & 0xffc0) == 0xfe80
         || (first & 0xffc0) == 0xfec0
         || (first & 0xff00) == 0xff00
-        || ip.segments()[0] == 0x2001 && ip.segments()[1] == 0x0db8)
+        || (segments[0] == 0x0064 && segments[1] == 0xff9b)
+        || (segments[0] == 0x0100 && segments[1] == 0)
+        || (segments[0] == 0x2001 && segments[1] == 0)
+        || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || segments[0] == 0x2002)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_public_ip, validate_target};
+    use super::{canonicalize_request_host, is_public_ip, validate_target};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     #[test]
@@ -347,10 +376,20 @@ mod tests {
             IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1)),
             IpAddr::V6(Ipv6Addr::LOCALHOST),
             IpAddr::V6("fd00::1".parse().unwrap()),
+            IpAddr::V6("::ffff:127.0.0.1".parse().unwrap()),
+            IpAddr::V6("::127.0.0.1".parse().unwrap()),
         ] {
             assert!(!is_public_ip(ip), "{ip} must be blocked");
         }
         assert!(is_public_ip(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))));
+    }
+
+    #[test]
+    fn canonical_host_matches_the_host_used_for_dns_pinning() {
+        let mut url = reqwest::Url::parse("https://Example.COM./hook").unwrap();
+        let host = canonicalize_request_host(&mut url).unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(url.host_str(), Some("example.com"));
     }
 
     #[tokio::test]
