@@ -2,6 +2,7 @@ pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
 pub mod auth_admin_mutation_provider;
+pub mod auth_invite;
 pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
 pub mod auth_password_reset;
