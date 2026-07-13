@@ -37,14 +37,16 @@ mod state_machine_proptest;
 
 pub use error::{CommerceError, CommerceResult};
 pub use services::{
-    ApplyOrderChangeResult, CheckoutError, CheckoutResult, CheckoutService,
-    CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
+    ApplyOrderChangeResult, BeginCheckoutOperation, CheckoutError, CheckoutOperationCheckpoint,
+    CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationResult,
+    CheckoutOperationStage, CheckoutOperationStatus, CheckoutResult, CheckoutService,
+    CreateReturnDecisionInput, DEFAULT_CHECKOUT_LEASE_SECONDS, ExchangeDifferenceRefundInput,
     FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
-    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
-    PostOrderOrchestrationError, PostOrderOrchestrationService, RefundReconciliationService,
-    ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
-    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
-    StoreContextError, StoreContextResult, StoreContextService,
+    MAX_CHECKOUT_LEASE_SECONDS, PaymentOrchestrationError, PaymentOrchestrationResult,
+    PaymentOrchestrationService, PostOrderOrchestrationError, PostOrderOrchestrationService,
+    RefundReconciliationService, ReturnClaimDecisionInput, ReturnDecisionInput,
+    ReturnDecisionResponse, ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
+    ShippingProfileService, StoreContextError, StoreContextResult, StoreContextService,
 };
 pub(crate) use services::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
