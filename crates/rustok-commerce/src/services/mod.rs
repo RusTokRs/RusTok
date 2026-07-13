@@ -1,4 +1,5 @@
 pub mod checkout;
+mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
 mod checkout_operation;
 pub mod context;
@@ -18,6 +19,10 @@ mod refund_reconciliation;
 mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
+pub use checkout_inventory_reservation_executor::{
+    CheckoutInventoryExecutionError, CheckoutInventoryExecutionResult,
+    CheckoutInventoryReservationExecutor,
+};
 pub use checkout_inventory_reservation_journal::{
     CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
     CheckoutInventoryReservationResult, CheckoutInventoryReservationStatus,
