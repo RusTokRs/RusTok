@@ -7,6 +7,7 @@ mod keyboard;
 mod machine;
 mod resize;
 mod state;
+mod style;
 mod viewport;
 
 pub use contribution::*;
@@ -16,6 +17,7 @@ pub use keyboard::*;
 pub use machine::*;
 pub use resize::*;
 pub use state::*;
+pub use style::*;
 pub use viewport::*;
 
 pub type UiResult<T> = Result<T, UiError>;
