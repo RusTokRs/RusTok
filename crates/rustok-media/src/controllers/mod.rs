@@ -1,10 +1,13 @@
 use anyhow::Context;
 use axum::{
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::StatusCode,
     Json,
 };
-use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+use rustok_api::{
+    has_effective_permission, Action, AuthContext, HostRuntimeContext, Permission, Resource,
+    TenantContext,
+};
 use rustok_storage::StorageService;
 use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
@@ -12,9 +15,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{MediaItem, MediaTranslationItem, UpsertTranslationInput},
+    dto::{MediaItem, MediaTranslationItem, UpsertTranslationInput, DEFAULT_MAX_SIZE},
     MediaError, MediaService, UploadInput,
 };
+
+const MULTIPART_OVERHEAD_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone)]
 pub struct MediaHttpRuntime {
@@ -64,6 +69,29 @@ fn media_error(error: MediaError) -> HttpError {
     }
 }
 
+fn require_media_permission(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    action: Action,
+) -> HttpResult<()> {
+    if auth.tenant_id != tenant.id {
+        return Err(HttpError::unauthorized(
+            "media_access_denied",
+            "Authenticated user is not bound to the current tenant",
+        ));
+    }
+
+    let permission = Permission::new(Resource::Media, action);
+    if !has_effective_permission(&auth.permissions, &permission) {
+        return Err(HttpError::unauthorized(
+            "media_access_denied",
+            format!("Permission required: {permission}"),
+        ));
+    }
+
+    Ok(())
+}
+
 #[derive(Deserialize)]
 pub struct ListParams {
     #[serde(default = "default_limit")]
@@ -89,6 +117,7 @@ pub async fn upload(
     auth: AuthContext,
     mut multipart: Multipart,
 ) -> HttpResult<(StatusCode, Json<MediaItem>)> {
+    require_media_permission(&tenant, &auth, Action::Create)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
 
     while let Some(field) = multipart.next_field().await.map_err(|error| {
@@ -137,9 +166,10 @@ pub async fn upload(
 pub async fn list(
     State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
-    _auth: AuthContext,
+    auth: AuthContext,
     Query(params): Query<ListParams>,
 ) -> HttpResult<Json<MediaListResponse>> {
+    require_media_permission(&tenant, &auth, Action::List)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let limit = params.limit.clamp(1, 100);
     let (items, total) = service
@@ -154,9 +184,10 @@ pub async fn list(
 pub async fn get_media(
     State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
-    _auth: AuthContext,
+    auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MediaItem>> {
+    require_media_permission(&tenant, &auth, Action::Read)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let item = service.get(tenant.id, id).await.map_err(media_error)?;
     Ok(Json(item))
@@ -166,9 +197,10 @@ pub async fn get_media(
 pub async fn delete_media(
     State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
-    _auth: AuthContext,
+    auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    require_media_permission(&tenant, &auth, Action::Delete)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     service.delete(tenant.id, id).await.map_err(media_error)?;
     metrics::record_media_delete(&tenant.id.to_string());
@@ -179,10 +211,11 @@ pub async fn delete_media(
 pub async fn upsert_translation(
     State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
-    _auth: AuthContext,
+    auth: AuthContext,
     Path((id, locale)): Path<(Uuid, String)>,
     Json(body): Json<UpsertTranslationInput>,
 ) -> HttpResult<Json<MediaTranslationItem>> {
+    require_media_permission(&tenant, &auth, Action::Update)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let translation = service
         .upsert_translation(tenant.id, id, UpsertTranslationInput { locale, ..body })
@@ -196,6 +229,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
     use axum::routing::{get, put};
 
     let state = MediaHttpRuntime::from_host(runtime)?;
+    let body_limit = DEFAULT_MAX_SIZE.saturating_add(MULTIPART_OVERHEAD_BYTES) as usize;
     Ok(axum::Router::new()
         .route("/api/media/", get(list).post(upload))
         .route("/api/media/{id}", get(get_media).delete(delete_media))
@@ -203,5 +237,60 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             "/api/media/{id}/translations/{locale}",
             put(upsert_translation),
         )
+        .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_media_permission;
+    use rustok_api::{Action, AuthContext, Permission, TenantContext};
+    use uuid::Uuid;
+
+    fn tenant(id: Uuid) -> TenantContext {
+        TenantContext {
+            id,
+            name: "Tenant".to_string(),
+            slug: "tenant".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn auth(tenant_id: Uuid, permissions: Vec<Permission>) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    #[test]
+    fn media_rest_requires_effective_permission_and_matching_tenant() {
+        let tenant_id = Uuid::new_v4();
+        assert!(require_media_permission(
+            &tenant(tenant_id),
+            &auth(tenant_id, vec![Permission::MEDIA_MANAGE]),
+            Action::Delete,
+        )
+        .is_ok());
+        assert!(require_media_permission(
+            &tenant(tenant_id),
+            &auth(tenant_id, Vec::new()),
+            Action::Read,
+        )
+        .is_err());
+        assert!(require_media_permission(
+            &tenant(tenant_id),
+            &auth(Uuid::new_v4(), vec![Permission::MEDIA_MANAGE]),
+            Action::Read,
+        )
+        .is_err());
+    }
 }
