@@ -15,7 +15,21 @@
 
 pub mod access;
 mod alloy_scaffold;
-pub mod alloy_tools;
+#[path = "alloy_tools.rs"]
+mod alloy_tools_unchecked;
+pub mod alloy_tools {
+    use alloy::storage::ScriptRegistry;
+
+    pub use super::alloy_tools_unchecked::*;
+
+    pub async fn alloy_apply_module_scaffold<R: ScriptRegistry>(
+        state: &AlloyMcpState<R>,
+        context: Option<crate::McpScaffoldDraftRuntimeContext>,
+        request: ApplyModuleScaffoldRequest,
+    ) -> Result<ApplyModuleScaffoldResponse, String> {
+        super::scaffold_workspace::apply_authorized_module_scaffold(state, context, request).await
+    }
+}
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod management;
