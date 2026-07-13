@@ -178,6 +178,16 @@ pub(crate) async fn mark_local_persistence_failed(
         .await;
 }
 
+pub(crate) fn local_persistence_after_provider_error(
+    operation_id: Uuid,
+    operation: &'static str,
+    source: PaymentError,
+) -> PaymentOrchestrationError {
+    PaymentOrchestrationError::Provider(PaymentError::Validation(format!(
+        "provider {operation} succeeded, but local persistence failed for operation {operation_id}: {source}"
+    )))
+}
+
 fn reconciliation_error(
     operation_id: Uuid,
     stage: &str,

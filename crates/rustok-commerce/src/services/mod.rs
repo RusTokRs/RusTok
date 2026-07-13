@@ -1,6 +1,7 @@
 pub mod checkout;
 pub mod context;
 mod fulfillment_orchestration;
+mod journaled_payment_provider;
 mod payment_orchestration;
 mod post_order;
 mod refund_reconciliation;
