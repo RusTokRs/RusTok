@@ -1,5 +1,5 @@
 use crate::core::{self, PageDraftFormInput, GRAPESJS_FORMAT};
-use crate::model::PageMutationResult;
+use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
@@ -71,6 +71,17 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
             .await
             .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
             .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
+            let current_revision = page_revision(&current_page);
+            if input.revision_id != current_revision {
+                return Err(PageBuilderAdminFacadeError::with_stable_code(
+                    format!(
+                        "Page Builder revision conflict: expected `{}`, current `{current_revision}`",
+                        input.revision_id
+                    ),
+                    "REVISION_CONFLICT",
+                ));
+            }
+
             let seed = core::edit_form_seed_from_page(&current_page, &snapshot.default_locale);
             let project_data = canonicalize_builder_project(input.project_data)?;
             let draft = core::build_create_page_draft(
@@ -118,6 +129,14 @@ pub fn controller_from_project(
     let project = canonicalize_builder_project(project)?;
     AdminCanvasController::new(page_id, revision_id, project)
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))
+}
+
+pub fn page_revision(page: &PageDetail) -> String {
+    page.body
+        .as_ref()
+        .map(|body| body.updated_at.clone())
+        .filter(|revision| !revision.trim().is_empty())
+        .unwrap_or_else(|| format!("page:{}:initial", page.id))
 }
 
 pub fn canonicalize_builder_project(
@@ -210,5 +229,27 @@ mod tests {
     fn empty_project_receives_editable_root() {
         let project = canonicalize_builder_project(json!({})).expect("canonical project");
         assert_eq!(project["pages"][0]["component"]["id"], "root");
+    }
+
+    #[test]
+    fn page_revision_uses_body_timestamp_or_stable_initial_marker() {
+        let mut page = PageDetail {
+            id: "home".to_string(),
+            status: "draft".to_string(),
+            template: "default".to_string(),
+            channel_slugs: Vec::new(),
+            translation: None,
+            body: None,
+            blocks: Vec::new(),
+        };
+        assert_eq!(page_revision(&page), "page:home:initial");
+        page.body = Some(crate::model::PageBody {
+            locale: "en".to_string(),
+            content: String::new(),
+            format: GRAPESJS_FORMAT.to_string(),
+            content_json: None,
+            updated_at: "rev-2".to_string(),
+        });
+        assert_eq!(page_revision(&page), "rev-2");
     }
 }
