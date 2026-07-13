@@ -2,6 +2,7 @@ mod envelope;
 mod invalidation;
 mod key;
 mod lease;
+mod negative;
 mod policy;
 mod service;
 mod typed;
@@ -18,6 +19,10 @@ pub use invalidation::{
 pub use key::{CacheKeyBuilder, CacheKeyError};
 pub use lease::{
     CacheLeaseError, CacheLeaseOptions, CacheLeaseOutcome, DistributedCacheLease,
+};
+pub use negative::{
+    NegativeCacheEntry, NegativeCacheHit, NegativeCachePolicy, NegativeCachePolicyError,
+    DEFAULT_MAX_NEGATIVE_CACHE_BYTES,
 };
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use service::{
