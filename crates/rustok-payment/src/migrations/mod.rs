@@ -4,6 +4,7 @@ mod m20260713_000106_enforce_payment_lifecycle_uniqueness;
 mod m20260713_000107_enforce_refund_capacity;
 mod m20260713_000108_enforce_payment_state_invariants;
 mod m20260713_000109_serialize_payment_lifecycle;
+mod m20260713_000110_create_provider_operation_journal;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -15,5 +16,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000107_enforce_refund_capacity::Migration),
         Box::new(m20260713_000108_enforce_payment_state_invariants::Migration),
         Box::new(m20260713_000109_serialize_payment_lifecycle::Migration),
+        Box::new(m20260713_000110_create_provider_operation_journal::Migration),
     ]
 }
