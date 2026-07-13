@@ -153,12 +153,8 @@ pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>
             .boxed(),
     };
 
-    // Initialize subscriber with or without OpenTelemetry
     if let Some(otel_config) = config.otel {
-        // Try to initialize OpenTelemetry layer
         let subscriber = TracingRegistry::default().with(env_filter).with(fmt_layer);
-
-        // Initialize OTel in a blocking context since we're in a sync function
         let otel_layer = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 match otel::init_otel_layer(otel_config).await {
@@ -218,7 +214,6 @@ fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, Tele
     let handle = Arc::new(MetricsHandle::new());
     let registry = handle.registry();
 
-    // Register all metrics
     registry.register(Box::new(CONTENT_OPERATIONS_TOTAL.clone()))?;
     registry.register(Box::new(CONTENT_OPERATION_DURATION_SECONDS.clone()))?;
     registry.register(Box::new(CONTENT_NODES_TOTAL.clone()))?;
@@ -229,7 +224,6 @@ fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, Tele
     registry.register(Box::new(HTTP_REQUESTS_TOTAL.clone()))?;
     registry.register(Box::new(HTTP_REQUEST_DURATION_SECONDS.clone()))?;
 
-    // Register all custom metrics
     metrics::register_all(registry)?;
 
     let _ = REGISTRY.set(registry.clone());
@@ -239,6 +233,20 @@ fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, Tele
 
 pub fn metrics_handle() -> Option<Arc<MetricsHandle>> {
     METRICS_HANDLE.get().cloned()
+}
+
+/// Register a bounded runtime collector after telemetry initialization.
+///
+/// Dynamic collectors must use fixed metric names and bounded label cardinality. Registration is
+/// rejected when metrics are disabled or telemetry has not yet initialized, allowing callers to
+/// retry later without falling back to a second global Prometheus registry.
+pub fn register_runtime_collector(
+    collector: Box<dyn prometheus::core::Collector>,
+) -> Result<(), prometheus::Error> {
+    let registry = REGISTRY.get().ok_or_else(|| {
+        prometheus::Error::Msg("Prometheus registry is not initialized".to_string())
+    })?;
+    registry.register(collector)
 }
 
 pub fn render_metrics() -> Result<String, prometheus::Error> {
