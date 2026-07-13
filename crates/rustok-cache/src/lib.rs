@@ -5,6 +5,7 @@ mod durable_invalidation;
 mod durable_invalidation_service;
 mod durable_invalidation_transport;
 mod envelope;
+mod event_dedupe;
 mod fallback;
 mod generation;
 mod invalidation;
@@ -48,6 +49,11 @@ pub use durable_invalidation_transport::{
 pub use envelope::{
     CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CACHE_ENVELOPE_FORMAT_VERSION,
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+};
+pub use event_dedupe::{
+    BoundedCacheEventDedupe, CacheEventDedupeDecision, CacheEventDedupeError,
+    CacheEventDedupeStats, DEFAULT_CACHE_EVENT_DEDUPE_TTL,
+    DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES,
 };
 pub use generation::{
     CacheGenerationError, CacheGenerationSource, CacheGenerationStats, CacheNamespaceGeneration,
