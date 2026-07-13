@@ -11,6 +11,10 @@ pub enum UiIntent {
     TogglePanel(PanelKind),
     ActivatePanel(PanelKind),
     SetViewport(ViewportState),
+    ActivatePage {
+        page_id: Option<String>,
+        page_index: usize,
+    },
     Select(Option<String>),
     Hover(Option<String>),
     SetSelectedOverlay(Option<CanvasRect>),
@@ -87,6 +91,24 @@ impl FlyUiStateMachine {
             UiIntent::SetViewport(viewport) => {
                 self.state.viewport = viewport;
                 vec![UiEffect::None]
+            }
+            UiIntent::ActivatePage {
+                page_id,
+                page_index,
+            } => {
+                self.state.page.active_page_id = page_id;
+                self.state.page.active_page_index = page_index;
+                self.state.selection.component_id = None;
+                self.state.selection.hovered_component_id = None;
+                self.state.selection.property_editor_id = None;
+                self.state.overlays.selected = None;
+                self.state.overlays.hovered = None;
+                self.state.overlays.insertion = None;
+                self.state.overlays.resize_handles_visible = false;
+                self.state.drag = None;
+                vec![UiEffect::Command(EditorCommand::Select {
+                    component_id: None,
+                })]
             }
             UiIntent::Select(component_id) => {
                 self.state.selection.component_id = component_id.clone();
