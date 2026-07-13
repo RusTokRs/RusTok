@@ -4,13 +4,12 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::dto::CartResponse;
+use crate::dto::{CartResponse, CartStatus};
 use crate::entities;
 use crate::error::{CartError, CartResult};
 
 use super::CartService;
 use super::helpers::load_cart_in_tx;
-use super::types::CartStatus;
 
 impl CartService {
     pub async fn complete_cart(&self, tenant_id: Uuid, cart_id: Uuid) -> CartResult<CartResponse> {
