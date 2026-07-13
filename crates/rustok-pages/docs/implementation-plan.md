@@ -13,58 +13,98 @@ and four fallback profiles. `pages-wave0-dry-run-evidence.json` is explicitly
 synthetic and the Wave 1 packet is a readiness draft, so neither is production
 rollout evidence.
 
-Legacy blocks path works in read/bridge mode: an initial import is supported,
-while visual-builder body writes preserve blocks and do not add a block-update
-surface. `verify-page-builder-pages-legacy-bridge.mjs` locks that behaviour.
+The admin package now mounts the selected page through
+`PageBuilderAdminHostContext`. Its `PagesBuilderFacade` accepts the canonical
+Page Builder publish envelope, fetches current page metadata, rejects stale
+`updated_at` revisions, writes through the existing Pages transport facade and
+returns the backend revision to Fly. The old CRUD/JSON form remains mounted as
+the metadata owner and fallback.
+
+Canonical Fly editing uses `pages[].component`. For compatibility with the
+existing Pages tree/preview helpers, the consumer keeps `frames[0].component`
+as a synchronized snapshot. Legacy frame content is copied into the canonical
+component on first load; canonical content wins and refreshes the frame snapshot
+on subsequent saves. Existing blocks remain attached and are not silently
+converted or removed.
 
 ## FFA/FBA status
 
-- FFA status: `in_progress` — module-owned admin and storefront surfaces are
-  present and must keep the core/transport/UI boundary.
-- FBA status: `boundary_ready` — Pages has the reference consumer metadata and
-  static fallback coverage, but no observed tenant control-plane evidence.
-- Structural shape: `core_transport_ui`
+- FFA status: `in_progress` — the Pages admin package has a real Fly consumer
+  facade and iframe authoring composition, while storefront inline editing and
+  module contribution factories remain open.
+- FBA status: `boundary_ready` — Pages has the reference consumer metadata,
+  optimistic revision protection and static fallback coverage, but no observed
+  tenant control-plane evidence.
+- Structural shape: `core_transport_ui_with_builder_consumer`
 - Evidence: `scripts/verify/verify-pages-ui-boundary.mjs`,
+  `scripts/verify/verify-fly-admin-browser-runtime.mjs`,
   `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json`,
   and `crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json`.
 
+## Completed implementation slice — 2026-07-13
+
+- The selected Pages document is loaded into `AdminCanvasController`.
+- Pages persists only through its module-owned `transport` facade.
+- `PageBuilderCapabilityRequest::Publish` is the only accepted editor write.
+- Save compares the request revision with the latest Page body `updated_at`.
+- A stale editor receives stable code `REVISION_CONFLICT` and does not overwrite
+  newer page data.
+- The Page Builder iframe reports viewport, component geometry, pointer, hover
+  and focus events through a source/origin/protocol/instance/sequence validated
+  bridge.
+- Fly UI receives selection and overlay state; the parent draws hover and
+  selection outlines over the isolated iframe.
+- The old Pages JSON editor remains available as the migration/fallback path.
+- English and Russian UI messages cover builder loading and bridge state.
+
 ## Open results
 
-1. Run Wave 0 against an internal tenant and replace the synthetic evidence
+1. Implement real component mutation UX: block palette, drag/drop candidate
+   zones, insert/move/remove controls, traits, styles and resize handles. Done
+   when interactions produce only Fly commands, preserve undo/redo invariants,
+   and pass browser interaction tests.
+2. Add real GrapesJS browser captures and cross-editor round-trip evidence.
+   Done when projects captured through `getProjectData()` load in Fly, survive
+   edits, reload through GrapesJS and preserve unknown/plugin data.
+3. Run Wave 0 against an internal tenant and replace the synthetic evidence
    packet with observed before/after flag and health snapshots, smoke results,
    metrics, traces, and owner decision. Done when the packet is accepted by
    the evidence and correlation gates without placeholder values.
    Dependency: a runnable Page Builder control plane. Verification:
    `node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs`
    and `node crates/rustok-page-builder/scripts/verify/verify-page-builder-correlation-evidence.mjs`.
-2. Promote the reference consumer through a real Wave 1 only after the Wave 0
+4. Promote the reference consumer through a real Wave 1 only after the Wave 0
    result and provider persistence/rendering paths are verified. Done when an
    approved tenant packet proves `preview -> properties -> publish(dry)`, all
    fallback profiles, rollback execution, and the correlation
    `builder write -> pages publish -> storefront read`.
-   Dependency: Page Builder provider readiness and owner sign-off.
-   Verification: `npm run verify:page-builder:consumer:pages` and
-   `npm run verify:page-builder:wave1-readiness-draft` until the draft is
-   replaced.
-3. Decide and execute the legacy-blocks exit policy. Done when the owner has
-   recorded the supported tenant migration path, removal preconditions, and
-   the outcome for the bridge without silently deleting existing blocks.
-   Dependency: an inventory of legacy block consumers and content migration
-   approval. Verification: `npm run verify:page-builder:pages:legacy-bridge`
-   plus targeted page round-trip tests.
+5. Decide and execute the legacy-frame/legacy-block exit policy. Done when the
+   owner has recorded migration preconditions and the compatibility snapshot can
+   be removed without breaking old Pages tooling or deleting existing blocks.
+6. Implement Pages storefront renderers and optional authenticated real-DOM
+   inline editing without leaking editor dependencies into anonymous bundles.
 
 ## Verification
 
-- `npm run verify:pages:ui-boundary`
+- `node scripts/verify/verify-pages-ui-boundary.mjs`
+- `node scripts/verify/verify-fly-admin-browser-runtime.mjs`
 - `npm run verify:page-builder:consumer:pages`
 - `npm run verify:page-builder:pages:legacy-bridge`
 - `npm run verify:page-builder:wave1-readiness-draft`
+- targeted Rust tests for `rustok-pages-admin`, `rustok-page-builder-admin`,
+  `fly`, `fly-ui` and `fly-leptos`
+- WASM/browser interaction tests for iframe handshake, selection, geometry,
+  teardown and save conflict behavior
 
 ## Boundaries
 
-- Pages owns page/menu lifecycle, visibility, published reads, and migration
-  safety for its existing blocks.
-- Page Builder owns GrapesJS capability delivery, feature flags, persistence
-  and rendering adapters, and control-plane rollout mechanics.
-- Hosts compose Pages UI packages and do not take ownership of page policy or
-  Page Builder internals.
+- Pages owns page/menu lifecycle, metadata, visibility, published reads,
+  optimistic page revisions and migration safety for its existing blocks.
+- Page Builder admin owns editor behavior and the canonical facade envelope, but
+  does not choose the Pages transport or directly persist a page.
+- Fly owns the canonical project model and commands. The legacy frame component
+  is a temporary Pages compatibility snapshot, not a second editor authority.
+- Page Builder backend owns capability policy, validation/sanitization seams,
+  feature flags and control-plane rollout mechanics.
+- Hosts compose module packages and provide route/auth/tenant context; they do
+  not take ownership of page policy, Fly state or persistence semantics.
