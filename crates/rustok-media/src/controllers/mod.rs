@@ -52,7 +52,7 @@ impl MediaHttpRuntime {
 fn media_error(error: MediaError) -> HttpError {
     match error {
         MediaError::NotFound(_) => HttpError::not_found("media_not_found", "Media asset not found"),
-        MediaError::Forbidden => HttpError::unauthorized("media_access_denied", "Access denied"),
+        MediaError::Forbidden => HttpError::forbidden("media_access_denied", "Access denied"),
         MediaError::UnsupportedMimeType(content_type) => HttpError::bad_request(
             "unsupported_media_type",
             format!("Unsupported media type: {content_type}"),
@@ -79,15 +79,15 @@ fn require_media_permission(
     action: Action,
 ) -> HttpResult<()> {
     if auth.tenant_id != tenant.id {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "media_access_denied",
-            "Authenticated user is not bound to the current tenant",
+            "Authenticated principal is not bound to the current tenant",
         ));
     }
 
     let permission = Permission::new(Resource::Media, action);
     if !has_effective_permission(&auth.permissions, &permission) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "media_access_denied",
             format!("Permission required: {permission}"),
         ));
@@ -148,7 +148,7 @@ pub async fn upload(
         let item = service
             .upload(UploadInput {
                 tenant_id: tenant.id,
-                uploaded_by: Some(auth.user_id),
+                uploaded_by: auth.human_user_id(),
                 original_name: file_name,
                 content_type,
                 data,
