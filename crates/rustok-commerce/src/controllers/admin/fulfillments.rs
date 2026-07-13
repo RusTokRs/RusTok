@@ -92,6 +92,7 @@ pub async fn create_fulfillment(
     )?;
 
     let fulfillment = FulfillmentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.fulfillment_provider_registry())
         .create_manual_fulfillment(tenant.id, input)
         .await
         .map_err(super::map_fulfillment_orchestration_error)?;
@@ -157,10 +158,11 @@ pub async fn ship_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(runtime.db_clone())
+    let fulfillment = FulfillmentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.fulfillment_provider_registry())
         .ship_fulfillment(tenant.id, id, input)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(super::map_fulfillment_orchestration_error)?;
 
     Ok(Json(fulfillment))
 }
@@ -259,10 +261,11 @@ pub async fn reship_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(runtime.db_clone())
+    let fulfillment = FulfillmentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.fulfillment_provider_registry())
         .reship_fulfillment(tenant.id, id, input)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(super::map_fulfillment_orchestration_error)?;
 
     Ok(Json(fulfillment))
 }
@@ -293,10 +296,11 @@ pub async fn cancel_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(runtime.db_clone())
+    let fulfillment = FulfillmentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.fulfillment_provider_registry())
         .cancel_fulfillment(tenant.id, id, input)
         .await
-        .map_err(super::map_fulfillment_error)?;
+        .map_err(super::map_fulfillment_orchestration_error)?;
 
     Ok(Json(fulfillment))
 }
