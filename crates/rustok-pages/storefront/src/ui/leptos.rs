@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
+use crate::builder::{is_page_builder_body, PageBuilderPageBody};
 use crate::core;
 use crate::i18n::t;
 use crate::model::{PageDetail, PageListItem, StorefrontPagesData};
@@ -140,6 +141,19 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
             "No page body or legacy blocks yet.",
         ),
     );
+    let builder_body = page.body.clone().filter(is_page_builder_body);
+    let body_view = match builder_body {
+        Some(body) => view! {
+            <div class="mt-5 overflow-hidden rounded-2xl border border-border bg-background">
+                <PageBuilderPageBody body />
+            </div>
+        }
+        .into_any(),
+        None => view! {
+            <p class="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground">{summary}</p>
+        }
+        .into_any(),
+    };
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
@@ -155,7 +169,7 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
                 )}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
-            <p class="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground">{summary}</p>
+            {body_view}
         </article>
     }
     .into_any()
@@ -297,7 +311,7 @@ mod tests {
                 }],
             },
             |content, format| summarize_content(Some("en"), content, format),
-            "empty".to_string(),
+            "empty".to_string()
         );
 
         assert_eq!(summary, "Hello");
@@ -331,7 +345,7 @@ mod tests {
                 }],
             },
             |content, format| summarize_content(Some("en"), content, format),
-            "empty".to_string(),
+            "empty".to_string()
         );
 
         assert_eq!(
