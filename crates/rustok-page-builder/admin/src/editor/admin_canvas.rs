@@ -1,8 +1,10 @@
-use crate::editor::{decode_canvas_message, render_canvas_srcdoc, CanvasBridgeMessage};
+use crate::editor::{
+    decode_canvas_message, render_canvas_srcdoc, CanvasBridgeMessage, CanvasComponentGeometry,
+};
 use crate::i18n::t;
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
-use fly::ProjectHash;
-use fly_leptos::{BrowserRect, CoordinateTransform};
+use fly::{ComponentPatch, EditorCommand, ProjectHash};
+use fly_leptos::{BrowserPoint, CoordinateTransform};
 use fly_ui::{CanvasRect, UiIntent, ViewportState};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -10,6 +12,7 @@ use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
 };
 use rustok_ui_core::UiRouteContext;
+use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -24,7 +27,7 @@ fn dispatch_admin_intent(
     intent: UiIntent,
 ) {
     let mut requests = Vec::new();
-    let mut announcement = None;
+    let mut announcements = Vec::new();
     let mut error = None;
 
     controller.update(|controller| match controller.dispatch(intent) {
@@ -36,7 +39,7 @@ fn dispatch_admin_intent(
                         expected_hash,
                         ..
                     } => requests.push((request, expected_hash)),
-                    AdminCanvasEffect::Announce(message) => announcement = Some(message),
+                    AdminCanvasEffect::Announce(message) => announcements.push(message),
                 }
             }
         }
@@ -44,7 +47,7 @@ fn dispatch_admin_intent(
     });
 
     last_error.set(error);
-    if let Some(message) = announcement {
+    if let Some(message) = announcements.pop() {
         last_announcement.set(Some(message));
     }
 
@@ -141,20 +144,43 @@ fn execute_facade_request(
 fn dispatch_canvas_intent(
     controller: RwSignal<AdminCanvasController>,
     last_error: RwSignal<Option<String>>,
+    last_announcement: RwSignal<Option<String>>,
     intent: UiIntent,
 ) {
     let mut error = None;
-    controller.update(|controller| {
-        if let Err(dispatch_error) = controller.dispatch(intent) {
-            error = Some(dispatch_error.to_string());
+    let mut announcement = None;
+    controller.update(|controller| match controller.dispatch(intent) {
+        Ok(effects) => {
+            for effect in effects {
+                if let AdminCanvasEffect::Announce(message) = effect {
+                    announcement = Some(message);
+                }
+            }
         }
+        Err(dispatch_error) => error = Some(dispatch_error.to_string()),
     });
-    if error.is_some() {
-        last_error.set(error);
+    last_error.set(error);
+    if let Some(message) = announcement {
+        last_announcement.set(Some(message));
     }
 }
 
-fn canvas_rect(rect: BrowserRect, viewport: ViewportState) -> CanvasRect {
+fn dispatch_result_intent(
+    controller: RwSignal<AdminCanvasController>,
+    last_error: RwSignal<Option<String>>,
+    last_announcement: RwSignal<Option<String>>,
+    intent: Result<UiIntent, String>,
+) {
+    match intent {
+        Ok(intent) => dispatch_canvas_intent(controller, last_error, last_announcement, intent),
+        Err(error) => last_error.set(Some(error)),
+    }
+}
+
+fn canvas_rect(
+    rect: fly_leptos::BrowserRect,
+    viewport: ViewportState,
+) -> CanvasRect {
     rect.to_canvas_rect(CoordinateTransform {
         scroll_x: viewport.scroll_x,
         scroll_y: viewport.scroll_y,
@@ -165,8 +191,9 @@ fn canvas_rect(rect: BrowserRect, viewport: ViewportState) -> CanvasRect {
 
 fn synchronize_overlays(
     controller: RwSignal<AdminCanvasController>,
-    geometry: RwSignal<BTreeMap<String, BrowserRect>>,
+    geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
     last_error: RwSignal<Option<String>>,
+    last_announcement: RwSignal<Option<String>>,
 ) {
     let (selected, hovered, viewport) = controller.with(|controller| {
         (
@@ -177,24 +204,80 @@ fn synchronize_overlays(
     });
     let selected = selected.and_then(|id| {
         geometry
-            .with(|geometry| geometry.get(&id).copied())
+            .with(|geometry| geometry.get(&id).map(|item| item.rect))
             .map(|rect| canvas_rect(rect, viewport))
     });
     let hovered = hovered.and_then(|id| {
         geometry
-            .with(|geometry| geometry.get(&id).copied())
+            .with(|geometry| geometry.get(&id).map(|item| item.rect))
             .map(|rect| canvas_rect(rect, viewport))
     });
-    dispatch_canvas_intent(controller, last_error, UiIntent::SetSelectedOverlay(selected));
-    dispatch_canvas_intent(controller, last_error, UiIntent::SetHoveredOverlay(hovered));
+    dispatch_canvas_intent(
+        controller,
+        last_error,
+        last_announcement,
+        UiIntent::SetSelectedOverlay(selected),
+    );
+    dispatch_canvas_intent(
+        controller,
+        last_error,
+        last_announcement,
+        UiIntent::SetHoveredOverlay(hovered),
+    );
+}
+
+fn update_drag_candidates(
+    controller: RwSignal<AdminCanvasController>,
+    geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
+    last_error: RwSignal<Option<String>>,
+    last_announcement: RwSignal<Option<String>>,
+    position: BrowserPoint,
+) {
+    if !controller.with(|controller| controller.ui().state.drag.is_some()) {
+        return;
+    }
+    let geometries = geometry.with(|geometry| geometry.values().cloned().collect::<Vec<_>>());
+    let candidates = controller.with(|controller| controller.hit_candidates(position, geometries));
+    dispatch_canvas_intent(
+        controller,
+        last_error,
+        last_announcement,
+        UiIntent::UpdateHitTest(candidates),
+    );
+}
+
+fn complete_drag(
+    controller: RwSignal<AdminCanvasController>,
+    geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
+    last_error: RwSignal<Option<String>>,
+    last_announcement: RwSignal<Option<String>>,
+    position: BrowserPoint,
+) {
+    if !controller.with(|controller| controller.ui().state.drag.is_some()) {
+        return;
+    }
+    update_drag_candidates(
+        controller,
+        geometry,
+        last_error,
+        last_announcement,
+        position,
+    );
+    dispatch_canvas_intent(
+        controller,
+        last_error,
+        last_announcement,
+        UiIntent::Drop,
+    );
 }
 
 fn handle_canvas_message(
     controller: RwSignal<AdminCanvasController>,
-    geometry: RwSignal<BTreeMap<String, BrowserRect>>,
+    geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
     ready: RwSignal<bool>,
     pointer: RwSignal<Option<String>>,
     last_error: RwSignal<Option<String>>,
+    last_announcement: RwSignal<Option<String>>,
     message: CanvasBridgeMessage,
 ) {
     match message {
@@ -209,6 +292,7 @@ fn handle_canvas_message(
             dispatch_canvas_intent(
                 controller,
                 last_error,
+                last_announcement,
                 UiIntent::SetViewport(ViewportState {
                     width,
                     height,
@@ -217,36 +301,117 @@ fn handle_canvas_message(
                     scroll_y,
                 }),
             );
-            synchronize_overlays(controller, geometry, last_error);
+            synchronize_overlays(
+                controller,
+                geometry,
+                last_error,
+                last_announcement,
+            );
         }
         CanvasBridgeMessage::GeometrySnapshot { components } => {
             geometry.set(
                 components
                     .into_iter()
-                    .map(|component| (component.component_id, component.rect))
+                    .map(|component| (component.component_id.clone(), component))
                     .collect(),
             );
-            synchronize_overlays(controller, geometry, last_error);
+            synchronize_overlays(
+                controller,
+                geometry,
+                last_error,
+                last_announcement,
+            );
         }
         CanvasBridgeMessage::PointerMoved { sample } => {
             pointer.set(Some(format!(
                 "{:.0}, {:.0}",
                 sample.position.x, sample.position.y
             )));
+            update_drag_candidates(
+                controller,
+                geometry,
+                last_error,
+                last_announcement,
+                sample.position,
+            );
+        }
+        CanvasBridgeMessage::DragMoved { position } => update_drag_candidates(
+            controller,
+            geometry,
+            last_error,
+            last_announcement,
+            position,
+        ),
+        CanvasBridgeMessage::DropRequested { position } => complete_drag(
+            controller,
+            geometry,
+            last_error,
+            last_announcement,
+            position,
+        ),
+        CanvasBridgeMessage::CancelDragRequested => {
+            if controller.with(|controller| controller.ui().state.drag.is_some()) {
+                dispatch_canvas_intent(
+                    controller,
+                    last_error,
+                    last_announcement,
+                    UiIntent::CancelDrag,
+                );
+            }
         }
         CanvasBridgeMessage::FocusRequested { component_id } => {
-            dispatch_canvas_intent(controller, last_error, UiIntent::Select(component_id));
-            synchronize_overlays(controller, geometry, last_error);
+            if !controller.with(|controller| controller.ui().state.drag.is_some()) {
+                dispatch_canvas_intent(
+                    controller,
+                    last_error,
+                    last_announcement,
+                    UiIntent::Select(component_id),
+                );
+                synchronize_overlays(
+                    controller,
+                    geometry,
+                    last_error,
+                    last_announcement,
+                );
+            }
         }
         CanvasBridgeMessage::HoverRequested { component_id } => {
-            dispatch_canvas_intent(controller, last_error, UiIntent::Hover(component_id));
-            synchronize_overlays(controller, geometry, last_error);
+            dispatch_canvas_intent(
+                controller,
+                last_error,
+                last_announcement,
+                UiIntent::Hover(component_id),
+            );
+            synchronize_overlays(
+                controller,
+                geometry,
+                last_error,
+                last_announcement,
+            );
         }
         CanvasBridgeMessage::Teardown => {
             ready.set(false);
             geometry.set(BTreeMap::new());
-            dispatch_canvas_intent(controller, last_error, UiIntent::SetSelectedOverlay(None));
-            dispatch_canvas_intent(controller, last_error, UiIntent::SetHoveredOverlay(None));
+            dispatch_canvas_intent(
+                controller,
+                last_error,
+                last_announcement,
+                UiIntent::SetSelectedOverlay(None),
+            );
+            dispatch_canvas_intent(
+                controller,
+                last_error,
+                last_announcement,
+                UiIntent::SetHoveredOverlay(None),
+            );
+            if controller.with(|controller| controller.ui().state.drag.is_some()) {
+                dispatch_canvas_intent(
+                    controller,
+                    last_error,
+                    last_announcement,
+                    UiIntent::CancelDrag,
+                );
+            }
         }
     }
 }
@@ -278,6 +443,23 @@ fn dom_id(value: &str) -> String {
         .collect()
 }
 
+fn parse_property_value(raw: &str) -> Value {
+    serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()))
+}
+
+fn selected_patch_intent(
+    controller: RwSignal<AdminCanvasController>,
+    patch: ComponentPatch,
+) -> Result<UiIntent, String> {
+    let component_id = controller
+        .with(|controller| controller.ui().state.selection.component_id.clone())
+        .ok_or_else(|| "select a component before editing properties".to_string())?;
+    Ok(UiIntent::Execute(EditorCommand::Patch {
+        component_id,
+        patch,
+    }))
+}
+
 #[component]
 pub fn AdminCanvas(
     controller: AdminCanvasController,
@@ -289,6 +471,13 @@ pub fn AdminCanvas(
     let undo_label = t(locale.as_deref(), "page_builder.action.undo", "Undo");
     let redo_label = t(locale.as_deref(), "page_builder.action.redo", "Redo");
     let save_label = t(locale.as_deref(), "page_builder.action.save", "Save");
+    let add_label = t(locale.as_deref(), "page_builder.action.add", "Add");
+    let drag_label = t(locale.as_deref(), "page_builder.action.drag", "Drag");
+    let move_label = t(locale.as_deref(), "page_builder.action.move", "Move selected");
+    let remove_label = t(locale.as_deref(), "page_builder.action.remove", "Remove selected");
+    let cancel_label = t(locale.as_deref(), "page_builder.action.cancelDrag", "Cancel drag");
+    let apply_label = t(locale.as_deref(), "page_builder.action.apply", "Apply");
+    let clear_label = t(locale.as_deref(), "page_builder.action.clear", "Clear");
     let saving_status = t(locale.as_deref(), "page_builder.status.saving", "Saving");
     let failed_status = t(
         locale.as_deref(),
@@ -306,11 +495,10 @@ pub fn AdminCanvas(
         "page_builder.status.saveSucceeded",
         "Project saved",
     );
-    let layers_label = t(
-        locale.as_deref(),
-        "page_builder.panel.layers",
-        "Layers and selection",
-    );
+    let palette_label = t(locale.as_deref(), "page_builder.panel.palette", "Blocks");
+    let layers_label = t(locale.as_deref(), "page_builder.panel.layers", "Layers");
+    let properties_label = t(locale.as_deref(), "page_builder.panel.properties", "Properties");
+    let styles_label = t(locale.as_deref(), "page_builder.panel.styles", "Styles");
     let diagnostics_label = t(
         locale.as_deref(),
         "page_builder.panel.diagnostics",
@@ -328,6 +516,24 @@ pub fn AdminCanvas(
         "Selected component",
     );
     let none_label = t(locale.as_deref(), "page_builder.field.none", "None");
+    let type_label = t(locale.as_deref(), "page_builder.field.type", "Type");
+    let tag_label = t(locale.as_deref(), "page_builder.field.tagName", "Tag name");
+    let content_label = t(locale.as_deref(), "page_builder.field.content", "Content");
+    let attribute_name_label = t(
+        locale.as_deref(),
+        "page_builder.field.attributeName",
+        "Attribute name",
+    );
+    let attribute_value_label = t(
+        locale.as_deref(),
+        "page_builder.field.attributeValue",
+        "Attribute value or JSON",
+    );
+    let style_json_label = t(
+        locale.as_deref(),
+        "page_builder.field.styleJson",
+        "Style JSON",
+    );
     let project_hash_label = t(
         locale.as_deref(),
         "page_builder.field.projectHash",
@@ -358,6 +564,11 @@ pub fn AdminCanvas(
         "page_builder.bridge.pointer",
         "Pointer",
     );
+    let dragging_label = t(
+        locale.as_deref(),
+        "page_builder.status.dragging",
+        "Choose a drop position in the canvas",
+    );
 
     let instance_seed = format!(
         "{}-{}",
@@ -367,11 +578,49 @@ pub fn AdminCanvas(
     let instance_id = format!("fly-canvas-{instance_seed}");
     let iframe_id = format!("{instance_id}-frame");
     let controller = RwSignal::new(controller);
-    let geometry = RwSignal::new(BTreeMap::<String, BrowserRect>::new());
+    let geometry = RwSignal::new(BTreeMap::<String, CanvasComponentGeometry>::new());
     let ready = RwSignal::new(false);
     let pointer = RwSignal::new(None::<String>);
     let last_error = RwSignal::new(None::<String>);
     let last_announcement = RwSignal::new(None::<String>);
+    let attribute_name = RwSignal::new(String::new());
+    let attribute_value = RwSignal::new(String::new());
+    let tag_name = RwSignal::new(String::new());
+    let content_value = RwSignal::new(String::new());
+    let style_json = RwSignal::new("{}".to_string());
+    let property_selection_id = RwSignal::new(None::<String>);
+
+    Effect::new(move |_| {
+        let selected = controller.with(|controller| controller.selected_component_view());
+        let selected_id = selected.as_ref().map(|selected| selected.id.clone());
+        if property_selection_id.get_untracked() == selected_id {
+            return;
+        }
+        property_selection_id.set(selected_id);
+        if let Some(selected) = selected {
+            tag_name.set(selected.tag_name.unwrap_or_default());
+            content_value.set(
+                selected
+                    .fields
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            );
+            style_json.set(
+                selected
+                    .style
+                    .as_ref()
+                    .and_then(|style| serde_json::to_string_pretty(style).ok())
+                    .unwrap_or_else(|| "{}".to_string()),
+            );
+        } else {
+            tag_name.set(String::new());
+            content_value.set(String::new());
+            style_json.set("{}".to_string());
+        }
+    });
+
     let canvas_srcdoc = Memo::new({
         let instance_id = instance_id.clone();
         move |_| {
@@ -409,6 +658,7 @@ pub fn AdminCanvas(
                             ready,
                             pointer,
                             last_error,
+                            last_announcement,
                             message,
                         )
                     },
@@ -441,10 +691,11 @@ pub fn AdminCanvas(
     let hash_label = project_hash_label.clone();
 
     view! {
-        <div class="rustok-page-builder-admin__workspace">
-            <div class="rustok-page-builder-admin__toolbar" role="toolbar" aria-label="Page builder actions">
+        <div class="rustok-page-builder-admin__workspace space-y-3">
+            <div class="rustok-page-builder-admin__toolbar flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3" role="toolbar" aria-label="Page builder actions">
                 <button
                     type="button"
+                    class="rounded border border-border px-3 py-1.5 text-sm"
                     disabled=move || !controller.with(|controller| controller.can_undo())
                     on:click=move |_| dispatch_admin_intent(
                         controller,
@@ -456,11 +707,10 @@ pub fn AdminCanvas(
                         undo_save_succeeded.clone(),
                         UiIntent::Undo,
                     )
-                >
-                    {undo_label}
-                </button>
+                >{undo_label}</button>
                 <button
                     type="button"
+                    class="rounded border border-border px-3 py-1.5 text-sm"
                     disabled=move || !controller.with(|controller| controller.can_redo())
                     on:click=move |_| dispatch_admin_intent(
                         controller,
@@ -472,11 +722,10 @@ pub fn AdminCanvas(
                         redo_save_succeeded.clone(),
                         UiIntent::Redo,
                     )
-                >
-                    {redo_label}
-                </button>
+                >{redo_label}</button>
                 <button
                     type="button"
+                    class="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground"
                     disabled=move || controller.with(|controller| {
                         controller.ui().state.has_blocking_diagnostics()
                             || !controller.ui().state.dirty.dirty
@@ -492,10 +741,41 @@ pub fn AdminCanvas(
                         save_save_succeeded.clone(),
                         UiIntent::RequestSave,
                     )
-                >
-                    {save_label}
-                </button>
-                <span class="rustok-page-builder-admin__dirty-state" aria-live="polite">
+                >{save_label}</button>
+                <button
+                    type="button"
+                    class="rounded border border-border px-3 py-1.5 text-sm"
+                    disabled=move || controller.with(|controller| {
+                        controller.selected_component_view().is_none_or(|selected| selected.is_root)
+                    })
+                    on:click=move |_| {
+                        let intent = controller.with(|controller| controller.begin_selected_move_intent());
+                        dispatch_result_intent(controller, last_error, last_announcement, intent);
+                    }
+                >{move_label}</button>
+                <button
+                    type="button"
+                    class="rounded border border-destructive/40 px-3 py-1.5 text-sm text-destructive"
+                    disabled=move || controller.with(|controller| {
+                        controller.selected_component_view().is_none_or(|selected| selected.is_root)
+                    })
+                    on:click=move |_| {
+                        let intent = controller.with(|controller| controller.remove_selected_intent());
+                        dispatch_result_intent(controller, last_error, last_announcement, intent);
+                    }
+                >{remove_label}</button>
+                <button
+                    type="button"
+                    class="rounded border border-border px-3 py-1.5 text-sm"
+                    disabled=move || controller.with(|controller| controller.ui().state.drag.is_none())
+                    on:click=move |_| dispatch_canvas_intent(
+                        controller,
+                        last_error,
+                        last_announcement,
+                        UiIntent::CancelDrag,
+                    )
+                >{cancel_label}</button>
+                <span class="rustok-page-builder-admin__dirty-state ml-auto text-sm" aria-live="polite">
                     {move || controller.with(|controller| {
                         if controller.ui().state.dirty.save_in_progress {
                             saving_status.clone()
@@ -508,7 +788,7 @@ pub fn AdminCanvas(
                         }
                     })}
                 </span>
-                <span class="rustok-page-builder-admin__bridge-state" aria-live="polite">
+                <span class="rustok-page-builder-admin__bridge-state text-sm text-muted-foreground" aria-live="polite">
                     {move || if ready.get() {
                         bridge_ready_label.clone()
                     } else {
@@ -517,28 +797,85 @@ pub fn AdminCanvas(
                 </span>
             </div>
 
-            <div class="rustok-page-builder-admin__layout">
-                <aside class="rustok-page-builder-admin__panel" aria-label="Fly editor state">
-                    <h2>{layers_label}</h2>
-                    <dl>
-                        <dt>{page_label}</dt>
-                        <dd>{move || controller.with(|controller| controller.page_id().to_string())}</dd>
-                        <dt>{revision_label}</dt>
-                        <dd>{move || controller.with(|controller| controller.revision_id().to_string())}</dd>
-                        <dt>{selected_label}</dt>
-                        <dd>{move || controller.with(|controller| {
-                            controller
-                                .ui()
-                                .state
-                                .selection
-                                .component_id
-                                .clone()
-                                .unwrap_or_else(|| selected_none_label.clone())
-                        })}</dd>
-                    </dl>
+            <div class="rustok-page-builder-admin__layout grid min-h-[620px] gap-3" style="grid-template-columns:minmax(220px,280px) minmax(420px,1fr) minmax(260px,340px)">
+                <aside class="rustok-page-builder-admin__panel space-y-4 overflow-auto rounded-xl border border-border bg-card p-3">
+                    <section class="space-y-2">
+                        <h2 class="font-semibold">{palette_label}</h2>
+                        <div class="space-y-2">
+                            {move || controller.with(|controller| controller.palette_blocks()).into_iter().map(|block| {
+                                let insert_id = block.id.clone();
+                                let drag_id = block.id.clone();
+                                let html_drag_id = block.id.clone();
+                                view! {
+                                    <div
+                                        class="rounded-lg border border-border p-2"
+                                        draggable="true"
+                                        on:dragstart=move |_| {
+                                            let intent = controller.with(|controller| controller.begin_palette_drag_intent(&html_drag_id));
+                                            dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                        }
+                                    >
+                                        <div class="text-sm font-medium">{block.label}</div>
+                                        <div class="text-xs text-muted-foreground">{block.category}</div>
+                                        <div class="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                class="rounded border border-border px-2 py-1 text-xs"
+                                                on:click=move |_| {
+                                                    let intent = controller.with(|controller| controller.insert_palette_block_intent(&insert_id));
+                                                    dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                                }
+                                            >{add_label.clone()}</button>
+                                            <button
+                                                type="button"
+                                                class="rounded border border-border px-2 py-1 text-xs"
+                                                on:click=move |_| {
+                                                    let intent = controller.with(|controller| controller.begin_palette_drag_intent(&drag_id));
+                                                    dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                                }
+                                            >{drag_label.clone()}</button>
+                                        </div>
+                                    </div>
+                                }
+                            }).collect_view()}
+                        </div>
+                    </section>
+
+                    <section class="space-y-2 border-t border-border pt-3">
+                        <h2 class="font-semibold">{layers_label}</h2>
+                        <div class="space-y-1">
+                            {move || {
+                                let selected = controller.with(|controller| controller.ui().state.selection.component_id.clone());
+                                controller.with(|controller| controller.layer_items()).into_iter().map(|layer| {
+                                    let component_id = layer.id.clone();
+                                    let active = selected.as_deref() == Some(layer.id.as_str());
+                                    view! {
+                                        <button
+                                            type="button"
+                                            class=if active {
+                                                "block w-full rounded bg-primary/10 px-2 py-1 text-left text-sm text-primary"
+                                            } else {
+                                                "block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
+                                            }
+                                            style=format!("padding-left:{}px", 8 + layer.depth * 14)
+                                            on:click=move |_| dispatch_canvas_intent(
+                                                controller,
+                                                last_error,
+                                                last_announcement,
+                                                UiIntent::Select(Some(component_id.clone())),
+                                            )
+                                        >
+                                            <span class="font-medium">{layer.component_type}</span>
+                                            <span class="ml-1 text-xs text-muted-foreground">{layer.id}</span>
+                                        </button>
+                                    }
+                                }).collect_view()
+                            }}
+                        </div>
+                    </section>
                 </aside>
 
-                <main class="rustok-page-builder-admin__canvas" aria-label="Isolated page canvas" style="position:relative;overflow:hidden">
+                <main class="rustok-page-builder-admin__canvas relative overflow-hidden rounded-xl border border-border bg-white" aria-label="Isolated page canvas">
                     <iframe
                         id=iframe_id
                         title="Fly page canvas"
@@ -546,7 +883,7 @@ pub fn AdminCanvas(
                         srcdoc=move || canvas_srcdoc.get()
                         data-fly-iframe-canvas="true"
                         on:load=on_iframe_load
-                        style="display:block;width:100%;min-height:520px;border:0;background:#fff"
+                        style="display:block;width:100%;min-height:620px;border:0;background:#fff"
                     ></iframe>
                     <div
                         aria-hidden="true"
@@ -574,28 +911,237 @@ pub fn AdminCanvas(
                             )
                         })
                     ></div>
+                    <div
+                        aria-hidden="true"
+                        class="rustok-page-builder-admin__insertion-overlay"
+                        style=move || controller.with(|controller| {
+                            format!(
+                                "{};position:absolute;pointer-events:none;border:3px solid #16a34a;background:rgba(22,163,74,.08)",
+                                overlay_style(
+                                    controller.ui().state.overlays.insertion,
+                                    controller.ui().state.viewport,
+                                )
+                            )
+                        })
+                    ></div>
+                    <div
+                        class="absolute bottom-3 left-3 rounded bg-background/90 px-2 py-1 text-xs shadow"
+                        class:hidden=move || controller.with(|controller| controller.ui().state.drag.is_none())
+                    >{dragging_label}</div>
                 </main>
 
-                <aside class="rustok-page-builder-admin__panel" aria-label="Validation diagnostics">
-                    <h2>{diagnostics_label}</h2>
-                    <p>{move || controller.with(|controller| {
-                        format!("{} {count_label}", controller.ui().state.diagnostics.len())
-                    })}</p>
-                    <p>{move || controller.with(|controller| {
-                        format!("{hash_label}: {}", controller.editor().revision().project_hash.hex())
-                    })}</p>
-                    <p>{move || pointer.get().map(|position| {
-                        format!("{pointer_label}: {position}")
-                    }).unwrap_or_default()}</p>
+                <aside class="rustok-page-builder-admin__panel space-y-4 overflow-auto rounded-xl border border-border bg-card p-3">
+                    <section class="space-y-2">
+                        <h2 class="font-semibold">{properties_label}</h2>
+                        <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-sm">
+                            <dt class="text-muted-foreground">{page_label}</dt>
+                            <dd>{move || controller.with(|controller| controller.page_id().to_string())}</dd>
+                            <dt class="text-muted-foreground">{revision_label}</dt>
+                            <dd class="break-all">{move || controller.with(|controller| controller.revision_id().to_string())}</dd>
+                            <dt class="text-muted-foreground">{selected_label}</dt>
+                            <dd class="break-all">{move || controller.with(|controller| {
+                                controller
+                                    .ui()
+                                    .state
+                                    .selection
+                                    .component_id
+                                    .clone()
+                                    .unwrap_or_else(|| selected_none_label.clone())
+                            })}</dd>
+                            <dt class="text-muted-foreground">{type_label}</dt>
+                            <dd>{move || controller.with(|controller| {
+                                controller.selected_component_view().map(|selected| selected.component_type).unwrap_or_default()
+                            })}</dd>
+                        </dl>
+                    </section>
+
+                    <section class="space-y-2 border-t border-border pt-3">
+                        <label class="block text-sm font-medium">{tag_label}</label>
+                        <div class="flex gap-2">
+                            <input
+                                class="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-sm"
+                                prop:value=move || tag_name.get()
+                                on:input=move |event| tag_name.set(event_target_value(&event))
+                            />
+                            <button
+                                type="button"
+                                class="rounded border border-border px-2 py-1 text-xs"
+                                on:click=move |_| {
+                                    let value = tag_name.get_untracked();
+                                    let patch = if value.trim().is_empty() {
+                                        ComponentPatch { remove_fields: vec!["tagName".to_string()], ..ComponentPatch::default() }
+                                    } else {
+                                        ComponentPatch { fields: Map::from_iter([("tagName".to_string(), Value::String(value))]), ..ComponentPatch::default() }
+                                    };
+                                    let intent = selected_patch_intent(controller, patch);
+                                    dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                }
+                            >{apply_label.clone()}</button>
+                        </div>
+
+                        <label class="block text-sm font-medium">{content_label}</label>
+                        <textarea
+                            class="min-h-24 w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                            prop:value=move || content_value.get()
+                            on:input=move |event| content_value.set(event_target_value(&event))
+                        ></textarea>
+                        <div class="flex gap-2">
+                            <button
+                                type="button"
+                                class="rounded border border-border px-2 py-1 text-xs"
+                                on:click=move |_| {
+                                    let patch = ComponentPatch {
+                                        fields: Map::from_iter([(
+                                            "content".to_string(),
+                                            Value::String(content_value.get_untracked()),
+                                        )]),
+                                        ..ComponentPatch::default()
+                                    };
+                                    let intent = selected_patch_intent(controller, patch);
+                                    dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                }
+                            >{apply_label.clone()}</button>
+                            <button
+                                type="button"
+                                class="rounded border border-border px-2 py-1 text-xs"
+                                on:click=move |_| {
+                                    let intent = selected_patch_intent(controller, ComponentPatch {
+                                        remove_fields: vec!["content".to_string()],
+                                        ..ComponentPatch::default()
+                                    });
+                                    dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                }
+                            >{clear_label.clone()}</button>
+                        </div>
+                    </section>
+
+                    <section class="space-y-2 border-t border-border pt-3">
+                        <div class="text-sm font-medium">Attributes</div>
+                        <input
+                            aria-label=attribute_name_label.clone()
+                            placeholder=attribute_name_label.clone()
+                            class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                            prop:value=move || attribute_name.get()
+                            on:input=move |event| attribute_name.set(event_target_value(&event))
+                        />
+                        <input
+                            aria-label=attribute_value_label.clone()
+                            placeholder=attribute_value_label.clone()
+                            class="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                            prop:value=move || attribute_value.get()
+                            on:input=move |event| attribute_value.set(event_target_value(&event))
+                        />
+                        <button
+                            type="button"
+                            class="rounded border border-border px-2 py-1 text-xs"
+                            on:click=move |_| {
+                                let name = attribute_name.get_untracked().trim().to_string();
+                                if name.is_empty() {
+                                    last_error.set(Some("attribute name must not be empty".to_string()));
+                                    return;
+                                }
+                                let value = parse_property_value(&attribute_value.get_untracked());
+                                let intent = selected_patch_intent(controller, ComponentPatch {
+                                    attributes: Map::from_iter([(name, value)]),
+                                    ..ComponentPatch::default()
+                                });
+                                dispatch_result_intent(controller, last_error, last_announcement, intent);
+                            }
+                        >{apply_label.clone()}</button>
+                        <div class="space-y-1">
+                            {move || controller.with(|controller| controller.selected_component_view()).map(|selected| {
+                                selected.attributes.into_iter().map(|(name, value)| {
+                                    let remove_name = name.clone();
+                                    view! {
+                                        <div class="flex items-start gap-2 rounded bg-muted/50 px-2 py-1 text-xs">
+                                            <code class="min-w-0 flex-1 break-all">{format!("{name}={value}")}</code>
+                                            <button
+                                                type="button"
+                                                class="text-destructive"
+                                                on:click=move |_| {
+                                                    let intent = selected_patch_intent(controller, ComponentPatch {
+                                                        remove_attributes: vec![remove_name.clone()],
+                                                        ..ComponentPatch::default()
+                                                    });
+                                                    dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                                }
+                                            >{clear_label.clone()}</button>
+                                        </div>
+                                    }
+                                }).collect_view()
+                            })}
+                        </div>
+                    </section>
+
+                    <section class="space-y-2 border-t border-border pt-3">
+                        <h2 class="font-semibold">{styles_label}</h2>
+                        <label class="sr-only">{style_json_label}</label>
+                        <textarea
+                            aria-label=style_json_label
+                            class="min-h-32 w-full rounded border border-input bg-background px-2 py-1 font-mono text-xs"
+                            prop:value=move || style_json.get()
+                            on:input=move |event| style_json.set(event_target_value(&event))
+                        ></textarea>
+                        <div class="flex gap-2">
+                            <button
+                                type="button"
+                                class="rounded border border-border px-2 py-1 text-xs"
+                                on:click=move |_| {
+                                    match serde_json::from_str::<Value>(&style_json.get_untracked()) {
+                                        Ok(style) => {
+                                            let intent = selected_patch_intent(controller, ComponentPatch {
+                                                style: Some(style),
+                                                ..ComponentPatch::default()
+                                            });
+                                            dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                        }
+                                        Err(error) => last_error.set(Some(format!("invalid style JSON: {error}"))),
+                                    }
+                                }
+                            >{apply_label}</button>
+                            <button
+                                type="button"
+                                class="rounded border border-border px-2 py-1 text-xs"
+                                on:click=move |_| {
+                                    let intent = selected_patch_intent(controller, ComponentPatch {
+                                        clear_style: true,
+                                        ..ComponentPatch::default()
+                                    });
+                                    dispatch_result_intent(controller, last_error, last_announcement, intent);
+                                }
+                            >{clear_label}</button>
+                        </div>
+                    </section>
+
+                    <section class="space-y-1 border-t border-border pt-3 text-sm">
+                        <h2 class="font-semibold">{diagnostics_label}</h2>
+                        <p>{move || controller.with(|controller| {
+                            format!("{} {count_label}", controller.ui().state.diagnostics.len())
+                        })}</p>
+                        <p class="break-all">{move || controller.with(|controller| {
+                            format!("{hash_label}: {}", controller.editor().revision().project_hash.hex())
+                        })}</p>
+                        <p>{move || pointer.get().map(|position| {
+                            format!("{pointer_label}: {position}")
+                        }).unwrap_or_default()}</p>
+                        <div class="space-y-1">
+                            {move || controller.with(|controller| controller.ui().state.diagnostics.clone()).into_iter().map(|diagnostic| view! {
+                                <div class="rounded bg-muted/50 px-2 py-1 text-xs">
+                                    <strong>{diagnostic.code}</strong>
+                                    <div>{diagnostic.message}</div>
+                                </div>
+                            }).collect_view()}
+                        </div>
+                    </section>
                 </aside>
             </div>
 
             <div class="rustok-page-builder-admin__messages" aria-live="polite">
                 {move || last_announcement.get().map(|message| view! {
-                    <p class="rustok-page-builder-admin__announcement">{message}</p>
+                    <p class="rustok-page-builder-admin__announcement rounded bg-muted px-3 py-2 text-sm">{message}</p>
                 })}
                 {move || last_error.get().map(|message| view! {
-                    <p class="rustok-page-builder-admin__error" role="alert">{message}</p>
+                    <p class="rustok-page-builder-admin__error rounded bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{message}</p>
                 })}
             </div>
         </div>
