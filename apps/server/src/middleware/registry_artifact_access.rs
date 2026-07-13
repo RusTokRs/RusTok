@@ -24,12 +24,12 @@ const MAX_REGISTRY_MUTATION_BODY_BYTES: usize = 64 * 1024;
 /// Enforce registry publish-request, artifact, ownership and remote-runner
 /// access before the legacy controller executes.
 ///
-/// Status and artifact data are restricted to the request publisher, current
-/// slug owner, or request-effective `modules:manage`. Owner transfers can bind
-/// only to an active user in the authenticated actor's tenant. Remote runner
-/// routes and artifact downloads use the host shared token with constant-time
-/// comparison. Downloads are streamed through this boundary so legacy storage
-/// metadata cannot turn an artifact into active same-origin content.
+/// Every request-specific read and dry-run is authorized before resolver/body
+/// business logic. Publisher operations use the same ownerless-requester rule
+/// as the governance service; review operations require the current slug owner
+/// or request-effective `modules:manage`. Remote runner routes use the host
+/// shared token with constant-time comparison. Downloads are streamed through
+/// this boundary as opaque attachments.
 pub async fn enforce(
     State(ctx): State<ServerRuntimeContext>,
     mut request: Request<Body>,
@@ -53,51 +53,106 @@ pub async fn enforce(
     let Some((request_id, operation)) = registry_route(path) else {
         return next.run(request).await;
     };
-
-    if method == Method::PUT && operation == RegistryOperation::ArtifactUpload {
-        request.headers_mut().insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static(ARTIFACT_CONTENT_TYPE),
-        );
+    if !operation.accepts_method(&method) {
         return next.run(request).await;
     }
 
-    let valid_method = matches!(
-        operation,
-        RegistryOperation::PublishStatus | RegistryOperation::ArtifactDownload
-    ) && method == Method::GET;
-    if !valid_method {
-        return next.run(request).await;
-    }
-
-    let publish_request = match registry_publish_request::Entity::find_by_id(request_id)
-        .one(ctx.db())
-        .await
-    {
-        Ok(Some(request)) => request,
-        Ok(None) => return not_found("Registry publish request was not found"),
-        Err(error) => {
-            tracing::error!(%error, "Failed to load registry publish request for authorization");
-            return internal_error("Failed to authorize registry publish request access");
-        }
+    let publish_request = match load_publish_request(&ctx, request_id).await {
+        Ok(request) => request,
+        Err(response) => return response,
     };
 
     match operation {
         RegistryOperation::PublishStatus => {
-            if let Err(response) = authorize_user_access(&ctx, &request, &publish_request).await {
+            if let Err(response) = authorize_user_access(
+                &ctx,
+                &request,
+                &publish_request,
+                PublishAccess::Manage,
+            )
+            .await
+            {
                 return response;
             }
             next.run(request).await
         }
+        RegistryOperation::ArtifactUpload => {
+            if let Err(response) = authorize_user_access(
+                &ctx,
+                &request,
+                &publish_request,
+                PublishAccess::Manage,
+            )
+            .await
+            {
+                return response;
+            }
+            request.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(ARTIFACT_CONTENT_TYPE),
+            );
+            next.run(request).await
+        }
         RegistryOperation::ArtifactDownload => {
             if !runner_token_is_valid(&ctx, &request) {
-                if let Err(response) = authorize_user_access(&ctx, &request, &publish_request).await {
+                if let Err(response) = authorize_user_access(
+                    &ctx,
+                    &request,
+                    &publish_request,
+                    PublishAccess::Manage,
+                )
+                .await
+                {
                     return response;
                 }
             }
             serve_artifact(&ctx, &publish_request).await
         }
-        RegistryOperation::ArtifactUpload => next.run(request).await,
+        RegistryOperation::ManageMutation => {
+            if let Err(response) = authorize_user_access(
+                &ctx,
+                &request,
+                &publish_request,
+                PublishAccess::Manage,
+            )
+            .await
+            {
+                return response;
+            }
+            next.run(request).await
+        }
+        RegistryOperation::ReviewMutation => {
+            if let Err(response) = authorize_user_access(
+                &ctx,
+                &request,
+                &publish_request,
+                PublishAccess::Review,
+            )
+            .await
+            {
+                return response;
+            }
+            next.run(request).await
+        }
+    }
+}
+
+async fn load_publish_request(
+    ctx: &ServerRuntimeContext,
+    request_id: &str,
+) -> Result<registry_publish_request::Model, Response> {
+    match registry_publish_request::Entity::find_by_id(request_id)
+        .one(ctx.db())
+        .await
+    {
+        Ok(Some(request)) => Ok(request),
+        Ok(None) => Err(not_found("Registry publish request was not found")),
+        Err(error) => {
+            tracing::error!(%error, "Failed to load registry publish request for authorization");
+            Err(internal_error(
+                "Failed to authorize registry publish request access",
+            ))
+        }
     }
 }
 
@@ -151,10 +206,17 @@ async fn validate_owner_transfer(
     next.run(Request::from_parts(parts, Body::from(bytes))).await
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PublishAccess {
+    Manage,
+    Review,
+}
+
 async fn authorize_user_access(
     ctx: &ServerRuntimeContext,
     request: &Request<Body>,
     publish_request: &registry_publish_request::Model,
+    access: PublishAccess,
 ) -> Result<(), Response> {
     let auth = request
         .extensions()
@@ -186,13 +248,22 @@ async fn authorize_user_access(
         .is_some_and(|owner| principal_matches(&owner.owner_principal, &principal));
     let can_manage = has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE);
     let ownerless_requester = owner.is_none() && owns_request;
+    let allowed = match access {
+        PublishAccess::Manage => can_manage || owns_slug || ownerless_requester,
+        PublishAccess::Review => can_manage || owns_slug,
+    };
 
-    if can_manage || owns_slug || ownerless_requester {
+    if allowed {
         Ok(())
     } else {
-        Err(forbidden(
-            "Registry publish request access is restricted to the module owner, request publisher, or modules:manage",
-        ))
+        Err(forbidden(match access {
+            PublishAccess::Manage => {
+                "Registry publish request access is restricted to the module owner, request publisher, or modules:manage"
+            }
+            PublishAccess::Review => {
+                "Registry review operations are restricted to the module owner or modules:manage"
+            }
+        }))
     }
 }
 
@@ -235,6 +306,18 @@ enum RegistryOperation {
     PublishStatus,
     ArtifactUpload,
     ArtifactDownload,
+    ManageMutation,
+    ReviewMutation,
+}
+
+impl RegistryOperation {
+    fn accepts_method(self, method: &Method) -> bool {
+        match self {
+            Self::PublishStatus | Self::ArtifactDownload => method == Method::GET,
+            Self::ArtifactUpload => method == Method::PUT,
+            Self::ManageMutation | Self::ReviewMutation => method == Method::POST,
+        }
+    }
 }
 
 fn registry_route(path: &str) -> Option<(&str, RegistryOperation)> {
@@ -250,9 +333,16 @@ fn registry_route(path: &str) -> Option<(&str, RegistryOperation)> {
         && segments[0] == "v2"
         && segments[1] == "catalog"
         && segments[2] == "publish"
-        && segments[4] == "artifact"
     {
-        return Some((segments[3], RegistryOperation::ArtifactUpload));
+        let operation = match segments[4] {
+            "artifact" => RegistryOperation::ArtifactUpload,
+            "validate" => RegistryOperation::ManageMutation,
+            "stages" | "approve" | "reject" | "request-changes" | "hold" | "resume" => {
+                RegistryOperation::ReviewMutation
+            }
+            _ => return None,
+        };
+        return Some((segments[3], operation));
     }
     if segments.len() == 6
         && segments[0] == "v2"
@@ -345,7 +435,7 @@ mod tests {
     use super::{is_remote_runner_path, registry_route, RegistryOperation};
 
     #[test]
-    fn matches_only_sensitive_registry_publish_routes() {
+    fn classifies_sensitive_registry_publish_routes() {
         assert_eq!(
             registry_route("/v2/catalog/publish/rpr_1"),
             Some(("rpr_1", RegistryOperation::PublishStatus))
@@ -358,6 +448,23 @@ mod tests {
             registry_route("/v2/catalog/publish/rpr_1/artifact/download"),
             Some(("rpr_1", RegistryOperation::ArtifactDownload))
         );
+        assert_eq!(
+            registry_route("/v2/catalog/publish/rpr_1/validate"),
+            Some(("rpr_1", RegistryOperation::ManageMutation))
+        );
+        for action in [
+            "stages",
+            "approve",
+            "reject",
+            "request-changes",
+            "hold",
+            "resume",
+        ] {
+            assert_eq!(
+                registry_route(&format!("/v2/catalog/publish/rpr_1/{action}")),
+                Some(("rpr_1", RegistryOperation::ReviewMutation))
+            );
+        }
         assert_eq!(registry_route("/v1/catalog/rpr_1/artifact"), None);
         assert_eq!(registry_route("/v2/catalog/yank"), None);
     }
