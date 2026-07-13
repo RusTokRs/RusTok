@@ -4,6 +4,7 @@
 //! persistence, and transports. Consumers own persistence and framework adapters.
 
 mod asset;
+mod binding;
 mod codec;
 mod command;
 mod dynamic;
@@ -17,11 +18,13 @@ mod placement;
 mod registry;
 mod render;
 mod runtime_render;
+mod runtime_validation;
 mod style_rule;
 mod trait_model;
 mod validation;
 
 pub use asset::*;
+pub use binding::*;
 pub use codec::*;
 pub use command::*;
 pub use dynamic::*;
@@ -35,6 +38,7 @@ pub use placement::*;
 pub use registry::*;
 pub use render::*;
 pub use runtime_render::*;
+pub use runtime_validation::*;
 pub use style_rule::*;
 pub use trait_model::*;
 pub use validation::*;
