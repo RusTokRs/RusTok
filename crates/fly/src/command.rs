@@ -1,6 +1,7 @@
 use crate::{
-    validate_project, ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument,
-    RegistrySet, SequentialIdGenerator, ValidationDiagnostic, ValidationLimits, ValidationReport,
+    validate_project, ComponentNode, ComponentObject, FlyError, FlyResult, GrapesJsV1Codec,
+    ProjectDocument, RegistrySet, SequentialIdGenerator, ValidationDiagnostic, ValidationLimits,
+    ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -123,10 +124,15 @@ pub struct ProjectHash(pub u64);
 
 impl ProjectHash {
     pub fn from_document(document: &ProjectDocument) -> Self {
-        let bytes = serde_json::to_vec(&document.project).unwrap_or_default();
+        let bytes = GrapesJsV1Codec::encode_vec(document)
+            .unwrap_or_else(|_| serde_json::to_vec(&document.project).unwrap_or_default());
+        Self::from_bytes(&bytes)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut hash = 0xcbf29ce484222325_u64;
         for byte in bytes {
-            hash ^= u64::from(byte);
+            hash ^= u64::from(*byte);
             hash = hash.wrapping_mul(0x100000001b3);
         }
         Self(hash)
