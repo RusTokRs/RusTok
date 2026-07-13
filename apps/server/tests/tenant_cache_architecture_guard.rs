@@ -162,7 +162,7 @@ fn tenant_generation_dedupe_is_bounded_two_phase_and_retry_safe() {
 }
 
 #[test]
-fn tenant_generation_health_requires_subscriber_and_periodic_reconciliation() {
+fn tenant_generation_health_is_context_scoped_and_component_aware() {
     let generation = source("apps/server/src/services/tenant_cache_generation.rs");
     let status = source("apps/server/src/services/tenant_cache_generation_status.rs");
 
@@ -170,10 +170,12 @@ fn tenant_generation_health_requires_subscriber_and_periodic_reconciliation() {
         "GENERATION_RECONCILE_INTERVAL",
         "MissedTickBehavior::Skip",
         "periodic_reconciliation",
-        "mark_tenant_cache_generation_subscriber_healthy",
-        "mark_tenant_cache_generation_reconciliation_healthy",
-        "mark_tenant_cache_generation_subscriber_degraded",
-        "mark_tenant_cache_generation_reconciliation_degraded",
+        "state: Arc<TenantCacheGenerationListenerState>",
+        "tenant_cache_generation_listener_snapshot",
+        ".mark_subscriber_healthy()",
+        ".mark_reconciliation_healthy()",
+        ".mark_subscriber_degraded(",
+        ".mark_reconciliation_degraded(",
     ] {
         assert!(
             generation.contains(required),
@@ -185,10 +187,39 @@ fn tenant_generation_health_requires_subscriber_and_periodic_reconciliation() {
         "subscriber_ready && reconciliation_healthy",
         "MAX_TENANT_GENERATION_LISTENER_ERROR_BYTES",
         "redis_health_requires_subscriber_and_reconciliation",
+        "independent_runtime_states_do_not_overwrite_each_other",
+        "record_tenant_generation_listener_metrics",
     ] {
         assert!(
             status.contains(required),
             "tenant generation status must retain {required}"
         );
     }
+    assert!(
+        !status.contains("OnceLock"),
+        "tenant generation listener state must be owned by ServerRuntimeContext"
+    );
+}
+
+#[test]
+fn tenant_generation_metrics_are_label_free_and_registered_once() {
+    let observability = source("crates/rustok-cache/src/tenant_generation_observability.rs");
+
+    for required in [
+        "rustok_cache_tenant_generation_listener_status",
+        "rustok_cache_tenant_generation_local_ready",
+        "rustok_cache_tenant_generation_subscriber_ready",
+        "rustok_cache_tenant_generation_reconciliation_healthy",
+        "register_runtime_collector",
+        "metrics_are_label_free_and_component_specific",
+    ] {
+        assert!(
+            observability.contains(required),
+            "tenant generation observability must retain {required}"
+        );
+    }
+    assert!(
+        observability.contains("assert!(!payload.contains('{'))"),
+        "tenant generation lifecycle metrics must remain label-free"
+    );
 }
