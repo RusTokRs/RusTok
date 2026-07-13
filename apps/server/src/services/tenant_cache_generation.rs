@@ -283,9 +283,19 @@ pub async fn start_tenant_cache_generation_listener(
     match listener.recover_shared_generation().await {
         Ok(_) if !redis_required => state.mark_local_healthy().await,
         Ok(_) => state.mark_reconciliation_healthy().await,
-        Err(error) => {
-            state.mark_degraded(error.to_string()).await;
+        Err(error) if redis_required => {
+            state
+                .mark_reconciliation_degraded(error.to_string())
+                .await;
             tracing::warn!(%error, "Tenant cache generation startup recovery failed; isolated boot namespace remains active");
+            rustok_telemetry::metrics::record_event_error(
+                "tenant.cache.generation",
+                "startup_recovery",
+            );
+        }
+        Err(error) => {
+            state.mark_local_degraded(error.to_string()).await;
+            tracing::warn!(%error, "Local tenant cache generation startup recovery failed");
             rustok_telemetry::metrics::record_event_error(
                 "tenant.cache.generation",
                 "startup_recovery",
@@ -311,7 +321,7 @@ pub async fn start_tenant_cache_generation_listener(
                         }
                     }
                     Err(error) => {
-                        local_state.mark_degraded(error.to_string()).await;
+                        local_state.mark_local_degraded(error.to_string()).await;
                         tracing::error!(%error, "Local tenant cache generation apply failed");
                         rustok_telemetry::metrics::record_event_error(
                             "tenant.cache.generation",
@@ -325,7 +335,7 @@ pub async fn start_tenant_cache_generation_listener(
                         Ok(_) if local_only => local_state.mark_local_healthy().await,
                         Ok(_) => {}
                         Err(error) => {
-                            local_state.mark_degraded(error.to_string()).await;
+                            local_state.mark_local_degraded(error.to_string()).await;
                             tracing::error!(%error, "Tenant cache generation recovery after local lag failed");
                             rustok_telemetry::metrics::record_event_error(
                                 "tenant.cache.generation",
@@ -337,7 +347,7 @@ pub async fn start_tenant_cache_generation_listener(
                 Err(broadcast::error::RecvError::Closed) => {
                     runtime.closed();
                     local_state
-                        .mark_degraded("local tenant generation subscription closed")
+                        .mark_local_degraded("local tenant generation subscription closed")
                         .await;
                     break;
                 }
@@ -367,7 +377,9 @@ pub async fn start_tenant_cache_generation_listener(
                             let ready_state = Arc::clone(&ready_state);
                             async move {
                                 match ready_listener.recover_shared_generation().await {
-                                    Ok(_) => ready_state.mark_subscriber_healthy().await,
+                                    Ok(_) => {
+                                        ready_state.mark_subscriber_ready_after_recovery().await;
+                                    }
                                     Err(error) => {
                                         ready_state
                                             .mark_subscriber_degraded(error.to_string())
@@ -386,7 +398,9 @@ pub async fn start_tenant_cache_generation_listener(
                             let handler_state = Arc::clone(&handler_state);
                             async move {
                                 match handler_listener.handle_message(message).await {
-                                    Ok(()) => handler_state.mark_subscriber_healthy().await,
+                                    Ok(()) => {
+                                        handler_state.mark_subscriber_activity_healthy().await;
+                                    }
                                     Err(error) => {
                                         handler_state
                                             .mark_subscriber_degraded(error.to_string())
