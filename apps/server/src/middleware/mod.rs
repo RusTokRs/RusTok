@@ -27,7 +27,12 @@ pub mod tenant {
     };
 
     use crate::services::server_runtime_context::ServerRuntimeContext;
-    use rustok_cache::CacheService;
+    use crate::services::tenant_cache_generation::{
+        TENANT_CACHE_BACKEND_PREFIX, TENANT_CACHE_GENERATION_CHANNEL,
+    };
+    use rustok_cache::{CacheService, DurableCacheInvalidationRecord};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
 
     /// Initialize the tenant resolver caches without leaving the superseded per-key Redis
     /// subscriber running. Durable namespace generations are the only cross-instance invalidation
@@ -39,6 +44,78 @@ pub mod tenant {
     ) {
         super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await;
         let _ = ctx.shared_map::<tokio::task::JoinHandle<()>, _>(|task| task.abort());
+    }
+
+    /// Compatibility entry point for callers that used to publish a per-key host invalidation.
+    /// Tenant resolver backends share one generation, so rotating it safely invalidates all aliases.
+    pub async fn invalidate_tenant_cache_by_host(ctx: &ServerRuntimeContext, _host: &str) {
+        rotate_tenant_cache_generation(ctx, None, "manual_host_invalidation").await;
+    }
+
+    /// Compatibility entry point for callers that used to publish a per-key slug invalidation.
+    pub async fn invalidate_tenant_cache_by_slug(ctx: &ServerRuntimeContext, _slug: &str) {
+        rotate_tenant_cache_generation(ctx, None, "manual_slug_invalidation").await;
+    }
+
+    /// Compatibility entry point for callers that used to publish a per-key UUID invalidation.
+    pub async fn invalidate_tenant_cache_by_uuid(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
+        rotate_tenant_cache_generation(ctx, Some(tenant_id), "manual_uuid_invalidation").await;
+    }
+
+    async fn rotate_tenant_cache_generation(
+        ctx: &ServerRuntimeContext,
+        tenant_id: Option<Uuid>,
+        cause: &'static str,
+    ) {
+        let Some(cache) = ctx.shared_get::<CacheService>() else {
+            tracing::warn!(cause, "Tenant cache generation rotation skipped: cache service missing");
+            return;
+        };
+
+        let generation = match cache
+            .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
+            .await
+        {
+            Ok(generation) => generation,
+            Err(error) => {
+                tracing::warn!(%error, cause, "Tenant cache generation rotation failed");
+                return;
+            }
+        };
+        let emitted_at_unix_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        let record = match DurableCacheInvalidationRecord::new(
+            Uuid::new_v4(),
+            tenant_id,
+            TENANT_CACHE_GENERATION_CHANNEL,
+            "tenant-manual-invalidation",
+            generation.generation,
+            emitted_at_unix_ms,
+            cause,
+            None,
+        ) {
+            Ok(record) => record,
+            Err(error) => {
+                tracing::warn!(%error, cause, "Tenant cache generation record creation failed");
+                return;
+            }
+        };
+        let outcome = match cache.invalidations().publish_durable(&record).await {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                tracing::warn!(%error, cause, "Tenant cache generation publication failed");
+                return;
+            }
+        };
+
+        if cache.redis_configuration_present() && !outcome.redis_published {
+            tracing::warn!(cause, "Tenant generation advanced but Redis publication was unavailable");
+        } else if !cache.redis_configuration_present() && outcome.local_subscribers == 0 {
+            tracing::warn!(cause, "Tenant generation advanced without a local subscriber");
+        }
     }
 
     pub async fn tenant_invalidation_listener_snapshot(
