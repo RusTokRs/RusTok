@@ -11,7 +11,7 @@ use rustok_cart::{
 };
 use rustok_pricing::PricingService;
 
-use super::super::{MODULE_SLUG, types::*};
+use super::super::{MODULE_SLUG, current_tenant_scope, types::*};
 use super::helpers::*;
 
 #[derive(Default)]
@@ -31,7 +31,7 @@ impl CommerceCartMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "Storefront cart creation")?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
@@ -117,7 +117,7 @@ impl CommerceCartMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "Add storefront cart line item")?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
@@ -203,7 +203,7 @@ impl CommerceCartMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "Update storefront cart context")?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
@@ -348,7 +348,7 @@ impl CommerceCartMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "Update storefront cart line item")?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
@@ -471,7 +471,7 @@ impl CommerceCartMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "Remove storefront cart line item")?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
