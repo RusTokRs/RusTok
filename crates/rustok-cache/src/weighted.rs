@@ -17,7 +17,9 @@ impl CacheService {
     ///
     /// Redis remains the shared primary when configured. The local fallback uses Moka's
     /// weighted capacity and accounts for cache key bytes, serialized payload bytes and
-    /// per-entry metadata. This is the preferred factory for variable-size documents.
+    /// per-entry metadata. This is the preferred factory for variable-size documents. Logical
+    /// keys are transparently scoped by the same monotonic generation contract as entry-count
+    /// backends, so namespace rotation works uniformly for large tenant/document caches.
     pub async fn backend_weighted(
         &self,
         prefix: &str,
@@ -44,6 +46,7 @@ impl CacheService {
         let backend = self
             .raw_weighted_backend(prefix, ttl, max_weight_bytes, &options)
             .await;
+        let backend = self.wrap_generation_aware_backend(prefix, backend).await;
         if options.metrics_enabled {
             Arc::new(InstrumentedWeightedCacheBackend::new(prefix, backend))
         } else {
@@ -197,6 +200,7 @@ impl Drop for InstrumentedWeightedCacheBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn weighted_memory_factory_preserves_instrumentation_contract() {
@@ -235,5 +239,22 @@ mod tests {
                 .unwrap(),
             CacheCompareAndSetOutcome::Applied
         );
+    }
+
+    #[tokio::test]
+    async fn weighted_factory_switches_namespace_on_generation_change() {
+        let service = CacheService::from_url(None);
+        let prefix = format!("weighted-generation:{}", Uuid::new_v4().simple());
+        let backend = service
+            .backend_weighted(&prefix, Duration::from_secs(60), 4096)
+            .await;
+        backend
+            .set("key".to_string(), b"old".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"old".to_vec()));
+
+        crate::observe_cache_backend_generation(&prefix, 1).unwrap();
+        assert_eq!(backend.get("key").await.unwrap(), None);
     }
 }
