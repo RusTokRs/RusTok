@@ -1,0 +1,62 @@
+{
+  "assets": [
+    {
+      "type": "image",
+      "src": "/assets/hero.webp",
+      "name": "Hero"
+    }
+  ],
+  "styles": [
+    {
+      "selectors": ["rtk-hero"],
+      "style": {
+        "padding": "4rem 1.5rem"
+      }
+    }
+  ],
+  "pages": [
+    {
+      "id": "home",
+      "component": {
+        "id": "root",
+        "type": "wrapper",
+        "components": [
+          {
+            "id": "hero",
+            "type": "section",
+            "tagName": "section",
+            "attributes": {
+              "class": "rtk-hero",
+              "aria-labelledby": "hero-title"
+            },
+            "components": [
+              {
+                "id": "hero-title",
+                "type": "heading",
+                "tagName": "h1",
+                "components": ["Build on RusTok"]
+              }
+            ]
+          },
+          {
+            "id": "content",
+            "type": "section",
+            "tagName": "section",
+            "components": []
+          }
+        ]
+      },
+      "frames": [
+        {
+          "id": "frame-home",
+          "head": []
+        }
+      ],
+      "customPageMetadata": {
+        "locale": "en"
+      }
+    }
+  ],
+  "dataSources": [],
+  "symbols": []
+}
