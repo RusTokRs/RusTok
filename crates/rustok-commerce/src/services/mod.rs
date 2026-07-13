@@ -1,4 +1,5 @@
 pub mod checkout;
+mod checkout_inventory_order_adoption;
 mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
 mod checkout_operation;
@@ -19,6 +20,10 @@ mod refund_reconciliation;
 mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
+pub use checkout_inventory_order_adoption::{
+    CheckoutInventoryOrderAdoption, CheckoutInventoryOrderAdoptionError,
+    CheckoutInventoryOrderAdoptionResult, CheckoutInventoryOrderAdoptionService,
+};
 pub use checkout_inventory_reservation_executor::{
     CheckoutInventoryExecutionError, CheckoutInventoryExecutionResult,
     CheckoutInventoryReservationExecutor,

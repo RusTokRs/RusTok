@@ -42,8 +42,11 @@ mod state_machine_proptest;
 
 pub use error::{CommerceError, CommerceResult};
 pub use services::{
-    ApplyOrderChangeResult, BeginCheckoutOperation, CheckoutError,
-    CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
+    ApplyOrderChangeResult, BeginCheckoutOperation, CheckoutError, CheckoutInventoryExecutionError,
+    CheckoutInventoryExecutionResult, CheckoutInventoryOrderAdoption,
+    CheckoutInventoryOrderAdoptionError, CheckoutInventoryOrderAdoptionResult,
+    CheckoutInventoryOrderAdoptionService, CheckoutInventoryReservationError,
+    CheckoutInventoryReservationExecutor, CheckoutInventoryReservationJournal,
     CheckoutInventoryReservationResult, CheckoutInventoryReservationStatus,
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationResult, CheckoutOperationStage, CheckoutOperationStatus, CheckoutResult,
