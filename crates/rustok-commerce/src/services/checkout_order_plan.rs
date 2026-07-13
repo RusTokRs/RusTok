@@ -1,11 +1,10 @@
 use chrono::Utc;
-use rustok_fulfillment::CreateFulfillmentInput;
 use rustok_order::CreateOrderInput;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -17,6 +16,22 @@ use super::{CheckoutOperationStage, CheckoutOperationStatus};
 const MAX_HASH_LENGTH: usize = 128;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CheckoutFulfillmentPlanItem {
+    pub cart_line_item_id: Uuid,
+    pub quantity: i32,
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CheckoutFulfillmentPlan {
+    pub shipping_option_id: Option<Uuid>,
+    pub carrier: Option<String>,
+    pub tracking_number: Option<String>,
+    pub items: Vec<CheckoutFulfillmentPlanItem>,
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckoutOrderPlanPayload {
     pub order_input: CreateOrderInput,
     pub channel_id: Option<Uuid>,
@@ -24,7 +39,7 @@ pub struct CheckoutOrderPlanPayload {
     pub context: StoreContextResponse,
     pub create_fulfillment: bool,
     #[serde(default)]
-    pub fulfillment_inputs: Vec<CreateFulfillmentInput>,
+    pub fulfillment_plans: Vec<CheckoutFulfillmentPlan>,
     pub checkout_metadata: Value,
 }
 
@@ -68,6 +83,7 @@ impl CheckoutOrderPlanJournal {
         snapshot_hash: impl Into<String>,
         payload: CheckoutOrderPlanPayload,
     ) -> CheckoutOrderPlanResult<CheckoutOrderPlanRecord> {
+        validate_payload(&payload)?;
         let snapshot_hash = normalize_hash(snapshot_hash.into(), "snapshot_hash")?;
         let payload_value = serde_json::to_value(&payload).map_err(|error| {
             CheckoutOrderPlanError::Validation(format!(
@@ -165,6 +181,37 @@ impl CheckoutOrderPlanJournal {
             .one(&self.db)
             .await
     }
+}
+
+fn validate_payload(payload: &CheckoutOrderPlanPayload) -> CheckoutOrderPlanResult<()> {
+    if !payload.create_fulfillment && !payload.fulfillment_plans.is_empty() {
+        return Err(CheckoutOrderPlanError::Validation(
+            "fulfillment plans require create_fulfillment=true".to_string(),
+        ));
+    }
+    let mut cart_line_item_ids = HashSet::new();
+    for (plan_index, plan) in payload.fulfillment_plans.iter().enumerate() {
+        if plan.items.is_empty() {
+            return Err(CheckoutOrderPlanError::Validation(format!(
+                "fulfillment plan {plan_index} must contain at least one item"
+            )));
+        }
+        for item in &plan.items {
+            if item.quantity <= 0 {
+                return Err(CheckoutOrderPlanError::Validation(format!(
+                    "fulfillment item {} must have a positive quantity",
+                    item.cart_line_item_id
+                )));
+            }
+            if !cart_line_item_ids.insert(item.cart_line_item_id) {
+                return Err(CheckoutOrderPlanError::Validation(format!(
+                    "cart line item {} appears in multiple fulfillment plans",
+                    item.cart_line_item_id
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_existing(
