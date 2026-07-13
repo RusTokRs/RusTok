@@ -64,7 +64,7 @@ fn normalize_direct_apply(bytes: &[u8]) -> Result<Vec<u8>, Response> {
     let mut input = serde_json::from_slice::<ApplyMcpModuleScaffoldDraftRequest>(bytes)
         .map_err(|_| invalid_request("MCP scaffold apply body must be valid JSON"))?;
     input.workspace_root = authorize_mcp_scaffold_workspace(&input.workspace_root)
-        .map_err(IntoResponse::into_response)?;
+        .map_err(|error| error.into_response())?;
 
     serde_json::to_vec(&serde_json::json!({
         "workspace_root": input.workspace_root,
@@ -85,7 +85,7 @@ fn normalize_remote_tool(bytes: &[u8]) -> Result<Vec<u8>, Response> {
         let mut apply = serde_json::from_value::<ApplyModuleScaffoldRequest>(arguments)
             .map_err(|_| invalid_request("Scaffold apply tool arguments are invalid"))?;
         apply.workspace_root = authorize_mcp_scaffold_workspace(&apply.workspace_root)
-            .map_err(IntoResponse::into_response)?;
+            .map_err(|error| error.into_response())?;
         input.arguments = Some(
             serde_json::to_value(apply)
                 .map_err(|_| invalid_request("Failed to normalize scaffold apply arguments"))?,
