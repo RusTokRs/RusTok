@@ -125,12 +125,13 @@ impl CacheRefreshCoordinator {
 
         self.inner.metrics.started.fetch_add(1, Ordering::Relaxed);
         let inner = Arc::clone(&self.inner);
+        let lease = CacheRefreshLease {
+            key: refresh_key,
+            in_flight: Arc::clone(&inner.in_flight),
+            _permit: permit,
+        };
         runtime.spawn(async move {
-            let _lease = CacheRefreshLease {
-                key: refresh_key,
-                in_flight: Arc::clone(&inner.in_flight),
-                _permit: permit,
-            };
+            let _lease = lease;
             match refresh().await {
                 Ok(()) => {
                     inner.metrics.completed.fetch_add(1, Ordering::Relaxed);
@@ -472,6 +473,33 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn dropping_unpolled_refresh_future_releases_lease() {
+        let key = CacheRefreshKey {
+            backend_id: 1,
+            key: "never-polled".to_string(),
+        };
+        let in_flight = Arc::new(StdMutex::new(HashSet::from([key.clone()])));
+        let permit = Arc::new(Semaphore::new(1))
+            .try_acquire_owned()
+            .unwrap();
+        let lease = CacheRefreshLease {
+            key,
+            in_flight: Arc::clone(&in_flight),
+            _permit: permit,
+        };
+        let future = async move {
+            let _lease = lease;
+            std::future::pending::<()>().await;
+        };
+
+        drop(future);
+        assert!(in_flight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty());
+    }
 
     #[tokio::test]
     async fn coordinator_deduplicates_and_releases_refresh_keys() {
