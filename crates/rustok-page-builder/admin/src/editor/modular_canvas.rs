@@ -34,23 +34,29 @@ pub fn AdminCanvas(
         facade_missing,
         save_succeeded,
     );
+    let toolbar_runtime = runtime.clone();
+    let palette_runtime = runtime.clone();
+    let canvas_runtime = runtime.clone();
+    let properties_runtime = runtime.clone();
+    let announcement_runtime = runtime.clone();
+    let error_runtime = runtime;
 
     view! {
         <div class="rustok-page-builder-admin__workspace space-y-3">
-            <AuthoringToolbar runtime=runtime.clone() />
+            <AuthoringToolbar runtime=toolbar_runtime />
             <div
                 class="grid min-h-[680px] gap-3"
                 style="grid-template-columns:minmax(220px,280px) minmax(420px,1fr) minmax(280px,360px)"
             >
-                <PaletteLayersPanel runtime=runtime.clone() />
-                <IsolatedAuthoringCanvas runtime=runtime.clone() />
-                <PropertiesAssetsPanel runtime=runtime.clone() />
+                <PaletteLayersPanel runtime=palette_runtime />
+                <IsolatedAuthoringCanvas runtime=canvas_runtime />
+                <PropertiesAssetsPanel runtime=properties_runtime />
             </div>
             <div class="space-y-2" aria-live="polite">
-                {move || runtime.last_announcement.get().map(|message| view! {
+                {move || announcement_runtime.last_announcement.get().map(|message| view! {
                     <p class="rounded bg-muted px-3 py-2 text-sm">{message}</p>
                 })}
-                {move || runtime.last_error.get().map(|message| view! {
+                {move || error_runtime.last_error.get().map(|message| view! {
                     <p class="rounded bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{message}</p>
                 })}
             </div>
