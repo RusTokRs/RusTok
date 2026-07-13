@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
 use async_graphql::Data;
@@ -21,6 +21,7 @@ use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::{resolve_current_user_from_access_token, OptionalCurrentUser};
 use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::graphql::AppSchema;
+use crate::services::rbac_request_scope::{with_rbac_request_scope, RbacRequestScope};
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use rustok_core::ModuleRegistry;
 
@@ -54,6 +55,15 @@ async fn graphql_handler(
         .data(registry)
         .data(locale);
 
+    let rbac_scope = current_user.as_ref().map(|current_user| {
+        RbacRequestScope::new(
+            current_user.user.tenant_id,
+            current_user.user.id,
+            current_user.permissions.clone(),
+            current_user.inferred_role.clone(),
+        )
+    });
+
     if let Some(current_user) = current_user {
         let auth_ctx = AuthContext {
             user_id: current_user.user.id,
@@ -61,13 +71,17 @@ async fn graphql_handler(
             tenant_id: current_user.user.tenant_id,
             permissions: current_user.permissions,
             client_id: current_user.client_id,
-            scopes: current_user.scopes.clone(),
-            grant_type: current_user.grant_type.clone(),
+            scopes: current_user.scopes,
+            grant_type: current_user.grant_type,
         };
         request = request.data(auth_ctx);
+        if let Some(scope) = rbac_scope.as_ref() {
+            request = request.data(scope.clone());
+        }
     }
 
-    Json(schema.execute(request).await)
+    let response = with_rbac_request_scope(rbac_scope, schema.execute(request)).await;
+    Json(response)
 }
 
 fn persisted_query_hash(req: &async_graphql::Request) -> Option<&str> {
@@ -141,11 +155,13 @@ async fn handle_graphql_ws(
 ) {
     let (mut sink, mut source) = socket.split();
     let (incoming_tx, incoming_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let rbac_scope = Arc::new(OnceLock::<RbacRequestScope>::new());
 
     let schema_for_stream = schema.as_ref().clone();
     let runtime_ctx_for_init = runtime_ctx.clone();
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
+    let rbac_scope_for_init = Arc::clone(&rbac_scope);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
         schema_for_stream,
         UnboundedReceiverStream::new(incoming_rx),
@@ -156,6 +172,7 @@ async fn handle_graphql_ws(
             runtime_ctx_for_init.clone(),
             auth_runtime_for_init.clone(),
             registry_for_init.clone(),
+            Arc::clone(&rbac_scope_for_init),
             payload,
         )
     });
@@ -182,7 +199,17 @@ async fn handle_graphql_ws(
         }
     });
 
-    while let Some(message) = graphql_stream.next().await {
+    loop {
+        let next_message = match rbac_scope.get().cloned() {
+            Some(scope) => {
+                with_rbac_request_scope(Some(scope), graphql_stream.next()).await
+            }
+            None => graphql_stream.next().await,
+        };
+        let Some(message) = next_message else {
+            break;
+        };
+
         let result = match message {
             WsMessage::Text(text) => sink.send(Message::Text(text.into())).await,
             WsMessage::Close(code, reason) => {
@@ -206,6 +233,7 @@ async fn build_ws_connection_data(
     runtime_ctx: ServerRuntimeContext,
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
+    rbac_scope: Arc<OnceLock<RbacRequestScope>>,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
     let payload: GraphqlWsInitPayload = serde_json::from_value(payload)
@@ -237,6 +265,16 @@ async fn build_ws_connection_data(
         resolve_current_user_from_access_token(&auth_runtime, tenant.id, access_token)
             .await
             .map_err(|(_, message)| async_graphql::Error::new(message))?;
+
+    let request_scope = RbacRequestScope::new(
+        current_user.user.tenant_id,
+        current_user.user.id,
+        current_user.permissions.clone(),
+        current_user.inferred_role.clone(),
+    );
+    rbac_scope
+        .set(request_scope.clone())
+        .map_err(|_| async_graphql::Error::new("RBAC connection scope was already initialized"))?;
 
     let locale = payload
         .locale
@@ -270,6 +308,7 @@ async fn build_ws_connection_data(
     data.insert(locale);
     data.insert(tenant_ctx);
     data.insert(auth_ctx);
+    data.insert(request_scope);
     Ok(data)
 }
 
