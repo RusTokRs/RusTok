@@ -85,7 +85,6 @@ const storefrontUi = readRepo(files.storefrontUi);
 const storefrontTransport = readRepo(files.storefrontTransport);
 const storefrontGraphqlAdapter = readRepo(files.storefrontGraphqlAdapter);
 const storefrontNativeServerAdapter = readRepo(files.storefrontNativeServerAdapter);
-const storefrontCargo = readRepo(files.storefrontCargo);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 
@@ -117,7 +116,8 @@ for (const marker of [
   "transport::update_page",
   "REVISION_CONFLICT",
   "canonicalize_builder_project",
-  "take_frame_component",
+  "copy_frame_component",
+  "synchronize_frame_component",
   "controller_from_project",
 ]) {
   assertContains(adminBuilder, marker, `${files.adminBuilder}: expected Page Builder consumer marker ${marker}`);
@@ -131,7 +131,9 @@ for (const marker of [
   "use_route_query_value",
   "transport::fetch_page",
   "PagesBuilderFacade",
-  "PageBuilderAdminWithController",
+  "PageBuilderAdminHostContext",
+  "provide_context",
+  "PageBuilderAdmin",
   "crate::ui::leptos::PagesAdmin",
 ]) {
   assertContains(adminComposition, marker, `${files.adminComposition}: expected Fly composition marker ${marker}`);
