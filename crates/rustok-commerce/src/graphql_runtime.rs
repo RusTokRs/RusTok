@@ -59,3 +59,17 @@ pub(crate) fn fulfillment_orchestration_from_context(
         None => service,
     }
 }
+
+pub(crate) fn post_order_orchestration_from_context(
+    ctx: &Context<'_>,
+    db: DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
+) -> crate::PostOrderOrchestrationService {
+    let service = crate::PostOrderOrchestrationService::new(db, event_bus);
+    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => {
+            service.with_payment_provider_registry(runtime.payment_provider_registry())
+        }
+        None => service,
+    }
+}
