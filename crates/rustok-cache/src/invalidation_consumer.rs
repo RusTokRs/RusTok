@@ -1,6 +1,12 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use tokio::sync::Mutex as AsyncMutex;
+
 use crate::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
     CacheInvalidationObservation, DurableCacheInvalidationError, DurableCacheInvalidationRecord,
+    DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS,
 };
 
 /// Consumer decision for one durable invalidation record.
@@ -14,16 +20,22 @@ pub enum DurableInvalidationDecision {
     RecoverThrough { generation: u64 },
 }
 
+type ProcessGateMap = HashMap<String, Arc<AsyncMutex<()>>>;
+
 /// Bounded process-local consumer state for durable cache invalidations.
 #[derive(Clone)]
 pub struct DurableCacheInvalidationConsumer {
     tracker: BoundedCacheInvalidationGapTracker,
+    process_gates: Arc<Mutex<ProcessGateMap>>,
+    maximum_process_channels: usize,
 }
 
 impl Default for DurableCacheInvalidationConsumer {
     fn default() -> Self {
         Self {
             tracker: BoundedCacheInvalidationGapTracker::default(),
+            process_gates: Arc::new(Mutex::new(HashMap::new())),
+            maximum_process_channels: DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS,
         }
     }
 }
@@ -32,6 +44,8 @@ impl DurableCacheInvalidationConsumer {
     pub fn new(maximum_channels: usize) -> Result<Self, BoundedInvalidationTrackerError> {
         Ok(Self {
             tracker: BoundedCacheInvalidationGapTracker::new(maximum_channels)?,
+            process_gates: Arc::new(Mutex::new(HashMap::new())),
+            maximum_process_channels: maximum_channels,
         })
     }
 
@@ -95,6 +109,66 @@ impl DurableCacheInvalidationConsumer {
     pub fn tracked_channels(&self) -> usize {
         self.tracker.channel_count()
     }
+
+    pub fn in_flight_process_channels(&self) -> usize {
+        self.process_gates
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+
+    pub(crate) fn process_gate(
+        &self,
+        channel: &str,
+    ) -> Result<DurableInvalidationProcessGateLease, DurableInvalidationProcessGateError> {
+        let mut gates = self
+            .process_gates
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let gate = if let Some(gate) = gates.get(channel) {
+            Arc::clone(gate)
+        } else {
+            if gates.len() >= self.maximum_process_channels {
+                return Err(DurableInvalidationProcessGateError::Saturated {
+                    count: gates.len(),
+                    maximum: self.maximum_process_channels,
+                });
+            }
+            let gate = Arc::new(AsyncMutex::new(()));
+            gates.insert(channel.to_string(), Arc::clone(&gate));
+            gate
+        };
+        Ok(DurableInvalidationProcessGateLease {
+            channel: channel.to_string(),
+            gate,
+            gates: Arc::clone(&self.process_gates),
+        })
+    }
+}
+
+pub(crate) struct DurableInvalidationProcessGateLease {
+    channel: String,
+    pub(crate) gate: Arc<AsyncMutex<()>>,
+    gates: Arc<Mutex<ProcessGateMap>>,
+}
+
+impl Drop for DurableInvalidationProcessGateLease {
+    fn drop(&mut self) {
+        let mut gates = self
+            .gates
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if gates.get(&self.channel).is_some_and(|current| {
+            Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2
+        }) {
+            gates.remove(&self.channel);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DurableInvalidationProcessGateError {
+    Saturated { count: usize, maximum: usize },
 }
 
 #[cfg(test)]
@@ -165,5 +239,24 @@ mod tests {
             .acknowledge_recovery("tenant.invalidate", 6)
             .unwrap();
         assert_eq!(consumer.last_generation("tenant.invalidate"), Some(6));
+    }
+
+    #[tokio::test]
+    async fn process_gates_are_bounded_and_reused_by_channel() {
+        let consumer = DurableCacheInvalidationConsumer::new(1).unwrap();
+        let first = consumer.process_gate("tenant.invalidate").unwrap();
+        let same = consumer.process_gate("tenant.invalidate").unwrap();
+        assert!(Arc::ptr_eq(&first.gate, &same.gate));
+        assert_eq!(consumer.in_flight_process_channels(), 1);
+        assert!(matches!(
+            consumer.process_gate("other.invalidate"),
+            Err(DurableInvalidationProcessGateError::Saturated {
+                count: 1,
+                maximum: 1
+            })
+        ));
+        drop(same);
+        drop(first);
+        assert_eq!(consumer.in_flight_process_channels(), 0);
     }
 }
