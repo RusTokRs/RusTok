@@ -42,6 +42,7 @@ members = [
     "crates/rustok-forum/storefront",
     "crates/rustok-pages/admin",
     "crates/rustok-pages/storefront",
+    "crates/rustok-page-builder/admin",
     "crates/rustok-search/admin",
     "crates/rustok-search/storefront",
     "crates/rustok-tenant/admin",
