@@ -185,6 +185,40 @@ impl FulfillmentProviderOperationJournal {
         active.update(&self.db).await.map_err(Into::into)
     }
 
+    /// Record an ambiguous provider outcome directly from an executing claim.
+    ///
+    /// This is used when the adapter returned an error after invocation, or when
+    /// persisting a successful result failed. Such operations are never made
+    /// retryable automatically because the external side effect may have happened.
+    pub async fn mark_execution_reconciliation_required(
+        &self,
+        id: Uuid,
+        provider_reference: Option<String>,
+        provider_result: Option<Value>,
+        error_message: impl Into<String>,
+    ) -> FulfillmentResult<provider_operation::Model> {
+        let model = self.get(id).await?;
+        if model.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Ok(model);
+        }
+        if model.status != PROVIDER_OPERATION_EXECUTING {
+            return Err(FulfillmentError::InvalidTransition {
+                from: model.status,
+                to: PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string(),
+            });
+        }
+
+        let now = Utc::now();
+        let mut active: provider_operation::ActiveModel = model.into();
+        active.status = Set(PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string());
+        active.provider_reference = Set(normalize_optional(provider_reference));
+        active.provider_result = Set(provider_result);
+        active.error_message = Set(Some(normalize_error(error_message.into())));
+        active.updated_at = Set(now.into());
+        active.provider_completed_at = Set(Some(now.into()));
+        active.update(&self.db).await.map_err(Into::into)
+    }
+
     pub async fn mark_reconciliation_required(
         &self,
         id: Uuid,
