@@ -29,7 +29,7 @@ pub async fn resolve_optional(
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return (
                     StatusCode::FORBIDDEN,
-                    "Human-user and storefront endpoints do not accept service credentials",
+                    "Human-user, storefront, and interactive admin endpoints do not accept service credentials",
                 )
                     .into_response();
             }
@@ -81,6 +81,7 @@ fn is_human_user_self_service_path(path: &str) -> bool {
     ) || path.starts_with("/api/auth/sessions/")
         || path == "/store"
         || path.starts_with("/store/")
+        || path.starts_with("/api/fn/ai/")
 }
 
 fn service_forum_boundary_violation(
@@ -153,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn user_self_service_and_storefront_reject_service_credentials() {
+    fn user_storefront_and_ai_admin_routes_reject_service_credentials() {
         assert!(is_human_user_self_service_path("/api/auth/me"));
         assert!(is_human_user_self_service_path(
             "/api/auth/sessions/00000000-0000-0000-0000-000000000001"
@@ -162,6 +163,8 @@ mod tests {
         assert!(is_human_user_self_service_path("/store"));
         assert!(is_human_user_self_service_path("/store/customers/me"));
         assert!(is_human_user_self_service_path("/store/carts"));
+        assert!(is_human_user_self_service_path("/api/fn/ai/overview"));
+        assert!(is_human_user_self_service_path("/api/fn/ai/create-provider"));
         assert!(!is_human_user_self_service_path("/admin/products"));
         assert!(!is_human_user_self_service_path("/api/auth/reset/request"));
         assert!(!is_human_user_self_service_path("/api/oauth/token"));
