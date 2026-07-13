@@ -19,7 +19,7 @@ impl RbacRequestScope {
         mut permissions: Vec<Permission>,
         role: UserRole,
     ) -> Self {
-        permissions.sort_by_cached_key(ToString::to_string);
+        permissions.sort_by_cached_key(|permission| permission.to_string());
         permissions.dedup();
         Self {
             tenant_id,
