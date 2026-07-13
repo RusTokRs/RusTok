@@ -22,9 +22,12 @@ impl MigrationTrait for Migration {
                     .get_connection()
                     .execute_unprepared(
                         r#"
-                        DROP TRIGGER IF EXISTS shipping_option_cart_reference_guard ON shipping_options;
-                        DROP TRIGGER IF EXISTS cart_shipping_selection_option_guard ON cart_shipping_selections;
-                        DROP TRIGGER IF EXISTS cart_selected_shipping_option_guard ON carts;
+                        DROP TRIGGER IF EXISTS shipping_option_cart_reference_delete_guard ON shipping_options;
+                        DROP TRIGGER IF EXISTS shipping_option_cart_reference_update_guard ON shipping_options;
+                        DROP TRIGGER IF EXISTS cart_shipping_selection_option_update_guard ON cart_shipping_selections;
+                        DROP TRIGGER IF EXISTS cart_shipping_selection_option_insert_guard ON cart_shipping_selections;
+                        DROP TRIGGER IF EXISTS cart_selected_shipping_option_update_guard ON carts;
+                        DROP TRIGGER IF EXISTS cart_selected_shipping_option_insert_guard ON carts;
                         DROP FUNCTION IF EXISTS protect_referenced_shipping_option();
                         DROP FUNCTION IF EXISTS enforce_cart_shipping_selection_option();
                         DROP FUNCTION IF EXISTS enforce_cart_selected_shipping_option();
@@ -135,9 +138,13 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             END;
             $$ LANGUAGE plpgsql;
 
-            CREATE TRIGGER cart_selected_shipping_option_guard
-            BEFORE INSERT OR UPDATE OF selected_shipping_option_id, tenant_id, currency_code, status
-            ON carts
+            CREATE TRIGGER cart_selected_shipping_option_insert_guard
+            BEFORE INSERT ON carts
+            FOR EACH ROW
+            EXECUTE FUNCTION enforce_cart_selected_shipping_option();
+
+            CREATE TRIGGER cart_selected_shipping_option_update_guard
+            BEFORE UPDATE OF selected_shipping_option_id, tenant_id, currency_code, status ON carts
             FOR EACH ROW
             EXECUTE FUNCTION enforce_cart_selected_shipping_option();
 
@@ -181,9 +188,13 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             END;
             $$ LANGUAGE plpgsql;
 
-            CREATE TRIGGER cart_shipping_selection_option_guard
-            BEFORE INSERT OR UPDATE OF cart_id, selected_shipping_option_id
-            ON cart_shipping_selections
+            CREATE TRIGGER cart_shipping_selection_option_insert_guard
+            BEFORE INSERT ON cart_shipping_selections
+            FOR EACH ROW
+            EXECUTE FUNCTION enforce_cart_shipping_selection_option();
+
+            CREATE TRIGGER cart_shipping_selection_option_update_guard
+            BEFORE UPDATE OF cart_id, selected_shipping_option_id ON cart_shipping_selections
             FOR EACH ROW
             EXECUTE FUNCTION enforce_cart_shipping_selection_option();
 
@@ -236,9 +247,13 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             END;
             $$ LANGUAGE plpgsql;
 
-            CREATE TRIGGER shipping_option_cart_reference_guard
-            BEFORE UPDATE OF tenant_id, currency_code, active OR DELETE
-            ON shipping_options
+            CREATE TRIGGER shipping_option_cart_reference_update_guard
+            BEFORE UPDATE OF tenant_id, currency_code, active ON shipping_options
+            FOR EACH ROW
+            EXECUTE FUNCTION protect_referenced_shipping_option();
+
+            CREATE TRIGGER shipping_option_cart_reference_delete_guard
+            BEFORE DELETE ON shipping_options
             FOR EACH ROW
             EXECUTE FUNCTION protect_referenced_shipping_option();
             "#,
@@ -252,6 +267,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
+            DROP TABLE IF EXISTS cart_shipping_option_integrity_validation;
             CREATE TEMP TABLE cart_shipping_option_integrity_validation (
                 valid INTEGER NOT NULL CHECK (valid = 1)
             );
