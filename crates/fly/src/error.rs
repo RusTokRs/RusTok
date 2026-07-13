@@ -19,6 +19,16 @@ pub enum FlyError {
     OpaqueComponent(String),
     #[error("component insertion index {index} is outside 0..={len}")]
     InvalidInsertionIndex { index: usize, len: usize },
+    #[error("page `{0}` was not found")]
+    PageNotFound(String),
+    #[error("page locator must contain an id or index")]
+    InvalidPageLocator,
+    #[error("page index {index} is outside 0..={len}")]
+    InvalidPageIndex { index: usize, len: usize },
+    #[error("page id `{0}` is duplicated")]
+    DuplicatePageId(String),
+    #[error("the last page cannot be removed")]
+    LastPageRemoval,
     #[error("asset `{0}` was not found")]
     AssetNotFound(String),
     #[error("asset reference is invalid: {0}")]
