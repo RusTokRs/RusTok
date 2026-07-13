@@ -3,12 +3,159 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::{
-    AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
+    AgentDescriptor, AgentKind, AgentWorkflowDescriptor, AiAgentModelAssignmentRecord,
+    AiAgentPrincipalRecord, AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord,
+    AiChatSessionDetail,
     AiChatSessionSummary, AiMetricBucket, AiProviderProfileRecord, AiRecentRunRecord,
     AiRunStreamEvent, AiRunStreamEventKind, AiRuntimeMetricsSnapshot, AiTaskProfileRecord,
     AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability, ProviderConfigField,
     ProviderFeature, ProviderFieldKind, ProviderUsagePolicy, ToolCall, ToolTrace,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiAgentKindGql {
+    Domain,
+    Code,
+    Orchestrator,
+    Review,
+}
+
+impl From<AgentKind> for AiAgentKindGql {
+    fn from(value: AgentKind) -> Self {
+        match value {
+            AgentKind::Domain => Self::Domain,
+            AgentKind::Code => Self::Code,
+            AgentKind::Orchestrator => Self::Orchestrator,
+            AgentKind::Review => Self::Review,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentDescriptorGql {
+    pub slug: String,
+    pub display_name: String,
+    pub owner: String,
+    pub kind: AiAgentKindGql,
+    pub responsibility: String,
+    pub required_permissions: Vec<String>,
+    pub allowed_operations: Vec<String>,
+    pub required_capabilities: Vec<AiProviderCapabilityGql>,
+    pub can_orchestrate: bool,
+}
+
+impl From<&AgentDescriptor> for AiAgentDescriptorGql {
+    fn from(value: &AgentDescriptor) -> Self {
+        Self {
+            slug: value.slug.clone(),
+            display_name: value.display_name.clone(),
+            owner: value.owner.clone(),
+            kind: value.kind.into(),
+            responsibility: value.responsibility.clone(),
+            required_permissions: value.required_permissions.iter().cloned().collect(),
+            allowed_operations: value.allowed_operations.iter().cloned().collect(),
+            required_capabilities: value
+                .required_capabilities
+                .iter()
+                .copied()
+                .map(Into::into)
+                .collect(),
+            can_orchestrate: value.can_orchestrate,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentWorkflowStageGql {
+    pub id: String,
+    pub agent_slug: String,
+    pub depends_on: Vec<String>,
+    pub requires_approval: bool,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentWorkflowGql {
+    pub slug: String,
+    pub display_name: String,
+    pub owner: String,
+    pub stages: Vec<AiAgentWorkflowStageGql>,
+}
+
+impl From<&AgentWorkflowDescriptor> for AiAgentWorkflowGql {
+    fn from(value: &AgentWorkflowDescriptor) -> Self {
+        Self {
+            slug: value.slug.clone(),
+            display_name: value.display_name.clone(),
+            owner: value.owner.clone(),
+            stages: value
+                .stages
+                .iter()
+                .map(|stage| AiAgentWorkflowStageGql {
+                    id: stage.id.clone(),
+                    agent_slug: stage.agent_slug.clone(),
+                    depends_on: stage.depends_on.clone(),
+                    requires_approval: stage.requires_approval,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentPrincipalGql {
+    pub id: Uuid,
+    pub slug: String,
+    pub descriptor_owner: String,
+    pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiAgentPrincipalRecord> for AiAgentPrincipalGql {
+    fn from(value: AiAgentPrincipalRecord) -> Self {
+        Self {
+            id: value.id,
+            slug: value.slug,
+            descriptor_owner: value.descriptor_owner,
+            descriptor_slug: value.descriptor_slug,
+            role_slugs: value.role_slugs,
+            permission_slugs: value.permission_slugs,
+            is_active: value.is_active,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentModelAssignmentGql {
+    pub id: Uuid,
+    pub agent_principal_id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub model_override: Option<String>,
+    pub execution_mode: AiExecutionModeGql,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiAgentModelAssignmentRecord> for AiAgentModelAssignmentGql {
+    fn from(value: AiAgentModelAssignmentRecord) -> Self {
+        Self {
+            id: value.id,
+            agent_principal_id: value.agent_principal_id,
+            provider_profile_id: value.provider_profile_id,
+            model_override: value.model_override,
+            execution_mode: value.execution_mode.into(),
+            is_active: value.is_active,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
 pub enum AiProviderCapabilityGql {
@@ -937,6 +1084,41 @@ pub struct UpdateAiProviderProfileInputGql {
     pub capabilities: Vec<AiProviderCapabilityGql>,
     pub usage_policy: AiProviderUsagePolicyInputGql,
     pub is_active: bool,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiAgentPrincipalInputGql {
+    pub slug: String,
+    pub descriptor_owner: String,
+    pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiAgentModelAssignmentInputGql {
+    pub agent_principal_id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub model_override: Option<String>,
+    pub execution_mode: AiExecutionModeGql,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct AiAgentWorkflowStageBindingInputGql {
+    pub stage_id: String,
+    pub agent_principal_id: Uuid,
+    pub model_assignment_id: Uuid,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiAgentWorkflowRunInputGql {
+    pub workflow_owner: String,
+    pub workflow_slug: String,
+    pub stage_bindings: Vec<AiAgentWorkflowStageBindingInputGql>,
+    pub input_payload: String,
     pub metadata: Option<String>,
 }
 

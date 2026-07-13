@@ -169,6 +169,22 @@ async fn validate_storefront_variant_inventory() {
     if inventory_policy_allows_backorder("continue") { return; }
     load_available_inventory_for_variant_in_public_channel().await;
 }
+
+function checkoutAvailabilityCallerSource({ includeDirectLookup = false } = {}) {
+  if (includeDirectLookup) {
+    return commerceAvailabilityCallerSource({ includeDirectLookup });
+  }
+
+  return `
+use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
+struct Checkout { inventory_reservation_port: Box<dyn InventoryReservationPort> }
+impl Checkout {
+async fn validate_storefront_variant_inventory(&self) {
+    self.inventory_reservation_port.check_availability(context, InventoryAvailabilityRequest { variant_id, requested_quantity: 1, channel_slug: None }).await;
+}
+}
+`;
+}
 `;
   }
 
@@ -221,11 +237,11 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-inventory/docs/implementation-plan.md", "- Next step: verification/CI evidence slice for inventory boundary.\n- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations\n");
   for (const relativePath of [
     "crates/rustok-commerce/src/graphql/mutations/helpers.rs",
-    "crates/rustok-commerce/src/services/checkout.rs",
     "crates/rustok-commerce/src/controllers/store/mod.rs",
   ]) {
     writeFixtureFile(root, relativePath, commerceAvailabilityCallerSource(options));
   }
+  writeFixtureFile(root, "crates/rustok-commerce/src/services/checkout.rs", checkoutAvailabilityCallerSource(options));
   writeFixtureFile(root, "crates/rustok-commerce/src/storefront_channel.rs", commerceStorefrontChannelSource(options));
   return root;
 }

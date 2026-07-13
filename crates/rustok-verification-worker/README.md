@@ -12,9 +12,10 @@ Runs artifact trust verification outside the server and module runtime.
 
 ## Interactions
 
-`rustok-modules` owns the `TrustVerifier` port and admission decision. Host
-deployment wires this worker over a typed RPC transport; the worker does not
-own CAS, database state, outbox writes, or artifact execution.
+`rustok-modules` owns the `TrustVerifier` port and admission decision. The
+worker exposes `VerificationGrpcService` through the typed tonic transport;
+host deployment supplies the listener and worker credentials. The worker does
+not own CAS, database state, outbox writes, or artifact execution.
 
 ## Entry points
 
@@ -24,4 +25,3 @@ own CAS, database state, outbox writes, or artifact execution.
 ## Documentation
 
 See [local documentation](./docs/README.md).
-

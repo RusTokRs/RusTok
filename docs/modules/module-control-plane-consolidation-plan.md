@@ -30,7 +30,7 @@ The ownership decision is fixed by
 ## Execution Checkpoint
 
 - Current phase: `runtime_foundation_and_control_plane_extraction`.
-- Last updated: 2026-07-12.
+- Last updated: 2026-07-13.
 - Completed foundation:
   - neutral sandbox request, policy, broker, executor, outcome, error, and audit
     contracts;
@@ -650,8 +650,10 @@ the external registry.
   received bytes through temporary storage with size and digest checks;
   replacing the post-verification `Vec<u8>` boundary with a streaming sink
   remains required.
-- [ ] Store verification evidence and blob metadata separately from executable
-  bytes; do not copy large payloads into PostgreSQL.
+- [x] Store verification evidence and blob metadata separately from executable
+  bytes; do not copy large payloads into PostgreSQL. The admission record now
+  persists the signer, policy revisions, required-check outcomes, and redacted
+  evidence references alongside the CAS identity.
 - [ ] Define local/node caches keyed by digest with verified reads, atomic fill,
   corruption detection, and safe eviction.
 - [ ] Define reference counting/retention for active, rollback, quarantined,
@@ -666,8 +668,10 @@ the external registry.
 - [x] Platform and tenant scope contract with RLS-backed persistence.
 - [x] Add explicit statuses: resolved, verifying, admitted, installed, active,
   failed, inactive, and rolled_back.
-- [ ] Store verification evidence references and policy decision revision.
-- [ ] Store previous installation pointer for rollback.
+- [x] Store verification evidence references and policy decision revision.
+- [x] Add a durable nullable previous-installation pointer with a self-reference
+  in the installation schema. A subsequent rollback command will select and
+  advance that pointer atomically with its status transition.
 - [ ] Store capability grant revision separately from artifact declaration.
 - [ ] Store migration/application checkpoint and irreversible migration flags.
 - [ ] Add optimistic revision and idempotency key.
@@ -698,12 +702,15 @@ the external registry.
   It must run with scoped registry/trust access, resource limits, and no module
   runtime capabilities. The owner commits its decision with admission metadata
   and outbox only after every required check passes.
-- Worker implementation lives in `crates/rustok-verification-worker/`. Its
-  first slice owns policy-revision and signer-decision enforcement; the next
-  slices are: (1) a typed tonic gRPC listener/client between the control plane
-  and worker; (2) fail-closed `ModuleInstaller` wiring that obtains the worker
-  decision before CAS stage/publish; and (3) injected Cosign/SLSA/CycloneDX
-  adapters. No missing worker decision may fall back to admission.
+- Worker implementation lives in `crates/rustok-verification-worker/`. The
+  typed tonic gRPC listener/client lives in
+  `crates/rustok-verification-transport/` so the owner port remains independent
+  of a concrete transport. `ModuleInstaller` requires a `TrustVerifier` and
+  policy revisions at construction, calls it before CAS stage/publish, and
+  commits the resulting decision as admission evidence. Worker unavailability,
+  malformed responses, policy-revision mismatch, or incomplete evidence reject
+  installation; no local or legacy verifier exists as a fallback. The remaining
+  slice is injected Cosign/SLSA/CycloneDX adapters in the isolated worker.
 - Alloy/Rhai drafts are not marketplace-installable and do not require this
   publication trust policy. Static promotion uses its separate reviewed
   distribution-build policy.

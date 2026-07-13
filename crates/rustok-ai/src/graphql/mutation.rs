@@ -10,9 +10,11 @@ use super::{
     ensure_ai_approval_resolve, ensure_ai_provider_manage, ensure_ai_run_cancel,
     ensure_ai_session_run, ensure_ai_task_profile_manage,
     types::{
-        parse_metadata, AiChatRunGql, AiProviderProfileGql, AiProviderTestResultGql,
-        AiSendMessageResultGql, AiTaskProfileGql, AiToolProfileGql,
-        CreateAiProviderProfileInputGql, CreateAiTaskProfileInputGql, CreateAiToolProfileInputGql,
+        parse_metadata, AiAgentModelAssignmentGql, AiAgentPrincipalGql, AiChatRunGql,
+        AiProviderProfileGql, AiProviderTestResultGql, AiSendMessageResultGql, AiTaskProfileGql,
+        AiToolProfileGql, CreateAiAgentModelAssignmentInputGql, CreateAiAgentPrincipalInputGql,
+        CreateAiAgentWorkflowRunInputGql, CreateAiProviderProfileInputGql,
+        CreateAiTaskProfileInputGql, CreateAiToolProfileInputGql,
         ResumeAiApprovalInputGql, RunAiTaskJobInputGql, StartAiChatSessionInputGql,
         UpdateAiProviderProfileInputGql, UpdateAiTaskProfileInputGql, UpdateAiToolProfileInputGql,
     },
@@ -49,6 +51,97 @@ async fn operator_context(
 
 #[Object]
 impl AiMutation {
+    async fn create_ai_agent_principal(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateAiAgentPrincipalInputGql,
+    ) -> Result<AiAgentPrincipalGql> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_manage(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        Ok(crate::AiManagementService::create_agent_principal(
+            db,
+            &operator,
+            crate::CreateAiAgentPrincipalInput {
+                slug: input.slug,
+                descriptor_owner: input.descriptor_owner,
+                descriptor_slug: input.descriptor_slug,
+                role_slugs: input.role_slugs,
+                permission_slugs: input.permission_slugs,
+                metadata: parse_metadata(input.metadata)?,
+            },
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?
+        .into())
+    }
+
+    async fn create_ai_agent_model_assignment(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateAiAgentModelAssignmentInputGql,
+    ) -> Result<AiAgentModelAssignmentGql> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_provider_manage(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        Ok(crate::AiManagementService::create_agent_model_assignment(
+            db,
+            &operator,
+            crate::CreateAiAgentModelAssignmentInput {
+                agent_principal_id: input.agent_principal_id,
+                provider_profile_id: input.provider_profile_id,
+                model_override: input.model_override,
+                execution_mode: input.execution_mode.into(),
+                metadata: parse_metadata(input.metadata)?,
+            },
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?
+        .into())
+    }
+
+    async fn create_ai_agent_workflow_run(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateAiAgentWorkflowRunInputGql,
+    ) -> Result<Uuid> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_session_run(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let operator = operator_context(ctx, auth).await?;
+        let mut stage_principal_ids = BTreeMap::new();
+        let mut stage_model_assignment_ids = BTreeMap::new();
+        for binding in input.stage_bindings {
+            if stage_principal_ids
+                .insert(binding.stage_id.clone(), binding.agent_principal_id)
+                .is_some()
+                || stage_model_assignment_ids
+                    .insert(binding.stage_id, binding.model_assignment_id)
+                    .is_some()
+            {
+                return Err(async_graphql::Error::new(
+                    "agent workflow stage bindings must be unique",
+                ));
+            }
+        }
+        crate::AiManagementService::create_agent_workflow_run(
+            db,
+            &operator,
+            crate::CreateAiAgentWorkflowRunInput {
+                workflow_owner: input.workflow_owner,
+                workflow_slug: input.workflow_slug,
+                stage_principal_ids,
+                stage_model_assignment_ids,
+                input_payload: parse_metadata(Some(input.input_payload))?,
+                metadata: parse_metadata(input.metadata)?,
+            },
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))
+    }
+
     async fn create_ai_provider_profile(
         &self,
         ctx: &Context<'_>,

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -20,7 +20,8 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleDependencyLockGraph,
+    ModuleDependencyLockGraph, TrustPolicyRevision, TrustVerificationDecision,
+    TrustVerificationRequest, TrustVerifier,
 };
 
 const RHAI_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
@@ -370,7 +371,37 @@ pub struct ArtifactVerificationEvidence {
     pub manifest_digest: String,
     pub payload_digest: String,
     pub media_type: String,
+    pub signer_identity: String,
+    pub trust_policy_revision: u64,
+    pub capability_policy_revision: u64,
+    pub signature_verified: bool,
+    pub provenance_verified: bool,
+    pub sbom_verified: bool,
+    pub evidence_references: Vec<String>,
     pub verified_at: DateTime<Utc>,
+}
+
+impl ArtifactVerificationEvidence {
+    fn from_decision(
+        artifact: &InstalledModuleArtifact,
+        media_type: &str,
+        decision: TrustVerificationDecision,
+        verified_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            manifest_digest: artifact.reference.digest.clone(),
+            payload_digest: artifact.descriptor.artifact_digest.clone(),
+            media_type: media_type.to_string(),
+            signer_identity: decision.signer_identity,
+            trust_policy_revision: decision.trust_policy_revision,
+            capability_policy_revision: decision.capability_policy_revision,
+            signature_verified: decision.signature_verified,
+            provenance_verified: decision.provenance_verified,
+            sbom_verified: decision.sbom_verified,
+            evidence_references: decision.evidence_references,
+            verified_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -389,6 +420,7 @@ pub trait ArtifactAdmissionStore: Send + Sync {
         &self,
         artifact: &InstalledModuleArtifact,
         staged: &StagedArtifactBlob,
+        evidence: &ArtifactVerificationEvidence,
     ) -> Result<(), ModuleInstallationError>;
     async fn unfinished_admissions(
         &self,
@@ -593,6 +625,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         &self,
         artifact: &InstalledModuleArtifact,
         staged: &StagedArtifactBlob,
+        evidence: &ArtifactVerificationEvidence,
     ) -> Result<(), ModuleInstallationError> {
         let transaction = self
             .db
@@ -613,7 +646,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .execute(Statement::from_sql_and_values(
                 backend,
                 admission_insert_sql(backend),
-                admission_values(artifact, staged, backend)?,
+                admission_values(artifact, staged, evidence, backend)?,
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -767,16 +800,20 @@ fn admission_insert_sql(backend: DbBackend) -> String {
 fn admission_values(
     artifact: &InstalledModuleArtifact,
     staged: &StagedArtifactBlob,
+    evidence: &ArtifactVerificationEvidence,
     backend: DbBackend,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
     let committed_at = Utc::now();
-    let evidence = serde_json::to_value(ArtifactVerificationEvidence {
-        manifest_digest: artifact.reference.digest.clone(),
-        payload_digest: staged.digest.clone(),
-        media_type: staged.media_type.clone(),
-        verified_at: committed_at,
-    })
-    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    if evidence.manifest_digest != artifact.reference.digest
+        || evidence.payload_digest != staged.digest
+        || evidence.media_type != staged.media_type
+    {
+        return Err(ModuleInstallationError::TrustVerification(
+            "verification evidence does not match the admitted artifact".into(),
+        ));
+    }
+    let evidence = serde_json::to_value(evidence)
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let committed_at = match backend {
         DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(committed_at))),
         _ => committed_at.to_rfc3339().into(),
@@ -817,6 +854,8 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
 pub struct ModuleInstaller<R, S, B> {
     registry: R,
     admission: ArtifactAdmissionService<S, B>,
+    verifier: Arc<dyn TrustVerifier>,
+    trust_policy: TrustPolicyRevision,
     limits: ArtifactAdmissionLimits,
 }
 
@@ -841,6 +880,7 @@ where
         artifact: &InstalledModuleArtifact,
         media_type: &str,
         payload: &[u8],
+        evidence: &ArtifactVerificationEvidence,
     ) -> Result<(), ModuleInstallationError> {
         artifact.validate_dependency_lock()?;
         let staged = self
@@ -851,7 +891,9 @@ where
             let _ = self.blobs.discard(&staged).await;
             return Err(error);
         }
-        self.store.commit_admission(artifact, &staged).await
+        self.store
+            .commit_admission(artifact, &staged, evidence)
+            .await
     }
 }
 
@@ -861,10 +903,18 @@ where
     S: ArtifactAdmissionStore,
     B: DurableArtifactBlobStore,
 {
-    pub fn new(registry: R, store: S, blobs: B) -> Self {
+    pub fn new(
+        registry: R,
+        store: S,
+        blobs: B,
+        verifier: Arc<dyn TrustVerifier>,
+        trust_policy: TrustPolicyRevision,
+    ) -> Self {
         Self {
             registry,
             admission: ArtifactAdmissionService::new(store, blobs),
+            verifier,
+            trust_policy,
             limits: ArtifactAdmissionLimits::default(),
         }
     }
@@ -893,6 +943,26 @@ where
         if package.descriptor.payload_kind == ArtifactPayloadKind::StaticPromoted {
             return Err(ModuleInstallationError::StaticPromotionRequired);
         }
+        let verification_request = TrustVerificationRequest {
+            reference: package.reference.clone(),
+            descriptor: package.descriptor.clone(),
+            trust_policy_revision: self.trust_policy.trust_policy_revision,
+            capability_policy_revision: self.trust_policy.capability_policy_revision,
+        };
+        let decision = self
+            .verifier
+            .verify(verification_request.clone())
+            .await
+            .map_err(ModuleInstallationError::TrustVerification)?;
+        if decision.trust_policy_revision != verification_request.trust_policy_revision
+            || decision.capability_policy_revision
+                != verification_request.capability_policy_revision
+            || !decision.admitted()
+        {
+            return Err(ModuleInstallationError::TrustVerification(
+                "verification decision is not admitted for the requested policy revisions".into(),
+            ));
+        }
         let release = package.release_ref();
         let artifact = InstalledModuleArtifact {
             installation_id: Uuid::new_v4(),
@@ -903,8 +973,14 @@ where
             dependency_lock,
             installed_at,
         };
+        let evidence = ArtifactVerificationEvidence::from_decision(
+            &artifact,
+            &package.media_type,
+            decision,
+            installed_at,
+        );
         self.admission
-            .admit(&artifact, &package.media_type, &package.payload)
+            .admit(&artifact, &package.media_type, &package.payload, &evidence)
             .await?;
         Ok(artifact)
     }
@@ -944,6 +1020,8 @@ pub enum ModuleInstallationError {
     BlobNotFound(String),
     #[error("artifact dependency lock is invalid: {0}")]
     DependencyLock(String),
+    #[error("artifact trust verification failed: {0}")]
+    TrustVerification(String),
 }
 
 fn media_type_for(kind: ArtifactPayloadKind) -> &'static str {
@@ -977,7 +1055,7 @@ pub(crate) fn sha256_digest(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     use chrono::Utc;
     use rustok_core::MigrationSource;
@@ -990,6 +1068,37 @@ mod tests {
     use crate::ArtifactModuleKind;
 
     struct FixtureRegistry(ModuleArtifactPackage);
+
+    struct AllowTrustVerifier;
+
+    #[async_trait]
+    impl TrustVerifier for AllowTrustVerifier {
+        async fn verify(
+            &self,
+            request: TrustVerificationRequest,
+        ) -> Result<TrustVerificationDecision, String> {
+            Ok(TrustVerificationDecision {
+                signer_identity: "test.signer.example".to_string(),
+                trust_policy_revision: request.trust_policy_revision,
+                capability_policy_revision: request.capability_policy_revision,
+                signature_verified: true,
+                provenance_verified: true,
+                sbom_verified: true,
+                evidence_references: vec!["test://verification/evidence".to_string()],
+            })
+        }
+    }
+
+    fn trust_verifier() -> Arc<dyn TrustVerifier> {
+        Arc::new(AllowTrustVerifier)
+    }
+
+    fn trust_policy() -> TrustPolicyRevision {
+        TrustPolicyRevision {
+            trust_policy_revision: 1,
+            capability_policy_revision: 1,
+        }
+    }
 
     #[async_trait]
     impl ArtifactRegistry for FixtureRegistry {
@@ -1011,6 +1120,7 @@ mod tests {
             &self,
             artifact: &InstalledModuleArtifact,
             _staged: &StagedArtifactBlob,
+            _evidence: &ArtifactVerificationEvidence,
         ) -> Result<(), ModuleInstallationError> {
             self.0.lock().expect("store lock").push(artifact.clone());
             Ok(())
@@ -1052,6 +1162,7 @@ mod tests {
             &self,
             _artifact: &InstalledModuleArtifact,
             _staged: &StagedArtifactBlob,
+            _evidence: &ArtifactVerificationEvidence,
         ) -> Result<(), ModuleInstallationError> {
             Ok(())
         }
@@ -1163,6 +1274,8 @@ mod tests {
             FixtureRegistry(package),
             store,
             InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
         );
 
         let installed = installer
@@ -1187,6 +1300,8 @@ mod tests {
             FixtureRegistry(package),
             CapturingStore::default(),
             InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
         );
 
         assert!(matches!(
@@ -1210,6 +1325,8 @@ mod tests {
             FixtureRegistry(package),
             CapturingStore::default(),
             InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
         )
         .with_admission_limits(ArtifactAdmissionLimits {
             max_descriptor_bytes: 1024,
@@ -1241,6 +1358,8 @@ mod tests {
             FixtureRegistry(package),
             CapturingStore::default(),
             InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
         );
         let scope = ModuleInstallationScope::Tenant {
             tenant_id: Uuid::new_v4(),
@@ -1305,6 +1424,8 @@ mod tests {
             FixtureRegistry(package),
             SeaOrmArtifactInstallationStore::new(database.clone()),
             InMemoryArtifactBlobStore::default(),
+            trust_verifier(),
+            trust_policy(),
         );
         let installed = installer
             .install(

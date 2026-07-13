@@ -31,6 +31,132 @@ pub mod ai_approval_requests {
 }
 
 #[cfg(feature = "server")]
+pub mod ai_agent_principals {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_agent_principals")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub slug: String,
+        pub descriptor_owner: String,
+        pub descriptor_slug: String,
+        pub role_slugs: Json,
+        pub permission_slugs: Json,
+        pub is_active: bool,
+        pub metadata: Json,
+        pub created_by: Option<Uuid>,
+        pub updated_by: Option<Uuid>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_agent_model_assignments {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_agent_model_assignments")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub agent_principal_id: Uuid,
+        pub provider_profile_id: Uuid,
+        pub model_override: Option<String>,
+        pub execution_mode: String,
+        pub is_active: bool,
+        pub metadata: Json,
+        pub created_by: Option<Uuid>,
+        pub updated_by: Option<Uuid>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_agent_workflow_runs {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_agent_workflow_runs")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub workflow_owner: String,
+        pub workflow_slug: String,
+        pub initiator_id: Uuid,
+        pub status: String,
+        pub input_payload: Json,
+        pub output_payload: Option<Json>,
+        pub metadata: Json,
+        pub created_at: DateTimeWithTimeZone,
+        pub started_at: Option<DateTimeWithTimeZone>,
+        pub completed_at: Option<DateTimeWithTimeZone>,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
+pub mod ai_agent_workflow_stages {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "ai_agent_workflow_stages")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub workflow_run_id: Uuid,
+        pub stage_id: String,
+        pub agent_principal_id: Uuid,
+        pub model_assignment_id: Option<Uuid>,
+        pub run_id: Option<Uuid>,
+        pub status: String,
+        pub requires_approval: bool,
+        pub input_payload: Json,
+        pub output_payload: Option<Json>,
+        pub error_message: Option<String>,
+        pub metadata: Json,
+        pub lease_token: Option<Uuid>,
+        pub lease_expires_at: Option<DateTimeWithTimeZone>,
+        pub attempt_count: i32,
+        pub created_at: DateTimeWithTimeZone,
+        pub started_at: Option<DateTimeWithTimeZone>,
+        pub completed_at: Option<DateTimeWithTimeZone>,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[cfg(feature = "server")]
 pub mod ai_chat_messages {
     use sea_orm::entity::prelude::*;
     use serde::{Deserialize, Serialize};

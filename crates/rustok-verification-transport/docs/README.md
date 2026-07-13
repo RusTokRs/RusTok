@@ -1,0 +1,9 @@
+# Verification transport
+
+The protobuf service is intentionally a narrow transport boundary. Its request
+and response bodies serialize the versioned Rust-owned trust contracts, while
+gRPC supplies method identity, deadlines, cancellation, and status codes.
+
+The crate must not contain admission policy, CAS access, database access, or
+verification credentials. Those belong respectively to `rustok-modules` and
+`rustok-verification-worker`.

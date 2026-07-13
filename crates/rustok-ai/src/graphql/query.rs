@@ -9,7 +9,9 @@ use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,
     ensure_ai_task_profile_read,
     types::{
-        AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderCatalogEntryGql,
+        AiAgentDescriptorGql, AiAgentModelAssignmentGql, AiAgentPrincipalGql,
+        AiAgentWorkflowGql, AiChatSessionDetailGql, AiChatSessionSummaryGql,
+        AiProviderCatalogEntryGql,
         AiProviderProfileGql, AiProviderTargetGql, AiRecentRunGql, AiRunStreamEventGql,
         AiRuntimeMetricsGql, AiTaskProfileGql, AiToolProfileGql, AiToolTraceGql,
     },
@@ -25,6 +27,60 @@ fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
 
 #[Object]
 impl AiQuery {
+    async fn ai_agent_catalog(&self, ctx: &Context<'_>) -> Result<Vec<AiAgentDescriptorGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        Ok(crate::alloy_agent_catalog()
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            .descriptors()
+            .iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn ai_agent_workflows(&self, ctx: &Context<'_>) -> Result<Vec<AiAgentWorkflowGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        Ok(crate::alloy_agent_catalog()
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            .workflows()
+            .iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn ai_agent_principals(&self, ctx: &Context<'_>) -> Result<Vec<AiAgentPrincipalGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        Ok(crate::AiManagementService::list_agent_principals(db, auth.tenant_id)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    async fn ai_agent_model_assignments(
+        &self,
+        ctx: &Context<'_>,
+        agent_principal_id: Uuid,
+    ) -> Result<Vec<AiAgentModelAssignmentGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        Ok(crate::AiManagementService::list_agent_model_assignments(
+            db,
+            auth.tenant_id,
+            agent_principal_id,
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?
+        .into_iter()
+        .map(Into::into)
+        .collect())
+    }
+
     async fn ai_provider_catalog(
         &self,
         ctx: &Context<'_>,

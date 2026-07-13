@@ -167,7 +167,9 @@ absence of a tenant identifier.
 - Extend descriptor compatibility, dependency, schema/migration, and UI surface
   references.
 - Persist verification evidence, policy revision, capability grant revision,
-  rollback pointers, status, and optimistic revision.
+  rollback pointers, status, and optimistic revision. The installation schema
+  now has a nullable self-referencing predecessor pointer; the later rollback
+  command will advance it atomically with the lifecycle transition.
 - Enforce signature, signer, SBOM, provenance, compatibility, dependency, and
   capability admission before activation.
 - Use Cosign/Sigstore for digest-bound OCI signature and transparency-bundle
@@ -178,7 +180,11 @@ absence of a tenant identifier.
 - Keep tool execution outside the server and module runtime: `rustok-modules`
   owns a typed fail-closed `TrustVerifier` port, while an isolated verification
   worker owns Cosign, trust-root access, SLSA parsing, and CycloneDX validation.
-  The worker returns a redacted typed decision/evidence reference only.
+  `ModuleInstaller` requires that port and selected policy revisions at
+  construction, verifies before CAS publication, and persists the redacted
+  decision/evidence references in the atomic admission transaction. The
+  `rustok-verification-transport` crate provides the tonic gRPC client/server
+  adapter; worker or transport failures reject admission without a fallback.
 - Resolve and persist exact dependency graphs with a maintained solver adapter.
 - Copy admitted payloads into platform content-addressed storage and execute
   from CAS rather than the external registry.

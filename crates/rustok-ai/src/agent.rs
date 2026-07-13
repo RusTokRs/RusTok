@@ -65,6 +65,35 @@ pub struct AgentWorkflowDescriptor {
     pub stages: Vec<AgentWorkflowStage>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentWorkflowStatus {
+    Queued,
+    Running,
+    WaitingApproval,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentStageStatus {
+    Pending,
+    Ready,
+    Running,
+    WaitingApproval,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl AgentStageStatus {
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+    }
+}
+
 /// Owner-contributed catalog consumed by configuration and orchestration
 /// surfaces. It intentionally contains no provider endpoints or credentials.
 #[derive(Debug, Clone, Default)]
@@ -118,6 +147,31 @@ impl AgentCatalog {
             )));
         }
         Ok(effective)
+    }
+
+    /// Resolves only stages whose declared dependencies completed. An approval
+    /// gate is expressed as `WaitingApproval`, never as a scheduler bypass.
+    pub fn ready_stages(
+        &self,
+        workflow_slug: &str,
+        states: &std::collections::BTreeMap<String, AgentStageStatus>,
+    ) -> AiResult<Vec<String>> {
+        let workflow = self
+            .workflows
+            .iter()
+            .find(|workflow| workflow.slug == workflow_slug)
+            .ok_or_else(|| AiError::Validation(format!("unknown agent workflow `{workflow_slug}`")))?;
+        Ok(workflow
+            .stages
+            .iter()
+            .filter(|stage| states.get(&stage.id).copied().unwrap_or(AgentStageStatus::Pending) == AgentStageStatus::Pending)
+            .filter(|stage| {
+                stage.depends_on.iter().all(|dependency| {
+                    states.get(dependency).copied() == Some(AgentStageStatus::Completed)
+                })
+            })
+            .map(|stage| stage.id.clone())
+            .collect())
     }
 
     fn validate(&self) -> AiResult<()> {
@@ -228,6 +282,7 @@ pub fn alloy_agent_catalog() -> AiResult<AgentCatalog> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     fn descriptor() -> AgentDescriptor {
         AgentDescriptor {
@@ -267,6 +322,43 @@ mod tests {
                 )
                 .unwrap(),
             BTreeSet::from(["product.write".to_string()])
+        );
+    }
+
+    #[test]
+    fn scheduler_only_releases_dependency_ready_stages() {
+        let workflow = AgentWorkflowDescriptor {
+            slug: "catalog_review".to_string(),
+            display_name: "Catalog review".to_string(),
+            owner: "rustok-ai-product".to_string(),
+            stages: vec![
+                AgentWorkflowStage {
+                    id: "draft".to_string(),
+                    agent_slug: "catalog_enricher".to_string(),
+                    depends_on: vec![],
+                    requires_approval: false,
+                },
+                AgentWorkflowStage {
+                    id: "review".to_string(),
+                    agent_slug: "catalog_enricher".to_string(),
+                    depends_on: vec!["draft".to_string()],
+                    requires_approval: true,
+                },
+            ],
+        };
+        let catalog = AgentCatalog::new(vec![descriptor()], vec![workflow]).unwrap();
+        assert_eq!(
+            catalog.ready_stages("catalog_review", &BTreeMap::new()).unwrap(),
+            vec!["draft"]
+        );
+        assert_eq!(
+            catalog
+                .ready_stages(
+                    "catalog_review",
+                    &BTreeMap::from([("draft".to_string(), AgentStageStatus::Completed)]),
+                )
+                .unwrap(),
+            vec!["review"]
         );
     }
 

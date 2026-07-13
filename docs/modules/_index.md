@@ -52,6 +52,8 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-api` | [docs](../../crates/rustok-api/docs/README.md) | [plan](../../crates/rustok-api/docs/implementation-plan.md) |
 | `rustok-runtime` | [docs](../../crates/rustok-runtime/docs/README.md) | [plan](../../crates/rustok-runtime/docs/implementation-plan.md) |
 | `rustok-modules` | [docs](../../crates/rustok-modules/docs/README.md) | [plan](../../crates/rustok-modules/docs/implementation-plan.md) |
+| `rustok-verification-transport` | [docs](../../crates/rustok-verification-transport/docs/README.md) | gRPC transport contract is recorded in the crate README. |
+| `rustok-verification-worker` | [docs](../../crates/rustok-verification-worker/docs/README.md) | Worker rollout is recorded in the module control-plane plan. |
 | `rustok-sandbox` | [docs](../../crates/rustok-sandbox/docs/README.md) | [plan](../../crates/rustok-sandbox/docs/implementation-plan.md) |
 | `rustok-web` | [docs](../../crates/rustok-web/docs/README.md) | [plan](../../crates/rustok-web/docs/implementation-plan.md) |
 | `rustok-fba` | [docs](../../crates/rustok-fba/docs/README.md) | [plan](../../crates/rustok-fba/docs/implementation-plan.md) |

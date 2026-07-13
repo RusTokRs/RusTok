@@ -12,4 +12,4 @@ serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 rustok-modules.workspace = true
-
+rustok-verification-transport = { path = "../rustok-verification-transport" }

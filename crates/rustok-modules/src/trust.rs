@@ -13,6 +13,14 @@ pub struct TrustVerificationRequest {
     pub capability_policy_revision: u64,
 }
 
+/// Immutable policy revisions selected by the control plane for one admission.
+/// The verifier must return a decision produced against exactly these revisions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustPolicyRevision {
+    pub trust_policy_revision: u64,
+    pub capability_policy_revision: u64,
+}
+
 /// Redacted worker decision. Evidence references address immutable attestations
 /// or bundles; admission records never persist verifier command output.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

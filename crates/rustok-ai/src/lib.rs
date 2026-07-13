@@ -45,8 +45,8 @@ pub use engine::{
 };
 pub use error::{AiError, AiResult};
 pub use agent::{
-    AgentCatalog, AgentDescriptor, AgentKind, AgentPrincipal, AgentWorkflowDescriptor,
-    AgentWorkflowStage,
+    AgentCatalog, AgentDescriptor, AgentKind, AgentPrincipal, AgentStageStatus,
+    AgentWorkflowDescriptor, AgentWorkflowStage, AgentWorkflowStatus,
 };
 #[cfg(feature = "server")]
 pub use agent::alloy_agent_catalog;
@@ -77,11 +77,13 @@ pub use policy::ToolExecutionPolicy;
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]
 pub use service::{
-    AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
-    AiChatSessionSummary, AiHostRuntime, AiManagementService, AiOperatorContext,
-    AiProviderProfileRecord, AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord,
-    AiToolProfileRecord, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
-    CreateAiToolProfileInput, ResumeAiApprovalInput, RunAiTaskJobInput, SendAiChatMessageInput,
+    AiAgentModelAssignmentRecord, AiAgentPrincipalRecord, AiApprovalRequestRecord,
+    AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail, AiChatSessionSummary,
+    AiHostRuntime, AiManagementService, AiOperatorContext, AiProviderProfileRecord,
+    AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
+    CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput, CreateAiProviderProfileInput,
+    CreateAiAgentWorkflowRunInput, CreateAiTaskProfileInput, CreateAiToolProfileInput, ResumeAiApprovalInput,
+    RunAiTaskJobInput, SendAiChatMessageInput,
     SharedAiEgressPolicy, SharedAiModuleRegistry, SharedAiProviderTargetCatalog,
     SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiProviderProfileInput,
     UpdateAiTaskProfileInput, UpdateAiToolProfileInput,

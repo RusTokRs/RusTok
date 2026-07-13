@@ -75,6 +75,10 @@ tokio = { version = "1.52", features = ["full"] }
 axum = { version = "0.8.9", features = ["multipart", "ws"] }
 tower = "0.5"
 tower-http = { version = "0.7.0", features = ["cors", "fs"] }
+tonic = "0.14.5"
+tonic-prost = "0.14.5"
+tonic-prost-build = "0.14.5"
+prost = "0.14.3"
 
 # Database
 sea-orm = { version = "1.1", features = [

@@ -263,13 +263,12 @@ function assertInventoryAdminTransportBoundary() {
 }
 
 function assertCommercePublicChannelAvailabilityBoundary() {
-  const callerPaths = [
+  const facadeCallerPaths = [
     "crates/rustok-commerce/src/graphql/mutations/helpers.rs",
-    "crates/rustok-commerce/src/services/checkout.rs",
     "crates/rustok-commerce/src/controllers/store/mod.rs",
   ];
 
-  for (const relativePath of callerPaths) {
+  for (const relativePath of facadeCallerPaths) {
     const source = readRepo(relativePath);
     assertContains(
       source,
@@ -287,6 +286,39 @@ function assertCommercePublicChannelAvailabilityBoundary() {
       `${relativePath}: must not duplicate backorder policy branching outside the inventory facade`,
     );
   }
+
+  const checkoutPath = "crates/rustok-commerce/src/services/checkout.rs";
+  const checkout = readRepo(checkoutPath);
+  assertContains(
+    checkout,
+    "inventory_reservation_port",
+    `${checkoutPath}: checkout availability must use the typed inventory provider port`,
+  );
+  assertContains(
+    checkout,
+    ".check_availability(",
+    `${checkoutPath}: checkout availability must invoke InventoryReservationPort`,
+  );
+  assertContains(
+    checkout,
+    "InventoryAvailabilityRequest {",
+    `${checkoutPath}: checkout availability must pass a typed inventory request`,
+  );
+  assertNotContains(
+    checkout,
+    "check_variant_availability_for_public_channel",
+    `${checkoutPath}: checkout must not bypass InventoryReservationPort through the legacy public helper`,
+  );
+  assertNotContains(
+    checkout,
+    "load_available_inventory_for_variant_in_public_channel",
+    `${checkoutPath}: checkout must not call channel-visible inventory loaders directly`,
+  );
+  assertNotContains(
+    checkout,
+    "inventory_policy_allows_backorder",
+    `${checkoutPath}: checkout must not duplicate inventory backorder policy branching`,
+  );
 
   const storefrontChannelPath = "crates/rustok-commerce/src/storefront_channel.rs";
   const storefrontChannel = readRepo(storefrontChannelPath);

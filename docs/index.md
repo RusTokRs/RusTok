@@ -42,6 +42,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [FFA/FBA Readiness Board and Boundary Evidence (inside module registry)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
 - [Module Platform Crate Registry](./modules/crates-registry.md)
 - [`rustok-modules` control-plane documentation](../crates/rustok-modules/docs/README.md)
+- [`rustok-verification-transport` gRPC documentation](../crates/rustok-verification-transport/docs/README.md)
+- [`rustok-verification-worker` documentation](../crates/rustok-verification-worker/docs/README.md)
 - [`rustok-sandbox` execution foundation documentation](../crates/rustok-sandbox/docs/README.md)
 - [`rustok-page-builder` Runtime Contract](../crates/rustok-page-builder/docs/README.md)
 - [Machine-readable FBA Registry Page Builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)

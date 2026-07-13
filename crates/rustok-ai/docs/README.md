@@ -29,6 +29,8 @@ to the role of model host.
 - `AiRouter` and direct-dispatch layer for first-party verticals without mandatory MCP hop.
 - `AgentPrincipal` and `AgentCatalog` enforce the initiating-subject/agent
   permission intersection; owner modules contribute their agent descriptors.
+- GraphQL publishes `aiAgentCatalog` and `aiAgentWorkflows` from the
+  owner-contributed catalog; hosts do not hardcode code-agent roles or stages.
 
 ### MCP integration
 

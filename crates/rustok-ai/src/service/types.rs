@@ -287,6 +287,53 @@ pub struct ResumeAiApprovalInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAiAgentPrincipalInput {
+    pub slug: String,
+    pub descriptor_owner: String,
+    pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateAiAgentPrincipalInput {
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub metadata: serde_json::Value,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAiAgentModelAssignmentInput {
+    pub agent_principal_id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub model_override: Option<String>,
+    pub execution_mode: ExecutionMode,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateAiAgentModelAssignmentInput {
+    pub model_override: Option<String>,
+    pub execution_mode: ExecutionMode,
+    pub metadata: serde_json::Value,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAiAgentWorkflowRunInput {
+    pub workflow_owner: String,
+    pub workflow_slug: String,
+    /// Maps each owner-declared stage id to its tenant-scoped agent principal.
+    pub stage_principal_ids: BTreeMap<String, Uuid>,
+    /// Maps each owner-declared stage id to an active assignment for that principal.
+    pub stage_model_assignment_ids: BTreeMap<String, Uuid>,
+    pub input_payload: serde_json::Value,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderProfileRecord {
     pub id: Uuid,
     pub slug: String,
@@ -301,6 +348,33 @@ pub struct AiProviderProfileRecord {
     pub has_credentials: bool,
     pub capabilities: Vec<ProviderCapability>,
     pub usage_policy: ProviderUsagePolicy,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiAgentPrincipalRecord {
+    pub id: Uuid,
+    pub slug: String,
+    pub descriptor_owner: String,
+    pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub is_active: bool,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiAgentModelAssignmentRecord {
+    pub id: Uuid,
+    pub agent_principal_id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub model_override: Option<String>,
+    pub execution_mode: ExecutionMode,
+    pub is_active: bool,
     pub metadata: serde_json::Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

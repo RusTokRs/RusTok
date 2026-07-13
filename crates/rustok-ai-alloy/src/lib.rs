@@ -65,9 +65,10 @@ pub const ALLOY_SCRIPT_ALLOWED_OPERATIONS: &[&str] = &[
     "run_script",
 ];
 
-const CODE_READ_PERMISSIONS: &[&str] = &["alloy.script.read"];
-const CODE_WRITE_PERMISSIONS: &[&str] = &["alloy.script.read", "alloy.script.write"];
-const CODE_RUN_PERMISSIONS: &[&str] = &["alloy.script.read", "alloy.script.execute"];
+// These values mirror the existing platform permission contract. Alloy-specific
+// script read/write/execute permissions must not be invented in this adapter;
+// they require an explicit rustok-api/rbac foundation decision first.
+const ALLOY_TASK_RUN_PERMISSIONS: &[&str] = &["ai:tasks:alloy:run"];
 
 /// Code-agent roles are owned by Alloy. Their model assignment and invocation
 /// lifecycle are intentionally left to the generic AI runtime.
@@ -76,7 +77,7 @@ pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
         slug: "alloy_code_planner",
         display_name: "Alloy code planner",
         responsibility: "Inspect Alloy scripts and produce a bounded implementation plan.",
-        required_permissions: CODE_READ_PERMISSIONS,
+        required_permissions: ALLOY_TASK_RUN_PERMISSIONS,
         allowed_operations: &["list_scripts", "get_script", "validate_script"],
         requires_approval: false,
     },
@@ -84,7 +85,7 @@ pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
         slug: "alloy_code_implementer",
         display_name: "Alloy code implementer",
         responsibility: "Draft and validate Alloy script changes; applying a change stays approval-gated.",
-        required_permissions: CODE_WRITE_PERMISSIONS,
+        required_permissions: ALLOY_TASK_RUN_PERMISSIONS,
         allowed_operations: &["list_scripts", "get_script", "validate_script"],
         requires_approval: true,
     },
@@ -92,7 +93,7 @@ pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
         slug: "alloy_code_reviewer",
         display_name: "Alloy code reviewer",
         responsibility: "Review a proposed Alloy script change without applying it.",
-        required_permissions: CODE_READ_PERMISSIONS,
+        required_permissions: ALLOY_TASK_RUN_PERMISSIONS,
         allowed_operations: &["list_scripts", "get_script", "validate_script"],
         requires_approval: false,
     },
@@ -100,7 +101,7 @@ pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
         slug: "alloy_code_verifier",
         display_name: "Alloy code verifier",
         responsibility: "Validate and execute permitted verification scripts.",
-        required_permissions: CODE_RUN_PERMISSIONS,
+        required_permissions: ALLOY_TASK_RUN_PERMISSIONS,
         allowed_operations: &["list_scripts", "get_script", "validate_script", "run_script"],
         requires_approval: true,
     },

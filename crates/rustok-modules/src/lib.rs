@@ -88,7 +88,9 @@ pub use runtime::{
     ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,
     ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver,
 };
-pub use trust::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
+pub use trust::{
+    TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+};
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.
 pub struct ModulesModule;

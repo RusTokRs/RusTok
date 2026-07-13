@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::entities::{
-    ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
-    ai_task_profiles, ai_tool_profiles, ai_tool_traces,
+    ai_agent_model_assignments, ai_agent_principals, ai_approval_requests, ai_chat_messages,
+    ai_chat_runs, ai_chat_sessions, ai_provider_profiles, ai_task_profiles, ai_tool_profiles,
+    ai_tool_traces,
 };
 use crate::model::{
     AiRunDecisionTrace, ChatMessage, ChatMessageRole, ProviderUsagePolicy, TaskProfile, ToolTrace,
@@ -15,8 +16,9 @@ use super::helpers::{
     provider_slug_from_str, string_list, to_utc, uuid_list,
 };
 use super::types::{
-    AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiProviderProfileRecord,
-    AiRecentRunRecord, AiTaskProfileRecord, AiToolProfileRecord,
+    AiAgentModelAssignmentRecord, AiAgentPrincipalRecord, AiApprovalRequestRecord,
+    AiChatMessageRecord, AiChatRunRecord, AiProviderProfileRecord, AiRecentRunRecord,
+    AiTaskProfileRecord, AiToolProfileRecord,
 };
 
 pub fn map_provider_profile(
@@ -43,6 +45,37 @@ pub fn map_provider_profile(
             denied_task_profiles: string_list(&model.denied_task_profiles),
             restricted_role_slugs: string_list(&model.restricted_role_slugs),
         },
+        metadata: model.metadata,
+        created_at: to_utc(model.created_at),
+        updated_at: to_utc(model.updated_at),
+    })
+}
+
+pub fn map_agent_principal(model: ai_agent_principals::Model) -> AiAgentPrincipalRecord {
+    AiAgentPrincipalRecord {
+        id: model.id,
+        slug: model.slug,
+        descriptor_owner: model.descriptor_owner,
+        descriptor_slug: model.descriptor_slug,
+        role_slugs: string_list(&model.role_slugs),
+        permission_slugs: string_list(&model.permission_slugs),
+        is_active: model.is_active,
+        metadata: model.metadata,
+        created_at: to_utc(model.created_at),
+        updated_at: to_utc(model.updated_at),
+    }
+}
+
+pub fn map_agent_model_assignment(
+    model: ai_agent_model_assignments::Model,
+) -> AiResult<AiAgentModelAssignmentRecord> {
+    Ok(AiAgentModelAssignmentRecord {
+        id: model.id,
+        agent_principal_id: model.agent_principal_id,
+        provider_profile_id: model.provider_profile_id,
+        model_override: model.model_override,
+        execution_mode: execution_mode_from_slug(&model.execution_mode)?,
+        is_active: model.is_active,
         metadata: model.metadata,
         created_at: to_utc(model.created_at),
         updated_at: to_utc(model.updated_at),
