@@ -106,13 +106,16 @@ pub enum CacheBackendGenerationError {
     GenerationRegressed { current: u64, proposed: u64 },
     GenerationExhausted,
     RedisClientUnavailable,
+    AliasAlreadyBound { alias: String },
     SharedGeneration(String),
 }
 
 impl std::fmt::Display for CacheBackendGenerationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EmptyPrefix => write!(formatter, "cache backend generation prefix must not be empty"),
+            Self::EmptyPrefix => {
+                write!(formatter, "cache backend generation prefix must not be empty")
+            }
             Self::PrefixTooLarge { length, maximum } => write!(
                 formatter,
                 "cache backend generation prefix is {length} bytes; maximum is {maximum}"
@@ -125,10 +128,16 @@ impl std::fmt::Display for CacheBackendGenerationError {
                 formatter,
                 "cache backend generation cannot regress from {current} to {proposed}"
             ),
-            Self::GenerationExhausted => write!(formatter, "cache backend generation is exhausted"),
+            Self::GenerationExhausted => {
+                write!(formatter, "cache backend generation is exhausted")
+            }
             Self::RedisClientUnavailable => write!(
                 formatter,
                 "Redis is configured but its client is unavailable for shared generation updates"
+            ),
+            Self::AliasAlreadyBound { alias } => write!(
+                formatter,
+                "cache backend generation alias {alias:?} is already bound to another state"
             ),
             Self::SharedGeneration(message) => {
                 write!(formatter, "shared cache backend generation failed: {message}")
@@ -177,6 +186,58 @@ fn generation_state(
     let state = Arc::new(BackendGenerationState::untrusted());
     registry.insert(prefix.to_string(), Arc::clone(&state));
     Ok(state)
+}
+
+/// Bind multiple physical backend prefixes to one canonical generation state.
+///
+/// This must run before any aliased backend is constructed. Once a prefix has a distinct state,
+/// rebinding is rejected instead of silently leaving existing backends attached to stale state.
+/// Every alias then reads the exact same atomic generation and boot namespace as the canonical
+/// prefix, so a namespace rotation cannot expose a mixed data/negative-cache generation.
+pub fn bind_cache_backend_generation_aliases(
+    canonical: &str,
+    aliases: &[&str],
+) -> Result<CacheBackendGenerationSnapshot, CacheBackendGenerationError> {
+    validate_prefix(canonical)?;
+    for alias in aliases {
+        validate_prefix(alias)?;
+    }
+
+    let mut registry = backend_generations()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let missing_canonical = usize::from(!registry.contains_key(canonical));
+    let missing_aliases = aliases
+        .iter()
+        .filter(|alias| !registry.contains_key(**alias))
+        .count();
+    let required = missing_canonical.saturating_add(missing_aliases);
+    if registry.len().saturating_add(required) > DEFAULT_MAX_CACHE_BACKEND_GENERATIONS {
+        return Err(CacheBackendGenerationError::RegistryCapacityExceeded {
+            count: registry.len(),
+            maximum: DEFAULT_MAX_CACHE_BACKEND_GENERATIONS,
+        });
+    }
+
+    let canonical_state = registry
+        .entry(canonical.to_string())
+        .or_insert_with(|| Arc::new(BackendGenerationState::untrusted()))
+        .clone();
+    for alias in aliases {
+        if *alias == canonical {
+            continue;
+        }
+        if let Some(existing) = registry.get(*alias) {
+            if !Arc::ptr_eq(existing, &canonical_state) {
+                return Err(CacheBackendGenerationError::AliasAlreadyBound {
+                    alias: (*alias).to_string(),
+                });
+            }
+        } else {
+            registry.insert((*alias).to_string(), Arc::clone(&canonical_state));
+        }
+    }
+    Ok(canonical_state.snapshot())
 }
 
 /// Observe a shared generation delivered by a durable invalidation consumer.
@@ -240,9 +301,6 @@ impl CacheService {
 
         if !state.trusted.load(Ordering::Acquire) {
             if self.redis_configuration_present() && !self.redis_client_initialized() {
-                // An invalid configured Redis endpoint is not equivalent to an intentional
-                // memory-only deployment. Keep this process in its unique boot namespace so it
-                // cannot read or publish a falsely shared generation.
                 tracing::error!(
                     prefix,
                     "Redis generation client unavailable; using isolated boot namespace"
@@ -256,9 +314,6 @@ impl CacheService {
                         }
                     }
                     Err(error) => {
-                        // Keep the unique boot namespace. This is intentionally not `g-0`: if Redis
-                        // later recovers, values from an older process/shared generation remain
-                        // unreachable until a trusted shared generation is observed.
                         tracing::warn!(%error, prefix, "Shared cache generation unavailable; using isolated boot namespace");
                     }
                 }
@@ -368,6 +423,55 @@ mod tests {
         assert_eq!(backend.get("key").await.unwrap(), None);
         backend.set("key".to_string(), b"new".to_vec()).await.unwrap();
         assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn aliased_backends_share_one_atomic_generation_state() {
+        let service = CacheService::from_url(None);
+        let canonical = unique_prefix("canonical");
+        let data = unique_prefix("data");
+        let negative = unique_prefix("negative");
+        bind_cache_backend_generation_aliases(&canonical, &[&data, &negative]).unwrap();
+
+        let data_backend = service
+            .wrap_generation_aware_backend(
+                &data,
+                service.memory_backend(Duration::from_secs(60), 16),
+            )
+            .await;
+        let negative_backend = service
+            .wrap_generation_aware_backend(
+                &negative,
+                service.memory_backend(Duration::from_secs(60), 16),
+            )
+            .await;
+        data_backend
+            .set("key".to_string(), b"data".to_vec())
+            .await
+            .unwrap();
+        negative_backend
+            .set("key".to_string(), b"negative".to_vec())
+            .await
+            .unwrap();
+
+        observe_cache_backend_generation(&canonical, 1).unwrap();
+        assert_eq!(data_backend.get("key").await.unwrap(), None);
+        assert_eq!(negative_backend.get("key").await.unwrap(), None);
+        assert_eq!(
+            cache_backend_generation_snapshot(&data).unwrap(),
+            cache_backend_generation_snapshot(&negative).unwrap()
+        );
+    }
+
+    #[test]
+    fn alias_rebinding_is_rejected_after_distinct_state_creation() {
+        let canonical = unique_prefix("canonical-reject");
+        let alias = unique_prefix("alias-reject");
+        cache_backend_generation_snapshot(&alias).unwrap();
+        assert!(matches!(
+            bind_cache_backend_generation_aliases(&canonical, &[&alias]),
+            Err(CacheBackendGenerationError::AliasAlreadyBound { .. })
+        ));
     }
 
     #[tokio::test]
