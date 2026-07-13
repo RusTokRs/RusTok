@@ -15,10 +15,19 @@ async fn setup() -> (DatabaseConnection, PaymentService) {
     support::ensure_payment_schema(&db).await;
 
     let manager = SchemaManager::new(&db);
-    let migration = migrations::migrations()
+    let mut registered = migrations::migrations();
+    let lifecycle = registered
         .pop()
         .expect("payment lifecycle serialization migration should be registered last");
-    migration
+    let state_guards = registered
+        .pop()
+        .expect("payment state invariant migration should precede lifecycle serialization");
+
+    state_guards
+        .up(&manager)
+        .await
+        .expect("payment state guards should install on SQLite");
+    lifecycle
         .up(&manager)
         .await
         .expect("payment lifecycle serialization migration should install on SQLite");
