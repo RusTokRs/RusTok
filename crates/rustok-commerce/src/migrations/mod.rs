@@ -38,6 +38,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             vec![
                 "m20260713_000018_enforce_inventory_state_invariants",
                 "m20260713_000114_enforce_order_money_integrity",
+                "m20260713_000115_serialize_order_lifecycle",
             ],
         ),
     ]
