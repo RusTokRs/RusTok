@@ -102,6 +102,12 @@ pub(crate) async fn admin_global_search_native(
             items: result
                 .items
                 .into_iter()
+                .filter(|item| {
+                    required_admin_search_permission(&item.entity_type, &item.source_module)
+                        .is_some_and(|permission| {
+                            has_effective_permission(&auth.permissions, &permission)
+                        })
+                })
                 .map(|item| {
                     let url = derive_admin_search_result_url(&item);
                     AdminGlobalSearchItem {
@@ -149,6 +155,26 @@ fn normalize_admin_search_query(value: &str) -> Result<String, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
+fn required_admin_search_permission(
+    entity_type: &str,
+    source_module: &str,
+) -> Option<rustok_api::Permission> {
+    use rustok_api::Permission;
+
+    match entity_type.trim() {
+        "product" => Some(Permission::PRODUCTS_READ),
+        "node" => match source_module.trim() {
+            "" | "content" | "rustok-content" => Some(Permission::NODES_READ),
+            "blog" | "rustok-blog" => Some(Permission::BLOG_POSTS_READ),
+            "pages" | "rustok-pages" => Some(Permission::PAGES_READ),
+            "flex" | "rustok-flex" => Some(Permission::FLEX_ENTRIES_READ),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+#[cfg(feature = "ssr")]
 async fn record_admin_search_query_log(
     db: &sea_orm::DatabaseConnection,
     search_query: &rustok_search::SearchQuery,
@@ -193,5 +219,33 @@ fn derive_admin_search_result_url(item: &rustok_search::SearchResultItem) -> Opt
         }
         "product" => Some(format!("/modules/search/playground?focusId={}", item.id)),
         _ => None,
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::required_admin_search_permission;
+    use rustok_api::Permission;
+
+    #[test]
+    fn search_result_types_map_to_domain_permissions() {
+        assert_eq!(
+            required_admin_search_permission("product", "catalog"),
+            Some(Permission::PRODUCTS_READ)
+        );
+        assert_eq!(
+            required_admin_search_permission("node", "blog"),
+            Some(Permission::BLOG_POSTS_READ)
+        );
+        assert_eq!(
+            required_admin_search_permission("node", "pages"),
+            Some(Permission::PAGES_READ)
+        );
+    }
+
+    #[test]
+    fn unknown_search_sources_fail_closed() {
+        assert_eq!(required_admin_search_permission("secret", "unknown"), None);
+        assert_eq!(required_admin_search_permission("node", "unknown"), None);
     }
 }
