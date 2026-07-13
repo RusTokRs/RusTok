@@ -112,6 +112,60 @@ impl RegistryItem for TraitDefinition {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StyleDefinition {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub applies_to: Vec<String>,
+}
+
+impl RegistryItem for StyleDefinition {
+    fn registry_id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelectorDefinition {
+    pub id: String,
+    pub selector: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+impl RegistryItem for SelectorDefinition {
+    fn registry_id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetProviderDefinition {
+    pub id: String,
+    #[serde(default)]
+    pub supported_kinds: Vec<String>,
+}
+
+impl RegistryItem for AssetProviderDefinition {
+    fn registry_id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CommandDefinition {
+    pub id: String,
+    pub label: String,
+    pub mutates_project: bool,
+}
+
+impl RegistryItem for CommandDefinition {
+    fn registry_id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PluginRequirement {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -137,6 +191,10 @@ pub struct RegistrySet {
     pub components: Registry<ComponentDefinition>,
     pub blocks: Registry<BlockDefinition>,
     pub traits: Registry<TraitDefinition>,
+    pub styles: Registry<StyleDefinition>,
+    pub selectors: Registry<SelectorDefinition>,
+    pub asset_providers: Registry<AssetProviderDefinition>,
+    pub commands: Registry<CommandDefinition>,
     pub plugins: Registry<PluginDescriptor>,
 }
 
@@ -154,6 +212,12 @@ impl RegistrySet {
                 .blocks
                 .register(block)
                 .expect("built-in block ids are valid and unique");
+        }
+        for command in builtin_commands() {
+            registries
+                .commands
+                .register(command)
+                .expect("built-in command ids are valid and unique");
         }
         registries
     }
@@ -232,6 +296,25 @@ pub fn builtin_blocks() -> Vec<BlockDefinition> {
             component: ComponentNode::object(id),
         })
         .collect()
+}
+
+pub fn builtin_commands() -> Vec<CommandDefinition> {
+    [
+        ("fly.insert", "Insert component", true),
+        ("fly.remove", "Remove component", true),
+        ("fly.move", "Move component", true),
+        ("fly.patch", "Update component", true),
+        ("fly.select", "Select component", false),
+        ("fly.undo", "Undo", true),
+        ("fly.redo", "Redo", true),
+    ]
+    .into_iter()
+    .map(|(id, label, mutates_project)| CommandDefinition {
+        id: id.to_string(),
+        label: label.to_string(),
+        mutates_project,
+    })
+    .collect()
 }
 
 fn builtin_component_ids() -> Vec<&'static str> {
