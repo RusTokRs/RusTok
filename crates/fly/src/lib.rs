@@ -15,6 +15,7 @@ mod page_metadata;
 mod placement;
 mod registry;
 mod style_rule;
+mod trait_model;
 mod validation;
 
 pub use asset::*;
@@ -29,6 +30,7 @@ pub use page_metadata::*;
 pub use placement::*;
 pub use registry::*;
 pub use style_rule::*;
+pub use trait_model::*;
 pub use validation::*;
 
 pub const GRAPESJS_V1: &str = "grapesjs_v1";
