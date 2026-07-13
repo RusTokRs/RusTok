@@ -1,5 +1,6 @@
 use async_graphql::{Context, ErrorExtensions, InputObject, Result, SimpleObject};
 use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
 use crate::context::TenantContext;
 use crate::request::RequestContext;
@@ -141,6 +142,27 @@ pub async fn require_module_enabled(ctx: &Context<'_>, slug: &str) -> Result<()>
     Ok(())
 }
 
+/// Resolve an optional GraphQL tenant argument without allowing the client to
+/// escape the tenant established by the HTTP/WS tenant resolver.
+///
+/// Permission snapshots, module enablement and auth claims are all bound to the
+/// request tenant. Accepting a different resolver argument would reuse that
+/// authority against another tenant's rows.
+pub fn resolve_graphql_tenant_id(
+    ctx: &Context<'_>,
+    requested: Option<Uuid>,
+) -> Result<Uuid> {
+    let tenant = ctx.data::<TenantContext>()?;
+    match requested {
+        Some(requested) if requested != tenant.id => Err(async_graphql::Error::new(
+            "tenantId does not match the authenticated request tenant",
+        )
+        .extend_with(|_, ext| ext.set("code", "TENANT_MISMATCH"))),
+        Some(requested) => Ok(requested),
+        None => Ok(tenant.id),
+    }
+}
+
 pub fn resolve_graphql_locale(ctx: &Context<'_>, requested: Option<&str>) -> String {
     requested
         .map(str::trim)
@@ -151,4 +173,46 @@ pub fn resolve_graphql_locale(ctx: &Context<'_>, requested: Option<&str>) -> Str
                 .map(|request| request.locale.clone())
         })
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_graphql_tenant_id;
+    use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Schema};
+    use uuid::Uuid;
+
+    struct Query;
+
+    #[Object]
+    impl Query {
+        async fn resolved(&self, ctx: &Context<'_>, requested: Option<Uuid>) -> async_graphql::Result<Uuid> {
+            resolve_graphql_tenant_id(ctx, requested)
+        }
+    }
+
+    fn tenant(id: Uuid) -> crate::TenantContext {
+        crate::TenantContext {
+            id,
+            name: "Tenant".to_string(),
+            slug: "tenant".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_cross_tenant_override() {
+        let tenant_id = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .data(tenant(tenant_id))
+            .finish();
+        let response = schema
+            .execute(format!("{{ resolved(requested: \"{other}\") }}"))
+            .await;
+
+        assert!(!response.errors.is_empty());
+    }
 }
