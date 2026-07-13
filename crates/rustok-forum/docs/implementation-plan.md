@@ -36,11 +36,28 @@ Migration `m20260713_000010_harden_forum_wave_invariants` applies those fixes.
 delete guard, while `tests/runtime_regression_baseline.rs` verifies the schema,
 trigger, and locale-width contract.
 
+FORUM-08B moves the public topic/reply lifecycle path into owner services:
+
+- `ReplyService` rejects locked topics with a typed error, allocates reply
+  positions, and publishes counters/events only for approved replies.
+- `ReplyService::delete` atomically claims the live reply, explicitly redacts
+  content, persists the tombstone, removes solution state, updates projections,
+  and emits the status event in one transaction.
+- `TopicService::delete` atomically claims the live topic, explicitly redacts
+  the whole thread, preserves revisions, persists topic/reply tombstones,
+  removes solution and flex state, and updates category/user projections in one
+  transaction.
+- database triggers remain enabled as invariant protection for direct SQL and
+  compatibility callers; they are no longer the primary root-service workflow.
+
+`tests/owner_lifecycle_sqlite.rs` exercises locked-topic rejection, moderated
+reply publication, reply tombstones, topic tombstones, projection updates, and
+revision preservation through the public owner services.
+
 The audit does not declare the complete product plan finished. Follow-up work
-must still move trigger-backed lifecycle behaviour into explicit owner service
-commands, expose a real category tree read model, replace unbounded page sizes,
-and publish the complete owner event catalog. Those items belong to the next
-atomic forum tasks and must not be represented as completed by static evidence.
+must still expose a real category tree read model, replace unbounded page sizes,
+publish the complete owner event catalog, and retire direct use of the raw
+compatibility service modules after downstream callers have migrated.
 
 ## FFA/FBA status
 
@@ -77,11 +94,10 @@ atomic forum tasks and must not be represented as completed by static evidence.
    Dependency: host composition only. Verification:
    `npm run verify:forum:admin-boundary` and
    `npm run verify:forum:storefront-boundary`.
-4. Replace database-trigger lifecycle orchestration with explicit owner service
-   commands without weakening the database safety net. Done when category,
-   topic, reply, moderation, and tombstone commands express their state changes
-   and events in Rust transactions, and database triggers remain invariant
-   guards rather than the primary business workflow.
+4. Retire direct imports of `services::topic::TopicService` and
+   `services::reply::ReplyService` after downstream compatibility callers use
+   the root owner services. Done when the raw modules can become crate-private
+   without breaking workspace builds or external module contracts.
 
 ## Verification
 
@@ -89,6 +105,7 @@ atomic forum tasks and must not be represented as completed by static evidence.
 - `cargo test -p rustok-forum --test wave_invariants_postgres`
 - `cargo test -p rustok-forum --test soft_delete_revision_postgres`
 - `cargo test -p rustok-forum --test soft_delete_revision_sqlite`
+- `cargo test -p rustok-forum --test owner_lifecycle_sqlite`
 - `npm run verify:forum:admin-boundary`
 - `npm run verify:forum:storefront-boundary`
 - `npm run verify:page-builder:consumer:forum`

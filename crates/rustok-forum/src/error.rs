@@ -30,6 +30,15 @@ pub enum ForumError {
     #[error("Topic is archived")]
     TopicArchived,
 
+    #[error("Topic is locked")]
+    TopicLocked,
+
+    #[error("Topic is deleted")]
+    TopicDeleted,
+
+    #[error("Reply is deleted")]
+    ReplyDeleted,
+
     #[error("Validation error: {0}")]
     Validation(String),
 
