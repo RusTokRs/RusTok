@@ -4,15 +4,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreatePaymentCollectionInput {
     pub cart_id: Option<Uuid>,
     pub order_id: Option<Uuid>,
     pub customer_id: Option<Uuid>,
-    #[validate(length(equal = 3))]
+    #[validate(custom(function = "validate_currency_code"))]
     pub currency_code: String,
+    #[validate(custom(function = "validate_positive_decimal"))]
     pub amount: Decimal,
     pub metadata: Value,
 }
@@ -134,4 +135,53 @@ pub struct RefundResponse {
     pub updated_at: DateTime<Utc>,
     pub refunded_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
+}
+
+fn validate_currency_code(value: &str) -> Result<(), ValidationError> {
+    let value = value.trim();
+    if value.len() == 3 && value.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        Ok(())
+    } else {
+        Err(ValidationError::new("currency_code"))
+    }
+}
+
+fn validate_positive_decimal(value: &Decimal) -> Result<(), ValidationError> {
+    if *value > Decimal::ZERO {
+        Ok(())
+    } else {
+        Err(ValidationError::new("positive_decimal"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_collection() -> CreatePaymentCollectionInput {
+        CreatePaymentCollectionInput {
+            cart_id: Some(Uuid::new_v4()),
+            order_id: None,
+            customer_id: None,
+            currency_code: "USD".to_string(),
+            amount: Decimal::ONE,
+            metadata: Value::Null,
+        }
+    }
+
+    #[test]
+    fn rejects_symbolic_currency_code() {
+        let mut input = valid_collection();
+        input.currency_code = "12$".to_string();
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_non_positive_collection_amount() {
+        let mut input = valid_collection();
+        input.amount = Decimal::ZERO;
+        assert!(input.validate().is_err());
+        input.amount = -Decimal::ONE;
+        assert!(input.validate().is_err());
+    }
 }
