@@ -17,7 +17,11 @@ pub use ports::*;
 pub use providers::*;
 
 pub use error::{PaymentError, PaymentResult};
-pub use services::PaymentService;
+pub use services::{
+    BeginProviderOperation, PaymentProviderOperationJournal, PaymentService,
+    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_PENDING,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+};
 
 pub struct PaymentModule;
 
