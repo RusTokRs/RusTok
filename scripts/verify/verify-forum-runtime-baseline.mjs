@@ -22,7 +22,7 @@ if (args.has("--help")) {
 Options:
   --static-only    Validate baseline files and the ignored-test inventory only.
   --postgres       Run the green PostgreSQL tenant regression profile.
-  --known-defects  Run ignored FORUM-05..07 reproductions explicitly.
+  --known-defects  Run ignored FORUM-06..07 reproductions explicitly.
                    This diagnostic mode is expected to fail until defects are fixed.
   --help           Show this help.`);
   process.exit(0);
@@ -45,14 +45,18 @@ const files = {
     "crates/rustok-forum/src/migrations/m20260712_000005_enforce_forum_category_tree.rs",
   categoryTreePostgres:
     "crates/rustok-forum/tests/category_tree_integrity_postgres.rs",
+  counterLockMigration:
+    "crates/rustok-forum/src/migrations/m20260712_000006_serialize_forum_counter_mutations.rs",
+  counterIntegrityPostgres:
+    "crates/rustok-forum/tests/counter_integrity_postgres.rs",
 };
 
 const resolvedCompatibilityIgnores = new Map([
   ["forum_04_category_cycle_is_rejected", "FORUM-04: category hierarchy must reject cycles"],
+  ["forum_05_concurrent_replies_preserve_public_counters", "FORUM-05: concurrent approved replies must preserve topic and category counters"],
 ]);
 
 const expectedKnownDefects = new Map([
-  ["forum_05_concurrent_replies_preserve_public_counters", "FORUM-05: concurrent approved replies must preserve topic and category counters"],
   ["forum_06_locked_topic_rejects_reply_creation", "FORUM-06: a locked topic must reject ordinary reply creation"],
   ["forum_06_pending_reply_does_not_change_public_counters", "FORUM-06: pending replies must not mutate public counters"],
   ["forum_06_pending_reply_does_not_emit_public_replied_event", "FORUM-06: pending replies must not publish the public topic-replied event"],
@@ -84,6 +88,8 @@ function verifyStaticBaseline() {
   const known = text(files.knownRegressions);
   const statusMigration = text(files.statusMigration);
   const categoryTreeMigration = text(files.categoryTreeMigration);
+  const counterLockMigration = text(files.counterLockMigration);
+  const counterIntegrityPostgres = text(files.counterIntegrityPostgres);
 
   for (const token of [
     "RUSTOK_FORUM_TEST_DATABASE_URL",
@@ -128,6 +134,27 @@ function verifyStaticBaseline() {
   ]) {
     if (!categoryTreeMigration.includes(token)) {
       fail(`${files.categoryTreeMigration}: missing category-tree token ${token}`);
+    }
+  }
+
+  for (const token of [
+    "forum_counter_lock",
+    "forum_00_topics_counter_lock",
+    "forum_00_replies_counter_lock",
+    "forum_00_solutions_counter_lock",
+  ]) {
+    if (!counterLockMigration.includes(token)) {
+      fail(`${files.counterLockMigration}: missing counter-lock token ${token}`);
+    }
+  }
+
+  for (const token of [
+    "concurrent_replies_preserve_atomic_counters",
+    "forum_user_stats",
+    "expected=8",
+  ]) {
+    if (!counterIntegrityPostgres.includes(token)) {
+      fail(`${files.counterIntegrityPostgres}: missing counter regression token ${token}`);
     }
   }
 
@@ -201,7 +228,7 @@ if (staticOnly) process.exit(0);
 
 if (knownDefects) {
   requirePostgresUrl("--known-defects");
-  run("ignored FORUM-05..07 reproductions", "cargo", [
+  run("ignored FORUM-06..07 reproductions", "cargo", [
     "test",
     "-p",
     "rustok-forum",
@@ -274,6 +301,13 @@ run("PostgreSQL category tree regression", "cargo", [
   "rustok-forum",
   "--test",
   "category_tree_integrity_postgres",
+]);
+run("PostgreSQL atomic counter regression", "cargo", [
+  "test",
+  "-p",
+  "rustok-forum",
+  "--test",
+  "counter_integrity_postgres",
 ]);
 run("content orchestration compatibility", "cargo", [
   "test",

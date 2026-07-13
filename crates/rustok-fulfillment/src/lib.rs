@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod dto;
@@ -54,5 +54,9 @@ impl RusToKModule for FulfillmentModule {
 impl MigrationSource for FulfillmentModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
     }
 }

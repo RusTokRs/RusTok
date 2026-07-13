@@ -94,7 +94,7 @@ async fn test_manual_fulfillment_provider_capabilities() {
     let descriptor = provider.descriptor();
     assert_eq!(descriptor.provider_id, "manual");
     assert!(!descriptor.capabilities.rate_quote);
-    assert!(!descriptor.capabilities.create_label);
+    assert!(descriptor.capabilities.create_label);
     assert!(descriptor.capabilities.ship);
     assert!(descriptor.capabilities.cancel);
     assert!(!descriptor.capabilities.tracking_webhook_ingress);
@@ -113,6 +113,9 @@ async fn test_manual_fulfillment_provider_operations_success() {
     let label_res = provider.create_label(request.clone()).await.unwrap();
     assert_eq!(label_res.provider_id, "manual");
     assert_eq!(label_res.metadata, json!({ "carrier": "manual" }));
+
+    let ship_res = provider.ship(request.clone()).await.unwrap();
+    assert_eq!(ship_res.provider_id, "manual");
 
     let cancel_res = provider.cancel(request).await.unwrap();
     assert_eq!(cancel_res.provider_id, "manual");
@@ -275,6 +278,7 @@ fn test_fulfillment_provider_runtime_mode_maps_degraded_and_capability_guards() 
         "manual_shipping"
     );
 
+    assert!(registry.runtime_mode("slow-carrier", "ship").is_ok());
     assert!(registry.runtime_mode("slow-carrier", "cancel").is_err());
     assert!(registry.runtime_mode("slow-carrier", "unknown").is_err());
     assert!(registry

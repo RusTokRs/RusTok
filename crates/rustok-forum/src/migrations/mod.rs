@@ -12,6 +12,7 @@ mod m20260712_000002_add_tenant_to_forum_children;
 mod m20260712_000003_enforce_forum_relation_tenant_integrity;
 mod m20260712_000004_enforce_forum_status_lifecycle;
 mod m20260712_000005_enforce_forum_category_tree;
+mod m20260712_000006_serialize_forum_counter_mutations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -32,6 +33,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260712_000003_enforce_forum_relation_tenant_integrity::Migration),
         Box::new(m20260712_000004_enforce_forum_status_lifecycle::Migration),
         Box::new(m20260712_000005_enforce_forum_category_tree::Migration),
+        Box::new(m20260712_000006_serialize_forum_counter_mutations::Migration),
     ]
 }
 
