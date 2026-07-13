@@ -42,6 +42,20 @@ pub async fn ensure_payment_schema(db: &DatabaseConnection) {
     )
     .await
     .expect("active cart payment collection index should be created");
+    db.execute_unprepared(
+        r#"
+        CREATE TRIGGER IF NOT EXISTS payment_collections_order_binding_guard
+        BEFORE UPDATE OF order_id ON payment_collections
+        FOR EACH ROW
+        WHEN OLD.order_id IS NOT NULL
+         AND NEW.order_id IS NOT OLD.order_id
+        BEGIN
+            SELECT RAISE(ABORT, 'payment collection order binding is immutable');
+        END;
+        "#,
+    )
+    .await
+    .expect("payment collection order binding trigger should be created");
 }
 
 pub async fn ensure_order_schema(db: &DatabaseConnection) {
