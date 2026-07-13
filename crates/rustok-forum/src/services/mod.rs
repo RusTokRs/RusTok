@@ -1,7 +1,9 @@
+mod bounded_compat;
 pub mod category;
 pub mod event;
 pub mod moderation;
 mod rbac;
+pub mod read_model;
 /// Raw persistence service retained temporarily for compatibility.
 pub mod reply;
 mod reply_owner;
@@ -17,6 +19,7 @@ pub mod widget_contract;
 pub use category::CategoryService;
 pub use event::ForumEventService;
 pub use moderation::ModerationService;
+pub use read_model::ForumReadModelService;
 pub use reply_owner::ReplyService;
 pub use revision::RevisionService;
 pub use subscription::SubscriptionService;

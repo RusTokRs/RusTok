@@ -1,5 +1,6 @@
 pub mod event_contract;
 pub mod postgres;
+pub mod read_model;
 
 pub type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
