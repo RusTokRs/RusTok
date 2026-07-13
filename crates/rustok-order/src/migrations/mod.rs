@@ -13,6 +13,7 @@ mod m20260529_000112_create_order_changes_table;
 mod m20260530_000113_add_order_return_resolution_columns;
 mod m20260713_000114_enforce_order_money_integrity;
 mod m20260713_000115_serialize_order_lifecycle;
+mod m20260713_000116_enforce_checkout_operation_identity;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -33,5 +34,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260530_000113_add_order_return_resolution_columns::Migration),
         Box::new(m20260713_000114_enforce_order_money_integrity::Migration),
         Box::new(m20260713_000115_serialize_order_lifecycle::Migration),
+        Box::new(m20260713_000116_enforce_checkout_operation_identity::Migration),
     ]
 }
