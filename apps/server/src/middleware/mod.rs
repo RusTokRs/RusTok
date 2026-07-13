@@ -8,6 +8,7 @@ pub mod mcp_scaffold_workspace;
 pub mod metrics_auth;
 pub mod oauth_token_guard;
 pub mod rate_limit;
+pub mod registry_artifact_access;
 pub mod security_headers;
 
 #[path = "tenant.rs"]
