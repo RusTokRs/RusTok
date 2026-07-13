@@ -79,12 +79,8 @@ impl ReplyService {
             CategoryService::find_category_in_tx(&txn, tenant_id, topic.category_id).await?;
 
         if let Some(parent_reply_id) = input.parent_reply_id {
-            let parent = reply::ReplyService::find_reply_in_tx(
-                &txn,
-                tenant_id,
-                parent_reply_id,
-            )
-            .await?;
+            let parent =
+                reply::ReplyService::find_reply_in_tx(&txn, tenant_id, parent_reply_id).await?;
             if parent.topic_id != topic_id {
                 return Err(ForumError::Validation(
                     "Parent reply belongs to another topic".to_string(),
@@ -211,13 +207,7 @@ impl ReplyService {
         mark_reply_deleted_in_tx(&txn, tenant_id, reply_id).await?;
 
         if reply.status == ReplyStatus::Approved {
-            TopicService::adjust_reply_count_in_tx(
-                &txn,
-                tenant_id,
-                reply.topic_id,
-                -1,
-            )
-            .await?;
+            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, -1).await?;
             CategoryService::adjust_counters_in_tx(
                 &txn,
                 tenant_id,
