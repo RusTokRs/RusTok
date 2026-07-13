@@ -76,6 +76,15 @@ pub struct RedisCacheBackend {
 }
 
 #[cfg(feature = "redis-cache")]
+fn redis_ttl_millis(ttl: Duration) -> Option<u64> {
+    if ttl.is_zero() {
+        None
+    } else {
+        Some(ttl.as_millis().min(u64::MAX as u128) as u64)
+    }
+}
+
+#[cfg(feature = "redis-cache")]
 impl RedisCacheBackend {
     pub async fn new(url: &str, prefix: impl Into<String>, ttl: Duration) -> Result<Self> {
         Self::with_circuit_breaker(url, prefix, ttl, CircuitBreakerConfig::default()).await
@@ -213,17 +222,20 @@ impl CacheBackend for RedisCacheBackend {
     }
 
     async fn set_with_ttl(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<()> {
+        let Some(ttl_millis) = redis_ttl_millis(ttl) else {
+            return self.invalidate(&key).await;
+        };
+
         let mut manager = self.manager.clone();
         let redis_key = self.key(&key);
-        let ttl_secs = ttl.as_secs();
 
         self.circuit_breaker
             .call(|| async move {
                 redis::cmd("SET")
                     .arg(redis_key)
                     .arg(value)
-                    .arg("EX")
-                    .arg(ttl_secs)
+                    .arg("PX")
+                    .arg(ttl_millis)
                     .query_async::<()>(&mut manager)
                     .await
                     .map_err(|err| crate::Error::Cache(err.to_string()))?;
@@ -355,6 +367,23 @@ impl CacheBackend for FallbackCacheBackend {
 
     fn stats(&self) -> CacheStats {
         self.primary.stats()
+    }
+}
+
+#[cfg(all(test, feature = "redis-cache"))]
+mod redis_ttl_unit_tests {
+    use super::redis_ttl_millis;
+    use std::time::Duration;
+
+    #[test]
+    fn preserves_sub_second_ttl_precision() {
+        assert_eq!(redis_ttl_millis(Duration::from_millis(250)), Some(250));
+        assert_eq!(redis_ttl_millis(Duration::from_millis(1_500)), Some(1_500));
+    }
+
+    #[test]
+    fn treats_zero_ttl_as_immediate_invalidation() {
+        assert_eq!(redis_ttl_millis(Duration::ZERO), None);
     }
 }
 
