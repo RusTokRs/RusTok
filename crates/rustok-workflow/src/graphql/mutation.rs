@@ -36,7 +36,7 @@ impl WorkflowMutation {
         service
             .create(
                 tenant.id,
-                Some(auth.user_id),
+                auth.human_user_id(),
                 CreateWorkflowInput {
                     name: input.name,
                     description: input.description,
@@ -68,7 +68,7 @@ impl WorkflowMutation {
             .update(
                 tenant.id,
                 id,
-                Some(auth.user_id),
+                auth.human_user_id(),
                 UpdateWorkflowInput {
                     name: input.name,
                     description: input.description,
@@ -117,7 +117,7 @@ impl WorkflowMutation {
             .update(
                 tenant.id,
                 id,
-                Some(auth.user_id),
+                auth.human_user_id(),
                 UpdateWorkflowInput {
                     status: Some(WorkflowStatus::Active),
                     ..Default::default()
@@ -144,7 +144,7 @@ impl WorkflowMutation {
             .update(
                 tenant.id,
                 id,
-                Some(auth.user_id),
+                auth.human_user_id(),
                 UpdateWorkflowInput {
                     status: Some(WorkflowStatus::Paused),
                     ..Default::default()
@@ -177,7 +177,7 @@ impl WorkflowMutation {
             .trigger_manual(
                 tenant.id,
                 id,
-                Some(auth.user_id),
+                auth.human_user_id(),
                 payload.unwrap_or_default(),
                 force.unwrap_or(false),
             )
@@ -294,7 +294,7 @@ impl WorkflowMutation {
 
         let service = WorkflowService::new(db.clone());
         service
-            .create_from_template(tenant.id, Some(auth.user_id), &template_id, name)
+            .create_from_template(tenant.id, auth.human_user_id(), &template_id, name)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))
     }
@@ -316,7 +316,7 @@ impl WorkflowMutation {
 
         let service = WorkflowService::new(db.clone());
         service
-            .restore_version(tenant.id, workflow_id, version, Some(auth.user_id))
+            .restore_version(tenant.id, workflow_id, version, auth.human_user_id())
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
@@ -356,7 +356,7 @@ impl WorkflowMutation {
         service
             .create(
                 tenant.id,
-                Some(auth.user_id),
+                auth.human_user_id(),
                 CreateWorkflowInput {
                     name: generated
                         .get("name")
