@@ -10,17 +10,28 @@
     "action": {
       "undo": "Undo",
       "redo": "Redo",
-      "save": "Save"
+      "save": "Save",
+      "add": "Add",
+      "drag": "Drag",
+      "move": "Move selected",
+      "remove": "Remove selected",
+      "cancelDrag": "Cancel drag",
+      "apply": "Apply",
+      "clear": "Clear"
     },
     "status": {
       "saving": "Saving",
       "saveFailed": "Save failed",
       "saveSucceeded": "Project saved",
       "dirty": "Unsaved changes",
-      "saved": "Saved"
+      "saved": "Saved",
+      "dragging": "Choose a drop position in the canvas"
     },
     "panel": {
-      "layers": "Layers and selection",
+      "palette": "Blocks",
+      "layers": "Layers",
+      "properties": "Properties",
+      "styles": "Styles",
       "diagnostics": "Diagnostics"
     },
     "field": {
@@ -28,6 +39,12 @@
       "revision": "Revision",
       "selectedComponent": "Selected component",
       "none": "None",
+      "type": "Type",
+      "tagName": "Tag name",
+      "content": "Content",
+      "attributeName": "Attribute name",
+      "attributeValue": "Attribute value or JSON",
+      "styleJson": "Style JSON",
       "projectHash": "Project hash"
     },
     "bridge": {
