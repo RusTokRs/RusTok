@@ -70,6 +70,8 @@ impl AuthLifecycleService {
         }
         let role = claims.role;
         let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
+        let consumption_id = uuid::Uuid::new_v4();
+        let consumed_at = Utc::now();
 
         let tx = ctx
             .db()
@@ -77,20 +79,38 @@ impl AuthLifecycleService {
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
-        let already_consumed = auth_invite_consumptions::Entity::find()
-            .filter(auth_invite_consumptions::Column::TokenHash.eq(&token_hash))
-            .one(&tx)
-            .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-            .is_some();
-        if already_consumed {
+        // Reserve the digest first. The unique token_hash constraint is the
+        // serialization point, so every concurrent replay is rejected before
+        // user creation regardless of email uniqueness or transaction timing.
+        let reservation = auth_invite_consumptions::ActiveModel {
+            id: Set(consumption_id),
+            tenant_id: Set(tenant_id),
+            token_hash: Set(token_hash.clone()),
+            email: Set(email.clone()),
+            role: Set(role.to_string()),
+            user_id: Set(None),
+            expires_at: Set(expires_at.into()),
+            consumed_at: Set(consumed_at.into()),
+        };
+        if let Err(insert_error) = reservation.insert(&tx).await {
             tx.rollback()
                 .await
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-            return Err(InviteAcceptanceError::InvalidToken);
+
+            let already_consumed = auth_invite_consumptions::Entity::find()
+                .filter(auth_invite_consumptions::Column::TokenHash.eq(&token_hash))
+                .one(ctx.db())
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+                .is_some();
+            return if already_consumed {
+                Err(InviteAcceptanceError::InvalidToken)
+            } else {
+                Err(InviteAcceptanceError::Internal(insert_error.into()))
+            };
         }
 
-        let user = AuthLifecycleService::create_user_in_tx(
+        let user = match AuthLifecycleService::create_user_in_tx(
             &tx,
             tenant_id,
             &email,
@@ -100,36 +120,31 @@ impl AuthLifecycleService {
             Some(rustok_core::UserStatus::Active),
         )
         .await
-        .map_err(map_lifecycle_error)?;
-
-        let consumption = auth_invite_consumptions::ActiveModel {
-            id: Set(uuid::Uuid::new_v4()),
-            tenant_id: Set(tenant_id),
-            token_hash: Set(token_hash.clone()),
-            email: Set(email.clone()),
-            role: Set(role.to_string()),
-            user_id: Set(Some(user.id)),
-            expires_at: Set(expires_at.into()),
-            consumed_at: Set(Utc::now().into()),
+        {
+            Ok(user) => user,
+            Err(error) => {
+                tx.rollback()
+                    .await
+                    .map_err(|rollback| InviteAcceptanceError::Internal(rollback.into()))?;
+                return Err(map_lifecycle_error(error));
+            }
         };
 
-        if let Err(insert_error) = consumption.insert(&tx).await {
-            tx.rollback()
-                .await
-                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-
-            let replay_won_elsewhere = auth_invite_consumptions::Entity::find()
-                .filter(auth_invite_consumptions::Column::TokenHash.eq(&token_hash))
-                .one(ctx.db())
-                .await
-                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-                .is_some();
-            return if replay_won_elsewhere {
-                Err(InviteAcceptanceError::InvalidToken)
-            } else {
-                Err(InviteAcceptanceError::Internal(insert_error.into()))
-            };
-        }
+        let reservation = auth_invite_consumptions::Entity::find_by_id(consumption_id)
+            .one(&tx)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+            .ok_or_else(|| {
+                InviteAcceptanceError::Internal(Error::Message(
+                    "invite consumption reservation disappeared".to_string(),
+                ))
+            })?;
+        let mut active: auth_invite_consumptions::ActiveModel = reservation.into();
+        active.user_id = Set(Some(user.id));
+        active
+            .update(&tx)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
         tx.commit()
             .await
