@@ -105,6 +105,7 @@ jobs:
           cargo test -p rustok-core cache --lib --features redis-cache
           cargo test -p rustok-cache --lib
           cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner
+          cargo test -p rustok-cache --test redis_health_regression
           cargo test -p rustok-server --test cache_architecture_guard --test cache_redis_status_architecture_guard --test tenant_cache_architecture_guard --test tenant_generation_concurrency_guard --test tenant_generation_readiness_guard
           cargo test -p rustok-server tenant_cache --lib
           cargo test -p rustok-server tenant_cache_generation --lib
