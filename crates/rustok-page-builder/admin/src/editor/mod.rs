@@ -8,6 +8,7 @@ mod palette_layers;
 mod properties_assets;
 mod runtime;
 mod selection_commands;
+mod shortcut_dispatch;
 mod toolbar;
 
 pub use admin_shell::AdminShell;
@@ -21,4 +22,5 @@ pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
 pub(crate) use palette_layers::PaletteLayersPanel;
 pub(crate) use properties_assets::PropertiesAssetsPanel;
 pub(crate) use runtime::AdminEditorRuntime;
+pub(crate) use shortcut_dispatch::dispatch_shortcut;
 pub(crate) use toolbar::AuthoringToolbar;
