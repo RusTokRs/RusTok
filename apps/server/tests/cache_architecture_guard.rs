@@ -112,6 +112,28 @@ fn weighted_backend_uses_cache_service_owned_redis_client() {
 }
 
 #[test]
+fn default_backend_factory_uses_the_service_owned_redis_client() {
+    let service = source("crates/rustok-cache/src/service.rs");
+
+    assert!(
+        service.contains("self.backend_shared_client(prefix, ttl, max_capacity)"),
+        "the default backend factory must delegate to the service-owned client path"
+    );
+    assert!(
+        service.contains("self.backend_shared_client_with_options(prefix, ttl, max_capacity, options)"),
+        "the per-call backend factory must delegate to the service-owned client path"
+    );
+    assert!(
+        !service.contains("async fn raw_backend("),
+        "the default factory must not retain a second URL-based Redis construction path"
+    );
+    assert!(
+        !service.contains("RedisCacheBackend::with_circuit_breaker"),
+        "the default factory must not reopen Redis from the stored URL"
+    );
+}
+
+#[test]
 fn shared_fallback_health_does_not_mask_primary_degradation() {
     let fallback = source("crates/rustok-cache/src/fallback.rs");
     let weighted = source("crates/rustok-cache/src/weighted.rs");
