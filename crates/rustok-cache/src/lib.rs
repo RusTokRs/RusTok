@@ -1,3 +1,4 @@
+mod backend_generation;
 mod bounded_invalidation;
 mod cas_observability;
 mod durable_invalidation;
@@ -21,6 +22,12 @@ mod shared_backend;
 mod typed;
 mod weighted;
 
+pub use backend_generation::{
+    cache_backend_generation_registry_size, cache_backend_generation_snapshot,
+    observe_cache_backend_generation, CacheBackendGenerationError,
+    CacheBackendGenerationSnapshot, DEFAULT_MAX_CACHE_BACKEND_GENERATIONS,
+    MAX_CACHE_BACKEND_PREFIX_BYTES,
+};
 pub use bounded_invalidation::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
     DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS,
