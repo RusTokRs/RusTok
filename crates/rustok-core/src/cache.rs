@@ -1,3 +1,5 @@
+#[cfg(feature = "redis-cache")]
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -70,20 +72,42 @@ impl InMemoryCacheBackend {
 }
 
 #[cfg(feature = "redis-cache")]
+const DEFAULT_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[cfg(feature = "redis-cache")]
 pub struct RedisCacheBackend {
     manager: redis::aio::ConnectionManager,
     prefix: String,
     ttl: Duration,
+    operation_timeout: Duration,
     circuit_breaker: Arc<CircuitBreaker>,
 }
 
 #[cfg(feature = "redis-cache")]
 fn redis_ttl_millis(ttl: Duration) -> Option<u64> {
     if ttl.is_zero() {
-        None
-    } else {
-        Some(ttl.as_millis().min(u64::MAX as u128) as u64)
+        return None;
     }
+
+    let millis = ttl.as_millis();
+    Some(if millis == 0 {
+        1
+    } else {
+        millis.min(u64::MAX as u128) as u64
+    })
+}
+
+#[cfg(feature = "redis-cache")]
+async fn redis_operation_with_timeout<T, F>(timeout: Duration, future: F) -> Result<T>
+where
+    F: Future<Output = Result<T>>,
+{
+    tokio::time::timeout(timeout, future).await.map_err(|_| {
+        crate::Error::Cache(format!(
+            "Redis cache operation timed out after {} ms",
+            timeout.as_millis()
+        ))
+    })?
 }
 
 #[cfg(feature = "redis-cache")]
@@ -98,23 +122,54 @@ impl RedisCacheBackend {
         ttl: Duration,
         breaker_config: CircuitBreakerConfig,
     ) -> Result<Self> {
+        Self::with_circuit_breaker_and_timeout(
+            url,
+            prefix,
+            ttl,
+            breaker_config,
+            DEFAULT_REDIS_OPERATION_TIMEOUT,
+        )
+        .await
+    }
+
+    pub async fn with_circuit_breaker_and_timeout(
+        url: &str,
+        prefix: impl Into<String>,
+        ttl: Duration,
+        breaker_config: CircuitBreakerConfig,
+        operation_timeout: Duration,
+    ) -> Result<Self> {
+        if operation_timeout.is_zero() {
+            return Err(crate::Error::Cache(
+                "Redis cache operation timeout must be greater than zero".to_string(),
+            ));
+        }
+
         let client =
             redis::Client::open(url).map_err(|err| crate::Error::Cache(err.to_string()))?;
-        let manager = client
-            .get_connection_manager()
-            .await
-            .map_err(|err| crate::Error::Cache(err.to_string()))?;
+        let manager = redis_operation_with_timeout(operation_timeout, async {
+            client
+                .get_connection_manager()
+                .await
+                .map_err(|err| crate::Error::Cache(err.to_string()))
+        })
+        .await?;
 
         Ok(Self {
             manager,
             prefix: prefix.into(),
             ttl,
+            operation_timeout,
             circuit_breaker: Arc::new(CircuitBreaker::new(breaker_config)),
         })
     }
 
     pub fn circuit_breaker(&self) -> &CircuitBreaker {
         &self.circuit_breaker
+    }
+
+    pub fn operation_timeout(&self) -> Duration {
+        self.operation_timeout
     }
 
     fn key(&self, key: &str) -> String {
@@ -171,20 +226,24 @@ impl CacheBackend for InMemoryCacheBackend {
 impl CacheBackend for RedisCacheBackend {
     async fn health(&self) -> Result<()> {
         let mut manager = self.manager.clone();
+        let operation_timeout = self.operation_timeout;
 
         self.circuit_breaker
             .call(|| async move {
-                let pong: String = redis::cmd("PING")
-                    .query_async(&mut manager)
-                    .await
-                    .map_err(|err| crate::Error::Cache(err.to_string()))?;
-                if pong == "PONG" {
-                    Ok::<(), crate::Error>(())
-                } else {
-                    Err(crate::Error::Cache(format!(
-                        "unexpected Redis PING response: {pong}"
-                    )))
-                }
+                redis_operation_with_timeout(operation_timeout, async move {
+                    let pong: String = redis::cmd("PING")
+                        .query_async(&mut manager)
+                        .await
+                        .map_err(|err| crate::Error::Cache(err.to_string()))?;
+                    if pong == "PONG" {
+                        Ok::<(), crate::Error>(())
+                    } else {
+                        Err(crate::Error::Cache(format!(
+                            "unexpected Redis PING response: {pong}"
+                        )))
+                    }
+                })
+                .await
             })
             .await
             .map_err(|e| match e {
@@ -199,15 +258,19 @@ impl CacheBackend for RedisCacheBackend {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let mut manager = self.manager.clone();
         let redis_key = self.key(key);
+        let operation_timeout = self.operation_timeout;
 
         self.circuit_breaker
             .call(|| async move {
-                let value: Option<Vec<u8>> = redis::cmd("GET")
-                    .arg(redis_key)
-                    .query_async(&mut manager)
-                    .await
-                    .map_err(|err| crate::Error::Cache(err.to_string()))?;
-                Ok::<Option<Vec<u8>>, crate::Error>(value)
+                redis_operation_with_timeout(operation_timeout, async move {
+                    let value: Option<Vec<u8>> = redis::cmd("GET")
+                        .arg(redis_key)
+                        .query_async(&mut manager)
+                        .await
+                        .map_err(|err| crate::Error::Cache(err.to_string()))?;
+                    Ok::<Option<Vec<u8>>, crate::Error>(value)
+                })
+                .await
             })
             .await
             .map_err(|e| match e {
@@ -230,18 +293,22 @@ impl CacheBackend for RedisCacheBackend {
 
         let mut manager = self.manager.clone();
         let redis_key = self.key(&key);
+        let operation_timeout = self.operation_timeout;
 
         self.circuit_breaker
             .call(|| async move {
-                redis::cmd("SET")
-                    .arg(redis_key)
-                    .arg(value)
-                    .arg("PX")
-                    .arg(ttl_millis)
-                    .query_async::<()>(&mut manager)
-                    .await
-                    .map_err(|err| crate::Error::Cache(err.to_string()))?;
-                Ok::<(), crate::Error>(())
+                redis_operation_with_timeout(operation_timeout, async move {
+                    redis::cmd("SET")
+                        .arg(redis_key)
+                        .arg(value)
+                        .arg("PX")
+                        .arg(ttl_millis)
+                        .query_async::<()>(&mut manager)
+                        .await
+                        .map_err(|err| crate::Error::Cache(err.to_string()))?;
+                    Ok::<(), crate::Error>(())
+                })
+                .await
             })
             .await
             .map_err(|e| match e {
@@ -256,15 +323,19 @@ impl CacheBackend for RedisCacheBackend {
     async fn invalidate(&self, key: &str) -> Result<()> {
         let mut manager = self.manager.clone();
         let redis_key = self.key(key);
+        let operation_timeout = self.operation_timeout;
 
         self.circuit_breaker
             .call(|| async move {
-                redis::cmd("DEL")
-                    .arg(redis_key)
-                    .query_async::<()>(&mut manager)
-                    .await
-                    .map_err(|err| crate::Error::Cache(err.to_string()))?;
-                Ok::<(), crate::Error>(())
+                redis_operation_with_timeout(operation_timeout, async move {
+                    redis::cmd("DEL")
+                        .arg(redis_key)
+                        .query_async::<()>(&mut manager)
+                        .await
+                        .map_err(|err| crate::Error::Cache(err.to_string()))?;
+                    Ok::<(), crate::Error>(())
+                })
+                .await
             })
             .await
             .map_err(|e| match e {
@@ -418,8 +489,8 @@ impl CacheBackend for FallbackCacheBackend {
 }
 
 #[cfg(all(test, feature = "redis-cache"))]
-mod redis_ttl_unit_tests {
-    use super::redis_ttl_millis;
+mod redis_backend_unit_tests {
+    use super::{redis_operation_with_timeout, redis_ttl_millis};
     use std::time::Duration;
 
     #[test]
@@ -429,8 +500,28 @@ mod redis_ttl_unit_tests {
     }
 
     #[test]
+    fn rounds_positive_sub_millisecond_ttl_up_to_one_millisecond() {
+        assert_eq!(redis_ttl_millis(Duration::from_nanos(1)), Some(1));
+        assert_eq!(redis_ttl_millis(Duration::from_micros(999)), Some(1));
+    }
+
+    #[test]
     fn treats_zero_ttl_as_immediate_invalidation() {
         assert_eq!(redis_ttl_millis(Duration::ZERO), None);
+    }
+
+    #[tokio::test]
+    async fn operation_timeout_bounds_a_stalled_redis_future() {
+        let result: crate::Result<()> = redis_operation_with_timeout(
+            Duration::from_millis(5),
+            std::future::pending::<crate::Result<()>>(),
+        )
+        .await;
+
+        match result {
+            Err(crate::Error::Cache(message)) => assert!(message.contains("timed out")),
+            other => panic!("expected Redis timeout cache error, got {other:?}"),
+        }
     }
 }
 
