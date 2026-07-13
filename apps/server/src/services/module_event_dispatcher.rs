@@ -88,9 +88,12 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     {
         let fulfillment_registry = runtime_ctx
             .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
-            .unwrap_or_else(
-                rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider,
-            );
+            .unwrap_or_else(|| {
+                let registry =
+                    rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider();
+                runtime_ctx.shared_insert(registry.clone());
+                registry
+            });
         extensions.insert(fulfillment_registry);
     }
 
@@ -187,14 +190,15 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite should connect");
+        let runtime_ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            db,
+            settings.clone(),
+        );
 
         let extensions = build_shared_runtime_extensions_with_host_providers(
             &registry,
             &settings,
-            crate::services::server_runtime_context::ServerRuntimeContext::new(
-                db,
-                settings.clone(),
-            ),
+            runtime_ctx.clone(),
             AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         );
 
@@ -204,7 +208,12 @@ mod tests {
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
         #[cfg(feature = "mod-fulfillment")]
-        assert!(extensions
-            .contains::<rustok_fulfillment::providers::FulfillmentProviderRegistry>());
+        {
+            assert!(extensions
+                .contains::<rustok_fulfillment::providers::FulfillmentProviderRegistry>());
+            assert!(runtime_ctx
+                .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
+                .is_some());
+        }
     }
 }
