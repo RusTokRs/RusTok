@@ -9,6 +9,7 @@ mod error;
 mod fragment;
 mod ids;
 mod model;
+mod placement;
 mod registry;
 mod validation;
 
@@ -18,6 +19,7 @@ pub use error::*;
 pub use fragment::*;
 pub use ids::*;
 pub use model::*;
+pub use placement::*;
 pub use registry::*;
 pub use validation::*;
 
