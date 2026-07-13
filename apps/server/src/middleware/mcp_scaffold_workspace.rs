@@ -38,7 +38,10 @@ pub async fn authorize_workspace(
         Ok(root) => root,
         Err(error) => return error.into_response(),
     };
-    let body = match serde_json::to_vec(&input) {
+    let body = match serde_json::to_vec(&serde_json::json!({
+        "workspace_root": input.workspace_root,
+        "confirm": input.confirm,
+    })) {
         Ok(body) => body,
         Err(_) => return invalid_request("Failed to normalize MCP scaffold apply request"),
     };
