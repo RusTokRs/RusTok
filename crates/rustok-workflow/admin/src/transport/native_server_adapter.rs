@@ -44,6 +44,24 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
 pub async fn fetch_templates_native() -> Result<Vec<WorkflowTemplateDto>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use rustok_api::{has_any_effective_permission, AuthContext, Permission};
+
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if !has_any_effective_permission(
+            &auth.permissions,
+            &[
+                Permission::WORKFLOWS_READ,
+                Permission::WORKFLOWS_LIST,
+                Permission::WORKFLOWS_CREATE,
+            ],
+        ) {
+            return Err(ServerFnError::new(
+                "workflow read, list, or create permission required",
+            ));
+        }
+
         Ok(rustok_workflow::BUILTIN_TEMPLATES
             .iter()
             .map(|template| WorkflowTemplateDto {
