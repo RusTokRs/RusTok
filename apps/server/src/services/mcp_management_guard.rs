@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::models::{mcp_clients, mcp_policies, users};
 
 use super::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
+use super::rbac_request_scope::permissions_for;
 use super::rbac_service::RbacService;
 
 pub struct GuardedMcpManagementProvider {
@@ -59,12 +60,16 @@ impl GuardedMcpManagementProvider {
         .map_err(|error| McpManagementMutationError::Internal(error.to_string()))
     }
 
-    async fn manager_permissions(
+    fn manager_permissions(
         &self,
         context: &McpManagementContext,
     ) -> Result<Vec<Permission>, McpManagementMutationError> {
-        self.authoritative_permissions(context, context.actor_id, "MCP manager")
-            .await
+        permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            McpManagementMutationError::Validation(
+                "MCP management requires a request-bound effective permission snapshot"
+                    .to_string(),
+            )
+        })
     }
 
     async fn delegated_permissions(
@@ -145,7 +150,7 @@ impl GuardedMcpManagementProvider {
         context: &McpManagementContext,
         client: &mcp_clients::Model,
     ) -> Result<(), McpManagementMutationError> {
-        let manager_permissions = self.manager_permissions(context).await?;
+        let manager_permissions = self.manager_permissions(context)?;
         let delegated_permissions = self
             .delegated_permissions(context, client.actor_type(), client.delegated_user_id)
             .await?;
@@ -154,6 +159,11 @@ impl GuardedMcpManagementProvider {
             .map_err(|error| McpManagementMutationError::Internal(error.to_string()))?;
 
         if let Some(policy) = policy {
+            if policy.tenant_id != context.tenant_id {
+                return Err(McpManagementMutationError::Validation(
+                    "MCP policy belongs to another tenant".to_string(),
+                ));
+            }
             self.validate_all_authorities(
                 &policy.granted_permissions_list(),
                 &manager_permissions,
@@ -215,7 +225,7 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         context: &McpManagementContext,
         command: CreateMcpClientCommand,
     ) -> Result<McpTokenSecretResult, McpManagementMutationError> {
-        let manager_permissions = self.manager_permissions(context).await?;
+        let manager_permissions = self.manager_permissions(context)?;
         let delegated_permissions = self
             .delegated_permissions(context, command.actor_type, command.delegated_user_id)
             .await?;
@@ -243,7 +253,7 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         command: UpdateMcpPolicyCommand,
     ) -> Result<McpPolicyRecord, McpManagementMutationError> {
         let client = self.require_client(context, command.client_id).await?;
-        let manager_permissions = self.manager_permissions(context).await?;
+        let manager_permissions = self.manager_permissions(context)?;
         let delegated_permissions = self
             .delegated_permissions(context, client.actor_type(), client.delegated_user_id)
             .await?;
