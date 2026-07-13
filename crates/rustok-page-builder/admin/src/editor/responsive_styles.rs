@@ -7,7 +7,7 @@ use fly_ui::{
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 #[component]
 pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
@@ -78,7 +78,8 @@ pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
     let property_runtime = runtime.clone();
     let apply_runtime = runtime.clone();
     let clear_runtime = runtime.clone();
-    let preview_runtime = runtime;
+    let preview_runtime = runtime.clone();
+    let summary_runtime = runtime;
 
     view! {
         <section class="space-y-2 rounded-xl border border-border bg-card p-3">
@@ -173,7 +174,7 @@ pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
 
             <div class="space-y-1 pt-1 text-xs text-muted-foreground">
                 {move || selected_rule_summary(
-                    &preview_runtime,
+                    &summary_runtime,
                     &breakpoint_id.get(),
                 )}
             </div>
