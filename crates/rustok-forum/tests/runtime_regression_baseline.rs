@@ -31,6 +31,10 @@ const REQUIRED_LIFECYCLE_CONSTRAINTS: &[&str] = &[
     "chk_forum_replies_status",
 ];
 
+const REQUIRED_POSITION_CONSTRAINTS: &[&str] = &[
+    "chk_forum_replies_position_positive",
+];
+
 const REQUIRED_TENANT_INDEXES: &[&str] = &[
     "uq_forum_category_translations_tenant_category_locale",
     "uq_forum_topic_translations_tenant_topic_locale",
@@ -38,6 +42,7 @@ const REQUIRED_TENANT_INDEXES: &[&str] = &[
     "idx_forum_topic_channel_access_tenant_channel",
     "uq_forum_solutions_tenant_reply",
     "uq_forum_topic_tags_tenant_topic_term",
+    "uq_forum_replies_tenant_topic_position",
 ];
 
 #[tokio::test]
@@ -72,6 +77,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
     for (label, required) in [
         ("tenant", REQUIRED_TENANT_CONSTRAINTS),
         ("lifecycle", REQUIRED_LIFECYCLE_CONSTRAINTS),
+        ("reply-position", REQUIRED_POSITION_CONSTRAINTS),
     ] {
         let missing_constraints = required
             .iter()
