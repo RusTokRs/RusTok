@@ -77,28 +77,34 @@ impl AdminCanvasController {
                     outgoing.push(AdminCanvasEffect::Announce(message));
                     Ok(())
                 }
-                UiEffect::Command(command) => self
-                    .editor
-                    .apply(command)
-                    .map(|report| self.synchronize(report))
-                    .map_err(AdminCanvasError::from),
-                UiEffect::Undo => self
-                    .editor
-                    .undo()
-                    .map(|_| self.editor.validate())
-                    .map(|report| self.synchronize(report))
-                    .map_err(AdminCanvasError::from),
-                UiEffect::Redo => self
-                    .editor
-                    .redo()
-                    .map(|_| self.editor.validate())
-                    .map(|report| self.synchronize(report))
-                    .map_err(AdminCanvasError::from),
+                UiEffect::Command(command) => match self.editor.apply(command) {
+                    Ok(report) => {
+                        self.synchronize(report);
+                        Ok(())
+                    }
+                    Err(error) => Err(error.into()),
+                },
+                UiEffect::Undo => match self.editor.undo() {
+                    Ok(_) => {
+                        let report = self.editor.validate();
+                        self.synchronize(report);
+                        Ok(())
+                    }
+                    Err(error) => Err(error.into()),
+                },
+                UiEffect::Redo => match self.editor.redo() {
+                    Ok(_) => {
+                        let report = self.editor.validate();
+                        self.synchronize(report);
+                        Ok(())
+                    }
+                    Err(error) => Err(error.into()),
+                },
                 UiEffect::Persist {
                     expected_hash,
                     command_sequence,
-                } => GrapesJsV1Codec::encode_value(self.editor.document())
-                    .map(|project_data| {
+                } => match GrapesJsV1Codec::encode_value(self.editor.document()) {
+                    Ok(project_data) => {
                         outgoing.push(AdminCanvasEffect::Request {
                             request: PageBuilderCapabilityRequest::Publish(
                                 PublishPageBuilderInput {
@@ -113,8 +119,10 @@ impl AdminCanvasController {
                             expected_hash,
                             command_sequence,
                         });
-                    })
-                    .map_err(AdminCanvasError::from),
+                        Ok(())
+                    }
+                    Err(error) => Err(error.into()),
+                },
             };
 
             if let Err(error) = result {
