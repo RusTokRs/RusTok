@@ -1,6 +1,7 @@
 pub mod admin;
 mod common;
 pub mod products;
+mod reconciliation;
 pub mod store;
 
 use rustok_api::HostRuntimeContext;
@@ -66,5 +67,9 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
     Ok(axum::Router::new()
         .nest("/store", store::axum_router())
         .nest("/admin", admin::axum_router())
+        .nest(
+            "/admin/fulfillment-provider-operations",
+            reconciliation::axum_router(),
+        )
         .with_state(state))
 }
