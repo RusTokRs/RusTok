@@ -4,6 +4,8 @@ mod channel;
 #[cfg(feature = "server")]
 mod oauth_scope;
 #[cfg(feature = "server")]
+mod principal;
+#[cfg(feature = "server")]
 mod tenant;
 
 #[cfg(feature = "server")]
