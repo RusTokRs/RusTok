@@ -33,10 +33,7 @@ impl StorageService {
     ///
     /// Format: `<tenant_id>/<year>/<month>/<random_id>.<ext>`
     pub fn generate_path(tenant_id: Uuid, original_name: &str) -> String {
-        let ext = std::path::Path::new(original_name)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("bin");
+        let ext = sanitized_extension(original_name);
         let now = chrono::Utc::now();
         format!(
             "{}/{}/{}/{}.{}",
@@ -95,6 +92,24 @@ impl StorageService {
     }
 }
 
+fn sanitized_extension(original_name: &str) -> String {
+    let extension = std::path::Path::new(original_name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .take(16)
+        .collect::<String>()
+        .to_ascii_lowercase();
+
+    if extension.is_empty() {
+        "bin".to_string()
+    } else {
+        extension
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageDriver {
@@ -123,5 +138,21 @@ impl Default for StorageConfig {
             #[cfg(feature = "s3")]
             s3: S3StorageConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitized_extension;
+
+    #[test]
+    fn object_extension_is_bounded_and_path_safe() {
+        assert_eq!(sanitized_extension("photo.JPEG"), "jpeg");
+        assert_eq!(sanitized_extension("payload.sh;curl"), "shcurl");
+        assert_eq!(sanitized_extension("no-extension"), "bin");
+        assert_eq!(
+            sanitized_extension("asset.abcdefghijklmnopqrstuvwxyz"),
+            "abcdefghijklmnop"
+        );
     }
 }
