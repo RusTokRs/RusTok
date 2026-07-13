@@ -1,0 +1,402 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
+
+#[cfg(feature = "redis-cache")]
+use rustok_core::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
+
+use crate::{CacheBackendOptions, CacheService};
+
+#[cfg(feature = "redis-cache")]
+const SHARED_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Redis backend constructed from the client already owned by `CacheService`.
+///
+/// This avoids parsing/reopening the Redis URL for each namespace. Every backend still owns a
+/// lightweight cloneable `ConnectionManager`, while authentication/configuration ownership
+/// remains centralized in the service client.
+#[cfg(feature = "redis-cache")]
+pub(crate) struct SharedClientRedisCacheBackend {
+    manager: redis::aio::ConnectionManager,
+    prefix: String,
+    ttl: Duration,
+    operation_timeout: Duration,
+    circuit_breaker: Arc<CircuitBreaker>,
+}
+
+#[cfg(feature = "redis-cache")]
+impl SharedClientRedisCacheBackend {
+    pub(crate) async fn new(
+        client: redis::Client,
+        prefix: impl Into<String>,
+        ttl: Duration,
+        circuit_breaker: CircuitBreakerConfig,
+    ) -> rustok_core::Result<Self> {
+        Self::with_timeout(
+            client,
+            prefix,
+            ttl,
+            circuit_breaker,
+            SHARED_REDIS_OPERATION_TIMEOUT,
+        )
+        .await
+    }
+
+    async fn with_timeout(
+        client: redis::Client,
+        prefix: impl Into<String>,
+        ttl: Duration,
+        circuit_breaker: CircuitBreakerConfig,
+        operation_timeout: Duration,
+    ) -> rustok_core::Result<Self> {
+        if operation_timeout.is_zero() {
+            return Err(rustok_core::Error::Cache(
+                "shared Redis operation timeout must be greater than zero".to_string(),
+            ));
+        }
+        let manager = shared_redis_timeout(operation_timeout, async {
+            client
+                .get_connection_manager()
+                .await
+                .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+        })
+        .await?;
+
+        Ok(Self {
+            manager,
+            prefix: prefix.into(),
+            ttl,
+            operation_timeout,
+            circuit_breaker: Arc::new(CircuitBreaker::new(circuit_breaker)),
+        })
+    }
+
+    fn redis_key(&self, key: &str) -> String {
+        if self.prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}:{key}", self.prefix)
+        }
+    }
+}
+
+#[cfg(feature = "redis-cache")]
+#[async_trait]
+impl CacheBackend for SharedClientRedisCacheBackend {
+    async fn health(&self) -> rustok_core::Result<()> {
+        let mut manager = self.manager.clone();
+        let timeout = self.operation_timeout;
+        self.circuit_breaker
+            .call(|| async move {
+                shared_redis_timeout(timeout, async move {
+                    let pong = redis::cmd("PING")
+                        .query_async::<String>(&mut manager)
+                        .await
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))?;
+                    if pong == "PONG" {
+                        Ok(())
+                    } else {
+                        Err(rustok_core::Error::Cache(format!(
+                            "unexpected Redis PING response: {pong}"
+                        )))
+                    }
+                })
+                .await
+            })
+            .await
+            .map_err(shared_circuit_error)
+    }
+
+    async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+        let mut manager = self.manager.clone();
+        let redis_key = self.redis_key(key);
+        let timeout = self.operation_timeout;
+        self.circuit_breaker
+            .call(|| async move {
+                shared_redis_timeout(timeout, async move {
+                    redis::cmd("GET")
+                        .arg(redis_key)
+                        .query_async::<Option<Vec<u8>>>(&mut manager)
+                        .await
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                })
+                .await
+            })
+            .await
+            .map_err(shared_circuit_error)
+    }
+
+    async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
+        self.set_with_ttl(key, value, self.ttl).await
+    }
+
+    async fn set_with_ttl(
+        &self,
+        key: String,
+        value: Vec<u8>,
+        ttl: Duration,
+    ) -> rustok_core::Result<()> {
+        let Some(ttl_millis) = ttl_millis(ttl) else {
+            return self.invalidate(&key).await;
+        };
+        let mut manager = self.manager.clone();
+        let redis_key = self.redis_key(&key);
+        let timeout = self.operation_timeout;
+        self.circuit_breaker
+            .call(|| async move {
+                shared_redis_timeout(timeout, async move {
+                    redis::cmd("SET")
+                        .arg(redis_key)
+                        .arg(value)
+                        .arg("PX")
+                        .arg(ttl_millis)
+                        .query_async::<()>(&mut manager)
+                        .await
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                })
+                .await
+            })
+            .await
+            .map_err(shared_circuit_error)
+    }
+
+    async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
+        let mut manager = self.manager.clone();
+        let redis_key = self.redis_key(key);
+        let timeout = self.operation_timeout;
+        self.circuit_breaker
+            .call(|| async move {
+                shared_redis_timeout(timeout, async move {
+                    redis::cmd("DEL")
+                        .arg(redis_key)
+                        .query_async::<()>(&mut manager)
+                        .await
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                })
+                .await
+            })
+            .await
+            .map_err(shared_circuit_error)
+    }
+
+    fn stats(&self) -> CacheStats {
+        CacheStats::default()
+    }
+}
+
+impl CacheService {
+    /// Create an entry-count backend from the Redis client owned by this service.
+    ///
+    /// This is the migration-safe replacement for factories that reconstruct a Redis client
+    /// from `redis_url`. It preserves fallback and instrumentation behavior.
+    pub async fn backend_shared_client(
+        &self,
+        prefix: &str,
+        ttl: Duration,
+        max_capacity: u64,
+    ) -> Arc<dyn CacheBackend> {
+        self.backend_shared_client_with_options(
+            prefix,
+            ttl,
+            max_capacity,
+            self.default_backend_options().clone(),
+        )
+        .await
+    }
+
+    pub async fn backend_shared_client_with_options(
+        &self,
+        prefix: &str,
+        ttl: Duration,
+        max_capacity: u64,
+        options: CacheBackendOptions,
+    ) -> Arc<dyn CacheBackend> {
+        let backend = self
+            .raw_shared_client_backend(prefix, ttl, max_capacity, &options)
+            .await;
+        if options.metrics_enabled {
+            Arc::new(SharedInstrumentedCacheBackend::new(prefix, backend))
+        } else {
+            backend
+        }
+    }
+
+    pub(crate) async fn raw_shared_client_backend(
+        &self,
+        prefix: &str,
+        ttl: Duration,
+        max_capacity: u64,
+        options: &CacheBackendOptions,
+    ) -> Arc<dyn CacheBackend> {
+        #[cfg(feature = "redis-cache")]
+        if let Some(client) = self.redis_client().cloned() {
+            match SharedClientRedisCacheBackend::new(
+                client,
+                prefix,
+                ttl,
+                options.redis_circuit_breaker.clone(),
+            )
+            .await
+            {
+                Ok(redis) => {
+                    let memory = Arc::new(InMemoryCacheBackend::new(ttl, max_capacity));
+                    return Arc::new(FallbackCacheBackend::new(Arc::new(redis), memory));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, prefix, "Redis cache backend initialization failed; using memory backend");
+                }
+            }
+        }
+
+        Arc::new(InMemoryCacheBackend::new(ttl, max_capacity))
+    }
+}
+
+struct SharedInstrumentedCacheBackend {
+    name: String,
+    inner: Arc<dyn CacheBackend>,
+    hits: AtomicU64,
+    misses: AtomicU64,
+    invalidations: AtomicU64,
+}
+
+impl SharedInstrumentedCacheBackend {
+    fn new(name: impl Into<String>, inner: Arc<dyn CacheBackend>) -> Self {
+        Self {
+            name: name.into(),
+            inner,
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            invalidations: AtomicU64::new(0),
+        }
+    }
+}
+
+#[async_trait]
+impl CacheBackend for SharedInstrumentedCacheBackend {
+    async fn health(&self) -> rustok_core::Result<()> {
+        self.inner.health().await
+    }
+
+    async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+        let value = self.inner.get(key).await?;
+        if value.is_some() {
+            self.hits.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.misses.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(value)
+    }
+
+    async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
+        self.inner.set(key, value).await
+    }
+
+    async fn set_with_ttl(
+        &self,
+        key: String,
+        value: Vec<u8>,
+        ttl: Duration,
+    ) -> rustok_core::Result<()> {
+        self.inner.set_with_ttl(key, value, ttl).await
+    }
+
+    async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
+        self.invalidations.fetch_add(1, Ordering::Relaxed);
+        self.inner.invalidate(key).await
+    }
+
+    fn stats(&self) -> CacheStats {
+        let inner = self.inner.stats();
+        CacheStats {
+            hits: self.hits.load(Ordering::Relaxed).saturating_add(inner.hits),
+            misses: self
+                .misses
+                .load(Ordering::Relaxed)
+                .saturating_add(inner.misses),
+            evictions: self
+                .invalidations
+                .load(Ordering::Relaxed)
+                .saturating_add(inner.evictions),
+            entries: inner.entries,
+        }
+    }
+}
+
+impl Drop for SharedInstrumentedCacheBackend {
+    fn drop(&mut self) {
+        tracing::debug!(cache = %self.name, stats = ?self.stats(), "shared-client cache backend dropped");
+    }
+}
+
+#[cfg(feature = "redis-cache")]
+fn ttl_millis(ttl: Duration) -> Option<u64> {
+    if ttl.is_zero() {
+        return None;
+    }
+    let millis = ttl.as_millis();
+    Some(if millis == 0 {
+        1
+    } else {
+        millis.min(u128::from(u64::MAX)) as u64
+    })
+}
+
+#[cfg(feature = "redis-cache")]
+async fn shared_redis_timeout<T, F>(
+    timeout: Duration,
+    future: F,
+) -> rustok_core::Result<T>
+where
+    F: std::future::Future<Output = rustok_core::Result<T>>,
+{
+    tokio::time::timeout(timeout, future).await.map_err(|_| {
+        rustok_core::Error::Cache(format!(
+            "shared Redis cache operation timed out after {} ms",
+            timeout.as_millis()
+        ))
+    })?
+}
+
+#[cfg(feature = "redis-cache")]
+fn shared_circuit_error(
+    error: CircuitBreakerError<rustok_core::Error>,
+) -> rustok_core::Error {
+    match error {
+        CircuitBreakerError::Open => {
+            rustok_core::Error::Cache("Redis unavailable (circuit breaker open)".to_string())
+        }
+        CircuitBreakerError::Upstream(error) => error,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn shared_client_factory_preserves_memory_contract_without_redis() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("shared-test", Duration::from_secs(60), 16)
+            .await;
+
+        assert!(backend.get("missing").await.unwrap().is_none());
+        backend
+            .set("present".to_string(), b"value".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(backend.get("present").await.unwrap(), Some(b"value".to_vec()));
+        assert_eq!(backend.stats().entries, 1);
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[test]
+    fn shared_backend_ttl_preserves_positive_sub_millisecond_values() {
+        assert_eq!(ttl_millis(Duration::from_nanos(1)), Some(1));
+        assert_eq!(ttl_millis(Duration::ZERO), None);
+    }
+}
