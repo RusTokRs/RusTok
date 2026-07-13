@@ -20,6 +20,7 @@ fn variable_payload_caches_use_weighted_capacity() {
         "apps/server/src/services/field_definition_cache.rs",
         "apps/server/src/services/rbac_runtime.rs",
         "apps/server/src/middleware/locale.rs",
+        "apps/server/src/middleware/channel.rs",
         "crates/rustok-seo/src/services/mod.rs",
     ];
 
@@ -36,6 +37,7 @@ fn variable_payload_caches_use_weighted_capacity() {
 fn database_backed_hot_misses_are_coalesced() {
     for relative in [
         "apps/server/src/middleware/locale.rs",
+        "apps/server/src/middleware/channel.rs",
         "crates/rustok-seo/src/services/redirects.rs",
     ] {
         let source = source(relative);
@@ -44,6 +46,27 @@ fn database_backed_hot_misses_are_coalesced() {
             "database-backed cache miss must be coalesced: {relative}"
         );
     }
+}
+
+#[test]
+fn channel_cache_bounds_request_keys_and_negative_results() {
+    let channel = source("apps/server/src/middleware/channel.rs");
+    assert!(
+        channel.contains("bounded_cache_component"),
+        "request-controlled channel selectors must not be stored verbatim in cache keys"
+    );
+    assert!(
+        channel.contains("Sha256::digest"),
+        "channel selector cache components must remain cryptographically bounded"
+    );
+    assert!(
+        channel.contains("CHANNEL_NEGATIVE_CACHE_TTL"),
+        "missing channel resolutions must keep an independent short negative TTL"
+    );
+    assert!(
+        channel.contains("ChannelCacheExpiry"),
+        "positive and negative channel resolutions must retain separate expirations"
+    );
 }
 
 #[test]
