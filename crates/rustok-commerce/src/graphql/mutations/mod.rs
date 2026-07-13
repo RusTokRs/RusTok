@@ -6,6 +6,7 @@ pub mod checkout;
 pub mod fulfillment;
 pub mod helpers;
 pub mod pricing;
+pub mod provider_operations;
 
 #[derive(MergedObject, Default)]
 pub struct CommerceMutation(
@@ -14,4 +15,5 @@ pub struct CommerceMutation(
     pub checkout::CommerceCheckoutMutation,
     pub fulfillment::CommerceFulfillmentMutation,
     pub pricing::CommercePricingMutation,
+    pub provider_operations::CommerceProviderMutation,
 );
