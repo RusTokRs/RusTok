@@ -22,8 +22,8 @@ if (args.has("--help")) {
 Options:
   --static-only    Validate baseline files and the ignored-test inventory only.
   --postgres       Run the green PostgreSQL tenant regression profile.
-  --known-defects  Run ignored FORUM-06..07 reproductions explicitly.
-                   This diagnostic mode is expected to fail until defects are fixed.
+  --known-defects  Run ignored FORUM-07 reproductions explicitly.
+                    This diagnostic mode is expected to fail until defects are fixed.
   --help           Show this help.`);
   process.exit(0);
 }
@@ -49,17 +49,24 @@ const files = {
     "crates/rustok-forum/src/migrations/m20260712_000006_serialize_forum_counter_mutations.rs",
   counterIntegrityPostgres:
     "crates/rustok-forum/tests/counter_integrity_postgres.rs",
+  replyPublicationMigration:
+    "crates/rustok-forum/src/migrations/m20260713_000007_enforce_forum_reply_publication.rs",
+  moderationService: "crates/rustok-forum/src/services/moderation.rs",
+  moderationPostgres:
+    "crates/rustok-forum/tests/moderation_semantics_postgres.rs",
+  moderationSqlite:
+    "crates/rustok-forum/tests/moderation_semantics_sqlite.rs",
 };
 
 const resolvedCompatibilityIgnores = new Map([
   ["forum_04_category_cycle_is_rejected", "FORUM-04: category hierarchy must reject cycles"],
   ["forum_05_concurrent_replies_preserve_public_counters", "FORUM-05: concurrent approved replies must preserve topic and category counters"],
-]);
-
-const expectedKnownDefects = new Map([
   ["forum_06_locked_topic_rejects_reply_creation", "FORUM-06: a locked topic must reject ordinary reply creation"],
   ["forum_06_pending_reply_does_not_change_public_counters", "FORUM-06: pending replies must not mutate public counters"],
   ["forum_06_pending_reply_does_not_emit_public_replied_event", "FORUM-06: pending replies must not publish the public topic-replied event"],
+]);
+
+const expectedKnownDefects = new Map([
   ["forum_07_concurrent_reply_positions_are_unique_and_contiguous", "FORUM-07: concurrent reply allocation must produce unique contiguous positions"],
   ["forum_07_duplicate_reply_position_is_rejected", "FORUM-07: duplicate reply positions must be rejected by the database"],
 ]);
@@ -78,6 +85,14 @@ function text(path) {
   }
 }
 
+function requireTokens(source, path, label, tokens) {
+  for (const token of tokens) {
+    if (!source.includes(token)) {
+      fail(`${path}: missing ${label} token ${token}`);
+    }
+  }
+}
+
 function verifyStaticBaseline() {
   for (const path of Object.values(files)) {
     if (!existsSync(path)) fail(`${path}: required baseline file is missing`);
@@ -90,73 +105,73 @@ function verifyStaticBaseline() {
   const categoryTreeMigration = text(files.categoryTreeMigration);
   const counterLockMigration = text(files.counterLockMigration);
   const counterIntegrityPostgres = text(files.counterIntegrityPostgres);
+  const replyPublicationMigration = text(files.replyPublicationMigration);
+  const moderationService = text(files.moderationService);
+  const moderationPostgres = text(files.moderationPostgres);
+  const moderationSqlite = text(files.moderationSqlite);
 
-  for (const token of [
+  requireTokens(support, files.support, "PostgreSQL profile", [
     "RUSTOK_FORUM_TEST_DATABASE_URL",
     "PostgresForumTestDb",
     "OutboxModule.migrations()",
     "TaxonomyModule.migrations()",
     "ForumModule.migrations()",
     "DROP SCHEMA IF EXISTS",
-  ]) {
-    if (!support.includes(token)) {
-      fail(`${files.support}: missing PostgreSQL profile token ${token}`);
-    }
-  }
-
-  for (const token of [
+  ]);
+  requireTokens(greenBaseline, files.greenBaseline, "green baseline", [
     "postgres_forum_tenant_schema_baseline_is_green",
     "REQUIRED_TENANT_CONSTRAINTS",
     "REQUIRED_TENANT_INDEXES",
     "REQUIRED_LIFECYCLE_CONSTRAINTS",
-  ]) {
-    if (!greenBaseline.includes(token)) {
-      fail(`${files.greenBaseline}: missing green baseline token ${token}`);
-    }
-  }
-
-  for (const token of [
+  ]);
+  requireTokens(statusMigration, files.statusMigration, "lifecycle", [
     "chk_forum_topics_status",
     "chk_forum_replies_status",
     "forum_topics_status_insert",
     "forum_replies_status_insert",
-  ]) {
-    if (!statusMigration.includes(token)) {
-      fail(`${files.statusMigration}: missing lifecycle token ${token}`);
-    }
-  }
-
-  for (const token of [
+  ]);
+  requireTokens(categoryTreeMigration, files.categoryTreeMigration, "category-tree", [
     "forum_validate_category_parent",
     "forum_categories_tree_guard",
     "forum_categories_tree_insert",
     "forum_categories_tree_update",
-  ]) {
-    if (!categoryTreeMigration.includes(token)) {
-      fail(`${files.categoryTreeMigration}: missing category-tree token ${token}`);
-    }
-  }
-
-  for (const token of [
+  ]);
+  requireTokens(counterLockMigration, files.counterLockMigration, "counter-lock", [
     "forum_counter_lock",
     "forum_00_topics_counter_lock",
     "forum_00_replies_counter_lock",
     "forum_00_solutions_counter_lock",
-  ]) {
-    if (!counterLockMigration.includes(token)) {
-      fail(`${files.counterLockMigration}: missing counter-lock token ${token}`);
-    }
-  }
-
-  for (const token of [
+  ]);
+  requireTokens(counterIntegrityPostgres, files.counterIntegrityPostgres, "counter regression", [
     "concurrent_replies_preserve_atomic_counters",
     "forum_user_stats",
     "expected=8",
-  ]) {
-    if (!counterIntegrityPostgres.includes(token)) {
-      fail(`${files.counterIntegrityPostgres}: missing counter regression token ${token}`);
-    }
-  }
+  ]);
+  requireTokens(replyPublicationMigration, files.replyPublicationMigration, "publication", [
+    "forum_validate_reply_creation",
+    "forum_enforce_topic_public_reply_count",
+    "forum_enforce_category_public_reply_count",
+    "forum_enforce_user_public_reply_count",
+    "forum_filter_topic_replied_event",
+    "forum_replies_locked_topic_insert",
+    "forum_topic_replied_visibility_insert",
+  ]);
+  requireTokens(moderationService, files.moderationService, "moderation service", [
+    "became_public",
+    "stopped_being_public",
+    "DomainEvent::ForumTopicReplied",
+    "CategoryService::adjust_counters_in_tx",
+  ]);
+  requireTokens(moderationPostgres, files.moderationPostgres, "PostgreSQL moderation regression", [
+    "postgres_enforces_locked_and_moderated_reply_semantics",
+    "assert_public_state",
+    "expected_replied_events",
+  ]);
+  requireTokens(moderationSqlite, files.moderationSqlite, "SQLite moderation regression", [
+    "sqlite_enforces_locked_and_moderated_reply_semantics",
+    "assert_public_state",
+    "expected_replied_events",
+  ]);
 
   if (known.includes("#[should_panic")) {
     fail(`${files.knownRegressions}: known defects must be real ignored tests, not should_panic placeholders`);
@@ -228,7 +243,7 @@ if (staticOnly) process.exit(0);
 
 if (knownDefects) {
   requirePostgresUrl("--known-defects");
-  run("ignored FORUM-06..07 reproductions", "cargo", [
+  run("ignored FORUM-07 reproductions", "cargo", [
     "test",
     "-p",
     "rustok-forum",
@@ -245,74 +260,37 @@ if (knownDefects) {
 run("Rust formatting", "cargo", ["fmt", "--all", "--", "--check"]);
 run("forum library tests", "cargo", ["test", "-p", "rustok-forum", "--lib"]);
 run("green runtime regression baseline", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
-  "runtime_regression_baseline",
+  "test", "-p", "rustok-forum", "--test", "runtime_regression_baseline",
 ]);
 run("known regression compile/list check", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
-  "known_regressions",
-  "--",
-  "--list",
+  "test", "-p", "rustok-forum", "--test", "known_regressions", "--", "--list",
 ]);
-run("SQLite tenant child regression", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
+
+for (const testName of [
   "tenant_child_integrity_sqlite",
-]);
-run("SQLite tenant relation regression", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
   "tenant_relation_integrity_sqlite",
-]);
-run("SQLite lifecycle status regression", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
   "status_lifecycle_sqlite",
-]);
-run("SQLite category atomicity regression", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
   "category_atomicity_sqlite",
-]);
-run("SQLite category tree regression", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
   "category_tree_integrity_sqlite",
-]);
-run("PostgreSQL category tree regression", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
+  "moderation_semantics_sqlite",
+]) {
+  run(`SQLite ${testName}`, "cargo", [
+    "test", "-p", "rustok-forum", "--test", testName,
+  ]);
+}
+
+for (const testName of [
   "category_tree_integrity_postgres",
-]);
-run("PostgreSQL atomic counter regression", "cargo", [
-  "test",
-  "-p",
-  "rustok-forum",
-  "--test",
   "counter_integrity_postgres",
-]);
+  "moderation_semantics_postgres",
+]) {
+  run(`PostgreSQL ${testName}`, "cargo", [
+    "test", "-p", "rustok-forum", "--test", testName,
+  ]);
+}
+
 run("content orchestration compatibility", "cargo", [
-  "test",
-  "-p",
-  "rustok-content-orchestration",
+  "test", "-p", "rustok-content-orchestration",
 ]);
 
 if (postgres) {
@@ -322,6 +300,8 @@ if (postgres) {
     "tenant_child_integrity_postgres",
     "tenant_relation_integrity_postgres",
     "runtime_regression_baseline",
+    "counter_integrity_postgres",
+    "moderation_semantics_postgres",
     "known_regressions",
   ]) {
     run(`PostgreSQL ${testName}`, "cargo", [
