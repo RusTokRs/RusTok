@@ -27,6 +27,8 @@ Local documentation is synchronized.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CustomerReadPort` / `customer.read_projection.v1` in
   `crates/rustok-customer/contracts/customer-fba-registry.json`.
+- `read_customer_projection_by_user` is the owner boundary for storefront
+  authenticated-customer lookup; commerce must not construct `CustomerService`.
 - Static and source-locked runtime evidence:
   `crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json`,
   `crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json`,

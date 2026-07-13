@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{CustomerResponse, ListCustomersInput};
@@ -15,6 +17,12 @@ pub trait CustomerReadPort: Send + Sync {
         &self,
         context: PortContext,
         request: CustomerProjectionRequest,
+    ) -> Result<CustomerResponse, PortError>;
+
+    async fn read_customer_projection_by_user(
+        &self,
+        context: PortContext,
+        request: CustomerUserProjectionRequest,
     ) -> Result<CustomerResponse, PortError>;
 
     async fn list_customer_projections(
@@ -33,6 +41,16 @@ pub trait CustomerReadPort: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomerProjectionRequest {
     pub customer_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomerUserProjectionRequest {
+    pub user_id: Uuid,
+}
+
+/// Builds the owner-managed in-process read provider for explicit consumers.
+pub fn in_process_customer_read_port(db: DatabaseConnection) -> Arc<dyn CustomerReadPort> {
+    Arc::new(crate::CustomerService::new(db))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,6 +90,18 @@ impl CustomerReadPort for crate::CustomerService {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.get_customer(tenant_id, request.customer_id)
+            .await
+            .map_err(customer_error_to_port_error)
+    }
+
+    async fn read_customer_projection_by_user(
+        &self,
+        context: PortContext,
+        request: CustomerUserProjectionRequest,
+    ) -> Result<CustomerResponse, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        self.get_customer_by_user(tenant_id, request.user_id)
             .await
             .map_err(customer_error_to_port_error)
     }

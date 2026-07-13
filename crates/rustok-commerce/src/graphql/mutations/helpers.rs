@@ -1,16 +1,18 @@
 use async_graphql::{Context, FieldError, Result};
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
-use rustok_api::{graphql::GraphQLError, AuthContext, RequestContext};
+use rustok_api::{AuthContext, PortActor, PortContext, RequestContext, graphql::GraphQLError};
 use rustok_cart::CartService;
-use rustok_customer::CustomerService;
+use rustok_customer::{
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
+};
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
 use rustok_pricing::{
-    entities::{price, price_list},
     PriceResolutionContext, PricingService,
+    entities::{price, price_list},
 };
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
@@ -21,13 +23,13 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
+    CreateReturnDecisionInput, ReturnClaimDecisionInput, ReturnDecisionInput,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
     storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
     storefront_shipping::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    CreateReturnDecisionInput, ReturnClaimDecisionInput, ReturnDecisionInput,
-    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
 };
 
 use super::super::types::*;
@@ -542,14 +544,19 @@ pub(crate) async fn ensure_storefront_order_access(
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let customer = CustomerService::new(db.clone())
-        .get_customer_by_user(tenant_id, auth.user_id)
+    let customer = in_process_customer_read_port(db.clone())
+        .read_customer_projection_by_user(
+            storefront_customer_port_context(tenant_id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
         .await
-        .map_err(|err| match err {
-            rustok_customer::error::CustomerError::CustomerByUserNotFound(_) => {
+        .map_err(|err| match err.code.as_str() {
+            "customer.customer_by_user_not_found" => {
                 <FieldError as GraphQLError>::unauthenticated()
             }
-            other => async_graphql::Error::new(other.to_string()),
+            _ => async_graphql::Error::new(err.message),
         })?;
 
     let order = OrderService::new(db.clone(), event_bus.clone())
@@ -587,14 +594,29 @@ pub(crate) async fn resolve_optional_storefront_customer_id(
         return Ok(None);
     };
 
-    match CustomerService::new(db.clone())
-        .get_customer_by_user(tenant_id, auth.user_id)
+    match in_process_customer_read_port(db.clone())
+        .read_customer_projection_by_user(
+            storefront_customer_port_context(tenant_id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
         .await
     {
         Ok(customer) => Ok(Some(customer.id)),
-        Err(rustok_customer::error::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
-        Err(err) => Err(async_graphql::Error::new(err.to_string())),
+        Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
+        Err(error) => Err(async_graphql::Error::new(error.message)),
     }
+}
+
+fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(user_id.to_string()),
+        "en",
+        format!("storefront-customer:{user_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
 }
 
 pub(crate) fn ensure_storefront_cart_access(

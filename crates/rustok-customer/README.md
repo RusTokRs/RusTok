@@ -18,7 +18,7 @@
 - Depends on `rustok-core` for module contracts and customer permission vocabulary.
 - Depends on `rustok-profiles` only for optional bridge/read enrichment contracts.
 - Used by `rustok-commerce` as the default customer submodule of the ecommerce family.
-- Provides in-process FBA read-projection operations (`read_customer_projection`, `list_customer_projections`) with shared `PortContext`/`PortError` semantics; authored runtime smoke tests cover deadline enforcement, typed errors, and tenant-scoped fallback listing while boundary promotion waits for compiled execution.
+- Provides in-process FBA read-projection operations (`read_customer_projection`, `read_customer_projection_by_user`, `list_customer_projections`) with shared `PortContext`/`PortError` semantics; authored runtime smoke tests cover deadline enforcement, typed errors, and tenant-scoped fallback listing while boundary promotion waits for compiled execution.
 - Normalizes email before uniqueness checks and persistence, so trimmed duplicate create/update requests are rejected within a tenant while cross-tenant customer identities remain isolated.
 - Keeps an optional `user_id` link to the platform user record without collapsing customer and user into one domain model.
 - `apps/admin` consumes `rustok-customer-admin` through manifest-driven composition; native admin server functions consume `HostRuntimeContext`, while storefront GraphQL/REST customer transport remains in `rustok-commerce`.

@@ -10,6 +10,7 @@
       "owner": "customer",
       "operations": [
         "read_customer_projection",
+        "read_customer_projection_by_user",
         "list_customer_projections",
         "list_profile_enrichment"
       ],
@@ -77,6 +78,11 @@
         ]
       },
       {
+        "operation": "read_customer_projection_by_user",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+      },
+      {
         "operation": "list_customer_projections",
         "profiles": [
           "in_process",
@@ -118,6 +124,7 @@
       "promotion_allowed": false,
       "covered_operations": [
         "read_customer_projection",
+        "read_customer_projection_by_user",
         "list_customer_projections",
         "list_profile_enrichment"
       ],

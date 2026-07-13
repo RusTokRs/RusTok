@@ -72,7 +72,12 @@ hasAll(runtimeSource, [
   'async fn sync_agent_workflow_run_status',
   'Self::promote_agent_workflow_stages(db, tenant_id, stage.workflow_run_id)',
   'async fn sync_workflow_stage_after_run',
-  'Self::promote_agent_workflow_stages'
+  'Self::promote_agent_workflow_stages',
+  'let affected_workflow_runs',
+  'workflow stage lease expired before its AI run could be recorded',
+  'workflow stage lease expired before its AI approval state could be recorded',
+  'ensure_agent_provider_capabilities(&provider, descriptor)?;',
+  'workflow {binding_name} bindings must match the owner-declared stages exactly'
 ], 'AI workflow runtime source');
 
 const agentSource = read('crates/rustok-ai/src/agent.rs');

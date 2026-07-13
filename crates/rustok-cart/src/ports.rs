@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
+use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{CartError, CartResponse, UpdateCartContextInput};
@@ -37,6 +39,11 @@ pub trait CartCheckoutPort: Send + Sync {
         context: PortContext,
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError>;
+}
+
+/// Builds the owner-managed in-process checkout/read provider for explicit consumers.
+pub fn in_process_cart_checkout_port(db: DatabaseConnection) -> Arc<dyn CartCheckoutPort> {
+    Arc::new(crate::CartService::new(db))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

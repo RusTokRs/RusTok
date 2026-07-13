@@ -1,4 +1,7 @@
-use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
+use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
+use rustok_customer::{
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
+};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
@@ -100,8 +103,13 @@ pub async fn read_storefront_order_refunds(
     let auth = auth.0.ok_or_else(|| {
         StorefrontCheckoutRuntimeError::new("Authentication required to access order refunds")
     })?;
-    let customer = rustok_customer::CustomerService::new(runtime.db_clone())
-        .get_customer_by_user(tenant.id, auth.user_id)
+    let customer = in_process_customer_read_port(runtime.db_clone())
+        .read_customer_projection_by_user(
+            storefront_customer_port_context(tenant.id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
         .await
         .map_err(runtime_error)?;
     let order = match rustok_order::OrderService::new(runtime.db_clone(), runtime.event_bus())
@@ -330,14 +338,29 @@ async fn resolve_storefront_customer_id(
         return Ok(None);
     };
 
-    match rustok_customer::CustomerService::new(db)
-        .get_customer_by_user(tenant_id, auth.user_id)
+    match in_process_customer_read_port(db)
+        .read_customer_projection_by_user(
+            storefront_customer_port_context(tenant_id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
         .await
     {
         Ok(customer) => Ok(Some(customer.id)),
-        Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
-        Err(err) => Err(runtime_error(err)),
+        Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
+        Err(error) => Err(runtime_error(error.message)),
     }
+}
+
+fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(user_id.to_string()),
+        "en",
+        format!("storefront-customer:{user_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
 }
 
 fn ensure_storefront_cart_access(

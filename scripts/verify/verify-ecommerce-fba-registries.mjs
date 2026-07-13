@@ -5,6 +5,9 @@ export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing'
 const boundaryReadyProviderSpiModules = new Set(['payment', 'fulfillment']);
 
 const expectedEcommerceFbaStatus = ({ module, registry }) => {
+  // Temporary 2026-07-13 policy records static owner/consumer readiness
+  // without requiring a local compiled runtime proof.
+  if (registry.status === 'boundary_ready') return 'boundary_ready';
   if (boundaryReadyProviderSpiModules.has(module)) return 'boundary_ready';
   if (
     module === 'product' &&

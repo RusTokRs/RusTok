@@ -1,11 +1,13 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::locale_tags_match;
 use rustok_api::Permission;
+use rustok_api::locale_tags_match;
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
     AuthContext, RequestContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
 };
-use rustok_customer::CustomerService;
+use rustok_customer::{
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
+};
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
@@ -23,6 +25,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
+    CommerceError, ShippingProfileService, StoreContextService,
     search::product_translation_title_search_condition,
     storefront_channel::{
         apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
@@ -32,13 +35,12 @@ use crate::{
         enrich_cart_delivery_groups, is_shipping_option_compatible_with_profiles,
         load_cart_shipping_profile_slugs, product_shipping_profile_slug,
     },
-    CommerceError, ShippingProfileService, StoreContextService,
 };
 use rustok_product::entities::{product, product_translation};
 
 use super::{
-    map_product_service_error, product_query_tenant, require_commerce_permission, types::*,
-    MODULE_SLUG, PRODUCT_MODULE_SLUG,
+    MODULE_SLUG, PRODUCT_MODULE_SLUG, map_product_service_error, product_query_tenant,
+    require_commerce_permission, types::*,
 };
 
 #[derive(Default)]
@@ -401,14 +403,19 @@ impl CommerceQuery {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let customer = CustomerService::new(db.clone())
-            .get_customer_by_user(tenant_id, auth.user_id)
+        let customer = in_process_customer_read_port(db.clone())
+            .read_customer_projection_by_user(
+                graphql_customer_port_context(tenant_id, auth.user_id),
+                CustomerUserProjectionRequest {
+                    user_id: auth.user_id,
+                },
+            )
             .await
-            .map_err(|err| match err {
-                rustok_customer::error::CustomerError::CustomerByUserNotFound(_) => {
+            .map_err(|error| match error.code.as_str() {
+                "customer.customer_by_user_not_found" => {
                     <FieldError as GraphQLError>::unauthenticated()
                 }
-                other => async_graphql::Error::new(other.to_string()),
+                _ => async_graphql::Error::new(error.message),
             })?;
 
         Ok(customer.into())
@@ -976,7 +983,7 @@ impl CommerceQuery {
         {
             Ok(collection) => collection,
             Err(rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)) => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(err) => return Err(err.to_string().into()),
         };
@@ -1131,7 +1138,7 @@ impl CommerceQuery {
         {
             Ok(option) => option,
             Err(rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_)) => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(err) => return Err(err.to_string().into()),
         };
@@ -1308,7 +1315,7 @@ impl CommerceQuery {
         {
             Ok(fulfillment) => fulfillment,
             Err(rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_)) => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(err) => return Err(err.to_string().into()),
         };
@@ -1620,7 +1627,7 @@ impl CommerceQuery {
             (None, None) => {
                 return Err(async_graphql::Error::new(
                     "Either product_id or category_id is required",
-                ))
+                ));
             }
         };
         let Some(form) = form else {
@@ -1816,7 +1823,7 @@ impl CommerceQuery {
             _ => {
                 return Err(async_graphql::Error::new(
                     "Either `id` or non-empty `handle` is required",
-                ))
+                ));
             }
         };
 
@@ -1978,14 +1985,19 @@ async fn load_storefront_customer_order(
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let customer = CustomerService::new(db.clone())
-        .get_customer_by_user(tenant_id, auth.user_id)
+    let customer = in_process_customer_read_port(db.clone())
+        .read_customer_projection_by_user(
+            graphql_customer_port_context(tenant_id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
         .await
-        .map_err(|err| match err {
-            rustok_customer::error::CustomerError::CustomerByUserNotFound(_) => {
+        .map_err(|error| match error.code.as_str() {
+            "customer.customer_by_user_not_found" => {
                 <FieldError as GraphQLError>::unauthenticated()
             }
-            other => async_graphql::Error::new(other.to_string()),
+            _ => async_graphql::Error::new(error.message),
         })?;
 
     let order = match OrderService::new(db.clone(), event_bus.clone())
@@ -2033,18 +2045,18 @@ fn build_pricing_resolution_context(
         Some(_) => {
             return Err(async_graphql::Error::new(
                 "currency_code must be a 3-letter code",
-            ))
+            ));
         }
         None if region_id.is_some() || price_list_id.is_some() || quantity.is_some() => {
             return Err(async_graphql::Error::new(
                 "currency_code is required for pricing resolution context",
-            ))
+            ));
         }
         None => return Ok(None),
     };
     let quantity = match quantity {
         Some(value) if value < 1 => {
-            return Err(async_graphql::Error::new("quantity must be at least 1"))
+            return Err(async_graphql::Error::new("quantity must be at least 1"));
         }
         Some(value) => value,
         None => 1,
@@ -2337,14 +2349,29 @@ async fn resolve_optional_storefront_customer_id(
         return Ok(None);
     };
 
-    match CustomerService::new(db.clone())
-        .get_customer_by_user(tenant_id, auth.user_id)
+    match in_process_customer_read_port(db.clone())
+        .read_customer_projection_by_user(
+            graphql_customer_port_context(tenant_id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
         .await
     {
         Ok(customer) => Ok(Some(customer.id)),
-        Err(rustok_customer::error::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
-        Err(err) => Err(async_graphql::Error::new(err.to_string())),
+        Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
+        Err(error) => Err(async_graphql::Error::new(error.message)),
     }
+}
+
+fn graphql_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::user(user_id.to_string()),
+        "en",
+        format!("storefront-customer:{user_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
 }
 
 fn ensure_storefront_cart_access(

@@ -24,6 +24,12 @@
       ]
     },
     {
+      "operation": "read_customer_projection_by_user",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+    },
+    {
       "operation": "list_customer_projections",
       "execution_status": "static_locked_runtime_pending",
       "profiles": [

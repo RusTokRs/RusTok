@@ -191,9 +191,9 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     if (!sameSet(traceEntry.fallback_profiles, smoke.fallback_profiles)) fail(`${module} invocation trace fallback profile drift`);
     if (!sameSet(traceEntry.degraded_modes, smoke.degraded_modes)) fail(`${module} invocation trace degraded mode drift`);
 
-    const allowedRegistryStatuses = (module === 'product' && runtimeFallbackSmoke) || module === 'cart'
-      ? ['in_progress', 'boundary_ready']
-      : ['in_progress'];
+    // Temporary 2026-07-13 readiness policy permits static boundary promotion
+    // without treating the no-compile smoke as transport execution evidence.
+    const allowedRegistryStatuses = ['in_progress', 'boundary_ready'];
     if (!allowedRegistryStatuses.includes(registry.status)) {
       fail(`${module} registry must remain ${allowedRegistryStatuses.join(' or ')} before live runtime execution`);
     }

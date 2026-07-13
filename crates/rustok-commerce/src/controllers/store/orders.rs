@@ -1,11 +1,13 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
-use rustok_customer::CustomerService;
+use rustok_customer::{
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
+};
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
@@ -13,8 +15,8 @@ use uuid::Uuid;
 
 use super::{
     super::{
-        common::{PaginatedResponse, PaginationMeta, PaginationParams},
         CommerceHttpRuntime,
+        common::{PaginatedResponse, PaginationMeta, PaginationParams},
     },
     StoreOrderChangesParams, StoreOrderRefundsParams, StoreOrderReturnsParams,
 };
@@ -41,11 +43,15 @@ pub async fn get_me(
 ) -> HttpResult<Json<CustomerResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let service = CustomerService::new(runtime.db_clone());
-    let customer = service
-        .get_customer_by_user(tenant.id, auth.user_id)
+    let customer = in_process_customer_read_port(runtime.db_clone())
+        .read_customer_projection_by_user(
+            super::storefront_customer_port_context(tenant.id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
     Ok(Json(customer))
 }
 

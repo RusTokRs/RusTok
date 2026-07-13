@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_web::{HttpError, HttpResult};

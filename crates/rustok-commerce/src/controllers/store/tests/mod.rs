@@ -1,18 +1,18 @@
 use super::{
-    cart_context_metadata, checkout_actor_id, ensure_store_cart_access, merge_metadata,
-    requested_cart_context, resolve_store_line_item_input, RequestedCartContext,
-    StoreAddCartLineItemInput, StoreCartContextPatch, StoreLineItemResolution, MODULE_SLUG,
+    MODULE_SLUG, RequestedCartContext, StoreAddCartLineItemInput, StoreCartContextPatch,
+    StoreLineItemResolution, cart_context_metadata, checkout_actor_id, ensure_store_cart_access,
+    merge_metadata, requested_cart_context, resolve_store_line_item_input,
 };
-use axum::body::{to_bytes, Body};
+use axum::Router;
+use axum::body::{Body, to_bytes};
 use axum::extract::{Path, State};
 use axum::http::{Request, StatusCode};
-use axum::middleware::{from_fn_with_state, Next};
+use axum::middleware::{Next, from_fn_with_state};
 use axum::response::Response;
-use axum::Router;
 use rust_decimal::Decimal;
-use rustok_api::context::ChannelResolutionSource;
 use rustok_api::Permission;
 use rustok_api::RequestContext;
+use rustok_api::context::ChannelResolutionSource;
 use rustok_api::{AuthContext, ChannelContext, TenantContext};
 pub use rustok_api::{AuthContextExtension, ChannelContextExtension, TenantContextExtension};
 use rustok_cart::dto::SetCartAdjustmentInput;
@@ -34,8 +34,8 @@ use crate::dto::{
     ShippingOptionTranslationInput, StoreContextResponse,
 };
 use rustok_cart::CartService;
-use rustok_customer::dto::CreateCustomerInput;
 use rustok_customer::CustomerService;
+use rustok_customer::dto::CreateCustomerInput;
 use rustok_fulfillment::FulfillmentService;
 use rustok_product::CatalogService;
 

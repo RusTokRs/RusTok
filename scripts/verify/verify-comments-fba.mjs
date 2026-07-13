@@ -54,7 +54,7 @@ if (registryCases !== evidenceCases) fail('evidence case matrix drift');
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'comments-fba-registry.json', 'CommentsThreadPort', 'comments-contract-test-static-matrix.json', registry.evidence.runtime_order_smoke], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
 if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeSmoke.status !== 'executable_no_compile' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
 const fallbackProfiles = registry.contract_tests.fallback_smoke.profiles.slice().sort().join('|');

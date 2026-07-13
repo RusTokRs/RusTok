@@ -26,7 +26,7 @@
 - storefront transport and GraphQL are still published through `rustok-commerce`, but the admin UI surface is already established as a separate module-owned surface in `rustok-customer/admin`;
 - cross-module contract changes must be synchronized with `rustok-commerce` and neighboring split modules;
 - `CustomerService` normalizes email before uniqueness check and storage, so create/update do not allow trimmed duplicates within a tenant; duplicate `user_id` linkage remains tenant-scoped and does not turn the customer into auth/user domain.
-- `CustomerReadPort` uses the common `PortContext`/`PortError`, requires read deadline semantics and maps invalid tenant / not found to typed port errors; no-compile runtime smoke is captured in `contracts/evidence/customer-read-projection-runtime-smoke.json`, but FBA status remains `in_progress` until actual compiled runtime execution.
+- `CustomerReadPort` uses the common `PortContext`/`PortError`, requires read deadline semantics and maps invalid tenant / not found to typed port errors. Its user-projection operation lets storefront consumers resolve an authenticated customer without constructing `CustomerService`; no-compile runtime smoke is captured in `contracts/evidence/customer-read-projection-runtime-smoke.json`, but `transport_verified` still requires compiled runtime execution.
 
 ## FFA split for admin
 

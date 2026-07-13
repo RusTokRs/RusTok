@@ -39,7 +39,7 @@ for (const marker of ['trait WorkflowReadPort', 'impl WorkflowReadPort for Workf
 if (ports.includes('require_write_semantics()?')) fail('workflow read port must not require write idempotency');
 if (!dto.includes('Serialize, Deserialize')) fail('workflow DTOs must remain serializable');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('WorkflowReadPort') || !plan.includes('workflow-contract-test-static-matrix.json') || !plan.includes('workflow-read-projection-runtime-smoke.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `workflow` |') || !central.includes(registryPath) || !central.includes('`phase_b_ready` | `in_progress`')) fail('central readiness board drift');
+if (!central.includes('| `workflow` |') || !central.includes(registryPath) || !central.includes('`phase_b_ready` | `boundary_ready`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'workflow' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-workflow-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

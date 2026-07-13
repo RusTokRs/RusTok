@@ -30,6 +30,13 @@ export function verifyCustomerFbaNoCompile() {
   const readme = read('crates/rustok-customer/README.md');
   const localDocs = read('crates/rustok-customer/docs/README.md');
   const centralRegistry = read('docs/modules/registry.md');
+  const commerceCustomerConsumers = [
+    'crates/rustok-commerce/src/graphql/mutations/helpers.rs',
+    'crates/rustok-commerce/src/graphql/query.rs',
+    'crates/rustok-commerce/src/controllers/store/mod.rs',
+    'crates/rustok-commerce/src/controllers/store/orders.rs',
+    'crates/rustok-commerce/src/storefront_checkout_runtime.rs',
+  ].map(read);
 
   if (registry.schema_version !== 1) fail('customer registry schema_version must be 1');
   if (registry.module !== 'customer') fail('customer registry module drift');
@@ -43,7 +50,7 @@ export function verifyCustomerFbaNoCompile() {
   if (!portSource.includes('trait CustomerReadPort')) fail('CustomerReadPort trait missing');
   if (!portSource.includes('require_policy(PortCallPolicy::read())?')) fail('CustomerReadPort must enforce read policy');
 
-  for (const operation of ['read_customer_projection', 'list_customer_projections', 'list_profile_enrichment']) {
+  for (const operation of ['read_customer_projection', 'read_customer_projection_by_user', 'list_customer_projections', 'list_profile_enrichment']) {
     if (!portSource.includes(`${operation}(`)) fail(`CustomerReadPort missing ${operation}`);
     if (!registry.ports?.[0]?.operations?.includes(operation)) fail(`registry missing ${operation}`);
     if (!staticEvidence.cases?.some((entry) => entry.operation === operation)) fail(`static evidence missing ${operation}`);
@@ -68,6 +75,15 @@ export function verifyCustomerFbaNoCompile() {
   if (!plan.includes('- FBA status: `boundary_ready`')) fail('plan FBA status drift');
   if (!plan.includes('Local documentation is synchronized')) fail('plan must record synchronized local documentation');
   if (!plan.includes('no-compile')) fail('plan must record the active no-compile verification gate');
+
+  for (const consumer of commerceCustomerConsumers) {
+    if (consumer.includes('CustomerService::new') || consumer.includes('use rustok_customer::CustomerService')) {
+      fail('commerce customer consumers must not construct CustomerService directly');
+    }
+  }
+  if (!commerceCustomerConsumers.some((consumer) => consumer.includes('read_customer_projection_by_user('))) {
+    fail('commerce customer consumers must invoke CustomerReadPort user projection');
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

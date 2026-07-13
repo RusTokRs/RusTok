@@ -13,10 +13,12 @@ mod tests;
 
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
-use rustok_api::RequestContext;
+use rustok_api::{PortActor, PortContext, RequestContext};
 use rustok_cart::CartError;
 use rustok_cart::CartService;
-use rustok_customer::CustomerService;
+use rustok_customer::{
+    CustomerReadPort, CustomerUserProjectionRequest, in_process_customer_read_port,
+};
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
@@ -28,13 +30,14 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::common::PaginationParams;
 use crate::{
+    StoreContextService,
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
         UpdateCartContextInput,
@@ -47,7 +50,6 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    StoreContextService,
 };
 
 pub const MODULE_SLUG: &str = "commerce";
@@ -182,15 +184,32 @@ pub(crate) async fn current_customer_id_for_db(
         return Ok(None);
     };
 
-    let service = CustomerService::new(db.clone());
-    match service.get_customer_by_user(tenant_id, auth.user_id).await {
+    match in_process_customer_read_port(db.clone())
+        .read_customer_projection_by_user(
+            storefront_customer_port_context(tenant_id, auth.user_id),
+            CustomerUserProjectionRequest {
+                user_id: auth.user_id,
+            },
+        )
+        .await
+    {
         Ok(customer) => Ok(Some(customer.id)),
-        Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
-        Err(err) => Err(HttpError::bad_request(
+        Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
+        Err(error) => Err(HttpError::bad_request(
             "commerce_store_invalid",
-            err.to_string(),
+            error.message,
         )),
     }
+}
+
+pub(crate) fn storefront_customer_port_context(tenant_id: Uuid, user_id: Uuid) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(user_id.to_string()),
+        "en",
+        format!("storefront-customer:{user_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
 }
 
 pub(crate) async fn ensure_storefront_channel_enabled_for_db(

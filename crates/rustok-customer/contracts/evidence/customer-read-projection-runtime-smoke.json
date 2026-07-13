@@ -13,6 +13,7 @@
   ],
   "covered_operations": [
     "read_customer_projection",
+    "read_customer_projection_by_user",
     "list_customer_projections",
     "list_profile_enrichment"
   ],
