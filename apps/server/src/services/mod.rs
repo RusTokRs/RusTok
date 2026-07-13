@@ -27,6 +27,7 @@ pub mod product_field_service;
 pub mod rbac_committed_mutations;
 pub mod rbac_consistency;
 pub mod rbac_persistence;
+pub mod rbac_request_scope;
 pub mod rbac_runtime;
 pub mod rbac_service;
 pub mod redis_runtime;
