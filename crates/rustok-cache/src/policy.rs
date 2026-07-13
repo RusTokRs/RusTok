@@ -1,0 +1,303 @@
+use std::future::Future;
+use std::sync::Arc;
+use std::time::Duration;
+
+use rustok_core::CacheBackend;
+
+use crate::{CacheLoadResult, CacheService};
+
+const NANOS_PER_SECOND: u128 = 1_000_000_000;
+const MAX_JITTER_PERCENT: u8 = 50;
+
+/// TTL selection policy for a cache fill.
+///
+/// Jitter is deterministic for a `(namespace, key)` pair. It spreads expiration
+/// without requiring randomness, keeps retries stable and makes unit tests reproducible.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheTtlPolicy {
+    None,
+    Fixed(Duration),
+    DeterministicJitter {
+        ttl: Duration,
+        max_jitter_percent: u8,
+        namespace: String,
+    },
+}
+
+impl CacheTtlPolicy {
+    pub fn none() -> Self {
+        Self::None
+    }
+
+    pub fn fixed(ttl: Duration) -> Self {
+        Self::Fixed(ttl)
+    }
+
+    pub fn deterministic_jitter(
+        ttl: Duration,
+        max_jitter_percent: u8,
+        namespace: impl Into<String>,
+    ) -> Result<Self, CachePolicyError> {
+        if max_jitter_percent > MAX_JITTER_PERCENT {
+            return Err(CachePolicyError::JitterPercentTooLarge {
+                value: max_jitter_percent,
+                maximum: MAX_JITTER_PERCENT,
+            });
+        }
+
+        let namespace = namespace.into();
+        if namespace.trim().is_empty() {
+            return Err(CachePolicyError::EmptyNamespace);
+        }
+
+        Ok(Self::DeterministicJitter {
+            ttl,
+            max_jitter_percent,
+            namespace,
+        })
+    }
+
+    pub fn ttl_for(&self, key: &str) -> Option<Duration> {
+        match self {
+            Self::None => None,
+            Self::Fixed(ttl) => Some(*ttl),
+            Self::DeterministicJitter {
+                ttl,
+                max_jitter_percent,
+                namespace,
+            } => Some(deterministic_jittered_ttl(
+                *ttl,
+                *max_jitter_percent,
+                namespace,
+                key,
+            )),
+        }
+    }
+}
+
+/// Request-coalescing and loader execution policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheLoadPolicy {
+    pub ttl: CacheTtlPolicy,
+    pub loader_timeout: Option<Duration>,
+}
+
+impl CacheLoadPolicy {
+    pub fn new(ttl: CacheTtlPolicy) -> Self {
+        Self {
+            ttl,
+            loader_timeout: None,
+        }
+    }
+
+    pub fn with_loader_timeout(mut self, timeout: Duration) -> Result<Self, CachePolicyError> {
+        if timeout.is_zero() {
+            return Err(CachePolicyError::ZeroLoaderTimeout);
+        }
+        self.loader_timeout = Some(timeout);
+        Ok(self)
+    }
+}
+
+impl Default for CacheLoadPolicy {
+    fn default() -> Self {
+        Self::new(CacheTtlPolicy::None)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CachePolicyError {
+    #[error("cache jitter namespace must not be empty")]
+    EmptyNamespace,
+    #[error("cache jitter percent {value} exceeds maximum {maximum}")]
+    JitterPercentTooLarge { value: u8, maximum: u8 },
+    #[error("cache loader timeout must be greater than zero")]
+    ZeroLoaderTimeout,
+}
+
+impl CacheService {
+    /// Load a cache entry with backend-scoped coalescing, deterministic TTL jitter and
+    /// an optional deadline around the source-of-truth loader.
+    ///
+    /// Cache reads and waiting for the local coalescing gate are not included in the
+    /// loader deadline. Only the leader's loader future is bounded.
+    pub async fn load_or_fill_with_policy<F, Fut>(
+        &self,
+        backend: Arc<dyn CacheBackend>,
+        key: impl Into<String>,
+        policy: CacheLoadPolicy,
+        loader: F,
+    ) -> rustok_core::Result<CacheLoadResult>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = rustok_core::Result<Vec<u8>>>,
+    {
+        let key = key.into();
+        let ttl = policy.ttl.ttl_for(&key);
+        let loader_timeout = policy.loader_timeout;
+
+        self.load_or_fill(backend, key, ttl, move || async move {
+            match loader_timeout {
+                Some(timeout) => tokio::time::timeout(timeout, loader())
+                    .await
+                    .map_err(|_| {
+                        rustok_core::Error::Cache(format!(
+                            "cache loader timed out after {} ms",
+                            timeout.as_millis()
+                        ))
+                    })?,
+                None => loader().await,
+            }
+        })
+        .await
+    }
+}
+
+fn deterministic_jittered_ttl(
+    ttl: Duration,
+    max_jitter_percent: u8,
+    namespace: &str,
+    key: &str,
+) -> Duration {
+    if ttl.is_zero() || max_jitter_percent == 0 {
+        return ttl;
+    }
+
+    let base_nanos = ttl.as_nanos();
+    let max_delta = base_nanos
+        .saturating_mul(u128::from(max_jitter_percent))
+        / 100;
+    if max_delta == 0 {
+        return ttl;
+    }
+
+    let hash = stable_fnv1a64(namespace.as_bytes(), key.as_bytes());
+    let width = max_delta.saturating_mul(2).saturating_add(1);
+    let offset = u128::from(hash) % width;
+    let adjusted = if offset <= max_delta {
+        base_nanos.saturating_sub(max_delta - offset)
+    } else {
+        base_nanos.saturating_add(offset - max_delta)
+    }
+    .max(1);
+
+    duration_from_nanos_saturating(adjusted)
+}
+
+fn stable_fnv1a64(namespace: &[u8], key: &[u8]) -> u64 {
+    const OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    let mut hash = OFFSET_BASIS;
+    for byte in namespace
+        .iter()
+        .copied()
+        .chain(std::iter::once(0xff))
+        .chain(key.iter().copied())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+fn duration_from_nanos_saturating(nanos: u128) -> Duration {
+    let seconds = nanos / NANOS_PER_SECOND;
+    let subsec_nanos = (nanos % NANOS_PER_SECOND) as u32;
+    if seconds > u128::from(u64::MAX) {
+        Duration::new(u64::MAX, 999_999_999)
+    } else {
+        Duration::new(seconds as u64, subsec_nanos)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn deterministic_jitter_is_stable_and_bounded() {
+        let policy = CacheTtlPolicy::deterministic_jitter(
+            Duration::from_secs(100),
+            10,
+            "tenant-cache:v1",
+        )
+        .unwrap();
+
+        let first = policy.ttl_for("tenant-a").unwrap();
+        let second = policy.ttl_for("tenant-a").unwrap();
+        assert_eq!(first, second);
+        assert!(first >= Duration::from_secs(90));
+        assert!(first <= Duration::from_secs(110));
+    }
+
+    #[test]
+    fn deterministic_jitter_spreads_keys() {
+        let policy = CacheTtlPolicy::deterministic_jitter(
+            Duration::from_secs(100),
+            10,
+            "tenant-cache:v1",
+        )
+        .unwrap();
+
+        let values = (0..32)
+            .map(|index| policy.ttl_for(&format!("tenant-{index}")).unwrap())
+            .collect::<std::collections::HashSet<_>>();
+        assert!(values.len() > 1);
+    }
+
+    #[test]
+    fn jitter_validation_rejects_unsafe_configuration() {
+        assert_eq!(
+            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 51, "cache")
+                .unwrap_err(),
+            CachePolicyError::JitterPercentTooLarge {
+                value: 51,
+                maximum: 50,
+            }
+        );
+        assert_eq!(
+            CacheTtlPolicy::deterministic_jitter(Duration::from_secs(1), 10, "  ")
+                .unwrap_err(),
+            CachePolicyError::EmptyNamespace
+        );
+    }
+
+    #[tokio::test]
+    async fn loader_timeout_releases_coalescing_gate() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let policy = CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60)))
+            .with_loader_timeout(Duration::from_millis(5))
+            .unwrap();
+
+        let error = service
+            .load_or_fill_with_policy(
+                backend.clone(),
+                "slow",
+                policy,
+                || std::future::pending::<rustok_core::Result<Vec<u8>>>(),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("timed out"));
+        assert_eq!(service.in_flight_loads().await, 0);
+
+        let calls = AtomicUsize::new(0);
+        let result = service
+            .load_or_fill_with_policy(
+                backend,
+                "slow",
+                CacheLoadPolicy::default(),
+                || async {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(b"recovered".to_vec())
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.value, b"recovered".to_vec());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+}
