@@ -4,6 +4,7 @@ use crate::{
     BoundedInvalidationTrackerError, DurableCacheInvalidationConsumer,
     DurableCacheInvalidationError, DurableCacheInvalidationRecord, DurableInvalidationDecision,
 };
+use crate::invalidation_consumer::DurableInvalidationProcessGateError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DurableInvalidationProcessOutcome {
@@ -15,9 +16,11 @@ pub enum DurableInvalidationProcessOutcome {
 impl DurableCacheInvalidationConsumer {
     /// Execute one durable record and advance its offset only after the handler succeeds.
     ///
-    /// Both callbacks receive an owned record so their futures do not borrow process-local tracker
-    /// state. A failed callback leaves the acknowledged offset unchanged and the record remains
-    /// eligible for retry.
+    /// Work is serialized per channel. Concurrent delivery of the same generation waits for the
+    /// first handler and is then classified as `Ignored`, while the number of distinct active
+    /// channels remains bounded. Both callbacks receive an owned record so their futures do not
+    /// borrow process-local tracker state. A failed callback leaves the acknowledged offset
+    /// unchanged and the record remains eligible for retry.
     pub async fn process<A, AFut, R, RFut>(
         &self,
         record: DurableCacheInvalidationRecord,
@@ -30,6 +33,15 @@ impl DurableCacheInvalidationConsumer {
         R: FnOnce(DurableCacheInvalidationRecord) -> RFut,
         RFut: Future<Output = rustok_core::Result<()>>,
     {
+        let lease = self
+            .process_gate(record.channel())
+            .map_err(|error| match error {
+                DurableInvalidationProcessGateError::Saturated { count, maximum } => {
+                    DurableInvalidationProcessError::Saturated { count, maximum }
+                }
+            })?;
+        let _guard = lease.gate.lock().await;
+
         match self
             .decide(&record)
             .map_err(DurableInvalidationProcessError::Record)?
@@ -61,6 +73,7 @@ impl DurableCacheInvalidationConsumer {
 pub enum DurableInvalidationProcessError {
     Record(DurableCacheInvalidationError),
     Tracker(BoundedInvalidationTrackerError),
+    Saturated { count: usize, maximum: usize },
     Handler(rustok_core::Error),
 }
 
@@ -69,6 +82,10 @@ impl std::fmt::Display for DurableInvalidationProcessError {
         match self {
             Self::Record(error) => write!(formatter, "invalid durable cache record: {error}"),
             Self::Tracker(error) => write!(formatter, "durable cache offset update failed: {error}"),
+            Self::Saturated { count, maximum } => write!(
+                formatter,
+                "durable invalidation processor saturated at {maximum} channels; current count {count}"
+            ),
             Self::Handler(error) => write!(formatter, "durable cache handler failed: {error}"),
         }
     }
@@ -79,6 +96,7 @@ impl std::error::Error for DurableInvalidationProcessError {
         match self {
             Self::Record(error) => Some(error),
             Self::Tracker(error) => Some(error),
+            Self::Saturated { .. } => None,
             Self::Handler(error) => Some(error),
         }
     }
@@ -92,10 +110,14 @@ mod tests {
     use uuid::Uuid;
 
     fn record(generation: u64) -> DurableCacheInvalidationRecord {
+        record_for("tenant.invalidate", generation)
+    }
+
+    fn record_for(channel: &str, generation: u64) -> DurableCacheInvalidationRecord {
         DurableCacheInvalidationRecord::new(
             Uuid::from_u128(generation as u128 + 1),
             Some(Uuid::from_u128(42)),
-            "tenant.invalidate",
+            channel,
             "tenant:42",
             generation,
             1_000 + generation,
@@ -130,6 +152,56 @@ mod tests {
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(consumer.last_generation("tenant.invalidate"), Some(4));
+    }
+
+    #[tokio::test]
+    async fn concurrent_duplicate_delivery_runs_apply_once() {
+        let consumer = DurableCacheInvalidationConsumer::new(4).unwrap();
+        consumer.seed("tenant.invalidate", 3).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let first_consumer = consumer.clone();
+        let first_calls = Arc::clone(&calls);
+        let first = tokio::spawn(async move {
+            first_consumer
+                .process(
+                    record(4),
+                    move |_| async move {
+                        first_calls.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                        Ok(())
+                    },
+                    |_| async { Ok(()) },
+                )
+                .await
+                .unwrap()
+        });
+
+        let second_consumer = consumer.clone();
+        let second_calls = Arc::clone(&calls);
+        let second = tokio::spawn(async move {
+            second_consumer
+                .process(
+                    record(4),
+                    move |_| async move {
+                        second_calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    },
+                    |_| async { Ok(()) },
+                )
+                .await
+                .unwrap()
+        });
+
+        let (first, second) = tokio::join!(first, second);
+        let outcomes = [first.unwrap(), second.unwrap()];
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(outcomes.contains(&DurableInvalidationProcessOutcome::Applied {
+            generation: 4
+        }));
+        assert!(outcomes.contains(&DurableInvalidationProcessOutcome::Ignored {
+            generation: 4
+        }));
     }
 
     #[tokio::test]
@@ -187,5 +259,51 @@ mod tests {
             DurableInvalidationProcessOutcome::Recovered { generation: 5 }
         );
         assert_eq!(consumer.last_generation("tenant.invalidate"), Some(5));
+    }
+
+    #[tokio::test]
+    async fn distinct_channel_work_fails_fast_when_processor_is_saturated() {
+        let consumer = DurableCacheInvalidationConsumer::new(1).unwrap();
+        consumer.seed("tenant.invalidate", 3).unwrap();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+
+        let first_consumer = consumer.clone();
+        let first_entered = Arc::clone(&entered);
+        let first_release = Arc::clone(&release);
+        let first = tokio::spawn(async move {
+            first_consumer
+                .process(
+                    record(4),
+                    move |_| async move {
+                        first_entered.notify_one();
+                        first_release.notified().await;
+                        Ok(())
+                    },
+                    |_| async { Ok(()) },
+                )
+                .await
+        });
+
+        entered.notified().await;
+        let error = consumer
+            .process(
+                record_for("other.invalidate", 1),
+                |_| async { Ok(()) },
+                |_| async { Ok(()) },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            DurableInvalidationProcessError::Saturated {
+                count: 1,
+                maximum: 1
+            }
+        ));
+
+        release.notify_one();
+        first.await.unwrap().unwrap();
+        assert_eq!(consumer.in_flight_process_channels(), 0);
     }
 }
