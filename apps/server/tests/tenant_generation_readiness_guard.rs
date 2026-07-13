@@ -15,9 +15,10 @@ fn source(relative: &str) -> String {
 }
 
 #[test]
-fn tenant_readiness_uses_canonical_generation_listener_without_rewriting_resolver() {
+fn tenant_readiness_and_metrics_use_canonical_generation_listener() {
     let middleware = source("apps/server/src/middleware/mod.rs");
     let health = source("apps/server/src/controllers/health.rs");
+    let metrics = source("apps/server/src/controllers/metrics.rs");
 
     for required in [
         "#[path = \"tenant.rs\"]",
@@ -26,6 +27,8 @@ fn tenant_readiness_uses_canonical_generation_listener_without_rewriting_resolve
         "TenantCacheGenerationListenerSnapshot as TenantInvalidationListenerSnapshot",
         "TenantCacheGenerationListenerStatus as TenantInvalidationListenerStatus",
         "tenant_cache_generation_listener_snapshot(ctx)",
+        "super::tenant_legacy::tenant_cache_stats(ctx).await",
+        "stats.invalidation_listener_status = listener.status.metric_value()",
     ] {
         assert!(
             middleware.contains(required),
@@ -37,6 +40,8 @@ fn tenant_readiness_uses_canonical_generation_listener_without_rewriting_resolve
         "tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus"
     ));
     assert!(health.contains("check_tenant_invalidation_listener"));
+    assert!(metrics.contains("tenant_cache_stats, TenantCacheStats"));
+    assert!(metrics.contains("rustok_tenant_invalidation_listener_status"));
     assert!(
         !middleware.contains("pub mod tenant;"),
         "the legacy file must not bypass the canonical readiness wrapper"
