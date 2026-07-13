@@ -10,8 +10,14 @@ const files = {
   adminCargo: 'crates/rustok-page-builder/admin/Cargo.toml',
   adminUi: 'crates/rustok-page-builder/admin/src/ui/leptos.rs',
   adminCanvas: 'crates/rustok-page-builder/admin/src/editor/admin_canvas.rs',
+  canvasDocument: 'crates/rustok-page-builder/admin/src/editor/canvas_document.rs',
+  canvasProtocol: 'crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs',
   facade: 'crates/rustok-page-builder/admin/src/transport/mod.rs',
   controller: 'crates/rustok-page-builder/admin/src/model.rs',
+  pagesCargo: 'crates/rustok-pages/admin/Cargo.toml',
+  pagesLib: 'crates/rustok-pages/admin/src/lib.rs',
+  pagesBuilder: 'crates/rustok-pages/admin/src/builder.rs',
+  pagesComposition: 'crates/rustok-pages/admin/src/composition.rs',
   localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
   localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
   uiIndex: 'docs/modules/UI_PACKAGES_INDEX.md',
@@ -33,7 +39,7 @@ const forbidMarker = (key, marker, message) => {
 
 requireMarker('workspace', '"crates/rustok-page-builder/admin"', 'Page Builder admin must be an explicit workspace member');
 requireMarker('leptosCargo', '[target.\'cfg(target_arch = "wasm32")\'.dependencies]', 'fly-leptos browser dependencies must be wasm32-targeted');
-for (const dependency of ['wasm-bindgen', 'web-sys', 'js-sys']) {
+for (const dependency of ['wasm-bindgen', 'web-sys', 'js-sys', '"Document"']) {
   requireMarker('leptosCargo', dependency, `fly-leptos must declare ${dependency}`);
 }
 requireMarker('leptosRoot', '#[cfg(target_arch = "wasm32")]', 'fly-leptos browser runtime must be cfg-gated');
@@ -41,18 +47,18 @@ for (const marker of [
   'pub struct EventListenerHandle',
   'pub struct ResizeObserverHandle',
   'pub struct WindowMessageSubscription',
+  'pub struct IframeJsonSubscription',
   'pub struct IframeMessagePort',
-  'set_pointer_capture',
-  'release_pointer_capture',
+  'subscribe_by_element_id',
   'event.source()',
   'Object::is',
   '.post_message(',
+  'set_pointer_capture',
+  'release_pointer_capture',
 ]) {
   requireMarker('browser', marker, `browser runtime is missing ${marker}`);
 }
-requireMarker('browser', 'expected_origin == "*"', 'browser runtime must reject wildcard inbound origins');
-requireMarker('browser', 'target_origin == "*"', 'browser runtime must reject wildcard outbound origins');
-requireMarker('browser', 'envelope.is_accepted', 'browser runtime must apply protocol/instance/replay validation');
+requireMarker('browser', 'origin == "*"', 'browser runtime must reject wildcard origins');
 
 for (const marker of [
   'ui_classification = "admin_only"',
@@ -89,26 +95,106 @@ for (const hostMarker of [
 ]) {
   requireMarker('appsAdmin', hostMarker, `apps/admin is missing ${hostMarker}`);
 }
-for (const marker of ['pub fn PageBuilderAdmin()', 'PageBuilderAdminWithController', 'UiRouteContext', 'crate::i18n::t']) {
+
+for (const marker of [
+  'pub fn PageBuilderAdmin()',
+  'PageBuilderAdminWithController',
+  'PageBuilderAdminFacade',
+  'UiRouteContext',
+  'crate::i18n::t',
+]) {
   requireMarker('adminUi', marker, `admin UI is missing ${marker}`);
 }
-requireMarker('adminCanvas', 'UiRouteContext', 'admin canvas must consume the host route locale context');
-requireMarker('adminCanvas', 'crate::i18n::t', 'admin canvas must use shared locale messages');
+for (const marker of [
+  'render_canvas_srcdoc',
+  'IframeJsonSubscription',
+  'decode_canvas_message',
+  'GeometrySnapshot',
+  'UiIntent::SetViewport',
+  'UiIntent::SetSelectedOverlay',
+  'UiIntent::SetHoveredOverlay',
+  'mark_save_started',
+  'mark_save_failed',
+  'acknowledge_save_for_hash',
+  'sandbox="allow-scripts"',
+]) {
+  requireMarker('adminCanvas', marker, `admin canvas is missing ${marker}`);
+}
+forbidMarker('adminCanvas', 'allow-same-origin', 'default admin iframe must not combine scripts with same-origin privileges');
+
+for (const marker of [
+  'Content-Security-Policy',
+  'data-fly-component-id',
+  'getBoundingClientRect',
+  'ResizeObserver',
+  'geometry_snapshot',
+  'safe_attribute_name',
+  'safe_style',
+  'javascript:',
+  'strip_tags',
+]) {
+  requireMarker('canvasDocument', marker, `instrumented canvas renderer is missing ${marker}`);
+}
+for (const marker of [
+  'CanvasComponentGeometry',
+  'CanvasBridgeEnvelope',
+  'GeometrySnapshot',
+  'HoverRequested',
+  'decode_canvas_message',
+  'last_sequence',
+]) {
+  requireMarker('canvasProtocol', marker, `canvas protocol is missing ${marker}`);
+}
+
 requireMarker('facade', 'PageBuilderCapabilityRequest', 'admin facade must consume the canonical capability request envelope');
 requireMarker('facade', 'PageBuilderCapabilityResponse', 'admin facade must return the canonical capability response envelope');
 requireMarker('controller', 'FlyUiStateMachine', 'admin controller must use the framework-neutral Fly UI state machine');
 requireMarker('controller', 'FlyEditor', 'admin controller must use the Fly engine');
 requireMarker('controller', 'PageBuilderCapabilityRequest::Publish', 'admin controller must emit canonical publish requests');
-requireMarker('adminCanvas', 'sandbox="allow-scripts"', 'admin canvas must use an isolated iframe sandbox');
-forbidMarker('adminCanvas', 'allow-same-origin', 'default admin iframe must not combine scripts with same-origin privileges');
+requireMarker('controller', 'acknowledge_save_for_hash', 'controller must acknowledge the dispatched project hash');
 
+for (const marker of [
+  'rustok-page-builder-admin = { path = "../../rustok-page-builder/admin"',
+  'rustok-page-builder = { path = "../../rustok-page-builder"',
+]) {
+  requireMarker('pagesCargo', marker, `Pages admin must declare ${marker}`);
+}
+requireMarker('pagesLib', 'pub use composition::PagesAdmin;', 'Pages must export the Fly-backed composition entrypoint');
+for (const marker of [
+  'impl PageBuilderAdminFacade for PagesBuilderFacade',
+  'PageBuilderCapabilityRequest::Publish',
+  'transport::fetch_page',
+  'transport::update_page',
+  'REVISION_CONFLICT',
+  'canonicalize_builder_project',
+  'take_frame_component',
+]) {
+  requireMarker('pagesBuilder', marker, `Pages consumer facade is missing ${marker}`);
+}
+for (const marker of [
+  'PageBuilderAdminWithController',
+  'PagesBuilderFacade',
+  'use_route_query_value',
+  'crate::ui::leptos::PagesAdmin',
+]) {
+  requireMarker('pagesComposition', marker, `Pages composition is missing ${marker}`);
+}
+forbidMarker('pagesBuilder', 'graphql_adapter', 'Pages builder facade must not bypass the Pages transport facade');
+forbidMarker('pagesComposition', 'graphql_adapter', 'Pages composition must not select a transport adapter');
+
+const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key, nested]) => {
+  const path = prefix ? `${prefix}.${key}` : key;
+  return nested && typeof nested === 'object' && !Array.isArray(nested)
+    ? flattenKeys(nested, path)
+    : [path];
+}).sort();
 const en = JSON.parse(source.localeEn);
 const ru = JSON.parse(source.localeRu);
 for (const [name, locale] of [['en', en], ['ru', ru]]) {
   if (!locale.page_builder) failures.push(`${name} locale is missing page_builder messages`);
 }
-if (JSON.stringify(Object.keys(en.page_builder).sort()) !== JSON.stringify(Object.keys(ru.page_builder).sort())) {
-  failures.push('Page Builder locale top-level key parity failed');
+if (JSON.stringify(flattenKeys(en)) !== JSON.stringify(flattenKeys(ru))) {
+  failures.push('Page Builder locale key parity failed');
 }
 requireMarker('uiIndex', '../../crates/rustok-page-builder/admin/README.md', 'UI package index must link the Page Builder admin package');
 
