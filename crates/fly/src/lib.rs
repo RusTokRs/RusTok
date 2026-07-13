@@ -3,6 +3,7 @@
 //! The crate is deliberately independent from UI frameworks, browser APIs, RusTok modules,
 //! persistence, and transports. Consumers own persistence and framework adapters.
 
+mod asset;
 mod codec;
 mod command;
 mod error;
@@ -13,6 +14,7 @@ mod placement;
 mod registry;
 mod validation;
 
+pub use asset::*;
 pub use codec::*;
 pub use command::*;
 pub use error::*;
