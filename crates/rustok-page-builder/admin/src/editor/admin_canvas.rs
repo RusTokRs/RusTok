@@ -1,7 +1,9 @@
+use crate::i18n::t;
 use crate::{AdminCanvasController, AdminCanvasEffect};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
+use rustok_ui_core::UiRouteContext;
 
 const ADMIN_CANVAS_SRCDOC: &str = r#"<!doctype html>
 <html>
@@ -22,6 +24,7 @@ fn dispatch_admin_intent(
     last_error: RwSignal<Option<String>>,
     last_announcement: RwSignal<Option<String>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    facade_missing: String,
     intent: UiIntent,
 ) {
     let mut requests = Vec::new();
@@ -49,9 +52,7 @@ fn dispatch_admin_intent(
         if let Some(callback) = on_request.as_ref() {
             callback.run(request);
         } else {
-            last_error.set(Some(
-                "Page Builder admin facade is not mounted for this canvas".to_string(),
-            ));
+            last_error.set(Some(facade_missing.clone()));
         }
     }
 }
@@ -61,6 +62,61 @@ pub fn AdminCanvas(
     controller: AdminCanvasController,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale;
+    let undo_label = t(locale.as_deref(), "page_builder.action.undo", "Undo");
+    let redo_label = t(locale.as_deref(), "page_builder.action.redo", "Redo");
+    let save_label = t(locale.as_deref(), "page_builder.action.save", "Save");
+    let saving_status = t(locale.as_deref(), "page_builder.status.saving", "Saving");
+    let failed_status = t(
+        locale.as_deref(),
+        "page_builder.status.saveFailed",
+        "Save failed",
+    );
+    let dirty_status = t(
+        locale.as_deref(),
+        "page_builder.status.dirty",
+        "Unsaved changes",
+    );
+    let saved_status = t(locale.as_deref(), "page_builder.status.saved", "Saved");
+    let layers_label = t(
+        locale.as_deref(),
+        "page_builder.panel.layers",
+        "Layers and selection",
+    );
+    let diagnostics_label = t(
+        locale.as_deref(),
+        "page_builder.panel.diagnostics",
+        "Diagnostics",
+    );
+    let page_label = t(locale.as_deref(), "page_builder.field.page", "Page");
+    let revision_label = t(
+        locale.as_deref(),
+        "page_builder.field.revision",
+        "Revision",
+    );
+    let selected_label = t(
+        locale.as_deref(),
+        "page_builder.field.selectedComponent",
+        "Selected component",
+    );
+    let none_label = t(locale.as_deref(), "page_builder.field.none", "None");
+    let project_hash_label = t(
+        locale.as_deref(),
+        "page_builder.field.projectHash",
+        "Project hash",
+    );
+    let diagnostic_count_label = t(
+        locale.as_deref(),
+        "page_builder.diagnosticCount",
+        "diagnostic(s)",
+    );
+    let facade_missing = t(
+        locale.as_deref(),
+        "page_builder.facadeMissing",
+        "Page Builder admin facade is not mounted for this canvas",
+    );
+
     let controller = RwSignal::new(controller);
     let last_error = RwSignal::new(None::<String>);
     let last_announcement = RwSignal::new(None::<String>);
@@ -68,6 +124,12 @@ pub fn AdminCanvas(
     let undo_request = on_request.clone();
     let redo_request = on_request.clone();
     let save_request = on_request.clone();
+    let undo_facade_missing = facade_missing.clone();
+    let redo_facade_missing = facade_missing.clone();
+    let save_facade_missing = facade_missing;
+    let selected_none_label = none_label.clone();
+    let count_label = diagnostic_count_label.clone();
+    let hash_label = project_hash_label.clone();
 
     view! {
         <div class="rustok-page-builder-admin__workspace">
@@ -80,10 +142,11 @@ pub fn AdminCanvas(
                         last_error,
                         last_announcement,
                         undo_request.clone(),
+                        undo_facade_missing.clone(),
                         UiIntent::Undo,
                     )
                 >
-                    "Undo"
+                    {undo_label}
                 </button>
                 <button
                     type="button"
@@ -93,10 +156,11 @@ pub fn AdminCanvas(
                         last_error,
                         last_announcement,
                         redo_request.clone(),
+                        redo_facade_missing.clone(),
                         UiIntent::Redo,
                     )
                 >
-                    "Redo"
+                    {redo_label}
                 </button>
                 <button
                     type="button"
@@ -109,21 +173,22 @@ pub fn AdminCanvas(
                         last_error,
                         last_announcement,
                         save_request.clone(),
+                        save_facade_missing.clone(),
                         UiIntent::RequestSave,
                     )
                 >
-                    "Save"
+                    {save_label}
                 </button>
                 <span class="rustok-page-builder-admin__dirty-state" aria-live="polite">
                     {move || controller.with(|controller| {
                         if controller.ui().state.dirty.save_in_progress {
-                            "Saving"
+                            saving_status.clone()
                         } else if controller.ui().state.dirty.save_failed {
-                            "Save failed"
+                            failed_status.clone()
                         } else if controller.ui().state.dirty.dirty {
-                            "Unsaved changes"
+                            dirty_status.clone()
                         } else {
-                            "Saved"
+                            saved_status.clone()
                         }
                     })}
                 </span>
@@ -131,13 +196,13 @@ pub fn AdminCanvas(
 
             <div class="rustok-page-builder-admin__layout">
                 <aside class="rustok-page-builder-admin__panel" aria-label="Fly editor state">
-                    <h2>"Layers and selection"</h2>
+                    <h2>{layers_label}</h2>
                     <dl>
-                        <dt>"Page"</dt>
+                        <dt>{page_label}</dt>
                         <dd>{move || controller.with(|controller| controller.page_id().to_string())}</dd>
-                        <dt>"Revision"</dt>
+                        <dt>{revision_label}</dt>
                         <dd>{move || controller.with(|controller| controller.revision_id().to_string())}</dd>
-                        <dt>"Selected component"</dt>
+                        <dt>{selected_label}</dt>
                         <dd>{move || controller.with(|controller| {
                             controller
                                 .ui()
@@ -145,7 +210,7 @@ pub fn AdminCanvas(
                                 .selection
                                 .component_id
                                 .clone()
-                                .unwrap_or_else(|| "None".to_string())
+                                .unwrap_or_else(|| selected_none_label.clone())
                         })}</dd>
                     </dl>
                 </aside>
@@ -160,12 +225,12 @@ pub fn AdminCanvas(
                 </main>
 
                 <aside class="rustok-page-builder-admin__panel" aria-label="Validation diagnostics">
-                    <h2>"Diagnostics"</h2>
+                    <h2>{diagnostics_label}</h2>
                     <p>{move || controller.with(|controller| {
-                        format!("{} diagnostic(s)", controller.ui().state.diagnostics.len())
+                        format!("{} {count_label}", controller.ui().state.diagnostics.len())
                     })}</p>
                     <p>{move || controller.with(|controller| {
-                        format!("Project hash: {}", controller.editor().revision().project_hash.hex())
+                        format!("{hash_label}: {}", controller.editor().revision().project_hash.hex())
                     })}</p>
                 </aside>
             </div>
