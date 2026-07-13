@@ -59,3 +59,62 @@ fn tenant_invalidation_payload_parser_rejects_extra_parts() {
     let tenant = source("apps/server/src/middleware/tenant.rs");
     assert!(tenant.contains("parts.next().is_some()"));
 }
+
+#[test]
+fn weighted_factories_apply_generation_before_instrumentation() {
+    let weighted = source("crates/rustok-cache/src/weighted.rs");
+    let wrap = weighted
+        .find("self.wrap_generation_aware_backend(prefix, backend).await")
+        .expect("weighted backend must be generation-aware");
+    let instrument = weighted
+        .find("InstrumentedWeightedCacheBackend::new(prefix, backend)")
+        .expect("weighted backend instrumentation must remain present");
+    assert!(
+        wrap < instrument,
+        "generation mapping must occur before metrics instrumentation"
+    );
+}
+
+#[test]
+fn tenant_generation_matches_both_physical_backend_prefixes() {
+    let tenant = source("apps/server/src/middleware/tenant.rs");
+    let generation = source("apps/server/src/services/tenant_cache_generation.rs");
+
+    assert!(tenant.contains("tenant-cache:{}:data"));
+    assert!(tenant.contains("tenant-cache:{}:negative"));
+    assert!(generation.contains(
+        "TENANT_CACHE_DATA_BACKEND_PREFIX: &str = \"tenant-cache:v2:data\""
+    ));
+    assert!(generation.contains(
+        "TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = \"tenant-cache:v2:negative\""
+    ));
+    assert!(generation.contains("observe_tenant_backend_generation(generation.generation)?"));
+}
+
+#[test]
+fn outbox_keeps_transactional_transport_and_rotates_relay_target() {
+    let factory = source("apps/server/src/services/event_transport_factory.rs");
+    assert!(factory.contains("transport: outbox_transport"));
+    assert!(factory.contains(
+        "TenantCacheGenerationTransport::new(relay_target, cache.clone())"
+    ));
+    assert!(factory.contains("start_tenant_cache_generation_listener(ctx, cache.clone()).await"));
+}
+
+#[test]
+fn tenant_generation_closes_subscribe_gap_and_rotates_before_delivery() {
+    let generation = source("apps/server/src/services/tenant_cache_generation.rs");
+    assert!(generation.contains("consume_subscription_with_ready("));
+    assert!(generation.contains("redis_ready_recovery"));
+
+    let bump = generation
+        .find(".bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)")
+        .expect("tenant events must bump a durable generation");
+    let invalidation = generation
+        .find(".publish_durable(&record)")
+        .expect("tenant events must publish the versioned invalidation");
+    let downstream = generation
+        .find("self.inner.publish(envelope).await")
+        .expect("wrapped event must still reach its downstream transport");
+    assert!(bump < invalidation && invalidation < downstream);
+}
