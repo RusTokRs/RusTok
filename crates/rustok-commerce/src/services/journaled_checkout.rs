@@ -1,6 +1,13 @@
 use sha2::{Digest, Sha256};
+use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
+
+use rustok_api::{normalize_locale_tag, PortActor, PortContext, PortError, PLATFORM_FALLBACK_LOCALE};
+use rustok_cart::{
+    in_process_cart_checkout_snapshot_port, CartCheckoutSnapshotPort,
+    PrepareCartCheckoutSnapshotRequest,
+};
 
 use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 
@@ -27,6 +34,7 @@ pub type JournaledCheckoutResult<T> = Result<T, JournaledCheckoutError>;
 
 pub struct JournaledCheckoutService {
     checkout: CheckoutService,
+    cart_snapshot_port: Arc<dyn CartCheckoutSnapshotPort>,
     journal: CheckoutOperationJournal,
     lease_seconds: i64,
 }
@@ -35,6 +43,7 @@ impl JournaledCheckoutService {
     pub fn new(checkout: CheckoutService, db: sea_orm::DatabaseConnection) -> Self {
         Self {
             checkout,
+            cart_snapshot_port: in_process_cart_checkout_snapshot_port(db.clone()),
             journal: CheckoutOperationJournal::new(db),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }
@@ -46,8 +55,8 @@ impl JournaledCheckoutService {
     }
 
     /// Executes the existing checkout orchestration behind a durable operation
-    /// identity. Repeated calls with the same key and request hash either resume
-    /// the abandoned lease or recover the already-completed checkout response.
+    /// identity. Repeated calls with the same key, request hash and cart snapshot
+    /// either resume an abandoned lease or recover the completed checkout.
     pub async fn complete_checkout(
         &self,
         tenant_id: Uuid,
@@ -56,6 +65,22 @@ impl JournaledCheckoutService {
         input: CompleteCheckoutInput,
     ) -> JournaledCheckoutResult<CompleteCheckoutResponse> {
         let request_hash = checkout_request_hash(tenant_id, &input)?;
+        let prepared_snapshot = self
+            .cart_snapshot_port
+            .prepare_checkout_snapshot(
+                checkout_snapshot_port_context(tenant_id, actor_id, &input),
+                PrepareCartCheckoutSnapshotRequest {
+                    cart_id: input.cart_id,
+                    region_id: input.region_id,
+                    country_code: input.country_code.clone(),
+                    locale_code: input.locale.clone(),
+                    selected_shipping_option_id: input.shipping_option_id,
+                    shipping_selections: input.shipping_selections.clone(),
+                },
+            )
+            .await
+            .map_err(checkout_snapshot_port_error)?;
+        let snapshot_hash = prepared_snapshot.snapshot_hash;
         let operation = self
             .journal
             .begin(BeginCheckoutOperation {
@@ -63,7 +88,7 @@ impl JournaledCheckoutService {
                 cart_id: input.cart_id,
                 idempotency_key: idempotency_key.into(),
                 request_hash,
-                snapshot_hash: None,
+                snapshot_hash: Some(snapshot_hash.clone()),
             })
             .await?;
 
@@ -74,10 +99,7 @@ impl JournaledCheckoutService {
                 .await
                 .map_err(Into::into);
         }
-        if matches!(
-            operation.status.as_str(),
-            "compensated" | "failed"
-        ) {
+        if matches!(operation.status.as_str(), "compensated" | "failed") {
             return Err(CheckoutOperationError::Conflict(format!(
                 "checkout operation {} is terminal with status `{}`",
                 operation.id, operation.status
@@ -128,7 +150,7 @@ impl JournaledCheckoutService {
                             lease_owner: lease_owner.clone(),
                             expected_stage: CheckoutOperationStage::Created,
                             next_stage: CheckoutOperationStage::CartCompleted,
-                            snapshot_hash: None,
+                            snapshot_hash: Some(snapshot_hash),
                             order_id: Some(response.order.id),
                             payment_collection_id: Some(response.payment_collection.id),
                             lease_seconds: self.lease_seconds,
@@ -259,6 +281,36 @@ fn checkout_error_code(error: &CheckoutError) -> String {
         CheckoutError::StageFailure { stage, .. } => stage,
     }
     .to_string()
+}
+
+fn checkout_snapshot_port_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    input: &CompleteCheckoutInput,
+) -> PortContext {
+    let locale = input
+        .locale
+        .as_deref()
+        .and_then(normalize_locale_tag)
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(actor_id.to_string()),
+        locale,
+        format!("checkout:{}:cart:snapshot", input.cart_id),
+    )
+    .with_deadline(Duration::from_secs(2))
+}
+
+fn checkout_snapshot_port_error(error: PortError) -> JournaledCheckoutError {
+    CheckoutError::BoundaryFailure {
+        stage: "prepare_cart_checkout_snapshot",
+        kind: error.kind,
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+    }
+    .into()
 }
 
 fn checkout_request_hash(

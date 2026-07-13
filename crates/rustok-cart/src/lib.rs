@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod checkout_snapshot;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -9,6 +10,7 @@ pub mod migrations;
 pub mod ports;
 pub mod services;
 
+pub use checkout_snapshot::*;
 pub use dto::*;
 pub use entities::*;
 pub use error::{CartError, CartResult};
