@@ -1,7 +1,8 @@
 use crate::{
-    apply_style_rule_command, validate_project, AssetDescriptor, ComponentNode, ComponentObject,
-    FlyError, FlyResult, GrapesJsV1Codec, ProjectDocument, RegistrySet, SequentialIdGenerator,
-    StyleRuleCommand, ValidationDiagnostic, ValidationLimits, ValidationReport,
+    apply_page_command, apply_style_rule_command, validate_project, AssetDescriptor, ComponentNode,
+    ComponentObject, FlyError, FlyResult, GrapesJsV1Codec, PageCommand, ProjectDocument,
+    RegistrySet, SequentialIdGenerator, StyleRuleCommand, ValidationDiagnostic, ValidationLimits,
+    ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -120,6 +121,9 @@ pub enum EditorCommand {
     },
     StyleRule {
         command: StyleRuleCommand,
+    },
+    Page {
+        command: PageCommand,
     },
 }
 
@@ -351,13 +355,11 @@ impl FlyEditor {
             return Err(FlyError::Validation(errors));
         }
 
-        if let EditorCommand::Remove { component_id } = &command {
-            if self.selection.as_deref() == Some(component_id) {
-                self.selection = None;
-            }
-        }
-
         self.document = after.clone();
+        self.selection = self
+            .selection
+            .take()
+            .filter(|id| self.document.contains_component(id));
         self.history.push(HistoryEntry {
             command,
             before,
@@ -455,6 +457,7 @@ impl FlyEditor {
             }
             EditorCommand::Asset { command } => apply_asset_command(document, command),
             EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),
+            EditorCommand::Page { command } => apply_page_command(document, command),
         }
     }
 }
@@ -499,7 +502,10 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsV1Codec, RegistrySet, StyleRuleCatalog, StyleRuleScope};
+    use crate::{
+        blank_page, GrapesJsV1Codec, PageLocator, RegistrySet, StyleRuleCatalog,
+        StyleRuleScope,
+    };
     use serde_json::json;
 
     fn editor() -> FlyEditor {
@@ -507,6 +513,7 @@ mod tests {
             "assets": [],
             "styles": [],
             "pages": [{
+                "id": "home",
                 "component": {
                     "id": "root",
                     "type": "wrapper",
@@ -630,5 +637,34 @@ mod tests {
         assert!(StyleRuleCatalog::from_document(editor.document())
             .component_rule("hero", &scope)
             .is_some());
+    }
+
+    #[test]
+    fn page_commands_participate_in_history_and_clear_stale_selection() {
+        let mut editor = editor();
+        editor
+            .apply(EditorCommand::Select {
+                component_id: Some("hero".to_string()),
+            })
+            .expect("select");
+        editor
+            .apply(EditorCommand::Page {
+                command: PageCommand::Add {
+                    index: 1,
+                    page: blank_page("about", "About"),
+                },
+            })
+            .expect("add page");
+        assert_eq!(editor.document().project.pages.len(), 2);
+        editor
+            .apply(EditorCommand::Page {
+                command: PageCommand::Remove {
+                    locator: PageLocator::by_id("home"),
+                },
+            })
+            .expect("remove selected page");
+        assert_eq!(editor.selection(), None);
+        editor.undo().expect("undo remove page");
+        assert_eq!(editor.document().project.pages.len(), 2);
     }
 }
