@@ -255,54 +255,20 @@ impl CacheService {
         )
     }
 
-    /// Health check: verify Redis connectivity (if configured).
+    /// Health check backed by the canonical Redis lifecycle status.
     pub async fn health(&self) -> CacheHealthReport {
-        let mut report = CacheHealthReport {
-            redis_configured: self.has_redis(),
-            redis_healthy: false,
-            redis_error: None,
+        let status = self.redis_status().await;
+        CacheHealthReport {
+            redis_configured: status.url_present,
+            redis_healthy: status.connectivity_healthy,
+            redis_error: status.last_error,
             metrics_enabled: self.default_backend_options.metrics_enabled,
             #[cfg(feature = "redis-cache")]
             redis_circuit_breaker_failure_threshold: self
                 .default_backend_options
                 .redis_circuit_breaker
                 .failure_threshold,
-        };
-
-        #[cfg(feature = "redis-cache")]
-        if let Some(client) = &self.redis_client {
-            match redis_with_timeout(
-                "Redis cache health connection",
-                client.get_multiplexed_async_connection(),
-            )
-            .await
-            {
-                Ok(mut conn) => {
-                    match redis_with_timeout(
-                        "Redis cache health PING",
-                        redis::cmd("PING").query_async::<String>(&mut conn),
-                    )
-                    .await
-                    {
-                        Ok(ref pong) if pong == "PONG" => {
-                            report.redis_healthy = true;
-                        }
-                        Ok(pong) => {
-                            report.redis_error =
-                                Some(format!("unexpected PING response: {pong}"));
-                        }
-                        Err(error) => {
-                            report.redis_error = Some(error);
-                        }
-                    }
-                }
-                Err(error) => {
-                    report.redis_error = Some(error);
-                }
-            }
         }
-
-        report
     }
 }
 
