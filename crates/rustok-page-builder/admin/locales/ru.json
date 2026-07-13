@@ -40,6 +40,7 @@
       "pages": "Страницы",
       "palette": "Блоки",
       "layers": "Слои",
+      "traits": "Параметры",
       "properties": "Свойства",
       "styles": "Стили",
       "responsiveStyles": "Адаптивные стили",
@@ -74,6 +75,9 @@
       "openGraphImage": "Изображение Open Graph",
       "noIndex": "Запретить индексацию",
       "projectHash": "Хеш проекта"
+    },
+    "traits": {
+      "empty": "Выберите компонент, чтобы изменить его параметры."
     },
     "bridge": {
       "ready": "Холст подключён",
