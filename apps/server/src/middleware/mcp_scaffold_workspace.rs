@@ -16,24 +16,22 @@ use rustok_mcp::{
     McpActorType, McpRemoteToolCallRequest, UpdateMcpPolicyRequest,
     TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::models::{mcp_clients, mcp_policies, users};
+use crate::services::mcp_management_authority::{
+    McpManagementAuthorityError, McpManagementAuthorityService,
+};
 use crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
-use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const MAX_MCP_MANAGEMENT_BODY_BYTES: usize = 64 * 1024;
 
-/// Enforce the host-owned MCP filesystem and authority boundaries before a
-/// transport reaches a direct service handler.
+/// Enforce the host-owned MCP filesystem and management authority boundaries
+/// before a transport reaches a direct service handler.
 ///
-/// GraphQL and native mutations already use the guarded management port. The
-/// legacy REST controller still calls `McpManagementService` directly, so its
-/// create/update/rotate routes are validated here against the request-scoped
-/// OAuth/RBAC snapshot and, when present, the delegated user's authoritative
-/// tenant permissions.
+/// GraphQL/native mutations and legacy REST mutations share the same canonical
+/// authority validator. This middleware owns only HTTP parsing, request-scoped
+/// principal extraction, response mapping and workspace normalization.
 pub async fn authorize_workspace(
     State(ctx): State<ServerRuntimeContext>,
     request: Request<Body>,
@@ -100,27 +98,17 @@ async fn validate_create_client(
     let actor_type = McpActorType::from_str(input.actor_type.trim())
         .map_err(|message| invalid_request(&message))?;
     let authority = management_authority(parts)?;
-    let delegated = delegated_permissions(
-        ctx,
+
+    McpManagementAuthorityService::validate_create_client(
+        ctx.db(),
         authority.tenant_id,
+        authority.permissions,
         actor_type,
         input.delegated_user_id,
-    )
-    .await?;
-
-    validate_grants(
         &input.granted_permissions,
-        authority.permissions,
-        "current MCP manager",
-    )?;
-    if let Some(delegated) = delegated.as_deref() {
-        validate_grants(
-            &input.granted_permissions,
-            delegated,
-            "delegated MCP user",
-        )?;
-    }
-    Ok(())
+    )
+    .await
+    .map_err(authority_error_response)
 }
 
 async fn validate_update_policy(
@@ -132,28 +120,16 @@ async fn validate_update_policy(
     let input = serde_json::from_slice::<UpdateMcpPolicyRequest>(bytes)
         .map_err(|_| invalid_request("MCP policy body must be valid JSON"))?;
     let authority = management_authority(parts)?;
-    let client = require_client(ctx, authority.tenant_id, client_id).await?;
-    let delegated = delegated_permissions(
-        ctx,
-        authority.tenant_id,
-        client.actor_type(),
-        client.delegated_user_id,
-    )
-    .await?;
 
-    validate_grants(
-        &input.granted_permissions,
+    McpManagementAuthorityService::validate_policy_update(
+        ctx.db(),
+        authority.tenant_id,
         authority.permissions,
-        "current MCP manager",
-    )?;
-    if let Some(delegated) = delegated.as_deref() {
-        validate_grants(
-            &input.granted_permissions,
-            delegated,
-            "delegated MCP user",
-        )?;
-    }
-    Ok(())
+        client_id,
+        &input.granted_permissions,
+    )
+    .await
+    .map_err(authority_error_response)
 }
 
 async fn validate_rotate_token(
@@ -162,29 +138,14 @@ async fn validate_rotate_token(
     client_id: Uuid,
 ) -> Result<(), Response> {
     let authority = management_authority(parts)?;
-    let client = require_client(ctx, authority.tenant_id, client_id).await?;
-    let delegated = delegated_permissions(
-        ctx,
+    McpManagementAuthorityService::validate_token_rotation(
+        ctx.db(),
         authority.tenant_id,
-        client.actor_type(),
-        client.delegated_user_id,
+        authority.permissions,
+        client_id,
     )
-    .await?;
-    let policy = mcp_policies::Entity::find_by_client(ctx.db(), client.id)
-        .await
-        .map_err(|_| internal_error("Failed to load MCP policy"))?;
-
-    if let Some(policy) = policy {
-        if policy.tenant_id != authority.tenant_id {
-            return Err(forbidden("MCP policy belongs to another tenant"));
-        }
-        let grants = policy.granted_permissions_list();
-        validate_grants(&grants, authority.permissions, "current MCP manager")?;
-        if let Some(delegated) = delegated.as_deref() {
-            validate_grants(&grants, delegated, "delegated MCP user")?;
-        }
-    }
-    Ok(())
+    .await
+    .map_err(authority_error_response)
 }
 
 struct ManagementAuthority<'a> {
@@ -217,65 +178,13 @@ fn management_authority(parts: &Parts) -> Result<ManagementAuthority<'_>, Respon
     })
 }
 
-async fn require_client(
-    ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
-    client_id: Uuid,
-) -> Result<mcp_clients::Model, Response> {
-    mcp_clients::Entity::find_by_id(client_id)
-        .filter(mcp_clients::Column::TenantId.eq(tenant_id))
-        .one(ctx.db())
-        .await
-        .map_err(|_| internal_error("Failed to load MCP client"))?
-        .ok_or_else(|| not_found("MCP client was not found"))
-}
-
-async fn delegated_permissions(
-    ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
-    actor_type: McpActorType,
-    delegated_user_id: Option<Uuid>,
-) -> Result<Option<Vec<Permission>>, Response> {
-    if actor_type == McpActorType::HumanUser && delegated_user_id.is_none() {
-        return Err(invalid_request(
-            "human_user MCP clients require delegated_user_id",
-        ));
+fn authority_error_response(error: McpManagementAuthorityError) -> Response {
+    match error {
+        McpManagementAuthorityError::Invalid(message) => invalid_request(&message),
+        McpManagementAuthorityError::Forbidden(message) => forbidden(&message),
+        McpManagementAuthorityError::NotFound(message) => not_found(&message),
+        McpManagementAuthorityError::Internal(message) => internal_error(&message),
     }
-    let Some(user_id) = delegated_user_id else {
-        return Ok(None);
-    };
-
-    let user = users::Entity::find_by_id(user_id)
-        .filter(users::Column::TenantId.eq(tenant_id))
-        .one(ctx.db())
-        .await
-        .map_err(|_| internal_error("Failed to load delegated MCP user"))?
-        .ok_or_else(|| invalid_request("Delegated MCP user does not exist in this tenant"))?;
-    if !user.is_active() {
-        return Err(invalid_request("Delegated MCP user must be active"));
-    }
-
-    RbacService::get_user_permissions_authoritative(ctx.db(), &tenant_id, &user_id)
-        .await
-        .map(Some)
-        .map_err(|_| internal_error("Failed to resolve delegated MCP user permissions"))
-}
-
-fn validate_grants(
-    requested: &[String],
-    authority: &[Permission],
-    principal: &str,
-) -> Result<(), Response> {
-    for raw in requested {
-        let permission = Permission::from_str(raw.trim())
-            .map_err(|_| invalid_request(&format!("Invalid MCP permission `{raw}`")))?;
-        if !has_effective_permission(authority, &permission) {
-            return Err(forbidden(&format!(
-                "MCP permission `{permission}` exceeds {principal} authority"
-            )));
-        }
-    }
-    Ok(())
 }
 
 fn normalize_direct_apply(bytes: &[u8]) -> Result<Vec<u8>, Response> {
