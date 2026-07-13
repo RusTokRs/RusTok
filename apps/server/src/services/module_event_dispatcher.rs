@@ -11,6 +11,7 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 use crate::common::settings::RustokSettings;
+use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub fn spawn_module_event_dispatcher(
@@ -18,7 +19,11 @@ pub fn spawn_module_event_dispatcher(
     registry: &ModuleRegistry,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) {
-    let bus = crate::services::event_bus::event_bus_from_context(ctx);
+    let bus = ctx
+        .shared_get::<Arc<EventRuntime>>()
+        .expect("EventRuntime must be initialized before module event listeners")
+        .listener_bus
+        .clone();
     let db = ctx.db_clone();
     let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
     let handler_count = dispatcher.handler_count();
