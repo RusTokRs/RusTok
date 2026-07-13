@@ -10,6 +10,10 @@ permissions:
   issues: write
   security-events: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -56,4 +60,3 @@ jobs:
         run: cargo install cargo-outdated --locked
       - name: Check root dependencies
         run: cargo outdated -R
-
