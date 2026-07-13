@@ -1,11 +1,11 @@
 use crate::editor::CanvasComponentGeometry;
 use crate::AdminCanvasController;
-use fly::{ComponentNode, ComponentObject};
+use fly::{ComponentNode, ComponentObject, EditorCommand};
 use fly_leptos::{
     hit_test_drop_targets, BrowserDropTarget, BrowserPoint, CoordinateTransform, DropAxis,
     DropZonePolicy,
 };
-use fly_ui::{DragSource, DropPosition, HitTestCandidate};
+use fly_ui::{DragSource, DropPosition, HitTestCandidate, UiIntent};
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,6 +53,19 @@ impl AdminCanvasController {
             .collect()
     }
 
+    pub fn palette_block(&self, block_id: &str) -> Option<PaletteBlockView> {
+        self.editor()
+            .registries()
+            .blocks
+            .get(block_id)
+            .map(|block| PaletteBlockView {
+                id: block.id.clone(),
+                label: block.label.clone(),
+                category: block.category.clone(),
+                component: block.component.clone(),
+            })
+    }
+
     pub fn layer_items(&self) -> Vec<LayerItemView> {
         let mut items = Vec::new();
         for page in &self.editor().document().project.pages {
@@ -78,6 +91,102 @@ impl AdminCanvasController {
             child_count: component.children().len(),
             is_root: location.depth == 0,
         })
+    }
+
+    pub fn begin_palette_drag_intent(&self, block_id: &str) -> Result<UiIntent, String> {
+        let block = self
+            .palette_block(block_id)
+            .ok_or_else(|| format!("palette block `{block_id}` is not registered"))?;
+        Ok(UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: block.id,
+            component: block.component,
+        }))
+    }
+
+    pub fn insert_palette_block_intent(&self, block_id: &str) -> Result<UiIntent, String> {
+        let block = self
+            .palette_block(block_id)
+            .ok_or_else(|| format!("palette block `{block_id}` is not registered"))?;
+        let child_type = block
+            .component
+            .as_object()
+            .map(|component| component.component_type().to_string())
+            .ok_or_else(|| format!("palette block `{block_id}` has an opaque component"))?;
+        let document = self.editor().document();
+        let registries = self.editor().registries();
+
+        let (parent_id, index) = match self.ui().state.selection.component_id.as_deref() {
+            Some(selected_id) => {
+                let selected = document
+                    .component(selected_id)
+                    .ok_or_else(|| format!("selected component `{selected_id}` does not exist"))?;
+                if registries.accepts_child_type(
+                    Some(selected.component_type()),
+                    child_type.as_str(),
+                ) {
+                    (
+                        Some(selected_id.to_string()),
+                        selected.children().len(),
+                    )
+                } else {
+                    let location = document
+                        .component_location(selected_id)
+                        .ok_or_else(|| format!("selected component `{selected_id}` has no location"))?;
+                    if location.depth == 0 {
+                        (None, document.root_child_count().unwrap_or_default())
+                    } else {
+                        (
+                            location.parent_component_id,
+                            location.index.saturating_add(1),
+                        )
+                    }
+                }
+            }
+            None => (None, document.root_child_count().unwrap_or_default()),
+        };
+
+        let decision = registries.evaluate_placement(
+            document,
+            None,
+            child_type.as_str(),
+            parent_id.as_deref(),
+            index,
+        );
+        if !decision.legal {
+            return Err(decision
+                .reason
+                .unwrap_or_else(|| "palette insertion was rejected".to_string()));
+        }
+
+        Ok(UiIntent::Execute(EditorCommand::Insert {
+            parent_id,
+            index,
+            component: block.component,
+        }))
+    }
+
+    pub fn begin_selected_move_intent(&self) -> Result<UiIntent, String> {
+        let selected = self
+            .selected_component_view()
+            .ok_or_else(|| "select a component before moving it".to_string())?;
+        if selected.is_root {
+            return Err("the page root cannot be moved".to_string());
+        }
+        Ok(UiIntent::BeginDrag(DragSource::ExistingComponent {
+            component_id: selected.id,
+        }))
+    }
+
+    pub fn remove_selected_intent(&self) -> Result<UiIntent, String> {
+        let selected = self
+            .selected_component_view()
+            .ok_or_else(|| "select a component before removing it".to_string())?;
+        if selected.is_root {
+            return Err("the page root cannot be removed".to_string());
+        }
+        Ok(UiIntent::Execute(EditorCommand::Remove {
+            component_id: selected.id,
+        }))
     }
 
     pub fn hit_candidates(
@@ -268,6 +377,22 @@ mod tests {
         let controller = controller();
         assert!(controller.palette_blocks().iter().any(|block| block.id == "section"));
         assert_eq!(controller.layer_items().len(), 3);
+    }
+
+    #[test]
+    fn immediate_insert_prefers_selected_container() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::Select(Some("section".to_string())))
+            .expect("select");
+        let intent = controller
+            .insert_palette_block_intent("text")
+            .expect("insert intent");
+        let UiIntent::Execute(EditorCommand::Insert { parent_id, index, .. }) = intent else {
+            panic!("expected insert command");
+        };
+        assert_eq!(parent_id.as_deref(), Some("section"));
+        assert_eq!(index, 1);
     }
 
     #[test]
