@@ -19,14 +19,14 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 const ARTIFACT_CONTENT_TYPE: &str = "application/octet-stream";
 const ARTIFACT_DISPOSITION: &str = "attachment";
 
-/// Enforce registry publish-request and artifact access before the legacy
-/// controller executes.
+/// Enforce registry publish-request, artifact and remote-runner access before
+/// the legacy controller executes.
 ///
 /// Status and artifact data are restricted to the request publisher, current
-/// slug owner, or request-effective `modules:manage`. Remote runners retain a
-/// separate token path for artifact download only. Downloads are streamed
-/// through this boundary so legacy storage metadata cannot turn an artifact
-/// into active same-origin content.
+/// slug owner, or request-effective `modules:manage`. Remote runner routes and
+/// artifact downloads use the host shared token with constant-time comparison.
+/// Downloads are streamed through this boundary so legacy storage metadata
+/// cannot turn an artifact into active same-origin content.
 pub async fn enforce(
     State(ctx): State<ServerRuntimeContext>,
     mut request: Request<Body>,
@@ -34,6 +34,15 @@ pub async fn enforce(
 ) -> Response {
     let method = request.method().clone();
     let path = request.uri().path();
+
+    if method == Method::POST && is_remote_runner_path(path) {
+        return if runner_token_is_valid(&ctx, &request) {
+            next.run(request).await
+        } else {
+            unauthorized("Missing or invalid registry runner token")
+        };
+    }
+
     let Some((request_id, operation)) = registry_route(path) else {
         return next.run(request).await;
     };
@@ -46,8 +55,10 @@ pub async fn enforce(
         return next.run(request).await;
     }
 
-    let valid_method = matches!(operation, RegistryOperation::PublishStatus | RegistryOperation::ArtifactDownload)
-        && method == Method::GET;
+    let valid_method = matches!(
+        operation,
+        RegistryOperation::PublishStatus | RegistryOperation::ArtifactDownload
+    ) && method == Method::GET;
     if !valid_method {
         return next.run(request).await;
     }
@@ -198,6 +209,19 @@ fn registry_route(path: &str) -> Option<(&str, RegistryOperation)> {
     None
 }
 
+fn is_remote_runner_path(path: &str) -> bool {
+    let segments = path.trim_matches('/').split('/').collect::<Vec<_>>();
+    if segments.as_slice() == ["v2", "catalog", "runner", "claim"] {
+        return true;
+    }
+    segments.len() == 5
+        && segments[0] == "v2"
+        && segments[1] == "catalog"
+        && segments[2] == "runner"
+        && !segments[3].is_empty()
+        && matches!(segments[4], "heartbeat" | "complete" | "fail")
+}
+
 fn principal_matches(value: &serde_json::Value, principal: &RegistryPrincipalRef) -> bool {
     let persisted = RegistryPrincipalRef::from_json_value(value);
     if persisted.is_user() && principal.is_user() {
@@ -257,7 +281,7 @@ fn internal_error(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{registry_route, RegistryOperation};
+    use super::{is_remote_runner_path, registry_route, RegistryOperation};
 
     #[test]
     fn matches_only_sensitive_registry_publish_routes() {
@@ -275,5 +299,21 @@ mod tests {
         );
         assert_eq!(registry_route("/v1/catalog/rpr_1/artifact"), None);
         assert_eq!(registry_route("/v2/catalog/yank"), None);
+    }
+
+    #[test]
+    fn matches_only_remote_runner_mutation_routes() {
+        assert!(is_remote_runner_path("/v2/catalog/runner/claim"));
+        assert!(is_remote_runner_path(
+            "/v2/catalog/runner/claim_1/heartbeat"
+        ));
+        assert!(is_remote_runner_path(
+            "/v2/catalog/runner/claim_1/complete"
+        ));
+        assert!(is_remote_runner_path(
+            "/v2/catalog/runner/claim_1/fail"
+        ));
+        assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1"));
+        assert!(!is_remote_runner_path("/v2/catalog/publish/rpr_1"));
     }
 }
