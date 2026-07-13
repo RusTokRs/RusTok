@@ -3,6 +3,7 @@ mod checkout_inventory_order_adoption;
 mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
 mod checkout_operation;
+mod checkout_order_confirmation;
 mod checkout_order_creation;
 pub mod context;
 mod fulfillment_create_label_recovery;
@@ -38,6 +39,10 @@ pub use checkout_operation::{
     BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationResult, CheckoutOperationStage,
     CheckoutOperationStatus, DEFAULT_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_LEASE_SECONDS,
+};
+pub use checkout_order_confirmation::{
+    CheckoutOrderConfirmationError, CheckoutOrderConfirmationExecutor,
+    CheckoutOrderConfirmationResult,
 };
 pub use checkout_order_creation::{
     CheckoutOrderCreationError, CheckoutOrderCreationExecutor, CheckoutOrderCreationResult,
