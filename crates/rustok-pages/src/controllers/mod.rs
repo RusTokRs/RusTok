@@ -58,6 +58,14 @@ impl PagesHttpRuntime {
     }
 }
 
+fn page_security(auth: &AuthContext) -> rustok_core::SecurityContext {
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
+}
+
 #[utoipa::path(
     get,
     path = "/api/pages",
@@ -88,10 +96,7 @@ pub async fn get_page(
     let page = service
         .get_by_slug_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            page_security(&auth),
             &locale,
             &slug,
             Some(tenant.default_locale.as_str()),
@@ -130,14 +135,7 @@ pub async fn create_page(
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
     let page = service
-        .create(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+        .create(tenant.id, page_security(&auth), input)
         .await
         .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(page)))
@@ -170,15 +168,7 @@ pub async fn update_page(
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
     let page = service
-        .update(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            id,
-            input,
-        )
+        .update(tenant.id, page_security(&auth), id, input)
         .await
         .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(Json(page))
@@ -205,14 +195,7 @@ pub async fn delete_page(
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .delete(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            id,
-        )
+        .delete(tenant.id, page_security(&auth), id)
         .await
         .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -242,15 +225,7 @@ pub async fn create_block(
 
     let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     let block = service
-        .create(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            id,
-            input,
-        )
+        .create(tenant.id, page_security(&auth), id, input)
         .await
         .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(block)))
@@ -284,15 +259,7 @@ pub async fn update_block(
     let (_, block_id) = path;
     let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     let block = service
-        .update(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            block_id,
-            input,
-        )
+        .update(tenant.id, page_security(&auth), block_id, input)
         .await
         .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(Json(block))
@@ -323,14 +290,7 @@ pub async fn delete_block(
     let (_, block_id) = path;
     let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .delete(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            block_id,
-        )
+        .delete(tenant.id, page_security(&auth), block_id)
         .await
         .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -360,15 +320,7 @@ pub async fn reorder_blocks(
 
     let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .reorder(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            id,
-            input.block_ids,
-        )
+        .reorder(tenant.id, page_security(&auth), id, input.block_ids)
         .await
         .map_err(|err| HttpError::bad_request("pages_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -400,7 +352,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 
 fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, &[permission]) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "pages_permission_denied",
             "Permission denied: pages:* required",
         ));
