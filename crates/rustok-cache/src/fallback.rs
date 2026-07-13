@@ -47,6 +47,11 @@ impl DegradedWriteTracker {
                 key.len()
             )));
         }
+        if fallback.get(key).await?.is_none() {
+            return Err(rustok_core::Error::Cache(
+                "degraded cache write was not retained by the local fallback".to_string(),
+            ));
+        }
 
         let mut state = self.state.lock().await;
         if state.keys.contains(key) {
@@ -474,6 +479,15 @@ mod tests {
         fallback: Arc<InMemoryCacheBackend>,
     ) -> DegradationAwareFallbackBackend {
         DegradationAwareFallbackBackend::new(primary, fallback)
+    }
+
+    #[tokio::test]
+    async fn degraded_tracker_rejects_missing_local_payload() {
+        let tracker = DegradedWriteTracker::new(1);
+        let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 4);
+
+        assert!(tracker.insert("missing", &fallback).await.is_err());
+        assert!(!tracker.contains("missing").await);
     }
 
     #[tokio::test]
