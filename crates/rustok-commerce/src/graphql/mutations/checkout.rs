@@ -2,13 +2,13 @@ use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
 use rustok_cart::{
-    CartStorefrontContextUpdateRequest, CartStorefrontPort, CartStorefrontReadRequest,
-    in_process_cart_checkout_port, in_process_cart_storefront_port,
+    CartStorefrontPort, CartStorefrontReadRequest, in_process_cart_checkout_port,
+    in_process_cart_storefront_port,
 };
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 
-use crate::{CheckoutService, ShippingProfileService, StoreContextService};
+use crate::{CheckoutService, ShippingProfileService};
 use rustok_fulfillment::FulfillmentService;
 
 use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
@@ -113,6 +113,7 @@ impl CommerceCheckoutMutation {
         &self,
         ctx: &Context<'_>,
         tenant_id: Option<Uuid>,
+        idempotency_key: String,
         input: CompleteStorefrontCheckoutInput,
     ) -> Result<GqlCompleteCheckout> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -124,7 +125,7 @@ impl CommerceCheckoutMutation {
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let cart_storefront_port = in_process_cart_storefront_port(db.clone());
-        let mut cart = cart_storefront_port
+        let cart = cart_storefront_port
             .read_storefront_cart(
                 storefront_cart_port_context(
                     tenant_id,
@@ -144,93 +145,6 @@ impl CommerceCheckoutMutation {
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
-        if input.shipping_option_id.is_some()
-            || input.shipping_selections.is_some()
-            || input.region_id.is_some()
-            || input.country_code.is_some()
-            || input.locale.is_some()
-        {
-            let requested_region_id = input.region_id.or(cart.region_id);
-            let requested_country_code = input
-                .country_code
-                .clone()
-                .or_else(|| cart.country_code.clone());
-            let requested_locale = input
-                .locale
-                .clone()
-                .or_else(|| cart.locale_code.clone())
-                .or_else(|| Some(request_context.locale.clone()));
-            let requested_shipping_option_id = input
-                .shipping_option_id
-                .or(cart.selected_shipping_option_id);
-            let requested_shipping_selections = input
-                .shipping_selections
-                .as_ref()
-                .map(|items| {
-                    items
-                        .iter()
-                        .map(|item| crate::dto::CartShippingSelectionInput {
-                            shipping_profile_slug: item.shipping_profile_slug.clone(),
-                            seller_id: item.seller_id.clone(),
-                            seller_scope: None,
-                            selected_shipping_option_id: item.selected_shipping_option_id,
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_else(|| current_shipping_selections(&cart));
-
-            let context = StoreContextService::new(
-                db.clone(),
-                std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
-            )
-            .resolve_context(
-                tenant_id,
-                crate::dto::ResolveStoreContextInput {
-                    region_id: requested_region_id,
-                    country_code: requested_country_code.clone(),
-                    locale: requested_locale,
-                    currency_code: Some(cart.currency_code.clone()),
-                },
-            )
-            .await?;
-            validate_selected_shipping_option(
-                db,
-                tenant_id,
-                &cart,
-                requested_shipping_option_id,
-                Some(requested_shipping_selections.as_slice()),
-                &cart.currency_code,
-                storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
-                Some(request_context.locale.as_str()),
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-
-            cart = cart_storefront_port
-                .update_storefront_context(
-                    storefront_cart_port_context(
-                        tenant_id,
-                        request_context,
-                        ctx.data_opt::<AuthContext>(),
-                        cart.id,
-                        "update-context",
-                        true,
-                    ),
-                    CartStorefrontContextUpdateRequest {
-                        cart_id: cart.id,
-                        input: crate::dto::UpdateCartContextInput {
-                            email: cart.email.clone(),
-                            region_id: context.region.as_ref().map(|region| region.id),
-                            country_code: requested_country_code,
-                            locale_code: Some(context.locale.clone()),
-                            selected_shipping_option_id: requested_shipping_option_id,
-                            shipping_selections: Some(requested_shipping_selections),
-                        },
-                    },
-                )
-                .await
-                .map_err(cart_port_error)?;
-        }
         let _ = reprice_storefront_cart_line_items(
             db,
             tenant_id,
@@ -245,7 +159,7 @@ impl CommerceCheckoutMutation {
             .map(|auth| auth.user_id)
             .unwrap_or_else(Uuid::nil);
 
-        let response = CheckoutService::new(
+        let checkout = CheckoutService::new(
             db.clone(),
             event_bus.clone(),
             std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
@@ -258,33 +172,35 @@ impl CommerceCheckoutMutation {
                 db.clone(),
                 event_bus.clone(),
             )),
-        )
-        .complete_checkout(
-            tenant_id,
-            actor_id,
-            crate::dto::CompleteCheckoutInput {
-                cart_id: input.cart_id,
-                shipping_option_id: input.shipping_option_id,
-                shipping_selections: input.shipping_selections.map(|items| {
-                    items
-                        .into_iter()
-                        .map(|item| crate::dto::CartShippingSelectionInput {
-                            shipping_profile_slug: item.shipping_profile_slug,
-                            seller_id: item.seller_id,
-                            seller_scope: None,
-                            selected_shipping_option_id: item.selected_shipping_option_id,
-                        })
-                        .collect()
-                }),
-                region_id: input.region_id,
-                country_code: input.country_code,
-                locale: input.locale,
-                create_fulfillment: input.create_fulfillment.unwrap_or(true),
-                metadata: parse_optional_metadata(input.metadata.as_deref())?,
-            },
-        )
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        );
+        let response = crate::JournaledCheckoutService::new(checkout, db.clone())
+            .complete_checkout(
+                tenant_id,
+                actor_id,
+                idempotency_key,
+                crate::dto::CompleteCheckoutInput {
+                    cart_id: input.cart_id,
+                    shipping_option_id: input.shipping_option_id,
+                    shipping_selections: input.shipping_selections.map(|items| {
+                        items
+                            .into_iter()
+                            .map(|item| crate::dto::CartShippingSelectionInput {
+                                shipping_profile_slug: item.shipping_profile_slug,
+                                seller_id: item.seller_id,
+                                seller_scope: None,
+                                selected_shipping_option_id: item.selected_shipping_option_id,
+                            })
+                            .collect()
+                    }),
+                    region_id: input.region_id,
+                    country_code: input.country_code,
+                    locale: input.locale,
+                    create_fulfillment: input.create_fulfillment.unwrap_or(true),
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
         Ok(response.into())
     }
