@@ -25,7 +25,7 @@ pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> St
         .replace("__FLY_INSTANCE__", &instance);
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{}</style></head><body><main id=\"fly-canvas-root\">{}</main><script>{}</script></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{}</style></head><body><main id=\"fly-canvas-root\">{}</main><script>{}</script></body></html>",
         canvas_styles(), canvas, script
     )
 }
@@ -61,7 +61,8 @@ fn render_component(
         };
         if !safe_attribute_name(name)
             || matches!(name.as_str(), "style" | "srcdoc")
-            || (matches!(name.as_str(), "href" | "src" | "action") && !safe_url(&value))
+            || (matches!(name.as_str(), "href" | "src" | "poster" | "action")
+                && !safe_url(&value))
         {
             continue;
         }
@@ -117,13 +118,25 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         .tag_name
         .as_deref()
         .unwrap_or_else(|| match component.component_type() {
-            "wrapper" => "div",
+            "wrapper" | "container" | "row" | "column" | "grid" | "spacer" => "div",
             "section" => "section",
             "heading" => "h2",
             "text" => "p",
+            "list" => "ul",
+            "list_item" => "li",
             "link" => "a",
             "image" => "img",
+            "video" => "video",
+            "media" => "figure",
             "button" => "button",
+            "divider" => "hr",
+            "form" => "form",
+            "label" => "label",
+            "input" | "checkbox" => "input",
+            "textarea" => "textarea",
+            "select" => "select",
+            "option" => "option",
+            "submit" => "button",
             _ => "div",
         })
         .to_ascii_lowercase();
@@ -136,8 +149,13 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         "footer" => "footer",
         "nav" => "nav",
         "aside" => "aside",
+        "figure" => "figure",
+        "figcaption" => "figcaption",
         "p" => "p",
         "span" => "span",
+        "small" => "small",
+        "strong" => "strong",
+        "em" => "em",
         "h1" => "h1",
         "h2" => "h2",
         "h3" => "h3",
@@ -147,10 +165,17 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         "a" => "a",
         "button" => "button",
         "img" => "img",
+        "video" => "video",
         "ul" => "ul",
         "ol" => "ol",
         "li" => "li",
         "blockquote" => "blockquote",
+        "form" => "form",
+        "label" => "label",
+        "input" => "input",
+        "textarea" => "textarea",
+        "select" => "select",
+        "option" => "option",
         "hr" => "hr",
         "br" => "br",
         _ => "div",
@@ -182,6 +207,7 @@ fn safe_url(value: &str) -> bool {
         || normalized.starts_with("http://")
         || normalized.starts_with("https://")
         || normalized.starts_with("data:image/")
+        || normalized.starts_with("data:video/")
 }
 
 fn safe_style(name: &str, value: &Value) -> Option<String> {
@@ -233,7 +259,7 @@ fn escape_attribute(value: &str) -> String {
 }
 
 fn canvas_styles() -> &'static str {
-    r#"html{box-sizing:border-box;background:#fff;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif}*,*:before,*:after{box-sizing:inherit}body{margin:0;min-height:100vh}#fly-canvas-root{min-height:100vh;padding:24px}[data-fly-component-id]{position:relative;min-height:20px;outline:1px solid transparent;outline-offset:2px}[data-fly-component-id]:hover{outline-color:rgba(59,130,246,.45)}[data-fly-selected]{outline:2px solid #2563eb!important}.fly-empty{display:grid;min-height:320px;place-items:center;border:1px dashed #94a3b8;border-radius:12px;color:#64748b}"#
+    r#"html{box-sizing:border-box;background:#fff;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif}*,*:before,*:after{box-sizing:inherit}body{margin:0;min-height:100vh}#fly-canvas-root{min-height:100vh}[data-fly-component-id]{position:relative;min-height:20px;outline:1px solid transparent;outline-offset:2px}[data-fly-component-id]:hover{outline-color:rgba(59,130,246,.45)}[data-fly-selected]{outline:2px solid #2563eb!important}img,video{max-width:100%}input,textarea,select,button{font:inherit}.fly-empty{display:grid;min-height:320px;place-items:center;border:1px dashed #94a3b8;border-radius:12px;color:#64748b}"#
 }
 
 #[cfg(test)]
@@ -285,5 +311,29 @@ mod tests {
         let html = render_canvas_srcdoc(&document, "canvas-home");
         assert!(!html.contains("onclick="));
         assert!(!html.contains("href=\"javascript:"));
+    }
+
+    #[test]
+    fn renderer_supports_forms_and_media_primitives() {
+        let document = GrapesJsV1Codec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "form", "type": "form", "components": [
+                            { "id": "input", "type": "input", "attributes": { "type": "email" } },
+                            { "id": "submit", "type": "submit", "content": "Send" }
+                        ] },
+                        { "id": "video", "type": "video", "attributes": { "controls": true } }
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+        let html = render_canvas_srcdoc(&document, "canvas-home");
+        assert!(html.contains("<form"));
+        assert!(html.contains("<input"));
+        assert!(html.contains("<video"));
     }
 }
