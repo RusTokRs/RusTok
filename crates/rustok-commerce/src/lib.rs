@@ -10,7 +10,11 @@
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+    ModuleRuntimeExtensions, RusToKModule,
+};
+use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use sea_orm_migration::MigrationTrait;
 
 pub mod controllers;
@@ -88,6 +92,28 @@ impl RusToKModule for CommerceModule {
             "payment",
             "fulfillment",
         ]
+    }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        let fulfillment_registry = ctx
+            .extensions
+            .get::<FulfillmentProviderRegistry>()
+            .cloned()
+            .expect(
+                "commerce module requires FulfillmentProviderRegistry in ModuleRuntimeExtensions",
+            );
+        registry.register(services::PaidOrderCreateLabelHandler::new(
+            ctx.db.clone(),
+            fulfillment_registry,
+        ));
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        extensions.get_or_insert_with(FulfillmentProviderRegistry::with_manual_provider);
     }
 
     fn permissions(&self) -> Vec<Permission> {
