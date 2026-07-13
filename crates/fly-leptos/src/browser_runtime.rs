@@ -210,7 +210,7 @@ impl IframeMessagePort {
         iframe
             .content_window()
             .ok_or(BrowserRuntimeError::MissingContentWindow)?
-            .post_message_with_target_origin(&JsValue::from_str(&payload), &self.target_origin)
+            .post_message(&JsValue::from_str(&payload), &self.target_origin)
             .map_err(browser_error)?;
         self.next_sequence = self.next_sequence.saturating_add(1);
         Ok(sequence)
