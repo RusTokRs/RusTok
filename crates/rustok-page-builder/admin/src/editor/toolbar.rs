@@ -74,7 +74,7 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
             <span class="mx-1 h-6 w-px bg-border"></span>
             <ToolbarButton
                 label=copy
-                disabled=selection_disabled(runtime.clone(), false)
+                disabled=selection_disabled(runtime.clone(), true)
                 on_click=shortcut_callback(runtime.clone(), EditorShortcut::Copy)
             />
             <ToolbarButton
@@ -269,6 +269,7 @@ fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
             return;
         };
         let target: EventTarget = window.unchecked_into();
+        let keyboard_runtime = runtime.clone();
         match fly_leptos::EventListenerHandle::new::<KeyboardEvent>(
             &target,
             "keydown",
@@ -277,11 +278,11 @@ fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
                     return;
                 };
                 fly_leptos::prevent_editor_shortcut_default(event, shortcut);
-                handle_shortcut(&runtime, shortcut);
+                handle_shortcut(&keyboard_runtime, shortcut);
             },
         ) {
             Ok(handle) => {
-                let _handle = StoredValue::new_local(handle);
+                let _keyboard_handle = StoredValue::new_local(handle);
             }
             Err(error) => runtime.fail(error.to_string()),
         }
