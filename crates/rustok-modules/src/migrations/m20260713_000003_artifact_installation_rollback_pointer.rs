@@ -11,12 +11,16 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let statement = match manager.get_database_backend() {
-            DbBackend::Postgres => "ALTER TABLE module_artifact_installations \
+            DbBackend::Postgres => {
+                "ALTER TABLE module_artifact_installations \
                 ADD COLUMN previous_installation_id UUID NULL \
-                REFERENCES module_artifact_installations(installation_id)",
-            DbBackend::Sqlite => "ALTER TABLE module_artifact_installations \
+                REFERENCES module_artifact_installations(installation_id)"
+            }
+            DbBackend::Sqlite => {
+                "ALTER TABLE module_artifact_installations \
                 ADD COLUMN previous_installation_id TEXT NULL \
-                REFERENCES module_artifact_installations(installation_id)",
+                REFERENCES module_artifact_installations(installation_id)"
+            }
             backend => {
                 return Err(DbErr::Migration(format!(
                     "module artifact rollback-pointer migration does not support database backend {backend:?}"
@@ -35,8 +39,10 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let statement = match manager.get_database_backend() {
-            DbBackend::Postgres => "ALTER TABLE module_artifact_installations \
-                DROP COLUMN previous_installation_id",
+            DbBackend::Postgres => {
+                "ALTER TABLE module_artifact_installations \
+                DROP COLUMN previous_installation_id"
+            }
             // SQLite cannot drop a referenced column without rebuilding the
             // table. The local test backend treats migration rollback as an
             // unsupported operation rather than silently losing data.

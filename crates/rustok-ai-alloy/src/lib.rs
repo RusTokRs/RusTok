@@ -28,6 +28,17 @@ pub struct AlloySwarmWorkflowDescriptor {
     pub stages: &'static [AlloySwarmStageDescriptor],
 }
 
+/// Binds an owner-defined code-agent role to the existing Alloy AI task
+/// contract. The generic runtime consumes this declaration but never invents
+/// an Alloy operation or payload shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlloyStageExecutionDescriptor {
+    pub agent_slug: &'static str,
+    pub task_slug: &'static str,
+    pub required_operation: &'static str,
+    pub input_shape: &'static str,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AlloyAiVerticalDescriptor {
     pub task_slug: &'static str,
@@ -141,6 +152,33 @@ pub const ALLOY_SWARM_WORKFLOWS: &[AlloySwarmWorkflowDescriptor] =
         stages: ALLOY_CHANGE_REVIEW_STAGES,
     }];
 
+pub const ALLOY_STAGE_EXECUTIONS: &[AlloyStageExecutionDescriptor] = &[
+    AlloyStageExecutionDescriptor {
+        agent_slug: "alloy_code_planner",
+        task_slug: ALLOY_CODE_TASK_SLUG,
+        required_operation: "list_scripts",
+        input_shape: "alloy_task_input_list_scripts",
+    },
+    AlloyStageExecutionDescriptor {
+        agent_slug: "alloy_code_implementer",
+        task_slug: ALLOY_CODE_TASK_SLUG,
+        required_operation: "validate_script",
+        input_shape: "alloy_task_input_validate_script",
+    },
+    AlloyStageExecutionDescriptor {
+        agent_slug: "alloy_code_reviewer",
+        task_slug: ALLOY_CODE_TASK_SLUG,
+        required_operation: "validate_script",
+        input_shape: "alloy_task_input_validate_script",
+    },
+    AlloyStageExecutionDescriptor {
+        agent_slug: "alloy_code_verifier",
+        task_slug: ALLOY_CODE_TASK_SLUG,
+        required_operation: "run_script",
+        input_shape: "alloy_task_input_run_script",
+    },
+];
+
 pub const ALLOY_SCRIPT_EXECUTION_POLICY: AlloyScriptExecutionPolicy = AlloyScriptExecutionPolicy {
     script_runtime: "alloy",
     runtime_payload_json_shape: "absent_blank_or_json_object",
@@ -177,6 +215,12 @@ pub fn alloy_code_agents() -> &'static [AlloyCodeAgentDescriptor] {
 
 pub fn alloy_swarm_workflows() -> &'static [AlloySwarmWorkflowDescriptor] {
     ALLOY_SWARM_WORKFLOWS
+}
+
+pub fn alloy_stage_execution(agent_slug: &str) -> Option<&'static AlloyStageExecutionDescriptor> {
+    ALLOY_STAGE_EXECUTIONS
+        .iter()
+        .find(|descriptor| descriptor.agent_slug == agent_slug)
 }
 
 pub fn validate_runtime_payload(payload: Option<&str>) -> Result<(), String> {
@@ -245,5 +289,15 @@ mod tests {
         assert_eq!(workflow.stages[3].depends_on, ["review"]);
         assert!(workflow.stages[1].requires_approval);
         assert!(workflow.stages[3].requires_approval);
+    }
+
+    #[test]
+    fn every_code_agent_has_one_explicit_execution_binding() {
+        for agent in alloy_code_agents() {
+            let binding = alloy_stage_execution(agent.slug)
+                .expect("every Alloy code agent must publish execution metadata");
+            assert_eq!(binding.task_slug, ALLOY_CODE_TASK_SLUG);
+            assert!(ALLOY_SCRIPT_ALLOWED_OPERATIONS.contains(&binding.required_operation));
+        }
     }
 }
