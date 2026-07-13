@@ -1,6 +1,6 @@
 use fly::{
-    EditorCommand, FlyEditor, GrapesJsV1Codec, ProjectFragment, ProjectHash, RegistrySet,
-    ValidationReport,
+    EditorCommand, FlyEditor, GrapesJsV1Codec, PageLocator, PageSummary, ProjectFragment,
+    ProjectHash, RegistrySet, ValidationReport,
 };
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
 use rustok_page_builder::dto::{
@@ -29,11 +29,21 @@ impl AdminCanvasController {
         }
         let document = GrapesJsV1Codec::decode_value(project_data)?;
         let editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        let mut ui = FlyUiStateMachine::new(Presentation::Full);
+        let summaries = editor.document().page_summaries();
+        let active_page_index = summaries
+            .iter()
+            .position(|page| page.id.as_deref() == Some(page_id.as_str()))
+            .unwrap_or(0);
+        if let Some(active) = summaries.get(active_page_index) {
+            ui.state.page.active_page_index = active_page_index;
+            ui.state.page.active_page_id = active.id.clone();
+        }
         let mut controller = Self {
             page_id,
             revision_id: revision_id.into(),
             editor,
-            ui: FlyUiStateMachine::new(Presentation::Full),
+            ui,
             clipboard: None,
         };
         let report = controller.editor.validate();
@@ -69,10 +79,38 @@ impl AdminCanvasController {
         self.clipboard.is_some()
     }
 
+    pub fn page_summaries(&self) -> Vec<PageSummary> {
+        self.editor.document().page_summaries()
+    }
+
+    pub fn active_page_index(&self) -> usize {
+        self.ui.state.page.active_page_index
+    }
+
+    pub fn active_page_locator(&self) -> PageLocator {
+        PageLocator::by_index(self.active_page_index())
+    }
+
+    pub fn active_page_summary(&self) -> Option<PageSummary> {
+        self.page_summaries().get(self.active_page_index()).cloned()
+    }
+
+    pub fn active_root_id(&self) -> Option<String> {
+        self.editor
+            .document()
+            .project
+            .pages
+            .get(self.active_page_index())
+            .and_then(|page| page.component.as_ref())
+            .and_then(|root| root.id())
+            .map(ToString::to_string)
+    }
+
     pub fn dispatch(
         &mut self,
         intent: UiIntent,
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
+        self.validate_navigation_intent(&intent)?;
         let snapshot = self.clone();
         let effects = match self.ui.dispatch(intent) {
             Ok(effects) => effects,
@@ -126,6 +164,34 @@ impl AdminCanvasController {
             project_hash: expected_hash,
         })?;
         self.synchronize_revision();
+        Ok(())
+    }
+
+    fn validate_navigation_intent(&self, intent: &UiIntent) -> Result<(), AdminCanvasError> {
+        let UiIntent::ActivatePage {
+            page_id,
+            page_index,
+        } = intent
+        else {
+            return Ok(());
+        };
+        let page = self
+            .editor
+            .document()
+            .project
+            .pages
+            .get(*page_index)
+            .ok_or_else(|| {
+                AdminCanvasError::Authoring(format!(
+                    "page index {page_index} does not exist"
+                ))
+            })?;
+        if page_id.is_some() && page.id.as_ref() != page_id.as_ref() {
+            return Err(AdminCanvasError::Authoring(format!(
+                "page navigation id {:?} does not match page at index {page_index}",
+                page_id
+            )));
+        }
         Ok(())
     }
 
@@ -209,6 +275,11 @@ impl AdminCanvasController {
             .ok_or_else(|| {
                 AdminCanvasError::Authoring("selected component has no location".to_string())
             })?;
+        if location.page_index != self.active_page_index() {
+            return Err(AdminCanvasError::Authoring(
+                "selected component is outside the active page".to_string(),
+            ));
+        }
         if location.depth == 0 {
             return Err(AdminCanvasError::Authoring(
                 "the page root cannot be copied into the internal clipboard".to_string(),
@@ -300,6 +371,16 @@ impl AdminCanvasController {
         let registries = self.editor.registries();
         match self.ui.state.selection.component_id.as_deref() {
             Some(selected_id) => {
+                let location = document.component_location(selected_id).ok_or_else(|| {
+                    AdminCanvasError::Authoring(format!(
+                        "selected component `{selected_id}` has no location"
+                    ))
+                })?;
+                if location.page_index != self.active_page_index() {
+                    return Err(AdminCanvasError::Authoring(
+                        "selected component is outside the active page".to_string(),
+                    ));
+                }
                 let selected = document.component(selected_id).ok_or_else(|| {
                     AdminCanvasError::Authoring(format!(
                         "selected component `{selected_id}` does not exist"
@@ -307,31 +388,74 @@ impl AdminCanvasController {
                 })?;
                 if registries.accepts_child_type(Some(selected.component_type()), child_type) {
                     Ok((Some(selected_id.to_string()), selected.children().len()))
+                } else if location.depth == 0 {
+                    Ok((Some(selected_id.to_string()), selected.children().len()))
                 } else {
-                    let location = document.component_location(selected_id).ok_or_else(|| {
-                        AdminCanvasError::Authoring(format!(
-                            "selected component `{selected_id}` has no location"
-                        ))
-                    })?;
-                    if location.depth == 0 {
-                        Ok((None, document.root_child_count().unwrap_or_default()))
-                    } else {
-                        Ok((
-                            location.parent_component_id,
-                            location.index.saturating_add(1),
-                        ))
-                    }
+                    Ok((
+                        location.parent_component_id,
+                        location.index.saturating_add(1),
+                    ))
                 }
             }
-            None => Ok((None, document.root_child_count().unwrap_or_default())),
+            None => {
+                let root_id = self.active_root_id().ok_or_else(|| {
+                    AdminCanvasError::Authoring(
+                        "active page does not contain an editable root component".to_string(),
+                    )
+                })?;
+                let child_count = document
+                    .component_child_count(&root_id)
+                    .ok_or_else(|| {
+                        AdminCanvasError::Authoring(
+                            "active page root is opaque or missing".to_string(),
+                        )
+                    })?;
+                Ok((Some(root_id), child_count))
+            }
         }
     }
 
     fn synchronize(&mut self, report: ValidationReport) {
-        self.ui.state.selection.component_id =
-            self.editor.selection().map(ToString::to_string);
+        self.synchronize_page_navigation();
+        let active_page_index = self.active_page_index();
+        let selection = self.editor.selection().and_then(|component_id| {
+            self.editor
+                .document()
+                .component_location(component_id)
+                .filter(|location| location.page_index == active_page_index)
+                .map(|_| component_id.to_string())
+        });
+        if selection.is_none() && self.editor.selection().is_some() {
+            let _ = self.editor.apply(EditorCommand::Select { component_id: None });
+        }
+        self.ui.state.selection.component_id = selection;
         self.ui.state.set_diagnostics(report.diagnostics);
         self.synchronize_revision();
+    }
+
+    fn synchronize_page_navigation(&mut self) {
+        let summaries = self.editor.document().page_summaries();
+        if summaries.is_empty() {
+            self.ui.state.page.active_page_id = None;
+            self.ui.state.page.active_page_index = 0;
+            return;
+        }
+        let current_id = self.ui.state.page.active_page_id.as_deref();
+        let index = current_id
+            .and_then(|id| {
+                summaries
+                    .iter()
+                    .position(|summary| summary.id.as_deref() == Some(id))
+            })
+            .unwrap_or_else(|| {
+                self.ui
+                    .state
+                    .page
+                    .active_page_index
+                    .min(summaries.len().saturating_sub(1))
+            });
+        self.ui.state.page.active_page_index = index;
+        self.ui.state.page.active_page_id = summaries[index].id.clone();
     }
 
     fn synchronize_revision(&mut self) {
@@ -371,7 +495,7 @@ pub enum AdminCanvasError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{ComponentPatch, EditorCommand};
+    use fly::{blank_page, ComponentPatch, EditorCommand, PageCommand};
     use serde_json::{json, Map};
 
     fn controller() -> AdminCanvasController {
@@ -468,5 +592,28 @@ mod tests {
             .dispatch(UiIntent::CutSelection)
             .expect("cut pasted component");
         assert!(!controller.editor().document().contains_component(&selected));
+    }
+
+    #[test]
+    fn page_navigation_is_non_mutating_and_scopes_selection() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::Execute(EditorCommand::Page {
+                command: PageCommand::Add {
+                    index: 1,
+                    page: blank_page("about", "About"),
+                },
+            }))
+            .expect("add page");
+        controller.acknowledge_save("rev-2").expect("acknowledge");
+        controller
+            .dispatch(UiIntent::ActivatePage {
+                page_id: Some("about".to_string()),
+                page_index: 1,
+            })
+            .expect("activate page");
+        assert_eq!(controller.active_page_index(), 1);
+        assert_eq!(controller.editor().selection(), None);
+        assert!(!controller.ui().state.dirty.dirty);
     }
 }
