@@ -267,9 +267,13 @@ pub async fn resolve_current_user_from_access_token(
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
 
-            let granted_permissions = RbacService::get_user_permissions(db, &tenant_id, &user.id)
-                .await
-                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+            let granted_permissions = RbacService::get_user_permissions_authoritative(
+                db,
+                &tenant_id,
+                &user.id,
+            )
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
             let inferred_role = infer_user_role_from_permissions(&granted_permissions);
             if claims.role != inferred_role {
