@@ -16,6 +16,7 @@ mod lease;
 mod negative;
 mod observability;
 mod policy;
+mod redis_status;
 mod refresh;
 mod service;
 mod shared_backend;
@@ -78,6 +79,9 @@ pub use observability::{
     format_cache_generation_prometheus_metrics, format_cache_refresh_prometheus_metrics,
 };
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
+pub use redis_status::{
+    format_redis_cache_status_prometheus_metrics, RedisCacheStatus,
+};
 pub use refresh::{
     CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshSchedule,
     CacheRefreshStats, StaleWhileRevalidateResult, MAX_CACHE_REFRESH_KEY_BYTES,
@@ -108,10 +112,15 @@ pub struct CacheModule {
 impl CacheModule {
     pub fn new() -> Self {
         let service = CacheService::from_env();
-        if service.has_redis() {
-            tracing::info!(url = ?service.redis_url(), "CacheModule: Redis backend available");
-        } else {
-            tracing::info!("CacheModule: running with in-memory cache only");
+        match (
+            service.redis_configuration_present(),
+            service.redis_client_initialized(),
+        ) {
+            (false, _) => tracing::info!("CacheModule: running with in-memory cache only"),
+            (true, true) => tracing::info!("CacheModule: Redis client initialized"),
+            (true, false) => tracing::error!(
+                "CacheModule: Redis is configured but client initialization failed"
+            ),
         }
         Self { service }
     }
@@ -160,8 +169,8 @@ impl RusToKModule for CacheModule {
     }
 
     async fn health(&self) -> HealthStatus {
-        let report = self.service.health().await;
-        if report.is_healthy() {
+        let status = self.service.redis_status().await;
+        if status.is_healthy() {
             HealthStatus::Healthy
         } else {
             HealthStatus::Degraded
