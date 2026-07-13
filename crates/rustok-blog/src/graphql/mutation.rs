@@ -40,8 +40,9 @@ impl BlogMutation {
         let post_id = service
             .create_post(
                 tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
                     &auth.permissions,
                 ),
                 input.into(),
@@ -92,8 +93,9 @@ impl BlogMutation {
             .update_post(
                 tenant_id,
                 id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
                     &auth.permissions,
                 ),
                 domain_input,
@@ -125,8 +127,9 @@ impl BlogMutation {
             .delete_post(
                 tenant_id,
                 id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
                     &auth.permissions,
                 ),
             )
@@ -157,8 +160,9 @@ impl BlogMutation {
             .publish_post(
                 tenant_id,
                 id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
                     &auth.permissions,
                 ),
             )
@@ -189,8 +193,9 @@ impl BlogMutation {
             .unpublish_post(
                 tenant_id,
                 id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
                     &auth.permissions,
                 ),
             )
@@ -222,8 +227,9 @@ impl BlogMutation {
             .archive_post(
                 tenant_id,
                 id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
                     &auth.permissions,
                 ),
                 reason,
