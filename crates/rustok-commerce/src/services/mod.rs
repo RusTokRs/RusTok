@@ -1,6 +1,7 @@
 pub mod checkout;
 pub mod context;
 mod fulfillment_orchestration;
+mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
 mod payment_orchestration;
 mod post_order;
@@ -12,6 +13,7 @@ pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub(crate) use fulfillment_orchestration::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
 };
+pub(crate) use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 pub use payment_orchestration::{
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
 };
