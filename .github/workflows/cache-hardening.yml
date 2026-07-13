@@ -156,7 +156,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y redis-tools
           redis-cli -h 127.0.0.1 -p 6379 ping
-      - name: Cache live Redis tests
-        run: cargo test -p rustok-cache -- --ignored --nocapture
+      - name: Cache library live Redis tests
+        run: cargo test -p rustok-cache --lib -- --ignored --nocapture --test-threads=1
+      - name: Cache atomic CAS live Redis test
+        run: cargo test -p rustok-cache --test atomic_cas -- --ignored --nocapture --test-threads=1
+      - name: Cache hardening live Redis tests
+        run: cargo test -p rustok-cache --test real_redis_hardening -- --ignored --nocapture --test-threads=1
       - name: Core live Redis tests
-        run: cargo test -p rustok-core cache --features redis-cache -- --ignored --nocapture
+        run: cargo test -p rustok-core cache --features redis-cache -- --ignored --nocapture --test-threads=1
