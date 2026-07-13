@@ -1,6 +1,7 @@
 pub mod auth_context;
 pub mod block_rest_auth;
 pub mod channel;
+pub mod guest_cart_access;
 pub mod invite_accept;
 pub mod locale;
 pub mod oauth_token_guard;
