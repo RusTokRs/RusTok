@@ -42,21 +42,34 @@ impl GuardedOAuthAdminProvider {
         })
     }
 
-    fn validate_permission_strings(
+    fn require_settings_manage(
         &self,
         context: &AuthAdminMutationContext,
+    ) -> Result<Vec<Permission>, AuthAdminMutationError> {
+        let authority = self.request_permissions(context)?;
+        if has_effective_permission(&authority, &Permission::SETTINGS_MANAGE) {
+            Ok(authority)
+        } else {
+            Err(AuthAdminMutationError::Forbidden(
+                "settings:manage required for OAuth application administration".to_string(),
+            ))
+        }
+    }
+
+    fn validate_permission_strings(
+        &self,
+        authority: &[Permission],
         granted_permissions: &[String],
     ) -> Result<(), AuthAdminMutationError> {
-        let authority = self.request_permissions(context)?;
         for raw in granted_permissions {
             let permission = Permission::from_str(raw.trim()).map_err(|error| {
                 AuthAdminMutationError::Validation(format!(
                     "OAuth app contains invalid delegated permission `{raw}`: {error}"
                 ))
             })?;
-            if !has_effective_permission(&authority, &permission) {
+            if !has_effective_permission(authority, &permission) {
                 return Err(AuthAdminMutationError::Forbidden(format!(
-                    "cannot rotate credentials for an OAuth app whose permission exceeds the current request authority: {permission}"
+                    "OAuth app permission `{permission}` exceeds the current request authority"
                 )));
             }
         }
@@ -68,6 +81,7 @@ impl GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
         response_record: OAuthAppMutationRecord,
+        authority: &[Permission],
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
         let tx = self
             .db
@@ -75,7 +89,7 @@ impl GuardedOAuthAdminProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
-        self.validate_permission_strings(context, &app.granted_permissions_list())?;
+        self.validate_permission_strings(authority, &app.granted_permissions_list())?;
         if !app.can_rotate_secret() {
             return Err(AuthAdminMutationError::Validation(
                 "This OAuth app does not support client secret rotation".to_string(),
@@ -173,6 +187,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         app_type: Option<String>,
         limit: u64,
     ) -> Result<Vec<OAuthAppMutationRecord>, AuthAdminMutationError> {
+        self.require_settings_manage(context)?;
         self.inner.list_oauth_apps(context, app_type, limit).await
     }
 
@@ -181,6 +196,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<Option<OAuthAppMutationRecord>, AuthAdminMutationError> {
+        self.require_settings_manage(context)?;
         self.inner.get_oauth_app(context, app_id).await
     }
 
@@ -197,7 +213,9 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         command: CreateOAuthAppCommand,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let authority = self.require_settings_manage(context)?;
         validate_grant_dependencies(&command.grant_types)?;
+        self.validate_permission_strings(&authority, &command.granted_permissions)?;
         self.inner.create_oauth_app(context, command).await
     }
 
@@ -206,7 +224,9 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         command: UpdateOAuthAppCommand,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
+        let authority = self.require_settings_manage(context)?;
         validate_grant_dependencies(&command.grant_types)?;
+        self.validate_permission_strings(&authority, &command.granted_permissions)?;
         self.inner.update_oauth_app(context, command).await
     }
 
@@ -215,12 +235,13 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let authority = self.require_settings_manage(context)?;
         let app = self
             .inner
             .get_oauth_app(context, app_id)
             .await?
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        self.rotate_secret_transactionally(context, app_id, app)
+        self.rotate_secret_transactionally(context, app_id, app, &authority)
             .await
     }
 
@@ -229,6 +250,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
+        self.require_settings_manage(context)?;
         self.inner.revoke_oauth_app(context, app_id).await
     }
 
