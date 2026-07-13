@@ -36,14 +36,21 @@ pub mod tenant {
 
     /// Initialize the tenant resolver caches without leaving the superseded per-key Redis
     /// subscriber running. Durable namespace generations are the only cross-instance invalidation
-    /// authority; the historical listener used a raw `JoinHandle<()>` in the type-indexed shared
-    /// store and could also collide with another unwrapped background task.
+    /// authority. The historical listener stores an unwrapped `JoinHandle<()>`; preserve any
+    /// pre-existing value in that generic slot while extracting and aborting only the listener
+    /// created by the legacy initializer.
     pub async fn init_tenant_cache_infrastructure(
         ctx: &ServerRuntimeContext,
         cache_service: &CacheService,
     ) {
+        let previous_task = ctx.shared_take::<tokio::task::JoinHandle<()>>();
         super::tenant_legacy::init_tenant_cache_infrastructure(ctx, cache_service).await;
-        let _ = ctx.shared_map::<tokio::task::JoinHandle<()>, _>(|task| task.abort());
+        if let Some(legacy_listener) = ctx.shared_take::<tokio::task::JoinHandle<()>>() {
+            legacy_listener.abort();
+        }
+        if let Some(previous_task) = previous_task {
+            ctx.shared_insert(previous_task);
+        }
     }
 
     /// Compatibility entry point for callers that used to publish a per-key host invalidation.
