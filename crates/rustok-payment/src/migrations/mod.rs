@@ -7,6 +7,7 @@ mod m20260713_000109_serialize_payment_lifecycle;
 mod m20260713_000110_create_provider_operation_journal;
 mod m20260713_000111_enforce_provider_operation_lifecycle;
 mod m20260713_000112_claim_provider_operation_execution;
+mod m20260713_000113_lock_collection_order_binding;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -21,5 +22,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000110_create_provider_operation_journal::Migration),
         Box::new(m20260713_000111_enforce_provider_operation_lifecycle::Migration),
         Box::new(m20260713_000112_claim_provider_operation_execution::Migration),
+        Box::new(m20260713_000113_lock_collection_order_binding::Migration),
     ]
 }
