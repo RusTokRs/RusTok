@@ -38,7 +38,8 @@ mod state_machine_proptest;
 pub use error::{CommerceError, CommerceResult};
 pub use services::{
     ApplyOrderChangeResult, CheckoutError, CheckoutResult, CheckoutService,
-    CreateReturnDecisionInput, ExchangeDifferenceRefundInput, FulfillmentReconciliationService,
+    CreateReturnDecisionInput, ExchangeDifferenceRefundInput,
+    FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService,
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
     PostOrderOrchestrationError, PostOrderOrchestrationService, RefundReconciliationService,
     ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
