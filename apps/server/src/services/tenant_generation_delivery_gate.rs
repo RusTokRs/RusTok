@@ -39,15 +39,15 @@ impl TenantGenerationDeliveryGate {
         }
 
         let snapshot = tenant_cache_generation_listener_snapshot(&self.ctx).await;
-        if snapshot.status == TenantCacheGenerationListenerStatus::Healthy && snapshot.local_ready {
+        if snapshot.status == TenantCacheGenerationListenerStatus::Healthy
+            && snapshot.local_ready
+        {
             return Ok(());
         }
 
-        Err(Error::Cache(
-            snapshot.last_error.unwrap_or_else(|| {
-                "canonical tenant cache generation listener is not ready".to_string()
-            }),
-        ))
+        Err(Error::Cache(snapshot.last_error.unwrap_or_else(|| {
+            "canonical tenant cache generation listener is not ready".to_string()
+        })))
     }
 }
 
@@ -107,9 +107,11 @@ mod tests {
         );
 
         assert!(gate.publish(tenant_event(1)).await.is_err());
-        assert!(tokio::time::timeout(std::time::Duration::from_millis(10), receiver.recv())
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), receiver.recv())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -124,11 +126,7 @@ mod tests {
         .unwrap();
         let downstream = MemoryTransport::with_capacity(8);
         let mut receiver = downstream.subscribe();
-        let gate = TenantGenerationDeliveryGate::new(
-            Arc::new(downstream),
-            ctx,
-            cache,
-        );
+        let gate = TenantGenerationDeliveryGate::new(Arc::new(downstream), ctx, cache);
         let envelope = tenant_event(2);
 
         gate.publish(envelope.clone()).await.unwrap();
