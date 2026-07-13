@@ -35,6 +35,8 @@ pub enum FlyError {
     InvalidAssetReference(String),
     #[error("style rule `{0}` was not found")]
     StyleRuleNotFound(String),
+    #[error("trait `{trait_id}` value is invalid: {message}")]
+    InvalidTraitValue { trait_id: String, message: String },
     #[error("registry item `{0}` is already registered")]
     DuplicateRegistryItem(String),
     #[error("registry item id `{0}` must be namespaced or one of the built-in ids")]
