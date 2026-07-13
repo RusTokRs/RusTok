@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, Mutex as AsyncMutex};
 
-use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
+use rustok_core::{CacheBackend, CacheStats, InMemoryCacheBackend};
 #[cfg(feature = "redis-cache")]
-use rustok_core::{CircuitBreakerConfig, RedisCacheBackend};
+use rustok_core::CircuitBreakerConfig;
 
 #[cfg(feature = "redis-cache")]
 const CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -152,22 +152,15 @@ impl CacheService {
 
     /// Create a cache backend with the given prefix, TTL, and capacity.
     ///
-    /// If Redis is available, returns a `FallbackCacheBackend` (Redis primary + in-memory fallback).
-    /// Otherwise returns a pure in-memory backend. All returned backends are instrumented by default
-    /// so `CacheBackend::stats()` exposes hits, misses, invalidations, and current entries.
+    /// Redis backends reuse the client owned by this service. When Redis is unavailable,
+    /// request paths retain the bounded in-memory fallback while health remains degraded.
     pub async fn backend(
         &self,
         prefix: &str,
         ttl: Duration,
         max_capacity: u64,
     ) -> Arc<dyn CacheBackend> {
-        self.backend_with_options(
-            prefix,
-            ttl,
-            max_capacity,
-            self.default_backend_options.clone(),
-        )
-        .await
+        self.backend_shared_client(prefix, ttl, max_capacity).await
     }
 
     /// Create a cache backend with per-call construction options.
@@ -178,37 +171,8 @@ impl CacheService {
         max_capacity: u64,
         options: CacheBackendOptions,
     ) -> Arc<dyn CacheBackend> {
-        let backend = self.raw_backend(prefix, ttl, max_capacity, &options).await;
-        if options.metrics_enabled {
-            Arc::new(InstrumentedCacheBackend::new(prefix, backend))
-        } else {
-            backend
-        }
-    }
-
-    async fn raw_backend(
-        &self,
-        prefix: &str,
-        ttl: Duration,
-        max_capacity: u64,
-        options: &CacheBackendOptions,
-    ) -> Arc<dyn CacheBackend> {
-        #[cfg(feature = "redis-cache")]
-        if let Some(url) = &self.redis_url {
-            if let Ok(redis_backend) = RedisCacheBackend::with_circuit_breaker(
-                url,
-                prefix,
-                ttl,
-                options.redis_circuit_breaker.clone(),
-            )
+        self.backend_shared_client_with_options(prefix, ttl, max_capacity, options)
             .await
-            {
-                let memory = Arc::new(InMemoryCacheBackend::new(ttl, max_capacity));
-                return Arc::new(FallbackCacheBackend::new(Arc::new(redis_backend), memory));
-            }
-        }
-
-        Arc::new(InMemoryCacheBackend::new(ttl, max_capacity))
     }
 
     /// Create a pure in-memory backend (no Redis).
@@ -517,7 +481,6 @@ impl CacheInvalidationService {
             client.get_async_pubsub(),
         )
         .await?;
-
         redis_with_timeout(
             "Redis invalidation subscribe",
             pubsub.subscribe(channel),
