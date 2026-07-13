@@ -54,23 +54,28 @@ impl PaymentService {
             ));
         }
 
+        let cart_id = input.cart_id;
+        let order_id = input.order_id;
+        let customer_id = input.customer_id;
+        let amount = input.amount;
+        let metadata = input.metadata;
         let collection_id = generate_id();
         let now = Utc::now();
 
-        entities::payment_collection::ActiveModel {
+        let insert = entities::payment_collection::ActiveModel {
             id: Set(collection_id),
             tenant_id: Set(tenant_id),
-            cart_id: Set(input.cart_id),
-            order_id: Set(input.order_id),
-            customer_id: Set(input.customer_id),
+            cart_id: Set(cart_id),
+            order_id: Set(order_id),
+            customer_id: Set(customer_id),
             status: Set(STATUS_PENDING.to_string()),
-            currency_code: Set(currency_code),
-            amount: Set(input.amount),
+            currency_code: Set(currency_code.clone()),
+            amount: Set(amount),
             authorized_amount: Set(Decimal::ZERO),
             captured_amount: Set(Decimal::ZERO),
             provider_id: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(input.metadata),
+            metadata: Set(metadata.clone()),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             authorized_at: Set(None),
@@ -78,9 +83,65 @@ impl PaymentService {
             cancelled_at: Set(None),
         }
         .insert(&self.db)
-        .await?;
+        .await;
 
-        self.get_collection(tenant_id, collection_id).await
+        match insert {
+            Ok(_) => self.get_collection(tenant_id, collection_id).await,
+            Err(error) if cart_id.is_some() && is_unique_constraint(&error) => {
+                self.recover_active_cart_collection(
+                    tenant_id,
+                    cart_id.expect("cart_id was checked before race recovery"),
+                    order_id,
+                    customer_id,
+                    currency_code.as_str(),
+                    amount,
+                    metadata,
+                    error,
+                )
+                .await
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    async fn recover_active_cart_collection(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        order_id: Option<Uuid>,
+        customer_id: Option<Uuid>,
+        currency_code: &str,
+        amount: Decimal,
+        metadata: serde_json::Value,
+        conflict: sea_orm::DbErr,
+    ) -> PaymentResult<PaymentCollectionResponse> {
+        let Some(existing) = self
+            .find_reusable_collection_by_cart(tenant_id, cart_id)
+            .await?
+        else {
+            return Err(conflict.into());
+        };
+
+        validate_reusable_collection(
+            &existing,
+            cart_id,
+            customer_id,
+            currency_code,
+            amount,
+        )?;
+
+        match order_id {
+            Some(order_id) => {
+                self.attach_order_to_collection(
+                    tenant_id,
+                    existing.id,
+                    order_id,
+                    metadata,
+                )
+                .await
+            }
+            None => Ok(existing),
+        }
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, collection_id = %collection_id))]
@@ -788,6 +849,47 @@ impl PaymentService {
             cancelled_at: refund.cancelled_at.map(|value| value.with_timezone(&Utc)),
         }
     }
+}
+
+fn validate_reusable_collection(
+    existing: &PaymentCollectionResponse,
+    cart_id: Uuid,
+    customer_id: Option<Uuid>,
+    currency_code: &str,
+    amount: Decimal,
+) -> PaymentResult<()> {
+    if existing.cart_id != Some(cart_id) {
+        return Err(PaymentError::Validation(format!(
+            "payment collection {} is not bound to cart {cart_id}",
+            existing.id
+        )));
+    }
+    if existing.customer_id != customer_id {
+        return Err(PaymentError::Validation(format!(
+            "active payment collection {} belongs to a different customer",
+            existing.id
+        )));
+    }
+    if !existing.currency_code.eq_ignore_ascii_case(currency_code) {
+        return Err(PaymentError::Validation(format!(
+            "active payment collection {} uses currency {}, expected {}",
+            existing.id, existing.currency_code, currency_code
+        )));
+    }
+    if existing.amount != amount {
+        return Err(PaymentError::Validation(format!(
+            "active payment collection {} has amount {}, expected {}",
+            existing.id, existing.amount, amount
+        )));
+    }
+    Ok(())
+}
+
+fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
 }
 
 fn normalize_currency_code(value: &str) -> PaymentResult<String> {
