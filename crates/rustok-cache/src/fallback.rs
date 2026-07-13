@@ -1,3 +1,4 @@
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -5,21 +6,103 @@ use async_trait::async_trait;
 use rustok_core::{
     CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
 };
-use sha2::{Digest, Sha256};
+use tokio::sync::Mutex;
 
-const DEGRADED_WRITE_MARKER_PREFIX: &str = "\0rustok:cache:degraded-write:";
+const MAX_DEGRADED_WRITE_KEYS: usize = 4_096;
+const MAX_DEGRADED_WRITE_KEY_BYTES: usize = 4 * 1_024;
+const DEGRADED_WRITE_PRUNE_SCAN: usize = 16;
+
+#[derive(Debug)]
+struct DegradedWriteTracker {
+    state: Mutex<DegradedWriteTrackerState>,
+    maximum_keys: usize,
+}
+
+#[derive(Debug, Default)]
+struct DegradedWriteTrackerState {
+    keys: HashSet<String>,
+    insertion_order: VecDeque<String>,
+}
+
+impl DegradedWriteTracker {
+    fn new(maximum_keys: usize) -> Self {
+        Self {
+            state: Mutex::new(DegradedWriteTrackerState::default()),
+            maximum_keys,
+        }
+    }
+
+    async fn contains(&self, key: &str) -> bool {
+        self.state.lock().await.keys.contains(key)
+    }
+
+    async fn remove(&self, key: &str) {
+        let mut state = self.state.lock().await;
+        state.keys.remove(key);
+    }
+
+    async fn insert(
+        &self,
+        key: &str,
+        fallback: &InMemoryCacheBackend,
+    ) -> rustok_core::Result<()> {
+        if key.len() > MAX_DEGRADED_WRITE_KEY_BYTES {
+            return Err(rustok_core::Error::Cache(format!(
+                "degraded cache write key is {} bytes; maximum is {MAX_DEGRADED_WRITE_KEY_BYTES}",
+                key.len()
+            )));
+        }
+
+        let mut state = self.state.lock().await;
+        if state.keys.contains(key) {
+            return Ok(());
+        }
+
+        let scan = state
+            .insertion_order
+            .iter()
+            .take(DEGRADED_WRITE_PRUNE_SCAN)
+            .cloned()
+            .collect::<Vec<_>>();
+        for candidate in scan {
+            if fallback.get(&candidate).await?.is_none() {
+                state.keys.remove(&candidate);
+            }
+        }
+        while state
+            .insertion_order
+            .front()
+            .is_some_and(|candidate| !state.keys.contains(candidate))
+        {
+            state.insertion_order.pop_front();
+        }
+
+        if state.keys.len() >= self.maximum_keys {
+            return Err(rustok_core::Error::Cache(format!(
+                "degraded cache write tracker reached capacity {}",
+                self.maximum_keys
+            )));
+        }
+
+        let key = key.to_string();
+        state.keys.insert(key.clone());
+        state.insertion_order.push_back(key);
+        Ok(())
+    }
+}
 
 /// Availability-preserving fallback whose health and atomic mutations remain strict about the
 /// shared primary.
 ///
-/// Ordinary writes are mirrored locally before they reach Redis. A bounded marker tracks only
-/// writes whose primary operation failed, so those newer local bytes remain authoritative during
-/// reconnects instead of being overwritten by stale shared data. The marker is stored under a
-/// private hashed key in the same fallback cache, so it inherits the exact same TTL and capacity
-/// policy in both entry-count and weighted modes.
+/// Ordinary writes are mirrored locally before they reach Redis. A bounded fail-closed tracker
+/// records only writes whose primary operation failed, so those newer local bytes remain
+/// authoritative during reconnects instead of being overwritten by stale shared data. Tracker
+/// capacity is never recovered by evicting a live degraded write; new writes surface the primary
+/// error when they cannot be tracked safely.
 pub(crate) struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
+    degraded_writes: DegradedWriteTracker,
 }
 
 impl DegradationAwareFallbackBackend {
@@ -27,51 +110,31 @@ impl DegradationAwareFallbackBackend {
         primary: Arc<dyn CacheBackend>,
         fallback: Arc<InMemoryCacheBackend>,
     ) -> Self {
-        Self { primary, fallback }
-    }
-
-    fn degraded_marker_key(key: &str) -> String {
-        let digest = Sha256::digest(key.as_bytes());
-        format!("{DEGRADED_WRITE_MARKER_PREFIX}{}", hex::encode(digest))
-    }
-
-    async fn mark_degraded_write(&self, key: &str, ttl: Option<Duration>) {
-        let marker = Self::degraded_marker_key(key);
-        let result = match ttl {
-            Some(ttl) => self.fallback.set_with_ttl(marker.clone(), Vec::new(), ttl).await,
-            None => self.fallback.set(marker.clone(), Vec::new()).await,
-        };
-        if let Err(error) = result {
-            tracing::warn!(%error, key, marker, "Failed to track degraded cache write");
+        Self {
+            primary,
+            fallback,
+            degraded_writes: DegradedWriteTracker::new(MAX_DEGRADED_WRITE_KEYS),
         }
+    }
+
+    async fn mark_degraded_write(&self, key: &str) -> rustok_core::Result<()> {
+        self.degraded_writes.insert(key, &self.fallback).await
     }
 
     async fn clear_degraded_write(&self, key: &str) {
-        let marker = Self::degraded_marker_key(key);
-        if let Err(error) = self.fallback.invalidate(&marker).await {
-            tracing::warn!(%error, key, marker, "Failed to clear degraded cache write marker");
-        }
-    }
-
-    async fn has_degraded_write(&self, key: &str) -> bool {
-        self.fallback
-            .get(&Self::degraded_marker_key(key))
-            .await
-            .ok()
-            .flatten()
-            .is_some()
+        self.degraded_writes.remove(key).await;
     }
 
     async fn read_degraded_write(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
-        if !self.has_degraded_write(key).await {
+        if !self.degraded_writes.contains(key).await {
             return Ok(None);
         }
 
         match self.fallback.get(key).await? {
             Some(value) => Ok(Some(value)),
             None => {
-                // The payload may have been evicted before its marker. Drop the marker and resume
-                // normal primary-first reads rather than turning it into a sticky miss.
+                // The payload expired or was evicted. Drop its tracker entry and resume normal
+                // primary-first reads rather than turning the marker into a sticky miss.
                 self.clear_degraded_write(key).await;
                 Ok(None)
             }
@@ -94,6 +157,26 @@ impl DegradationAwareFallbackBackend {
         if let Err(error) = result {
             tracing::warn!(%error, key, "Primary cache CAS applied but local mirror update failed");
         }
+    }
+
+    async fn retain_degraded_write_or_fail(
+        &self,
+        key: &str,
+        primary_error: rustok_core::Error,
+    ) -> rustok_core::Result<()> {
+        if let Err(tracker_error) = self.mark_degraded_write(key).await {
+            let _ = self.fallback.invalidate(key).await;
+            tracing::warn!(
+                error = %primary_error,
+                %tracker_error,
+                key,
+                "Primary cache write failed and bounded local retention was unavailable"
+            );
+            return Err(primary_error);
+        }
+
+        tracing::debug!(error = %primary_error, key, "Primary cache write failed; retained bounded local value");
+        Ok(())
     }
 }
 
@@ -136,11 +219,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
                 self.clear_degraded_write(&key).await;
                 Ok(())
             }
-            Err(error) => {
-                self.mark_degraded_write(&key, None).await;
-                tracing::debug!(%error, key, "Primary cache write failed; retained bounded local value");
-                Ok(())
-            }
+            Err(error) => self.retain_degraded_write_or_fail(&key, error).await,
         }
     }
 
@@ -169,11 +248,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
                 self.clear_degraded_write(&key).await;
                 Ok(())
             }
-            Err(error) => {
-                self.mark_degraded_write(&key, Some(ttl)).await;
-                tracing::debug!(%error, key, "Primary cache write failed; retained bounded local value");
-                Ok(())
-            }
+            Err(error) => self.retain_degraded_write_or_fail(&key, error).await,
         }
     }
 
