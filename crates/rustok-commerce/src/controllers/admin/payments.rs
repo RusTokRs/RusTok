@@ -123,10 +123,11 @@ pub async fn authorize_payment_collection(
         "Permission denied: payments:update required",
     )?;
 
-    let collection = PaymentService::new(runtime.db_clone())
+    let collection = crate::PaymentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.payment_provider_registry())
         .authorize_collection(tenant.id, id, input)
         .await
-        .map_err(super::map_payment_error)?;
+        .map_err(super::map_payment_orchestration_error)?;
 
     Ok(Json(collection))
 }
@@ -157,10 +158,11 @@ pub async fn capture_payment_collection(
         "Permission denied: payments:update required",
     )?;
 
-    let collection = PaymentService::new(runtime.db_clone())
+    let collection = crate::PaymentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.payment_provider_registry())
         .capture_collection(tenant.id, id, input)
         .await
-        .map_err(super::map_payment_error)?;
+        .map_err(super::map_payment_orchestration_error)?;
 
     Ok(Json(collection))
 }
@@ -192,6 +194,7 @@ pub async fn cancel_payment_collection(
     )?;
 
     let collection = crate::PaymentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.payment_provider_registry())
         .cancel_collection(tenant.id, id, input)
         .await
         .map_err(super::map_payment_orchestration_error)?;
@@ -226,6 +229,7 @@ pub async fn create_refund(
     )?;
 
     let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
+        .with_provider_registry(runtime.payment_provider_registry())
         .create_refund(tenant.id, id, input)
         .await
         .map_err(super::map_payment_orchestration_error)?;
