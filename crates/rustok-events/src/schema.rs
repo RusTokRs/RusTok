@@ -296,6 +296,12 @@ const TENANT_MODULE_TOGGLED_FIELDS: &[FieldSchema] = &[
     field!("module_slug", "string"),
     field!("enabled", "bool"),
 ];
+const MODULE_ARTIFACT_ADMITTED_FIELDS: &[FieldSchema] = &[
+    field!("installation_id", "uuid"),
+    field!("artifact_digest", "string"),
+    field!("media_type", "string"),
+    field!("size_bytes", "uint64"),
+];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
 
 pub const EVENT_SCHEMAS: &[EventSchema] = &[
@@ -700,6 +706,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Tenant module toggle state changed.",
         fields: TENANT_MODULE_TOGGLED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.admitted",
+        version: 1,
+        description: "An admitted module artifact was committed with its control-plane metadata.",
+        fields: MODULE_ARTIFACT_ADMITTED_FIELDS,
     },
     EventSchema {
         event_type: "locale.enabled",

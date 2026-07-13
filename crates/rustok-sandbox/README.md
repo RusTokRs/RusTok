@@ -19,6 +19,7 @@ Alloy drafts and installed module artifacts.
   the stable error code only.
 - Provide one cooperative cancellation handle per execution, checked before
   executor work and every brokered capability dispatch.
+- Bound synchronous Rhai/WIT broker bridging to one native thread per execution.
 - Admit executions through shared global, executor, tenant, and artifact gates
   with automatic permit release on every terminal path.
 - Register language/runtime executors without depending on their consumers.

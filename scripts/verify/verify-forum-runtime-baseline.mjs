@@ -60,6 +60,9 @@ const files = {
 
 const resolvedCompatibilityIgnores = new Map([
   ["forum_04_category_cycle_is_rejected", "FORUM-04: category hierarchy must reject cycles"],
+]);
+
+const expectedKnownDefects = new Map([
   ["forum_05_concurrent_replies_preserve_public_counters", "FORUM-05: concurrent approved replies must preserve topic and category counters"],
   ["forum_06_locked_topic_rejects_reply_creation", "FORUM-06: a locked topic must reject ordinary reply creation"],
   ["forum_06_pending_reply_does_not_change_public_counters", "FORUM-06: pending replies must not mutate public counters"],
@@ -172,6 +175,17 @@ function verifyStaticBaseline() {
     "assert_public_state",
     "expected_replied_events",
   ]);
+
+  for (const token of [
+    "forum_validate_category_parent",
+    "forum_categories_tree_guard",
+    "forum_categories_tree_insert",
+    "forum_categories_tree_update",
+  ]) {
+    if (!categoryTreeMigration.includes(token)) {
+      fail(`${files.categoryTreeMigration}: missing category-tree token ${token}`);
+    }
+  }
 
   if (known.includes("#[should_panic")) {
     fail(`${files.knownRegressions}: known defects must be real ignored tests, not should_panic placeholders`);

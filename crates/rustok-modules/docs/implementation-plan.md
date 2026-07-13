@@ -49,16 +49,20 @@ Still outside the owner boundary:
 
 Important intermediate limitations that must not be mistaken for the target:
 
-- lifecycle/effective policy still depends on the compile-time
-  `rustok_core::ModuleRegistry`, so artifact-only modules are not yet first-class
-  lifecycle participants;
-- lifecycle hooks dispatch only to native `RusToKModule` implementations;
+- the default `ModuleLifecycleDbWriter` host adapter still materializes its
+  catalog from the compile-time `rustok_core::ModuleRegistry`; host composition
+  must supply durable catalog loading before artifact-only modules reach that
+  adapter;
+- artifact lifecycle dispatch requires a configured
+  `ArtifactLifecycleExecutor`; production host wiring for that executor remains
+  to be supplied;
 - admission now stages, verifies, and publishes payload bytes into CAS before
   the database admission commit; production durable CAS, outbox, and reconciler
   adapters remain to be supplied by host infrastructure;
-- artifact descriptors do not yet carry the complete dependency lock,
-  permission/settings, runtime binding, persistence, localization, and dynamic
-  UI contribution contracts.
+- artifact descriptors carry dependency, permission, settings, runtime binding,
+  persistence metadata, and declarative UI contribution contracts; brokered
+  namespaced data, localization delivery, and dynamic host composition remain
+  to be implemented.
 
 ## Local Work Phases
 
@@ -70,10 +74,11 @@ Important intermediate limitations that must not be mistaken for the target:
   tenant, trace, and correlation contexts.
 - Add serialization and stale-revision tests.
 
-Current implementation: the shared command context, optimistic revision/CAS
-primitive, stable error envelope, and generic typed snapshot envelope are
-available from `rustok-modules`. Owner services will adopt these contracts as
-their write paths are moved; no server or admin compatibility facade was added.
+Current implementation: the shared command context, revisioned command envelope,
+optimistic revision/CAS primitive, stable error envelope, and generic typed
+snapshot envelope are available from `rustok-modules`. Owner services will adopt
+these contracts as their write paths are moved; no server or admin compatibility
+facade was added.
 
 M2 has started with a transport-neutral definition catalog. It derives static
 definitions from the compile-time registry while keeping registry handles

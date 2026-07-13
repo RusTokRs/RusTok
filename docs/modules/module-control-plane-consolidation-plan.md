@@ -291,10 +291,10 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
 - [x] Accept the neutral sandbox ADR and dependency direction.
 - [x] Inventory server/admin lifecycle, composition, governance, manifest,
   build, and registry entrypoints.
-- [ ] Define serializable snapshots for catalog, release, artifact,
+- [x] Define serializable snapshots for catalog, release, artifact,
   installation, effective policy, composition, governance, lifecycle, recovery,
   and build operations.
-- [ ] Define one stable owner error envelope and codes from the families above.
+- [x] Define one stable owner error envelope and codes from the families above.
 - [ ] Define revision/CAS fields for every mutable aggregate:
   - platform composition revision;
   - publish-request revision;
@@ -304,10 +304,13 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
 - [ ] Define actor, tenant, trace, idempotency, and correlation context required
   by every command.
 - [ ] Document GraphQL/native compatibility policy and versioning rules.
-- [ ] Freeze the split between the compile-time implementation registry and the
-  durable artifact-aware module definition catalog.
-- [ ] Freeze installation-scope/version precedence and the exact dependency
-  lock graph contract.
+- [x] Freeze the split between the compile-time implementation registry and the
+  durable artifact-aware module definition catalog. `ModuleRegistry` retains
+  only static implementation handles; `ModuleDefinitionCatalog` resolves the
+  durable static or admitted-artifact definition selected for a composition.
+- [x] Freeze installation scope and the exact dependency-lock graph contract.
+  `ModuleInstallationScope` is platform or tenant scoped, and every installed
+  artifact carries a validated, digest-pinned `ModuleDependencyLockGraph`.
 - [ ] Freeze the v1 runtime binding set and dispatch envelope for lifecycle,
   command, HTTP, event, schedule, and hook calls.
 - [ ] Freeze v1 artifact persistence: brokered namespaced storage only;
@@ -361,7 +364,7 @@ and installed artifacts.
   as request-scoped extensions backed by the capability broker.
 - [ ] Define a versioned Rhai input/output binding shared by draft and published
   Rhai artifacts.
-- [ ] Freeze the WIT v1 package, world, entrypoint, JSON/error encoding, and ABI
+- [x] Freeze the WIT v1 package, world, entrypoint, JSON/error encoding, and ABI
   compatibility rules.
 - [x] Add request-scoped cancellation propagation through runtime, Rhai,
   Wasmtime, and brokered capability dispatch.
@@ -375,9 +378,9 @@ and installed artifacts.
   runtime ABI, and artifact digest.
 - [ ] Add deterministic metrics for fuel/instructions, memory, output size,
   capability calls, queue time, and execution time.
-- [ ] Replace unbounded thread-per-host-call bridging with an async-compatible
-  Wasmtime/WIT host path or a strictly bounded blocking bridge admitted by the
-  runtime. A synchronous guest ABI must not permit thread exhaustion.
+- [x] Replace unbounded thread-per-host-call bridging with a strictly bounded
+  one-thread-per-execution bridge. A synchronous guest ABI cannot permit thread
+  exhaustion.
 - [ ] Validate input and output against admitted JSON schemas with network/file
   schema retrieval disabled; all referenced schemas are bundled by digest.
 
@@ -392,7 +395,7 @@ and installed artifacts.
 - [x] Add per-execution payload-size, call-count, and rolling rate limits before
   broker invocation.
 - [x] Ensure denied calls emit redacted audit evidence without protected input.
-- [ ] Ensure host adapters receive scoped handles, never platform-global clients
+- [x] Ensure host adapters receive scoped handles, never platform-global clients
   or raw credentials.
 
 ### 1.4 Execution Deployment Profiles
@@ -452,23 +455,23 @@ plane reads and writes.
 
 ### 2.2 Replace Compile-Time Identity with an Artifact-Aware Definition Catalog
 
-The current lifecycle and effective-policy code still accepts
-`rustok_core::ModuleRegistry`, so it can only recognize implementations compiled
-into the distribution. This is an intermediate state and must be replaced.
+The durable definition catalog now resolves static and admitted artifact
+definitions. `rustok_core::ModuleRegistry` remains only the static implementation
+adapter and must not be used as artifact identity or durable policy state.
 
-- [ ] Introduce a transport-neutral `ModuleDefinition` contract populated from:
+- [x] Introduce a transport-neutral `ModuleDefinition` contract populated from:
   - Core/static-promoted implementations through a static adapter;
   - admitted artifact releases through durable catalog/install state.
-- [ ] Keep the existing `ModuleRegistry` only for in-process implementation
+- [x] Keep the existing `ModuleRegistry` only for in-process implementation
   handles, migrations, runtime extensions, and listeners of Core/static modules.
-- [ ] Move kind, dependency, compatibility, permission, settings, binding, UI,
+- [x] Move kind, dependency, compatibility, permission, settings, binding, UI,
   and capability metadata into the definition contract.
-- [ ] Change effective policy, dependency validation, lifecycle, settings, and
+- [x] Change effective policy, dependency validation, lifecycle, settings, and
   recovery to depend on a definition-catalog snapshot, not a Rust trait object.
-- [ ] Generate a canonical static module definition from
+- [x] Generate a canonical static module definition from
   `RusToKModule`/`rustok-module.toml` so static and artifact definitions obey the
   same identity and dependency rules.
-- [ ] Add collision rules: a slug cannot ambiguously resolve to multiple active
+- [x] Add collision rules: a slug cannot ambiguously resolve to multiple active
   implementations; static promotion and artifact activation require explicit
   mode transition.
 
@@ -482,13 +485,13 @@ into the distribution. This is an intermediate state and must be replaced.
   - event subscriptions;
   - schedules;
   - before/after/on-commit hooks where the host contract permits them.
-- [ ] Give every binding a stable ID, input/output schema digest, permission,
+- [x] Give every binding a stable ID, input/output schema digest, permission,
   idempotency mode, timeout/limit profile, and declared capabilities.
-- [ ] Introduce `ModuleExecutionDispatcher` (working name) that resolves the
+- [x] Introduce `ModuleExecutionDispatcher` (working name) that resolves the
   active definition and dispatches:
   - Core/static implementations through a typed static adapter;
   - Rhai/WASM/sidecar implementations through `SandboxRuntime`.
-- [ ] Replace `run_module_lifecycle_hook(ModuleRegistry, ...)` with the dispatcher
+- [x] Replace `run_module_lifecycle_hook(ModuleRegistry, ...)` with the dispatcher
   so artifact modules can participate in lifecycle without a server crate.
 - [ ] Dispatch events/schedules from durable binding metadata; do not register
   artifact Rust closures in `ModuleEventListenerRegistry`.

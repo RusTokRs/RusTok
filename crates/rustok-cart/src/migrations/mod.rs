@@ -10,6 +10,7 @@ mod m20260411_000110_add_cart_line_item_translations;
 mod m20260412_000111_add_cart_shipping_total;
 mod m20260412_000112_add_cart_tax_line_provider_id;
 mod m20260713_000113_enforce_cart_money_integrity;
+mod m20260713_000114_serialize_cart_lifecycle;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -28,6 +29,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260412_000111_add_cart_shipping_total::Migration),
         Box::new(m20260412_000112_add_cart_tax_line_provider_id::Migration),
         Box::new(m20260713_000113_enforce_cart_money_integrity::Migration),
+        Box::new(m20260713_000114_serialize_cart_lifecycle::Migration),
     ]
 }
 
