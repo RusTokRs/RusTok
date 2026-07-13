@@ -188,7 +188,11 @@ fn request_context<'a>(
 }
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
-    rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
 }
 
 fn map_content_error(err: ContentError) -> FieldError {
