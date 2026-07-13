@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use alloy::storage::ScriptRegistry;
 
 use crate::{
-    alloy_apply_module_scaffold, AlloyMcpState, ApplyModuleScaffoldRequest,
-    ApplyModuleScaffoldResponse, McpScaffoldDraftRuntimeContext,
+    AlloyMcpState, ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse,
+    McpScaffoldDraftRuntimeContext,
 };
 
 pub const MCP_SCAFFOLD_WORKSPACE_ROOT_ENV: &str = "RUSTOK_MCP_SCAFFOLD_WORKSPACE_ROOT";
@@ -24,7 +24,7 @@ pub async fn apply_authorized_module_scaffold<R: ScriptRegistry>(
     mut request: ApplyModuleScaffoldRequest,
 ) -> Result<ApplyModuleScaffoldResponse, String> {
     request.workspace_root = authorize_scaffold_workspace(&request.workspace_root)?;
-    alloy_apply_module_scaffold(state, context, request).await
+    crate::alloy_tools_unchecked::alloy_apply_module_scaffold(state, context, request).await
 }
 
 fn authorize_scaffold_workspace_with_config(
