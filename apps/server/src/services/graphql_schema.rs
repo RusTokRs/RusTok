@@ -5,6 +5,7 @@ use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
 use crate::graphql::{build_schema, AppSchema, SharedGraphqlSchema};
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_event_hub::build_event_hub_from_context;
+use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
 use crate::services::field_definition_cache::field_definition_cache_from_context;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -22,6 +23,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
         .with_shared_value(transactional_event_bus.clone())
         .with_shared_value(registry);
+    let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
     #[cfg(feature = "mod-media")]
     let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() {
         host_runtime.with_shared_value(storage)
