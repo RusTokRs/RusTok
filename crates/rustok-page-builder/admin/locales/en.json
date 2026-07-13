@@ -1,0 +1,25 @@
+{
+  "page_builder": {
+    "title": "Page Builder",
+    "subtitle": "Fly runtime, compatibility, and provider control surface.",
+    "unbound": {
+      "title": "No consumer document selected",
+      "body": "Open a consumer-owned document to start full visual authoring. Page Builder does not own document persistence."
+    },
+    "action": {
+      "undo": "Undo",
+      "redo": "Redo",
+      "save": "Save"
+    },
+    "status": {
+      "saving": "Saving",
+      "saveFailed": "Save failed",
+      "dirty": "Unsaved changes",
+      "saved": "Saved"
+    },
+    "panel": {
+      "layers": "Layers and selection",
+      "diagnostics": "Diagnostics"
+    }
+  }
+}
