@@ -2,6 +2,7 @@ mod envelope;
 mod key;
 mod policy;
 mod service;
+mod typed;
 mod weighted;
 
 pub use envelope::{
@@ -16,6 +17,7 @@ pub use service::{
     CacheInvalidationService, CacheInvalidationStats, CacheLoadResult, CacheLoadSource,
     CacheService, LocalCacheInvalidationSubscription,
 };
+pub use typed::TypedCacheLoadResult;
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
