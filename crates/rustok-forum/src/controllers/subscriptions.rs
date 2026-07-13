@@ -198,7 +198,11 @@ pub async fn update_subscription_policy(
 }
 
 fn security(auth: &AuthContext) -> rustok_core::SecurityContext {
-    rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
 }
 
 fn ensure_permission(
@@ -207,7 +211,7 @@ fn ensure_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "forum_permission_denied",
             message.to_string(),
         ));
