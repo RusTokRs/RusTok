@@ -8,6 +8,7 @@ mod m20260405_000003_add_is_localized_to_order_field_definitions;
 mod m20260411_000004_add_shipping_profile_translations;
 mod m20260713_000005_reserve_inventory_on_order_confirmation;
 mod m20260713_000006_consume_inventory_on_order_delivery;
+mod m20260713_000007_consume_inventory_on_fulfillment_shipping;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -22,6 +23,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260411_000004_add_shipping_profile_translations::Migration),
         Box::new(m20260713_000005_reserve_inventory_on_order_confirmation::Migration),
         Box::new(m20260713_000006_consume_inventory_on_order_delivery::Migration),
+        Box::new(m20260713_000007_consume_inventory_on_fulfillment_shipping::Migration),
     ]
 }
 
@@ -46,6 +48,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260713_000006_consume_inventory_on_order_delivery",
             vec!["m20260713_000005_reserve_inventory_on_order_confirmation"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000007_consume_inventory_on_fulfillment_shipping",
+            vec![
+                "m20260713_000005_reserve_inventory_on_order_confirmation",
+                "m20260713_000110_serialize_fulfillment_progress",
+            ],
         ),
     ]
 }
