@@ -1,0 +1,12 @@
+[package]
+name = "fly-leptos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos and browser adapter foundation for Fly visual editors"
+
+[dependencies]
+fly = { path = "../fly" }
+fly-ui = { path = "../fly-ui" }
+leptos.workspace = true
+serde.workspace = true
