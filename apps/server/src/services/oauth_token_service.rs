@@ -4,7 +4,8 @@ use chrono::Utc;
 use rustok_api::context::scope_matches;
 use rustok_auth::{TokenRequest, TokenResponse};
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -90,11 +91,11 @@ impl OAuthTokenProtocolError {
 pub struct OAuthTokenService;
 
 impl OAuthTokenService {
-    /// Execute the OAuth token endpoint at a transport-independent service
-    /// boundary. All validation happens before one-shot credentials are
-    /// consumed. Authorization codes and refresh tokens are then consumed with
-    /// conditional database updates so only one concurrent request can mint a
-    /// replacement token family.
+    /// Execute OAuth token issuance at a transport-independent boundary.
+    ///
+    /// One-shot credentials are consumed in the same database transaction that
+    /// persists their replacement. A failed replacement therefore rolls back
+    /// consumption instead of destroying an otherwise valid credential family.
     pub async fn exchange(
         runtime: &ServerAuthRuntime,
         tenant_id: Uuid,
@@ -108,23 +109,23 @@ impl OAuthTokenService {
 
         let response = match request.grant_type.as_str() {
             CLIENT_CREDENTIALS_GRANT => {
-                require_exact_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
+                require_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
                 authenticate_client(&app, request, true)?;
-                let requested_scopes = parse_requested_scopes(request.scope.as_deref());
-                let granted_scopes = validate_requested_scopes(&app, &requested_scopes)?;
+                let requested = parse_requested_scopes(request.scope.as_deref());
+                let scopes = validate_requested_scopes(&app, &requested)?;
                 let (access_token, expires_in) =
-                    issue_service_access_token(&app, auth_config, &granted_scopes)?;
+                    issue_service_access_token(&app, auth_config, &scopes)?;
 
                 TokenResponse {
                     access_token,
                     token_type: "Bearer".to_string(),
                     expires_in,
                     refresh_token: None,
-                    scope: granted_scopes.join(" "),
+                    scope: scopes.join(" "),
                 }
             }
             AUTHORIZATION_CODE_GRANT => {
-                require_exact_grant(&app, AUTHORIZATION_CODE_GRANT)?;
+                require_grant(&app, AUTHORIZATION_CODE_GRANT)?;
                 authenticate_client(&app, request, false)?;
                 let code = required(request.code.as_deref(), "code is required")?;
                 let redirect_uri = required(
@@ -144,72 +145,47 @@ impl OAuthTokenService {
                     verifier,
                 )
                 .await?;
-
-                consume_authorization_code(db, &authorization).await?;
                 let scopes = authorization.scopes_list();
-                let (access_token, refresh_token, expires_in) = issue_user_token_pair(
+                let prepared = prepare_user_tokens(
                     db,
                     &app,
                     auth_config,
                     authorization.user_id,
                     &scopes,
+                    app.supports_grant_type(REFRESH_TOKEN_GRANT),
                 )
                 .await?;
 
-                TokenResponse {
-                    access_token,
-                    token_type: "Bearer".to_string(),
-                    expires_in,
-                    refresh_token: Some(refresh_token),
-                    scope: scopes.join(" "),
-                }
+                commit_authorization_code_exchange(db, &authorization, &prepared).await?;
+                prepared.into_response(&scopes)
             }
             REFRESH_TOKEN_GRANT => {
-                require_refresh_grant(&app)?;
+                require_grant(&app, REFRESH_TOKEN_GRANT)?;
                 authenticate_client(&app, request, false)?;
                 let raw_refresh_token = required(
                     request.refresh_token.as_deref(),
                     "refresh_token is required",
                 )?;
-                let validated =
+                let current =
                     validate_refresh_token(db, &app, tenant_id, raw_refresh_token).await?;
-                let consumed = OAuthTokens::find_active_by_hash(
-                    db,
-                    &validated.token_hash,
-                    app.id,
-                )
-                .await
-                .map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to consume refresh token")
-                })?
-                .filter(|consumed| consumed.id == validated.id)
-                .ok_or_else(|| {
-                    OAuthTokenProtocolError::invalid_grant(
-                        "Refresh token is invalid, expired, or already used",
-                    )
-                })?;
-                let user_id = consumed.user_id.ok_or_else(|| {
+                let user_id = current.user_id.ok_or_else(|| {
                     OAuthTokenProtocolError::invalid_grant(
                         "Refresh token has no associated user",
                     )
                 })?;
-                let scopes = consumed.scopes_list();
-                let (access_token, refresh_token, expires_in) = issue_user_token_pair(
+                let scopes = current.scopes_list();
+                let prepared = prepare_user_tokens(
                     db,
                     &app,
                     auth_config,
                     user_id,
                     &scopes,
+                    true,
                 )
                 .await?;
 
-                TokenResponse {
-                    access_token,
-                    token_type: "Bearer".to_string(),
-                    expires_in,
-                    refresh_token: Some(refresh_token),
-                    scope: scopes.join(" "),
-                }
+                commit_refresh_rotation(db, &current, &prepared).await?;
+                prepared.into_response(&scopes)
             }
             other => {
                 return Err(OAuthTokenProtocolError::unsupported_grant(format!(
@@ -226,15 +202,33 @@ impl OAuthTokenService {
     }
 }
 
+struct PreparedUserTokens {
+    access_token: String,
+    refresh_token: Option<String>,
+    refresh_model: Option<oauth_tokens::ActiveModel>,
+    expires_in: u64,
+}
+
+impl PreparedUserTokens {
+    fn into_response(self, scopes: &[String]) -> TokenResponse {
+        TokenResponse {
+            access_token: self.access_token,
+            token_type: "Bearer".to_string(),
+            expires_in: self.expires_in,
+            refresh_token: self.refresh_token,
+            scope: scopes.join(" "),
+        }
+    }
+}
+
 async fn resolve_client(
-    db: &sea_orm::DatabaseConnection,
+    db: &DatabaseConnection,
     tenant_id: Uuid,
     request: &TokenRequest,
 ) -> Result<oauth_apps::Model, OAuthTokenProtocolError> {
     let client_id = required(request.client_id.as_deref(), "client_id is required")?;
-    let client_id = Uuid::parse_str(client_id).map_err(|_| {
-        OAuthTokenProtocolError::invalid_client("Invalid client_id format")
-    })?;
+    let client_id = Uuid::parse_str(client_id)
+        .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client_id format"))?;
     let app = OAuthAppService::find_by_client_id(db, client_id)
         .await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
@@ -249,7 +243,7 @@ async fn resolve_client(
     Ok(app)
 }
 
-fn require_exact_grant(
+fn require_grant(
     app: &oauth_apps::Model,
     grant_type: &'static str,
 ) -> Result<(), OAuthTokenProtocolError> {
@@ -259,20 +253,6 @@ fn require_exact_grant(
         Err(OAuthTokenProtocolError::unauthorized_client(format!(
             "Client is not allowed to use `{grant_type}`"
         )))
-    }
-}
-
-fn require_refresh_grant(app: &oauth_apps::Model) -> Result<(), OAuthTokenProtocolError> {
-    // Existing applications historically model refresh capability as part of
-    // authorization_code. Explicit refresh_token support is also accepted.
-    if app.supports_grant_type(REFRESH_TOKEN_GRANT)
-        || app.supports_grant_type(AUTHORIZATION_CODE_GRANT)
-    {
-        Ok(())
-    } else {
-        Err(OAuthTokenProtocolError::unauthorized_client(
-            "Client is not allowed to refresh authorization-code tokens",
-        ))
     }
 }
 
@@ -345,7 +325,7 @@ fn validate_scope_subset(
 }
 
 async fn validate_authorization_code(
-    db: &sea_orm::DatabaseConnection,
+    db: &DatabaseConnection,
     app: &oauth_apps::Model,
     tenant_id: Uuid,
     raw_code: &str,
@@ -397,37 +377,13 @@ async fn validate_authorization_code(
     Ok(code)
 }
 
-async fn consume_authorization_code(
-    db: &sea_orm::DatabaseConnection,
-    code: &oauth_codes::Model,
-) -> Result<(), OAuthTokenProtocolError> {
-    let consumed = oauth_codes::Entity::update_many()
-        .col_expr(oauth_codes::Column::UsedAt, Expr::value(Utc::now()))
-        .filter(oauth_codes::Column::Id.eq(code.id))
-        .filter(oauth_codes::Column::UsedAt.is_null())
-        .filter(oauth_codes::Column::ExpiresAt.gt(Utc::now()))
-        .exec(db)
-        .await
-        .map_err(|_| {
-            OAuthTokenProtocolError::server_error("Failed to consume authorization code")
-        })?;
-
-    if consumed.rows_affected == 1 {
-        Ok(())
-    } else {
-        Err(OAuthTokenProtocolError::invalid_grant(
-            "Authorization code is invalid, expired, or already used",
-        ))
-    }
-}
-
 async fn validate_refresh_token(
-    db: &sea_orm::DatabaseConnection,
+    db: &DatabaseConnection,
     app: &oauth_apps::Model,
     tenant_id: Uuid,
     raw_token: &str,
 ) -> Result<oauth_tokens::Model, OAuthTokenProtocolError> {
-    let token_hash = hex::encode(Sha256::digest(raw_token.as_bytes()));
+    let token_hash = auth::hash_refresh_token(raw_token);
     let token = OAuthTokens::find()
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app.id))
@@ -453,7 +409,7 @@ async fn validate_refresh_token(
 }
 
 async fn validate_active_subject_and_consent(
-    db: &sea_orm::DatabaseConnection,
+    db: &DatabaseConnection,
     app: &oauth_apps::Model,
     tenant_id: Uuid,
     user_id: Uuid,
@@ -508,13 +464,14 @@ fn issue_service_access_token(
     Ok((token, SERVICE_ACCESS_TOKEN_TTL_SECS))
 }
 
-async fn issue_user_token_pair(
-    db: &sea_orm::DatabaseConnection,
+async fn prepare_user_tokens(
+    db: &DatabaseConnection,
     app: &oauth_apps::Model,
     config: &AuthConfig,
     user_id: Uuid,
     scopes: &[String],
-) -> Result<(String, String, u64), OAuthTokenProtocolError> {
+    include_refresh_token: bool,
+) -> Result<PreparedUserTokens, OAuthTokenProtocolError> {
     validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
     let permissions = RbacService::get_user_permissions_authoritative(
         db,
@@ -538,10 +495,19 @@ async fn issue_user_token_pair(
     )
     .map_err(|_| OAuthTokenProtocolError::server_error("Failed to encode access token"))?;
 
+    if !include_refresh_token {
+        return Ok(PreparedUserTokens {
+            access_token,
+            refresh_token: None,
+            refresh_model: None,
+            expires_in: USER_ACCESS_TOKEN_TTL_SECS,
+        });
+    }
+
     let refresh_token = auth::generate_refresh_token();
-    let refresh_hash = hex::encode(Sha256::digest(refresh_token.as_bytes()));
+    let refresh_hash = auth::hash_refresh_token(&refresh_token);
     let now = Utc::now();
-    oauth_tokens::ActiveModel {
+    let refresh_model = oauth_tokens::ActiveModel {
         id: Set(Uuid::new_v4()),
         app_id: Set(app.id),
         user_id: Set(Some(user_id)),
@@ -556,16 +522,114 @@ async fn issue_user_token_pair(
         last_used_at: Set(None),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
-    }
-    .insert(db)
-    .await
-    .map_err(|_| OAuthTokenProtocolError::server_error("Failed to persist refresh token"))?;
+    };
 
-    Ok((
+    Ok(PreparedUserTokens {
         access_token,
-        refresh_token,
-        USER_ACCESS_TOKEN_TTL_SECS,
-    ))
+        refresh_token: Some(refresh_token),
+        refresh_model: Some(refresh_model),
+        expires_in: USER_ACCESS_TOKEN_TTL_SECS,
+    })
+}
+
+async fn commit_authorization_code_exchange(
+    db: &DatabaseConnection,
+    code: &oauth_codes::Model,
+    prepared: &PreparedUserTokens,
+) -> Result<(), OAuthTokenProtocolError> {
+    let tx = db.begin().await.map_err(|_| {
+        OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
+    })?;
+
+    consume_authorization_code(&tx, code).await?;
+    persist_prepared_refresh(&tx, prepared).await?;
+
+    tx.commit().await.map_err(|_| {
+        OAuthTokenProtocolError::server_error("Failed to commit authorization-code exchange")
+    })
+}
+
+async fn commit_refresh_rotation(
+    db: &DatabaseConnection,
+    current: &oauth_tokens::Model,
+    prepared: &PreparedUserTokens,
+) -> Result<(), OAuthTokenProtocolError> {
+    let tx = db.begin().await.map_err(|_| {
+        OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
+    })?;
+    let now = Utc::now();
+    let consumed = OAuthTokens::update_many()
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+        .col_expr(oauth_tokens::Column::LastUsedAt, Expr::value(now))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+        .filter(oauth_tokens::Column::Id.eq(current.id))
+        .filter(oauth_tokens::Column::TokenHash.eq(&current.token_hash))
+        .filter(oauth_tokens::Column::AppId.eq(current.app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(current.tenant_id))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .filter(oauth_tokens::Column::ExpiresAt.gt(now))
+        .exec(&tx)
+        .await
+        .map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to consume refresh token")
+        })?;
+    if consumed.rows_affected != 1 {
+        tx.rollback().await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to roll back refresh-token rotation")
+        })?;
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token is invalid, expired, or already used",
+        ));
+    }
+
+    persist_prepared_refresh(&tx, prepared).await?;
+    tx.commit().await.map_err(|_| {
+        OAuthTokenProtocolError::server_error("Failed to commit refresh-token rotation")
+    })
+}
+
+async fn consume_authorization_code<C>(
+    db: &C,
+    code: &oauth_codes::Model,
+) -> Result<(), OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    let consumed = oauth_codes::Entity::update_many()
+        .col_expr(oauth_codes::Column::UsedAt, Expr::value(Utc::now()))
+        .filter(oauth_codes::Column::Id.eq(code.id))
+        .filter(oauth_codes::Column::AppId.eq(code.app_id))
+        .filter(oauth_codes::Column::TenantId.eq(code.tenant_id))
+        .filter(oauth_codes::Column::UsedAt.is_null())
+        .filter(oauth_codes::Column::ExpiresAt.gt(Utc::now()))
+        .exec(db)
+        .await
+        .map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to consume authorization code")
+        })?;
+
+    if consumed.rows_affected == 1 {
+        Ok(())
+    } else {
+        Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code is invalid, expired, or already used",
+        ))
+    }
+}
+
+async fn persist_prepared_refresh<C>(
+    db: &C,
+    prepared: &PreparedUserTokens,
+) -> Result<(), OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    if let Some(model) = prepared.refresh_model.clone() {
+        model.insert(db).await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to persist replacement refresh token")
+        })?;
+    }
+    Ok(())
 }
 
 fn required<'a>(
@@ -579,7 +643,7 @@ fn required<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{require_refresh_grant, validate_requested_scopes};
+    use super::{require_grant, validate_requested_scopes};
     use crate::models::oauth_apps;
     use sea_orm::prelude::DateTimeWithTimeZone;
     use uuid::Uuid;
@@ -626,11 +690,11 @@ mod tests {
     }
 
     #[test]
-    fn authorization_code_implicitly_allows_refresh_for_legacy_apps() {
+    fn refresh_requires_explicit_grant() {
         let app = app(
             serde_json::json!(["profile"]),
             serde_json::json!(["authorization_code"]),
         );
-        assert!(require_refresh_grant(&app).is_ok());
+        assert!(require_grant(&app, REFRESH_TOKEN_GRANT).is_err());
     }
 }
