@@ -43,6 +43,7 @@ pub mod runtime_guardrails;
 pub mod server_bootstrap;
 pub mod server_runtime_context;
 pub mod settings_service;
+pub mod tenant_cache_generation;
 pub mod topic_field_service;
 pub mod user_admin_guard;
 pub mod user_field_service;
