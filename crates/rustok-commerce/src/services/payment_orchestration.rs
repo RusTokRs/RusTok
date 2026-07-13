@@ -5,13 +5,16 @@ use rustok_payment::dto::{
 };
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
+use rustok_payment::{
+    BeginProviderOperation, PaymentProviderOperationJournal, PaymentService,
+    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_SUCCEEDED,
+};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
-
-use rustok_payment::PaymentService;
 
 const MANUAL_PROVIDER_ID: &str = "manual";
 
@@ -22,6 +25,16 @@ pub enum PaymentOrchestrationError {
     #[error("payment provider error after refund {refund_id} was reserved: {source}")]
     ProviderAfterRefundReservation {
         refund_id: Uuid,
+        #[source]
+        source: PaymentError,
+    },
+    #[error(
+        "payment provider `{operation}` succeeded for operation {operation_id}, but local reconciliation state failed for refund {refund_id:?}: {source}"
+    )]
+    PersistenceAfterProvider {
+        operation_id: Uuid,
+        operation: &'static str,
+        refund_id: Option<Uuid>,
         #[source]
         source: PaymentError,
     },
@@ -39,13 +52,15 @@ pub type PaymentOrchestrationResult<T> = Result<T, PaymentOrchestrationError>;
 /// concurrent requests cannot externally refund more than the captured amount.
 pub struct PaymentOrchestrationService {
     payment_service: PaymentService,
+    provider_operation_journal: PaymentProviderOperationJournal,
     payment_provider_registry: PaymentProviderRegistry,
 }
 
 impl PaymentOrchestrationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            payment_service: PaymentService::new(db),
+            payment_service: PaymentService::new(db.clone()),
+            provider_operation_journal: PaymentProviderOperationJournal::new(db),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
         }
     }
@@ -286,33 +301,119 @@ impl PaymentOrchestrationService {
             .payment_service
             .create_refund(tenant_id, collection_id, input.clone())
             .await?;
+        let idempotency_key = format!("payment_refund:{}", refund.id);
+        let provider_request = PaymentProviderOperationRequest {
+            tenant_id,
+            collection_id,
+            amount: refund.amount,
+            currency_code: refund.currency_code.clone(),
+            idempotency_key: Some(idempotency_key.clone()),
+            metadata: merge_provider_context(
+                input.metadata,
+                serde_json::json!({
+                    "commerce_orchestration": {
+                        "operation": "create_refund",
+                        "refund_id": refund.id,
+                        "reason": input.reason,
+                    }
+                }),
+            ),
+        };
+        let request_payload = serde_json::to_value(&provider_request).map_err(|error| {
+            PaymentError::Validation(format!(
+                "failed to serialize refund provider request: {error}"
+            ))
+        })?;
+        let operation = self
+            .provider_operation_journal
+            .begin(BeginProviderOperation {
+                tenant_id,
+                payment_collection_id: collection_id,
+                refund_id: Some(refund.id),
+                operation: "refund".to_string(),
+                provider_id: provider_id.clone(),
+                idempotency_key,
+                request_payload,
+            })
+            .await?;
 
-        self.payment_provider_registry
-            .execute_refund(
-                provider_id.as_str(),
-                PaymentProviderOperationRequest {
-                    tenant_id,
-                    collection_id,
-                    amount: refund.amount,
-                    currency_code: refund.currency_code.clone(),
-                    idempotency_key: Some(format!("payment_refund:{}", refund.id)),
-                    metadata: merge_provider_context(
-                        input.metadata,
-                        serde_json::json!({
-                            "commerce_orchestration": {
-                                "operation": "create_refund",
-                                "refund_id": refund.id,
-                                "reason": input.reason,
-                            }
-                        }),
-                    ),
-                },
+        if operation.status == PROVIDER_OPERATION_COMMITTED {
+            return self
+                .payment_service
+                .get_refund(tenant_id, refund.id)
+                .await
+                .map_err(Into::into);
+        }
+        if matches!(
+            operation.status.as_str(),
+            PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+        ) {
+            self.provider_operation_journal
+                .mark_committed(operation.id)
+                .await?;
+            return self
+                .payment_service
+                .get_refund(tenant_id, refund.id)
+                .await
+                .map_err(Into::into);
+        }
+
+        let provider_result = match self
+            .payment_provider_registry
+            .execute_refund(provider_id.as_str(), provider_request)
+            .await
+        {
+            Ok(result) => result,
+            Err(source) => {
+                let _ = self
+                    .provider_operation_journal
+                    .mark_provider_error(operation.id, source.to_string())
+                    .await;
+                return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
+                    refund_id: refund.id,
+                    source,
+                });
+            }
+        };
+        let provider_result_payload = serde_json::to_value(&provider_result).map_err(|error| {
+            PaymentError::Validation(format!(
+                "failed to serialize refund provider result: {error}"
+            ))
+        })?;
+
+        if let Err(source) = self
+            .provider_operation_journal
+            .mark_provider_succeeded(
+                operation.id,
+                provider_result.external_reference.clone(),
+                provider_result_payload,
             )
             .await
-            .map_err(|source| PaymentOrchestrationError::ProviderAfterRefundReservation {
-                refund_id: refund.id,
+        {
+            return Err(PaymentOrchestrationError::PersistenceAfterProvider {
+                operation_id: operation.id,
+                operation: "refund",
+                refund_id: Some(refund.id),
                 source,
-            })?;
+            });
+        }
+
+        if let Err(source) = self
+            .provider_operation_journal
+            .mark_committed(operation.id)
+            .await
+        {
+            let _ = self
+                .provider_operation_journal
+                .mark_reconciliation_required(operation.id, source.to_string())
+                .await;
+            return Err(PaymentOrchestrationError::PersistenceAfterProvider {
+                operation_id: operation.id,
+                operation: "refund",
+                refund_id: Some(refund.id),
+                source,
+            });
+        }
 
         Ok(refund)
     }
