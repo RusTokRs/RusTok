@@ -22,6 +22,25 @@
 
   const point = (event) => ({ x: event.clientX, y: event.clientY });
 
+  const acceptsTextInput = (target) => {
+    if (!(target instanceof Element)) return false;
+    const tag = target.tagName.toLowerCase();
+    return ['input', 'textarea', 'select'].includes(tag)
+      || target.isContentEditable
+      || Boolean(target.closest('[contenteditable="true"]'));
+  };
+
+  const editorShortcut = (event, editingText) => {
+    const key = event.key.toLowerCase();
+    const primary = event.ctrlKey || event.metaKey;
+    if (key === 'escape') return true;
+    if (primary && key === 's') return true;
+    if (editingText) return false;
+    if (primary && ['z', 'y', 'c', 'x', 'v', 'd'].includes(key)) return true;
+    if (!primary && ['delete', 'backspace'].includes(key)) return true;
+    return event.altKey && ['arrowup', 'arrowdown'].includes(key);
+  };
+
   const reportViewport = () => send('viewport_changed', {
     width: Math.max(0, Math.round(window.innerWidth)),
     height: Math.max(0, Math.round(window.innerHeight)),
@@ -117,7 +136,22 @@
     send('drop_requested', { position: point(event) });
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') send('cancel_drag_requested');
+    const editingText = acceptsTextInput(event.target);
+    if (editorShortcut(event, editingText)) event.preventDefault();
+    send('key_stroke', {
+      stroke: {
+        key: event.key,
+        code: event.code || null,
+        modifiers: {
+          shift: event.shiftKey,
+          alt: event.altKey,
+          control: event.ctrlKey,
+          meta: event.metaKey,
+        },
+        repeat: event.repeat,
+        editing_text: editingText,
+      },
+    });
   });
 
   const observer = new ResizeObserver(scheduleMeasure);
