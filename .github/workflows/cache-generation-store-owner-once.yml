@@ -1,4 +1,4 @@
-name: One-shot service-owned generation store
+name: One-shot service-owned generation store diagnostics
 
 on:
   push:
@@ -22,21 +22,27 @@ jobs:
         with:
           toolchain: "1.96.0"
           components: rustfmt
-      - name: Move generation store ownership into CacheService
+      - name: Transform, validate, and persist diagnostics
         shell: bash
         run: |
-          python3 - <<'PY'
+          set +e
+          LOG=cache-generation-store-validation.log
+          : > "$LOG"
+
+          python3 - <<'PY' >> "$LOG" 2>&1
           from pathlib import Path
           import re
 
           def replace_once(text: str, old: str, new: str, name: str) -> str:
               count = text.count(old)
+              print(f"{name}: matches={count}")
               if count != 1:
                   raise SystemExit(f"{name}: expected one exact match, found {count}")
               return text.replace(old, new, 1)
 
           def sub_once(text: str, pattern: str, replacement: str, name: str) -> str:
               updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              print(f"{name}: matches={count}")
               if count != 1:
                   raise SystemExit(f"{name}: expected one regex match, found {count}")
               return updated
@@ -100,15 +106,17 @@ jobs:
               "",
               "shared store registry capacity",
           )
-          generation = generation.replace(
+          generation = replace_once(
+              generation,
               "    fn new(redis_client: Option<redis::Client>) -> Self {",
               "    pub(crate) fn new(redis_client: Option<redis::Client>) -> Self {",
-              1,
+              "redis generation constructor visibility",
           )
-          generation = generation.replace(
+          generation = replace_once(
+              generation,
               "    fn new() -> Self {",
               "    pub(crate) fn new() -> Self {",
-              1,
+              "local generation constructor visibility",
           )
           generation = sub_once(
               generation,
@@ -124,18 +132,34 @@ jobs:
           )
           generation_path.write_text(generation)
           PY
+          transform_status=$?
+          echo "transform_status=$transform_status" >> "$LOG"
 
-          cargo fmt --all
-          cargo check -p rustok-cache --lib
-          cargo test -p rustok-cache --lib generation
-          cargo test -p rustok-cache --test generation_store_regression
+          fmt_status=99
+          check_status=99
+          unit_status=99
+          integration_status=99
+          if [ "$transform_status" -eq 0 ]; then
+            cargo fmt --all >> "$LOG" 2>&1
+            fmt_status=$?
+            cargo check -p rustok-cache --lib >> "$LOG" 2>&1
+            check_status=$?
+            cargo test -p rustok-cache --lib generation >> "$LOG" 2>&1
+            unit_status=$?
+            cargo test -p rustok-cache --test generation_store_regression >> "$LOG" 2>&1
+            integration_status=$?
+          fi
+          {
+            echo "fmt_status=$fmt_status"
+            echo "check_status=$check_status"
+            echo "unit_status=$unit_status"
+            echo "integration_status=$integration_status"
+          } >> "$LOG"
 
-      - name: Commit validated transformation to branch
-        shell: bash
-        run: |
-          git switch -c cache/service-owned-generation-store-v2
+          rm .github/workflows/cache-generation-store-owner-once.yml
+          git switch -c cache/service-owned-generation-store-v3
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/rustok-cache/src/service.rs crates/rustok-cache/src/generation.rs
+          git add --all
           git commit -m "fix(cache): own generation store in cache service"
-          git push origin HEAD:cache/service-owned-generation-store-v2
+          git push origin HEAD:cache/service-owned-generation-store-v3
