@@ -85,15 +85,30 @@ jobs:
           if not source.startswith("#![allow(dead_code)]"):
               support.write_text("#![allow(dead_code)]\n\n" + source)
 
-          tenant_test = Path("crates/rustok-forum/tests/tenant_child_integrity_sqlite.rs")
-          tenant_test.write_text(tenant_test.read_text().replace(
-              "use sea_orm_migration::{MigrationTrait, SchemaManager};",
-              "use sea_orm_migration::SchemaManager;",
-              1,
-          ))
-
-          position_test = Path("crates/rustok-forum/tests/reply_position_integrity_sqlite.rs")
-          position_test.write_text(position_test.read_text().replace("    TryGetable,\n", "", 1))
+          replacements = {
+              "crates/rustok-forum/tests/tenant_child_integrity_sqlite.rs": (
+                  "use sea_orm_migration::{MigrationTrait, SchemaManager};",
+                  "use sea_orm_migration::SchemaManager;",
+              ),
+              "crates/rustok-forum/tests/reply_position_integrity_sqlite.rs": (
+                  "    TryGetable,\n",
+                  "",
+              ),
+              "crates/rustok-forum/tests/soft_delete_revision_sqlite.rs": (
+                  "    TryGetable,\n",
+                  "",
+              ),
+              "crates/rustok-forum/tests/soft_delete_revision_postgres.rs": (
+                  ", TryGetable",
+                  "",
+              ),
+          }
+          for path, (old, new) in replacements.items():
+              target = Path(path)
+              source = target.read_text()
+              if old not in source:
+                  raise SystemExit(f"replacement anchor missing in {path}")
+              target.write_text(source.replace(old, new, 1))
           PY
 
           targets=(
@@ -106,6 +121,8 @@ jobs:
             crates/rustok-forum/src/services/subscription/topic.rs
             crates/rustok-forum/src/state_machine.rs
             crates/rustok-forum/tests/reply_position_integrity_sqlite.rs
+            crates/rustok-forum/tests/soft_delete_revision_postgres.rs
+            crates/rustok-forum/tests/soft_delete_revision_sqlite.rs
             crates/rustok-forum/tests/subscription_levels_contract.rs
             crates/rustok-forum/tests/subscription_levels_sqlite.rs
             crates/rustok-forum/tests/support/mod.rs
