@@ -27,9 +27,9 @@ use super::user_stats::UserStatsService;
 
 /// Public owner service for reply commands.
 ///
-/// The wrapped persistence service remains available inside this crate for read
-/// paths and low-level helpers. Lifecycle decisions live here so database
-/// triggers are invariant guards rather than the primary workflow engine.
+/// The wrapped persistence service remains available as a compatibility path.
+/// Root-service lifecycle decisions live here so database triggers are
+/// invariant guards rather than the primary workflow engine.
 pub struct ReplyService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
