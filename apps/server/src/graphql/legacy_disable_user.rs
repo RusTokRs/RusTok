@@ -15,27 +15,30 @@ fn selection_contains_disable_user(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
 ) -> bool {
-    selection_set.items.iter().any(|selection| match &selection.node {
-        Selection::Field(field) => {
-            operation_type == OperationType::Mutation
-                && field.node.name.node.as_str() == "disableUser"
-        }
-        Selection::FragmentSpread(fragment) => document
-            .fragments
-            .get(&fragment.node.fragment_name.node)
-            .is_some_and(|definition| {
-                selection_contains_disable_user(
-                    operation_type,
-                    &definition.node.selection_set.node,
-                    document,
-                )
-            }),
-        Selection::InlineFragment(fragment) => selection_contains_disable_user(
-            operation_type,
-            &fragment.node.selection_set.node,
-            document,
-        ),
-    })
+    selection_set
+        .items
+        .iter()
+        .any(|selection| match &selection.node {
+            Selection::Field(field) => {
+                operation_type == OperationType::Mutation
+                    && field.node.name.node.as_str() == "disableUser"
+            }
+            Selection::FragmentSpread(fragment) => document
+                .fragments
+                .get(&fragment.node.fragment_name.node)
+                .is_some_and(|definition| {
+                    selection_contains_disable_user(
+                        operation_type,
+                        &definition.node.selection_set.node,
+                        document,
+                    )
+                }),
+            Selection::InlineFragment(fragment) => selection_contains_disable_user(
+                operation_type,
+                &fragment.node.selection_set.node,
+                document,
+            ),
+        })
 }
 
 fn document_contains_disable_user(document: &ExecutableDocument) -> bool {

@@ -118,9 +118,11 @@ impl CacheNamespaceGenerationStore {
 
     fn ensure_registry_available(&self) -> Result<(), CacheGenerationError> {
         if self.registry_rejected {
-            Err(CacheGenerationError::GenerationStoreRegistryCapacityExceeded {
-                maximum: DEFAULT_MAX_SHARED_GENERATION_STORES,
-            })
+            Err(
+                CacheGenerationError::GenerationStoreRegistryCapacityExceeded {
+                    maximum: DEFAULT_MAX_SHARED_GENERATION_STORES,
+                },
+            )
         } else {
             Ok(())
         }

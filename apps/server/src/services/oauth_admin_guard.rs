@@ -116,8 +116,7 @@ where
     C: ConnectionTrait,
 {
     let query = || {
-        oauth_apps::Entity::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+        oauth_apps::Entity::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id))
     };
     let app = match db.get_database_backend() {
         DbBackend::Postgres | DbBackend::MySql => query()

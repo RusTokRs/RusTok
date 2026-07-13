@@ -481,9 +481,7 @@ mod tests {
             key: "never-polled".to_string(),
         };
         let in_flight = Arc::new(StdMutex::new(HashSet::from([key.clone()])));
-        let permit = Arc::new(Semaphore::new(1))
-            .try_acquire_owned()
-            .unwrap();
+        let permit = Arc::new(Semaphore::new(1)).try_acquire_owned().unwrap();
         let lease = CacheRefreshLease {
             key,
             in_flight: Arc::clone(&in_flight),

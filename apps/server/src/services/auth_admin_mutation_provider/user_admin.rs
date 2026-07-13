@@ -86,10 +86,9 @@ impl ServerAuthAdminMutationProvider {
     where
         C: ConnectionTrait,
     {
-        let permissions =
-            RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
-                .await
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         Ok(infer_user_role_from_permissions(&permissions))
     }
 
@@ -133,9 +132,7 @@ async fn lock_user_for_mutation<C>(
 where
     C: ConnectionTrait,
 {
-    let query = || {
-        users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id))
-    };
+    let query = || users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
 
     let user = match db.get_database_backend() {
         DbBackend::Postgres | DbBackend::MySql => query()
@@ -360,9 +357,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         let user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
-        let current_role = self
-            .user_role(&tx, context.tenant_id, user.id)
-            .await?;
+        let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
         self.ensure_target_management_allowed(context, user.id, &current_role)
             .await?;
         let user_id = user.id;
@@ -446,9 +441,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         let user = lock_user_for_mutation(&tx, context.tenant_id, user_id).await?;
-        let current_role = self
-            .user_role(&tx, context.tenant_id, user.id)
-            .await?;
+        let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
         self.ensure_target_management_allowed(context, user.id, &current_role)
             .await?;
         ensure_active_super_admin_continuity(

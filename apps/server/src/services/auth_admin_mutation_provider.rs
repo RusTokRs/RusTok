@@ -351,14 +351,9 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
             .filter(|app| app.is_active())
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        OAuthAppService::grant_consent(
-            &self.db,
-            app.id,
-            context.actor_id,
-            scopes,
-        )
-        .await
-        .map_err(map_service_error)
+        OAuthAppService::grant_consent(&self.db, app.id, context.actor_id, scopes)
+            .await
+            .map_err(map_service_error)
     }
 
     async fn revoke_oauth_app_consent(
@@ -366,13 +361,8 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
-        OAuthAppService::revoke_consent(
-            &self.db,
-            app_id,
-            context.actor_id,
-            context.tenant_id,
-        )
-        .await
-        .map_err(map_service_error)
+        OAuthAppService::revoke_consent(&self.db, app_id, context.actor_id, context.tenant_id)
+            .await
+            .map_err(map_service_error)
     }
 }

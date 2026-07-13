@@ -49,8 +49,7 @@ pub enum CheckoutInventoryReservationError {
     Database(#[from] sea_orm::DbErr),
 }
 
-pub type CheckoutInventoryReservationResult<T> =
-    Result<T, CheckoutInventoryReservationError>;
+pub type CheckoutInventoryReservationResult<T> = Result<T, CheckoutInventoryReservationError>;
 
 #[derive(Clone, Debug)]
 pub struct PlanCheckoutInventoryReservation {
@@ -146,10 +145,8 @@ impl CheckoutInventoryReservationJournal {
         }
 
         let reservation_id = generate_id();
-        let external_id = checkout_reservation_external_id(
-            input.checkout_operation_id,
-            input.cart_line_item_id,
-        )?;
+        let external_id =
+            checkout_reservation_external_id(input.checkout_operation_id, input.cart_line_item_id)?;
         let now = Utc::now();
         let insert = checkout_inventory_reservation::ActiveModel {
             reservation_id: Set(reservation_id),
@@ -201,9 +198,7 @@ impl CheckoutInventoryReservationJournal {
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
-            .ok_or(CheckoutInventoryReservationError::NotFound(
-                reservation_id,
-            ))
+            .ok_or(CheckoutInventoryReservationError::NotFound(reservation_id))
     }
 
     pub async fn find_by_operation_line(
@@ -218,9 +213,7 @@ impl CheckoutInventoryReservationJournal {
                 checkout_inventory_reservation::Column::CheckoutOperationId
                     .eq(checkout_operation_id),
             )
-            .filter(
-                checkout_inventory_reservation::Column::CartLineItemId.eq(cart_line_item_id),
-            )
+            .filter(checkout_inventory_reservation::Column::CartLineItemId.eq(cart_line_item_id))
             .one(&self.db)
             .await
             .map_err(Into::into)
@@ -289,9 +282,7 @@ impl CheckoutInventoryReservationJournal {
                 Expr::current_timestamp(),
             )
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
-            .filter(
-                checkout_inventory_reservation::Column::ReservationId.eq(reservation_id),
-            )
+            .filter(checkout_inventory_reservation::Column::ReservationId.eq(reservation_id))
             .filter(
                 checkout_inventory_reservation::Column::Status
                     .eq(CheckoutInventoryReservationStatus::Planned.as_str()),
@@ -346,11 +337,7 @@ impl CheckoutInventoryReservationJournal {
         message: impl Into<String>,
     ) -> CheckoutInventoryReservationResult<checkout_inventory_reservation::Model> {
         let code = normalize_bounded(code.into(), "error code", MAX_ERROR_CODE_LENGTH)?;
-        let message = normalize_bounded(
-            message.into(),
-            "error message",
-            MAX_ERROR_MESSAGE_LENGTH,
-        )?;
+        let message = normalize_bounded(message.into(), "error message", MAX_ERROR_MESSAGE_LENGTH)?;
         let update = checkout_inventory_reservation::Entity::update_many()
             .col_expr(
                 checkout_inventory_reservation::Column::LastErrorCode,
@@ -365,15 +352,11 @@ impl CheckoutInventoryReservationJournal {
                 Expr::current_timestamp(),
             )
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
-            .filter(
-                checkout_inventory_reservation::Column::ReservationId.eq(reservation_id),
-            )
+            .filter(checkout_inventory_reservation::Column::ReservationId.eq(reservation_id))
             .exec(&self.db)
             .await?;
         if update.rows_affected != 1 {
-            return Err(CheckoutInventoryReservationError::NotFound(
-                reservation_id,
-            ));
+            return Err(CheckoutInventoryReservationError::NotFound(reservation_id));
         }
         self.get(tenant_id, reservation_id).await
     }
@@ -419,9 +402,7 @@ impl CheckoutInventoryReservationJournal {
                 Expr::current_timestamp(),
             )
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
-            .filter(
-                checkout_inventory_reservation::Column::ReservationId.eq(reservation_id),
-            )
+            .filter(checkout_inventory_reservation::Column::ReservationId.eq(reservation_id))
             .filter(
                 checkout_inventory_reservation::Column::Status
                     .eq(CheckoutInventoryReservationStatus::Reserved.as_str()),

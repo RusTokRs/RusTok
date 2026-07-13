@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand,
-    UserAdminMutationRuntime,
+    AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
 };
 use rustok_core::{ModuleRuntimeExtensions, UserRole};
 use rustok_rbac::graphql::{
@@ -56,22 +55,15 @@ fn map_auth_admin_error(error: AuthAdminMutationError) -> RbacGraphqlRoleWriteEr
         AuthAdminMutationError::Unauthorized => RbacGraphqlRoleWriteError::Forbidden(
             "authentication context is unavailable".to_string(),
         ),
-        AuthAdminMutationError::Forbidden(message) => {
-            RbacGraphqlRoleWriteError::Forbidden(message)
-        }
-        AuthAdminMutationError::NotFound(message) => {
-            RbacGraphqlRoleWriteError::NotFound(message)
-        }
-        AuthAdminMutationError::Validation(message)
-        | AuthAdminMutationError::Conflict(message) => {
+        AuthAdminMutationError::Forbidden(message) => RbacGraphqlRoleWriteError::Forbidden(message),
+        AuthAdminMutationError::NotFound(message) => RbacGraphqlRoleWriteError::NotFound(message),
+        AuthAdminMutationError::Validation(message) | AuthAdminMutationError::Conflict(message) => {
             RbacGraphqlRoleWriteError::Conflict(message)
         }
         AuthAdminMutationError::CustomFieldsValidation(fields) => {
             RbacGraphqlRoleWriteError::Conflict(fields.to_string())
         }
-        AuthAdminMutationError::Internal(message) => {
-            RbacGraphqlRoleWriteError::Internal(message)
-        }
+        AuthAdminMutationError::Internal(message) => RbacGraphqlRoleWriteError::Internal(message),
     }
 }
 

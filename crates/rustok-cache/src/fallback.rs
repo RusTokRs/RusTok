@@ -504,10 +504,7 @@ mod tests {
         let tracker = DegradedWriteTracker::new(1);
         let fallback = InMemoryCacheBackend::new(Duration::from_secs(30), 4);
 
-        assert!(tracker
-            .insert("missing", b"new", &fallback)
-            .await
-            .is_err());
+        assert!(tracker.insert("missing", b"new", &fallback).await.is_err());
         fallback
             .set("stale".to_string(), b"old".to_vec())
             .await

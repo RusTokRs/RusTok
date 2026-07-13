@@ -188,12 +188,7 @@ impl CheckoutInventoryReservationExecutor {
                     "inventory owner returned a reservation that does not match the persisted checkout identity",
                 );
                 return Err(self
-                    .record_boundary_failure(
-                        tenant_id,
-                        line.id,
-                        planned.reservation_id,
-                        boundary,
-                    )
+                    .record_boundary_failure(tenant_id, line.id, planned.reservation_id, boundary)
                     .await);
             }
 
