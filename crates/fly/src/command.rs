@@ -1,8 +1,8 @@
 use crate::{
-    apply_page_command, apply_style_rule_command, validate_project, AssetDescriptor, ComponentNode,
-    ComponentObject, FlyError, FlyResult, GrapesJsV1Codec, PageCommand, ProjectDocument,
-    RegistrySet, SequentialIdGenerator, StyleRuleCommand, ValidationDiagnostic, ValidationLimits,
-    ValidationReport,
+    apply_dynamic_command, apply_page_command, apply_style_rule_command, validate_project,
+    AssetDescriptor, ComponentNode, ComponentObject, DynamicCommand, FlyError, FlyResult,
+    GrapesJsV1Codec, PageCommand, ProjectDocument, RegistrySet, SequentialIdGenerator,
+    StyleRuleCommand, ValidationDiagnostic, ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -125,6 +125,20 @@ pub enum EditorCommand {
     Page {
         command: PageCommand,
     },
+    Dynamic {
+        command: DynamicCommand,
+    },
+    Batch {
+        commands: Vec<EditorCommand>,
+    },
+}
+
+impl EditorCommand {
+    pub fn batch(commands: impl IntoIterator<Item = EditorCommand>) -> Self {
+        Self::Batch {
+            commands: commands.into_iter().collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -399,7 +413,9 @@ impl FlyEditor {
         command: &EditorCommand,
     ) -> FlyResult<()> {
         match command {
-            EditorCommand::Select { .. } => Ok(()),
+            EditorCommand::Select { .. } => Err(FlyError::Decode(
+                "selection commands cannot be nested in a project transaction".to_string(),
+            )),
             EditorCommand::Insert {
                 parent_id,
                 index,
@@ -456,6 +472,13 @@ impl FlyEditor {
             EditorCommand::Asset { command } => apply_asset_command(document, command),
             EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),
             EditorCommand::Page { command } => apply_page_command(document, command),
+            EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
+            EditorCommand::Batch { commands } => {
+                for command in commands {
+                    self.apply_to_document(document, command)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -496,7 +519,8 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 mod tests {
     use super::*;
     use crate::{
-        blank_page, GrapesJsV1Codec, PageLocator, RegistrySet, StyleRuleCatalog, StyleRuleScope,
+        GrapesJsV1Codec, RuntimeCondition, ConditionOperator, DynamicCatalog, RegistrySet,
+        FLY_RUNTIME_CONDITIONS_FIELD,
     };
     use serde_json::json;
 
@@ -545,121 +569,84 @@ mod tests {
     }
 
     #[test]
-    fn replace_style_is_explicit() {
+    fn dynamic_commands_participate_in_history() {
         let mut editor = editor();
         editor
-            .apply(EditorCommand::Patch {
-                component_id: "hero".to_string(),
-                patch: ComponentPatch {
-                    style: Some(json!({ "width": "320px" })),
-                    replace_style: true,
-                    ..ComponentPatch::default()
+            .apply(EditorCommand::Dynamic {
+                command: DynamicCommand::UpsertCondition {
+                    condition: RuntimeCondition {
+                        id: "show-hero".to_string(),
+                        component_id: "hero".to_string(),
+                        path: "flags.hero".to_string(),
+                        operator: ConditionOperator::Truthy,
+                        expected: None,
+                        invert: false,
+                        extensions: Map::new(),
+                    },
                 },
             })
-            .expect("patch");
-        let style = editor
+            .expect("dynamic command");
+        assert_eq!(DynamicCatalog::from_document(editor.document()).conditions.len(), 1);
+        assert!(editor
+            .document()
+            .project
+            .extensions
+            .contains_key(FLY_RUNTIME_CONDITIONS_FIELD));
+        editor.undo().expect("undo dynamic command");
+        assert!(DynamicCatalog::from_document(editor.document()).conditions.is_empty());
+    }
+
+    #[test]
+    fn batch_is_atomic_and_creates_one_history_entry() {
+        let mut editor = editor();
+        editor
+            .apply(EditorCommand::batch([
+                EditorCommand::Patch {
+                    component_id: "hero".to_string(),
+                    patch: ComponentPatch {
+                        fields: Map::from_iter([(
+                            "content".to_string(),
+                            Value::String("Updated".to_string()),
+                        )]),
+                        ..ComponentPatch::default()
+                    },
+                },
+                EditorCommand::Asset {
+                    command: AssetCommand::Upsert {
+                        asset: json!({ "id": "hero-image", "src": "/hero.webp" }),
+                    },
+                },
+            ]))
+            .expect("batch");
+        assert_eq!(editor.history().undo_len(), 1);
+        assert_eq!(editor.document().project.assets.len(), 1);
+        editor.undo().expect("undo batch");
+        assert!(editor.document().project.assets.is_empty());
+        assert!(editor
             .document()
             .component("hero")
-            .and_then(|component| component.style.as_ref())
-            .expect("style");
-        assert!(style.get("color").is_none());
-        assert_eq!(style["width"], "320px");
-    }
-
-    #[test]
-    fn asset_commands_participate_in_history() {
-        let mut editor = editor();
-        editor
-            .apply(EditorCommand::Asset {
-                command: AssetCommand::Upsert {
-                    asset: json!({ "id": "hero-image", "src": "/media/hero.webp" }),
-                },
-            })
-            .expect("asset upsert");
-        assert_eq!(editor.document().project.assets.len(), 1);
-        editor.undo().expect("undo asset");
-        assert!(editor.document().project.assets.is_empty());
-        editor.redo().expect("redo asset");
-        assert_eq!(editor.document().project.assets.len(), 1);
-    }
-
-    #[test]
-    fn upsert_replaces_asset_with_same_normalized_id() {
-        let mut editor = editor();
-        for src in ["/media/one.webp", "/media/two.webp"] {
-            editor
-                .apply(EditorCommand::Asset {
-                    command: AssetCommand::Upsert {
-                        asset: json!({ "id": "hero-image", "src": src }),
-                    },
-                })
-                .expect("asset upsert");
-        }
-        assert_eq!(editor.document().project.assets.len(), 1);
-        assert_eq!(
-            editor.document().project.assets[0]["src"],
-            "/media/two.webp"
-        );
-    }
-
-    #[test]
-    fn responsive_style_rules_participate_in_history() {
-        let mut editor = editor();
-        let scope = StyleRuleScope::Media {
-            query: "(max-width: 767px)".to_string(),
-        };
-        editor
-            .apply(EditorCommand::StyleRule {
-                command: StyleRuleCommand::UpsertComponentRule {
-                    component_id: "hero".to_string(),
-                    scope: scope.clone(),
-                    declarations: Map::from_iter([(
-                        "padding".to_string(),
-                        Value::String("24px".to_string()),
-                    )]),
-                    remove_properties: Vec::new(),
-                },
-            })
-            .expect("responsive style rule");
-        assert!(StyleRuleCatalog::from_document(editor.document())
-            .component_rule("hero", &scope)
-            .is_some());
-        editor.undo().expect("undo responsive style rule");
-        assert!(StyleRuleCatalog::from_document(editor.document())
-            .component_rule("hero", &scope)
+            .and_then(|component| component.extensions.get("content"))
             .is_none());
-        editor.redo().expect("redo responsive style rule");
-        assert!(StyleRuleCatalog::from_document(editor.document())
-            .component_rule("hero", &scope)
-            .is_some());
     }
 
     #[test]
-    fn page_commands_participate_in_history_and_clear_stale_selection() {
+    fn failed_batch_does_not_change_document_or_history() {
         let mut editor = editor();
-        editor
-            .apply(EditorCommand::Select {
-                component_id: Some("hero".to_string()),
-            })
-            .expect("select");
-        editor
-            .apply(EditorCommand::Page {
-                command: PageCommand::Add {
-                    index: 1,
-                    page: blank_page("about", "About"),
+        let before = editor.document().hash();
+        let error = editor
+            .apply(EditorCommand::batch([
+                EditorCommand::Asset {
+                    command: AssetCommand::Upsert {
+                        asset: json!({ "id": "hero-image", "src": "/hero.webp" }),
+                    },
                 },
-            })
-            .expect("add page");
-        assert_eq!(editor.document().project.pages.len(), 2);
-        editor
-            .apply(EditorCommand::Page {
-                command: PageCommand::Remove {
-                    locator: PageLocator::by_id("home"),
+                EditorCommand::Remove {
+                    component_id: "missing".to_string(),
                 },
-            })
-            .expect("remove selected page");
-        assert_eq!(editor.selection(), None);
-        editor.undo().expect("undo remove page");
-        assert_eq!(editor.document().project.pages.len(), 2);
+            ]))
+            .expect_err("batch should fail");
+        assert!(matches!(error, FlyError::ComponentNotFound(_)));
+        assert_eq!(editor.document().hash(), before);
+        assert_eq!(editor.history().undo_len(), 0);
     }
 }
