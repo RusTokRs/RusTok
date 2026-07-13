@@ -436,6 +436,30 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         request.external_id = normalize_external_id(request.external_id)?;
 
         let txn = self.db.begin().await.map_err(storage_unavailable)?;
+        let observed = reservation_item::Entity::find_by_id(request.reservation_id)
+            .one(&txn)
+            .await
+            .map_err(storage_unavailable)?
+            .ok_or_else(|| {
+                PortError::not_found(
+                    "inventory.reservation_not_found",
+                    "inventory reservation was not found",
+                )
+            })?;
+        if observed.external_id.as_deref() != Some(request.external_id.as_str()) {
+            return Err(PortError::conflict(
+                "inventory.reservation_identity_conflict",
+                "reservation id is bound to another external identity",
+            ));
+        }
+        let item = load_inventory_item_by_id_for_update(&txn, observed.inventory_item_id)
+            .await?
+            .ok_or_else(|| {
+                PortError::invariant_violation(
+                    "inventory.reservation_item_missing",
+                    "reservation inventory item is missing",
+                )
+            })?;
         let reservation = reservation_item::Entity::find_by_id(request.reservation_id)
             .one(&txn)
             .await
@@ -446,20 +470,14 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                     "inventory reservation was not found",
                 )
             })?;
-        if reservation.external_id.as_deref() != Some(request.external_id.as_str()) {
+        if reservation.inventory_item_id != item.id
+            || reservation.external_id.as_deref() != Some(request.external_id.as_str())
+        {
             return Err(PortError::conflict(
                 "inventory.reservation_identity_conflict",
-                "reservation id is bound to another external identity",
+                "reservation identity changed while acquiring the owner lock",
             ));
         }
-        let item = load_inventory_item_by_id_for_update(&txn, reservation.inventory_item_id)
-            .await?
-            .ok_or_else(|| {
-                PortError::invariant_violation(
-                    "inventory.reservation_item_missing",
-                    "reservation inventory item is missing",
-                )
-            })?;
         let variant = load_tenant_variant(&txn, tenant_id, item.variant_id).await?;
         let allows_backorder = crate::inventory_policy_allows_backorder(&variant.inventory_policy);
 
