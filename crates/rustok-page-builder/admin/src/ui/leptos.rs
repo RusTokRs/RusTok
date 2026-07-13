@@ -1,6 +1,7 @@
 use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
+use fly::TraitSchemaRegistry;
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
@@ -9,11 +10,13 @@ use std::sync::Arc;
 /// Host-provided composition context for a concrete consumer document.
 ///
 /// Generated module composition mounts [`PageBuilderAdmin`] without props. Consumer routes such as
-/// Pages may provide this context to activate a concrete document and its FFA persistence facade.
+/// Pages may provide this context to activate a concrete document, persistence facade, and
+/// provider-contributed authoring schemas.
 #[derive(Clone)]
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
     pub facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    pub trait_schemas: Option<Arc<TraitSchemaRegistry>>,
 }
 
 impl PageBuilderAdminHostContext {
@@ -21,11 +24,20 @@ impl PageBuilderAdminHostContext {
         Self {
             controller,
             facade: None,
+            trait_schemas: None,
         }
     }
 
     pub fn with_facade(mut self, facade: Arc<dyn PageBuilderAdminFacade>) -> Self {
         self.facade = Some(facade);
+        self
+    }
+
+    pub fn with_trait_schemas(
+        mut self,
+        trait_schemas: Arc<TraitSchemaRegistry>,
+    ) -> Self {
+        self.trait_schemas = Some(trait_schemas);
         self
     }
 }
@@ -45,6 +57,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
             <PageBuilderAdminWithController
                 controller=context.controller
                 facade=context.facade
+                trait_schemas=context.trait_schemas
             />
         }
         .into_any(),
@@ -83,6 +96,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
 pub fn PageBuilderAdminWithController(
     controller: AdminCanvasController,
     #[prop(optional)] facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -97,7 +111,7 @@ pub fn PageBuilderAdminWithController(
 
     view! {
         <AdminShell title subtitle>
-            <AdminCanvas controller facade on_request />
+            <AdminCanvas controller facade trait_schemas on_request />
         </AdminShell>
     }
 }
