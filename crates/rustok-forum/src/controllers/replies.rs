@@ -19,6 +19,14 @@ fn clamp_per_page(per_page: u64) -> u64 {
     per_page.min(100)
 }
 
+fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
+}
+
 #[utoipa::path(
     get,
     path = "/api/forum/topics/{id}/replies",
@@ -56,10 +64,7 @@ pub async fn list_replies(
     let (replies, _) = service
         .list_for_topic_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             topic_id,
             filter,
             Some(tenant.default_locale.as_str()),
@@ -133,10 +138,7 @@ pub async fn get_reply(
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             id,
             &locale,
             Some(tenant.default_locale.as_str()),
@@ -174,15 +176,7 @@ pub async fn create_reply(
 
     let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
-        .create(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            topic_id,
-            input,
-        )
+        .create(tenant.id, forum_security(&auth), topic_id, input)
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok((StatusCode::CREATED, Json(reply)))
@@ -216,15 +210,7 @@ pub async fn update_reply(
 
     let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
-        .update(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+        .update(tenant.id, id, forum_security(&auth), input)
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(Json(reply))
@@ -256,14 +242,7 @@ pub async fn delete_reply(
 
     let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     service
-        .delete(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .delete(tenant.id, id, forum_security(&auth))
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -297,15 +276,7 @@ pub async fn set_reply_vote(
     )?;
 
     VoteService::new(runtime.db_clone())
-        .set_reply_vote(
-            tenant.id,
-            reply_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            value,
-        )
+        .set_reply_vote(tenant.id, reply_id, forum_security(&auth), value)
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
@@ -313,10 +284,7 @@ pub async fn set_reply_vote(
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             reply_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -351,14 +319,7 @@ pub async fn clear_reply_vote(
     )?;
 
     VoteService::new(runtime.db_clone())
-        .clear_reply_vote(
-            tenant.id,
-            reply_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .clear_reply_vote(tenant.id, reply_id, forum_security(&auth))
         .await
         .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
 
@@ -366,10 +327,7 @@ pub async fn clear_reply_vote(
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             reply_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -385,7 +343,7 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "forum_permission_denied",
             message.to_string(),
         ));
