@@ -1,8 +1,9 @@
 use crate::{
-    apply_dynamic_command, apply_page_command, apply_style_rule_command, validate_project,
-    AssetDescriptor, ComponentNode, ComponentObject, DynamicCommand, FlyError, FlyResult,
-    GrapesJsV1Codec, PageCommand, ProjectDocument, RegistrySet, SequentialIdGenerator,
-    StyleRuleCommand, ValidationDiagnostic, ValidationLimits, ValidationReport,
+    apply_binding_command, apply_dynamic_command, apply_page_command, apply_style_rule_command,
+    extend_with_runtime_validation, validate_project, AssetDescriptor, BindingCommand,
+    ComponentNode, ComponentObject, DynamicCommand, FlyError, FlyResult, GrapesJsV1Codec,
+    PageCommand, ProjectDocument, RegistrySet, SequentialIdGenerator, StyleRuleCommand,
+    ValidationLimits, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -127,6 +128,9 @@ pub enum EditorCommand {
     },
     Dynamic {
         command: DynamicCommand,
+    },
+    Binding {
+        command: BindingCommand,
     },
     Batch {
         commands: Vec<EditorCommand>,
@@ -345,7 +349,10 @@ impl FlyEditor {
     }
 
     pub fn validate(&self) -> ValidationReport {
-        validate_project(&self.document, &self.registries, self.validation_limits)
+        extend_with_runtime_validation(
+            &self.document,
+            validate_project(&self.document, &self.registries, self.validation_limits),
+        )
     }
 
     pub fn apply(&mut self, command: EditorCommand) -> FlyResult<ValidationReport> {
@@ -363,7 +370,10 @@ impl FlyEditor {
         let mut after = before.clone();
         self.apply_to_document(&mut after, &command)?;
         after.ensure_stable_ids(&mut self.id_generator);
-        let report = validate_project(&after, &self.registries, self.validation_limits);
+        let report = extend_with_runtime_validation(
+            &after,
+            validate_project(&after, &self.registries, self.validation_limits),
+        );
         let errors = report.errors().cloned().collect::<Vec<_>>();
         if !errors.is_empty() {
             return Err(FlyError::Validation(errors));
@@ -473,6 +483,7 @@ impl FlyEditor {
             EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),
             EditorCommand::Page { command } => apply_page_command(document, command),
             EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
+            EditorCommand::Binding { command } => apply_binding_command(document, command),
             EditorCommand::Batch { commands } => {
                 for command in commands {
                     self.apply_to_document(document, command)?;
@@ -519,7 +530,8 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 mod tests {
     use super::*;
     use crate::{
-        GrapesJsV1Codec, RuntimeCondition, ConditionOperator, DynamicCatalog, RegistrySet,
+        BindingCatalog, BindingTarget, BindingTransform, ConditionOperator, DynamicCatalog,
+        GrapesJsV1Codec, RuntimeBinding, RuntimeCondition, RegistrySet,
         FLY_RUNTIME_CONDITIONS_FIELD,
     };
     use serde_json::json;
@@ -594,6 +606,54 @@ mod tests {
             .contains_key(FLY_RUNTIME_CONDITIONS_FIELD));
         editor.undo().expect("undo dynamic command");
         assert!(DynamicCatalog::from_document(editor.document()).conditions.is_empty());
+    }
+
+    #[test]
+    fn binding_commands_participate_in_history() {
+        let mut editor = editor();
+        editor
+            .apply(EditorCommand::Binding {
+                command: BindingCommand::Upsert {
+                    binding: RuntimeBinding {
+                        id: "hero-content".to_string(),
+                        component_id: "hero".to_string(),
+                        path: "page.hero".to_string(),
+                        target: BindingTarget::Field {
+                            name: "content".to_string(),
+                        },
+                        fallback: None,
+                        transform: BindingTransform::Identity,
+                        extensions: Map::new(),
+                    },
+                },
+            })
+            .expect("binding command");
+        assert_eq!(BindingCatalog::from_document(editor.document()).bindings.len(), 1);
+        editor.undo().expect("undo binding command");
+        assert!(BindingCatalog::from_document(editor.document()).bindings.is_empty());
+    }
+
+    #[test]
+    fn invalid_runtime_definitions_block_transaction() {
+        let mut editor = editor();
+        let error = editor
+            .apply(EditorCommand::Dynamic {
+                command: DynamicCommand::UpsertRepeater {
+                    repeater: crate::RuntimeRepeater {
+                        id: "root-repeat".to_string(),
+                        component_id: "root".to_string(),
+                        path: "items".to_string(),
+                        item_alias: "item".to_string(),
+                        index_alias: "index".to_string(),
+                        limit: None,
+                        empty_behavior: crate::EmptyRepeaterBehavior::Hide,
+                        extensions: Map::new(),
+                    },
+                },
+            })
+            .expect_err("root repeater should fail validation");
+        assert!(matches!(error, FlyError::Validation(_)));
+        assert!(DynamicCatalog::from_document(editor.document()).repeaters.is_empty());
     }
 
     #[test]
