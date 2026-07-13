@@ -1,0 +1,45 @@
+name: FORUM-11 Diagnostics
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-forum/**"
+      - "scripts/verify/verify-forum-subscription-levels*"
+      - ".github/workflows/forum11-diagnostics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Collect formatter and compiler diagnostics
+        shell: bash
+        run: |
+          mkdir -p diagnostics
+          set +e
+          cargo fmt --all
+          fmt_status=$?
+          git diff --binary > diagnostics/rustfmt.patch
+          cargo check -p rustok-forum --all-targets --all-features > diagnostics/cargo-check.log 2>&1
+          check_status=$?
+          cargo clippy -p rustok-forum --all-targets --all-features --no-deps -- -D warnings > diagnostics/clippy.log 2>&1
+          clippy_status=$?
+          {
+            echo "rustfmt_status=${fmt_status}"
+            echo "cargo_check_status=${check_status}"
+            echo "clippy_status=${clippy_status}"
+          } > diagnostics/status.txt
+          exit 0
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: forum11-diagnostics
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 1
