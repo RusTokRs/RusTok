@@ -1,6 +1,8 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_api::{has_effective_permission, Permission};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
@@ -10,6 +12,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use super::oauth_app::OAuthAppService;
+use super::rbac_request_scope::permissions_for;
 
 pub struct GuardedOAuthAdminProvider {
     db: DatabaseConnection,
@@ -19,6 +22,39 @@ pub struct GuardedOAuthAdminProvider {
 impl GuardedOAuthAdminProvider {
     pub fn new(db: DatabaseConnection, inner: Arc<dyn OAuthAdminPort>) -> Self {
         Self { db, inner }
+    }
+
+    fn request_permissions(
+        &self,
+        context: &AuthAdminMutationContext,
+    ) -> Result<Vec<Permission>, AuthAdminMutationError> {
+        permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            AuthAdminMutationError::Forbidden(
+                "OAuth administration requires a request-bound effective permission snapshot"
+                    .to_string(),
+            )
+        })
+    }
+
+    fn validate_existing_app_authority(
+        &self,
+        context: &AuthAdminMutationContext,
+        app: &OAuthAppMutationRecord,
+    ) -> Result<(), AuthAdminMutationError> {
+        let authority = self.request_permissions(context)?;
+        for raw in &app.granted_permissions {
+            let permission = Permission::from_str(raw.trim()).map_err(|error| {
+                AuthAdminMutationError::Validation(format!(
+                    "OAuth app contains invalid delegated permission `{raw}`: {error}"
+                ))
+            })?;
+            if !has_effective_permission(&authority, &permission) {
+                return Err(AuthAdminMutationError::Forbidden(format!(
+                    "cannot rotate credentials for an OAuth app whose permission exceeds the current request authority: {permission}"
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -89,6 +125,12 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        let app = self
+            .inner
+            .get_oauth_app(context, app_id)
+            .await?
+            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
+        self.validate_existing_app_authority(context, &app)?;
         self.inner.rotate_oauth_app_secret(context, app_id).await
     }
 
