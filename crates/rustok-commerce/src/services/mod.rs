@@ -1,5 +1,6 @@
 pub mod checkout;
 pub mod context;
+mod fulfillment_create_label_recovery;
 mod fulfillment_orchestration;
 mod fulfillment_orchestration_facade;
 mod fulfillment_reconciliation;
@@ -13,6 +14,7 @@ mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
+pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService;
 pub(crate) use fulfillment_orchestration::FulfillmentOrchestrationError;
 pub(crate) use fulfillment_orchestration_facade::FulfillmentOrchestrationService;
 pub use fulfillment_reconciliation::FulfillmentReconciliationService;
