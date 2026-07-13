@@ -37,15 +37,7 @@ jobs:
           if "pub(crate) async fn find_category_in_tx" not in source:
               anchor = "\n}\n\nimpl Deref for CategoryService"
               methods = (
-                  "\n\n    pub(crate) async fn ensure_exists_in_tx(\n"
-                  "        txn: &DatabaseTransaction,\n"
-                  "        tenant_id: Uuid,\n"
-                  "        category_id: Uuid,\n"
-                  "    ) -> ForumResult<()> {\n"
-                  "        category::CategoryService::ensure_exists_in_tx(txn, tenant_id, category_id).await\n"
-                  "    }\n"
-                  "\n"
-                  "    pub(crate) async fn find_category_in_tx(\n"
+                  "\n\n    pub(crate) async fn find_category_in_tx(\n"
                   "        txn: &DatabaseTransaction,\n"
                   "        tenant_id: Uuid,\n"
                   "        category_id: Uuid,\n"
@@ -82,11 +74,24 @@ jobs:
           if old not in source and new not in source:
               raise SystemExit("typed topic status replacement anchor missing")
           query.write_text(source.replace(old, new, 1))
+
+          read_model = Path("crates/rustok-forum/src/services/read_model.rs")
+          source = read_model.read_text()
+          source = source.replace("cursor.updated_at.clone()", "cursor.updated_at")
+          read_model.write_text(source)
+
+          state_machine = Path("crates/rustok-forum/src/state_machine.rs")
+          source = state_machine.read_text()
+          source = source.replace("from: self.clone(),", "from: *self,")
+          source = source.replace("to: target.clone(),", "to: *target,")
+          state_machine.write_text(source)
           PY
 
           targets=(
             crates/rustok-forum/src/services/category_owner.rs
             crates/rustok-forum/src/graphql/query.rs
+            crates/rustok-forum/src/services/read_model.rs
+            crates/rustok-forum/src/state_machine.rs
             crates/rustok-forum/src/services/subscription/category.rs
             crates/rustok-forum/src/services/subscription/helpers.rs
             crates/rustok-forum/src/services/subscription/policy.rs
@@ -131,7 +136,7 @@ jobs:
           git checkout -- crates/rustok-media/src/ports.rs crates/rustok-events/src/types.rs
           git diff --binary -- "${targets[@]}" > diagnostics/fix.patch
 
-          pushed=0
+          pushed=99
           if [ "${fmt_status}" -eq 0 ] && [ "${check_status}" -eq 0 ] && [ "${clippy_status}" -eq 0 ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
