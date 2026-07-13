@@ -48,9 +48,8 @@ pub(crate) fn current_tenant_scope(
         <FieldError as GraphQLError>::permission_denied("Tenant context is required")
     })?;
     if requested_tenant_id.is_some_and(|requested| requested != tenant.id) {
-        return Err(<FieldError as GraphQLError>::permission_denied(format!(
-            "{operation} must use the current tenant"
-        )));
+        let message = format!("{operation} must use the current tenant");
+        return Err(<FieldError as GraphQLError>::permission_denied(&message));
     }
     Ok(tenant.id)
 }
@@ -147,7 +146,11 @@ mod tests {
 
     #[Object]
     impl Query {
-        async fn tenant(&self, ctx: &async_graphql::Context<'_>, requested: Option<Uuid>) -> async_graphql::Result<Uuid> {
+        async fn tenant(
+            &self,
+            ctx: &async_graphql::Context<'_>,
+            requested: Option<Uuid>,
+        ) -> async_graphql::Result<Uuid> {
             current_tenant_scope(ctx, requested, "test")
         }
     }
