@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -194,20 +194,45 @@ fn generation_state(
 /// rebinding is rejected instead of silently leaving existing backends attached to stale state.
 /// Every alias then reads the exact same atomic generation and boot namespace as the canonical
 /// prefix, so a namespace rotation cannot expose a mixed data/negative-cache generation.
+/// Conflict and capacity checks complete before the registry is mutated, making a failed binding
+/// atomic: no canonical or alias entry is left behind after an error.
 pub fn bind_cache_backend_generation_aliases(
     canonical: &str,
     aliases: &[&str],
 ) -> Result<CacheBackendGenerationSnapshot, CacheBackendGenerationError> {
     validate_prefix(canonical)?;
+    let mut seen = HashSet::new();
+    let mut unique_aliases = Vec::with_capacity(aliases.len());
     for alias in aliases {
         validate_prefix(alias)?;
+        if *alias != canonical && seen.insert(*alias) {
+            unique_aliases.push(*alias);
+        }
     }
 
     let mut registry = backend_generations()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let missing_canonical = usize::from(!registry.contains_key(canonical));
-    let missing_aliases = aliases
+    let existing_canonical = registry.get(canonical).cloned();
+
+    for alias in &unique_aliases {
+        let Some(existing_alias) = registry.get(*alias) else {
+            continue;
+        };
+        let Some(canonical_state) = existing_canonical.as_ref() else {
+            return Err(CacheBackendGenerationError::AliasAlreadyBound {
+                alias: (*alias).to_string(),
+            });
+        };
+        if !Arc::ptr_eq(existing_alias, canonical_state) {
+            return Err(CacheBackendGenerationError::AliasAlreadyBound {
+                alias: (*alias).to_string(),
+            });
+        }
+    }
+
+    let missing_canonical = usize::from(existing_canonical.is_none());
+    let missing_aliases = unique_aliases
         .iter()
         .filter(|alias| !registry.contains_key(**alias))
         .count();
@@ -219,23 +244,15 @@ pub fn bind_cache_backend_generation_aliases(
         });
     }
 
-    let canonical_state = registry
-        .entry(canonical.to_string())
-        .or_insert_with(|| Arc::new(BackendGenerationState::untrusted()))
-        .clone();
-    for alias in aliases {
-        if *alias == canonical {
-            continue;
-        }
-        if let Some(existing) = registry.get(*alias) {
-            if !Arc::ptr_eq(existing, &canonical_state) {
-                return Err(CacheBackendGenerationError::AliasAlreadyBound {
-                    alias: (*alias).to_string(),
-                });
-            }
-        } else {
-            registry.insert((*alias).to_string(), Arc::clone(&canonical_state));
-        }
+    let canonical_state = existing_canonical.unwrap_or_else(|| {
+        let state = Arc::new(BackendGenerationState::untrusted());
+        registry.insert(canonical.to_string(), Arc::clone(&state));
+        state
+    });
+    for alias in unique_aliases {
+        registry
+            .entry(alias.to_string())
+            .or_insert_with(|| Arc::clone(&canonical_state));
     }
     Ok(canonical_state.snapshot())
 }
@@ -466,6 +483,48 @@ mod tests {
         assert_eq!(
             cache_backend_generation_snapshot(&data).unwrap(),
             cache_backend_generation_snapshot(&negative).unwrap()
+        );
+    }
+
+    #[test]
+    fn alias_binding_is_atomic_when_a_later_alias_conflicts() {
+        let canonical = unique_prefix("canonical-atomic");
+        let new_alias = unique_prefix("new-alias-atomic");
+        let conflicting_alias = unique_prefix("conflict-alias-atomic");
+        cache_backend_generation_snapshot(&conflicting_alias).unwrap();
+
+        assert!(matches!(
+            bind_cache_backend_generation_aliases(
+                &canonical,
+                &[&new_alias, &conflicting_alias]
+            ),
+            Err(CacheBackendGenerationError::AliasAlreadyBound { .. })
+        ));
+
+        let registry = backend_generations()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(!registry.contains_key(&canonical));
+        assert!(!registry.contains_key(&new_alias));
+        assert!(registry.contains_key(&conflicting_alias));
+    }
+
+    #[test]
+    fn duplicate_and_canonical_aliases_are_deduplicated() {
+        let canonical = unique_prefix("canonical-deduplicated");
+        let alias = unique_prefix("alias-deduplicated");
+        let before = cache_backend_generation_registry_size();
+
+        bind_cache_backend_generation_aliases(
+            &canonical,
+            &[&canonical, &alias, &alias, &canonical],
+        )
+        .unwrap();
+
+        assert_eq!(cache_backend_generation_registry_size(), before + 2);
+        assert_eq!(
+            cache_backend_generation_snapshot(&canonical).unwrap(),
+            cache_backend_generation_snapshot(&alias).unwrap()
         );
     }
 
