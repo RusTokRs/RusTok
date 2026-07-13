@@ -1,6 +1,6 @@
 use crate::editor::{
-    AdminEditorRuntime, AuthoringToolbar, IsolatedAuthoringCanvas, PageManagerPanel,
-    PaletteLayersPanel, PropertiesAssetsPanel, ResponsiveStylePanel, TraitPanel,
+    AdminEditorRuntime, AuthoringToolbar, DynamicRuntimePanel, IsolatedAuthoringCanvas,
+    PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel, ResponsiveStylePanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
@@ -8,6 +8,7 @@ use fly::TraitSchemaRegistry;
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
+use serde_json::Value;
 use std::sync::Arc;
 
 #[component]
@@ -15,6 +16,7 @@ pub fn AdminCanvas(
     controller: AdminCanvasController,
     #[prop(optional)] facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     #[prop(optional)] trait_schemas: Option<Arc<TraitSchemaRegistry>>,
+    #[prop(optional)] runtime_context: Option<Value>,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -40,10 +42,15 @@ pub fn AdminCanvas(
         Some(trait_schemas) => runtime.with_trait_schemas(trait_schemas),
         None => runtime,
     };
+    let runtime = match runtime_context {
+        Some(runtime_context) => runtime.with_runtime_context(runtime_context),
+        None => runtime,
+    };
     let toolbar_runtime = runtime.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
+    let dynamic_runtime = runtime.clone();
     let trait_runtime = runtime.clone();
     let properties_runtime = runtime.clone();
     let responsive_runtime = runtime.clone();
@@ -63,6 +70,7 @@ pub fn AdminCanvas(
                 </div>
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
+                    <DynamicRuntimePanel runtime=dynamic_runtime />
                     <TraitPanel runtime=trait_runtime />
                     <PropertiesAssetsPanel runtime=properties_runtime />
                     <ResponsiveStylePanel runtime=responsive_runtime />
