@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{to_bytes, Body},
     extract::State,
     http::{
         header::{self, HeaderValue},
@@ -9,24 +9,27 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use rustok_api::{has_effective_permission, AuthContextExtension, Permission};
-use sea_orm::EntityTrait;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use subtle::ConstantTimeEq;
 
-use crate::models::{registry_module_owner, registry_publish_request};
+use crate::models::{registry_module_owner, registry_publish_request, users};
+use crate::services::marketplace_catalog::RegistryOwnerTransferRequest;
 use crate::services::registry_principal::RegistryPrincipalRef;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const ARTIFACT_CONTENT_TYPE: &str = "application/octet-stream";
 const ARTIFACT_DISPOSITION: &str = "attachment";
+const MAX_REGISTRY_MUTATION_BODY_BYTES: usize = 64 * 1024;
 
-/// Enforce registry publish-request, artifact and remote-runner access before
-/// the legacy controller executes.
+/// Enforce registry publish-request, artifact, ownership and remote-runner
+/// access before the legacy controller executes.
 ///
 /// Status and artifact data are restricted to the request publisher, current
-/// slug owner, or request-effective `modules:manage`. Remote runner routes and
-/// artifact downloads use the host shared token with constant-time comparison.
-/// Downloads are streamed through this boundary so legacy storage metadata
-/// cannot turn an artifact into active same-origin content.
+/// slug owner, or request-effective `modules:manage`. Owner transfers can bind
+/// only to an active user in the authenticated actor's tenant. Remote runner
+/// routes and artifact downloads use the host shared token with constant-time
+/// comparison. Downloads are streamed through this boundary so legacy storage
+/// metadata cannot turn an artifact into active same-origin content.
 pub async fn enforce(
     State(ctx): State<ServerRuntimeContext>,
     mut request: Request<Body>,
@@ -34,6 +37,10 @@ pub async fn enforce(
 ) -> Response {
     let method = request.method().clone();
     let path = request.uri().path();
+
+    if method == Method::POST && path == "/v2/catalog/owner-transfer" {
+        return validate_owner_transfer(&ctx, request, next).await;
+    }
 
     if method == Method::POST && is_remote_runner_path(path) {
         return if runner_token_is_valid(&ctx, &request) {
@@ -92,6 +99,56 @@ pub async fn enforce(
         }
         RegistryOperation::ArtifactUpload => next.run(request).await,
     }
+}
+
+async fn validate_owner_transfer(
+    ctx: &ServerRuntimeContext,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let (parts, body) = request.into_parts();
+    let auth = match parts.extensions.get::<AuthContextExtension>() {
+        Some(extension) => &extension.0,
+        None => return unauthorized("Registry owner transfer requires authentication"),
+    };
+    if auth.client_id.is_some() && auth.session_id.is_nil() {
+        return forbidden("Registry owner transfer requires a user session");
+    }
+
+    let bytes = match to_bytes(body, MAX_REGISTRY_MUTATION_BODY_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => return bad_request("Registry owner transfer body is invalid or too large"),
+    };
+    let transfer = match serde_json::from_slice::<RegistryOwnerTransferRequest>(&bytes) {
+        Ok(transfer) => transfer,
+        Err(_) => return bad_request("Registry owner transfer body must be valid JSON"),
+    };
+
+    let target = match users::Entity::find_by_id(transfer.new_owner_user_id)
+        .filter(users::Column::TenantId.eq(auth.tenant_id))
+        .one(ctx.db())
+        .await
+    {
+        Ok(Some(user)) if user.is_active() => user,
+        Ok(Some(_)) => return bad_request("Registry owner transfer target must be active"),
+        Ok(None) => {
+            return bad_request(
+                "Registry owner transfer target does not exist in the authenticated tenant",
+            )
+        }
+        Err(error) => {
+            tracing::error!(%error, "Failed to validate registry owner transfer target");
+            return internal_error("Failed to validate registry owner transfer target");
+        }
+    };
+
+    tracing::debug!(
+        target_user_id = %target.id,
+        tenant_id = %target.tenant_id,
+        dry_run = transfer.dry_run,
+        "Validated registry owner transfer target"
+    );
+    next.run(Request::from_parts(parts, Body::from(bytes))).await
 }
 
 async fn authorize_user_access(
@@ -261,6 +318,10 @@ fn response(status: StatusCode, code: &str, message: &str) -> Response {
         })),
     )
         .into_response()
+}
+
+fn bad_request(message: &str) -> Response {
+    response(StatusCode::BAD_REQUEST, "bad_request", message)
 }
 
 fn unauthorized(message: &str) -> Response {
