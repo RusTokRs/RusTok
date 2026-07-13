@@ -1,6 +1,7 @@
 //! Database models for the server application
 
 pub mod _entities;
+pub mod auth_invite_consumptions;
 pub mod flex_attached_localized_values;
 pub mod flex_entries;
 pub mod flex_entry_localized_values;
@@ -35,6 +36,7 @@ pub mod topic_field_definitions;
 pub mod user_field_definitions;
 pub mod users;
 
+pub use auth_invite_consumptions::Entity as AuthInviteConsumptions;
 pub use flex_attached_localized_values::Entity as FlexAttachedLocalizedValues;
 pub use flex_entry_localized_values::Entity as FlexEntryLocalizedValues;
 pub use registry_governance_event::Entity as RegistryGovernanceEvent;
