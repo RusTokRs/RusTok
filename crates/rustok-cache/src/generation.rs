@@ -10,6 +10,7 @@ use crate::CacheService;
 const GENERATION_KEY_PREFIX: &str = "rustok:cache-generation:v1";
 const DEFAULT_GENERATION_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_GENERATION_NAMESPACE_BYTES: usize = 512;
+pub const DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS: usize = 4_096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CacheNamespaceGeneration {
@@ -70,12 +71,15 @@ struct CacheGenerationMetrics {
 ///
 /// Generation snapshots are monotonic. A Redis value lower than the process-local observation is
 /// treated as shared state loss, and a Redis read failure can fall back only when this process has
-/// previously observed or explicitly seeded a generation for the namespace.
+/// previously observed or explicitly seeded a generation for the namespace. Trusted snapshots are
+/// intentionally not evicted because eviction would silently discard fallback state; instead the
+/// store rejects new namespaces after a bounded capacity is reached.
 #[derive(Clone)]
 pub struct CacheNamespaceGenerationStore {
     #[cfg(feature = "redis-cache")]
     redis_client: Option<redis::Client>,
     local: Arc<StdMutex<HashMap<String, u64>>>,
+    max_local_snapshots: usize,
     operation_timeout: Duration,
     metrics: Arc<CacheGenerationMetrics>,
 }
@@ -86,6 +90,7 @@ impl CacheNamespaceGenerationStore {
         Self {
             redis_client,
             local: Arc::new(StdMutex::new(HashMap::new())),
+            max_local_snapshots: DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS,
             operation_timeout: DEFAULT_GENERATION_OPERATION_TIMEOUT,
             metrics: Arc::new(CacheGenerationMetrics::default()),
         }
@@ -95,6 +100,7 @@ impl CacheNamespaceGenerationStore {
     fn new() -> Self {
         Self {
             local: Arc::new(StdMutex::new(HashMap::new())),
+            max_local_snapshots: DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS,
             operation_timeout: DEFAULT_GENERATION_OPERATION_TIMEOUT,
             metrics: Arc::new(CacheGenerationMetrics::default()),
         }
@@ -108,6 +114,28 @@ impl CacheNamespaceGenerationStore {
             return Err(CacheGenerationError::ZeroOperationTimeout);
         }
         self.operation_timeout = operation_timeout;
+        Ok(self)
+    }
+
+    /// Set a hard bound for trusted local namespace snapshots.
+    ///
+    /// Existing namespaces may continue to advance after the limit is reached. A previously unseen
+    /// namespace is rejected instead of evicting trusted state and weakening outage recovery.
+    pub fn with_max_local_snapshots(
+        mut self,
+        max_local_snapshots: usize,
+    ) -> Result<Self, CacheGenerationError> {
+        if max_local_snapshots == 0 {
+            return Err(CacheGenerationError::ZeroLocalSnapshotCapacity);
+        }
+        let current = self.local_snapshot_count();
+        if current > max_local_snapshots {
+            return Err(CacheGenerationError::LocalSnapshotCapacityExceeded {
+                count: current,
+                maximum: max_local_snapshots,
+            });
+        }
+        self.max_local_snapshots = max_local_snapshots;
         Ok(self)
     }
 
@@ -196,6 +224,7 @@ impl CacheNamespaceGenerationStore {
                 .local
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.ensure_snapshot_capacity(&local, &namespace_key)?;
             let value = local.entry(namespace_key).or_insert(0);
             *value = value
                 .checked_add(1)
@@ -233,6 +262,17 @@ impl CacheNamespaceGenerationStore {
         }
     }
 
+    pub fn local_snapshot_count(&self) -> usize {
+        self.local
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+
+    pub fn max_local_snapshots(&self) -> usize {
+        self.max_local_snapshots
+    }
+
     fn local_snapshot(&self, namespace_key: &str) -> Option<u64> {
         self.local
             .lock()
@@ -257,8 +297,28 @@ impl CacheNamespaceGenerationStore {
                     shared: generation,
                 });
             }
+        } else {
+            self.ensure_snapshot_capacity(&local, namespace_key)?;
         }
         local.insert(namespace_key.to_string(), generation);
+        Ok(())
+    }
+
+    fn ensure_snapshot_capacity(
+        &self,
+        local: &HashMap<String, u64>,
+        namespace_key: &str,
+    ) -> Result<(), CacheGenerationError> {
+        if local.contains_key(namespace_key) {
+            return Ok(());
+        }
+        let next_count = local.len().checked_add(1).unwrap_or(usize::MAX);
+        if next_count > self.max_local_snapshots {
+            return Err(CacheGenerationError::LocalSnapshotCapacityExceeded {
+                count: next_count,
+                maximum: self.max_local_snapshots,
+            });
+        }
         Ok(())
     }
 
@@ -320,26 +380,55 @@ impl CacheService {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheGenerationError {
     EmptyNamespace,
-    NamespaceTooLarge { length: usize, maximum: usize },
+    NamespaceTooLarge {
+        length: usize,
+        maximum: usize,
+    },
     ZeroOperationTimeout,
+    ZeroLocalSnapshotCapacity,
+    LocalSnapshotCapacityExceeded {
+        count: usize,
+        maximum: usize,
+    },
     GenerationOverflow,
     NoLocalSnapshot,
-    GenerationRegressed { local: u64, shared: u64 },
+    GenerationRegressed {
+        local: u64,
+        shared: u64,
+    },
     Redis(String),
-    Timeout { operation: &'static str, timeout_ms: u128 },
+    Timeout {
+        operation: &'static str,
+        timeout_ms: u128,
+    },
 }
 
 impl std::fmt::Display for CacheGenerationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EmptyNamespace => write!(formatter, "cache generation namespace must not be empty"),
+            Self::EmptyNamespace => {
+                write!(formatter, "cache generation namespace must not be empty")
+            }
             Self::NamespaceTooLarge { length, maximum } => write!(
                 formatter,
                 "cache generation namespace is {length} bytes; maximum is {maximum}"
             ),
             Self::ZeroOperationTimeout => {
-                write!(formatter, "cache generation operation timeout must be greater than zero")
+                write!(
+                    formatter,
+                    "cache generation operation timeout must be greater than zero"
+                )
             }
+            Self::ZeroLocalSnapshotCapacity => {
+                write!(
+                    formatter,
+                    "cache generation local snapshot capacity must be greater than zero"
+                )
+            }
+            Self::LocalSnapshotCapacityExceeded { count, maximum } => write!(
+                formatter,
+                "cache generation local snapshot count {count} exceeds maximum {maximum}"
+            ),
             Self::GenerationOverflow => write!(formatter, "cache generation counter overflowed"),
             Self::NoLocalSnapshot => write!(
                 formatter,
@@ -427,7 +516,10 @@ mod tests {
         assert_eq!(first, second);
         assert!(first.starts_with(GENERATION_KEY_PREFIX));
         assert!(!first.contains("tenant:catalog:v1"));
-        assert_eq!(generation_key("  ").unwrap_err(), CacheGenerationError::EmptyNamespace);
+        assert_eq!(
+            generation_key("  ").unwrap_err(),
+            CacheGenerationError::EmptyNamespace
+        );
     }
 
     #[test]
@@ -439,6 +531,63 @@ mod tests {
             .err()
             .expect("zero timeout must be rejected");
         assert_eq!(error, CacheGenerationError::ZeroOperationTimeout);
+    }
+
+    #[test]
+    fn rejects_zero_local_snapshot_capacity() {
+        let service = CacheService::from_url(None);
+        let error = service
+            .namespace_generations()
+            .with_max_local_snapshots(0)
+            .err()
+            .expect("zero snapshot capacity must be rejected");
+        assert_eq!(error, CacheGenerationError::ZeroLocalSnapshotCapacity);
+    }
+
+    #[test]
+    fn trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces() {
+        let service = CacheService::from_url(None);
+        let generations = service
+            .namespace_generations()
+            .with_max_local_snapshots(2)
+            .unwrap();
+
+        generations.seed_local("tenant-a", 1).unwrap();
+        generations.seed_local("tenant-b", 2).unwrap();
+        generations.seed_local("tenant-a", 3).unwrap();
+
+        assert_eq!(generations.local_snapshot_count(), 2);
+        assert_eq!(generations.max_local_snapshots(), 2);
+        assert_eq!(
+            generations.seed_local("tenant-c", 1).unwrap_err(),
+            CacheGenerationError::LocalSnapshotCapacityExceeded {
+                count: 3,
+                maximum: 2,
+            }
+        );
+        let tenant_a = generation_key("tenant-a").unwrap();
+        let tenant_b = generation_key("tenant-b").unwrap();
+        assert_eq!(generations.local_snapshot(&tenant_a), Some(3));
+        assert_eq!(generations.local_snapshot(&tenant_b), Some(2));
+    }
+
+    #[tokio::test]
+    async fn local_bump_rejects_new_namespace_after_snapshot_capacity_is_reached() {
+        let service = CacheService::from_url(None);
+        let generations = service
+            .namespace_generations()
+            .with_max_local_snapshots(1)
+            .unwrap();
+
+        generations.bump("tenant-a").await.unwrap();
+        assert_eq!(
+            generations.bump("tenant-b").await.unwrap_err(),
+            CacheGenerationError::LocalSnapshotCapacityExceeded {
+                count: 2,
+                maximum: 1,
+            }
+        );
+        assert_eq!(generations.bump("tenant-a").await.unwrap().value(), 2);
     }
 
     #[test]
