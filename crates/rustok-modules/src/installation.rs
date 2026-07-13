@@ -709,7 +709,11 @@ impl SeaOrmArtifactInstallationStore {
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
-            .ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("rollback predecessor admission is unavailable".into()))?;
+            .ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "rollback predecessor admission is unavailable".into(),
+                )
+            })?;
         let target_expected_revision: i64 = target_revision_row
             .try_get("", "revision")
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;

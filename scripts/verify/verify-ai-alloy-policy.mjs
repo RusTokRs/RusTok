@@ -75,6 +75,14 @@ hasAll(runtimeSource, [
   'Self::promote_agent_workflow_stages'
 ], 'AI workflow runtime source');
 
+const agentSource = read('crates/rustok-ai/src/agent.rs');
+hasAll(agentSource, [
+  'fn owner_stage_binding_resolves_to_a_registered_direct_handler',
+  'DirectExecutionRegistry::with_defaults()',
+  '"alloy_code_verifier"',
+  '"product_copywriter"'
+], 'agent composed direct-binding regression');
+
 const agentInputs = read('crates/rustok-ai/src/graphql/types.rs');
 for (const inputName of ['CreateAiAgentPrincipalInputGql', 'UpdateAiAgentPrincipalInputGql']) {
   const start = agentInputs.indexOf(`pub struct ${inputName}`);
