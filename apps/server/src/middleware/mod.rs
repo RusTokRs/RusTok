@@ -6,4 +6,29 @@ pub mod locale;
 pub mod oauth_token_guard;
 pub mod rate_limit;
 pub mod security_headers;
-pub mod tenant;
+
+#[path = "tenant.rs"]
+mod tenant_legacy;
+
+/// Public tenant middleware surface.
+///
+/// The resolver implementation remains in the historical `tenant.rs` module while cache
+/// invalidation readiness is intentionally overridden with the canonical generation listener.
+/// Explicit items win over names imported through the glob re-export, so existing call sites keep
+/// `crate::middleware::tenant::*` without observing the dead per-key Pub/Sub status.
+pub mod tenant {
+    pub use super::tenant_legacy::*;
+    pub use crate::services::tenant_cache_generation_status::{
+        TenantCacheGenerationListenerSnapshot as TenantInvalidationListenerSnapshot,
+        TenantCacheGenerationListenerStatus as TenantInvalidationListenerStatus,
+    };
+
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    pub async fn tenant_invalidation_listener_snapshot(
+        ctx: &ServerRuntimeContext,
+    ) -> TenantInvalidationListenerSnapshot {
+        crate::services::tenant_cache_generation::tenant_cache_generation_listener_snapshot(ctx)
+            .await
+    }
+}
