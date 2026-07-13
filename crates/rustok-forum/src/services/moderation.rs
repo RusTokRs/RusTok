@@ -17,7 +17,7 @@ use crate::error::ForumError;
 use crate::error::ForumResult;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::user_stats::UserStatsService;
-use crate::services::{ReplyService, TopicService};
+use crate::services::{CategoryService, ReplyService, TopicService};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 pub struct ModerationService {
@@ -318,10 +318,35 @@ impl ModerationService {
         let current = reply.status;
         current.validate_transition(&target)?;
 
+        let became_public = current != ReplyStatus::Approved && target == ReplyStatus::Approved;
+        let stopped_being_public =
+            current == ReplyStatus::Approved && target != ReplyStatus::Approved;
         let old_status = current.to_string();
         let new_status = target.to_string();
 
         ReplyService::set_status_in_tx(&txn, tenant_id, reply_id, target).await?;
+
+        if became_public || stopped_being_public {
+            let public_delta = if became_public { 1 } else { -1 };
+            let topic =
+                TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, public_delta)
+                    .await?;
+            CategoryService::adjust_counters_in_tx(
+                &txn,
+                tenant_id,
+                topic.category_id,
+                0,
+                public_delta,
+            )
+            .await?;
+            UserStatsService::adjust_reply_count_in_tx(
+                &txn,
+                tenant_id,
+                reply.author_id,
+                public_delta,
+            )
+            .await?;
+        }
 
         self.event_bus
             .publish_in_tx(
@@ -337,6 +362,21 @@ impl ModerationService {
                 },
             )
             .await?;
+
+        if became_public {
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    reply.author_id,
+                    DomainEvent::ForumTopicReplied {
+                        topic_id,
+                        reply_id,
+                        author_id: reply.author_id,
+                    },
+                )
+                .await?;
+        }
 
         txn.commit().await?;
         Ok(())
