@@ -2,14 +2,19 @@ import { readFile } from 'node:fs/promises';
 
 const files = {
   workspace: 'Cargo.toml',
+  appsAdmin: 'apps/admin/Cargo.toml',
   leptosCargo: 'crates/fly-leptos/Cargo.toml',
   leptosRoot: 'crates/fly-leptos/src/root.rs',
   browser: 'crates/fly-leptos/src/browser_runtime.rs',
   manifest: 'crates/rustok-page-builder/rustok-module.toml',
   adminCargo: 'crates/rustok-page-builder/admin/Cargo.toml',
+  adminUi: 'crates/rustok-page-builder/admin/src/ui/leptos.rs',
   facade: 'crates/rustok-page-builder/admin/src/transport/mod.rs',
   controller: 'crates/rustok-page-builder/admin/src/model.rs',
   canvas: 'crates/rustok-page-builder/admin/src/editor/admin_canvas.rs',
+  localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
+  localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
+  uiIndex: 'docs/modules/UI_PACKAGES_INDEX.md',
 };
 
 const source = Object.fromEntries(
@@ -75,6 +80,10 @@ for (const marker of [
   '[provides.admin_ui]',
   'leptos_crate = "rustok-page-builder-admin"',
   'route_segment = "page-builder"',
+  '[provides.admin_ui.i18n]',
+  'default_locale = "en"',
+  'supported_locales = ["en", "ru"]',
+  'leptos_locales_path = "admin/locales"',
 ]) {
   requireMarker('manifest', marker, `Page Builder manifest is missing ${marker}`);
 }
@@ -89,6 +98,23 @@ for (const forbidden of ['rustok-api', 'rustok-graphql', 'leptos_axum', 'reqwest
     `admin package must not select transport through ${forbidden}`,
   );
 }
+for (const hostMarker of [
+  'rustok-page-builder-admin = { path = "../../crates/rustok-page-builder/admin"',
+  '"rustok-page-builder-admin/hydrate"',
+  '"rustok-page-builder-admin/ssr"',
+]) {
+  requireMarker('appsAdmin', hostMarker, `apps/admin is missing ${hostMarker}`);
+}
+requireMarker(
+  'adminUi',
+  'pub fn PageBuilderAdmin()',
+  'generated admin composition requires a no-prop PageBuilderAdmin entrypoint',
+);
+requireMarker(
+  'adminUi',
+  'PageBuilderAdminWithController',
+  'consumer-owned routes need an explicit controller entrypoint',
+);
 requireMarker(
   'facade',
   'PageBuilderCapabilityRequest',
@@ -123,6 +149,16 @@ forbidMarker(
   'canvas',
   'allow-same-origin',
   'default admin iframe must not combine scripts with same-origin privileges',
+);
+
+for (const localeKey of ['localeEn', 'localeRu']) {
+  JSON.parse(source[localeKey]);
+  requireMarker(localeKey, '"page_builder"', `${localeKey} is missing page_builder messages`);
+}
+requireMarker(
+  'uiIndex',
+  '../../crates/rustok-page-builder/admin/README.md',
+  'UI package index must link the Page Builder admin package',
 );
 
 if (failures.length > 0) {
