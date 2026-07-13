@@ -1,6 +1,7 @@
 mod bounded_invalidation;
 mod cas_observability;
 mod durable_invalidation;
+mod durable_invalidation_service;
 mod durable_invalidation_transport;
 mod envelope;
 mod fallback;
