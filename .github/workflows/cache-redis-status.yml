@@ -1,0 +1,62 @@
+name: Cache Redis status
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/rustok-cache/src/redis_status.rs"
+      - "crates/rustok-cache/Cargo.toml"
+      - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
+      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
+      - ".github/workflows/cache-redis-status.yml"
+  pull_request:
+    paths:
+      - "crates/rustok-cache/src/redis_status.rs"
+      - "crates/rustok-cache/Cargo.toml"
+      - "crates/rustok-telemetry/src/lib.rs"
+      - "apps/server/src/services/cache_redis_status_monitor.rs"
+      - "apps/server/src/services/event_transport_factory.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/tests/cache_redis_status_architecture_guard.rs"
+      - "apps/server/tests/cache_redis_monitor_architecture_guard.rs"
+      - ".github/workflows/cache-redis-status.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-redis-status-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cache-redis-status
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Compile
+        run: |
+          cargo check -p rustok-cache --lib
+          cargo check -p rustok-server --lib
+      - name: Redis status tests
+        run: |
+          cargo test -p rustok-cache redis_status --lib
+          cargo test -p rustok-server --test cache_redis_status_architecture_guard --test cache_redis_monitor_architecture_guard
+      - name: Clippy
+        run: |
+          cargo clippy -p rustok-cache --lib -- -D warnings
+          cargo clippy -p rustok-server --lib -- -D warnings
