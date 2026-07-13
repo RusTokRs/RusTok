@@ -35,8 +35,9 @@ pub async fn get_user_stats(
     let stats = UserStatsService::new(runtime.db_clone())
         .get(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
+            rustok_core::security_context_from_access_token(
+                auth.user_id,
+                &auth.grant_type,
                 &auth.permissions,
             ),
             user_id,
@@ -52,7 +53,7 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "forum_permission_denied",
             message.to_string(),
         ));
