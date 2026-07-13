@@ -33,7 +33,7 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
             return Err("target user not found in tenant".to_string());
         }
 
-        RbacService::replace_user_role(&self.db, user_id, tenant_id, role)
+        RbacService::replace_user_role_committed(&self.db, user_id, tenant_id, role)
             .await
             .map_err(|err| err.to_string())
     }
