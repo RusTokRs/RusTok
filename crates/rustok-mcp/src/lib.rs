@@ -20,6 +20,7 @@ pub mod alloy_tools;
 pub mod graphql;
 pub mod management;
 pub mod runtime;
+pub mod scaffold_workspace;
 pub mod server;
 pub mod tools;
 
@@ -56,6 +57,10 @@ pub use runtime::{
     McpAccessResolver, McpAuditSink, McpRuntimeBinding, McpScaffoldDraftRuntimeContext,
     McpScaffoldDraftStore, McpSessionContext, McpToolCallAuditEvent, McpToolCallOutcome,
     SharedMcpAccessResolver, SharedMcpAuditSink, SharedMcpScaffoldDraftStore,
+};
+pub use scaffold_workspace::{
+    apply_authorized_module_scaffold, authorize_scaffold_workspace,
+    MCP_SCAFFOLD_WORKSPACE_ROOT_ENV,
 };
 pub use server::{serve_stdio, McpServerConfig, RusToKMcpServer};
 pub use tools::{
