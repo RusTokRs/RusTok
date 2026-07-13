@@ -3,33 +3,35 @@
 ## Current state
 
 `rustok-cache` is the capability-only core owner of backend selection, in-memory fallback,
-Redis integration, invalidation and anti-stampede loading. The host consumes the cache
-contract; it must not distribute backend-specific wiring or invalidation policy across
-unrelated modules.
+Redis integration, invalidation, typed values and anti-stampede loading. The host consumes
+the cache contract; it must not distribute backend-specific wiring or invalidation policy
+across unrelated modules.
 
 The source contract now includes:
 
 - Redis millisecond TTL with zero-TTL invalidation and positive sub-millisecond rounding;
-- bounded Redis connection and command latency in both core backends and service-level
-  health/invalidation paths;
+- bounded Redis connection and command latency in core and service-level paths;
 - circuit-breaker accounting for command timeouts;
 - bounded degraded-write markers that distinguish outage writes from ordinary Redis misses;
 - shared invalidation error propagation instead of silent success;
-- fallback statistics that include local entries;
 - backend-scoped, cancellation-safe `load_or_fill` gates;
 - count-limited and byte-weighted Moka backends exposed through `CacheService`;
 - deterministic TTL jitter and leader loader deadlines;
 - tenant-aware/versioned bounded key construction;
 - typed Postcard envelopes with schema/source/freshness metadata and decode size limits;
 - typed loading that invalidates corrupted, incompatible and hard-expired entries;
+- bounded stale-while-revalidate coordination with per-key deduplication;
+- explicit typed negative-cache policy with short independent TTLs;
+- shared namespace generation counters for scan-free recovery;
 - token-owned Redis leases with compare-and-release/extend scripts;
-- versioned invalidation payloads and process-local generation-gap detection;
+- versioned invalidation payloads and generation-gap detection;
 - fail-safe full invalidation of field-definition cache state after event-consumer lag;
+- byte-weighted capacity in the active field-definition schema cache;
 - synchronized crate and architecture documentation.
 
 Redis pub/sub remains a best-effort at-most-once fast path. The capability can detect gaps
-when callers supply a durable monotonic generation, but the durable outbox/stream itself is
-still domain/platform work.
+when callers supply a durable monotonic generation and can rotate a shared namespace
+generation, but the transactional outbox/stream source remains domain/platform work.
 
 ## FFA/FBA boundary
 
@@ -54,7 +56,8 @@ still domain/platform work.
 3. **Invalidation gap safety**
    - field-definition event lag clears the complete local schema cache;
    - versioned invalidation payloads carry caller-owned durable generations;
-   - a gap tracker distinguishes in-order, duplicate, stale and missing generations.
+   - an unseeded first event and detected gaps require recovery;
+   - the tracker distinguishes in-order, duplicate, stale and missing generations.
 
 4. **Anti-stampede lifecycle**
    - gate identity includes backend instance and key;
@@ -66,7 +69,8 @@ still domain/platform work.
    - Redis backend and cache-service operations have deadlines;
    - local caches support byte-weighted capacity;
    - weighted factories remain centralized in `CacheService`;
-   - envelope encoding/decoding and cache keys have explicit maximum sizes.
+   - envelope encoding/decoding and cache keys have explicit maximum sizes;
+   - the active Flex field-definition cache is byte-weighted.
 
 6. **Key and value compatibility**
    - `CacheKeyBuilder` includes service, environment, tenant/global scope, domain, schema and
@@ -79,16 +83,29 @@ still domain/platform work.
 7. **Avalanche and hot-key controls**
    - deterministic per-key TTL jitter is available through `CacheLoadPolicy`;
    - token-safe Redis leases use `SET NX PX` and ownership-checking Lua scripts;
-   - soft/hard freshness is represented and returned by typed cache loading.
+   - `CacheRefreshCoordinator` returns stale values while one bounded process-local refresh
+     runs and records refresh saturation/failure metrics.
+
+8. **Negative caching**
+   - positive and negative values can use separate schema namespaces/backends;
+   - negative policy requires a positive independent TTL and size limit;
+   - only explicitly classified stable negatives are stored;
+   - corrupted, mismatched and expired negatives are invalidated.
+
+9. **Generation recovery primitive**
+   - Redis `INCR` rotates a namespace without `SCAN` or wildcard deletion;
+   - generation reads expose shared/local-fallback source;
+   - a failed shared bump is returned as an error rather than acknowledged locally;
+   - generation statistics expose read/bump failures and fallback reads.
 
 ## Open results
 
 1. **Run compiled cache contract coverage.** Execute the targeted unit suite for backend
    selection, count/weighted capacity, fallback, TTL boundaries, Redis timeout helpers,
-   key/envelope policy, typed loading, leases, `load_or_fill`, invalidation validation,
-   generation tracking, metrics and health semantics.
+   key/envelope policy, typed loading, refresh, negative caching, leases, generation tracking,
+   invalidation validation, metrics and health semantics.
 
-   **Depends on:** an environment where compilation is available.
+   **Depends on:** GitHub Actions completion or another compilation-capable environment.
 
    **Done when:**
 
@@ -100,13 +117,14 @@ still domain/platform work.
 
    pass without skipped relevant coverage.
 
-2. **Collect real Redis evidence.** Run publisher/subscription, backend TTL/timeout and lease
-   ownership scenarios against an isolated Redis service.
+2. **Collect real Redis evidence.** Run publisher/subscription, backend TTL/timeout, generation
+   and lease ownership scenarios against an isolated Redis service.
 
    **Depends on:** `RUSTOK_CACHE_REAL_REDIS_URL`, isolated Redis and preferably a fault proxy.
 
    **Done when:** validated publish/subscription, PX expiry, reconnect, delayed-operation,
-   lease contention/expiry and compare-and-release scenarios pass with observable metrics.
+   generation bump/read, lease contention/expiry and compare-and-release scenarios pass with
+   observable metrics.
 
 3. **Eliminate duplicate Redis backend construction.** Build all Redis backends from the
    `CacheService`-owned client rather than reopening a client from the URL for each namespace.
@@ -115,33 +133,22 @@ still domain/platform work.
    backend factory needs the raw URL after service initialization.
 
 4. **Adopt key/envelope/policy APIs in host caches.** Migrate tenant, RBAC and other critical
-   callers from hand-built keys and unversioned JSON to `CacheKeyBuilder`, `CacheEnvelope` and
-   `CacheLoadPolicy`.
+   callers from hand-built keys and unversioned JSON to `CacheKeyBuilder`, `CacheEnvelope`,
+   `CacheLoadPolicy`, negative policy and namespace generations.
 
-   **Done when:** no correctness-sensitive host cache silently accepts incompatible payloads
-   or synchronized fixed TTLs.
+   **Done when:** no correctness-sensitive host cache silently accepts incompatible payloads,
+   synchronized fixed TTLs or a process-local-only invalidation result.
 
-5. **Add durable recoverable invalidation.** Supply `VersionedCacheInvalidation` generations
-   from transactional outbox/event offsets and add domain recovery actions on `Gap`.
+5. **Connect durable recoverable invalidation.** Supply `VersionedCacheInvalidation`
+   generations from transactional outbox/event offsets, seed consumers from persisted offsets
+   and execute domain recovery actions on `UnverifiedFirst`/`Gap`.
 
-   **Done when:** a disconnected instance can clear/rebuild and resume from a durable offset
-   rather than relying only on TTL.
+   **Done when:** a disconnected instance can clear/rebuild, rotate generation and resume from
+   a durable offset rather than relying only on TTL.
 
-6. **Complete stale-while-revalidate.** Add a refresh-only coalescing path so stale envelopes
-   can be returned while one process-local leader refreshes, then optionally combine it with
-   the distributed lease for multi-instance hot keys.
-
-   **Done when:** soft/hard expiration, refresh cancellation, leader failure and lease
-   ownership are tested without turning stale values into permanent hits.
-
-7. **Add generic negative-cache policy.** Separate positive and negative schema namespaces,
-   enforce shorter negative TTLs and ensure both keys invalidate together.
-
-   **Done when:** stable not-found/disabled outcomes can be cached without caching transient
-   dependency errors or using the positive TTL.
-
-8. **Operational proof.** Add load and chaos gates for synchronized expiry, oversized
-   payloads, Redis latency/restart, lease expiry and invalidation listener lag.
+6. **Operational proof.** Add load and chaos gates for synchronized expiry, oversized
+   payloads, Redis latency/restart, generation read/bump failure, refresh saturation, lease
+   expiry and invalidation listener lag.
 
 ## Verification
 
