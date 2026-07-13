@@ -67,6 +67,10 @@ struct CacheGenerationMetrics {
 /// makes every value from the previous namespace generation unreachable without scanning or
 /// deleting Redis keys. When Redis is configured, a failed bump is returned as an error because
 /// acknowledging a process-local bump would not invalidate other instances.
+///
+/// Generation snapshots are monotonic. A Redis value lower than the process-local observation is
+/// treated as shared state loss, and a Redis read failure can fall back only when this process has
+/// previously observed or explicitly seeded a generation for the namespace.
 #[derive(Clone)]
 pub struct CacheNamespaceGenerationStore {
     #[cfg(feature = "redis-cache")]
@@ -117,7 +121,10 @@ impl CacheNamespaceGenerationStore {
         if let Some(client) = &self.redis_client {
             match self.read_shared(client, &namespace_key).await {
                 Ok(value) => {
-                    self.set_local(&namespace_key, value);
+                    if let Err(error) = self.observe_shared(&namespace_key, value) {
+                        self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
+                        return Err(error);
+                    }
                     self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
                     return Ok(CacheNamespaceGeneration {
                         value,
@@ -126,12 +133,25 @@ impl CacheNamespaceGenerationStore {
                 }
                 Err(error) => {
                     self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
+                    let Some(value) = self.local_snapshot(&namespace_key) else {
+                        tracing::warn!(
+                            %error,
+                            namespace,
+                            "Shared cache generation read failed without a trusted local snapshot"
+                        );
+                        return Err(CacheGenerationError::NoLocalSnapshot);
+                    };
                     self.metrics
                         .local_fallback_reads
                         .fetch_add(1, Ordering::Relaxed);
-                    tracing::warn!(%error, namespace, "Shared cache generation read failed; using local fallback");
+                    tracing::warn!(
+                        %error,
+                        namespace,
+                        generation = value,
+                        "Shared cache generation read failed; using last observed local snapshot"
+                    );
                     return Ok(CacheNamespaceGeneration {
-                        value: self.local_value(&namespace_key),
+                        value,
                         source: CacheGenerationSource::LocalFallback,
                     });
                 }
@@ -139,7 +159,7 @@ impl CacheNamespaceGenerationStore {
         }
 
         Ok(CacheNamespaceGeneration {
-            value: self.local_value(&namespace_key),
+            value: self.local_snapshot(&namespace_key).unwrap_or(0),
             source: CacheGenerationSource::LocalOnly,
         })
     }
@@ -154,7 +174,10 @@ impl CacheNamespaceGenerationStore {
         if let Some(client) = &self.redis_client {
             match self.bump_shared(client, &namespace_key).await {
                 Ok(value) => {
-                    self.set_local(&namespace_key, value);
+                    if let Err(error) = self.observe_shared(&namespace_key, value) {
+                        self.metrics.bump_failures.fetch_add(1, Ordering::Relaxed);
+                        return Err(error);
+                    }
                     self.metrics.shared_bumps.fetch_add(1, Ordering::Relaxed);
                     return Ok(CacheNamespaceGeneration {
                         value,
@@ -185,14 +208,16 @@ impl CacheNamespaceGenerationStore {
         })
     }
 
+    /// Seed a generation restored from a durable consumer checkpoint.
+    ///
+    /// A seed can advance or repeat the current snapshot, but it can never lower it.
     pub fn seed_local(
         &self,
         namespace: &str,
         generation: u64,
     ) -> Result<(), CacheGenerationError> {
         let namespace_key = generation_key(namespace)?;
-        self.set_local(&namespace_key, generation);
-        Ok(())
+        self.observe_shared(&namespace_key, generation)
     }
 
     pub fn stats(&self) -> CacheGenerationStats {
@@ -208,20 +233,33 @@ impl CacheNamespaceGenerationStore {
         }
     }
 
-    fn local_value(&self, namespace_key: &str) -> u64 {
+    fn local_snapshot(&self, namespace_key: &str) -> Option<u64> {
         self.local
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(namespace_key)
             .copied()
-            .unwrap_or(0)
     }
 
-    fn set_local(&self, namespace_key: &str, generation: u64) {
-        self.local
+    fn observe_shared(
+        &self,
+        namespace_key: &str,
+        generation: u64,
+    ) -> Result<(), CacheGenerationError> {
+        let mut local = self
+            .local
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(namespace_key.to_string(), generation);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(previous) = local.get(namespace_key).copied() {
+            if generation < previous {
+                return Err(CacheGenerationError::GenerationRegressed {
+                    local: previous,
+                    shared: generation,
+                });
+            }
+        }
+        local.insert(namespace_key.to_string(), generation);
+        Ok(())
     }
 
     #[cfg(feature = "redis-cache")]
@@ -285,6 +323,8 @@ pub enum CacheGenerationError {
     NamespaceTooLarge { length: usize, maximum: usize },
     ZeroOperationTimeout,
     GenerationOverflow,
+    NoLocalSnapshot,
+    GenerationRegressed { local: u64, shared: u64 },
     Redis(String),
     Timeout { operation: &'static str, timeout_ms: u128 },
 }
@@ -301,6 +341,14 @@ impl std::fmt::Display for CacheGenerationError {
                 write!(formatter, "cache generation operation timeout must be greater than zero")
             }
             Self::GenerationOverflow => write!(formatter, "cache generation counter overflowed"),
+            Self::NoLocalSnapshot => write!(
+                formatter,
+                "shared cache generation is unavailable and no trusted local snapshot exists"
+            ),
+            Self::GenerationRegressed { local, shared } => write!(
+                formatter,
+                "shared cache generation regressed from local {local} to {shared}"
+            ),
             Self::Redis(message) => write!(formatter, "cache generation Redis error: {message}"),
             Self::Timeout {
                 operation,
@@ -391,5 +439,32 @@ mod tests {
             .err()
             .expect("zero timeout must be rejected");
         assert_eq!(error, CacheGenerationError::ZeroOperationTimeout);
+    }
+
+    #[test]
+    fn durable_seed_and_shared_observation_cannot_regress() {
+        let service = CacheService::from_url(None);
+        let generations = service.namespace_generations();
+        generations.seed_local("tenant-cache", 7).unwrap();
+        generations.seed_local("tenant-cache", 7).unwrap();
+
+        assert_eq!(
+            generations.seed_local("tenant-cache", 6).unwrap_err(),
+            CacheGenerationError::GenerationRegressed {
+                local: 7,
+                shared: 6,
+            }
+        );
+        let key = generation_key("tenant-cache").unwrap();
+        assert_eq!(generations.local_snapshot(&key), Some(7));
+    }
+
+    #[test]
+    fn unknown_namespace_has_no_trusted_fallback_snapshot() {
+        let service = CacheService::from_url(None);
+        let generations = service.namespace_generations();
+        let key = generation_key("never-observed").unwrap();
+
+        assert_eq!(generations.local_snapshot(&key), None);
     }
 }
