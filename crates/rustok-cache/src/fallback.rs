@@ -5,83 +5,57 @@ use async_trait::async_trait;
 use rustok_core::{
     CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend,
 };
+use sha2::{Digest, Sha256};
+
+const DEGRADED_WRITE_MARKER_PREFIX: &str = "\0rustok:cache:degraded-write:";
 
 /// Availability-preserving fallback whose health and atomic mutations remain strict about the
 /// shared primary.
 ///
 /// Ordinary writes are mirrored locally before they reach Redis. A bounded marker tracks only
 /// writes whose primary operation failed, so those newer local bytes remain authoritative during
-/// reconnects instead of being overwritten by stale shared data. Successful writes, compare-and-set
-/// operations, and invalidations clear the marker and restore the shared primary as the authority.
+/// reconnects instead of being overwritten by stale shared data. The marker is stored under a
+/// private hashed key in the same fallback cache, so it inherits the exact same TTL and capacity
+/// policy in both entry-count and weighted modes.
 pub(crate) struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
-    degraded_writes: InMemoryCacheBackend,
-    default_ttl: Duration,
 }
 
 impl DegradationAwareFallbackBackend {
     pub(crate) fn new(
         primary: Arc<dyn CacheBackend>,
         fallback: Arc<InMemoryCacheBackend>,
-        ttl: Duration,
-        max_capacity: u64,
     ) -> Self {
-        Self::with_degraded_writes(
-            primary,
-            fallback,
-            InMemoryCacheBackend::new(ttl, max_capacity),
-            ttl,
-        )
+        Self { primary, fallback }
     }
 
-    pub(crate) fn new_weighted(
-        primary: Arc<dyn CacheBackend>,
-        fallback: Arc<InMemoryCacheBackend>,
-        ttl: Duration,
-        max_weight_bytes: u64,
-    ) -> Self {
-        Self::with_degraded_writes(
-            primary,
-            fallback,
-            InMemoryCacheBackend::new_weighted(ttl, max_weight_bytes),
-            ttl,
-        )
+    fn degraded_marker_key(key: &str) -> String {
+        let digest = Sha256::digest(key.as_bytes());
+        format!("{DEGRADED_WRITE_MARKER_PREFIX}{}", hex::encode(digest))
     }
 
-    fn with_degraded_writes(
-        primary: Arc<dyn CacheBackend>,
-        fallback: Arc<InMemoryCacheBackend>,
-        degraded_writes: InMemoryCacheBackend,
-        default_ttl: Duration,
-    ) -> Self {
-        Self {
-            primary,
-            fallback,
-            degraded_writes,
-            default_ttl,
-        }
-    }
-
-    async fn mark_degraded_write(&self, key: String, ttl: Duration) {
-        if let Err(error) = self
-            .degraded_writes
-            .set_with_ttl(key.clone(), Vec::new(), ttl)
-            .await
-        {
-            tracing::warn!(%error, key, "Failed to track degraded cache write");
+    async fn mark_degraded_write(&self, key: &str, ttl: Option<Duration>) {
+        let marker = Self::degraded_marker_key(key);
+        let result = match ttl {
+            Some(ttl) => self.fallback.set_with_ttl(marker.clone(), Vec::new(), ttl).await,
+            None => self.fallback.set(marker.clone(), Vec::new()).await,
+        };
+        if let Err(error) = result {
+            tracing::warn!(%error, key, marker, "Failed to track degraded cache write");
         }
     }
 
     async fn clear_degraded_write(&self, key: &str) {
-        if let Err(error) = self.degraded_writes.invalidate(key).await {
-            tracing::warn!(%error, key, "Failed to clear degraded cache write marker");
+        let marker = Self::degraded_marker_key(key);
+        if let Err(error) = self.fallback.invalidate(&marker).await {
+            tracing::warn!(%error, key, marker, "Failed to clear degraded cache write marker");
         }
     }
 
     async fn has_degraded_write(&self, key: &str) -> bool {
-        self.degraded_writes
-            .get(key)
+        self.fallback
+            .get(&Self::degraded_marker_key(key))
             .await
             .ok()
             .flatten()
@@ -96,8 +70,8 @@ impl DegradationAwareFallbackBackend {
         match self.fallback.get(key).await? {
             Some(value) => Ok(Some(value)),
             None => {
-                // The payload may have expired or been evicted before the marker. Drop the marker
-                // and resume normal primary-first reads rather than turning it into a sticky miss.
+                // The payload may have been evicted before its marker. Drop the marker and resume
+                // normal primary-first reads rather than turning it into a sticky miss.
                 self.clear_degraded_write(key).await;
                 Ok(None)
             }
@@ -153,7 +127,21 @@ impl CacheBackend for DegradationAwareFallbackBackend {
     }
 
     async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
-        self.set_with_ttl(key, value, self.default_ttl).await
+        if let Err(error) = self.fallback.set(key.clone(), value.clone()).await {
+            tracing::warn!(%error, key, "Failed to update local cache fallback");
+        }
+
+        match self.primary.set(key.clone(), value).await {
+            Ok(()) => {
+                self.clear_degraded_write(&key).await;
+                Ok(())
+            }
+            Err(error) => {
+                self.mark_degraded_write(&key, None).await;
+                tracing::debug!(%error, key, "Primary cache write failed; retained bounded local value");
+                Ok(())
+            }
+        }
     }
 
     async fn set_with_ttl(
@@ -182,8 +170,8 @@ impl CacheBackend for DegradationAwareFallbackBackend {
                 Ok(())
             }
             Err(error) => {
-                self.mark_degraded_write(key, ttl).await;
-                tracing::debug!(%error, "Primary cache write failed; retained bounded local value");
+                self.mark_degraded_write(&key, Some(ttl)).await;
+                tracing::debug!(%error, key, "Primary cache write failed; retained bounded local value");
                 Ok(())
             }
         }
@@ -410,7 +398,7 @@ mod tests {
         primary: Arc<dyn CacheBackend>,
         fallback: Arc<InMemoryCacheBackend>,
     ) -> DegradationAwareFallbackBackend {
-        DegradationAwareFallbackBackend::new(primary, fallback, Duration::from_secs(30), 16)
+        DegradationAwareFallbackBackend::new(primary, fallback)
     }
 
     #[tokio::test]
