@@ -132,7 +132,13 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             db.clone(),
         ),
     );
-    extensions.insert(OAuthAdminRuntime::new(auth_admin_provider.clone()));
+    let oauth_admin_provider = Arc::new(
+        crate::services::oauth_admin_guard::GuardedOAuthAdminProvider::new(
+            db.clone(),
+            auth_admin_provider.clone(),
+        ),
+    );
+    extensions.insert(OAuthAdminRuntime::new(oauth_admin_provider));
     let user_admin_provider = Arc::new(
         crate::services::user_admin_guard::GuardedUserAdminMutationProvider::new(
             auth_admin_provider,
