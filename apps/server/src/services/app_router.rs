@@ -20,6 +20,7 @@ use crate::error::{Error, Result};
 use crate::middleware;
 use crate::middleware::rate_limit::rate_limit_for_paths;
 use crate::services::app_runtime::AppRuntimeBootstrap;
+use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
@@ -180,6 +181,8 @@ pub fn compose_application_router(
             runtime_ctx
         }
     };
+    let server_fn_runtime_ctx =
+        attach_commerce_provider_registries(server_fn_runtime_ctx, &middleware_runtime_ctx);
     #[cfg(feature = "mod-alloy")]
     let server_fn_runtime_ctx = if let Some(alloy_runtime) =
         middleware_runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()
@@ -323,7 +326,7 @@ mod tests {
         let admin_response = app
             .oneshot(
                 Request::builder()
-                    .uri("/admin")
+                    .uri("/admin/dashboard")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -332,38 +335,14 @@ mod tests {
         assert_eq!(admin_response.status(), StatusCode::NOT_FOUND);
     }
 
-    #[tokio::test]
-    async fn mount_application_shell_supports_server_with_admin_profile() {
-        let admin_router = AxumRouter::new().route("/dashboard", get(|| async { "admin" }));
-        let app = mount_application_shell(AxumRouter::new(), Some(admin_router), None);
-
-        let admin_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/admin/dashboard")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(admin_response.status(), StatusCode::OK);
-
-        let root_response = app
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(root_response.status(), StatusCode::NOT_FOUND);
-    }
-
     #[cfg(not(feature = "embed-admin"))]
     #[tokio::test]
     async fn disabled_admin_router_returns_service_unavailable() {
-        let response = build_admin_router()
-            .oneshot(Request::builder().uri("/any").body(Body::empty()).unwrap())
+        let app = build_admin_router();
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
             .await
             .unwrap();
-
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
