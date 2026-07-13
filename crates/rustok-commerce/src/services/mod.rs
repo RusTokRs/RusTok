@@ -3,6 +3,7 @@ pub mod context;
 mod fulfillment_orchestration;
 mod payment_orchestration;
 mod post_order;
+mod refund_reconciliation;
 mod shipping_profile;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
@@ -19,4 +20,5 @@ pub use post_order::{
     ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
 };
+pub use refund_reconciliation::RefundReconciliationService;
 pub use shipping_profile::ShippingProfileService;
