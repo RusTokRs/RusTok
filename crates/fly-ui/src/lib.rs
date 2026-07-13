@@ -4,12 +4,14 @@ mod contribution;
 mod dnd;
 mod error;
 mod machine;
+mod resize;
 mod state;
 
 pub use contribution::*;
 pub use dnd::*;
 pub use error::*;
 pub use machine::*;
+pub use resize::*;
 pub use state::*;
 
 pub type UiResult<T> = Result<T, UiError>;
