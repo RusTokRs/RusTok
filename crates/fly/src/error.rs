@@ -11,6 +11,8 @@ pub enum FlyError {
     InvalidProjectRoot,
     #[error("project does not contain a mutable root component")]
     MissingProjectRoot,
+    #[error("page `{0}` does not contain a renderable root component")]
+    MissingPageRoot(String),
     #[error("component `{0}` was not found")]
     ComponentNotFound(String),
     #[error("parent component `{0}` was not found")]
