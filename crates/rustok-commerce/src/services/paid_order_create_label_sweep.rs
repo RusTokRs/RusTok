@@ -2,7 +2,7 @@ use rustok_fulfillment::entities::{fulfillment, provider_operation};
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_fulfillment::{PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_PENDING};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
 
 use super::FulfillmentCreateLabelRecoveryService;
@@ -39,12 +39,26 @@ impl PaidOrderCreateLabelSweepService {
         &self,
         limit: u64,
     ) -> Result<PaidOrderCreateLabelSweepReport, sea_orm::DbErr> {
+        let paid_order_ids = rustok_order::entities::order::Entity::find()
+            .select_only()
+            .column(rustok_order::entities::order::Column::Id)
+            .filter(rustok_order::entities::order::Column::Status.eq("paid"))
+            .into_query();
+        let paid_fulfillment_ids = fulfillment::Entity::find()
+            .select_only()
+            .column(fulfillment::Column::Id)
+            .filter(fulfillment::Column::OrderId.in_subquery(paid_order_ids))
+            .into_query();
         let operations = provider_operation::Entity::find()
             .filter(provider_operation::Column::Operation.eq("create_label"))
             .filter(provider_operation::Column::Status.is_in([
                 PROVIDER_OPERATION_PENDING.to_string(),
                 PROVIDER_OPERATION_ERROR.to_string(),
             ]))
+            .filter(
+                provider_operation::Column::FulfillmentId
+                    .in_subquery(paid_fulfillment_ids),
+            )
             .order_by_asc(provider_operation::Column::CreatedAt)
             .limit(limit.clamp(1, 500))
             .all(&self.db)
