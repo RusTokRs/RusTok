@@ -10,6 +10,7 @@ use rustok_api::{graphql::GraphQLError, has_effective_permission, AuthContext, P
 #[derive(Clone, Copy, Debug, Default)]
 struct ForumOperationPolicy {
     human_only: bool,
+    personal_projection: bool,
     topic_moderation: bool,
     reply_moderation: bool,
 }
@@ -17,8 +18,16 @@ struct ForumOperationPolicy {
 impl ForumOperationPolicy {
     fn merge(&mut self, other: Self) {
         self.human_only |= other.human_only;
+        self.personal_projection |= other.personal_projection;
         self.topic_moderation |= other.topic_moderation;
         self.reply_moderation |= other.reply_moderation;
+    }
+
+    fn is_empty(self) -> bool {
+        !self.human_only
+            && !self.personal_projection
+            && !self.topic_moderation
+            && !self.reply_moderation
     }
 }
 
@@ -36,30 +45,58 @@ fn field_policy(name: &str) -> ForumOperationPolicy {
 
     ForumOperationPolicy {
         human_only,
+        personal_projection: false,
         topic_moderation,
         reply_moderation,
     }
 }
 
+fn is_forum_response_root(name: &str) -> bool {
+    matches!(
+        name,
+        "forumCategories"
+            | "forumCategory"
+            | "forumTopics"
+            | "forumTopic"
+            | "forumReplies"
+            | "forumReply"
+    )
+}
+
 fn selection_policy(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
+    inside_forum_response: bool,
 ) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
     for selection in &selection_set.items {
         match &selection.node {
-            Selection::Field(field) => policy.merge(field_policy(field.node.name.node.as_str())),
+            Selection::Field(field) => {
+                let name = field.node.name.node.as_str();
+                policy.merge(field_policy(name));
+                let next_inside_forum = inside_forum_response || is_forum_response_root(name);
+                if next_inside_forum && matches!(name, "currentUserVote" | "isSubscribed") {
+                    policy.personal_projection = true;
+                }
+                policy.merge(selection_policy(
+                    &field.node.selection_set.node,
+                    document,
+                    next_inside_forum,
+                ));
+            }
             Selection::FragmentSpread(fragment) => {
                 if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node) {
                     policy.merge(selection_policy(
                         &definition.node.selection_set.node,
                         document,
+                        inside_forum_response,
                     ));
                 }
             }
             Selection::InlineFragment(fragment) => policy.merge(selection_policy(
                 &fragment.node.selection_set.node,
                 document,
+                inside_forum_response,
             )),
         }
     }
@@ -72,6 +109,7 @@ fn document_policy(document: &ExecutableDocument) -> ForumOperationPolicy {
         policy.merge(selection_policy(
             &operation.node.selection_set.node,
             document,
+            false,
         ));
     }
     policy
@@ -99,7 +137,7 @@ impl Extension for ForumPrincipalPolicyExtension {
         let mut request = next.run(ctx, request).await?;
         if !request.query.trim().is_empty() {
             let policy = document_policy(request.parsed_query()?);
-            if policy.human_only || policy.topic_moderation || policy.reply_moderation {
+            if !policy.is_empty() {
                 request.data.insert(policy);
             }
         }
@@ -125,6 +163,10 @@ impl Extension for ForumPrincipalPolicyExtension {
         let denial = if policy.human_only {
             Some(
                 "Forum authorship, voting, and personal subscriptions require human-user credentials",
+            )
+        } else if policy.personal_projection {
+            Some(
+                "Forum current-user vote and subscription projections require human-user credentials",
             )
         } else if policy.topic_moderation
             && !has_effective_permission(&auth.permissions, &Permission::FORUM_TOPICS_MODERATE)
@@ -183,6 +225,34 @@ mod tests {
     }
 
     #[test]
+    fn classifies_personal_forum_projections_only_inside_forum_results() {
+        let policy = policy(
+            r#"
+                query {
+                    forumTopics {
+                        nodes {
+                            currentUserVote
+                            isSubscribed
+                        }
+                    }
+                }
+            "#,
+        );
+        assert!(policy.personal_projection);
+
+        let unrelated = policy(
+            r#"
+                query {
+                    someOtherModule {
+                        isSubscribed
+                    }
+                }
+            "#,
+        );
+        assert!(!unrelated.personal_projection);
+    }
+
+    #[test]
     fn classifies_topic_and_reply_moderation_separately() {
         let topic = policy(
             r#"mutation { deleteForumTopic(id: "00000000-0000-0000-0000-000000000001") }"#,
@@ -203,6 +273,7 @@ mod tests {
             r#"mutation { createForumCategory(input: {}) { id } }"#,
         );
         assert!(!policy.human_only);
+        assert!(!policy.personal_projection);
         assert!(!policy.topic_moderation);
         assert!(!policy.reply_moderation);
     }
