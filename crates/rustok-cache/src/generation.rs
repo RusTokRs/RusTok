@@ -84,6 +84,7 @@ pub struct CacheNamespaceGenerationStore {
     max_local_snapshots: usize,
     operation_timeout: Duration,
     metrics: Arc<CacheGenerationMetrics>,
+    registry_rejected: bool,
 }
 
 impl CacheNamespaceGenerationStore {
@@ -95,6 +96,7 @@ impl CacheNamespaceGenerationStore {
             max_local_snapshots: DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS,
             operation_timeout: DEFAULT_GENERATION_OPERATION_TIMEOUT,
             metrics: Arc::new(CacheGenerationMetrics::default()),
+            registry_rejected: false,
         }
     }
 
@@ -105,6 +107,22 @@ impl CacheNamespaceGenerationStore {
             max_local_snapshots: DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS,
             operation_timeout: DEFAULT_GENERATION_OPERATION_TIMEOUT,
             metrics: Arc::new(CacheGenerationMetrics::default()),
+            registry_rejected: false,
+        }
+    }
+
+    fn reject_registry_capacity(mut self) -> Self {
+        self.registry_rejected = true;
+        self
+    }
+
+    fn ensure_registry_available(&self) -> Result<(), CacheGenerationError> {
+        if self.registry_rejected {
+            Err(CacheGenerationError::GenerationStoreRegistryCapacityExceeded {
+                maximum: DEFAULT_MAX_SHARED_GENERATION_STORES,
+            })
+        } else {
+            Ok(())
         }
     }
 
@@ -145,6 +163,10 @@ impl CacheNamespaceGenerationStore {
         &self,
         namespace: &str,
     ) -> Result<CacheNamespaceGeneration, CacheGenerationError> {
+        if let Err(error) = self.ensure_registry_available() {
+            self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
+            return Err(error);
+        }
         let namespace_key = generation_key(namespace)?;
 
         #[cfg(feature = "redis-cache")]
@@ -198,6 +220,10 @@ impl CacheNamespaceGenerationStore {
         &self,
         namespace: &str,
     ) -> Result<CacheNamespaceGeneration, CacheGenerationError> {
+        if let Err(error) = self.ensure_registry_available() {
+            self.metrics.bump_failures.fetch_add(1, Ordering::Relaxed);
+            return Err(error);
+        }
         let namespace_key = generation_key(namespace)?;
 
         #[cfg(feature = "redis-cache")]
@@ -243,6 +269,7 @@ impl CacheNamespaceGenerationStore {
     ///
     /// A seed can advance or repeat the current snapshot, but it can never lower it.
     pub fn seed_local(&self, namespace: &str, generation: u64) -> Result<(), CacheGenerationError> {
+        self.ensure_registry_available()?;
         let namespace_key = generation_key(namespace)?;
         self.observe_shared(&namespace_key, generation)
     }
@@ -398,9 +425,9 @@ impl CacheService {
         if registry.len() >= DEFAULT_MAX_SHARED_GENERATION_STORES {
             tracing::error!(
                 maximum = DEFAULT_MAX_SHARED_GENERATION_STORES,
-                "Cache generation store registry is full; returning an unshared bounded store"
+                "Cache generation store registry is full; returning a fail-closed store"
             );
-            return store;
+            return store.reject_registry_capacity();
         }
 
         registry.insert(
@@ -425,6 +452,9 @@ pub enum CacheGenerationError {
     ZeroLocalSnapshotCapacity,
     LocalSnapshotCapacityExceeded {
         count: usize,
+        maximum: usize,
+    },
+    GenerationStoreRegistryCapacityExceeded {
         maximum: usize,
     },
     GenerationOverflow,
@@ -465,6 +495,10 @@ impl std::fmt::Display for CacheGenerationError {
             Self::LocalSnapshotCapacityExceeded { count, maximum } => write!(
                 formatter,
                 "cache generation local snapshot count {count} exceeds maximum {maximum}"
+            ),
+            Self::GenerationStoreRegistryCapacityExceeded { maximum } => write!(
+                formatter,
+                "cache generation store registry reached capacity {maximum}"
             ),
             Self::GenerationOverflow => write!(formatter, "cache generation counter overflowed"),
             Self::NoLocalSnapshot => write!(
@@ -573,6 +607,25 @@ mod tests {
                 .value(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn generation_store_registry_saturation_fails_closed() {
+        #[cfg(feature = "redis-cache")]
+        let store = CacheNamespaceGenerationStore::new(None);
+        #[cfg(not(feature = "redis-cache"))]
+        let store = CacheNamespaceGenerationStore::new();
+        let store = store.reject_registry_capacity();
+        let expected = CacheGenerationError::GenerationStoreRegistryCapacityExceeded {
+            maximum: DEFAULT_MAX_SHARED_GENERATION_STORES,
+        };
+
+        assert_eq!(store.read("tenant-a").await.unwrap_err(), expected);
+        assert_eq!(store.bump("tenant-a").await.unwrap_err(), expected);
+        assert_eq!(store.seed_local("tenant-a", 1).unwrap_err(), expected);
+        assert_eq!(store.local_snapshot_count(), 0);
+        assert_eq!(store.stats().read_failures, 1);
+        assert_eq!(store.stats().bump_failures, 1);
     }
 
     #[test]
