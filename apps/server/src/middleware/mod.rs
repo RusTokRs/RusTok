@@ -127,11 +127,18 @@ pub mod tenant {
                 cause,
                 "Tenant generation advanced but Redis publication was unavailable"
             );
-        } else if !cache.redis_configuration_present() && outcome.local_subscribers == 0 {
-            tracing::warn!(
-                cause,
-                "Tenant generation advanced without a local subscriber"
-            );
+        } else if !cache.redis_configuration_present() {
+            let listener = tenant_invalidation_listener_snapshot(ctx).await;
+            if listener.status != TenantInvalidationListenerStatus::Healthy
+                || !listener.local_ready
+            {
+                tracing::warn!(
+                    cause,
+                    status = ?listener.status,
+                    error = listener.last_error.as_deref(),
+                    "Tenant generation advanced without the canonical local listener"
+                );
+            }
         }
     }
 
