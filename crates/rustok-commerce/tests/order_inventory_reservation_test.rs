@@ -27,13 +27,21 @@ async fn setup() -> (
     support::ensure_commerce_schema(&db).await;
 
     let manager = SchemaManager::new(&db);
-    let migration = migrations::migrations()
+    let mut registered = migrations::migrations();
+    let consumption = registered
         .pop()
-        .expect("order inventory reservation migration should be registered last");
-    migration
+        .expect("order delivery consumption migration should be registered last");
+    let reservation = registered
+        .pop()
+        .expect("order confirmation reservation migration should precede consumption");
+    reservation
         .up(&manager)
         .await
         .expect("order inventory reservation migration should install on SQLite");
+    consumption
+        .up(&manager)
+        .await
+        .expect("order inventory consumption migration should install on SQLite");
 
     let event_bus = mock_transactional_event_bus();
     (
@@ -133,7 +141,7 @@ async fn create_order(
         .expect("pending order should be created")
 }
 
-async fn reserved_quantity(db: &DatabaseConnection, variant_id: Uuid) -> i32 {
+async fn inventory_quantities(db: &DatabaseConnection, variant_id: Uuid) -> (i32, i32) {
     let item = inventory_item::Entity::find()
         .filter(inventory_item::Column::VariantId.eq(variant_id))
         .one(db)
@@ -141,17 +149,17 @@ async fn reserved_quantity(db: &DatabaseConnection, variant_id: Uuid) -> i32 {
         .expect("inventory item query should succeed")
         .expect("inventory item should exist");
 
-    inventory_level::Entity::find()
+    let level = inventory_level::Entity::find()
         .filter(inventory_level::Column::InventoryItemId.eq(item.id))
         .one(db)
         .await
         .expect("inventory level query should succeed")
-        .expect("inventory level should exist")
-        .reserved_quantity
+        .expect("inventory level should exist");
+    (level.stocked_quantity, level.reserved_quantity)
 }
 
 #[tokio::test]
-async fn order_confirmation_reserves_and_cancellation_releases_inventory() {
+async fn order_inventory_is_reserved_released_and_consumed_across_lifecycle() {
     let (db, catalog, inventory, orders) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -176,7 +184,7 @@ async fn order_confirmation_reserves_and_cancellation_releases_inventory() {
         .await
         .expect("first order should reserve inventory");
 
-    assert_eq!(reserved_quantity(&db, variant_id).await, 4);
+    assert_eq!(inventory_quantities(&db, variant_id).await, (5, 4));
     let first_reservation = reservation_item::Entity::find()
         .filter(reservation_item::Column::LineItemId.eq(first.line_items[0].id))
         .one(&db)
@@ -197,7 +205,7 @@ async fn order_confirmation_reserves_and_cancellation_releases_inventory() {
     .await;
     let insufficient = orders.confirm_order(tenant_id, actor_id, second.id).await;
     assert!(insufficient.is_err(), "overselling confirmation must fail");
-    assert_eq!(reserved_quantity(&db, variant_id).await, 4);
+    assert_eq!(inventory_quantities(&db, variant_id).await, (5, 4));
 
     orders
         .cancel_order(
@@ -208,7 +216,7 @@ async fn order_confirmation_reserves_and_cancellation_releases_inventory() {
         )
         .await
         .expect("cancellation should release the reservation");
-    assert_eq!(reserved_quantity(&db, variant_id).await, 0);
+    assert_eq!(inventory_quantities(&db, variant_id).await, (5, 0));
 
     let released = reservation_item::Entity::find_by_id(first.line_items[0].id)
         .one(&db)
@@ -222,7 +230,7 @@ async fn order_confirmation_reserves_and_cancellation_releases_inventory() {
         .confirm_order(tenant_id, actor_id, second.id)
         .await
         .expect("inventory released by cancellation should be reservable");
-    assert_eq!(reserved_quantity(&db, variant_id).await, 2);
+    assert_eq!(inventory_quantities(&db, variant_id).await, (5, 2));
 
     let immutable_update = db
         .execute(Statement::from_sql_and_values(
@@ -235,4 +243,38 @@ async fn order_confirmation_reserves_and_cancellation_releases_inventory() {
         immutable_update.is_err(),
         "confirmed order line items must be immutable so reservation totals cannot drift"
     );
+
+    orders
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            second.id,
+            "payment-ref".to_string(),
+            "manual".to_string(),
+        )
+        .await
+        .expect("confirmed order should become paid");
+    orders
+        .ship_order(
+            tenant_id,
+            actor_id,
+            second.id,
+            "TRACK-DELIVERY".to_string(),
+            "manual".to_string(),
+        )
+        .await
+        .expect("paid order should ship");
+    orders
+        .deliver_order(tenant_id, actor_id, second.id, None)
+        .await
+        .expect("shipped order should deliver and consume inventory");
+
+    assert_eq!(inventory_quantities(&db, variant_id).await, (3, 0));
+    let consumed = reservation_item::Entity::find_by_id(second.line_items[0].id)
+        .one(&db)
+        .await
+        .expect("consumed reservation query should succeed")
+        .expect("consumed reservation should remain as an audit row");
+    assert_eq!(consumed.quantity, 0);
+    assert!(consumed.deleted_at.is_some());
 }
