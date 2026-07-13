@@ -14,8 +14,18 @@ pub(super) async fn events_status_native() -> Result<EventsStatusResponse, Serve
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::HostSettingsSnapshot;
+        use rustok_api::{has_effective_permission, AuthContext, HostSettingsSnapshot, Permission};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+        if !has_effective_permission(&auth.permissions, &Permission::LOGS_READ) {
+            return Err(ServerFnError::new(
+                "logs:read required to inspect event transport status",
+            ));
+        }
+
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let root = runtime
             .shared_get::<HostSettingsSnapshot>()
@@ -43,8 +53,16 @@ pub(super) async fn events_status_native() -> Result<EventsStatusResponse, Serve
         }
         .to_string();
         let statement = match runtime.db().get_database_backend() {
-            DbBackend::Sqlite => Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT COALESCE(SUM(CASE WHEN status = ?1 THEN 1 ELSE 0 END), 0) AS pending_events, COALESCE(SUM(CASE WHEN status = ?2 THEN 1 ELSE 0 END), 0) AS dlq_events FROM sys_events", vec!["pending".into(), "failed".into()]),
-            _ => Statement::from_sql_and_values(DbBackend::Postgres, "SELECT COALESCE(SUM(CASE WHEN status = $1 THEN 1 ELSE 0 END), 0) AS pending_events, COALESCE(SUM(CASE WHEN status = $2 THEN 1 ELSE 0 END), 0) AS dlq_events FROM sys_events", vec!["pending".into(), "failed".into()]),
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT COALESCE(SUM(CASE WHEN status = ?1 THEN 1 ELSE 0 END), 0) AS pending_events, COALESCE(SUM(CASE WHEN status = ?2 THEN 1 ELSE 0 END), 0) AS dlq_events FROM sys_events",
+                vec!["pending".into(), "failed".into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT COALESCE(SUM(CASE WHEN status = $1 THEN 1 ELSE 0 END), 0) AS pending_events, COALESCE(SUM(CASE WHEN status = $2 THEN 1 ELSE 0 END), 0) AS dlq_events FROM sys_events",
+                vec!["pending".into(), "failed".into()],
+            ),
         };
         let (pending_events, dlq_events) = match runtime.db().query_one(statement).await {
             Ok(Some(row)) => (
@@ -107,7 +125,18 @@ pub(super) async fn event_settings_native() -> Result<PlatformSettingsResponse, 
             return Err(ServerFnError::new("settings:read required"));
         }
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
-        let statement = match runtime.db().get_database_backend() { DbBackend::Sqlite => Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1", vec![tenant.id.into(), "events".into()]), _ => Statement::from_sql_and_values(DbBackend::Postgres, "SELECT settings FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1", vec![tenant.id.into(), "events".into()]) };
+        let statement = match runtime.db().get_database_backend() {
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1",
+                vec![tenant.id.into(), "events".into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT settings FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1",
+                vec![tenant.id.into(), "events".into()],
+            ),
+        };
         let settings = match runtime
             .db()
             .query_one(statement)
@@ -150,7 +179,8 @@ pub(super) async fn event_settings_native() -> Result<PlatformSettingsResponse, 
                     "iggy_stream": events.pointer("/iggy/topology/stream_name").and_then(|value| value.as_str()).unwrap_or("rustok"),
                     "iggy_partitions": events.pointer("/iggy/topology/domain_partitions").and_then(|value| value.as_u64()).unwrap_or(8),
                     "iggy_replication": events.pointer("/iggy/topology/replication_factor").and_then(|value| value.as_u64()).unwrap_or(1),
-                }).to_string()
+                })
+                .to_string()
             }
         };
         Ok(PlatformSettingsResponse {
