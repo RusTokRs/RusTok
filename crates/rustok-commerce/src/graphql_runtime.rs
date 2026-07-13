@@ -6,14 +6,12 @@ use rustok_payment::providers::PaymentProviderRegistry;
 /// Hosts may supply composed registries through `HostRuntimeContext`. The built-in
 /// manual adapters remain a deterministic fallback for tests and deployments that
 /// have not installed external providers.
-#[cfg(feature = "server")]
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
 }
 
-#[cfg(feature = "server")]
 impl CommerceGraphqlRuntimeData {
     pub fn payment_provider_registry(&self) -> PaymentProviderRegistry {
         self.payment_provider_registry.clone()
@@ -25,7 +23,6 @@ impl CommerceGraphqlRuntimeData {
 }
 
 /// Capability-owned factory consumed by manifest-generated schema composition.
-#[cfg(feature = "server")]
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
 ) -> Result<CommerceGraphqlRuntimeData, String> {
