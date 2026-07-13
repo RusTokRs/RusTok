@@ -3,6 +3,7 @@ use rustok_page_builder::dto::{
 };
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 pub type PageBuilderAdminFacadeFuture = Pin<
     Box<
@@ -20,6 +21,15 @@ pub type PageBuilderAdminFacadeFuture = Pin<
 /// local and are executed through `spawn_local`.
 pub trait PageBuilderAdminFacade: Send + Sync {
     fn execute(&self, request: PageBuilderCapabilityRequest) -> PageBuilderAdminFacadeFuture;
+}
+
+impl<T> PageBuilderAdminFacade for Arc<T>
+where
+    T: PageBuilderAdminFacade + ?Sized,
+{
+    fn execute(&self, request: PageBuilderCapabilityRequest) -> PageBuilderAdminFacadeFuture {
+        self.as_ref().execute(request)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
