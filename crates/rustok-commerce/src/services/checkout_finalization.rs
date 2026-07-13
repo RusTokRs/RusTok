@@ -79,13 +79,19 @@ impl CheckoutFinalizationExecutor {
         state: CheckoutFulfillmentCreatedState,
     ) -> CheckoutFinalizationResult<CheckoutCompletedState> {
         let lease_owner = lease_owner.into();
-        validate_state(tenant_id, &state)?;
+        let cart_id = validate_state(tenant_id, &state)?;
 
         for _ in 0..3 {
             let operation = self
                 .operation_journal
                 .get(tenant_id, state.operation_id)
                 .await?;
+            if operation.cart_id != cart_id {
+                return Err(CheckoutFinalizationError::Conflict(format!(
+                    "checkout operation {} is bound to cart {}, not {}",
+                    operation.id, operation.cart_id, cart_id
+                )));
+            }
             if operation.status == CheckoutOperationStatus::Completed.as_str() {
                 if operation.stage != CheckoutOperationStage::Completed.as_str() {
                     return Err(CheckoutFinalizationError::Conflict(format!(
@@ -93,8 +99,8 @@ impl CheckoutFinalizationExecutor {
                         operation.id, operation.stage
                     )));
                 }
-                let cart = self.read_cart(tenant_id, actor_id, &state).await?;
-                ensure_completed_cart(&cart, &state)?;
+                let cart = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
+                ensure_completed_cart(&cart, cart_id, &state)?;
                 return Ok(CheckoutCompletedState {
                     operation_id: operation.id,
                     cart,
@@ -110,8 +116,8 @@ impl CheckoutFinalizationExecutor {
 
             match operation.stage.as_str() {
                 stage if stage == CheckoutOperationStage::FulfillmentCreated.as_str() => {
-                    let current = self.read_cart(tenant_id, actor_id, &state).await?;
-                    validate_cart_identity(&current, &state)?;
+                    let current = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
+                    validate_cart_identity(&current, cart_id, &state)?;
                     let cart = if current.status == CartStatus::Completed.as_str() {
                         current
                     } else if matches!(
@@ -129,9 +135,7 @@ impl CheckoutFinalizationExecutor {
                                     "complete",
                                     true,
                                 ),
-                                CartCheckoutLifecycleRequest {
-                                    cart_id: operation.cart_id,
-                                },
+                                CartCheckoutLifecycleRequest { cart_id },
                             )
                             .await
                             .map_err(|error| cart_error("complete_cart_checkout", error))?
@@ -141,7 +145,7 @@ impl CheckoutFinalizationExecutor {
                             current.id, current.status
                         )));
                     };
-                    ensure_completed_cart(&cart, &state)?;
+                    ensure_completed_cart(&cart, cart_id, &state)?;
                     self.operation_journal
                         .checkpoint(CheckoutOperationCheckpoint {
                             tenant_id,
@@ -155,13 +159,26 @@ impl CheckoutFinalizationExecutor {
                             lease_seconds: self.lease_seconds,
                         })
                         .await?;
-                }
-                stage if stage == CheckoutOperationStage::CartCompleted.as_str() => {
-                    let cart = self.read_cart(tenant_id, actor_id, &state).await?;
-                    ensure_completed_cart(&cart, &state)?;
                     self.operation_journal
                         .mark_completed(tenant_id, operation.id, lease_owner.clone())
                         .await?;
+                    return Ok(CheckoutCompletedState {
+                        operation_id: operation.id,
+                        cart,
+                        checkout: state,
+                    });
+                }
+                stage if stage == CheckoutOperationStage::CartCompleted.as_str() => {
+                    let cart = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
+                    ensure_completed_cart(&cart, cart_id, &state)?;
+                    self.operation_journal
+                        .mark_completed(tenant_id, operation.id, lease_owner.clone())
+                        .await?;
+                    return Ok(CheckoutCompletedState {
+                        operation_id: operation.id,
+                        cart,
+                        checkout: state,
+                    });
                 }
                 stage if stage == CheckoutOperationStage::Completed.as_str() => {
                     return Err(CheckoutFinalizationError::Conflict(format!(
@@ -188,6 +205,7 @@ impl CheckoutFinalizationExecutor {
         &self,
         tenant_id: Uuid,
         actor_id: Uuid,
+        cart_id: Uuid,
         state: &CheckoutFulfillmentCreatedState,
     ) -> CheckoutFinalizationResult<CartResponse> {
         self.cart_checkout_port
@@ -201,7 +219,7 @@ impl CheckoutFinalizationExecutor {
                     false,
                 ),
                 CartCheckoutSnapshotRequest {
-                    cart_id: state.checkout_cart_id(),
+                    cart_id,
                     locale: Some(state.plan.payload.context.locale.clone()),
                 },
             )
@@ -210,22 +228,10 @@ impl CheckoutFinalizationExecutor {
     }
 }
 
-trait CheckoutCartIdentity {
-    fn checkout_cart_id(&self) -> Uuid;
-}
-
-impl CheckoutCartIdentity for CheckoutFulfillmentCreatedState {
-    fn checkout_cart_id(&self) -> Uuid {
-        self.payment_collection
-            .cart_id
-            .expect("captured checkout collection must have cart identity")
-    }
-}
-
 fn validate_state(
     tenant_id: Uuid,
     state: &CheckoutFulfillmentCreatedState,
-) -> CheckoutFinalizationResult<()> {
+) -> CheckoutFinalizationResult<Uuid> {
     let cart_id = state.payment_collection.cart_id.ok_or_else(|| {
         CheckoutFinalizationError::Conflict(
             "captured checkout collection has no cart identity".to_string(),
@@ -237,7 +243,7 @@ fn validate_state(
         || state.plan.checkout_operation_id != state.operation_id
         || state.payment_collection.order_id != Some(state.order.id)
         || state.payment_collection.status != "captured"
-        || state.order.status != "paid"
+        || !matches!(state.order.status.as_str(), "paid" | "shipped" | "delivered")
         || cart_id == Uuid::nil()
     {
         return Err(CheckoutFinalizationError::Conflict(
@@ -245,14 +251,15 @@ fn validate_state(
                 .to_string(),
         ));
     }
-    Ok(())
+    Ok(cart_id)
 }
 
 fn validate_cart_identity(
     cart: &CartResponse,
+    cart_id: Uuid,
     state: &CheckoutFulfillmentCreatedState,
 ) -> CheckoutFinalizationResult<()> {
-    if cart.id != state.checkout_cart_id()
+    if cart.id != cart_id
         || cart.tenant_id != state.order.tenant_id
         || !cart
             .currency_code
@@ -269,9 +276,10 @@ fn validate_cart_identity(
 
 fn ensure_completed_cart(
     cart: &CartResponse,
+    cart_id: Uuid,
     state: &CheckoutFulfillmentCreatedState,
 ) -> CheckoutFinalizationResult<()> {
-    validate_cart_identity(cart, state)?;
+    validate_cart_identity(cart, cart_id, state)?;
     if cart.status != CartStatus::Completed.as_str() || cart.completed_at.is_none() {
         return Err(CheckoutFinalizationError::Conflict(format!(
             "cart {} is not durably completed",
