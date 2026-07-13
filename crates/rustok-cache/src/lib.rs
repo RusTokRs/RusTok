@@ -9,6 +9,7 @@ mod observability;
 mod policy;
 mod refresh;
 mod service;
+mod shared_backend;
 mod typed;
 mod weighted;
 
