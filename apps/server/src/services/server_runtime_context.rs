@@ -38,6 +38,19 @@ impl ServerSharedValues {
             .insert(TypeId::of::<T>(), Arc::new(value));
     }
 
+    fn take<T>(&self) -> Option<T>
+    where
+        T: 'static + Send + Sync,
+    {
+        let value = self
+            .values
+            .write()
+            .expect("server shared values lock poisoned")
+            .remove(&TypeId::of::<T>())?;
+        let typed = Arc::downcast::<T>(value).ok()?;
+        Arc::try_unwrap(typed).ok()
+    }
+
     fn contains<T>(&self) -> bool
     where
         T: 'static + Send + Sync,
@@ -91,6 +104,13 @@ impl ServerRuntimeContext {
         self.shared_values.insert(value);
     }
 
+    pub fn shared_take<T>(&self) -> Option<T>
+    where
+        T: 'static + Send + Sync,
+    {
+        self.shared_values.take::<T>()
+    }
+
     pub fn shared_contains<T>(&self) -> bool
     where
         T: 'static + Send + Sync,
@@ -138,5 +158,30 @@ impl ServerAuthRuntime {
 impl FromRef<ServerAuthRuntime> for ServerRuntimeContext {
     fn from_ref(input: &ServerAuthRuntime) -> Self {
         input.runtime_ctx.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServerSharedValues;
+
+    #[test]
+    fn shared_take_returns_and_removes_the_typed_value() {
+        let values = ServerSharedValues::default();
+        values.insert(String::from("tenant-listener"));
+
+        assert_eq!(values.take::<String>().as_deref(), Some("tenant-listener"));
+        assert!(!values.contains::<String>());
+        assert!(values.take::<String>().is_none());
+    }
+
+    #[test]
+    fn shared_take_does_not_disturb_other_types() {
+        let values = ServerSharedValues::default();
+        values.insert(String::from("listener"));
+        values.insert(42_u64);
+
+        assert_eq!(values.take::<String>().as_deref(), Some("listener"));
+        assert_eq!(values.get::<u64>(), Some(42));
     }
 }
