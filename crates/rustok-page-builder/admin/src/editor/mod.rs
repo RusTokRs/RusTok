@@ -2,6 +2,7 @@ mod admin_shell;
 mod authoring;
 mod canvas_document;
 mod canvas_protocol;
+mod dynamic_runtime;
 mod isolated_canvas;
 mod modular_canvas;
 mod page_manager;
@@ -17,10 +18,11 @@ mod trait_panel;
 
 pub use admin_shell::AdminShell;
 pub use authoring::{LayerItemView, PaletteBlockView, SelectedComponentView};
-pub(crate) use canvas_document::render_canvas_srcdoc;
+pub(crate) use canvas_document::{render_canvas_srcdoc, render_canvas_srcdoc_with_context};
 pub(crate) use canvas_protocol::{
     decode_canvas_message, CanvasBridgeMessage, CanvasComponentGeometry,
 };
+pub(crate) use dynamic_runtime::DynamicRuntimePanel;
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
 pub use modular_canvas::AdminCanvas;
 pub(crate) use page_manager::PageManagerPanel;
