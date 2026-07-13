@@ -103,6 +103,7 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-inventory` admin UI: [README](../../crates/rustok-inventory/admin/README.md)
 - `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
 - `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
+- `rustok-page-builder` admin UI: [README](../../crates/rustok-page-builder/admin/README.md)
 - `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
 - `rustok-seo` admin UI: [README](../../crates/rustok-seo/admin/README.md)
 - `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
