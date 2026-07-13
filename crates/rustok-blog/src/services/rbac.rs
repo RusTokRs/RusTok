@@ -66,7 +66,7 @@ mod tests {
         let restricted = SecurityContext::from_permissions(
             UserRole::Admin,
             Some(uuid::Uuid::new_v4()),
-            [Permission::POSTS_READ_OWN],
+            Vec::<Permission>::new(),
         );
         assert!(!can_read_non_public_posts(&restricted));
 
