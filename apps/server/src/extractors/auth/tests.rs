@@ -211,6 +211,7 @@ async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
         created.id,
         created.client_id,
         rustok_core::UserRole::Customer,
+        &[],
     )
     .await
     .expect("resolve service token permissions");
@@ -248,6 +249,7 @@ async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
         Uuid::new_v4(),
         app.client_id,
         UserRole::Customer,
+        &[],
     )
     .await
     .expect_err("service token subject must equal app id");
@@ -303,6 +305,53 @@ async fn authorization_code_token_rejects_inactive_oauth_app() {
         (
             axum::http::StatusCode::UNAUTHORIZED,
             "OAuth app not found or inactive",
+        )
+    );
+}
+
+#[tokio::test]
+async fn authorization_code_token_rejects_scope_removed_from_oauth_app() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let auth_runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new(
+        "OAuth scope tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let (user, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let app = insert_oauth_app(
+        &db,
+        tenant.id,
+        "third_party",
+        &["authorization_code"],
+        true,
+    )
+    .await;
+    let removed_scopes = vec!["admin:*".to_string()];
+    let token = encode_oauth_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Customer,
+        app.client_id,
+        &removed_scopes,
+        "authorization_code",
+        900,
+    )
+    .expect("encode oauth access token");
+
+    let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
+        .await
+        .expect_err("token scope must remain allowed by the OAuth app");
+
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "OAuth token scopes are no longer allowed",
         )
     );
 }

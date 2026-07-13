@@ -14,7 +14,7 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
-use rustok_api::Permission;
+use rustok_api::{context::scope_matches, Permission};
 use rustok_core::{SecurityActorKind, UserRole};
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tracing::warn;
@@ -83,11 +83,30 @@ fn classify_access_token_claims(
     }
 }
 
+fn validate_oauth_token_scopes(
+    app: &oauth_apps::Model,
+    token_scopes: &[String],
+) -> Result<(), (StatusCode, &'static str)> {
+    let allowed_scopes = app.scopes_list();
+    if token_scopes
+        .iter()
+        .all(|scope| scope_matches(&allowed_scopes, scope))
+    {
+        return Ok(());
+    }
+
+    Err((
+        StatusCode::UNAUTHORIZED,
+        "OAuth token scopes are no longer allowed",
+    ))
+}
+
 async fn resolve_active_oauth_app(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
     client_id: uuid::Uuid,
     required_grant_type: &'static str,
+    token_scopes: &[String],
 ) -> Result<oauth_apps::Model, (StatusCode, &'static str)> {
     let app = OAuthApps::find_active_by_client_id(db, client_id)
         .await
@@ -105,6 +124,8 @@ async fn resolve_active_oauth_app(
         ));
     }
 
+    validate_oauth_token_scopes(&app, token_scopes)?;
+
     Ok(app)
 }
 
@@ -114,9 +135,16 @@ async fn resolve_service_token_permissions(
     subject_id: uuid::Uuid,
     client_id: uuid::Uuid,
     claimed_role: UserRole,
+    token_scopes: &[String],
 ) -> Result<(Vec<Permission>, UserRole), (StatusCode, &'static str)> {
-    let app = resolve_active_oauth_app(db, tenant_id, client_id, CLIENT_CREDENTIALS_GRANT_TYPE)
-        .await?;
+    let app = resolve_active_oauth_app(
+        db,
+        tenant_id,
+        client_id,
+        CLIENT_CREDENTIALS_GRANT_TYPE,
+        token_scopes,
+    )
+    .await?;
 
     if app.id != subject_id {
         return Err((
@@ -208,7 +236,14 @@ pub async fn resolve_current_user_from_access_token(
             StatusCode::UNAUTHORIZED,
             "OAuth user token is missing client_id",
         ))?;
-        resolve_active_oauth_app(db, tenant_id, client_id, AUTHORIZATION_CODE_GRANT_TYPE).await?;
+        resolve_active_oauth_app(
+            db,
+            tenant_id,
+            client_id,
+            AUTHORIZATION_CODE_GRANT_TYPE,
+            &claims.scopes,
+        )
+        .await?;
     }
 
     let (user, permissions, inferred_role, session_id, actor_kind) = match subject_kind {
@@ -262,6 +297,7 @@ pub async fn resolve_current_user_from_access_token(
                 claims.sub,
                 client_id,
                 claims.role,
+                &claims.scopes,
             )
             .await?;
 
