@@ -12,6 +12,7 @@
       "redo": "Повторить",
       "save": "Сохранить",
       "add": "Добавить",
+      "addPage": "Добавить страницу",
       "drag": "Перетащить",
       "copy": "Копировать",
       "cut": "Вырезать",
@@ -36,6 +37,7 @@
       "dragging": "Выберите позицию вставки на холсте"
     },
     "panel": {
+      "pages": "Страницы",
       "palette": "Блоки",
       "layers": "Слои",
       "properties": "Свойства",
@@ -46,6 +48,8 @@
     },
     "field": {
       "page": "Страница",
+      "pageName": "Название страницы",
+      "pageId": "ID страницы",
       "revision": "Ревизия",
       "selectedComponent": "Выбранный компонент",
       "none": "Нет",
@@ -61,6 +65,14 @@
       "styleValue": "Значение стиля",
       "assetId": "ID ресурса",
       "assetUrl": "URL ресурса",
+      "seoTitle": "SEO-заголовок",
+      "seoDescription": "SEO-описание",
+      "slug": "Slug",
+      "canonicalUrl": "Канонический URL",
+      "openGraphTitle": "Заголовок Open Graph",
+      "openGraphDescription": "Описание Open Graph",
+      "openGraphImage": "Изображение Open Graph",
+      "noIndex": "Запретить индексацию",
       "projectHash": "Хеш проекта"
     },
     "bridge": {
