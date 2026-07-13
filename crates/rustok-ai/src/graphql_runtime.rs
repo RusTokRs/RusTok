@@ -108,13 +108,13 @@ impl SeaOrmAiGraphqlRoleSlugProvider {
 fn role_slug_query(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => {
-            "SELECT roles.slug FROM roles INNER JOIN user_roles ON user_roles.role_id = roles.id WHERE user_roles.user_id = $1 AND roles.tenant_id = $2"
+            "SELECT roles.slug FROM roles INNER JOIN user_roles ON user_roles.role_id = roles.id WHERE user_roles.user_id = $1 AND roles.tenant_id = $2 AND NOT EXISTS (SELECT 1 FROM oauth_apps WHERE oauth_apps.id = $1 AND oauth_apps.tenant_id = $2)"
         }
         DbBackend::MySql => {
-            "SELECT roles.slug FROM roles INNER JOIN user_roles ON user_roles.role_id = roles.id WHERE user_roles.user_id = ? AND roles.tenant_id = ?"
+            "SELECT roles.slug FROM roles INNER JOIN user_roles ON user_roles.role_id = roles.id WHERE user_roles.user_id = ? AND roles.tenant_id = ? AND NOT EXISTS (SELECT 1 FROM oauth_apps WHERE oauth_apps.id = ? AND oauth_apps.tenant_id = ?)"
         }
         DbBackend::Sqlite => {
-            "SELECT roles.slug FROM roles INNER JOIN user_roles ON user_roles.role_id = roles.id WHERE user_roles.user_id = ?1 AND roles.tenant_id = ?2"
+            "SELECT roles.slug FROM roles INNER JOIN user_roles ON user_roles.role_id = roles.id WHERE user_roles.user_id = ?1 AND roles.tenant_id = ?2 AND NOT EXISTS (SELECT 1 FROM oauth_apps WHERE oauth_apps.id = ?1 AND oauth_apps.tenant_id = ?2)"
         }
     }
 }
@@ -124,12 +124,23 @@ fn role_slug_query(backend: DbBackend) -> &'static str {
 impl AiGraphqlRoleSlugProvider for SeaOrmAiGraphqlRoleSlugProvider {
     async fn load_role_slugs(&self, tenant_id: Uuid, user_id: Uuid) -> anyhow::Result<Vec<String>> {
         let backend = self.db.get_database_backend();
+        let values = match backend {
+            DbBackend::MySql => vec![
+                user_id.into(),
+                tenant_id.into(),
+                user_id.into(),
+                tenant_id.into(),
+            ],
+            DbBackend::Postgres | DbBackend::Sqlite => {
+                vec![user_id.into(), tenant_id.into()]
+            }
+        };
         let rows = self
             .db
             .query_all(Statement::from_sql_and_values(
                 backend,
                 role_slug_query(backend),
-                [user_id.into(), tenant_id.into()],
+                values,
             ))
             .await?;
         rows.into_iter()
@@ -154,5 +165,14 @@ mod tests {
 
         assert!(role_slug_query(DbBackend::Sqlite).contains("?1"));
         assert!(role_slug_query(DbBackend::Sqlite).contains("?2"));
+    }
+
+    #[test]
+    fn role_slug_query_excludes_oauth_app_subjects() {
+        for backend in [DbBackend::Postgres, DbBackend::MySql, DbBackend::Sqlite] {
+            let query = role_slug_query(backend);
+            assert!(query.contains("NOT EXISTS"));
+            assert!(query.contains("oauth_apps"));
+        }
     }
 }
