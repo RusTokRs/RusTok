@@ -13,6 +13,7 @@ mod m20260713_000113_enforce_cart_money_integrity;
 mod m20260713_000114_serialize_cart_lifecycle;
 mod m20260713_000115_enforce_cart_shipping_option_integrity;
 mod m20260713_000116_normalize_cart_shipping_totals;
+mod m20260713_000117_lock_checkout_shipping_option_economics;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -34,6 +35,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000114_serialize_cart_lifecycle::Migration),
         Box::new(m20260713_000115_enforce_cart_shipping_option_integrity::Migration),
         Box::new(m20260713_000116_normalize_cart_shipping_totals::Migration),
+        Box::new(m20260713_000117_lock_checkout_shipping_option_economics::Migration),
     ]
 }
 
@@ -53,6 +55,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260713_000116_normalize_cart_shipping_totals",
             vec!["m20260713_000115_enforce_cart_shipping_option_integrity"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260713_000117_lock_checkout_shipping_option_economics",
+            vec!["m20260713_000116_normalize_cart_shipping_totals"],
         ),
     ]
 }
