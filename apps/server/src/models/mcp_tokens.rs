@@ -1,5 +1,12 @@
+use std::str::FromStr;
+
 use chrono::Utc;
+use rustok_api::{has_effective_permission, Permission};
+use rustok_mcp::McpActorType;
 use sea_orm::{entity::prelude::*, Condition, QueryFilter, QueryOrder};
+
+use crate::models::{mcp_clients, mcp_policies, users};
+use crate::services::rbac_service::RbacService;
 
 pub use super::_entities::mcp_tokens::{ActiveModel, Column, Entity, Model, Relation};
 
@@ -8,7 +15,7 @@ impl Entity {
         db: &DatabaseConnection,
         token_hash: &str,
     ) -> Result<Option<Model>, DbErr> {
-        Self::find()
+        let token = Self::find()
             .filter(
                 Condition::all()
                     .add(Column::TokenHash.eq(token_hash))
@@ -20,7 +27,53 @@ impl Entity {
                     ),
             )
             .one(db)
-            .await
+            .await?;
+        let Some(token) = token else {
+            return Ok(None);
+        };
+
+        let client = mcp_clients::Entity::find_by_id(token.client_id)
+            .filter(mcp_clients::Column::TenantId.eq(token.tenant_id))
+            .one(db)
+            .await?;
+        let Some(client) = client.filter(mcp_clients::Model::is_active) else {
+            return Ok(None);
+        };
+
+        if client.actor_type() == McpActorType::HumanUser && client.delegated_user_id.is_none() {
+            return Ok(None);
+        }
+
+        if let Some(delegated_user_id) = client.delegated_user_id {
+            let delegated_user = users::Entity::find_by_id(delegated_user_id)
+                .filter(users::Column::TenantId.eq(client.tenant_id))
+                .one(db)
+                .await?;
+            let Some(delegated_user) = delegated_user.filter(users::Model::is_active) else {
+                return Ok(None);
+            };
+
+            if let Some(policy) = mcp_policies::Entity::find_by_client(db, client.id).await? {
+                let authoritative = RbacService::get_user_permissions_authoritative(
+                    db,
+                    &client.tenant_id,
+                    &delegated_user.id,
+                )
+                .await
+                .map_err(|error| DbErr::Custom(error.to_string()))?;
+
+                for raw in policy.granted_permissions_list() {
+                    let Ok(permission) = Permission::from_str(raw.trim()) else {
+                        return Ok(None);
+                    };
+                    if !has_effective_permission(&authoritative, &permission) {
+                        return Ok(None);
+                    }
+                }
+            }
+        }
+
+        Ok(Some(token))
     }
 
     pub async fn find_by_client(
@@ -46,5 +99,22 @@ impl Model {
             })
             .unwrap_or(true);
         not_revoked && not_expired
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{has_effective_permission, Permission};
+
+    #[test]
+    fn manage_permission_can_back_a_narrow_delegated_grant() {
+        assert!(has_effective_permission(
+            &[Permission::PAGES_MANAGE],
+            &Permission::PAGES_READ,
+        ));
+        assert!(!has_effective_permission(
+            &[Permission::PAGES_READ],
+            &Permission::PAGES_MANAGE,
+        ));
     }
 }
