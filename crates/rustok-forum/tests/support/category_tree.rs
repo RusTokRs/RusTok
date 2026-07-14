@@ -118,6 +118,20 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
     assert!(empty.roots.is_empty());
     assert_eq!(empty.total_nodes, 0);
 
+    let untranslated_tenant = Uuid::new_v4();
+    seed_category_without_translation(db, untranslated_tenant).await?;
+    let untranslated_error = service
+        .tree(
+            untranslated_tenant,
+            security.clone(),
+            CategoryTreeQuery {
+                locale: Some("en".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+    assert_validation_contains(untranslated_error, "no localized translation")?;
+
     let deep_tenant = Uuid::new_v4();
     seed_deep_tree(db, deep_tenant, MAX_FORUM_CATEGORY_TREE_DEPTH + 2).await?;
     let depth_error = service
@@ -183,6 +197,21 @@ async fn seed_oversized_tree(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
         ));
     }
     db.execute_unprepared(&sql).await?;
+    Ok(())
+}
+
+async fn seed_category_without_translation(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> TestResult<()> {
+    let category_id = Uuid::new_v4();
+    db.execute_unprepared(&format!(
+        "INSERT INTO forum_categories
+            (id, tenant_id, position, moderated, topic_count, reply_count)
+         VALUES
+            ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0);"
+    ))
+    .await?;
     Ok(())
 }
 
