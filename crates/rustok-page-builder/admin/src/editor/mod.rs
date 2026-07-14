@@ -3,6 +3,7 @@ mod authoring;
 mod binding_panel;
 mod canvas_document;
 mod canvas_protocol;
+mod context_contract_tools;
 mod context_schema_panel;
 mod dynamic_runtime;
 mod isolated_canvas;
@@ -27,6 +28,7 @@ pub(crate) use canvas_document::{render_canvas_srcdoc, render_canvas_srcdoc_with
 pub(crate) use canvas_protocol::{
     decode_canvas_message, CanvasBridgeMessage, CanvasComponentGeometry,
 };
+pub(crate) use context_contract_tools::ContextContractToolsPanel;
 pub(crate) use context_schema_panel::ContextSchemaPanel;
 pub(crate) use dynamic_runtime::DynamicRuntimePanel;
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
