@@ -193,7 +193,8 @@ async fn resolve_service_token_permissions(
             "OAuth app permissions are invalid",
         )
     })?;
-    let inferred_role = infer_user_role_from_permissions(&granted_permissions);
+    let effective_permissions = restrict_permissions_to_scopes(&granted_permissions, token_scopes);
+    let inferred_role = infer_user_role_from_permissions(&effective_permissions);
     if claimed_role != inferred_role {
         RbacService::record_claim_role_mismatch();
         warn!(
@@ -205,7 +206,6 @@ async fn resolve_service_token_permissions(
         );
     }
 
-    let effective_permissions = restrict_permissions_to_scopes(&granted_permissions, token_scopes);
     Ok((effective_permissions, inferred_role))
 }
 
@@ -303,7 +303,12 @@ pub async fn resolve_current_user_from_access_token(
                     .await
                     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-            let inferred_role = infer_user_role_from_permissions(&granted_permissions);
+            let effective_permissions = if claims.client_id.is_some() {
+                restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)
+            } else {
+                granted_permissions
+            };
+            let inferred_role = infer_user_role_from_permissions(&effective_permissions);
             if claims.role != inferred_role {
                 RbacService::record_claim_role_mismatch();
                 warn!(
@@ -314,12 +319,6 @@ pub async fn resolve_current_user_from_access_token(
                     "rbac_claim_role_mismatch"
                 );
             }
-
-            let effective_permissions = if claims.client_id.is_some() {
-                restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)
-            } else {
-                granted_permissions
-            };
 
             (
                 user,
