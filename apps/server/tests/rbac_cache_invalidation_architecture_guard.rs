@@ -127,10 +127,14 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
 
     for required in [
         "pub struct PermissionCacheLookup",
+        "MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS",
         "async fn lookup(",
         "async fn insert_if_current(",
+        ") -> bool {",
         "cache.lookup(tenant_id, user_id).await.into_parts()",
-        "resolver_uses_generation_checked_cache_publication",
+        "resolver_retries_generation_checked_cache_publication",
+        "continuous_invalidation_fails_closed",
+        "permissions: Vec::new()",
     ] {
         assert!(core.contains(required), "RBAC cache core must retain {required}");
     }
@@ -142,8 +146,11 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
         "RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS",
         "current_permission_cache_epoch() != token",
         "advance_permission_cache_epoch();",
+        "return false;",
         "stale_permission_fill_is_rejected_after_invalidation",
+        "assert!(!published);",
         "invalidate_current_rbac_request_scope(tenant_id, user_id)",
+        "database_rejects_cross_tenant_role_links_and_loader_keeps_local_role",
     ] {
         assert!(
             runtime.contains(required),
@@ -178,4 +185,12 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
         .expect("adapter invalidation must remove the physical entry");
     assert!(request_scope_expiry < epoch_advance);
     assert!(epoch_advance < physical_invalidation);
+
+    let conditional_insert = runtime
+        .find("async fn insert_if_current(")
+        .expect("Moka adapter must implement conditional insert");
+    let conditional_insert = &runtime[conditional_insert..];
+    assert!(conditional_insert.contains(") -> bool {"));
+    assert!(conditional_insert.contains("return false;"));
+    assert!(conditional_insert.contains("true\n    }"));
 }
