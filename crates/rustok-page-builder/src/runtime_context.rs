@@ -1,6 +1,8 @@
 use fly::{
-    extract_runtime_context_contract, preflight_runtime_context, FlyResult, GrapesJsV1Codec,
-    RuntimeContextContract, RuntimeContextPreflight, RuntimeContextPreflightPolicy,
+    evaluate_runtime_publish_gate, extract_runtime_context_contract, preflight_runtime_context,
+    FlyResult, GrapesJsV1Codec, RuntimeContextContract, RuntimeContextPreflight,
+    RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimePublishGateEvaluation,
+    RuntimePublishGatePolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,6 +31,22 @@ pub struct PageBuilderRuntimePreflightResponse {
     pub preflight: RuntimeContextPreflight,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimePublishGateRequest {
+    pub project_data: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<Value>,
+    #[serde(default)]
+    pub scenarios: Vec<RuntimeContextScenario>,
+    #[serde(default)]
+    pub policy: RuntimePublishGatePolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageBuilderRuntimePublishGateResponse {
+    pub evaluation: RuntimePublishGateEvaluation,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PageBuilderRuntimeContextInspector;
 
@@ -52,6 +70,21 @@ impl PageBuilderRuntimeContextInspector {
             preflight: preflight_runtime_context(&document, &request.context, request.policy),
         })
     }
+
+    pub fn publish_gate(
+        &self,
+        request: PageBuilderRuntimePublishGateRequest,
+    ) -> FlyResult<PageBuilderRuntimePublishGateResponse> {
+        let document = GrapesJsV1Codec::decode_value(request.project_data)?;
+        Ok(PageBuilderRuntimePublishGateResponse {
+            evaluation: evaluate_runtime_publish_gate(
+                &document,
+                request.context.as_ref(),
+                &request.scenarios,
+                &request.policy,
+            ),
+        })
+    }
 }
 
 pub fn inspect_page_builder_runtime_contract(
@@ -66,9 +99,16 @@ pub fn preflight_page_builder_runtime_context(
     PageBuilderRuntimeContextInspector.preflight(request)
 }
 
+pub fn evaluate_page_builder_runtime_publish_gate(
+    request: PageBuilderRuntimePublishGateRequest,
+) -> FlyResult<PageBuilderRuntimePublishGateResponse> {
+    PageBuilderRuntimeContextInspector.publish_gate(request)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly::{CurrentContextGateMode, ScenarioGateMode};
     use serde_json::json;
 
     fn project_data() -> Value {
@@ -139,5 +179,27 @@ mod tests {
         assert!(response.preflight.accepted);
         assert_eq!(response.preflight.effective_context["shop"]["currency"], "EUR");
         assert_eq!(response.preflight.effective_context["page"]["label"], "EUR Welcome");
+    }
+
+    #[test]
+    fn consumer_publish_gate_matches_admin_runtime_policy() {
+        let response = evaluate_page_builder_runtime_publish_gate(
+            PageBuilderRuntimePublishGateRequest {
+                project_data: project_data(),
+                context: Some(json!({ "page": { "title": "Welcome" } })),
+                scenarios: vec![RuntimeContextScenario::new(
+                    "populated",
+                    "Populated",
+                    json!({ "page": { "title": "Welcome" } }),
+                )],
+                policy: RuntimePublishGatePolicy {
+                    current_context: CurrentContextGateMode::RequireValid,
+                    scenarios: ScenarioGateMode::All,
+                    preflight: RuntimeContextPreflightPolicy::default(),
+                },
+            },
+        )
+        .expect("publish gate response");
+        assert!(response.evaluation.allowed);
     }
 }
