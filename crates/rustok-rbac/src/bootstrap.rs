@@ -29,11 +29,11 @@ pub enum RbacRoleAssignmentError {
     BuiltInRoleSlugCollision { tenant_id: Uuid, slug: String },
 }
 
-/// Database-backed writer for idempotent built-in role assignment.
+/// Database-backed writer for built-in role assignment and reconciliation.
 ///
-/// The writer owns the roles, permissions and relation-table persistence rules.
-/// Host runtimes remain responsible only for invalidating any process-local
-/// authorization caches after a successful assignment.
+/// Routine role assignment and role-definition reconciliation are deliberately
+/// separate. Assigning a user to an existing role must not silently change the
+/// permissions of every other user carrying that role.
 pub struct RbacRoleAssignmentDbWriter {
     db: DatabaseConnection,
 }
@@ -43,11 +43,10 @@ impl RbacRoleAssignmentDbWriter {
         Self { db }
     }
 
-    /// Assign and reconcile a built-in role atomically.
+    /// Assign and fully reconcile a built-in role atomically.
     ///
-    /// Standalone callers receive an all-or-nothing transaction. Hosts that
-    /// already own a wider transaction should call `assign_role_permissions_on`
-    /// instead and invalidate process-local authorization caches after commit.
+    /// This is intended for bootstrap and installer workflows. Runtime user
+    /// administration should use `assign_role_on` inside its owning transaction.
     pub async fn assign_role_permissions(
         &self,
         tenant_id: Uuid,
@@ -78,10 +77,11 @@ impl RbacRoleAssignmentDbWriter {
         }
     }
 
-    /// Execute role assignment on an existing SeaORM connection or transaction.
+    /// Assign and reconcile a built-in role inside the caller's transaction.
     ///
-    /// This keeps the persistence operation inside the caller's transaction;
-    /// process-local cache invalidation remains a post-commit host concern.
+    /// Reconciliation may change the effective permissions of every user with
+    /// this role. Hosts with live authorization caches must perform appropriate
+    /// post-commit fan-out invalidation.
     pub async fn assign_role_permissions_on<C>(
         db: &C,
         tenant_id: Uuid,
@@ -93,9 +93,33 @@ impl RbacRoleAssignmentDbWriter {
     {
         ensure_supported_backend(db.get_database_backend())?;
         ConnectionRoleAssignmentWriter { db }
-            .assign_role_permissions(tenant_id, user_id, role)
+            .assign_role(tenant_id, user_id, role, true)
             .await
     }
+
+    /// Assign a user to a built-in role inside the caller's transaction.
+    ///
+    /// Existing role definitions are not reconciled. A newly created role is
+    /// initialized with its canonical permissions before the user link is added.
+    pub async fn assign_role_on<C>(
+        db: &C,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        role: UserRole,
+    ) -> Result<(), RbacRoleAssignmentError>
+    where
+        C: ConnectionTrait,
+    {
+        ensure_supported_backend(db.get_database_backend())?;
+        ConnectionRoleAssignmentWriter { db }
+            .assign_role(tenant_id, user_id, role, false)
+            .await
+    }
+}
+
+struct EnsuredRole {
+    id: Uuid,
+    created: bool,
 }
 
 struct ConnectionRoleAssignmentWriter<'a, C>
@@ -109,27 +133,39 @@ impl<C> ConnectionRoleAssignmentWriter<'_, C>
 where
     C: ConnectionTrait,
 {
-    async fn assign_role_permissions(
+    async fn assign_role(
         &self,
         tenant_id: Uuid,
         user_id: Uuid,
         role: UserRole,
+        reconcile_existing_role: bool,
     ) -> Result<(), RbacRoleAssignmentError> {
         self.ensure_user_tenant(tenant_id, user_id).await?;
-        let role_id = self.ensure_role(tenant_id, &role).await?;
-        let mut expected_permission_ids = HashSet::new();
+        let ensured_role = self.ensure_role(tenant_id, &role).await?;
 
-        for permission in Rbac::permissions_for_role(&role) {
+        if reconcile_existing_role || ensured_role.created {
+            self.reconcile_role_permissions(ensured_role.id, tenant_id, &role)
+                .await?;
+        }
+        self.ensure_user_role(user_id, ensured_role.id).await?;
+
+        Ok(())
+    }
+
+    async fn reconcile_role_permissions(
+        &self,
+        role_id: Uuid,
+        tenant_id: Uuid,
+        role: &UserRole,
+    ) -> Result<(), RbacRoleAssignmentError> {
+        let mut expected_permission_ids = HashSet::new();
+        for permission in Rbac::permissions_for_role(role) {
             let permission_id = self.ensure_permission(tenant_id, permission).await?;
             self.ensure_role_permission(role_id, permission_id).await?;
             expected_permission_ids.insert(permission_id);
         }
-
         self.remove_stale_role_permissions(role_id, &expected_permission_ids)
-            .await?;
-        self.ensure_user_role(user_id, role_id).await?;
-
-        Ok(())
+            .await
     }
 
     async fn ensure_user_tenant(
@@ -164,10 +200,13 @@ where
         &self,
         tenant_id: Uuid,
         role: &UserRole,
-    ) -> Result<Uuid, RbacRoleAssignmentError> {
+    ) -> Result<EnsuredRole, RbacRoleAssignmentError> {
         let slug = role.to_string();
         if let Some((id, is_system)) = self.find_role(tenant_id, &slug).await? {
-            return validate_builtin_role(tenant_id, &slug, id, is_system);
+            return Ok(EnsuredRole {
+                id: validate_builtin_role(tenant_id, &slug, id, is_system)?,
+                created: false,
+            });
         }
 
         self.execute(
@@ -185,7 +224,10 @@ where
             .find_role(tenant_id, &slug)
             .await?
             .ok_or(RbacRoleAssignmentError::MissingPersistedRecord("role"))?;
-        validate_builtin_role(tenant_id, &slug, id, is_system)
+        Ok(EnsuredRole {
+            id: validate_builtin_role(tenant_id, &slug, id, is_system)?,
+            created: true,
+        })
     }
 
     async fn find_role(
