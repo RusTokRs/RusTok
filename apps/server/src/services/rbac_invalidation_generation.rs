@@ -70,54 +70,61 @@ where
 
 /// Poll the database source of truth so missed Redis/PubSub delivery can never
 /// keep a replica on stale authorization snapshots indefinitely.
+///
+/// The worker is allowed to start before installation migrations complete. It
+/// remains dormant while the generation table is absent, then establishes a
+/// fail-safe cache baseline as soon as the migration becomes visible.
 pub async fn start_rbac_invalidation_generation_watchdog(
     ctx: &ServerRuntimeContext,
 ) -> Result<()> {
-    if ctx
-        .shared_get::<RbacInvalidationGenerationWatchdogHandle>()
-        .is_some()
-    {
+    if !ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle) {
         return Ok(());
     }
 
-    let initial_generation = read_rbac_invalidation_generation(ctx.db()).await?;
-    invalidate_all_user_permissions_cache().await;
-
     let db = ctx.db_clone();
     tokio::spawn(async move {
-        let mut observed_generation = initial_generation;
-        let start =
-            tokio::time::Instant::now() + RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL;
-        let mut interval = tokio::time::interval_at(
-            start,
-            RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL,
-        );
+        let mut observed_generation: Option<u64> = None;
+        let mut interval = tokio::time::interval(RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             interval.tick().await;
             match read_rbac_invalidation_generation(&db).await {
-                Ok(generation) if generation == observed_generation => {}
+                Ok(generation) if observed_generation == Some(generation) => {}
                 Ok(generation) => {
-                    if generation < observed_generation {
-                        tracing::error!(
-                            previous = observed_generation,
-                            current = generation,
-                            "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
-                        );
-                        rustok_telemetry::metrics::record_event_error(
-                            RBAC_DURABLE_GENERATION_CHANNEL,
-                            "generation_regressed",
-                        );
-                    } else {
-                        tracing::warn!(
-                            previous = observed_generation,
-                            current = generation,
-                            "Reconciled RBAC permission snapshots from durable database generation"
-                        );
+                    match observed_generation {
+                        None => {
+                            tracing::info!(
+                                generation,
+                                "Durable RBAC invalidation generation became available"
+                            );
+                        }
+                        Some(previous) if generation < previous => {
+                            tracing::error!(
+                                previous,
+                                current = generation,
+                                "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
+                            );
+                            rustok_telemetry::metrics::record_event_error(
+                                RBAC_DURABLE_GENERATION_CHANNEL,
+                                "generation_regressed",
+                            );
+                        }
+                        Some(previous) => {
+                            tracing::warn!(
+                                previous,
+                                current = generation,
+                                "Reconciled RBAC permission snapshots from durable database generation"
+                            );
+                        }
                     }
                     invalidate_all_user_permissions_cache().await;
-                    observed_generation = generation;
+                    observed_generation = Some(generation);
+                }
+                Err(error) if observed_generation.is_none() && is_missing_generation_state(&error) => {
+                    tracing::debug!(
+                        "Durable RBAC invalidation state is not installed yet; watchdog will retry"
+                    );
                 }
                 Err(error) => {
                     tracing::error!(
@@ -133,16 +140,39 @@ pub async fn start_rbac_invalidation_generation_watchdog(
         }
     });
 
-    ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle);
     Ok(())
+}
+
+fn is_missing_generation_state(error: &Error) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("no such table")
+        || message.contains("undefinedtable")
+        || message.contains("does not exist") && message.contains("rbac_invalidation_state")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{read_rbac_invalidation_generation, reserve_rbac_invalidation_generation};
+    use super::{
+        is_missing_generation_state, read_rbac_invalidation_generation,
+        reserve_rbac_invalidation_generation,
+    };
+    use crate::error::Error;
     use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::TransactionTrait;
+
+    #[test]
+    fn missing_generation_table_errors_are_recognized_for_pre_install_boot() {
+        assert!(is_missing_generation_state(&Error::Cache(
+            "no such table: rbac_invalidation_state".to_string()
+        )));
+        assert!(is_missing_generation_state(&Error::Cache(
+            "relation rbac_invalidation_state does not exist".to_string()
+        )));
+        assert!(!is_missing_generation_state(&Error::Cache(
+            "connection refused".to_string()
+        )));
+    }
 
     #[tokio::test]
     async fn durable_generation_commits_and_rolls_back_with_the_owner_transaction() {
