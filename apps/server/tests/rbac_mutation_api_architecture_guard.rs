@@ -72,3 +72,15 @@ fn runtime_mutation_paths_use_explicit_transaction_or_committed_entrypoints() {
     assert!(!admin.contains("RbacService::replace_user_role("));
     assert!(!superadmin.contains("RbacService::replace_user_role("));
 }
+
+#[test]
+fn public_role_repair_boundary_requires_database_transaction() {
+    let exports = source("crates/rustok-rbac/src/lib.rs");
+    let server = source("apps/server/src/services/rbac_repair.rs");
+
+    assert!(exports.contains("mod repair;"));
+    assert!(!exports.contains("pub mod repair;"));
+    assert!(exports.contains("db: &sea_orm::DatabaseTransaction"));
+    assert!(exports.contains("repair::repair_system_roles_in_transaction(db, options).await"));
+    assert!(server.contains("rustok_rbac::repair_system_roles_in_transaction(\n            &tx,"));
+}
