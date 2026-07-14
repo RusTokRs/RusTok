@@ -15,6 +15,8 @@ pub mod runtime_scenario_snapshot;
 pub mod service;
 pub mod transport;
 
+pub use fly::{RuntimeContextExamplePolicy, RuntimeContextScenario};
+
 #[cfg(feature = "server")]
 use async_trait::async_trait;
 #[cfg(feature = "server")]
