@@ -12,8 +12,6 @@ const RECONCILIATION_REQUIRED_STATUS: &str = "reconciliation_required";
 
 #[derive(Debug, Error)]
 pub enum RecoveringStagedCheckoutError {
-    #[error("checkout operation {operation_id} requires reconciliation")]
-    ReconciliationRequired { operation_id: Uuid },
     #[error(transparent)]
     Staged(#[from] StagedCheckoutError),
     #[error("checkout failed: {staged}; recovery lookup failed: {journal}")]
@@ -62,9 +60,7 @@ impl RecoveringStagedCheckoutService {
             .await?
         {
             if current.status == RECONCILIATION_REQUIRED_STATUS {
-                return Err(RecoveringStagedCheckoutError::ReconciliationRequired {
-                    operation_id: current.id,
-                });
+                return Err(reconciliation_required_error(current.id));
             }
         }
 
@@ -93,9 +89,7 @@ impl RecoveringStagedCheckoutService {
                     return Err(staged.into());
                 };
                 if operation.status == RECONCILIATION_REQUIRED_STATUS {
-                    return Err(RecoveringStagedCheckoutError::ReconciliationRequired {
-                        operation_id: operation.id,
-                    });
+                    return Err(reconciliation_required_error(operation.id));
                 }
                 if operation.status != CheckoutOperationStatus::CompensationRequired.as_str() {
                     return Err(staged.into());
@@ -134,5 +128,18 @@ impl RecoveringStagedCheckoutService {
 
     pub fn compensation(&self) -> &CheckoutCompensationService {
         &self.compensation
+    }
+}
+
+fn reconciliation_required_error(operation_id: Uuid) -> RecoveringStagedCheckoutError {
+    RecoveringStagedCheckoutError::StagedAndCompensation {
+        staged: Box::new(StagedCheckoutError::Operation(
+            CheckoutOperationError::Conflict(format!(
+                "checkout operation {operation_id} requires reconciliation"
+            )),
+        )),
+        compensation: CheckoutCompensationError::ManualReconciliation(format!(
+            "checkout operation {operation_id} requires reconciliation"
+        )),
     }
 }
