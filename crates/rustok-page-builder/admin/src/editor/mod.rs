@@ -5,6 +5,7 @@ mod canvas_document;
 mod canvas_protocol;
 mod context_compatibility_panel;
 mod context_contract_tools;
+mod context_dependency_panel;
 mod context_schema_panel;
 mod dynamic_runtime;
 mod isolated_canvas;
@@ -31,6 +32,7 @@ pub(crate) use canvas_protocol::{
 };
 pub(crate) use context_compatibility_panel::ContextCompatibilityPanel;
 pub(crate) use context_contract_tools::ContextContractToolsPanel;
+pub(crate) use context_dependency_panel::ContextDependencyPanel;
 pub(crate) use context_schema_panel::ContextSchemaPanel;
 pub(crate) use dynamic_runtime::DynamicRuntimePanel;
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
