@@ -1,6 +1,6 @@
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait,
-    QueryFilter, QuerySelect, TransactionTrait,
+    sea_query::Expr, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    PaginatorTrait, QueryFilter, QuerySelect, TransactionTrait,
 };
 
 use crate::error::{Error, Result};
@@ -35,9 +35,10 @@ impl RbacService {
     /// Replace a role outside an enclosing transaction and invalidate the
     /// authorization snapshot only after commit, locally and across replicas.
     ///
-    /// The tenant's built-in super-admin role row is locked before continuity
-    /// is checked. Concurrent demotions therefore serialize instead of both
-    /// observing the same pre-change administrator set.
+    /// The target user and the tenant's built-in super-admin role row are
+    /// locked before continuity is checked. Concurrent role changes for one
+    /// user therefore serialize, and an exact single-role no-op does not
+    /// advance the global invalidation generation.
     pub async fn replace_user_role_committed(
         db: &DatabaseConnection,
         user_id: &uuid::Uuid,
@@ -46,7 +47,12 @@ impl RbacService {
     ) -> Result<()> {
         Self::record_committed_mutation_entrypoint();
         let tx = db.begin().await?;
-        ensure_active_super_admin_continuity(&tx, user_id, tenant_id, &role).await?;
+        let target = lock_target_user_for_role_mutation(&tx, user_id, tenant_id).await?;
+        if has_exact_tenant_role_assignment(&tx, user_id, tenant_id, &role).await? {
+            tx.rollback().await?;
+            return Ok(());
+        }
+        ensure_active_super_admin_continuity(&tx, &target, tenant_id, &role).await?;
         Self::replace_user_role_in_transaction(&tx, user_id, tenant_id, role).await?;
         let durable_generation = reserve_rbac_invalidation_generation(&tx).await?;
         tx.commit().await?;
@@ -78,25 +84,84 @@ impl RbacService {
     }
 }
 
-async fn ensure_active_super_admin_continuity<C>(
+async fn lock_target_user_for_role_mutation<C>(
     db: &C,
     user_id: &uuid::Uuid,
+    tenant_id: &uuid::Uuid,
+) -> Result<users::Model>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        users::Entity::find_by_id(*user_id).filter(users::Column::TenantId.eq(*tenant_id))
+    };
+    let target = match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await?,
+        DbBackend::Sqlite => {
+            let target = query().one(db).await?;
+            if target.is_some() {
+                users::Entity::update_many()
+                    .col_expr(
+                        users::Column::UpdatedAt,
+                        Expr::col(users::Column::UpdatedAt),
+                    )
+                    .filter(users::Column::Id.eq(*user_id))
+                    .filter(users::Column::TenantId.eq(*tenant_id))
+                    .exec(db)
+                    .await?;
+            }
+            target
+        }
+    };
+    target.ok_or(Error::NotFound)
+}
+
+async fn has_exact_tenant_role_assignment<C>(
+    db: &C,
+    user_id: &uuid::Uuid,
+    tenant_id: &uuid::Uuid,
+    resulting_role: &rustok_core::UserRole,
+) -> Result<bool>
+where
+    C: ConnectionTrait,
+{
+    let tenant_roles = roles::Entity::find()
+        .filter(roles::Column::TenantId.eq(*tenant_id))
+        .all(db)
+        .await?;
+    let target_slug = resulting_role.to_string();
+    let target_role_id = tenant_roles
+        .iter()
+        .find(|role| role.slug == target_slug && role.is_system)
+        .map(|role| role.id);
+    let tenant_role_ids = tenant_roles
+        .into_iter()
+        .map(|role| role.id)
+        .collect::<Vec<_>>();
+    if target_role_id.is_none() || tenant_role_ids.is_empty() {
+        return Ok(false);
+    }
+
+    let assignments = user_roles::Entity::find()
+        .filter(user_roles::Column::UserId.eq(*user_id))
+        .filter(user_roles::Column::RoleId.is_in(tenant_role_ids))
+        .all(db)
+        .await?;
+    Ok(assignments.len() == 1 && assignments[0].role_id == target_role_id.unwrap())
+}
+
+async fn ensure_active_super_admin_continuity<C>(
+    db: &C,
+    target: &users::Model,
     tenant_id: &uuid::Uuid,
     resulting_role: &rustok_core::UserRole,
 ) -> Result<()>
 where
     C: ConnectionTrait,
 {
-    if resulting_role == &rustok_core::UserRole::SuperAdmin {
-        return Ok(());
-    }
-
-    let target = users::Entity::find_by_id(*user_id)
-        .filter(users::Column::TenantId.eq(*tenant_id))
-        .one(db)
-        .await?
-        .ok_or(Error::NotFound)?;
-    if target.status != rustok_core::UserStatus::Active {
+    if resulting_role == &rustok_core::UserRole::SuperAdmin
+        || target.status != rustok_core::UserStatus::Active
+    {
         return Ok(());
     }
 
@@ -105,7 +170,7 @@ where
     };
 
     let target_is_super_admin = user_roles::Entity::find()
-        .filter(user_roles::Column::UserId.eq(*user_id))
+        .filter(user_roles::Column::UserId.eq(target.id))
         .filter(user_roles::Column::RoleId.eq(super_admin_role.id))
         .count(db)
         .await?
@@ -124,7 +189,7 @@ where
     let remaining_active = users::Entity::find()
         .filter(users::Column::TenantId.eq(*tenant_id))
         .filter(users::Column::Id.is_in(super_admin_user_ids))
-        .filter(users::Column::Id.ne(*user_id))
+        .filter(users::Column::Id.ne(target.id))
         .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
         .count(db)
         .await?;
@@ -265,6 +330,67 @@ mod tests {
         )
         .await
         .expect("customer permission lookup should succeed"));
+    }
+
+    #[tokio::test]
+    async fn exact_single_role_replacement_is_a_generation_noop() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "committed-role-exact-noop",
+            "committed-role-noop@example.com",
+        )
+        .await;
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .unwrap();
+
+        RbacService::replace_user_role_committed(
+            &db,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn matching_role_among_multiple_assignments_is_not_treated_as_noop() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "committed-role-multiple",
+            "committed-role-multiple@example.com",
+        )
+        .await;
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .unwrap();
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Manager)
+            .await
+            .unwrap();
+
+        RbacService::replace_user_role_committed(
+            &db,
+            &user_id,
+            &tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
+        assert!(!RbacService::has_permission(
+            &db,
+            &tenant_id,
+            &user_id,
+            &Permission::PRODUCTS_CREATE,
+        )
+        .await
+        .unwrap());
     }
 
     #[tokio::test]
