@@ -2,6 +2,7 @@ use crate::{
     extract_runtime_context_contract, validate_binding_definitions, validate_dynamic_definitions,
     ProjectDocument, ValidationDiagnostic, ValidationReport,
 };
+use std::collections::BTreeSet;
 
 pub fn validate_runtime_extensions(
     document: &ProjectDocument,
@@ -9,6 +10,7 @@ pub fn validate_runtime_extensions(
     let mut diagnostics = extract_runtime_context_contract(document).definition_diagnostics;
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
+    deduplicate_diagnostics(&mut diagnostics);
     diagnostics
 }
 
@@ -16,21 +18,43 @@ pub fn extend_with_runtime_validation(
     document: &ProjectDocument,
     mut report: ValidationReport,
 ) -> ValidationReport {
-    report
+    let mut seen = report
         .diagnostics
-        .extend(validate_runtime_extensions(document));
+        .iter()
+        .map(diagnostic_identity)
+        .collect::<BTreeSet<_>>();
+    for diagnostic in validate_runtime_extensions(document) {
+        if seen.insert(diagnostic_identity(&diagnostic)) {
+            report.diagnostics.push(diagnostic);
+        }
+    }
     report
+}
+
+fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
+    let mut seen = BTreeSet::new();
+    diagnostics.retain(|diagnostic| seen.insert(diagnostic_identity(diagnostic)));
+}
+
+fn diagnostic_identity(
+    diagnostic: &ValidationDiagnostic,
+) -> (u8, String, String, String) {
+    (
+        diagnostic.severity as u8,
+        diagnostic.code.clone(),
+        diagnostic.path.clone(),
+        diagnostic.message.clone(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsV1Codec;
+    use crate::{validate_project, GrapesJsV1Codec, RegistrySet, ValidationLimits};
     use serde_json::json;
 
-    #[test]
-    fn runtime_validation_combines_context_binding_and_dynamic_diagnostics() {
-        let document = GrapesJsV1Codec::decode_value(json!({
+    fn invalid_runtime_document() -> ProjectDocument {
+        GrapesJsV1Codec::decode_value(json!({
             "pages": [{
                 "component": { "id": "root", "type": "wrapper" }
             }],
@@ -57,7 +81,12 @@ mod tests {
                 "path": "items"
             }]
         }))
-        .expect("document");
+        .expect("document")
+    }
+
+    #[test]
+    fn runtime_validation_combines_context_binding_and_dynamic_diagnostics() {
+        let document = invalid_runtime_document();
         let diagnostics = validate_runtime_extensions(&document);
         assert!(diagnostics
             .iter()
@@ -71,5 +100,22 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime_repeater_targets_page_root"));
+    }
+
+    #[test]
+    fn extending_canonical_report_does_not_duplicate_runtime_diagnostics() {
+        let document = invalid_runtime_document();
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        let extended = extend_with_runtime_validation(&document, report);
+        let count = extended
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid")
+            .count();
+        assert_eq!(count, 1);
     }
 }
