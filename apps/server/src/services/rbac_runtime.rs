@@ -310,7 +310,8 @@ impl PermissionCache for MokaPermissionCache {
         permissions: Vec<Permission>,
     ) {
         let token = current_permission_cache_epoch();
-        self.insert_if_current(tenant_id, user_id, token, permissions)
+        let _ = self
+            .insert_if_current(tenant_id, user_id, token, permissions)
             .await;
     }
 
@@ -356,9 +357,9 @@ impl PermissionCache for MokaPermissionCache {
         user_id: &uuid::Uuid,
         token: u64,
         permissions: Vec<Permission>,
-    ) {
+    ) -> bool {
         if current_permission_cache_epoch() != token {
-            return;
+            return false;
         }
 
         let key = (*tenant_id, *user_id);
@@ -367,7 +368,9 @@ impl PermissionCache for MokaPermissionCache {
             .await;
         if current_permission_cache_epoch() != token {
             USER_PERMISSION_CACHE.invalidate(&key).await;
+            return false;
         }
+        true
     }
 }
 
@@ -602,7 +605,7 @@ mod tests {
         let (_, stale_token) = cache.lookup(&tenant_id, &user_id).await.into_parts();
 
         invalidate_user_permissions_cache(&tenant_id, &user_id).await;
-        cache
+        let published = cache
             .insert_if_current(
                 &tenant_id,
                 &user_id,
@@ -611,11 +614,12 @@ mod tests {
             )
             .await;
 
+        assert!(!published);
         assert!(cache.get(&tenant_id, &user_id).await.is_none());
     }
 
     #[tokio::test]
-    async fn database_rejects_cross_tenant_role_links_and_loader_keeps_local_role() {
+    async fn user_role_loader_ignores_cross_tenant_role_links() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let (tenant_a, user_a) = insert_tenant_and_user(
             &db,
@@ -652,14 +656,14 @@ mod tests {
             .expect("load foreign role")
             .expect("foreign role exists");
 
-        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
+        user_roles::Entity::insert(user_roles::ActiveModel {
             id: Set(rustok_core::generate_id()),
             user_id: Set(user_a),
             role_id: Set(foreign_role.id),
         })
         .exec(&db)
         .await
-        .is_err());
+        .expect("insert corrupted cross-tenant role link");
 
         let store = SeaOrmRelationPermissionStore { db };
         let role_ids = store
