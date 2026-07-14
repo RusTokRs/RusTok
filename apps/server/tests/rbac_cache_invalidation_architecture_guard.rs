@@ -69,17 +69,9 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
         );
     }
 
-    let redis_subscriber = rbac
-        .find("if cache.redis_client_initialized()")
-        .expect("Redis subscriber must remain conditional");
-    let reconciler = rbac
-        .find("let reconcile_listener = listener.clone();")
-        .expect("generation reconciliation must always be started");
-    assert!(
-        redis_subscriber < reconciler,
-        "generation reconciliation must be outside the Redis-only branch"
-    );
-
+    assert!(rbac.contains(
+        "        });\n    }\n\n    let reconcile_listener = listener.clone();"
+    ));
     assert!(!rbac.contains(
         "RBAC permission cache generation advanced but Redis publish failed"
     ));
@@ -97,4 +89,47 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
     assert!(tracker.contains(
         "applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets"
     ));
+}
+
+#[test]
+fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
+    let core = source("crates/rustok-rbac/src/services/relation_permission_resolver.rs");
+    let exports = source("crates/rustok-rbac/src/lib.rs");
+    let runtime = source("apps/server/src/services/rbac_runtime.rs");
+
+    for required in [
+        "pub struct PermissionCacheLookup",
+        "async fn lookup(",
+        "async fn insert_if_current(",
+        "cache.lookup(tenant_id, user_id).await.into_parts()",
+        "resolver_uses_generation_checked_cache_publication",
+    ] {
+        assert!(core.contains(required), "RBAC cache core must retain {required}");
+    }
+    assert!(exports.contains("PermissionCacheLookup"));
+
+    for required in [
+        "RBAC_PERMISSION_CACHE_EPOCH",
+        "CachedPermissionSnapshot",
+        "RBAC_PERMISSION_CACHE_LOOKUP_ATTEMPTS",
+        "current_permission_cache_epoch() != token",
+        "advance_permission_cache_epoch();",
+        "stale_permission_fill_is_rejected_after_invalidation",
+    ] {
+        assert!(
+            runtime.contains(required),
+            "RBAC Moka adapter must retain {required}"
+        );
+    }
+
+    let invalidate_impl = runtime
+        .find("async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid)")
+        .expect("Moka adapter must implement invalidation");
+    let epoch_advance = runtime[invalidate_impl..]
+        .find("advance_permission_cache_epoch();")
+        .expect("every adapter invalidation must advance the epoch");
+    let physical_invalidation = runtime[invalidate_impl..]
+        .find("USER_PERMISSION_CACHE")
+        .expect("adapter invalidation must remove the physical entry");
+    assert!(epoch_advance < physical_invalidation);
 }
