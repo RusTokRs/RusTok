@@ -11,6 +11,10 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: cache-hardening-diagnostics-main
+  cancel-in-progress: true
+
 jobs:
   diagnose:
     runs-on: ubuntu-latest
