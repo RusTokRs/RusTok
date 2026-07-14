@@ -90,7 +90,14 @@
 - `admin::ForumAdmin` (publishable Leptos package)
 - `storefront::ForumView` (publishable Leptos package)
 
+## Roadmap
+
+[`docs/implementation-plan.md`](./docs/implementation-plan.md) is the only
+authoritative forum roadmap and task-status source. Do not copy its task ledger
+into README files, issues, or additional planning documents.
+
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Canonical implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../docs/index.md)

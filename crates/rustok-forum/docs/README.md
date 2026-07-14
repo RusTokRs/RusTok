@@ -4,6 +4,13 @@
 forum-owned persistence and must remain an independent bounded context
 boundary, not reverting back to the shared storage model.
 
+## Canonical roadmap
+
+[The implementation plan](./implementation-plan.md) is the single source of
+truth for forum task status, sequencing, definitions of done, the planned
+shared notifications module, and cross-module release gates. Other forum
+documents describe stable contracts only and must not duplicate its backlog.
+
 ## Purpose
 
 - publish the canonical forum runtime contract for categories, topics, replies and moderation;
@@ -41,7 +48,7 @@ boundary, not reverting back to the shared storage model.
 ## Related documents
 
 - [README crate](../README.md)
-- [Implementation plan](./implementation-plan.md)
+- [Canonical implementation plan](./implementation-plan.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
