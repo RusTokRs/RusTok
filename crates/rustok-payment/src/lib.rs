@@ -27,6 +27,8 @@ pub use services::{
     PaymentProviderEventApplyError, PaymentProviderEventContext, PaymentProviderEventExecution,
     PaymentProviderEventIngressError, PaymentProviderEventIngressResult,
     PaymentProviderEventIngressService, PaymentProviderEventJournal,
+    PaymentProviderEventRecoveryFailure, PaymentProviderEventRecoveryOutcome,
+    PaymentProviderEventRecoveryReport, PaymentProviderEventRecoveryService,
     PaymentProviderOperationJournal, PaymentService, ReceiveProviderEvent,
     RefundLifecycleEventApplier, VerifiedProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
     PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
