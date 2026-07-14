@@ -118,6 +118,10 @@ pub enum CacheInvalidationPayloadError {
     PayloadTooLarge { length: usize, maximum: usize },
     ZeroGeneration,
     OffsetRegressed { current: u64, proposed: u64 },
+    AcknowledgementNotContiguous {
+        current: Option<u64>,
+        proposed: u64,
+    },
     MalformedPayload,
     UnsupportedVersion(String),
     InvalidGeneration,
@@ -146,6 +150,20 @@ impl std::fmt::Display for CacheInvalidationPayloadError {
             Self::OffsetRegressed { current, proposed } => write!(
                 formatter,
                 "invalidation offset cannot regress from {current} to {proposed}"
+            ),
+            Self::AcknowledgementNotContiguous {
+                current: Some(current),
+                proposed,
+            } => write!(
+                formatter,
+                "applied invalidation acknowledgement must repeat {current} or advance to the next generation; proposed {proposed}"
+            ),
+            Self::AcknowledgementNotContiguous {
+                current: None,
+                proposed,
+            } => write!(
+                formatter,
+                "applied invalidation acknowledgement {proposed} requires a seeded offset or acknowledged recovery"
             ),
             Self::MalformedPayload => write!(formatter, "malformed versioned invalidation payload"),
             Self::UnsupportedVersion(version) => {
@@ -190,6 +208,9 @@ impl CacheInvalidationGapTracker {
     }
 
     /// Confirm that an in-order invalidation handler completed successfully.
+    ///
+    /// Repeating the current offset is idempotent. Any forward jump larger than one is rejected;
+    /// callers must use `acknowledge_recovery` after rebuilding through a gap.
     pub fn acknowledge_applied(
         &self,
         channel: impl Into<String>,
@@ -197,7 +218,7 @@ impl CacheInvalidationGapTracker {
     ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
         let channel = channel.into();
         validate_channel(&channel)?;
-        self.advance_monotonically(channel, applied_generation)
+        self.acknowledge_contiguous(channel, applied_generation)
     }
 
     /// Confirm that fail-safe recovery for an unverified/gapped event completed successfully.
@@ -266,6 +287,33 @@ impl CacheInvalidationGapTracker {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(channel)
+    }
+
+    fn acknowledge_contiguous(
+        &self,
+        channel: String,
+        proposed: u64,
+    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
+        let mut generations = self
+            .last_by_channel
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(current) = generations.get(&channel).copied() else {
+            return Err(CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                current: None,
+                proposed,
+            });
+        };
+        if proposed == current {
+            return Ok(Some(current));
+        }
+        if current.checked_add(1) != Some(proposed) {
+            return Err(CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                current: Some(current),
+                proposed,
+            });
+        }
+        Ok(generations.insert(channel, proposed))
     }
 
     fn advance_monotonically(
@@ -419,6 +467,45 @@ mod tests {
             tracker.observe(&event(10)),
             CacheInvalidationObservation::Duplicate { generation: 10 }
         );
+    }
+
+    #[test]
+    fn applied_acknowledgement_rejects_unseeded_or_skipped_offsets() {
+        let tracker = CacheInvalidationGapTracker::default();
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 1)
+                .unwrap_err(),
+            CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                current: None,
+                proposed: 1,
+            }
+        );
+
+        tracker.seed("tenant.invalidate", 10).unwrap();
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 12)
+                .unwrap_err(),
+            CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                current: Some(10),
+                proposed: 12,
+            }
+        );
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(10));
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 10)
+                .unwrap(),
+            Some(10)
+        );
+        assert_eq!(
+            tracker
+                .acknowledge_applied("tenant.invalidate", 11)
+                .unwrap(),
+            Some(10)
+        );
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(11));
     }
 
     #[test]
