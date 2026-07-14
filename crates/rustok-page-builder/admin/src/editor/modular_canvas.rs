@@ -7,7 +7,10 @@ use crate::editor::{
 };
 use crate::i18n::t;
 use crate::{AdminCanvasController, PageBuilderAdminFacade};
-use fly::{RuntimeContextScenario, RuntimePublishGatePolicy, TraitSchemaRegistry};
+use fly::{
+    RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
+    TraitSchemaRegistry,
+};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_ui_core::UiRouteContext;
@@ -22,6 +25,10 @@ pub fn AdminCanvas(
     #[prop(optional)] runtime_context: Option<Value>,
     #[prop(optional)] runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     #[prop(optional)] runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    #[prop(optional)] runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
+    #[prop(optional)] on_runtime_scenario_baseline: Option<
+        Callback<Option<RuntimeScenarioReleaseBaseline>>,
+    >,
     #[prop(optional)] on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -95,7 +102,11 @@ pub fn AdminCanvas(
                     <RuntimePublishGatePanel runtime=gate_runtime />
                     <RuntimeScenarioPanel runtime=scenario_runtime />
                     <RuntimeScenarioMatrixPanel runtime=scenario_matrix_runtime />
-                    <RuntimeScenarioRegressionPanel runtime=scenario_regression_runtime />
+                    <RuntimeScenarioRegressionPanel
+                        runtime=scenario_regression_runtime
+                        initial_baseline=runtime_scenario_baseline
+                        on_baseline_change=on_runtime_scenario_baseline
+                    />
                     <DynamicRuntimePanel runtime=dynamic_runtime />
                     <ContextSchemaPanel runtime=context_runtime />
                     <ContextContractToolsPanel runtime=contract_tools_runtime />
