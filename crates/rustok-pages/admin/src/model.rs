@@ -66,6 +66,25 @@ pub struct PageMutationResult {
     pub translation: Option<PageTranslation>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct PageBuilderScenarioReleaseStatus {
+    #[serde(rename = "pageId")]
+    pub page_id: String,
+    #[serde(rename = "baselinePresent")]
+    pub baseline_present: bool,
+    pub allowed: bool,
+    pub status: String,
+    #[serde(rename = "baselineId")]
+    pub baseline_id: Option<String>,
+    #[serde(rename = "baselineHash")]
+    pub baseline_hash: Option<String>,
+    #[serde(rename = "visualChanges")]
+    pub visual_changes: i32,
+    #[serde(rename = "breakingChanges")]
+    pub breaking_changes: i32,
+    pub diagnostics: Value,
+}
+
 #[derive(Clone, Debug)]
 pub struct CreatePageDraft {
     pub locale: String,
