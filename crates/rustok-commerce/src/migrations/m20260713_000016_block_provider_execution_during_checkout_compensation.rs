@@ -76,6 +76,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 IF checkout_status IN (
                     'compensation_required',
                     'compensating',
+                    'reconciliation_required',
                     'compensated',
                     'failed'
                 ) THEN
@@ -120,6 +121,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                       AND co.status IN (
                           'compensation_required',
                           'compensating',
+                          'reconciliation_required',
                           'compensated',
                           'failed'
                       )
@@ -152,6 +154,7 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                       AND co.status IN (
                           'compensation_required',
                           'compensating',
+                          'reconciliation_required',
                           'compensated',
                           'failed'
                       );
