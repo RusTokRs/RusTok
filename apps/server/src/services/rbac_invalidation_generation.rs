@@ -222,8 +222,7 @@ async fn supervise_rbac_invalidation_generation_watchdog<F, Fut>(
 {
     loop {
         let outcome = AssertUnwindSafe(worker_factory()).catch_unwind().await;
-        let panicked = outcome.is_err();
-        if panicked {
+        if outcome.is_err() {
             tracing::error!(
                 "Durable RBAC invalidation generation watchdog panicked; restarting"
             );
@@ -296,6 +295,8 @@ fn is_missing_generation_state(error: &Error) -> bool {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
 
     use super::{
         is_missing_generation_state, read_rbac_invalidation_generation,
