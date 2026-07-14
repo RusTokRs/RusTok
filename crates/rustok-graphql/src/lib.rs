@@ -60,8 +60,6 @@ pub enum GraphqlHttpError {
     Graphql(String),
     #[error("Http error: {0}")]
     Http(String),
-    #[error("Protocol error: {0}")]
-    Protocol(String),
     #[error("Unauthorized")]
     Unauthorized,
 }
@@ -84,10 +82,6 @@ impl FromStr for GraphqlHttpError {
 
         if let Some(message) = value.strip_prefix("Http error: ") {
             return Ok(Self::Http(message.to_string()));
-        }
-
-        if let Some(message) = value.strip_prefix("Protocol error: ") {
-            return Ok(Self::Protocol(message.to_string()));
         }
 
         Err(format!("Unknown GraphqlHttpError: {value}"))
@@ -142,7 +136,7 @@ where
     let body: GraphqlResponse<T> = response
         .json()
         .await
-        .map_err(|error| GraphqlHttpError::Protocol(error.to_string()))?;
+        .map_err(|_| GraphqlHttpError::Network)?;
 
     if let Some(errors) = body.errors {
         if let Some(error) = errors.first() {
@@ -151,7 +145,7 @@ where
     }
 
     body.data
-        .ok_or_else(|| GraphqlHttpError::Protocol("GraphQL response contains no data".to_string()))
+        .ok_or_else(|| GraphqlHttpError::Graphql("No data".to_string()))
 }
 
 #[cfg(test)]
@@ -190,10 +184,6 @@ mod tests {
         assert_eq!(
             GraphqlHttpError::from_str("Http error: 500"),
             Ok(GraphqlHttpError::Http("500".to_string()))
-        );
-        assert_eq!(
-            GraphqlHttpError::from_str("Protocol error: malformed json"),
-            Ok(GraphqlHttpError::Protocol("malformed json".to_string()))
         );
         assert_eq!(
             GraphqlHttpError::from_str("Unauthorized"),
