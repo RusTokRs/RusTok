@@ -20,5 +20,8 @@ mod tests {
         assert_eq!(stats.users_without_roles_total, 0);
         assert_eq!(stats.orphan_user_roles_total, 0);
         assert_eq!(stats.orphan_role_permissions_total, 0);
+        assert_eq!(stats.cross_tenant_user_roles_total, 0);
+        assert_eq!(stats.cross_tenant_role_permissions_total, 0);
+        assert_eq!(stats.reserved_role_slug_collisions_total, 0);
     }
 }
