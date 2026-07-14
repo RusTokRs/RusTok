@@ -188,7 +188,7 @@ Evidence:
   registry, webhook contract, and provider runbook with the implemented source
   boundary.
 - [x] Make this file the only human-maintained implementation status checklist.
-- [ ] Replace the legacy payment evidence assertion
+- [x] Replace the legacy payment evidence assertion
   `raw_payload_retained_for_audit` with hash-only terminology in the shared
   provider evidence verifier and fixtures.
 - [ ] Add a verifier rule that rejects a second payment roadmap/checklist outside
@@ -202,6 +202,13 @@ Evidence:
 - `apps/server/Cargo.toml`
 - `apps/server/src/services/commerce_provider_runtime.rs`
 - `crates/rustok-commerce/contracts/commerce-fba-registry.json`
+- `crates/rustok-payment/contracts/payment-fba-registry.json`
+- `crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json`
+- `crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json`
+- `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json`
+- `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json`
+- `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`
+- `scripts/verify/verify-ecommerce-provider-spi-evidence.test.mjs`
 
 ### G. Regression tests authored in source
 
@@ -279,7 +286,7 @@ not sufficient.
 
 ## Immediate execution order
 
-1. [ ] Correct the payment evidence terminology from raw-payload retention to
+1. [x] Correct the payment evidence terminology from raw-payload retention to
    SHA-256 hash-only audit semantics.
 2. [ ] Run static verifiers and fix source/registry drift.
 3. [ ] Run payment and server compile checks.
