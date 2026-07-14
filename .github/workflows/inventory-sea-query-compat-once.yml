@@ -57,6 +57,14 @@ jobs:
                   f"current_timestamp: expected two total migration sites, old={old_count}, new={new_count}"
               )
           inventory = inventory.replace(old_timestamp, new_timestamp)
+
+          old_metadata = "        let metadata = reservation_metadata(\n            request.metadata,"
+          new_metadata = "        let metadata = reservation_metadata(\n            request.metadata.clone(),"
+          if new_metadata not in inventory:
+              count = inventory.count(old_metadata)
+              if count != 1:
+                  raise SystemExit(f"reservation metadata ownership: expected one match, found {count}")
+              inventory = inventory.replace(old_metadata, new_metadata, 1)
           inventory_path.write_text(inventory)
 
           events_path = Path("crates/rustok-events/src/types.rs")
