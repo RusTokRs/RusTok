@@ -1,0 +1,68 @@
+use std::path::{Path, PathBuf};
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("apps/server should live under workspace root")
+        .to_path_buf()
+}
+
+fn source(relative: &str) -> String {
+    let path = repo_root().join(relative);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
+#[test]
+fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
+    let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
+
+    for required in [
+        "RbacCacheInvalidationListenerStartLock",
+        "shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default())",
+        "let _start_guard = start_lock.0.lock().await;",
+        "listener.recover_generation_and_clear().await?;",
+        "RBAC_INVALIDATION_CACHE_SERVICE",
+        "ctx.shared_insert(RbacCacheInvalidationListenerHandle);",
+    ] {
+        assert!(rbac.contains(required), "RBAC startup must retain {required}");
+    }
+
+    let recovery = rbac
+        .find("listener.recover_generation_and_clear().await?;")
+        .expect("RBAC listener must recover before becoming publishable");
+    let publisher_commit = rbac
+        .rfind("*RBAC_INVALIDATION_CACHE_SERVICE")
+        .expect("RBAC publisher must be installed after startup succeeds");
+    let handle_commit = rbac
+        .rfind("ctx.shared_insert(RbacCacheInvalidationListenerHandle);")
+        .expect("RBAC listener handle must be committed after startup succeeds");
+
+    assert!(recovery < publisher_commit);
+    assert!(publisher_commit < handle_commit);
+}
+
+#[test]
+fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
+    let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
+    let tracker = source("crates/rustok-cache/src/bounded_invalidation.rs");
+
+    for required in [
+        "RBAC_PERMISSION_RECONCILE_INTERVAL",
+        "reconcile_generation_if_advanced",
+        "MissedTickBehavior::Skip",
+        "periodic_reconciliation",
+        "CacheInvalidationPayloadError::OffsetRegressed",
+        "superseded_rbac_acknowledgements_are_safe_noops",
+    ] {
+        assert!(
+            rbac.contains(required),
+            "RBAC invalidation recovery must retain {required}"
+        );
+    }
+
+    assert!(tracker.contains("if proposed < current"));
+    assert!(tracker.contains("CacheInvalidationPayloadError::OffsetRegressed { current, proposed }"));
+    assert!(tracker.contains("applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets"));
+}
