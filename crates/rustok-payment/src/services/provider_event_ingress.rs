@@ -4,14 +4,15 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::entities::provider_event;
-use crate::error::PaymentError;
+use crate::error::{PaymentError, PaymentResult};
 use crate::providers::{
     PaymentProviderRegistry, PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
 };
 
 use super::{
-    CompleteProviderEvent, FailProviderEvent, PaymentProviderEventJournal, ReceiveProviderEvent,
-    PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
+    CheckpointProviderEvent, CompleteProviderEvent, FailProviderEvent,
+    PaymentProviderEventJournal, ReceiveProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
+    PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
 };
 
 const DEFAULT_WEBHOOK_LEASE_SECONDS: i64 = 30;
@@ -118,8 +119,6 @@ impl PaymentProviderEventIngressService {
         self
     }
 
-    /// Verify and normalize the provider request before durable insertion,
-    /// then apply the normalized event through an owner command under a lease.
     pub async fn ingest(
         &self,
         request: PaymentProviderWebhookRequest,
@@ -163,23 +162,71 @@ impl PaymentProviderEventIngressService {
             )
             .await?
         else {
-            let current = self.journal.get(request.tenant_id, inbox_event.id).await?;
+            return self
+                .resolve_unclaimed(request.tenant_id, inbox_event.id, normalized)
+                .await;
+        };
+
+        self.journal
+            .checkpoint_normalized(CheckpointProviderEvent {
+                tenant_id: request.tenant_id,
+                event_id: claimed.id,
+                lease_owner: lease_owner.clone(),
+                event_type: normalized.event_type.clone(),
+                external_reference: normalized.external_reference.clone(),
+                event_metadata: normalized.metadata.clone(),
+            })
+            .await?;
+
+        self.apply_claimed(claimed, normalized, lease_owner, false)
+            .await
+    }
+
+    /// Replay a verified normalized event from the dead-letter queue. Raw
+    /// provider bytes are intentionally unavailable; the first verified parse
+    /// is the durable replay boundary.
+    pub async fn replay_dead_letter(
+        &self,
+        tenant_id: Uuid,
+        event_id: Uuid,
+        lease_owner: impl Into<String>,
+    ) -> PaymentProviderEventIngressResult<PaymentProviderEventExecution> {
+        let lease_owner = lease_owner.into();
+        let Some(claimed) = self
+            .journal
+            .claim_dead_letter_replay(
+                tenant_id,
+                event_id,
+                lease_owner.as_str(),
+                self.lease_seconds,
+            )
+            .await?
+        else {
+            let current = self.journal.get(tenant_id, event_id).await?;
             return match current.status.as_str() {
                 PROVIDER_EVENT_PROCESSED => Ok(PaymentProviderEventExecution {
+                    provider_event: normalized_from_inbox(&current)?,
                     inbox_event: current,
-                    provider_event: normalized,
                     replayed: true,
                 }),
-                PROVIDER_EVENT_DEAD_LETTER => {
-                    Err(PaymentProviderEventIngressError::DeadLetter(current.id))
-                }
                 PROVIDER_EVENT_PROCESSING => {
                     Err(PaymentProviderEventIngressError::InProgress(current.id))
                 }
-                _ => Err(PaymentProviderEventIngressError::InProgress(current.id)),
+                _ => Err(PaymentProviderEventIngressError::DeadLetter(current.id)),
             };
         };
+        let normalized = normalized_from_inbox(&claimed)?;
+        self.apply_claimed(claimed, normalized, lease_owner, true)
+            .await
+    }
 
+    async fn apply_claimed(
+        &self,
+        claimed: provider_event::Model,
+        normalized: PaymentProviderWebhookResult,
+        lease_owner: String,
+        replayed: bool,
+    ) -> PaymentProviderEventIngressResult<PaymentProviderEventExecution> {
         let context = PaymentProviderEventContext {
             event_id: claimed.id,
             tenant_id: claimed.tenant_id,
@@ -191,12 +238,12 @@ impl PaymentProviderEventIngressService {
             let failure = self
                 .journal
                 .mark_failed(FailProviderEvent {
-                    tenant_id: request.tenant_id,
+                    tenant_id: claimed.tenant_id,
                     event_id: claimed.id,
                     lease_owner,
                     error_code: apply.code.clone(),
                     error_message: apply.message.clone(),
-                    retryable: apply.retryable,
+                    retryable: if replayed { false } else { apply.retryable },
                     max_attempts: self.max_attempts,
                 })
                 .await;
@@ -212,7 +259,7 @@ impl PaymentProviderEventIngressService {
         let processed = self
             .journal
             .mark_processed(CompleteProviderEvent {
-                tenant_id: request.tenant_id,
+                tenant_id: claimed.tenant_id,
                 event_id: claimed.id,
                 lease_owner,
                 event_type: normalized.event_type.clone(),
@@ -223,11 +270,55 @@ impl PaymentProviderEventIngressService {
         Ok(PaymentProviderEventExecution {
             inbox_event: processed,
             provider_event: normalized,
-            replayed: false,
+            replayed,
         })
+    }
+
+    async fn resolve_unclaimed(
+        &self,
+        tenant_id: Uuid,
+        event_id: Uuid,
+        normalized: PaymentProviderWebhookResult,
+    ) -> PaymentProviderEventIngressResult<PaymentProviderEventExecution> {
+        let current = self.journal.get(tenant_id, event_id).await?;
+        match current.status.as_str() {
+            PROVIDER_EVENT_PROCESSED => Ok(PaymentProviderEventExecution {
+                inbox_event: current,
+                provider_event: normalized,
+                replayed: true,
+            }),
+            PROVIDER_EVENT_DEAD_LETTER => {
+                Err(PaymentProviderEventIngressError::DeadLetter(current.id))
+            }
+            _ => Err(PaymentProviderEventIngressError::InProgress(current.id)),
+        }
     }
 
     pub fn journal(&self) -> &PaymentProviderEventJournal {
         &self.journal
     }
+}
+
+fn normalized_from_inbox(
+    event: &provider_event::Model,
+) -> PaymentResult<PaymentProviderWebhookResult> {
+    let event_type = event.event_type.clone().ok_or_else(|| {
+        PaymentError::Validation(format!(
+            "payment provider event {} has no normalized event type",
+            event.id
+        ))
+    })?;
+    let metadata = event.event_metadata.clone().ok_or_else(|| {
+        PaymentError::Validation(format!(
+            "payment provider event {} has no normalized metadata",
+            event.id
+        ))
+    })?;
+    Ok(PaymentProviderWebhookResult {
+        provider_id: event.provider_id.clone(),
+        external_reference: event.external_reference.clone(),
+        event_type,
+        replay_key: event.idempotency_key.clone(),
+        metadata,
+    })
 }
