@@ -27,6 +27,7 @@ mod paid_order_create_label;
 mod paid_order_create_label_sweep;
 mod payment_orchestration;
 mod post_order;
+mod recovering_staged_checkout;
 mod refund_reconciliation;
 mod shipping_profile;
 mod staged_checkout;
@@ -110,6 +111,10 @@ pub use post_order::{
     PostOrderOrchestrationError, PostOrderOrchestrationResult, PostOrderOrchestrationService,
     ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
+};
+pub use recovering_staged_checkout::{
+    RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult,
+    RecoveringStagedCheckoutService,
 };
 pub use refund_reconciliation::RefundReconciliationService;
 pub use shipping_profile::ShippingProfileService;
