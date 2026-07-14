@@ -166,9 +166,9 @@ impl std::error::Error for CacheInvalidationPayloadError {}
 /// Process-local observer for a durable monotonic invalidation generation.
 ///
 /// Consumers seed the tracker from their persisted durable offset before observing live events.
-/// `UnverifiedFirst` and `Gap` never advance the offset automatically: the caller must complete
-/// its namespace clear/rebuild/generation rotation and then call `acknowledge_recovery`. This
-/// prevents a failed recovery from being hidden by the next pub/sub event.
+/// Observation never advances the acknowledged offset. A caller must invoke `acknowledge_applied`
+/// after an in-order handler succeeds, or `acknowledge_recovery` after rebuilding through an
+/// unverified/gapped generation. This prevents failed work from being hidden by a later delivery.
 #[derive(Clone, Default)]
 pub struct CacheInvalidationGapTracker {
     last_by_channel: Arc<Mutex<HashMap<String, u64>>>,
@@ -189,6 +189,17 @@ impl CacheInvalidationGapTracker {
         self.advance_monotonically(channel, last_generation)
     }
 
+    /// Confirm that an in-order invalidation handler completed successfully.
+    pub fn acknowledge_applied(
+        &self,
+        channel: impl Into<String>,
+        applied_generation: u64,
+    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
+        let channel = channel.into();
+        validate_channel(&channel)?;
+        self.advance_monotonically(channel, applied_generation)
+    }
+
     /// Confirm that fail-safe recovery for an unverified/gapped event completed successfully.
     pub fn acknowledge_recovery(
         &self,
@@ -201,7 +212,7 @@ impl CacheInvalidationGapTracker {
     }
 
     pub fn observe(&self, event: &VersionedCacheInvalidation) -> CacheInvalidationObservation {
-        let mut generations = self
+        let generations = self
             .last_by_channel
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -226,7 +237,6 @@ impl CacheInvalidationGapTracker {
 
         match previous.checked_add(1) {
             Some(expected) if event.generation == expected => {
-                generations.insert(event.channel.clone(), event.generation);
                 CacheInvalidationObservation::InOrder {
                     generation: event.generation,
                 }
@@ -385,6 +395,30 @@ mod tests {
             tracker.observe(&event(11)),
             CacheInvalidationObservation::InOrder { generation: 11 }
         );
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(10));
+        tracker
+            .acknowledge_applied("tenant.invalidate", 11)
+            .unwrap();
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(11));
+    }
+
+    #[test]
+    fn in_order_event_remains_retryable_until_acknowledged() {
+        let tracker = CacheInvalidationGapTracker::default();
+        tracker.seed("tenant.invalidate", 9).unwrap();
+
+        let expected = CacheInvalidationObservation::InOrder { generation: 10 };
+        assert_eq!(tracker.observe(&event(10)), expected);
+        assert_eq!(tracker.observe(&event(10)), expected);
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(9));
+
+        tracker
+            .acknowledge_applied("tenant.invalidate", 10)
+            .unwrap();
+        assert_eq!(
+            tracker.observe(&event(10)),
+            CacheInvalidationObservation::Duplicate { generation: 10 }
+        );
     }
 
     #[test]
@@ -395,6 +429,10 @@ mod tests {
             tracker.observe(&event(10)),
             CacheInvalidationObservation::InOrder { generation: 10 }
         );
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(9));
+        tracker
+            .acknowledge_applied("tenant.invalidate", 10)
+            .unwrap();
 
         let gap = tracker.observe(&event(14));
         assert_eq!(
@@ -416,6 +454,7 @@ mod tests {
             tracker.observe(&event(15)),
             CacheInvalidationObservation::InOrder { generation: 15 }
         );
+        assert_eq!(tracker.last_generation("tenant.invalidate"), Some(14));
     }
 
     #[test]
