@@ -11,7 +11,8 @@ use std::time::Instant;
 use utoipa::IntoParams;
 
 use crate::{
-    CategoryService, CategoryTreeQuery, CategoryTreeResponse, MAX_FORUM_CATEGORY_TREE_NODES,
+    CategoryService, CategoryTreeQuery, CategoryTreeResponse, ForumError,
+    MAX_FORUM_CATEGORY_TREE_NODES,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -29,7 +30,9 @@ pub struct CategoryTreeParams {
         (status = 200, description = "Canonical nested category tree", body = CategoryTreeResponse),
         (status = 400, description = "Invalid locale or corrupted tree"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Category not found"),
+        (status = 500, description = "Internal forum read failure")
     )
 )]
 pub async fn get_category_tree(
@@ -57,7 +60,7 @@ pub async fn get_category_tree(
     let tree = CategoryService::new(runtime.db_clone())
         .tree(tenant.id, forum_security(&auth), query)
         .await
-        .map_err(|err| HttpError::bad_request("forum_category_tree_failed", err.to_string()))?;
+        .map_err(category_tree_error)?;
 
     metrics::record_read_path_query(
         "http",
@@ -75,6 +78,22 @@ pub async fn get_category_tree(
     );
 
     Ok(Json(tree))
+}
+
+fn category_tree_error(error: ForumError) -> HttpError {
+    match error {
+        ForumError::Database(error) => HttpError::internal(error.to_string()),
+        ForumError::Content(error) => HttpError::internal(error.to_string()),
+        ForumError::Internal(error) => HttpError::internal(error.to_string()),
+        ForumError::CategoryNotFound(category_id) => HttpError::not_found(
+            "forum_category_not_found",
+            format!("Category not found: {category_id}"),
+        ),
+        ForumError::Forbidden(message) => {
+            HttpError::forbidden("forum_permission_denied", message)
+        }
+        error => HttpError::bad_request("forum_category_tree_failed", error.to_string()),
+    }
 }
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
