@@ -1,6 +1,9 @@
-use std::sync::{Arc, RwLock};
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use futures_util::FutureExt;
 use once_cell::sync::Lazy;
 use rustok_cache::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
@@ -10,6 +13,7 @@ use rustok_cache::{
 };
 use sea_orm::DatabaseConnection;
 use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -26,12 +30,91 @@ pub const RBAC_PERMISSION_INVALIDATION_CHANNEL: &str = "rbac.permissions.generat
 const RBAC_PERMISSION_INVALIDATION_CAUSE: &str = "rbac.user.permissions.changed";
 const RBAC_PERMISSION_INVALIDATE_ALL_KEY: &str = "*";
 const RBAC_PERMISSION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
+const RBAC_PERMISSION_WORKER_RESTART_DELAY: Duration = Duration::from_secs(1);
 
 static RBAC_INVALIDATION_CACHE_SERVICE: Lazy<RwLock<Option<CacheService>>> =
     Lazy::new(|| RwLock::new(None));
 
+struct AbortOnDropInvalidationTask {
+    task: JoinHandle<()>,
+}
+
+impl AbortOnDropInvalidationTask {
+    fn new(task: JoinHandle<()>) -> Self {
+        Self { task }
+    }
+
+    fn is_running(&self) -> bool {
+        !self.task.is_finished()
+    }
+
+    fn abort(&self) {
+        self.task.abort();
+    }
+}
+
+impl Drop for AbortOnDropInvalidationTask {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+struct RbacCacheInvalidationRuntime {
+    local: AbortOnDropInvalidationTask,
+    redis: Option<AbortOnDropInvalidationTask>,
+    reconcile: AbortOnDropInvalidationTask,
+}
+
+impl RbacCacheInvalidationRuntime {
+    fn is_running(&self) -> bool {
+        self.local.is_running()
+            && self.reconcile.is_running()
+            && self
+                .redis
+                .as_ref()
+                .is_none_or(AbortOnDropInvalidationTask::is_running)
+    }
+
+    fn abort(&self) {
+        self.local.abort();
+        if let Some(redis) = &self.redis {
+            redis.abort();
+        }
+        self.reconcile.abort();
+    }
+}
+
 #[derive(Clone)]
-pub struct RbacCacheInvalidationListenerHandle;
+pub struct RbacCacheInvalidationListenerHandle(
+    Arc<RbacCacheInvalidationRuntime>,
+);
+
+impl RbacCacheInvalidationListenerHandle {
+    fn new(
+        local: JoinHandle<()>,
+        redis: Option<JoinHandle<()>>,
+        reconcile: JoinHandle<()>,
+    ) -> Self {
+        Self(Arc::new(RbacCacheInvalidationRuntime {
+            local: AbortOnDropInvalidationTask::new(local),
+            redis: redis.map(AbortOnDropInvalidationTask::new),
+            reconcile: AbortOnDropInvalidationTask::new(reconcile),
+        }))
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.0.is_running()
+    }
+
+    fn abort(&self) {
+        self.0.abort();
+    }
+
+    #[cfg(test)]
+    fn abort_local(&self) {
+        self.0.local.abort();
+    }
+}
 
 #[derive(Clone, Default)]
 struct RbacCacheInvalidationListenerStartLock(Arc<tokio::sync::Mutex<()>>);
@@ -287,6 +370,152 @@ async fn publish_rbac_invalidation(
     Ok(())
 }
 
+async fn run_local_invalidation_worker(
+    mut local: broadcast::Receiver<CacheInvalidationMessage>,
+    listener: RbacCacheInvalidationListener,
+) {
+    loop {
+        match local.recv().await {
+            Ok(message) => {
+                if let Err(error) = listener.handle_message(message).await {
+                    tracing::error!(%error, "Local RBAC cache invalidation apply failed");
+                    rustok_telemetry::metrics::record_event_error(
+                        RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                        "local_apply",
+                    );
+                }
+            }
+            Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                tracing::warn!(
+                    skipped,
+                    "RBAC cache invalidation listener lagged; clearing all permission snapshots"
+                );
+                if let Err(error) = listener.recover_generation_and_clear().await {
+                    tracing::error!(
+                        %error,
+                        "RBAC cache invalidation recovery after local lag failed"
+                    );
+                    rustok_telemetry::metrics::record_event_error(
+                        RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                        "local_recovery",
+                    );
+                }
+            }
+            Err(broadcast::error::RecvError::Closed) => {
+                tracing::error!("Local RBAC cache invalidation subscription closed");
+                return;
+            }
+        }
+    }
+}
+
+async fn run_redis_invalidation_worker(
+    cache: CacheService,
+    listener: RbacCacheInvalidationListener,
+) {
+    let ready_listener = listener.clone();
+    let handler_listener = listener;
+    let result = cache
+        .invalidations()
+        .consume_subscription_with_ready(
+            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+            move || {
+                let ready_listener = ready_listener.clone();
+                async move {
+                    if let Err(error) = ready_listener.recover_generation_and_clear().await {
+                        tracing::error!(
+                            %error,
+                            "RBAC cache recovery after Redis subscribe failed"
+                        );
+                        rustok_telemetry::metrics::record_event_error(
+                            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                            "redis_recovery",
+                        );
+                    }
+                }
+            },
+            move |message| {
+                let handler_listener = handler_listener.clone();
+                async move {
+                    if let Err(error) = handler_listener.handle_message(message).await {
+                        tracing::error!(%error, "Redis RBAC cache invalidation apply failed");
+                        rustok_telemetry::metrics::record_event_error(
+                            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                            "redis_apply",
+                        );
+                    }
+                }
+            },
+        )
+        .await;
+    tracing::warn!(?result, "RBAC Redis invalidation subscription stopped");
+}
+
+async fn run_reconcile_invalidation_worker(
+    listener: RbacCacheInvalidationListener,
+) {
+    let start = tokio::time::Instant::now() + RBAC_PERMISSION_RECONCILE_INTERVAL;
+    let mut interval = tokio::time::interval_at(start, RBAC_PERMISSION_RECONCILE_INTERVAL);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        interval.tick().await;
+        match listener.reconcile_generation_if_advanced().await {
+            Ok(Some(generation)) => {
+                tracing::warn!(generation, "Reconciled missed RBAC cache invalidations");
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(%error, "Periodic RBAC cache invalidation reconciliation failed");
+                rustok_telemetry::metrics::record_event_error(
+                    RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                    "periodic_reconciliation",
+                );
+            }
+        }
+    }
+}
+
+async fn supervise_rbac_invalidation_worker<F, Fut>(
+    worker: &'static str,
+    restart_reason: &'static str,
+    mut worker_factory: F,
+    restart_delay: Duration,
+) where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    loop {
+        let outcome = AssertUnwindSafe(worker_factory()).catch_unwind().await;
+        if outcome.is_err() {
+            tracing::error!(worker, "RBAC cache invalidation worker panicked; restarting");
+        } else {
+            tracing::error!(worker, "RBAC cache invalidation worker exited; restarting");
+        }
+        rustok_telemetry::metrics::record_event_error(
+            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+            restart_reason,
+        );
+        tokio::time::sleep(restart_delay).await;
+    }
+}
+
+fn spawn_supervised_rbac_invalidation_worker<F, Fut>(
+    worker: &'static str,
+    restart_reason: &'static str,
+    worker_factory: F,
+) -> JoinHandle<()>
+where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    tokio::spawn(supervise_rbac_invalidation_worker(
+        worker,
+        restart_reason,
+        worker_factory,
+        RBAC_PERMISSION_WORKER_RESTART_DELAY,
+    ))
+}
+
 pub async fn start_rbac_cache_invalidation_listener(
     ctx: &ServerRuntimeContext,
     cache: CacheService,
@@ -297,16 +526,21 @@ pub async fn start_rbac_cache_invalidation_listener(
         .ok_or_else(|| Error::Cache("RBAC invalidation start lock is unavailable".to_string()))?;
     let _start_guard = start_lock.0.lock().await;
 
-    if ctx
-        .shared_get::<RbacCacheInvalidationListenerHandle>()
-        .is_some()
-    {
-        return Ok(());
+    if let Some(existing) = ctx.shared_get::<RbacCacheInvalidationListenerHandle>() {
+        if existing.is_running() {
+            return Ok(());
+        }
+        tracing::warn!("RBAC cache invalidation runtime stopped; replacing workers");
+        existing.abort();
     }
 
     let durable_state = ensure_rbac_invalidation_generation_state(ctx);
     let listener = RbacCacheInvalidationListener::new(ctx.db_clone(), durable_state);
-    let mut local = cache
+
+    // Subscribe before recovery so a local publication cannot fall into the
+    // startup gap. The supervisor takes this receiver on its first attempt and
+    // creates a fresh subscription on every later restart.
+    let initial_local = cache
         .invalidations()
         .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
     if let Err(error) = listener.recover_generation_and_clear().await {
@@ -321,99 +555,56 @@ pub async fn start_rbac_cache_invalidation_listener(
         );
     }
 
+    let first_local = Arc::new(Mutex::new(Some(initial_local)));
+    let local_cache = cache.clone();
     let local_listener = listener.clone();
-    tokio::spawn(async move {
-        loop {
-            match local.recv().await {
-                Ok(message) => {
-                    if let Err(error) = local_listener.handle_message(message).await {
-                        tracing::error!(%error, "Local RBAC cache invalidation apply failed");
-                        rustok_telemetry::metrics::record_event_error(
-                            RBAC_PERMISSION_INVALIDATION_CHANNEL,
-                            "local_apply",
-                        );
-                    }
-                }
-                Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    tracing::warn!(skipped, "RBAC cache invalidation listener lagged; clearing all permission snapshots");
-                    if let Err(error) = local_listener.recover_generation_and_clear().await {
-                        tracing::error!(%error, "RBAC cache invalidation recovery after local lag failed");
-                    }
-                }
-                Err(broadcast::error::RecvError::Closed) => {
-                    tracing::error!("Local RBAC cache invalidation subscription closed");
-                    break;
-                }
-            }
-        }
-    });
+    let local_task = spawn_supervised_rbac_invalidation_worker(
+        "local",
+        "local_worker_restart",
+        move || {
+            let receiver = first_local
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+                .unwrap_or_else(|| {
+                    local_cache
+                        .invalidations()
+                        .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL)
+                });
+            run_local_invalidation_worker(receiver, local_listener.clone())
+        },
+    );
 
-    if cache.redis_client_initialized() {
+    let redis_task = if cache.redis_client_initialized() {
+        let redis_cache = cache.clone();
         let redis_listener = listener.clone();
-        let invalidations = cache.invalidations();
-        tokio::spawn(async move {
-            loop {
-                let ready_listener = redis_listener.clone();
-                let handler_listener = redis_listener.clone();
-                let result = invalidations
-                    .consume_subscription_with_ready(
-                        RBAC_PERMISSION_INVALIDATION_CHANNEL,
-                        move || {
-                            let ready_listener = ready_listener.clone();
-                            async move {
-                                if let Err(error) = ready_listener.recover_generation_and_clear().await
-                                {
-                                    tracing::error!(%error, "RBAC cache recovery after Redis subscribe failed");
-                                }
-                            }
-                        },
-                        move |message| {
-                            let handler_listener = handler_listener.clone();
-                            async move {
-                                if let Err(error) = handler_listener.handle_message(message).await {
-                                    tracing::error!(%error, "Redis RBAC cache invalidation apply failed");
-                                    rustok_telemetry::metrics::record_event_error(
-                                        RBAC_PERMISSION_INVALIDATION_CHANNEL,
-                                        "redis_apply",
-                                    );
-                                }
-                            }
-                        },
-                    )
-                    .await;
-                tracing::warn!(?result, "RBAC Redis invalidation subscription stopped; restarting");
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        });
-    }
+        Some(spawn_supervised_rbac_invalidation_worker(
+            "redis",
+            "redis_worker_restart",
+            move || {
+                run_redis_invalidation_worker(redis_cache.clone(), redis_listener.clone())
+            },
+        ))
+    } else {
+        None
+    };
 
-    let reconcile_listener = listener.clone();
-    tokio::spawn(async move {
-        let start = tokio::time::Instant::now() + RBAC_PERMISSION_RECONCILE_INTERVAL;
-        let mut interval = tokio::time::interval_at(start, RBAC_PERMISSION_RECONCILE_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            interval.tick().await;
-            match reconcile_listener.reconcile_generation_if_advanced().await {
-                Ok(Some(generation)) => {
-                    tracing::warn!(generation, "Reconciled missed RBAC cache invalidations");
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    tracing::error!(%error, "Periodic RBAC cache invalidation reconciliation failed");
-                    rustok_telemetry::metrics::record_event_error(
-                        RBAC_PERMISSION_INVALIDATION_CHANNEL,
-                        "periodic_reconciliation",
-                    );
-                }
-            }
-        }
-    });
+    let reconcile_listener = listener;
+    let reconcile_task = spawn_supervised_rbac_invalidation_worker(
+        "reconcile",
+        "reconcile_worker_restart",
+        move || run_reconcile_invalidation_worker(reconcile_listener.clone()),
+    );
 
+    let runtime = RbacCacheInvalidationListenerHandle::new(
+        local_task,
+        redis_task,
+        reconcile_task,
+    );
+    ctx.shared_insert(runtime);
     *RBAC_INVALIDATION_CACHE_SERVICE
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cache);
-    ctx.shared_insert(RbacCacheInvalidationListenerHandle);
     Ok(())
 }
 
@@ -443,10 +634,14 @@ fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
     use super::{
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
         parse_rbac_invalidation_key, parse_rbac_invalidation_target, rbac_invalidation_key,
-        RbacCacheInvalidationListener, RbacInvalidationTarget,
+        supervise_rbac_invalidation_worker, RbacCacheInvalidationListener,
+        RbacCacheInvalidationListenerHandle, RbacInvalidationTarget,
         RBAC_PERMISSION_INVALIDATE_ALL_KEY, RBAC_PERMISSION_INVALIDATION_CHANNEL,
     };
     use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationState;
@@ -518,5 +713,46 @@ mod tests {
                 .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
             Some(5)
         );
+    }
+
+    #[tokio::test]
+    async fn listener_handle_reports_terminal_workers() {
+        let local = tokio::spawn(async { std::future::pending::<()>().await });
+        let reconcile = tokio::spawn(async { std::future::pending::<()>().await });
+        let handle = RbacCacheInvalidationListenerHandle::new(local, None, reconcile);
+        assert!(handle.is_running());
+        handle.abort_local();
+        tokio::task::yield_now().await;
+        assert!(!handle.is_running());
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn invalidation_worker_supervisor_restarts_after_panic() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let worker_attempts = attempts.clone();
+        let supervisor = tokio::spawn(supervise_rbac_invalidation_worker(
+            "test",
+            "test_worker_restart",
+            move || {
+                let attempt = worker_attempts.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt == 0 {
+                        panic!("invalidation worker regression fixture");
+                    }
+                    std::future::pending::<()>().await;
+                }
+            },
+            Duration::from_millis(1),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while attempts.load(Ordering::SeqCst) < 2 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("invalidation worker supervisor should restart the worker");
+        supervisor.abort();
     }
 }
