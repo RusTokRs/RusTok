@@ -13,6 +13,14 @@ pub enum RbacRoleAssignmentError {
     Database(String),
     #[error("RBAC role assignment did not persist {0}")]
     MissingPersistedRecord(&'static str),
+    #[error(
+        "RBAC user {user_id} belongs to tenant {actual_tenant_id}, not {expected_tenant_id}"
+    )]
+    UserTenantMismatch {
+        user_id: Uuid,
+        expected_tenant_id: Uuid,
+        actual_tenant_id: Uuid,
+    },
 }
 
 /// Database-backed writer for idempotent built-in role assignment.
@@ -74,6 +82,7 @@ where
         user_id: Uuid,
         role: UserRole,
     ) -> Result<(), RbacRoleAssignmentError> {
+        self.ensure_user_tenant(tenant_id, user_id).await?;
         let role_id = self.ensure_role(tenant_id, &role).await?;
         let mut expected_permission_ids = HashSet::new();
 
@@ -86,6 +95,32 @@ where
         self.remove_stale_role_permissions(role_id, &expected_permission_ids)
             .await?;
         self.ensure_user_role(user_id, role_id).await?;
+
+        Ok(())
+    }
+
+    async fn ensure_user_tenant(
+        &self,
+        expected_tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), RbacRoleAssignmentError> {
+        let backend = self.db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Sqlite => "SELECT tenant_id FROM users WHERE id = ?1 LIMIT 1",
+            _ => "SELECT tenant_id FROM users WHERE id = $1 LIMIT 1",
+        };
+        let actual_tenant_id = self
+            .query_uuid(sql, "tenant_id", vec![user_id.into()])
+            .await?
+            .ok_or(RbacRoleAssignmentError::MissingPersistedRecord("user"))?;
+
+        if actual_tenant_id != expected_tenant_id {
+            return Err(RbacRoleAssignmentError::UserTenantMismatch {
+                user_id,
+                expected_tenant_id,
+                actual_tenant_id,
+            });
+        }
 
         Ok(())
     }
@@ -302,6 +337,15 @@ where
         sql: &str,
         values: Vec<sea_orm::Value>,
     ) -> Result<Option<Uuid>, RbacRoleAssignmentError> {
+        self.query_uuid(sql, "id", values).await
+    }
+
+    async fn query_uuid(
+        &self,
+        sql: &str,
+        column: &str,
+        values: Vec<sea_orm::Value>,
+    ) -> Result<Option<Uuid>, RbacRoleAssignmentError> {
         self.db
             .query_one(Statement::from_sql_and_values(
                 self.db.get_database_backend(),
@@ -311,7 +355,7 @@ where
             .await
             .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?
             .map(|row| {
-                row.try_get("", "id")
+                row.try_get("", column)
                     .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))
             })
             .transpose()
