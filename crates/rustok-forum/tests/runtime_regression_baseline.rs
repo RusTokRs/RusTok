@@ -92,7 +92,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
     ] {
         let missing_constraints = required
             .iter()
-            .filter(|name| !constraints.contains(*name))
+            .filter(|name| !constraints.contains(**name))
             .copied()
             .collect::<Vec<_>>();
         if !missing_constraints.is_empty() {
@@ -120,7 +120,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
 
     let missing_indexes = REQUIRED_TENANT_INDEXES
         .iter()
-        .filter(|name| !indexes.contains(*name))
+        .filter(|name| !indexes.contains(**name))
         .copied()
         .collect::<Vec<_>>();
     if !missing_indexes.is_empty() {
@@ -146,7 +146,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
         .collect::<Result<BTreeSet<String>, _>>()?;
     let missing_tables = REQUIRED_REVISION_TABLES
         .iter()
-        .filter(|name| !tables.contains(*name))
+        .filter(|name| !tables.contains(**name))
         .copied()
         .collect::<Vec<_>>();
     if !missing_tables.is_empty() {
@@ -172,7 +172,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
         .collect::<Result<BTreeSet<String>, _>>()?;
     let missing_triggers = REQUIRED_RUNTIME_TRIGGERS
         .iter()
-        .filter(|name| !triggers.contains(*name))
+        .filter(|name| !triggers.contains(**name))
         .copied()
         .collect::<Vec<_>>();
     if !missing_triggers.is_empty() {

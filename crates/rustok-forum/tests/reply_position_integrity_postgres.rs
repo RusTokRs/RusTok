@@ -5,7 +5,7 @@ use std::sync::Arc;
 use rustok_core::{SecurityContext, UserRole};
 use rustok_forum::{CreateReplyInput, ReplyService};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use tokio::sync::Barrier;
 use uuid::Uuid;
 

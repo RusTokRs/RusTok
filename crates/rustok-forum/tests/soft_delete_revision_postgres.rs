@@ -2,7 +2,7 @@ mod support;
 
 use rustok_core::{SecurityContext, UserRole};
 use rustok_forum::RevisionService;
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use uuid::Uuid;
 
 use support::postgres::{execute, expect_rejected, PostgresForumTestDb};

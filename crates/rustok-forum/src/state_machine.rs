@@ -101,8 +101,8 @@ impl TopicStatus {
             Ok(())
         } else {
             Err(InvalidTopicTransition {
-                from: self.clone(),
-                to: target.clone(),
+                from: *self,
+                to: *target,
             })
         }
     }
@@ -216,8 +216,8 @@ impl ReplyStatus {
             Ok(())
         } else {
             Err(InvalidReplyTransition {
-                from: self.clone(),
-                to: target.clone(),
+                from: *self,
+                to: *target,
             })
         }
     }

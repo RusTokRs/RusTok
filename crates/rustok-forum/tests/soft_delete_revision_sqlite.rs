@@ -4,7 +4,6 @@ use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
-    TryGetable,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
