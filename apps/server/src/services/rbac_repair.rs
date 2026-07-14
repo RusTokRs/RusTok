@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn committed_repair_invalidates_only_effectively_affected_user_caches() {
+    async fn committed_repair_invalidates_all_valid_role_holders() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_id = insert_tenant(&db, "system-role-repair-cache").await;
         let other_tenant_id = insert_tenant(&db, "system-role-repair-cache-other").await;
@@ -154,14 +154,14 @@ mod tests {
             .await
             .expect("failed to load manager role")
             .expect("manager role should exist");
-        user_roles::Entity::insert(user_roles::ActiveModel {
+        assert!(user_roles::Entity::insert(user_roles::ActiveModel {
             id: Set(rustok_core::generate_id()),
             user_id: Set(cross_tenant_user),
             role_id: Set(manager_role.id),
         })
         .exec(&db)
         .await
-        .expect("failed to insert cross-tenant role relation");
+        .is_err());
 
         let stale_permission_id = rustok_core::generate_id();
         permissions::Entity::insert(permissions::ActiveModel {
