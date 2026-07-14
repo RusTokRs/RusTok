@@ -15,7 +15,7 @@ fn source(relative: &str) -> String {
 }
 
 #[test]
-fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attempt() {
+fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_recovery() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
     let event_runtime = source("apps/server/src/services/event_transport_factory.rs");
 
@@ -26,7 +26,12 @@ fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attemp
         "if let Err(error) = listener.recover_generation_and_clear().await",
         "startup_recovery_deferred",
         "RBAC_INVALIDATION_CACHE_SERVICE",
-        "ctx.shared_insert(RbacCacheInvalidationListenerHandle);",
+        "spawn_supervised_rbac_invalidation_worker",
+        "local_worker_restart",
+        "redis_worker_restart",
+        "reconcile_worker_restart",
+        "let runtime = RbacCacheInvalidationListenerHandle::new(",
+        "ctx.shared_insert(runtime);",
     ] {
         assert!(rbac.contains(required), "RBAC startup must retain {required}");
     }
@@ -34,15 +39,15 @@ fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attemp
     let recovery = rbac
         .find("if let Err(error) = listener.recover_generation_and_clear().await")
         .expect("RBAC listener must attempt recovery before becoming publishable");
+    let runtime_commit = rbac
+        .rfind("ctx.shared_insert(runtime);")
+        .expect("supervised RBAC runtime must be installed");
     let publisher_commit = rbac
         .rfind("*RBAC_INVALIDATION_CACHE_SERVICE")
-        .expect("RBAC publisher must be installed after the recovery attempt");
-    let handle_commit = rbac
-        .rfind("ctx.shared_insert(RbacCacheInvalidationListenerHandle);")
-        .expect("RBAC listener handle must be committed after startup");
+        .expect("RBAC publisher must be installed after the runtime");
 
-    assert!(recovery < publisher_commit);
-    assert!(publisher_commit < handle_commit);
+    assert!(recovery < runtime_commit);
+    assert!(runtime_commit < publisher_commit);
     assert!(event_runtime.contains(
         "start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;"
     ));
@@ -55,6 +60,8 @@ fn rbac_invalidation_startup_is_serialized_and_publishable_after_recovery_attemp
 fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
     let generation = source("apps/server/src/services/rbac_invalidation_generation.rs");
+    let generation_store = source("crates/rustok-rbac/src/invalidation_generation.rs");
+    let exports = source("crates/rustok-rbac/src/lib.rs");
     let committed = source("apps/server/src/services/rbac_committed_mutations.rs");
     let admin = source("apps/server/src/services/auth_admin_mutation_provider/user_admin.rs");
     let repair = source("apps/server/src/services/rbac_repair.rs");
@@ -86,10 +93,33 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
         );
     }
 
-    assert!(generation.contains("reserve_rbac_invalidation_generation"));
-    assert!(generation.contains("UPDATE rbac_invalidation_state"));
-    assert!(generation.contains("shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)"));
-    assert!(generation.contains("applied_generation_state_is_monotonic"));
+    for required in [
+        "rustok_rbac::reserve_permission_invalidation_generation(db)",
+        "rustok_rbac::read_permission_invalidation_generation(db)",
+        "RbacInvalidationGenerationWatchdogStartLock",
+        "RbacInvalidationGenerationWatchdogHandle::new(task)",
+        "supervise_rbac_invalidation_generation_watchdog",
+        "applied_generation_state_is_monotonic",
+    ] {
+        assert!(
+            generation.contains(required),
+            "server generation adapter must retain {required}"
+        );
+    }
+    for required in [
+        "pub async fn reserve_permission_invalidation_generation(",
+        "db: &DatabaseTransaction",
+        "UPDATE rbac_invalidation_state",
+        "read_permission_invalidation_generation(db).await",
+        "reservation_is_rolled_back_with_the_owner_transaction",
+    ] {
+        assert!(
+            generation_store.contains(required),
+            "shared generation store must retain {required}"
+        );
+    }
+    assert!(exports.contains("reserve_permission_invalidation_generation"));
+    assert!(exports.contains("read_permission_invalidation_generation"));
 
     assert!(!rbac.contains("bump_cache_backend_generation"));
     assert!(!rbac.contains("RBAC_PERMISSION_GENERATION_PREFIX"));
