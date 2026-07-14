@@ -53,11 +53,16 @@ fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
 #[test]
 fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
+    let repair = source("apps/server/src/services/rbac_repair.rs");
     let runtime = source("apps/server/src/services/rbac_runtime.rs");
     let tracker = source("crates/rustok-cache/src/bounded_invalidation.rs");
 
     for required in [
         "RBAC_PERMISSION_RECONCILE_INTERVAL",
+        "RBAC_PERMISSION_INVALIDATE_ALL_KEY",
+        "RbacInvalidationTarget::All",
+        "publish_all_rbac_invalidation",
+        "namespace_wide_invalidation_key_is_explicit",
         "reconcile_generation_if_advanced",
         "MissedTickBehavior::Skip",
         "periodic_reconciliation",
@@ -116,6 +121,27 @@ fn rbac_invalidation_recovers_missed_publications_and_superseded_offsets() {
     assert!(tracker.contains(
         "applied_acknowledgement_rejects_unseeded_skipped_or_regressed_offsets"
     ));
+
+    assert!(repair.contains(
+        "use super::rbac_cache_invalidation::publish_all_rbac_invalidation;"
+    ));
+    assert!(!repair.contains("publish_user_rbac_invalidation"));
+    assert!(repair.contains("if !effective_affected_users.is_empty()"));
+    assert_eq!(
+        repair.matches("publish_all_rbac_invalidation().await?;").count(),
+        1,
+        "role repair must publish exactly one namespace-wide invalidation"
+    );
+    let affected_loop = repair
+        .find("for affected in report.affected_users.drain(..)")
+        .expect("role repair must filter and clear affected users locally");
+    let namespace_publish = repair
+        .find("publish_all_rbac_invalidation().await?;")
+        .expect("role repair must publish the namespace-wide invalidation");
+    assert!(
+        affected_loop < namespace_publish,
+        "namespace-wide publication must occur after the affected-user loop"
+    );
 }
 
 #[test]
