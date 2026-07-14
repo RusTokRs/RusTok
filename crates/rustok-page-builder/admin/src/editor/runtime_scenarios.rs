@@ -3,6 +3,7 @@ use crate::i18n::t;
 use fly::{preflight_runtime_context_scenarios, RuntimeContextPreflightPolicy};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
+use std::sync::Arc;
 
 #[component]
 pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
@@ -18,18 +19,22 @@ pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         "page_builder.action.applyScenario",
         "Apply scenario",
     );
+    let scenarios = Arc::clone(&runtime.runtime_scenarios);
+    let option_scenarios = Arc::clone(&scenarios);
+    let report_scenarios = Arc::clone(&scenarios);
+    let has_scenarios = !scenarios.is_empty();
     let selected = RwSignal::new(
         runtime
             .active_runtime_scenario
             .get_untracked()
-            .or_else(|| runtime.runtime_scenarios.first().map(|scenario| scenario.id.clone()))
+            .or_else(|| scenarios.first().map(|scenario| scenario.id.clone()))
             .unwrap_or_default(),
     );
     let apply_runtime = runtime.clone();
     let report_runtime = runtime;
 
     view! {
-        <Show when=move || !report_runtime.runtime_scenarios.is_empty()>
+        <Show when=move || has_scenarios>
             <section class="space-y-3 rounded-xl border border-border bg-card p-3">
                 <h2 class="font-semibold">{title}</h2>
                 <div class="flex gap-2">
@@ -38,7 +43,7 @@ pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         prop:value=move || selected.get()
                         on:change=move |event| selected.set(event_target_value(&event))
                     >
-                        {report_runtime.runtime_scenarios.iter().map(|scenario| view! {
+                        {option_scenarios.iter().map(|scenario| view! {
                             <option value=scenario.id.clone()>{scenario.label.clone()}</option>
                         }).collect_view()}
                     </select>
@@ -58,7 +63,7 @@ pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     let suite = report_runtime.controller.with(|controller| {
                         preflight_runtime_context_scenarios(
                             controller.editor().document(),
-                            report_runtime.runtime_scenarios.as_slice(),
+                            report_scenarios.as_slice(),
                             RuntimeContextPreflightPolicy::default(),
                         )
                     });
@@ -74,21 +79,21 @@ pub fn RuntimeScenarioPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 let issue_count = result.preflight.diagnostics.iter().filter(|diagnostic| {
                                     diagnostic.severity == fly::ValidationSeverity::Error
                                 }).count();
+                                let status_class = if accepted {
+                                    "text-emerald-700"
+                                } else {
+                                    "text-destructive"
+                                };
+                                let status = if accepted {
+                                    "Accepted".to_string()
+                                } else {
+                                    format!("{issue_count} blocking")
+                                };
                                 view! {
                                     <div class="rounded bg-muted/50 px-2 py-1">
                                         <div class="flex items-center justify-between gap-2">
                                             <span class="truncate font-medium">{result.scenario_label}</span>
-                                            <span class=if accepted {
-                                                "text-emerald-700"
-                                            } else {
-                                                "text-destructive"
-                                            }>
-                                                {if accepted {
-                                                    "Accepted".to_string()
-                                                } else {
-                                                    format!("{issue_count} blocking")
-                                                }}
-                                            </span>
+                                            <span class=status_class>{status}</span>
                                         </div>
                                     </div>
                                 }
