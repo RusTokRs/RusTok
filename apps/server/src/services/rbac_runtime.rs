@@ -128,7 +128,6 @@ pub(crate) async fn invalidate_user_permissions_cache(
     tenant_id: &uuid::Uuid,
     user_id: &uuid::Uuid,
 ) {
-    advance_permission_cache_epoch();
     let cache = MokaPermissionCache;
     invalidate_cached_permissions(&cache, tenant_id, user_id).await;
 }
@@ -316,6 +315,7 @@ impl PermissionCache for MokaPermissionCache {
     }
 
     async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        advance_permission_cache_epoch();
         USER_PERMISSION_CACHE
             .invalidate(&(*tenant_id, *user_id))
             .await;
@@ -606,7 +606,7 @@ mod tests {
                 &tenant_id,
                 &user_id,
                 stale_token,
-                vec![Permission::new(Resource::Settings, Action::Manage)],
+                vec![Permission::SETTINGS_MANAGE],
             )
             .await;
 
