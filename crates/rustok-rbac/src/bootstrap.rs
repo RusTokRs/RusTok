@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -37,13 +39,38 @@ impl RbacRoleAssignmentDbWriter {
         Self { db }
     }
 
+    /// Assign and reconcile a built-in role atomically.
+    ///
+    /// Standalone callers receive an all-or-nothing transaction. Hosts that
+    /// already own a wider transaction should call `assign_role_permissions_on`
+    /// instead and invalidate process-local authorization caches after commit.
     pub async fn assign_role_permissions(
         &self,
         tenant_id: Uuid,
         user_id: Uuid,
         role: UserRole,
     ) -> Result<(), RbacRoleAssignmentError> {
-        Self::assign_role_permissions_on(&self.db, tenant_id, user_id, role).await
+        let tx = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+        let result = Self::assign_role_permissions_on(&tx, tenant_id, user_id, role).await;
+
+        match result {
+            Ok(()) => tx
+                .commit()
+                .await
+                .map_err(|error| RbacRoleAssignmentError::Database(error.to_string())),
+            Err(error) => {
+                tx.rollback().await.map_err(|rollback_error| {
+                    RbacRoleAssignmentError::Database(format!(
+                        "role assignment failed: {error}; rollback failed: {rollback_error}"
+                    ))
+                })?;
+                Err(error)
+            }
+        }
     }
 
     /// Execute role assignment on an existing SeaORM connection or transaction.
