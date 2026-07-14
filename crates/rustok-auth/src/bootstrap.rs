@@ -53,6 +53,8 @@ impl AuthUserBootstrapDbWriter {
     where
         C: ConnectionTrait,
     {
+        let backend = db.get_database_backend();
+        ensure_supported_backend(backend)?;
         let email = request.email.to_lowercase();
         if let Some(existing) = Self::find_user_on(db, request.tenant_id, &email).await? {
             return Ok(existing);
@@ -61,14 +63,14 @@ impl AuthUserBootstrapDbWriter {
         let password_hash = hash_password(&request.password)
             .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?;
         let user_id = rustok_core::generate_id();
-        let backend = db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => {
                 "INSERT INTO users (id, tenant_id, email, password_hash, name) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (tenant_id, email) DO NOTHING"
             }
-            DbBackend::Postgres | DbBackend::MySql => {
+            DbBackend::Postgres => {
                 "INSERT INTO users (id, tenant_id, email, password_hash, name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (tenant_id, email) DO NOTHING"
             }
+            DbBackend::MySql => unreachable!("unsupported backend rejected before SQL rendering"),
         };
         let result = db
             .execute(Statement::from_sql_and_values(
@@ -124,13 +126,15 @@ impl AuthUserBootstrapDbWriter {
         C: ConnectionTrait,
     {
         let backend = db.get_database_backend();
+        ensure_supported_backend(backend)?;
         let sql = match backend {
             DbBackend::Sqlite => {
                 "SELECT id, email FROM users WHERE tenant_id = ?1 AND email = ?2 LIMIT 1"
             }
-            DbBackend::Postgres | DbBackend::MySql => {
+            DbBackend::Postgres => {
                 "SELECT id, email FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1"
             }
+            DbBackend::MySql => unreachable!("unsupported backend rejected before SQL rendering"),
         };
         let row = db
             .query_one(Statement::from_sql_and_values(
@@ -153,5 +157,27 @@ impl AuthUserBootstrapDbWriter {
             })
         })
         .transpose()
+    }
+}
+
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), AuthLifecycleMutationError> {
+    match backend {
+        DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
+        DbBackend::MySql => Err(AuthLifecycleMutationError::Internal(
+            "auth user bootstrap does not support mysql".to_string(),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_supported_backend;
+    use sea_orm::DbBackend;
+
+    #[test]
+    fn unsupported_mysql_backend_is_rejected_before_bootstrap_queries() {
+        assert!(ensure_supported_backend(DbBackend::Postgres).is_ok());
+        assert!(ensure_supported_backend(DbBackend::Sqlite).is_ok());
+        assert!(ensure_supported_backend(DbBackend::MySql).is_err());
     }
 }
