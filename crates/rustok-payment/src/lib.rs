@@ -9,6 +9,8 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+#[cfg(feature = "server")]
+pub mod openapi;
 pub mod ports;
 pub mod providers;
 pub mod services;
