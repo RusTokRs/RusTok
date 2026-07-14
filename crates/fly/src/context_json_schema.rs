@@ -178,21 +178,30 @@ fn insert_property_schema(
     let Some((first, rest)) = segments.split_first() else {
         return;
     };
+
+    if rest.is_empty() {
+        {
+            let object = root.as_object_mut().expect("root schema must be an object");
+            let properties = object
+                .entry("properties".to_string())
+                .or_insert_with(|| Value::Object(Map::new()))
+                .as_object_mut()
+                .expect("properties must be an object");
+            properties.insert(first.clone(), schema);
+        }
+        if required {
+            let object = root.as_object_mut().expect("root schema must be an object");
+            push_required(object, first);
+        }
+        return;
+    }
+
     let object = root.as_object_mut().expect("root schema must be an object");
     let properties = object
         .entry("properties".to_string())
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
         .expect("properties must be an object");
-
-    if rest.is_empty() {
-        properties.insert(first.clone(), schema);
-        if required {
-            push_required(object, first);
-        }
-        return;
-    }
-
     let child = properties.entry(first.clone()).or_insert_with(|| {
         json!({
             "type": "object",
@@ -252,7 +261,11 @@ fn simple_object_path(path: &str) -> Option<Vec<String>> {
     let path = path.trim();
     let path = path.strip_prefix('$').unwrap_or(path);
     let path = path.strip_prefix('.').unwrap_or(path);
-    if path.is_empty() || path.contains(['[', ']', '{', '}']) {
+    if path.is_empty()
+        || path
+            .chars()
+            .any(|character| matches!(character, '[' | ']' | '{' | '}'))
+    {
         return None;
     }
     let segments = path
