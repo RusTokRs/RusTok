@@ -586,7 +586,7 @@ mod tests {
             if values.get(key).map(Vec::as_slice) != Some(expected) {
                 return Ok(CacheCompareAndSetOutcome::Mismatch);
             }
-            if ttl.is_some_and(Duration::is_zero) {
+            if ttl == Some(Duration::ZERO) {
                 values.remove(key);
             } else {
                 values.insert(key.to_string(), value);
