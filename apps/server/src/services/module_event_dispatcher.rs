@@ -29,6 +29,8 @@ pub fn spawn_module_event_dispatcher(
 
     #[cfg(feature = "mod-commerce")]
     spawn_paid_order_label_worker_if_enabled(ctx);
+    #[cfg(feature = "mod-payment")]
+    spawn_payment_provider_event_worker_if_enabled(ctx);
 
     let handler_count = dispatcher.handler_count();
     if handler_count == 0 {
@@ -56,10 +58,7 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
         return;
     }
 
-    if !ctx.shared_contains::<crate::services::app_lifecycle::StopHandle>() {
-        let (stop_handle, _stop_rx) = crate::services::app_lifecycle::StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
+    ensure_stop_handle(ctx);
     let stop_rx = ctx
         .shared_get::<crate::services::app_lifecycle::StopHandle>()
         .expect("StopHandle must exist before paid-order label worker startup")
@@ -70,6 +69,37 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
             stop_rx,
         ),
     );
+}
+
+#[cfg(feature = "mod-payment")]
+fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    if !ctx.settings().runtime.runs_background_workers()
+        || ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >()
+    {
+        return;
+    }
+
+    ensure_stop_handle(ctx);
+    let stop_rx = ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .expect("StopHandle must exist before payment provider event worker startup")
+        .subscribe();
+    ctx.shared_insert(
+        crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
+            ctx.clone(),
+            stop_rx,
+        ),
+    );
+}
+
+#[cfg(any(feature = "mod-commerce", feature = "mod-payment"))]
+fn ensure_stop_handle(ctx: &ServerRuntimeContext) {
+    if !ctx.shared_contains::<crate::services::app_lifecycle::StopHandle>() {
+        let (stop_handle, _stop_rx) = crate::services::app_lifecycle::StopHandle::new();
+        ctx.shared_insert(stop_handle);
+    }
 }
 
 pub fn build_shared_runtime_extensions(
@@ -119,8 +149,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         let fulfillment_registry = runtime_ctx
             .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
             .unwrap_or_else(|| {
-                let registry =
-                    rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider();
+                let registry = rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider();
                 runtime_ctx.shared_insert(registry.clone());
                 registry
             });
