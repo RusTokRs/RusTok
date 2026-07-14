@@ -43,6 +43,7 @@
   ],
   "evidence": {
     "local_plan": "crates/rustok-payment/docs/implementation-plan.md",
+    "status_source_of_truth": "crates/rustok-payment/docs/implementation-plan.md",
     "webhook_contract": "crates/rustok-payment/contracts/payment-provider-webhook-v1.json",
     "webhook_runbook": "crates/rustok-payment/docs/provider-webhooks.md",
     "webhook_source_status": "implemented_not_executed",
@@ -145,9 +146,8 @@
       "idempotency_required": true,
       "replay_required": true,
       "adapter_operation": "handle_webhook",
-      "raw_payload_audit_required": true,
       "raw_payload_persisted": false,
-      "payload_hash_required": true,
+      "payload_hash_audit_required": true,
       "normalized_checkpoint_required": true,
       "owner_service_replay_guard_required": true,
       "operator_dead_letter_replay": {
