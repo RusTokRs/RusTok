@@ -19,8 +19,8 @@ pub use integration::{
 };
 pub use ports::*;
 pub use repair::{
-    repair_system_roles, RbacAffectedUser, RbacSystemRoleRepairError,
-    RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
+    repair_system_roles, repair_system_roles_in_transaction, RbacAffectedUser,
+    RbacSystemRoleRepairError, RbacSystemRoleRepairOptions, RbacSystemRoleRepairReport,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
@@ -32,7 +32,7 @@ pub use services::permission_evaluator::{
     PermissionEvaluation,
 };
 pub use services::permission_policy::{
-    check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
+    check_all_permissions, check_any_permissions, check_permission, denied_reason_for_denial,
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
 };
 
