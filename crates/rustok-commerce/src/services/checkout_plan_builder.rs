@@ -28,7 +28,6 @@ use super::{
     CheckoutOrderPlanPayload, CheckoutResult, StoreContextService,
 };
 
-#[derive(Clone)]
 pub struct CheckoutPlanBuilder {
     db: DatabaseConnection,
     inventory_availability_port: Arc<dyn InventoryReservationPort>,
@@ -105,7 +104,7 @@ impl CheckoutPlanBuilder {
             json!({
                 "checkout": {
                     "operation_id": operation_id,
-                    "snapshot_hash": snapshot.snapshot_hash,
+                    "snapshot_hash": snapshot.snapshot_hash.clone(),
                 }
             }),
         );
@@ -114,11 +113,11 @@ impl CheckoutPlanBuilder {
             json!({
                 "cart_context": {
                     "region_id": cart.region_id,
-                    "country_code": cart.country_code,
-                    "locale": context.locale,
-                    "currency_code": context.currency_code,
+                    "country_code": cart.country_code.clone(),
+                    "locale": context.locale.clone(),
+                    "currency_code": context.currency_code.clone(),
                     "selected_shipping_option_id": cart.selected_shipping_option_id,
-                    "email": cart.email,
+                    "email": cart.email.clone(),
                 }
             }),
         );
@@ -358,8 +357,8 @@ fn build_fulfillment_plans(
                         quantity: line.quantity,
                         metadata: json!({
                             "source_cart_line_item_id": line.id,
-                            "shipping_profile_slug": group.shipping_profile_slug,
-                            "seller_id": group.seller_id,
+                            "shipping_profile_slug": group.shipping_profile_slug.clone(),
+                            "seller_id": group.seller_id.clone(),
                         }),
                     })
                 })
@@ -373,9 +372,9 @@ fn build_fulfillment_plans(
                     metadata.clone(),
                     json!({
                         "delivery_group": {
-                            "shipping_profile_slug": group.shipping_profile_slug,
-                            "seller_id": group.seller_id,
-                            "line_item_ids": group.line_item_ids,
+                            "shipping_profile_slug": group.shipping_profile_slug.clone(),
+                            "seller_id": group.seller_id.clone(),
+                            "line_item_ids": group.line_item_ids.clone(),
                         }
                     }),
                 ),
