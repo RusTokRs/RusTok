@@ -6,6 +6,7 @@
 ## Primary Public Types and Signatures
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
+- `CategoryService::tree(tenant_id, security, CategoryTreeQuery) -> CategoryTreeResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -23,6 +24,14 @@
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CategoryListItem
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
+### Category tree
+- Added: `CategoryTreeQuery`, `CategoryBreadcrumb`, `CategoryTreeNode`, `CategoryTreeResponse`.
+- The canonical tree returns the complete tenant hierarchy in deterministic `(position, id)` sibling order through one owner call bounded to 512 nodes and zero-based depth 16.
+- Each node includes `parent_id`, `depth`, direct `children_count`, `has_children`, localized breadcrumbs and nested children.
+- REST entry point: `GET /api/forum/categories/tree`.
+- GraphQL entry point: `forumCategoryTree(tenantId, locale, fallbackLocale)` on the merged `ForumQuery`.
+- Categories without any localized translation fail closed instead of returning empty `name`/`slug` fields.
+- The legacy flat category list remains a bounded compatibility projection and is not the canonical hierarchy contract.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -61,7 +70,7 @@ Publishes forum domain events through the outbox pipeline:
 - `ForumTopicCreated` — when a topic is created
 - `ForumTopicReplied` — when a reply is added
 - `ForumTopicStatusChanged` — when topic status changes (close/archive)
-- `ForumTopicPinned` — when a topic is pinned/unpinned
+- `ForumTopicPinned` — when topic is pinned/unpinned
 - `ForumReplyStatusChanged` — when a reply is moderated (approve/reject/hide)
 
 All new forum events are defined in `rustok-core::events::DomainEvent`.
@@ -76,6 +85,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Confuses the category/topic/reply hierarchy in entity imports.
 - Ignores tenant-boundary in service filters.
 - Confuses `locale` (requested) and `effective_locale` (actually used).
+- Uses the flat category list to reconstruct hierarchy instead of `CategoryService::tree`.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -87,6 +97,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 ### Domain Invariants
 - Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
 - Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
+- Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected or foreign-parent hierarchies.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.

@@ -6,6 +6,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 pub mod categories;
+pub mod category_tree;
 pub mod replies;
 pub mod subscriptions;
 pub mod topics;
@@ -46,6 +47,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .route(
             "/api/forum/categories",
             get(categories::list_categories).post(categories::create_category),
+        )
+        .route(
+            "/api/forum/categories/tree",
+            get(category_tree::get_category_tree),
         )
         .route(
             "/api/forum/categories/{id}",

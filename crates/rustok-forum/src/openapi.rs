@@ -4,6 +4,7 @@ use utoipa::OpenApi;
 #[openapi(
     paths(
         crate::controllers::categories::list_categories,
+        crate::controllers::category_tree::get_category_tree,
         crate::controllers::categories::get_category,
         crate::controllers::categories::create_category,
         crate::controllers::categories::update_category,
@@ -31,6 +32,10 @@ use utoipa::OpenApi;
             crate::UpdateCategoryInput,
             crate::CategoryResponse,
             crate::CategoryListItem,
+            crate::CategoryTreeQuery,
+            crate::CategoryBreadcrumb,
+            crate::CategoryTreeNode,
+            crate::CategoryTreeResponse,
             crate::CreateTopicInput,
             crate::UpdateTopicInput,
             crate::ListTopicsFilter,
