@@ -15,8 +15,11 @@ fn source(relative: &str) -> String {
 }
 
 #[test]
-fn rbac_listener_starts_before_superadmin_role_reconciliation() {
+fn durable_generation_watchdog_and_rbac_listener_start_before_superadmin_reconciliation() {
     let bootstrap = source("apps/server/src/services/server_bootstrap.rs");
+    let watchdog = bootstrap
+        .find("start_rbac_invalidation_generation_watchdog(runtime_ctx).await?;")
+        .expect("server bootstrap must start durable RBAC generation reconciliation");
     let cache_init = bootstrap
         .find("let cache = ensure_cache_service(runtime_ctx);")
         .expect("server bootstrap must initialize the shared cache service");
@@ -27,6 +30,7 @@ fn rbac_listener_starts_before_superadmin_role_reconciliation() {
         .find("ensure_default_superadmin(runtime_ctx).await")
         .expect("server bootstrap must reconcile the default superadmin");
 
+    assert!(watchdog < cache_init);
     assert!(cache_init < listener);
     assert!(listener < superadmin);
 }
