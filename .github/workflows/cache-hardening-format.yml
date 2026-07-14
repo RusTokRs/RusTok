@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: cache-hardening-focused-formatter
@@ -26,50 +27,82 @@ jobs:
         with:
           toolchain: "1.96.0"
           components: rustfmt
-      - name: Format cache-hardening files
+      - name: Format and publish cache-hardening files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIAGNOSTICS_ISSUE: "1754"
+        shell: bash
         run: |
-          rustfmt --edition 2021 \
-            apps/server/src/middleware/channel.rs \
-            apps/server/src/middleware/locale.rs \
-            apps/server/src/services/cache_redis_status_monitor.rs \
-            apps/server/src/services/field_definition_cache.rs \
-            apps/server/src/services/marketplace_catalog_cache.rs \
-            apps/server/src/services/marketplace_catalog_cache_base.rs \
-            apps/server/src/services/rbac_cache_invalidation.rs \
-            apps/server/src/services/rbac_invalidation_generation.rs \
-            apps/server/src/services/runtime_guardrails.rs \
-            apps/server/src/services/runtime_guardrails_base.rs \
-            apps/server/tests/cache_worker_guardrail_architecture_guard.rs \
-            apps/server/tests/channel_cache_architecture_guard.rs \
-            apps/server/tests/field_definition_cache_runtime_guard.rs \
-            apps/server/tests/locale_cache_architecture_guard.rs \
-            apps/server/tests/marketplace_cache_architecture_guard.rs \
-            crates/rustok-cache/tests/invalidation_failure_metrics.rs
-          git diff --check
-      - name: Commit focused formatting
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            apps/server/src/middleware/channel.rs \
-            apps/server/src/middleware/locale.rs \
-            apps/server/src/services/cache_redis_status_monitor.rs \
-            apps/server/src/services/field_definition_cache.rs \
-            apps/server/src/services/marketplace_catalog_cache.rs \
-            apps/server/src/services/marketplace_catalog_cache_base.rs \
-            apps/server/src/services/rbac_cache_invalidation.rs \
-            apps/server/src/services/rbac_invalidation_generation.rs \
-            apps/server/src/services/runtime_guardrails.rs \
-            apps/server/src/services/runtime_guardrails_base.rs \
-            apps/server/tests/cache_worker_guardrail_architecture_guard.rs \
-            apps/server/tests/channel_cache_architecture_guard.rs \
-            apps/server/tests/field_definition_cache_runtime_guard.rs \
-            apps/server/tests/locale_cache_architecture_guard.rs \
-            apps/server/tests/marketplace_cache_architecture_guard.rs \
-            crates/rustok-cache/tests/invalidation_failure_metrics.rs
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "style(cache): format hardening phases"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          set +e
+          {
+            rustfmt --edition 2021 \
+              apps/server/src/middleware/channel.rs \
+              apps/server/src/middleware/locale.rs \
+              apps/server/src/services/cache_redis_status_monitor.rs \
+              apps/server/src/services/field_definition_cache.rs \
+              apps/server/src/services/marketplace_catalog_cache.rs \
+              apps/server/src/services/marketplace_catalog_cache_base.rs \
+              apps/server/src/services/rbac_cache_invalidation.rs \
+              apps/server/src/services/rbac_invalidation_generation.rs \
+              apps/server/src/services/runtime_guardrails.rs \
+              apps/server/src/services/runtime_guardrails_base.rs \
+              apps/server/tests/cache_worker_guardrail_architecture_guard.rs \
+              apps/server/tests/channel_cache_architecture_guard.rs \
+              apps/server/tests/field_definition_cache_runtime_guard.rs \
+              apps/server/tests/locale_cache_architecture_guard.rs \
+              apps/server/tests/marketplace_cache_architecture_guard.rs \
+              crates/rustok-cache/tests/invalidation_failure_metrics.rs
+            format_status=$?
+            git diff --check
+            diff_status=$?
+            if [ "$format_status" -ne 0 ] || [ "$diff_status" -ne 0 ]; then
+              echo "formatter_failed format_status=$format_status diff_status=$diff_status"
+              exit 20
+            fi
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add \
+              apps/server/src/middleware/channel.rs \
+              apps/server/src/middleware/locale.rs \
+              apps/server/src/services/cache_redis_status_monitor.rs \
+              apps/server/src/services/field_definition_cache.rs \
+              apps/server/src/services/marketplace_catalog_cache.rs \
+              apps/server/src/services/marketplace_catalog_cache_base.rs \
+              apps/server/src/services/rbac_cache_invalidation.rs \
+              apps/server/src/services/rbac_invalidation_generation.rs \
+              apps/server/src/services/runtime_guardrails.rs \
+              apps/server/src/services/runtime_guardrails_base.rs \
+              apps/server/tests/cache_worker_guardrail_architecture_guard.rs \
+              apps/server/tests/channel_cache_architecture_guard.rs \
+              apps/server/tests/field_definition_cache_runtime_guard.rs \
+              apps/server/tests/locale_cache_architecture_guard.rs \
+              apps/server/tests/marketplace_cache_architecture_guard.rs \
+              crates/rustok-cache/tests/invalidation_failure_metrics.rs
+            if git diff --cached --quiet; then
+              echo "already_formatted"
+              exit 0
+            fi
+            git commit -m "style(cache): format hardening phases"
+            git pull --rebase origin main
+            rebase_status=$?
+            if [ "$rebase_status" -ne 0 ]; then
+              echo "rebase_failed status=$rebase_status"
+              exit 21
+            fi
+            git push origin HEAD:main
+          } > /tmp/formatter.log 2>&1
+          status=$?
+          {
+            echo "## Focused cache formatter"
+            echo
+            echo "Trigger: $GITHUB_SHA"
+            echo "status=$status"
+            echo
+            echo '```text'
+            tail -c 16000 /tmp/formatter.log
+            echo
+            echo '```'
+          } > /tmp/formatter.md
+          gh issue comment "$DIAGNOSTICS_ISSUE" --body-file /tmp/formatter.md
+          exit "$status"
