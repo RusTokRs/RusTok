@@ -95,7 +95,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
     "eslint": "10.7.0",
-    "eslint-config-next": "16.3.0-preview.5",
+    "eslint-config-next": "16.3.0-preview.6",
     "geist": "^1.7.2",
     "grapesjs": "^0.23.2",
     "grapesjs-preset-webpage": "^1.0.3",
