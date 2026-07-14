@@ -9,13 +9,13 @@ use rustok_cache::{
     CacheInvalidationPayloadError, CacheService, DurableCacheInvalidationRecord,
     VersionedCacheInvalidation,
 };
-use sea_orm::{EntityTrait, QuerySelect};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::models::_entities::users;
-use crate::services::rbac_runtime::invalidate_user_permissions_cache;
+use crate::services::rbac_runtime::{
+    invalidate_all_user_permissions_cache, invalidate_user_permissions_cache,
+};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub const RBAC_PERMISSION_GENERATION_PREFIX: &str = "rustok:rbac:permissions:v1";
@@ -72,15 +72,13 @@ fn acknowledge_rbac_recovery(
 
 #[derive(Clone)]
 struct RbacCacheInvalidationListener {
-    ctx: ServerRuntimeContext,
     cache: CacheService,
     tracker: BoundedCacheInvalidationGapTracker,
 }
 
 impl RbacCacheInvalidationListener {
-    fn new(ctx: ServerRuntimeContext, cache: CacheService) -> Self {
+    fn new(cache: CacheService) -> Self {
         Self {
-            ctx,
             cache,
             tracker: BoundedCacheInvalidationGapTracker::default(),
         }
@@ -117,7 +115,7 @@ impl RbacCacheInvalidationListener {
     async fn recover_generation_and_clear(&self) -> Result<u64> {
         let generation = self.read_generation().await?;
         let recovered_through = observe_rbac_backend_generation(generation)?;
-        invalidate_all_user_permission_snapshots(&self.ctx).await?;
+        invalidate_all_user_permissions_cache().await;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
         Ok(recovered_through)
     }
@@ -133,7 +131,7 @@ impl RbacCacheInvalidationListener {
             return Ok(None);
         }
 
-        invalidate_all_user_permission_snapshots(&self.ctx).await?;
+        invalidate_all_user_permissions_cache().await;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
         Ok(Some(recovered_through))
     }
@@ -248,7 +246,7 @@ pub async fn start_rbac_cache_invalidation_listener(
         return Ok(());
     }
 
-    let listener = RbacCacheInvalidationListener::new(ctx.clone(), cache.clone());
+    let listener = RbacCacheInvalidationListener::new(cache.clone());
     let mut local = cache
         .invalidations()
         .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
@@ -348,20 +346,6 @@ pub async fn start_rbac_cache_invalidation_listener(
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cache);
     ctx.shared_insert(RbacCacheInvalidationListenerHandle);
-    Ok(())
-}
-
-async fn invalidate_all_user_permission_snapshots(ctx: &ServerRuntimeContext) -> Result<()> {
-    let identities = users::Entity::find()
-        .select_only()
-        .column(users::Column::TenantId)
-        .column(users::Column::Id)
-        .into_tuple::<(Uuid, Uuid)>()
-        .all(ctx.db())
-        .await?;
-    for (tenant_id, user_id) in identities {
-        invalidate_user_permissions_cache(&tenant_id, &user_id).await;
-    }
     Ok(())
 }
 
