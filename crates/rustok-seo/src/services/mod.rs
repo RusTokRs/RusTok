@@ -40,7 +40,6 @@ pub use rustok_pages::PageService;
 pub use rustok_product::CatalogService;
 
 const MODULE_SLUG: &str = "seo";
-const SEO_SETTINGS_SCHEMA_VERSION: u64 = 1;
 const REDIRECT_CACHE_TTL_SECS: u64 = 30;
 const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 const SITEMAP_CHUNK_SIZE: usize = 500;
@@ -198,20 +197,11 @@ impl SeoService {
     }
 }
 
-fn parse_persisted_settings(mut value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
-    let object = value.as_object_mut().ok_or_else(|| {
-        SeoError::configuration("persisted SEO settings must be a JSON object")
-    })?;
-    let schema_version = match object.remove("schema_version") {
-        Some(value) => value.as_u64().ok_or_else(|| {
-            SeoError::configuration("SEO settings `schema_version` must be a positive integer")
-        })?,
-        None => SEO_SETTINGS_SCHEMA_VERSION,
-    };
-    if schema_version != SEO_SETTINGS_SCHEMA_VERSION {
-        return Err(SeoError::configuration(format!(
-            "unsupported SEO settings schema version `{schema_version}`; expected `{SEO_SETTINGS_SCHEMA_VERSION}`"
-        )));
+fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
+    if !value.is_object() {
+        return Err(SeoError::configuration(
+            "persisted SEO settings must be a JSON object",
+        ));
     }
 
     serde_json::from_value(value).map_err(|error| {
@@ -263,48 +253,26 @@ mod settings_tests {
     use serde_json::json;
 
     #[test]
-    fn persisted_settings_accept_legacy_payload_without_schema_version() {
+    fn persisted_settings_accept_valid_payload() {
         let settings = parse_persisted_settings(json!({
             "default_robots": ["index", "follow"],
             "sitemap_enabled": false
         }))
-        .expect("legacy settings should be treated as schema version 1");
+        .expect("valid settings should load");
 
         assert_eq!(settings.default_robots, vec!["index", "follow"]);
         assert!(!settings.sitemap_enabled);
     }
 
     #[test]
-    fn persisted_settings_accept_current_schema_version() {
-        let settings = parse_persisted_settings(json!({
-            "schema_version": SEO_SETTINGS_SCHEMA_VERSION,
-            "sitemap_enabled": true
-        }))
-        .expect("current settings schema should load");
-
-        assert!(settings.sitemap_enabled);
-    }
-
-    #[test]
     fn persisted_settings_reject_malformed_field_types() {
         let error = parse_persisted_settings(json!({
-            "schema_version": SEO_SETTINGS_SCHEMA_VERSION,
             "sitemap_enabled": "yes"
         }))
         .expect_err("invalid settings must not silently fall back to defaults");
 
         assert!(error.to_string().contains("invalid persisted SEO settings"));
         assert!(error.to_string().contains("sitemap_enabled"));
-    }
-
-    #[test]
-    fn persisted_settings_reject_unsupported_schema_version() {
-        let error = parse_persisted_settings(json!({
-            "schema_version": SEO_SETTINGS_SCHEMA_VERSION + 1
-        }))
-        .expect_err("future settings schema must require an explicit migration");
-
-        assert!(error.to_string().contains("unsupported SEO settings schema version"));
     }
 
     #[test]
