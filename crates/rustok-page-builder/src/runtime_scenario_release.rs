@@ -1,6 +1,7 @@
-use fly::{
-    evaluate_runtime_scenario_release, FlyResult, GrapesJsV1Codec, RuntimeScenarioReleaseBaseline,
-    RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleasePolicy,
+use fly::{evaluate_runtime_scenario_release, FlyResult, GrapesJsV1Codec};
+pub use fly::{
+    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation,
+    RuntimeScenarioReleaseMode, RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -95,7 +96,9 @@ mod server {
         }
     }
 
-    pub fn release_gate_error(evaluation: &RuntimeScenarioReleaseEvaluation) -> PageBuilderServiceError {
+    pub fn release_gate_error(
+        evaluation: &RuntimeScenarioReleaseEvaluation,
+    ) -> PageBuilderServiceError {
         let details = evaluation
             .blocking_diagnostics()
             .take(4)
@@ -122,7 +125,7 @@ pub use server::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{PageSelection, RenderPolicy, RuntimeContextScenario, RuntimeScenarioReleaseBaseline};
+    use fly::{PageSelection, RenderPolicy, RuntimeContextScenario};
     use serde_json::json;
 
     fn project() -> Value {
