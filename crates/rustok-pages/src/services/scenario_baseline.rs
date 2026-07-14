@@ -7,8 +7,8 @@ use rustok_page_builder::runtime_scenario_release::{
     RuntimeScenarioReleasePolicy, PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -16,6 +16,9 @@ use uuid::Uuid;
 use crate::entities::{page, page_body, page_builder_scenario_baseline};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
+
+pub const PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE: &str =
+    "SCENARIO_BASELINE_CONFLICT";
 
 pub struct PageBuilderScenarioBaselineService {
     db: DatabaseConnection,
@@ -49,6 +52,18 @@ impl PageBuilderScenarioBaselineService {
         page_id: Uuid,
         baseline: RuntimeScenarioReleaseBaseline,
     ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
+        self.save_if_current(tenant_id, security, page_id, baseline, None)
+            .await
+    }
+
+    pub async fn save_if_current(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        baseline: RuntimeScenarioReleaseBaseline,
+        expected_baseline_hash: Option<&str>,
+    ) -> PagesResult<RuntimeScenarioReleaseBaseline> {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -69,26 +84,61 @@ impl PageBuilderScenarioBaselineService {
             )));
         }
 
-        let now = Utc::now();
+        let now: sea_orm::prelude::DateTimeWithTimeZone = Utc::now().into();
         let baseline_json = serde_json::to_value(&baseline).map_err(|error| {
             PagesError::validation(format!("Unable to encode scenario baseline: {error}"))
         })?;
-        match page_builder_scenario_baseline::Entity::find()
+        let existing = page_builder_scenario_baseline::Entity::find()
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
             .one(&self.db)
-            .await?
-        {
-            Some(existing) => {
+            .await?;
+
+        match (existing, expected_baseline_hash) {
+            (Some(_), Some(expected_hash)) => {
+                let result = page_builder_scenario_baseline::Entity::update_many()
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::BaselineId,
+                        Expr::value(baseline.baseline_id.clone()),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::BaselineHash,
+                        Expr::value(baseline.baseline_hash.clone()),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::SourceProjectHash,
+                        Expr::value(baseline.source_project_hash.clone()),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::Baseline,
+                        Expr::value(baseline_json),
+                    )
+                    .col_expr(
+                        page_builder_scenario_baseline::Column::UpdatedAt,
+                        Expr::value(now),
+                    )
+                    .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
+                    .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
+                    .filter(
+                        page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash),
+                    )
+                    .exec(&self.db)
+                    .await?;
+                if result.rows_affected != 1 {
+                    return Err(baseline_conflict(page_id));
+                }
+            }
+            (Some(existing), None) => {
                 let mut active: page_builder_scenario_baseline::ActiveModel = existing.into();
                 active.baseline_id = Set(baseline.baseline_id.clone());
                 active.baseline_hash = Set(baseline.baseline_hash.clone());
                 active.source_project_hash = Set(baseline.source_project_hash.clone());
                 active.baseline = Set(baseline_json);
-                active.updated_at = Set(now.into());
+                active.updated_at = Set(now);
                 active.update(&self.db).await?;
             }
-            None => {
+            (None, Some(_)) => return Err(baseline_conflict(page_id)),
+            (None, None) => {
                 page_builder_scenario_baseline::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     tenant_id: Set(tenant_id),
@@ -97,8 +147,8 @@ impl PageBuilderScenarioBaselineService {
                     baseline_hash: Set(baseline.baseline_hash.clone()),
                     source_project_hash: Set(baseline.source_project_hash.clone()),
                     baseline: Set(baseline_json),
-                    created_at: Set(now.into()),
-                    updated_at: Set(now.into()),
+                    created_at: Set(now),
+                    updated_at: Set(now),
                 }
                 .insert(&self.db)
                 .await?;
@@ -113,6 +163,17 @@ impl PageBuilderScenarioBaselineService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<bool> {
+        self.delete_if_current(tenant_id, security, page_id, None)
+            .await
+    }
+
+    pub async fn delete_if_current(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        expected_baseline_hash: Option<&str>,
+    ) -> PagesResult<bool> {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -120,11 +181,18 @@ impl PageBuilderScenarioBaselineService {
             Action::Update,
             page.author_id,
         )?;
-        let result = page_builder_scenario_baseline::Entity::delete_many()
+        let mut delete = page_builder_scenario_baseline::Entity::delete_many()
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
-            .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
-            .exec(&self.db)
-            .await?;
+            .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id));
+        if let Some(expected_hash) = expected_baseline_hash {
+            delete = delete.filter(
+                page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash),
+            );
+        }
+        let result = delete.exec(&self.db).await?;
+        if expected_baseline_hash.is_some() && result.rows_affected != 1 {
+            return Err(baseline_conflict(page_id));
+        }
         Ok(result.rows_affected > 0)
     }
 
@@ -255,6 +323,12 @@ impl PageBuilderScenarioBaselineService {
             .await?
             .ok_or_else(|| PagesError::page_not_found(page_id))
     }
+}
+
+fn baseline_conflict(page_id: Uuid) -> PagesError {
+    PagesError::validation(format!(
+        "{PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE}: scenario baseline for page `{page_id}` changed since it was loaded"
+    ))
 }
 
 fn ensure_evaluation_allowed(evaluation: RuntimeScenarioReleaseEvaluation) -> PagesResult<()> {
