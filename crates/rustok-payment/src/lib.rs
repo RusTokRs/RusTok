@@ -18,16 +18,17 @@ pub use providers::*;
 
 pub use error::{PaymentError, PaymentResult};
 pub use services::{
-    BeginProviderOperation, CompleteProviderEvent, FailProviderEvent, PaymentDomainEventApplier,
-    PaymentLifecycleEventApplier, PaymentProviderEventApplier, PaymentProviderEventApplyError,
-    PaymentProviderEventContext, PaymentProviderEventExecution, PaymentProviderEventIngressError,
-    PaymentProviderEventIngressResult, PaymentProviderEventIngressService,
-    PaymentProviderEventJournal, PaymentProviderOperationJournal, PaymentService,
-    ReceiveProviderEvent, RefundLifecycleEventApplier, PROVIDER_EVENT_DEAD_LETTER,
-    PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
-    PROVIDER_EVENT_RECEIVED, PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR,
-    PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_PENDING,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+    BeginProviderOperation, CheckpointProviderEvent, CompleteProviderEvent, FailProviderEvent,
+    PaymentDomainEventApplier, PaymentLifecycleEventApplier, PaymentProviderEventApplier,
+    PaymentProviderEventApplyError, PaymentProviderEventContext, PaymentProviderEventExecution,
+    PaymentProviderEventIngressError, PaymentProviderEventIngressResult,
+    PaymentProviderEventIngressService, PaymentProviderEventJournal,
+    PaymentProviderOperationJournal, PaymentService, ReceiveProviderEvent,
+    RefundLifecycleEventApplier, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_FAILED,
+    PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED,
+    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
+    PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_SUCCEEDED,
 };
 
 pub struct PaymentModule;
