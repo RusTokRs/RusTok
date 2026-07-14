@@ -17,6 +17,7 @@ fn source(relative: &str) -> String {
 #[test]
 fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
+    let event_runtime = source("apps/server/src/services/event_transport_factory.rs");
 
     for required in [
         "RbacCacheInvalidationListenerStartLock",
@@ -41,6 +42,12 @@ fn rbac_invalidation_startup_is_serialized_and_committed_after_recovery() {
 
     assert!(recovery < publisher_commit);
     assert!(publisher_commit < handle_commit);
+    assert!(event_runtime.contains(
+        "start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;"
+    ));
+    assert!(event_runtime.contains(
+        "CacheService must be initialized before the event runtime"
+    ));
 }
 
 #[test]
@@ -96,6 +103,7 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
     let core = source("crates/rustok-rbac/src/services/relation_permission_resolver.rs");
     let exports = source("crates/rustok-rbac/src/lib.rs");
     let runtime = source("apps/server/src/services/rbac_runtime.rs");
+    let request_scope = source("apps/server/src/services/rbac_request_scope.rs");
 
     for required in [
         "pub struct PermissionCacheLookup",
@@ -115,6 +123,7 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
         "current_permission_cache_epoch() != token",
         "advance_permission_cache_epoch();",
         "stale_permission_fill_is_rejected_after_invalidation",
+        "invalidate_current_rbac_request_scope(tenant_id, user_id)",
     ] {
         assert!(
             runtime.contains(required),
@@ -122,14 +131,31 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
         );
     }
 
+    for required in [
+        "struct RbacRequestScopeState",
+        "valid: AtomicBool",
+        "invalidate_current_rbac_request_scope",
+        "exact_actor_invalidation_expires_the_request_snapshot",
+        "unrelated_actor_invalidation_preserves_the_request_snapshot",
+    ] {
+        assert!(
+            request_scope.contains(required),
+            "RBAC request scope must retain {required}"
+        );
+    }
+
     let invalidate_impl = runtime
         .find("async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid)")
         .expect("Moka adapter must implement invalidation");
+    let request_scope_expiry = runtime[invalidate_impl..]
+        .find("invalidate_current_rbac_request_scope(tenant_id, user_id)")
+        .expect("adapter invalidation must expire the matching request scope");
     let epoch_advance = runtime[invalidate_impl..]
         .find("advance_permission_cache_epoch();")
         .expect("every adapter invalidation must advance the epoch");
     let physical_invalidation = runtime[invalidate_impl..]
         .find("USER_PERMISSION_CACHE")
         .expect("adapter invalidation must remove the physical entry");
+    assert!(request_scope_expiry < epoch_advance);
     assert!(epoch_advance < physical_invalidation);
 }
