@@ -10,6 +10,7 @@ use rustok_cart::{
 };
 use rustok_payment::PaymentService;
 use rustok_web::{HttpError, HttpResult};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
@@ -177,7 +178,7 @@ pub async fn complete_cart_checkout(
         metadata: input.metadata,
     };
     let event_bus = runtime.event_bus();
-    let pricing_resolver = std::sync::Arc::new(crate::StorefrontCheckoutPricingResolver::new(
+    let pricing_resolver = Arc::new(crate::StorefrontCheckoutPricingResolver::new(
         runtime.db_clone(),
         event_bus.clone(),
         request_context.channel_id,
@@ -196,30 +197,36 @@ pub async fn complete_cart_checkout(
         pricing_resolver,
     );
 
-    let checkout = crate::CheckoutService::new(
+    let inventory_service = Arc::new(rustok_inventory::InventoryService::new(
         runtime.db_clone(),
         event_bus.clone(),
-        std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
-        atomic_cart.port,
-        std::sync::Arc::new(rustok_inventory::InventoryService::new(
+    ));
+    let plan_builder = crate::CheckoutPlanBuilder::new(
+        runtime.db_clone(),
+        Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
+        inventory_service,
+        Arc::new(rustok_product::CatalogService::new(
             runtime.db_clone(),
             event_bus.clone(),
         )),
-        std::sync::Arc::new(rustok_product::CatalogService::new(
-            runtime.db_clone(),
-            event_bus,
-        )),
-    )
-    .with_provider_registries(
-        runtime.payment_provider_registry(),
-        runtime.fulfillment_provider_registry(),
     );
-    let service = crate::JournaledCheckoutService::new(checkout, runtime.db_clone())
-        .with_atomic_cart_checkout_handle(atomic_cart.handle);
+    let pipeline = crate::CheckoutStagePipeline::new(
+        runtime.db_clone(),
+        event_bus,
+        rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone()),
+        atomic_cart.port.clone(),
+    )
+    .with_payment_provider_registry(runtime.payment_provider_registry());
+    let service = crate::StagedCheckoutService::new(
+        plan_builder,
+        pipeline,
+        atomic_cart.handle,
+        runtime.db_clone(),
+    );
     let response = service
         .complete_checkout(tenant.id, actor_id, idempotency_key, checkout_input)
         .await
-        .map_err(journaled_checkout_http_error)?;
+        .map_err(staged_checkout_http_error)?;
 
     Ok(Json(response))
 }
@@ -252,24 +259,24 @@ fn required_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     Ok(value.to_string())
 }
 
-fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpError {
+fn staged_checkout_http_error(error: crate::StagedCheckoutError) -> HttpError {
     match error {
-        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::Conflict(
-            message,
-        )) => HttpError::new(StatusCode::CONFLICT, "checkout_operation_conflict", message),
-        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::NotFound(id)) => {
+        crate::StagedCheckoutError::Operation(crate::CheckoutOperationError::Conflict(message)) => {
+            HttpError::new(StatusCode::CONFLICT, "checkout_operation_conflict", message)
+        }
+        crate::StagedCheckoutError::Operation(crate::CheckoutOperationError::NotFound(id)) => {
             HttpError::not_found(
                 "checkout_operation_not_found",
                 format!("Checkout operation {id} was not found"),
             )
         }
-        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::Validation(
+        crate::StagedCheckoutError::Operation(crate::CheckoutOperationError::Validation(
             message,
         )) => HttpError::bad_request("checkout_operation_invalid", message),
-        crate::JournaledCheckoutError::Operation(crate::CheckoutOperationError::Database(_)) => {
+        crate::StagedCheckoutError::Operation(crate::CheckoutOperationError::Database(_)) => {
             HttpError::internal("Checkout operation storage is unavailable")
         }
-        crate::JournaledCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
+        crate::StagedCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
             kind: rustok_api::PortErrorKind::Conflict,
             code,
             ..
@@ -278,7 +285,7 @@ fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpEr
             code,
             "Checkout pricing or cart state changed; retry with the same Idempotency-Key",
         ),
-        crate::JournaledCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
+        crate::StagedCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
             kind: rustok_api::PortErrorKind::Conflict,
             code,
             ..
@@ -287,10 +294,16 @@ fn journaled_checkout_http_error(error: crate::JournaledCheckoutError) -> HttpEr
             code,
             "Checkout could not proceed because a domain constraint changed",
         ),
-        crate::JournaledCheckoutError::Checkout(checkout) => {
+        crate::StagedCheckoutError::Checkout(checkout) => {
             HttpError::bad_request("commerce_operation_failed", checkout.to_string())
         }
-        crate::JournaledCheckoutError::CheckoutAndJournal { .. } => {
+        crate::StagedCheckoutError::Pipeline(_) => HttpError::new(
+            StatusCode::CONFLICT,
+            "checkout_pipeline_failed",
+            "Checkout entered recovery; retry with the same Idempotency-Key after reconciliation",
+        ),
+        crate::StagedCheckoutError::CheckoutAndJournal { .. }
+        | crate::StagedCheckoutError::PipelineAndJournal { .. } => {
             HttpError::internal("Checkout requires reconciliation after a journal update failure")
         }
     }
