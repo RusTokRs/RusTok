@@ -1,8 +1,8 @@
 use crate::{
-    diff_runtime_scenario_render_snapshots, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
-    RuntimeContextScenario, RuntimeScenarioRegressionStatus, RuntimeScenarioRenderDiff,
-    RuntimeScenarioRenderSnapshot, ValidationDiagnostic, ValidationSeverity,
-    FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1,
+    diff_runtime_scenario_render_snapshots, PageSelection, ProjectDocument, ProjectHash,
+    RenderPolicy, RuntimeContextScenario, RuntimeScenarioRegressionStatus,
+    RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot, ValidationDiagnostic,
+    ValidationSeverity, FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT_V1,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -120,7 +120,7 @@ impl RuntimeScenarioReleaseBaseline {
                 ),
             ));
         }
-        if !self.snapshot.has_valid_hash() {
+        if !snapshot_has_valid_hash(&self.snapshot) {
             diagnostics.push(release_diagnostic(
                 "runtime_scenario_baseline_snapshot_hash_invalid",
                 "baseline.snapshot.snapshot_hash",
@@ -327,6 +327,19 @@ pub fn evaluate_runtime_scenario_release(
         diff: Some(diff),
         diagnostics,
     }
+}
+
+fn snapshot_has_valid_hash(snapshot: &RuntimeScenarioRenderSnapshot) -> bool {
+    let bytes = serde_json::to_vec(&(
+        &snapshot.format,
+        &snapshot.selection,
+        &snapshot.policy,
+        &snapshot.cases,
+        &snapshot.matrix_diagnostics,
+    ))
+    .unwrap_or_default();
+    !snapshot.snapshot_hash.is_empty()
+        && snapshot.snapshot_hash == ProjectHash::from_bytes(&bytes).hex()
 }
 
 fn release_diagnostic(
