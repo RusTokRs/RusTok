@@ -1,8 +1,8 @@
-use rustok_core::ModuleRegistry;
+use rustok_core::{ModuleRegistry, UserRole};
 use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan, InstallProfile,
-    InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode, SecretValue, SeedProfile,
-    TenantBootstrap,
+    InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode, SecretValue,
+    SeedPrincipalPort, SeedProfile, SeedUserRequest, TenantBootstrap,
 };
 use rustok_installer_persistence::SeaOrmInstallerBootstrapPorts;
 use rustok_migrations::Migrator;
@@ -55,9 +55,10 @@ async fn insert_tenant(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
     .expect("insert tenant");
 }
 
-async fn insert_superadmin_slug_collision(
+async fn insert_reserved_slug_collision(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
+    slug: &str,
 ) {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
@@ -66,7 +67,7 @@ async fn insert_superadmin_slug_collision(
             Uuid::new_v4().into(),
             tenant_id.into(),
             "User-defined collision".into(),
-            "super_admin".into(),
+            slug.into(),
         ],
     ))
     .await
@@ -96,7 +97,7 @@ async fn role_failure_rolls_back_new_admin_identity() {
     let tenant_id = Uuid::new_v4();
     let admin_email = "atomic-admin@example.com";
     insert_tenant(&db, tenant_id).await;
-    insert_superadmin_slug_collision(&db, tenant_id).await;
+    insert_reserved_slug_collision(&db, tenant_id, "super_admin").await;
 
     let registry = ModuleRegistry::new();
     let ports = SeaOrmInstallerBootstrapPorts::new(db.clone(), &registry, Vec::new());
@@ -111,6 +112,33 @@ async fn role_failure_rolls_back_new_admin_identity() {
 
     assert!(error.to_string().contains("super_admin"));
     assert_eq!(bootstrap_user_count(&db, tenant_id, admin_email).await, 0);
+}
+
+#[tokio::test]
+async fn seed_role_failure_rolls_back_new_customer_identity() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let tenant_id = Uuid::new_v4();
+    let customer_email = "atomic-customer@example.com";
+    insert_tenant(&db, tenant_id).await;
+    insert_reserved_slug_collision(&db, tenant_id, "customer").await;
+
+    let registry = ModuleRegistry::new();
+    let ports = SeaOrmInstallerBootstrapPorts::new(db.clone(), &registry, Vec::new());
+    let error = ports
+        .ensure_seed_principal(
+            SeedUserRequest {
+                tenant_id,
+                email: customer_email.to_string(),
+                name: "Atomic Customer".to_string(),
+                password: "strong-test-password-12345".to_string(),
+            },
+            UserRole::Customer,
+        )
+        .await
+        .expect_err("reserved customer slug collision must reject seed principal provisioning");
+
+    assert!(error.to_string().contains("customer"));
+    assert_eq!(bootstrap_user_count(&db, tenant_id, customer_email).await, 0);
 }
 
 #[tokio::test]
