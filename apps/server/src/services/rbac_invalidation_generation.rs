@@ -1,3 +1,4 @@
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use sea_orm::{ConnectionTrait, Statement};
@@ -7,12 +8,52 @@ use crate::services::rbac_runtime::invalidate_all_user_permissions_cache;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const RBAC_PERMISSION_SCOPE: &str = "permissions";
-const RBAC_DURABLE_GENERATION_CHANNEL: &str = "rbac.permissions.durable_generation.v1";
+pub(crate) const RBAC_DURABLE_GENERATION_CHANNEL: &str =
+    "rbac.permissions.durable_generation.v1";
 const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_DURABLE_GENERATION: i64 = i64::MAX;
 
 #[derive(Clone)]
 pub struct RbacInvalidationGenerationWatchdogHandle;
+
+#[derive(Clone, Default)]
+pub(crate) struct RbacInvalidationGenerationState(
+    Arc<RwLock<Option<u64>>>,
+);
+
+impl RbacInvalidationGenerationState {
+    pub(crate) fn current(&self) -> Option<u64> {
+        *self
+            .0
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Record a generation already applied to this process. Stale or duplicate
+    /// observations are harmless and never lower the local checkpoint.
+    pub(crate) fn observe_applied(&self, generation: u64) -> u64 {
+        let mut current = self
+            .0
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match *current {
+            Some(existing) if existing >= generation => existing,
+            _ => {
+                *current = Some(generation);
+                generation
+            }
+        }
+    }
+}
+
+pub(crate) fn ensure_rbac_invalidation_generation_state(
+    ctx: &ServerRuntimeContext,
+) -> RbacInvalidationGenerationState {
+    let candidate = RbacInvalidationGenerationState::default();
+    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    ctx.shared_get::<RbacInvalidationGenerationState>()
+        .unwrap_or(candidate)
+}
 
 /// Reserve the next durable RBAC invalidation generation on the caller-owned
 /// connection. When `db` is a transaction, the generation advances atomically
@@ -77,31 +118,28 @@ where
 pub async fn start_rbac_invalidation_generation_watchdog(
     ctx: &ServerRuntimeContext,
 ) -> Result<()> {
+    let state = ensure_rbac_invalidation_generation_state(ctx);
     if !ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle) {
         return Ok(());
     }
 
     let db = ctx.db_clone();
     tokio::spawn(async move {
-        let mut observed_generation: Option<u64> = None;
+        let mut last_regressed_database_generation: Option<u64> = None;
         let mut interval = tokio::time::interval(RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             interval.tick().await;
             match read_rbac_invalidation_generation(&db).await {
-                Ok(generation) if observed_generation == Some(generation) => {}
-                Ok(generation) => {
-                    match observed_generation {
-                        None => {
-                            tracing::info!(
-                                generation,
-                                "Durable RBAC invalidation generation became available"
-                            );
-                        }
-                        Some(previous) if generation < previous => {
+                Ok(generation) => match state.current() {
+                    Some(current) if generation == current => {
+                        last_regressed_database_generation = None;
+                    }
+                    Some(current) if generation < current => {
+                        if last_regressed_database_generation != Some(generation) {
                             tracing::error!(
-                                previous,
+                                previous = current,
                                 current = generation,
                                 "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
                             );
@@ -109,19 +147,29 @@ pub async fn start_rbac_invalidation_generation_watchdog(
                                 RBAC_DURABLE_GENERATION_CHANNEL,
                                 "generation_regressed",
                             );
+                            invalidate_all_user_permissions_cache().await;
+                            last_regressed_database_generation = Some(generation);
                         }
-                        Some(previous) => {
+                    }
+                    previous => {
+                        if let Some(previous) = previous {
                             tracing::warn!(
                                 previous,
                                 current = generation,
                                 "Reconciled RBAC permission snapshots from durable database generation"
                             );
+                        } else {
+                            tracing::info!(
+                                generation,
+                                "Durable RBAC invalidation generation became available"
+                            );
                         }
+                        invalidate_all_user_permissions_cache().await;
+                        state.observe_applied(generation);
+                        last_regressed_database_generation = None;
                     }
-                    invalidate_all_user_permissions_cache().await;
-                    observed_generation = Some(generation);
-                }
-                Err(error) if observed_generation.is_none() && is_missing_generation_state(&error) => {
+                },
+                Err(error) if state.current().is_none() && is_missing_generation_state(&error) => {
                     tracing::debug!(
                         "Durable RBAC invalidation state is not installed yet; watchdog will retry"
                     );
@@ -154,12 +202,22 @@ fn is_missing_generation_state(error: &Error) -> bool {
 mod tests {
     use super::{
         is_missing_generation_state, read_rbac_invalidation_generation,
-        reserve_rbac_invalidation_generation,
+        reserve_rbac_invalidation_generation, RbacInvalidationGenerationState,
     };
     use crate::error::Error;
     use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::TransactionTrait;
+
+    #[test]
+    fn applied_generation_state_is_monotonic() {
+        let state = RbacInvalidationGenerationState::default();
+        assert_eq!(state.current(), None);
+        assert_eq!(state.observe_applied(4), 4);
+        assert_eq!(state.observe_applied(3), 4);
+        assert_eq!(state.observe_applied(5), 5);
+        assert_eq!(state.current(), Some(5));
+    }
 
     #[test]
     fn missing_generation_table_errors_are_recognized_for_pre_install_boot() {
