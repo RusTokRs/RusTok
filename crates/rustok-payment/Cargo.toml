@@ -5,8 +5,14 @@ edition.workspace = true
 license.workspace = true
 description = "Payment domain module extracted from rustok-commerce"
 
+[features]
+default = []
+server = ["dep:anyhow", "dep:axum", "rustok-api/server"]
+
 [dependencies]
+anyhow = { workspace = true, optional = true }
 async-trait.workspace = true
+axum = { workspace = true, optional = true }
 chrono.workspace = true
 rust_decimal.workspace = true
 rustok-core.workspace = true
