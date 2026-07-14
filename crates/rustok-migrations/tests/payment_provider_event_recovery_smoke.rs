@@ -73,6 +73,7 @@ async fn recovery_worker_applies_verified_normalized_event_without_provider_repa
     assert_eq!(report.processed, 1);
     assert_eq!(report.retryable, 0);
     assert_eq!(report.dead_letter, 0);
+    assert_eq!(report.errors, 0);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 
     let processed = journal
@@ -113,6 +114,7 @@ async fn recovery_worker_dead_letters_legacy_event_without_normalized_checkpoint
     assert_eq!(report.scanned, 1);
     assert_eq!(report.dead_letter, 1);
     assert_eq!(report.processed, 0);
+    assert_eq!(report.errors, 0);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(
         report.failures[0].error_code.as_deref(),
