@@ -15,6 +15,7 @@ pub struct PagesMutation(
 );
 
 pub use scenario_baseline::{
-    GqlPageBuilderScenarioBaseline, SaveGqlPageBuilderScenarioBaselineInput,
+    GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioReleaseStatus,
+    SaveGqlPageBuilderScenarioBaselineInput,
 };
 pub use types::*;
