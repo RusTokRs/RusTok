@@ -1,5 +1,5 @@
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
-use fly::{ProjectHash, TraitSchemaRegistry};
+use fly::{ProjectHash, RuntimeContextScenario, TraitSchemaRegistry};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -14,6 +14,8 @@ pub struct AdminEditorRuntime {
     pub last_announcement: RwSignal<Option<String>>,
     pub trait_schemas: Arc<TraitSchemaRegistry>,
     pub runtime_context: RwSignal<Value>,
+    pub runtime_scenarios: Arc<Vec<RuntimeContextScenario>>,
+    pub active_runtime_scenario: RwSignal<Option<String>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
@@ -34,6 +36,8 @@ impl AdminEditorRuntime {
             last_announcement: RwSignal::new(None),
             trait_schemas: Arc::new(TraitSchemaRegistry::with_builtins()),
             runtime_context: RwSignal::new(Value::Object(Map::new())),
+            runtime_scenarios: Arc::new(Vec::new()),
+            active_runtime_scenario: RwSignal::new(None),
             facade,
             on_request,
             facade_missing: facade_missing.into(),
@@ -48,7 +52,38 @@ impl AdminEditorRuntime {
 
     pub fn with_runtime_context(mut self, runtime_context: Value) -> Self {
         self.runtime_context = RwSignal::new(runtime_context);
+        self.active_runtime_scenario = RwSignal::new(None);
         self
+    }
+
+    pub fn with_runtime_scenarios(
+        mut self,
+        runtime_scenarios: Arc<Vec<RuntimeContextScenario>>,
+    ) -> Self {
+        self.runtime_scenarios = runtime_scenarios;
+        self
+    }
+
+    pub fn apply_runtime_scenario(&self, scenario_id: &str) -> bool {
+        let Some(scenario) = self
+            .runtime_scenarios
+            .iter()
+            .find(|scenario| scenario.id == scenario_id)
+        else {
+            self.fail(format!("Runtime context scenario `{scenario_id}` was not found"));
+            return false;
+        };
+        self.runtime_context.set(scenario.context.clone());
+        self.active_runtime_scenario
+            .set(Some(scenario.id.clone()));
+        self.last_error.set(None);
+        self.announce(format!("Preview scenario applied: {}", scenario.label));
+        true
+    }
+
+    pub fn set_runtime_context(&self, runtime_context: Value) {
+        self.runtime_context.set(runtime_context);
+        self.active_runtime_scenario.set(None);
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
